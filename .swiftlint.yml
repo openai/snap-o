@@ -1,0 +1,56 @@
+disabled_rules:
+  - file_length
+  - function_body_length
+  - type_body_length
+  - cyclomatic_complexity
+  - nesting
+  - file_name
+
+opt_in_rules:
+  - empty_count
+  - implicit_return
+  - closure_spacing
+  - trailing_closure
+  - operator_usage_whitespace
+  - collection_alignment
+  - sorted_imports
+  - redundant_nil_coalescing
+  - yoda_condition
+  - force_unwrapping
+  - multiline_arguments_brackets
+  - multiline_parameters_brackets
+  - attributes
+  - explicit_init
+  - redundant_optional_initialization
+  - redundant_type_annotation
+  - closure_end_indentation
+
+analyzer_rules:
+  - unused_import
+
+included:
+  - Snap-O
+
+line_length:
+  warning: 140
+  error: 160
+  ignores_comments: true
+  ignores_urls: true
+
+identifier_name:
+  min_length: 2
+  allowed_symbols: ["_"]
+  excluded: ["id", "x", "y", "w", "h"]
+
+force_unwrapping:
+  severity: error
+
+trailing_whitespace:
+  ignores_empty_lines: true
+
+type_name:
+  max_length:
+    warning: 50
+    error: 60
+
+reporter: xcode

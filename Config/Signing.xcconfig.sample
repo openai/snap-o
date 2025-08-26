@@ -1,0 +1,7 @@
+// -----------------------------------------------------------------
+// Copy this file to `Signing.xcconfig` and fill in your own details
+// when you need to archive, notarise or ship a release build.
+// -----------------------------------------------------------------
+
+SNAPO_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+SNAPO_CODE_SIGN_IDENTITY = Apple Development

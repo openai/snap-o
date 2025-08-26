@@ -1,0 +1,11 @@
+// Base.xcconfig — checked into source control
+// General build settings shared by all configurations.
+
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM = $(SNAPO_DEVELOPMENT_TEAM)
+CODE_SIGN_IDENTITY = $(SNAPO_CODE_SIGN_IDENTITY)
+ENABLE_HARDENED_RUNTIME = YES
+
+// If a maintainer creates a local `Signing.xcconfig` next to this file,
+// its values will override the placeholders above.
+#include? "Signing.xcconfig"
