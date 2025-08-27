@@ -7,25 +7,40 @@ struct SnapOCommands: Commands {
   var body: some Commands {
     CommandGroup(after: .newItem) {
       Divider()
+
       Button("New Screenshot") {
         Task { await coordinator?.refreshPreview() }
       }
       .keyboardShortcut("r", modifiers: [.command])
       .disabled(coordinator?.canCapture != true)
 
-      if coordinator?.captureVM.isRecording != true {
+      if coordinator?.captureVM.isRecording == true {
+        Button("Stop Screen Recording") {
+          Task { await coordinator?.stopRecording() }
+        }
+        .keyboardShortcut(.escape, modifiers: [])
+      } else {
         Button("Start Screen Recording") {
           Task { await coordinator?.startRecording() }
         }
         .keyboardShortcut("r", modifiers: [.command, .shift])
         .disabled(coordinator?.canStartRecordingNow != true)
-      } else if coordinator?.captureVM.isRecording == true {
-        Button("Stop Screen Recording") {
-          Task { await coordinator?.stopRecording() }
+      }
+
+      if coordinator?.captureVM.isLivePreviewing == true {
+        Button("Stop Live Preview") {
+          coordinator?.stopLivePreview(refreshPreview: true)
         }
         .keyboardShortcut(.escape, modifiers: [])
+      } else {
+        Button("Start Live Preview") {
+          Task { await coordinator?.startLivePreview() }
+        }
+        .keyboardShortcut("l", modifiers: [.command, .shift])
+        .disabled(coordinator?.canStartLivePreviewNow != true)
       }
     }
+
     CommandGroup(before: .saveItem) {
       Button("Save As…") {
         guard let media = coordinator?.captureVM.currentMedia else { return }
@@ -66,7 +81,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut(.upArrow, modifiers: [.command])
       .disabled(
         !(coordinator?.canCapture ?? false) ||
-          (coordinator?.deviceVM.devices.count ?? 0) < 2
+        (coordinator?.deviceVM.devices.count ?? 0) < 2
       )
       Button("Next Device") {
         coordinator?.deviceVM.selectNextDevice()
@@ -74,7 +89,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut(.downArrow, modifiers: [.command])
       .disabled(
         coordinator?.canCapture != true ||
-          (coordinator?.deviceVM.devices.count ?? 0) < 2
+        (coordinator?.deviceVM.devices.count ?? 0) < 2
       )
     }
     CommandMenu("ADB") {

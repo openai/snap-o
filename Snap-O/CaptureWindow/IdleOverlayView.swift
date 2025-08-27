@@ -22,6 +22,17 @@ struct IdleOverlayView: View {
         }
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
+      } else if captureVM.isLivePreviewing {
+        Button {
+          captureVM.stopLivePreview(refreshPreview: true)
+        } label: {
+          HStack {
+            Text("Stop Live Preview")
+            Text("⎋").tint(.secondary)
+          }
+        }
+        .keyboardShortcut(.cancelAction)
+        .transition(.opacity)
       } else if !hasDevices {
         Text("No device found")
           .foregroundStyle(.gray)
@@ -36,6 +47,7 @@ struct IdleOverlayView: View {
       }
     }
     .animation(.snappy(duration: 0.25), value: captureVM.isRecording)
+    .animation(.snappy(duration: 0.25), value: captureVM.isLivePreviewing)
     .animation(.snappy(duration: 0.25), value: captureVM.lastError != nil)
     .animation(.snappy(duration: 0.25), value: hasDevices)
   }

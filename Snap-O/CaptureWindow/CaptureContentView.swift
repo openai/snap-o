@@ -10,7 +10,10 @@ struct CaptureContentView: View {
     ZStack {
       Color.black.ignoresSafeArea()
 
-      if let media = coordinator.captureVM.currentMedia {
+      if coordinator.captureVM.isLivePreviewing {
+        LivePreviewView(captureVM: coordinator.captureVM)
+          .transition(.opacity)
+      } else if let media = coordinator.captureVM.currentMedia {
         MediaDisplayView(media: media, captureVM: coordinator.captureVM)
           .transition(.asymmetric(
             insertion: .scale(scale: 0.8).combined(with: .opacity),
@@ -21,8 +24,9 @@ struct CaptureContentView: View {
       }
     }
     .animation(.snappy(duration: 0.25), value: coordinator.captureVM.currentMedia != nil)
+    .animation(.snappy(duration: 0.25), value: coordinator.captureVM.isLivePreviewing)
     .background(
-      WindowSizingController(currentMedia: coordinator.captureVM.currentMedia)
+      WindowSizingController(currentMedia: coordinator.captureVM.displayMedia)
         .frame(width: 0, height: 0)
     )
     .onOpenURL {
