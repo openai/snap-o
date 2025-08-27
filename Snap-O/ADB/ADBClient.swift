@@ -58,21 +58,7 @@ actor ADBClient {
     }
     args += [remote]
 
-    guard let url = adbURL else {
-      throw ADBError.adbNotFound
-    }
-    let ok = url.startAccessingSecurityScopedResource()
-    defer { if ok { url.stopAccessingSecurityScopedResource() } }
-
-    let process = Process()
-    process.executableURL = url
-    process.arguments = args
-    let stderr = Pipe()
-    process.standardError = stderr
-    process.standardOutput = Pipe()
-
-    log.debug("Run adb \(url.path, privacy: .public) with \(String(describing: args), privacy: .public)")
-    try process.run()
+    let (process, _, stderr) = try startADBProcess(args)
 
     return RecordingSession(
       deviceID: deviceID,
@@ -101,7 +87,53 @@ actor ADBClient {
     _ = try? runString(["-s", session.deviceID, "shell", "rm", "-f", session.remotePath])
   }
 
+  func startScreenStream(
+    deviceID: String,
+    bitRateMbps: Int = 8,
+    size: String? = nil
+  ) async throws -> ScreenStreamSession {
+    var args = [
+      "-s",
+      deviceID,
+      "exec-out",
+      "screenrecord",
+      "--output-format=h264",
+      "--bit-rate",
+      "\(bitRateMbps * 1_000_000)"
+    ]
+    if let size, !size.isEmpty {
+      args += ["--size", size]
+    }
+    args += ["-"]
+
+    let (process, stdout, stderr) = try startADBProcess(args)
+
+    return ScreenStreamSession(deviceID: deviceID, process: process, stdoutPipe: stdout, stderrPipe: stderr, startedAt: Date())
+  }
+
   // MARK: - Helpers
+
+  private func startADBProcess(_ args: [String]) throws -> (process: Process, stdout: Pipe, stderr: Pipe) {
+    guard let url = adbURL else {
+      throw ADBError.adbNotFound
+    }
+    guard FileManager.default.fileExists(atPath: url.path) else { throw ADBError.adbNotFound }
+
+    let ok = url.startAccessingSecurityScopedResource()
+    defer { if ok { url.stopAccessingSecurityScopedResource() } }
+
+    let process = Process()
+    let stdout = Pipe()
+    let stderr = Pipe()
+    process.executableURL = url
+    process.arguments = args
+    process.standardOutput = stdout
+    process.standardError = stderr
+
+    log.debug("Run adb \(url.path, privacy: .public) with \(String(describing: args), privacy: .public)")
+    try process.run()
+    return (process, stdout, stderr)
+  }
 
   func pull(deviceID: String, remote: String, to localURL: URL) throws {
     try FileManager.default.createDirectory(at: localURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -139,24 +171,7 @@ actor ADBClient {
   }
 
   func runData(_ args: [String]) throws -> Data {
-    guard let url = adbURL else {
-      throw ADBError.adbNotFound
-    }
-    guard FileManager.default.fileExists(atPath: url.path) else { throw ADBError.adbNotFound }
-
-    let ok = url.startAccessingSecurityScopedResource()
-    defer { if ok { url.stopAccessingSecurityScopedResource() } }
-
-    let process = Process()
-    let stdout = Pipe()
-    let stderr = Pipe()
-    process.executableURL = url
-    process.arguments = args
-    process.standardOutput = stdout
-    process.standardError = stderr
-
-    log.debug("Run adb \(url.path, privacy: .public) with \(String(describing: args), privacy: .public)")
-    try process.run()
+    let (process, stdout, stderr) = try startADBProcess(args)
 
     // Drain stdout; this returns when pipe gets EOF (process closes).
     let outData = stdout.fileHandleForReading.readDataToEndOfFile()

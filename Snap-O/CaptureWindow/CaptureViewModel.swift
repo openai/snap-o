@@ -14,6 +14,14 @@ final class CaptureViewModel {
   var recordingHandle: RecordingHandle?
   var lastError: String?
   var pendingCommand: SnapOCommand?
+  var isLivePreviewing = false
+  var livePreviewDeviceID: String?
+  var livePreviewMedia: Media?
+  @ObservationIgnored var livePreviewSampleBufferHandler: (@MainActor (CMSampleBuffer) -> Void)?
+
+  @ObservationIgnored private var livePreviewTask: Task<Void, Never>?
+  @ObservationIgnored private var livePreviewSession: ScreenStreamSession?
+  @ObservationIgnored private var livePreviewDecoder: H264StreamDecoder?
 
   private let adb: ADBClient
   private let store: FileStore
@@ -30,6 +38,9 @@ final class CaptureViewModel {
   var canCapture: Bool { !isLoading && !isRecording }
   var canStartRecording: Bool { !isLoading && !isRecording }
   var canStopRecording: Bool { isRecording }
+  var canStartLivePreview: Bool { !isLoading && !isRecording && !isLivePreviewing }
+  var canStopLivePreview: Bool { isLivePreviewing }
+  var displayMedia: Media? { isLivePreviewing ? livePreviewMedia : currentMedia }
 
   func copy() {
     guard let media = currentMedia, media.kind == .image else { return }
@@ -41,10 +52,18 @@ final class CaptureViewModel {
   // Screenshot
   func refreshPreview(for deviceID: String) async {
     guard !isLoading, !isRecording else { return }
+    if isLivePreviewing {
+      stopLivePreview()
+    }
     currentMedia = nil
     if pendingCommand == .record {
       pendingCommand = nil
       await startRecording(for: deviceID)
+      return
+    }
+    if pendingCommand == .livepreview {
+      pendingCommand = nil
+      await startLivePreview(for: deviceID)
       return
     }
     pendingCommand = nil
@@ -100,6 +119,9 @@ final class CaptureViewModel {
   // Recording
   func startRecording(for deviceID: String) async {
     guard !isLoading, !isRecording else { return }
+    if isLivePreviewing {
+      stopLivePreview()
+    }
     currentMedia = nil
     isLoading = true
     defer { isLoading = false }
@@ -159,6 +181,95 @@ final class CaptureViewModel {
       lastError = error.localizedDescription
     }
   }
+
+  // Live Preview
+  func startLivePreview(for deviceID: String) async {
+    guard !isLoading, !isRecording, !isLivePreviewing else { return }
+    currentMedia = nil
+    isLivePreviewing = true
+    isLoading = true
+    livePreviewDeviceID = deviceID
+    lastError = nil
+
+    do {
+      let density = try await adb.screenDensityScale(deviceID: deviceID)
+      let session = try await adb.startScreenStream(deviceID: deviceID)
+      livePreviewSession = session
+
+      let decoder = H264StreamDecoder { [weak self] sample in
+        guard let self else { return }
+        let boxed = UnsafeSendable(value: sample)
+        Task { @MainActor in
+          self.livePreviewSampleBufferHandler?(boxed.value)
+        }
+      } formatHandler: { [weak self] format in
+        guard let self else { return }
+        let dims = CMVideoFormatDescriptionGetDimensions(format)
+        Task { @MainActor in
+          self.livePreviewMedia = Media(
+            kind: .video,
+            url: URL(fileURLWithPath: "/dev/null"),
+            capturedAt: Date(),
+            width: CGFloat(dims.width),
+            height: CGFloat(dims.height),
+            densityScale: density
+          )
+          self.isLoading = false
+        }
+      }
+      livePreviewDecoder = decoder
+
+      let decoderRef = UnsafeSendable(value: decoder)
+      livePreviewTask = Task.detached(priority: .userInitiated) { [weak self] in
+        guard let self else { return }
+        let handle = session.stdoutPipe.fileHandleForReading
+        do {
+          while !Task.isCancelled {
+            guard let data = try handle.read(upToCount: 4096), !data.isEmpty else { break }
+            decoderRef.value.append(data)
+          }
+        } catch {
+          await MainActor.run {
+            self.stopLivePreview(error: error)
+          }
+          return
+        }
+        await MainActor.run {
+          if self.isLivePreviewing {
+            self.stopLivePreview()
+          }
+        }
+      }
+    } catch {
+      isLivePreviewing = false
+      livePreviewDeviceID = nil
+      isLoading = false
+      lastError = error.localizedDescription
+    }
+  }
+
+  func stopLivePreview(error: Error? = nil, refreshPreview: Bool = false) {
+    let deviceID = livePreviewDeviceID
+    livePreviewTask?.cancel()
+    livePreviewTask = nil
+    livePreviewSession?.process.terminate()
+    livePreviewSession = nil
+    livePreviewDecoder = nil
+    if let error {
+      lastError = error.localizedDescription
+    }
+    isLivePreviewing = false
+    isLoading = false
+    livePreviewDeviceID = nil
+    livePreviewMedia = nil
+    livePreviewSampleBufferHandler = nil
+
+    if refreshPreview, let deviceID {
+      Task { [weak self] in
+        await self?.refreshPreview(for: deviceID)
+      }
+    }
+  }
 }
 
 /// Read PNG pixel size using ImageIO (no NSImage necessary).
@@ -171,4 +282,8 @@ private func pngSize(from data: Data) throws -> (Int, Int) {
     throw CocoaError(.fileReadCorruptFile)
   }
   return (width, height)
+}
+
+private struct UnsafeSendable<T>: @unchecked Sendable {
+  let value: T
 }

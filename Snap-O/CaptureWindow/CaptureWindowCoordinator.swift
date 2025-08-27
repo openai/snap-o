@@ -52,6 +52,17 @@ final class CaptureWindowCoordinator {
     await captureVM.stopRecording()
   }
 
+  func startLivePreview() async {
+    if let deviceID = deviceVM.currentDevice?.id {
+      log.info("Start live preview for device=\(deviceID, privacy: .public)")
+      await captureVM.startLivePreview(for: deviceID)
+    }
+  }
+
+  func stopLivePreview(refreshPreview: Bool = false) {
+    captureVM.stopLivePreview(refreshPreview: refreshPreview)
+  }
+
   func promptForADBPath() async {
     let mgr = ADBPathManager()
     await MainActor.run {
@@ -68,5 +79,9 @@ final class CaptureWindowCoordinator {
 
   var canStartRecordingNow: Bool {
     deviceVM.currentDevice != nil && captureVM.canStartRecording && !isDeviceRecording
+  }
+
+  var canStartLivePreviewNow: Bool {
+    deviceVM.currentDevice != nil && captureVM.canStartLivePreview && !isDeviceRecording
   }
 }
