@@ -15,11 +15,21 @@ struct IdleOverlayView: View {
         Button {
           Task { await captureVM.stopRecording() }
         } label: {
-          HStack {
+          HStack(spacing: 8) {
             Text("Stop Recording")
-            Text("⎋").tint(.secondary)
+            Text("⎋")
+              .font(.subheadline)
+              .foregroundStyle(.white.opacity(0.7))
           }
+          .padding(.horizontal, 16)
+          .padding(.vertical, 10)
+          .background(
+            RoundedRectangle(cornerRadius: 10)
+              .fill(Color.gray.opacity(0.3))
+          )
+          .foregroundStyle(Color.white)
         }
+        .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
       } else if captureVM.isLivePreviewing {
