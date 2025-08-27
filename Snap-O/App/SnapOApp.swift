@@ -13,6 +13,7 @@ struct SnapOApp: App {
         .task { await coordinator.trackDevices() }
     }
     .defaultSize(width: 480, height: 480)
+    .windowToolbarStyle(.unified)
     .commands {
       SnapOCommands()
     }
