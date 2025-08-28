@@ -54,7 +54,7 @@ struct CaptureWindow: View {
 
           ToolbarDivider()
 
-          if windowCoordinator.captureVM.isLivePreviewing {
+          if windowCoordinator.captureVM.currentMedia?.isLivePreview == true {
             Button {
               windowCoordinator.stopLivePreview(refreshPreview: true)
             } label: {

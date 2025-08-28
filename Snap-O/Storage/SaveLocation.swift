@@ -1,7 +1,7 @@
 import Foundation
 
 enum SaveLocation {
-  static func defaultDirectory(for kind: MediaKind) -> URL {
+  static func defaultDirectory(for kind: MediaSaveKind) -> URL {
     if let existing = UserDefaults.standard.url(forKey: lastDirectoryKey(for: kind)) {
       return existing
     }
@@ -15,11 +15,11 @@ enum SaveLocation {
     }
   }
 
-  static func setLastDirectoryURL(_ url: URL, for kind: MediaKind) {
+  static func setLastDirectoryURL(_ url: URL, for kind: MediaSaveKind) {
     UserDefaults.standard.set(url, forKey: lastDirectoryKey(for: kind))
   }
 
-  private static func lastDirectoryKey(for kind: MediaKind) -> String {
+  private static func lastDirectoryKey(for kind: MediaSaveKind) -> String {
     switch kind {
     case .image: "lastImageSaveDir"
     case .video: "lastVideoSaveDir"

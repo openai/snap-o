@@ -9,12 +9,11 @@ private let log = SnapOLog.ui
 final class CaptureViewModel {
   var currentMedia: Media?
   var isLoading = false
-  var isRecording = false
+  var isRecording: Bool { recordingSession != nil }
   var recordingDeviceID: String?
   var recordingSession: RecordingSession?
   var lastError: String?
   var pendingCommand: SnapOCommand?
-  var livePreviewMedia: Media?
   var livePreviewSession: LivePreviewSession?
 
   private let adb: ADBClient
@@ -35,14 +34,12 @@ final class CaptureViewModel {
   var canCapture: Bool { !isLoading && !isRecording }
   var canStartRecording: Bool { !isLoading && !isRecording }
   var canStopRecording: Bool { isRecording }
-  var isLivePreviewing: Bool { livePreviewSession != nil }
   var canStartLivePreview: Bool { !isLoading && !isRecording && livePreviewSession == nil }
   var canStopLivePreview: Bool { livePreviewSession != nil }
-  var displayMedia: Media? { isLivePreviewing ? livePreviewMedia : currentMedia }
 
   func copy() {
-    guard let media = currentMedia, media.kind == .image else { return }
-    guard let image = NSImage(contentsOf: media.url) else { return }
+    guard let media = currentMedia, case let .image(url, _) = media else { return }
+    guard let image = NSImage(contentsOf: url) else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.writeObjects([image])
   }
@@ -50,10 +47,7 @@ final class CaptureViewModel {
   // Screenshot
   func refreshPreview(for deviceID: String) async {
     guard !isLoading, !isRecording else { return }
-    if isLivePreviewing {
-      stopLivePreview()
-    }
-    currentMedia = nil
+    clearCurrentMedia()
     if pendingCommand == .record {
       pendingCommand = nil
       await startRecording(for: deviceID)
@@ -70,7 +64,7 @@ final class CaptureViewModel {
     do {
       let data = try await adb.screencapPNG(deviceID: deviceID)
       let capturedAt = Date()
-      let dest = store.makePreviewDestination(deviceID: deviceID, kind: MediaKind.image)
+      let dest = store.makePreviewDestination(deviceID: deviceID, kind: .image)
 
       async let writeAndSize: (Int, Int) = Task.detached(priority: .utility) {
         try data.write(to: dest, options: [.atomic])
@@ -86,27 +80,30 @@ final class CaptureViewModel {
         density = nil
       }
 
-      currentMedia = Media(
-        kind: .image,
+      currentMedia = .image(
         url: dest,
-        capturedAt: capturedAt,
-        width: CGFloat(size.0),
-        height: CGFloat(size.1),
-        densityScale: density
+        data: MediaCommon(
+          capturedAt: capturedAt,
+          size: CGSize(width: CGFloat(size.0), height: CGFloat(size.1)),
+          densityScale: density
+        )
       )
       lastError = nil
     } catch {
-      currentMedia = nil
+      clearCurrentMedia()
       lastError = error.localizedDescription
     }
   }
 
-  func makeTempDragFile() -> URL? {
-    guard let media = currentMedia else { return nil }
+  func makeTempDragFile(kind: MediaSaveKind) -> URL? {
+    guard let media = currentMedia, let srcURL = media.url else { return nil }
 
     do {
-      let url = store.makeDragDestination(capturedAt: media.capturedAt, kind: media.kind)
-      try FileManager.default.copyItem(at: media.url, to: url)
+      let url = store.makeDragDestination(
+        capturedAt: media.capturedAt,
+        kind: kind
+      )
+      try FileManager.default.copyItem(at: srcURL, to: url)
       return url
     } catch {
       log.error("Drag temp copy failed: \(error.localizedDescription)")
@@ -117,10 +114,7 @@ final class CaptureViewModel {
   // Recording
   func startRecording(for deviceID: String) async {
     guard !isLoading, !isRecording else { return }
-    if isLivePreviewing {
-      stopLivePreview()
-    }
-    currentMedia = nil
+    clearCurrentMedia()
     isLoading = true
     defer { isLoading = false }
     do {
@@ -128,7 +122,6 @@ final class CaptureViewModel {
       await updateShowTouches(for: deviceID)
 
       let session = try await adb.startScreenrecord(deviceID: deviceID)
-      isRecording = true
       recordingDeviceID = deviceID
       recordingSession = session
       lastError = nil
@@ -140,13 +133,12 @@ final class CaptureViewModel {
 
   func stopRecording() async {
     guard isRecording, let deviceID = recordingDeviceID, let session = recordingSession else { return }
-    isRecording = false
     recordingDeviceID = nil
     recordingSession = nil
     isLoading = true
     defer { isLoading = false }
     do {
-      let dest = store.makePreviewDestination(deviceID: deviceID, kind: MediaKind.video)
+      let dest = store.makePreviewDestination(deviceID: deviceID, kind: .video)
       try await adb.stopScreenrecord(session: session, savingTo: dest)
       let asset = AVURLAsset(url: dest)
 
@@ -169,13 +161,13 @@ final class CaptureViewModel {
           density = nil
         }
 
-        currentMedia = Media(
-          kind: .video,
+        currentMedia = .video(
           url: dest,
-          capturedAt: Date(),
-          width: w,
-          height: h,
-          densityScale: density
+          data: MediaCommon(
+            capturedAt: Date(),
+            size: CGSize(width: w, height: h),
+            densityScale: density
+          )
         )
       }
       lastError = nil
@@ -188,8 +180,7 @@ final class CaptureViewModel {
   // Live Preview
   func startLivePreview(for deviceID: String) async {
     guard !isLoading, !isRecording, livePreviewSession == nil else { return }
-    currentMedia = nil
-    livePreviewMedia = nil
+    clearCurrentMedia()
     isLoading = true
     lastError = nil
 
@@ -201,7 +192,7 @@ final class CaptureViewModel {
         deviceID: deviceID,
         adb: adb,
         onReady: { [weak self] media in
-          self?.livePreviewMedia = media
+          self?.currentMedia = media
           self?.isLoading = false
         },
         onStop: { [weak self] error, refresh in
@@ -226,7 +217,7 @@ final class CaptureViewModel {
       lastError = error.localizedDescription
     }
     livePreviewSession = nil
-    livePreviewMedia = nil
+    clearCurrentMedia()
     isLoading = false
 
     if refreshPreview {
@@ -276,8 +267,15 @@ final class CaptureViewModel {
   }
 
   func applyShowTouchesSetting(_ value: Bool) async {
-    guard isRecording || isLivePreviewing, let deviceID = showTouchesDeviceID else { return }
+    guard isRecording || livePreviewSession != nil, let deviceID = showTouchesDeviceID else { return }
     await updateShowTouches(for: deviceID, enabled: value)
+  }
+
+  private func clearCurrentMedia() {
+    if livePreviewSession != nil {
+      stopLivePreview()
+    }
+    currentMedia = nil
   }
 }
 
