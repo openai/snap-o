@@ -66,7 +66,7 @@ final class CaptureViewModel {
       let capturedAt = Date()
       let dest = store.makePreviewDestination(deviceID: deviceID, kind: .image)
 
-      async let writeAndSize: (Int, Int) = Task.detached(priority: .utility) {
+      async let writeAndSize: CGSize = Task.detached(priority: .utility) {
         try data.write(to: dest, options: [.atomic])
         return try pngSize(from: data)
       }.value
@@ -82,11 +82,9 @@ final class CaptureViewModel {
 
       currentMedia = .image(
         url: dest,
-        data: MediaCommon(
-          capturedAt: capturedAt,
-          size: CGSize(width: CGFloat(size.0), height: CGFloat(size.1)),
-          densityScale: density
-        )
+        capturedAt: capturedAt,
+        size: size,
+        densityScale: density
       )
       lastError = nil
     } catch {
@@ -142,33 +140,17 @@ final class CaptureViewModel {
       try await adb.stopScreenrecord(session: session, savingTo: dest)
       let asset = AVURLAsset(url: dest)
 
-      async let tracksTask = asset.load(.tracks)
-      async let densityTask = adb.screenDensityScale(deviceID: deviceID)
+      let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in
+        try? await adb.screenDensityScale(deviceID: deviceID)
+      }
 
-      let tracks = try await tracksTask
-      if let videoTrack = tracks.first(where: { $0.mediaType == .video }) {
-        async let naturalSizeTask = videoTrack.load(.naturalSize)
-        async let transformTask = videoTrack.load(.preferredTransform)
-        let (naturalSize, transform) = try await (naturalSizeTask, transformTask)
-        let applied = naturalSize.applying(transform)
-        let w = abs(applied.width)
-        let h = abs(applied.height)
-
-        let density: CGFloat?
-        do {
-          density = try await densityTask
-        } catch {
-          density = nil
-        }
-
-        currentMedia = .video(
-          url: dest,
-          data: MediaCommon(
-            capturedAt: Date(),
-            size: CGSize(width: w, height: h),
-            densityScale: density
-          )
-        )
+      if let media = try await Media.video(
+        from: asset,
+        url: dest,
+        capturedAt: Date(),
+        densityProvider: { await densityTask.value }
+      ) {
+        currentMedia = media
       }
       lastError = nil
     } catch {
@@ -277,16 +259,4 @@ final class CaptureViewModel {
     }
     currentMedia = nil
   }
-}
-
-/// Read PNG pixel size using ImageIO (no NSImage necessary).
-private func pngSize(from data: Data) throws -> (Int, Int) {
-  guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-        let width = properties[kCGImagePropertyPixelWidth] as? Int,
-        let height = properties[kCGImagePropertyPixelHeight] as? Int
-  else {
-    throw CocoaError(.fileReadCorruptFile)
-  }
-  return (width, height)
 }

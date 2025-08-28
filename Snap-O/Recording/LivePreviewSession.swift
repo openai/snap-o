@@ -52,12 +52,11 @@ final class LivePreviewSession {
       guard let self else { return }
       let dims = CMVideoFormatDescriptionGetDimensions(format)
       Task { @MainActor in
+        let size = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
         let media = Media.livePreview(
-          data: MediaCommon(
-            capturedAt: Date(),
-            size: CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height)),
-            densityScale: self.densityScale
-          )
+          capturedAt: Date(),
+          size: size,
+          densityScale: self.densityScale
         )
         self.media = media
         self.onReady(media)
