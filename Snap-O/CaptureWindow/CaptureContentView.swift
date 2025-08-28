@@ -45,6 +45,9 @@ struct CaptureContentView: View {
         Task { await coordinator.captureVM.refreshPreview(for: id) }
       }
     }
+    .onChange(of: coordinator.showTouchesDuringCapture) { _, newValue in
+      Task { await coordinator.captureVM.applyShowTouchesSetting(newValue) }
+    }
     .task {
       updateTitle(coordinator.deviceVM.currentDevice)
       if let id = coordinator.deviceVM.selectedDeviceID {

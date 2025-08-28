@@ -8,23 +8,27 @@ final class CaptureWindowCoordinator {
   let captureVM: CaptureViewModel
   let deviceVM: DeviceListViewModel
 
+  private let appCoordinator: AppCoordinator
   private let fileStore: FileStore
-  private let recordingService: RecordingService
-  private let recordingStore: RecordingStore
   private let adb: ADBClient
+  let settings: AppSettings
 
   var canCapture: Bool {
     deviceVM.currentDevice != nil && !captureVM.isRecording && !captureVM.isLoading
   }
 
-  init(adbClient: ADBClient, fileStore: FileStore, recordingService: RecordingService, recordingStore: RecordingStore) {
-    adb = adbClient
-    self.fileStore = fileStore
-    self.recordingService = recordingService
-    self.recordingStore = recordingStore
+  init(appCoordinator: AppCoordinator) {
+    self.appCoordinator = appCoordinator
+    settings = appCoordinator.settings
+    adb = appCoordinator.adbClient
+    fileStore = appCoordinator.fileStore
 
     deviceVM = DeviceListViewModel()
-    captureVM = CaptureViewModel(adb: adbClient, store: fileStore, recordingService: recordingService)
+    captureVM = CaptureViewModel(
+      adb: adb,
+      store: fileStore,
+      settings: settings
+    )
   }
 
   func handle(url: URL) {
@@ -72,16 +76,16 @@ final class CaptureWindowCoordinator {
     await adb.setURL(chosen)
   }
 
-  var isDeviceRecording: Bool {
-    guard let id = deviceVM.currentDevice?.id else { return false }
-    return recordingStore.isRecording(deviceID: id)
-  }
-
   var canStartRecordingNow: Bool {
-    deviceVM.currentDevice != nil && captureVM.canStartRecording && !isDeviceRecording
+    deviceVM.currentDevice != nil && captureVM.canStartRecording
   }
 
   var canStartLivePreviewNow: Bool {
-    deviceVM.currentDevice != nil && captureVM.canStartLivePreview && !isDeviceRecording
+    deviceVM.currentDevice != nil && captureVM.canStartLivePreview
+  }
+
+  var showTouchesDuringCapture: Bool {
+    get { settings.showTouchesDuringCapture }
+    set { settings.showTouchesDuringCapture = newValue }
   }
 }

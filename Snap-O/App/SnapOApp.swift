@@ -15,7 +15,7 @@ struct SnapOApp: App {
     .defaultSize(width: 480, height: 480)
     .windowToolbarStyle(.unified)
     .commands {
-      SnapOCommands()
+      SnapOCommands(settings: coordinator.settings)
     }
   }
 }

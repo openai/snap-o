@@ -4,6 +4,12 @@ struct SnapOCommands: Commands {
   @FocusedValue(\.captureWindow)
   var coordinator: CaptureWindowCoordinator?
 
+  @Bindable var settings: AppSettings
+
+  init(settings: AppSettings) {
+    self.settings = settings
+  }
+
   var body: some Commands {
     CommandGroup(after: .newItem) {
       Divider()
@@ -91,6 +97,8 @@ struct SnapOCommands: Commands {
         coordinator?.canCapture != true ||
           (coordinator?.deviceVM.devices.count ?? 0) < 2
       )
+      Divider()
+      Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
     }
     CommandMenu("ADB") {
       Button("Set ADB path…") {

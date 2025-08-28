@@ -21,6 +21,7 @@ struct LivePreviewView: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSView, context: Context) {
     context.coordinator.captureVM = captureVM
+    context.coordinator.attachToSession()
   }
 
   static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -42,9 +43,7 @@ struct LivePreviewView: NSViewRepresentable {
       displayLayer.frame = view.bounds
       displayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
       view.layer?.addSublayer(displayLayer)
-      captureVM.livePreviewSampleBufferHandler = { [weak self] sample in
-        self?.enqueue(sample)
-      }
+      attachToSession()
     }
 
     func enqueue(_ sample: CMSampleBuffer) {
@@ -52,8 +51,14 @@ struct LivePreviewView: NSViewRepresentable {
       displayLayer.sampleBufferRenderer.enqueue(sample)
     }
 
+    func attachToSession() {
+      captureVM?.livePreviewSession?.sampleBufferHandler = { [weak self] sample in
+        self?.enqueue(sample)
+      }
+    }
+
     func teardown() {
-      captureVM?.livePreviewSampleBufferHandler = nil
+      captureVM?.livePreviewSession?.sampleBufferHandler = nil
       displayLayer.sampleBufferRenderer.flush()
       displayLayer.sampleBufferRenderer.stopRequestingMediaData()
     }
