@@ -11,26 +11,23 @@ final class CaptureViewModel {
   var isLoading = false
   var isRecording = false
   var recordingDeviceID: String?
-  var recordingHandle: RecordingHandle?
+  var recordingSession: RecordingSession?
   var lastError: String?
   var pendingCommand: SnapOCommand?
-  var isLivePreviewing = false
-  var livePreviewDeviceID: String?
   var livePreviewMedia: Media?
-  @ObservationIgnored var livePreviewSampleBufferHandler: (@MainActor (CMSampleBuffer) -> Void)?
-
-  @ObservationIgnored private var livePreviewTask: Task<Void, Never>?
-  @ObservationIgnored private var livePreviewSession: ScreenStreamSession?
-  @ObservationIgnored private var livePreviewDecoder: H264StreamDecoder?
+  var livePreviewSession: LivePreviewSession?
 
   private let adb: ADBClient
   private let store: FileStore
-  private let recordingService: RecordingService
+  private let settings: AppSettings
 
-  init(adb: ADBClient, store: FileStore, recordingService: RecordingService) {
+  private var showTouchesOriginalValue: Bool?
+  private var showTouchesDeviceID: String?
+
+  init(adb: ADBClient, store: FileStore, settings: AppSettings) {
     self.adb = adb
     self.store = store
-    self.recordingService = recordingService
+    self.settings = settings
   }
 
   // MARK: - Convenience State
@@ -38,8 +35,9 @@ final class CaptureViewModel {
   var canCapture: Bool { !isLoading && !isRecording }
   var canStartRecording: Bool { !isLoading && !isRecording }
   var canStopRecording: Bool { isRecording }
-  var canStartLivePreview: Bool { !isLoading && !isRecording && !isLivePreviewing }
-  var canStopLivePreview: Bool { isLivePreviewing }
+  var isLivePreviewing: Bool { livePreviewSession != nil }
+  var canStartLivePreview: Bool { !isLoading && !isRecording && livePreviewSession == nil }
+  var canStopLivePreview: Bool { livePreviewSession != nil }
   var displayMedia: Media? { isLivePreviewing ? livePreviewMedia : currentMedia }
 
   func copy() {
@@ -126,26 +124,30 @@ final class CaptureViewModel {
     isLoading = true
     defer { isLoading = false }
     do {
-      let handle = try await recordingService.start(deviceID: deviceID)
+      await storeOriginalShowTouches(for: deviceID)
+      await updateShowTouches(for: deviceID)
+
+      let session = try await adb.startScreenrecord(deviceID: deviceID)
       isRecording = true
       recordingDeviceID = deviceID
-      recordingHandle = handle
+      recordingSession = session
       lastError = nil
     } catch {
+      await restoreShowTouchesIfNeeded()
       lastError = error.localizedDescription
     }
   }
 
   func stopRecording() async {
-    guard isRecording, let deviceID = recordingDeviceID, let handle = recordingHandle else { return }
+    guard isRecording, let deviceID = recordingDeviceID, let session = recordingSession else { return }
     isRecording = false
     recordingDeviceID = nil
-    recordingHandle = nil
+    recordingSession = nil
     isLoading = true
     defer { isLoading = false }
     do {
       let dest = store.makePreviewDestination(deviceID: deviceID, kind: MediaKind.video)
-      try await recordingService.stop(handle: handle, savingTo: dest)
+      try await adb.stopScreenrecord(session: session, savingTo: dest)
       let asset = AVURLAsset(url: dest)
 
       async let tracksTask = asset.load(.tracks)
@@ -180,95 +182,102 @@ final class CaptureViewModel {
     } catch {
       lastError = error.localizedDescription
     }
+    await restoreShowTouchesIfNeeded()
   }
 
   // Live Preview
   func startLivePreview(for deviceID: String) async {
-    guard !isLoading, !isRecording, !isLivePreviewing else { return }
+    guard !isLoading, !isRecording, livePreviewSession == nil else { return }
     currentMedia = nil
-    isLivePreviewing = true
+    livePreviewMedia = nil
     isLoading = true
-    livePreviewDeviceID = deviceID
     lastError = nil
 
     do {
-      let density = try await adb.screenDensityScale(deviceID: deviceID)
-      let session = try await adb.startScreenStream(deviceID: deviceID)
+      await storeOriginalShowTouches(for: deviceID)
+      await updateShowTouches(for: deviceID)
+
+      let session = try await LivePreviewSession(
+        deviceID: deviceID,
+        adb: adb,
+        onReady: { [weak self] media in
+          self?.livePreviewMedia = media
+          self?.isLoading = false
+        },
+        onStop: { [weak self] error, refresh in
+          self?.completeLivePreview(for: deviceID, error: error, refreshPreview: refresh)
+        }
+      )
       livePreviewSession = session
-
-      let decoder = H264StreamDecoder { [weak self] sample in
-        guard let self else { return }
-        let boxed = UnsafeSendable(value: sample)
-        Task { @MainActor in
-          self.livePreviewSampleBufferHandler?(boxed.value)
-        }
-      } formatHandler: { [weak self] format in
-        guard let self else { return }
-        let dims = CMVideoFormatDescriptionGetDimensions(format)
-        Task { @MainActor in
-          self.livePreviewMedia = Media(
-            kind: .video,
-            url: URL(fileURLWithPath: "/dev/null"),
-            capturedAt: Date(),
-            width: CGFloat(dims.width),
-            height: CGFloat(dims.height),
-            densityScale: density
-          )
-          self.isLoading = false
-        }
-      }
-      livePreviewDecoder = decoder
-
-      let decoderRef = UnsafeSendable(value: decoder)
-      livePreviewTask = Task.detached(priority: .userInitiated) { [weak self] in
-        guard let self else { return }
-        let handle = session.stdoutPipe.fileHandleForReading
-        do {
-          while !Task.isCancelled {
-            guard let data = try handle.read(upToCount: 4096), !data.isEmpty else { break }
-            decoderRef.value.append(data)
-          }
-        } catch {
-          await MainActor.run {
-            self.stopLivePreview(error: error)
-          }
-          return
-        }
-        await MainActor.run {
-          if self.isLivePreviewing {
-            self.stopLivePreview()
-          }
-        }
-      }
     } catch {
-      isLivePreviewing = false
-      livePreviewDeviceID = nil
       isLoading = false
       lastError = error.localizedDescription
+      await restoreShowTouchesIfNeeded()
     }
   }
 
-  func stopLivePreview(error: Error? = nil, refreshPreview: Bool = false) {
-    let deviceID = livePreviewDeviceID
-    livePreviewTask?.cancel()
-    livePreviewTask = nil
-    livePreviewSession?.process.terminate()
-    livePreviewSession = nil
-    livePreviewDecoder = nil
+  func stopLivePreview(refreshPreview: Bool = false) {
+    guard let session = livePreviewSession else { return }
+    session.cancel(refreshPreview: refreshPreview)
+  }
+
+  private func completeLivePreview(for deviceID: String, error: Error?, refreshPreview: Bool) {
     if let error {
       lastError = error.localizedDescription
     }
-    isLivePreviewing = false
-    isLoading = false
-    livePreviewDeviceID = nil
+    livePreviewSession = nil
     livePreviewMedia = nil
-    livePreviewSampleBufferHandler = nil
+    isLoading = false
 
-    if refreshPreview, let deviceID {
+    if refreshPreview {
       Task { [weak self] in
         await self?.refreshPreview(for: deviceID)
       }
     }
+
+    Task { [weak self] in
+      await self?.restoreShowTouchesIfNeeded()
+    }
+  }
+
+  private func restoreShowTouchesIfNeeded() async {
+    guard let deviceID = showTouchesDeviceID else { return }
+
+    let original = showTouchesOriginalValue
+    showTouchesDeviceID = nil
+    showTouchesOriginalValue = nil
+
+    guard let original else { return }
+
+    do {
+      try await adb.setShowTouches(deviceID: deviceID, enabled: original)
+    } catch {
+      log.error("Failed to restore show touches: \(error.localizedDescription)")
+    }
+  }
+
+  private func updateShowTouches(for deviceID: String, enabled: Bool? = nil) async {
+    let value = enabled ?? settings.showTouchesDuringCapture
+    do {
+      try await adb.setShowTouches(deviceID: deviceID, enabled: value)
+    } catch {
+      log.error("Failed to set show touches: \(error.localizedDescription)")
+    }
+  }
+
+  private func storeOriginalShowTouches(for deviceID: String) async {
+    do {
+      showTouchesOriginalValue = try await adb.getShowTouches(deviceID: deviceID)
+    } catch {
+      showTouchesOriginalValue = nil
+      log.error("Failed to query show_touches: \(error.localizedDescription)")
+    }
+    showTouchesDeviceID = deviceID
+  }
+
+  func applyShowTouchesSetting(_ value: Bool) async {
+    guard isRecording || isLivePreviewing, let deviceID = showTouchesDeviceID else { return }
+    await updateShowTouches(for: deviceID, enabled: value)
   }
 }
 
@@ -282,8 +291,4 @@ private func pngSize(from data: Data) throws -> (Int, Int) {
     throw CocoaError(.fileReadCorruptFile)
   }
   return (width, height)
-}
-
-private struct UnsafeSendable<T>: @unchecked Sendable {
-  let value: T
 }

@@ -48,7 +48,9 @@ actor ADBClient {
     timeLimitSeconds: Int = 60 * 60 * 3,
     size: String? = nil
   ) async throws -> RecordingSession {
-    let remote = "/data/local/tmp/snapo_recording.mp4"
+    let sizeArg = size ?? (try? getCurrentDisplaySize(deviceID: deviceID))
+
+    let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
     var args = [
       "-s",
       deviceID,
@@ -59,8 +61,8 @@ actor ADBClient {
       "--time-limit",
       "\(timeLimitSeconds)"
     ]
-    if let size, !size.isEmpty {
-      args += ["--size", size]
+    if let sizeArg, !sizeArg.isEmpty {
+      args += ["--size", sizeArg]
     }
     args += [remote]
 
@@ -185,6 +187,32 @@ actor ADBClient {
       throw ADBError.parseFailure("Unable to find window size")
     }
     return String(match.output.size)
+  }
+
+  func getShowTouches(deviceID: String) async throws -> Bool {
+    let value = try runString([
+      "-s",
+      deviceID,
+      "shell",
+      "settings",
+      "get",
+      "system",
+      "show_touches"
+    ]).trimmingCharacters(in: .whitespacesAndNewlines)
+    return value == "1"
+  }
+
+  func setShowTouches(deviceID: String, enabled: Bool) async throws {
+    _ = try runString([
+      "-s",
+      deviceID,
+      "shell",
+      "settings",
+      "put",
+      "system",
+      "show_touches",
+      enabled ? "1" : "0"
+    ])
   }
 
   func keyEvent(deviceID: String, keyCode: String) throws -> String {

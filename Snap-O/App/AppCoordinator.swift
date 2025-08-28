@@ -1,12 +1,14 @@
 import AppKit
+import Observation
+import SwiftUI
 
 @MainActor
 final class AppCoordinator {
   let deviceStore: DeviceStore
   let adbClient: ADBClient
   let fileStore: FileStore
-  let recordingService: RecordingService
-  let recordingStore: RecordingStore
+
+  let settings: AppSettings
 
   private let deviceTracker: DeviceTracker
 
@@ -19,8 +21,7 @@ final class AppCoordinator {
     deviceTracker = DeviceTracker(adbClient: adbClient)
     deviceStore = DeviceStore(tracker: deviceTracker)
     fileStore = FileStore()
-    recordingService = RecordingService(adb: adbClient, store: fileStore)
-    recordingStore = RecordingStore(service: recordingService)
+    settings = AppSettings()
   }
 
   func trackDevices() async {

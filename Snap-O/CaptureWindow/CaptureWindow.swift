@@ -8,12 +8,7 @@ struct CaptureWindow: View {
   init(appCoordinator: AppCoordinator) {
     self.appCoordinator = appCoordinator
     _windowCoordinator = State(
-      initialValue: CaptureWindowCoordinator(
-        adbClient: appCoordinator.adbClient,
-        fileStore: appCoordinator.fileStore,
-        recordingService: appCoordinator.recordingService,
-        recordingStore: appCoordinator.recordingStore
-      )
+      initialValue: CaptureWindowCoordinator(appCoordinator: appCoordinator)
     )
   }
 
