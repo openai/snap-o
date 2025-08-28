@@ -12,7 +12,11 @@ final class H264StreamDecoder {
   private var frameIndex: Int64 = 0
   private let timescale: Int32
 
-  init(frameRate: Int32 = 30, onSampleBuffer: @escaping (CMSampleBuffer) -> Void, formatHandler: @escaping (CMVideoFormatDescription) -> Void) {
+  init(
+    frameRate: Int32 = 30,
+    onSampleBuffer: @escaping (CMSampleBuffer) -> Void,
+    formatHandler: @escaping (CMVideoFormatDescription) -> Void
+  ) {
     onSample = onSampleBuffer
     onFormat = formatHandler
     timescale = frameRate
@@ -82,15 +86,18 @@ final class H264StreamDecoder {
     if formatDescription != nil { return true }
     guard let sps, let pps else { return false }
     var formatDesc: CMFormatDescription?
-    let result = sps.withUnsafeBytes { spsBytes in
-      pps.withUnsafeBytes { ppsBytes in
-        CMVideoFormatDescriptionCreateFromH264ParameterSets(
+    let result: OSStatus = sps.withUnsafeBytes { spsBytes in
+      guard let spsPointer = spsBytes.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+        return kCMFormatDescriptionError_InvalidParameter
+      }
+      return pps.withUnsafeBytes { ppsBytes in
+        guard let ppsPointer = ppsBytes.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+          return kCMFormatDescriptionError_InvalidParameter
+        }
+        return CMVideoFormatDescriptionCreateFromH264ParameterSets(
           allocator: kCFAllocatorDefault,
           parameterSetCount: 2,
-          parameterSetPointers: [
-            spsBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
-            ppsBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
-          ],
+          parameterSetPointers: [spsPointer, ppsPointer],
           parameterSetSizes: [sps.count, pps.count],
           nalUnitHeaderLength: 4,
           formatDescriptionOut: &formatDesc
@@ -130,8 +137,9 @@ final class H264StreamDecoder {
     guard status == kCMBlockBufferNoErr, let blockBuffer else { return nil }
 
     data.withUnsafeBytes { ptr in
+      guard let baseAddress = ptr.baseAddress else { return }
       _ = CMBlockBufferReplaceDataBytes(
-        with: ptr.baseAddress!,
+        with: baseAddress,
         blockBuffer: blockBuffer,
         offsetIntoDestination: 0,
         dataLength: data.count
@@ -159,10 +167,13 @@ final class H264StreamDecoder {
     guard status == noErr, let sampleBuffer else { return nil }
 
     if isIDR,
-      let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true)
-    {
+       let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) {
       let attachment = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-      CFDictionarySetValue(attachment, Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(), Unmanaged.passUnretained(kCFBooleanFalse).toOpaque())
+      CFDictionarySetValue(
+        attachment,
+        Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(),
+        Unmanaged.passUnretained(kCFBooleanFalse).toOpaque()
+      )
     }
 
     frameIndex += 1

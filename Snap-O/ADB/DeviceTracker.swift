@@ -220,15 +220,15 @@ actor DeviceTracker {
           }
 
         case .lineDelimited:
-          let nlRange = buffer.range(of: lf2)
+          let lfRange = buffer.range(of: lf2)
           let crlfRange = buffer.range(of: crlf2)
-          let sep: Range<Data.Index>? = switch (nlRange, crlfRange) {
-          case (let n?, let c?): n.lowerBound < c.lowerBound ? n : c
-          case (let n?, nil): n
-          case (nil, let c?): c
+          let separatorRange: Range<Data.Index>? = switch (lfRange, crlfRange) {
+          case (let lf?, let crlf?): lf.lowerBound < crlf.lowerBound ? lf : crlf
+          case (let lf?, nil): lf
+          case (nil, let crlf?): crlf
           default: nil
           }
-          guard let range = sep else { break parseLoop }
+          guard let range = separatorRange else { break parseLoop }
           let block = buffer.subdata(in: buffer.startIndex ..< range.lowerBound)
           buffer.removeSubrange(buffer.startIndex ..< range.upperBound)
           if let string = String(data: block, encoding: .utf8), !string.isEmpty {
