@@ -108,6 +108,9 @@ actor ADBClient {
 
     let (process, stdout, stderr) = try startADBProcess(args)
 
+    // Nudge the device to draw a frame immediately so the stream has data.
+    _ = try? keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
+
     return ScreenStreamSession(deviceID: deviceID, process: process, stdoutPipe: stdout, stderrPipe: stderr, startedAt: Date())
   }
 
@@ -168,6 +171,10 @@ actor ADBClient {
       throw ADBError.parseFailure("Unable to find window size")
     }
     return String(match.output.size)
+  }
+
+  func keyEvent(deviceID: String, keyCode: String) throws -> String {
+    try runString(["-s", deviceID, "shell", "input", "keyevent", keyCode])
   }
 
   func runData(_ args: [String]) throws -> Data {
