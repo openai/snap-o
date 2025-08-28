@@ -105,7 +105,9 @@ actor ADBClient {
       "screenrecord",
       "--output-format=h264",
       "--bit-rate",
-      "\(bitRateMbps * 1_000_000)"
+      "\(bitRateMbps * 1_000_000)",
+      "--time-limit",
+      "0"
     ]
     if let size, !size.isEmpty {
       args += ["--size", size]
