@@ -33,7 +33,7 @@ struct SnapOCommands: Commands {
         .disabled(coordinator?.canStartRecordingNow != true)
       }
 
-      if coordinator?.captureVM.isLivePreviewing == true {
+      if coordinator?.captureVM.currentMedia?.isLivePreview == true {
         Button("Stop Live Preview") {
           coordinator?.stopLivePreview(refreshPreview: true)
         }
@@ -49,17 +49,21 @@ struct SnapOCommands: Commands {
 
     CommandGroup(before: .saveItem) {
       Button("Save As…") {
-        guard let media = coordinator?.captureVM.currentMedia else { return }
+        guard
+          let media = coordinator?.captureVM.currentMedia,
+          let url = media.url,
+          let saveKind = media.saveKind
+        else { return }
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
         savePanel.title = "Save As"
-        savePanel.nameFieldStringValue = media.url.lastPathComponent
-        savePanel.directoryURL = SaveLocation.defaultDirectory(for: media.kind)
+        savePanel.nameFieldStringValue = url.lastPathComponent
+        savePanel.directoryURL = SaveLocation.defaultDirectory(for: saveKind)
 
         if savePanel.runModal() == .OK, let dest = savePanel.url {
           do {
-            try FileManager.default.copyItem(at: media.url, to: dest)
-            SaveLocation.setLastDirectoryURL(dest.deletingLastPathComponent(), for: media.kind)
+            try FileManager.default.copyItem(at: url, to: dest)
+            SaveLocation.setLastDirectoryURL(dest.deletingLastPathComponent(), for: saveKind)
           } catch {
             let alert = NSAlert()
             alert.alertStyle = .warning
@@ -69,7 +73,7 @@ struct SnapOCommands: Commands {
           }
         }
       }
-      .disabled(coordinator?.captureVM.currentMedia == nil)
+      .disabled(coordinator?.captureVM.currentMedia?.url == nil)
       .keyboardShortcut("s", modifiers: [.command])
     }
     CommandGroup(replacing: .pasteboard) {
@@ -77,7 +81,7 @@ struct SnapOCommands: Commands {
         coordinator?.captureVM.copy()
       }
       .keyboardShortcut("c", modifiers: [.command])
-      .disabled(coordinator?.captureVM.currentMedia?.kind != .image)
+      .disabled(coordinator?.captureVM.currentMedia?.isImage != true)
     }
     CommandGroup(replacing: .undoRedo) {}
     CommandMenu("Device") {

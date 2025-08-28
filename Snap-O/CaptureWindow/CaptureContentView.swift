@@ -10,23 +10,20 @@ struct CaptureContentView: View {
     ZStack {
       Color.black.ignoresSafeArea()
 
-      if coordinator.captureVM.isLivePreviewing {
-        LivePreviewView(captureVM: coordinator.captureVM)
-          .transition(.opacity)
-      } else if let media = coordinator.captureVM.currentMedia {
+      if let media = coordinator.captureVM.currentMedia {
         MediaDisplayView(media: media, captureVM: coordinator.captureVM)
-          .transition(.asymmetric(
-            insertion: .scale(scale: 0.8).combined(with: .opacity),
-            removal: .scale(scale: 0.8).combined(with: .opacity)
-          ))
+          .transition(
+            media.isLivePreview
+              ? AnyTransition.opacity
+              : AnyTransition.scale(scale: 0.8).combined(with: .opacity)
+          )
       } else {
         IdleOverlayView(captureVM: coordinator.captureVM, hasDevices: !deviceStore.devices.isEmpty)
       }
     }
     .animation(.snappy(duration: 0.25), value: coordinator.captureVM.currentMedia != nil)
-    .animation(.snappy(duration: 0.25), value: coordinator.captureVM.isLivePreviewing)
     .background(
-      WindowSizingController(currentMedia: coordinator.captureVM.displayMedia)
+      WindowSizingController(currentMedia: coordinator.captureVM.currentMedia)
         .frame(width: 0, height: 0)
     )
     .onOpenURL {
@@ -59,39 +56,6 @@ struct CaptureContentView: View {
 
   private func updateTitle(_ device: Device?) {
     windowTitle = device?.readableTitle ?? "Snap-O"
-  }
-}
-
-final class MediaPromiseDelegate: NSObject, NSFilePromiseProviderDelegate {
-  private let media: Media
-
-  init(media: Media) { self.media = media }
-
-  func filePromiseProvider(
-    _ provider: NSFilePromiseProvider,
-    fileNameForType fileType: String
-  ) -> String {
-    let ts = ISO8601DateFormatter().string(from: .init())
-      .replacingOccurrences(of: ":", with: "-")
-
-    switch media.kind {
-    case .image: return "\(ts).png"
-    case .video: return "\(ts).mp4"
-    }
-  }
-
-  // Copy the real file to the destination supplied by the system.
-  func filePromiseProvider(
-    _ provider: NSFilePromiseProvider,
-    writePromiseTo dstURL: URL,
-    completionHandler: (Error?) -> Void
-  ) {
-    do {
-      try FileManager.default.copyItem(at: media.url, to: dstURL)
-      completionHandler(nil)
-    } catch {
-      completionHandler(error)
-    }
   }
 }
 

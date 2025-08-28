@@ -116,8 +116,8 @@ struct WindowSizingController: NSViewRepresentable {
     // MARK: Helpers
 
     private func scaledContentSize(for media: Media) -> CGSize {
-      var width = media.width
-      var height = media.height
+      var width = media.size.width
+      var height = media.size.height
       if let density = media.densityScale, density > 0 {
         width /= density
         height /= density

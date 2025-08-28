@@ -20,30 +20,21 @@ actor FileStore {
     }
   }
 
-  nonisolated func makePreviewDestination(deviceID: String, kind: MediaKind) -> URL {
+  nonisolated func makePreviewDestination(deviceID: String, kind: MediaSaveKind) -> URL {
     makeDestination(prefix: deviceID, date: Date(), kind: kind)
   }
 
-  nonisolated func makeDragDestination(capturedAt: Date, kind: MediaKind) -> URL {
+  nonisolated func makeDragDestination(capturedAt: Date, kind: MediaSaveKind) -> URL {
     makeDestination(prefix: "Snap-O", date: capturedAt, kind: kind)
   }
 
-  private nonisolated func makeDestination(prefix: String, date: Date, kind: MediaKind) -> URL {
+  private nonisolated func makeDestination(prefix: String, date: Date, kind: MediaSaveKind) -> URL {
     try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
 
     let timestamp = Self.tsFormatter.string(from: date)
-    let fileExtension = fileExtension(kind)
+    let fileExtension = kind.fileExtension
 
-    return baseDir.appendingPathComponent(
-      "\(prefix) \(timestamp).\(fileExtension)"
-    )
-  }
-
-  private nonisolated func fileExtension(_ kind: MediaKind) -> String {
-    switch kind {
-    case .image: "png"
-    case .video: "mp4"
-    }
+    return baseDir.appendingPathComponent("\(prefix) \(timestamp).\(fileExtension)")
   }
 
   private static let tsFormatter: DateFormatter = {

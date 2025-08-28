@@ -32,7 +32,7 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if captureVM.isLivePreviewing {
+      } else if captureVM.currentMedia?.isLivePreview == true {
         Button {
           captureVM.stopLivePreview(refreshPreview: true)
         } label: {
@@ -57,7 +57,10 @@ struct IdleOverlayView: View {
       }
     }
     .animation(.snappy(duration: 0.25), value: captureVM.isRecording)
-    .animation(.snappy(duration: 0.25), value: captureVM.isLivePreviewing)
+    .animation(
+      .snappy(duration: 0.25),
+      value: captureVM.currentMedia?.isLivePreview == true
+    )
     .animation(.snappy(duration: 0.25), value: captureVM.lastError != nil)
     .animation(.snappy(duration: 0.25), value: hasDevices)
   }
