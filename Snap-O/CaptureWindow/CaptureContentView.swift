@@ -58,6 +58,7 @@ struct CaptureContentView: View {
     windowTitle = device?.readableTitle ?? "Snap-O"
   }
 }
+
 final class MediaPromiseDelegate: NSObject, NSFilePromiseProviderDelegate {
   private let media: Media
 

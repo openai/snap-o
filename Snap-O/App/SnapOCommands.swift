@@ -81,7 +81,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut(.upArrow, modifiers: [.command])
       .disabled(
         !(coordinator?.canCapture ?? false) ||
-        (coordinator?.deviceVM.devices.count ?? 0) < 2
+          (coordinator?.deviceVM.devices.count ?? 0) < 2
       )
       Button("Next Device") {
         coordinator?.deviceVM.selectNextDevice()
@@ -89,7 +89,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut(.downArrow, modifiers: [.command])
       .disabled(
         coordinator?.canCapture != true ||
-        (coordinator?.deviceVM.devices.count ?? 0) < 2
+          (coordinator?.deviceVM.devices.count ?? 0) < 2
       )
     }
     CommandMenu("ADB") {

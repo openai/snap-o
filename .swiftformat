@@ -14,6 +14,4 @@
 --self remove
 --ifdef no-indent
 --patternlet inline
---binarygrouping none
---decimalgrouping none
 --exclude Carthage,Pods,DerivedData,.build

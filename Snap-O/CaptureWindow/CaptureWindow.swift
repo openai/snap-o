@@ -89,10 +89,10 @@ struct CaptureWindow: View {
 }
 
 struct ToolbarDivider: View {
-    var body: some View {
-        Rectangle()
-            .frame(width: 1, height: 22)
-            .opacity(0.2) // adapts in dark/light
-            .accessibilityHidden(true)
-    }
+  var body: some View {
+    Rectangle()
+      .frame(width: 1, height: 22)
+      .opacity(0.2) // adapts in dark/light
+      .accessibilityHidden(true)
+  }
 }

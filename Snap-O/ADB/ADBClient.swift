@@ -6,6 +6,12 @@ actor ADBClient {
   private var adbURL: URL?
   private var configurationWaiters: [CheckedContinuation<Void, Never>] = []
 
+  private struct ProcessHandles {
+    let process: Process
+    let stdout: Pipe
+    let stderr: Pipe
+  }
+
   init(adbURL: URL?) {
     self.adbURL = adbURL
   }
@@ -49,7 +55,7 @@ actor ADBClient {
       "shell",
       "screenrecord",
       "--bit-rate",
-      "\(bitRateMbps * 1000000)",
+      "\(bitRateMbps * 1_000_000)",
       "--time-limit",
       "\(timeLimitSeconds)"
     ]
@@ -58,13 +64,13 @@ actor ADBClient {
     }
     args += [remote]
 
-    let (process, _, stderr) = try startADBProcess(args)
+    let handles = try startADBProcess(args)
 
     return RecordingSession(
       deviceID: deviceID,
       remotePath: remote,
-      process: process,
-      stderrPipe: stderr,
+      process: handles.process,
+      stderrPipe: handles.stderr,
       startedAt: Date()
     )
   }
@@ -81,7 +87,7 @@ actor ADBClient {
     }
 
     // Give device time to flush the file before pulling
-    try await Task.sleep(nanoseconds: 1000000000)
+    try await Task.sleep(nanoseconds: 1_000_000_000)
 
     try pull(deviceID: session.deviceID, remote: session.remotePath, to: localURL)
     _ = try? runString(["-s", session.deviceID, "shell", "rm", "-f", session.remotePath])
@@ -106,17 +112,23 @@ actor ADBClient {
     }
     args += ["-"]
 
-    let (process, stdout, stderr) = try startADBProcess(args)
+    let handles = try startADBProcess(args)
 
     // Nudge the device to draw a frame immediately so the stream has data.
     _ = try? keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
 
-    return ScreenStreamSession(deviceID: deviceID, process: process, stdoutPipe: stdout, stderrPipe: stderr, startedAt: Date())
+    return ScreenStreamSession(
+      deviceID: deviceID,
+      process: handles.process,
+      stdoutPipe: handles.stdout,
+      stderrPipe: handles.stderr,
+      startedAt: Date()
+    )
   }
 
   // MARK: - Helpers
 
-  private func startADBProcess(_ args: [String]) throws -> (process: Process, stdout: Pipe, stderr: Pipe) {
+  private func startADBProcess(_ args: [String]) throws -> ProcessHandles {
     guard let url = adbURL else {
       throw ADBError.adbNotFound
     }
@@ -135,7 +147,7 @@ actor ADBClient {
 
     log.debug("Run adb \(url.path, privacy: .public) with \(String(describing: args), privacy: .public)")
     try process.run()
-    return (process, stdout, stderr)
+    return ProcessHandles(process: process, stdout: stdout, stderr: stderr)
   }
 
   func pull(deviceID: String, remote: String, to localURL: URL) throws {
@@ -178,16 +190,16 @@ actor ADBClient {
   }
 
   func runData(_ args: [String]) throws -> Data {
-    let (process, stdout, stderr) = try startADBProcess(args)
+    let handles = try startADBProcess(args)
 
     // Drain stdout; this returns when pipe gets EOF (process closes).
-    let outData = stdout.fileHandleForReading.readDataToEndOfFile()
+    let outData = handles.stdout.fileHandleForReading.readDataToEndOfFile()
 
     // Ensure termination status is observed.
-    process.waitUntilExit()
-    let status = process.terminationStatus
+    handles.process.waitUntilExit()
+    let status = handles.process.terminationStatus
     if status != 0 {
-      let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+      let errData = handles.stderr.fileHandleForReading.readDataToEndOfFile()
       let errString = String(data: errData, encoding: .utf8)
       log.error("adb failed status=\(status) \(errString ?? "unknown")")
       throw ADBError.nonZeroExit(status, stderr: errString)
