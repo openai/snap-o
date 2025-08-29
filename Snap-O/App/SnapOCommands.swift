@@ -86,20 +86,20 @@ struct SnapOCommands: Commands {
     CommandGroup(replacing: .undoRedo) {}
     CommandMenu("Device") {
       Button("Previous Device") {
-        coordinator?.deviceVM.selectPreviousDevice()
+        coordinator?.selectPreviousDevice()
       }
       .keyboardShortcut(.upArrow, modifiers: [.command])
       .disabled(
         !(coordinator?.canCapture ?? false) ||
-          (coordinator?.deviceVM.devices.count ?? 0) < 2
+          (coordinator?.devices.count ?? 0) < 2
       )
       Button("Next Device") {
-        coordinator?.deviceVM.selectNextDevice()
+        coordinator?.selectNextDevice()
       }
       .keyboardShortcut(.downArrow, modifiers: [.command])
       .disabled(
         coordinator?.canCapture != true ||
-          (coordinator?.deviceVM.devices.count ?? 0) < 2
+          (coordinator?.devices.count ?? 0) < 2
       )
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)

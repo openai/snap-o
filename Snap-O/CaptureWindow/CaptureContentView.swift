@@ -30,14 +30,14 @@ struct CaptureContentView: View {
       coordinator.handle(url: $0)
     }
     .onAppear {
-      coordinator.deviceVM.onDevicesChanged(deviceStore.devices)
+      coordinator.onDevicesChanged(deviceStore.devices)
     }
     .onChange(of: deviceStore.devices) { _, devices in
-      coordinator.deviceVM.onDevicesChanged(devices)
-      updateTitle(coordinator.deviceVM.currentDevice)
+      coordinator.onDevicesChanged(devices)
+      updateTitle(coordinator.currentDevice)
     }
-    .onChange(of: coordinator.deviceVM.selectedDeviceID) { _, newID in
-      updateTitle(coordinator.deviceVM.currentDevice)
+    .onChange(of: coordinator.selectedDeviceID) { _, newID in
+      updateTitle(coordinator.currentDevice)
       if let id = newID {
         Task { await coordinator.captureVM.refreshPreview(for: id) }
       }
@@ -46,8 +46,8 @@ struct CaptureContentView: View {
       Task { await coordinator.captureVM.applyShowTouchesSetting(newValue) }
     }
     .task {
-      updateTitle(coordinator.deviceVM.currentDevice)
-      if let id = coordinator.deviceVM.selectedDeviceID {
+      updateTitle(coordinator.currentDevice)
+      if let id = coordinator.selectedDeviceID {
         await coordinator.captureVM.refreshPreview(for: id)
       }
     }
