@@ -15,7 +15,7 @@ final class CaptureWindowCoordinator {
   var selectedDeviceID: String?
 
   var canCapture: Bool {
-    currentDevice != nil && !captureVM.isRecording && !captureVM.isLoading
+    currentDevice != nil && captureVM.canCapture
   }
 
   init(services: AppServices) {
@@ -63,8 +63,8 @@ final class CaptureWindowCoordinator {
     }
   }
 
-  func stopLivePreview(refreshPreview: Bool = false) async {
-    await captureVM.stopLivePreview(refreshPreview: refreshPreview)
+  func stopLivePreview(withRefresh refresh: Bool = false) async {
+    await captureVM.stopLivePreview(withRefresh: refresh)
   }
 
   var canStartRecordingNow: Bool {

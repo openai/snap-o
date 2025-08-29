@@ -38,7 +38,7 @@ struct SnapOCommands: Commands {
 
       if coordinator?.captureVM.currentMedia?.isLivePreview == true {
         Button("Stop Live Preview") {
-          Task { await coordinator?.stopLivePreview(refreshPreview: true) }
+          Task { await coordinator?.stopLivePreview(withRefresh: true) }
         }
         .keyboardShortcut(.escape, modifiers: [])
       } else {
