@@ -54,7 +54,7 @@ struct CaptureWindow: View {
 
           if coordinator.captureVM.currentMedia?.isLivePreview == true {
             Button {
-              coordinator.stopLivePreview(refreshPreview: true)
+              Task { await coordinator.stopLivePreview(refreshPreview: true) }
             } label: {
               Label("Live", systemImage: "pause.fill")
                 .fontWeight(.semibold)

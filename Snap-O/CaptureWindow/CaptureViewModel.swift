@@ -1,5 +1,4 @@
 import AppKit
-@preconcurrency import AVKit
 import Observation
 
 private let log = SnapOLog.ui
@@ -19,14 +18,16 @@ final class CaptureViewModel {
   private let adb: ADBClient
   private let store: FileStore
   private let settings: AppSettings
+  private let captureService: CaptureService
 
   private var showTouchesOriginalValue: Bool?
   private var showTouchesDeviceID: String?
 
-  init(adb: ADBClient, store: FileStore, settings: AppSettings) {
+  init(adb: ADBClient, store: FileStore, settings: AppSettings, captureService: CaptureService) {
     self.adb = adb
     self.store = store
     self.settings = settings
+    self.captureService = captureService
   }
 
   // MARK: - Convenience State
@@ -47,7 +48,7 @@ final class CaptureViewModel {
   // Screenshot
   func refreshPreview(for deviceID: String) async {
     guard !isLoading, !isRecording else { return }
-    clearCurrentMedia()
+    await clearCurrentMedia()
     if pendingCommand == .record {
       pendingCommand = nil
       await startRecording(for: deviceID)
@@ -62,33 +63,10 @@ final class CaptureViewModel {
     isLoading = true
     defer { isLoading = false }
     do {
-      let data = try await adb.screencapPNG(deviceID: deviceID)
-      let capturedAt = Date()
-      let dest = store.makePreviewDestination(deviceID: deviceID, kind: .image)
-
-      async let writeAndSize: CGSize = Task.detached(priority: .utility) {
-        try data.write(to: dest, options: [.atomic])
-        return try pngSize(from: data)
-      }.value
-      async let densityTask = adb.screenDensityScale(deviceID: deviceID)
-
-      let size = try await writeAndSize
-      let density: CGFloat?
-      do {
-        density = try await densityTask
-      } catch {
-        density = nil
-      }
-
-      currentMedia = .image(
-        url: dest,
-        capturedAt: capturedAt,
-        size: size,
-        densityScale: density
-      )
+      currentMedia = try await captureService.captureScreenshot(for: deviceID)
       lastError = nil
     } catch {
-      clearCurrentMedia()
+      await clearCurrentMedia()
       lastError = error.localizedDescription
     }
   }
@@ -112,14 +90,14 @@ final class CaptureViewModel {
   // Recording
   func startRecording(for deviceID: String) async {
     guard !isLoading, !isRecording else { return }
-    clearCurrentMedia()
+    await clearCurrentMedia()
     isLoading = true
     defer { isLoading = false }
     do {
       await storeOriginalShowTouches(for: deviceID)
       await updateShowTouches(for: deviceID)
 
-      let session = try await adb.startScreenrecord(deviceID: deviceID)
+      let session = try await captureService.startRecording(for: deviceID)
       recordingDeviceID = deviceID
       recordingSession = session
       lastError = nil
@@ -136,20 +114,7 @@ final class CaptureViewModel {
     isLoading = true
     defer { isLoading = false }
     do {
-      let dest = store.makePreviewDestination(deviceID: deviceID, kind: .video)
-      try await adb.stopScreenrecord(session: session, savingTo: dest)
-      let asset = AVURLAsset(url: dest)
-
-      let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in
-        try? await adb.screenDensityScale(deviceID: deviceID)
-      }
-
-      if let media = try await Media.video(
-        from: asset,
-        url: dest,
-        capturedAt: Date(),
-        densityProvider: { await densityTask.value }
-      ) {
+      if let media = try await captureService.stopRecording(session: session, deviceID: deviceID) {
         currentMedia = media
       }
       lastError = nil
@@ -162,7 +127,7 @@ final class CaptureViewModel {
   // Live Preview
   func startLivePreview(for deviceID: String) async {
     guard !isLoading, !isRecording, livePreviewSession == nil else { return }
-    clearCurrentMedia()
+    await clearCurrentMedia()
     isLoading = true
     lastError = nil
 
@@ -170,18 +135,13 @@ final class CaptureViewModel {
       await storeOriginalShowTouches(for: deviceID)
       await updateShowTouches(for: deviceID)
 
-      let session = try await LivePreviewSession(
-        deviceID: deviceID,
-        adb: adb,
-        onReady: { [weak self] media in
-          self?.currentMedia = media
-          self?.isLoading = false
-        },
-        onStop: { [weak self] error, refresh in
-          self?.completeLivePreview(for: deviceID, error: error, refreshPreview: refresh)
-        }
-      )
+      let session = try await captureService.startLivePreview(for: deviceID)
       livePreviewSession = session
+
+      let media = try await session.waitUntilReady()
+      currentMedia = media
+      isLoading = false
+      lastError = nil
     } catch {
       isLoading = false
       lastError = error.localizedDescription
@@ -189,27 +149,24 @@ final class CaptureViewModel {
     }
   }
 
-  func stopLivePreview(refreshPreview: Bool = false) {
+  func stopLivePreview(refreshPreview: Bool = false) async {
     guard let session = livePreviewSession else { return }
-    session.cancel(refreshPreview: refreshPreview)
-  }
-
-  private func completeLivePreview(for deviceID: String, error: Error?, refreshPreview: Bool) {
+    let error = await captureService.stopLivePreview(session: session)
     if let error {
       lastError = error.localizedDescription
     }
     livePreviewSession = nil
-    clearCurrentMedia()
+    await clearCurrentMedia()
     isLoading = false
-
-    if refreshPreview {
-      Task { [weak self] in
-        await self?.refreshPreview(for: deviceID)
-      }
-    }
 
     Task { [weak self] in
       await self?.restoreShowTouchesIfNeeded()
+    }
+
+    if refreshPreview {
+      Task { [weak self] in
+        await self?.refreshPreview(for: session.deviceID)
+      }
     }
   }
 
@@ -253,9 +210,9 @@ final class CaptureViewModel {
     await updateShowTouches(for: deviceID, enabled: value)
   }
 
-  private func clearCurrentMedia() {
+  private func clearCurrentMedia() async {
     if livePreviewSession != nil {
-      stopLivePreview()
+      await stopLivePreview()
     }
     currentMedia = nil
   }

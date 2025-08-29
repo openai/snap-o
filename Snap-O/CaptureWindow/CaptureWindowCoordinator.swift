@@ -26,7 +26,8 @@ final class CaptureWindowCoordinator {
     captureVM = CaptureViewModel(
       adb: adb,
       store: fileStore,
-      settings: settings
+      settings: settings,
+      captureService: services.captureService
     )
   }
 
@@ -62,8 +63,8 @@ final class CaptureWindowCoordinator {
     }
   }
 
-  func stopLivePreview(refreshPreview: Bool = false) {
-    captureVM.stopLivePreview(refreshPreview: refreshPreview)
+  func stopLivePreview(refreshPreview: Bool = false) async {
+    await captureVM.stopLivePreview(refreshPreview: refreshPreview)
   }
 
   var canStartRecordingNow: Bool {
