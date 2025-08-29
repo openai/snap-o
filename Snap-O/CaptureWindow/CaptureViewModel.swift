@@ -6,14 +6,17 @@ private let log = SnapOLog.ui
 @MainActor
 @Observable
 final class CaptureViewModel {
-  var currentMedia: Media?
-  var isLoading = false
-  var isRecording: Bool { recordingSession != nil }
-  var recordingDeviceID: String?
-  var recordingSession: RecordingSession?
-  var lastError: String?
+  enum Mode {
+    case idle
+    case showing(Media)
+    case recording(session: RecordingSession)
+    case livePreview(session: LivePreviewSession, media: Media)
+    case loading
+    case error(String)
+  }
+
+  var mode: Mode = .idle
   var pendingCommand: SnapOCommand?
-  var livePreviewSession: LivePreviewSession?
 
   private let adb: ADBClient
   private let store: FileStore
@@ -32,11 +35,51 @@ final class CaptureViewModel {
 
   // MARK: - Convenience State
 
-  var canCapture: Bool { !isLoading && !isRecording }
-  var canStartRecording: Bool { !isLoading && !isRecording }
-  var canStopRecording: Bool { isRecording }
-  var canStartLivePreview: Bool { !isLoading && !isRecording && livePreviewSession == nil }
-  var canStopLivePreview: Bool { livePreviewSession != nil }
+  var currentMedia: Media? {
+    switch mode {
+    case .showing(let media):
+      media
+    case .livePreview(_, let media):
+      media
+    default:
+      nil
+    }
+  }
+
+  var isLoading: Bool {
+    if case .loading = mode { true } else { false }
+  }
+
+  var isRecording: Bool {
+    if case .recording = mode { true } else { false }
+  }
+
+  var livePreviewSession: LivePreviewSession? {
+    switch mode {
+    case .livePreview(let session, _):
+      session
+    default:
+      nil
+    }
+  }
+
+  var lastError: String? {
+    if case .error(let message) = mode { message } else { nil }
+  }
+
+  var canCapture: Bool {
+    switch mode {
+    case .idle, .showing, .error:
+      true
+    default:
+      false
+    }
+  }
+
+  var canStartRecording: Bool { canCapture }
+  var canStopRecording: Bool { if case .recording = mode { true } else { false } }
+  var canStartLivePreview: Bool { canCapture }
+  var canStopLivePreview: Bool { if case .livePreview = mode { true } else { false } }
 
   func copy() {
     guard let media = currentMedia, case .image(let url, _) = media else { return }
@@ -45,10 +88,11 @@ final class CaptureViewModel {
     NSPasteboard.general.writeObjects([image])
   }
 
-  // Screenshot
+  // MARK: - Screenshot
+
   func refreshPreview(for deviceID: String) async {
-    guard !isLoading, !isRecording else { return }
-    await clearCurrentMedia()
+    guard canCapture else { return }
+
     if pendingCommand == .record {
       pendingCommand = nil
       await startRecording(for: deviceID)
@@ -60,14 +104,14 @@ final class CaptureViewModel {
       return
     }
     pendingCommand = nil
-    isLoading = true
-    defer { isLoading = false }
+
+    await clearCurrentMedia()
+    mode = .loading
     do {
-      currentMedia = try await captureService.captureScreenshot(for: deviceID)
-      lastError = nil
+      let media = try await captureService.captureScreenshot(for: deviceID)
+      mode = .showing(media)
     } catch {
-      await clearCurrentMedia()
-      lastError = error.localizedDescription
+      mode = .error(error.localizedDescription)
     }
   }
 
@@ -87,88 +131,80 @@ final class CaptureViewModel {
     }
   }
 
-  // Recording
+  // MARK: - Recording
+
   func startRecording(for deviceID: String) async {
-    guard !isLoading, !isRecording else { return }
+    guard canStartRecording else { return }
     await clearCurrentMedia()
-    isLoading = true
-    defer { isLoading = false }
+    mode = .loading
     do {
       await storeOriginalShowTouches(for: deviceID)
       await updateShowTouches(for: deviceID)
 
       let session = try await captureService.startRecording(for: deviceID)
-      recordingDeviceID = deviceID
-      recordingSession = session
-      lastError = nil
+      mode = .recording(session: session)
     } catch {
+      mode = .error(error.localizedDescription)
       await restoreShowTouchesIfNeeded()
-      lastError = error.localizedDescription
     }
   }
 
   func stopRecording() async {
-    guard isRecording, let deviceID = recordingDeviceID, let session = recordingSession else { return }
-    recordingDeviceID = nil
-    recordingSession = nil
-    isLoading = true
-    defer { isLoading = false }
+    guard case .recording(let session) = mode else { return }
+    mode = .loading
+
     do {
-      if let media = try await captureService.stopRecording(session: session, deviceID: deviceID) {
-        currentMedia = media
+      if let media = try await captureService.stopRecording(session: session, deviceID: session.deviceID) {
+        mode = .showing(media)
+      } else {
+        mode = .idle
       }
-      lastError = nil
     } catch {
-      lastError = error.localizedDescription
+      mode = .error(error.localizedDescription)
     }
+
     await restoreShowTouchesIfNeeded()
   }
 
-  // Live Preview
+  // MARK: - Live Preview
+
   func startLivePreview(for deviceID: String) async {
-    guard !isLoading, !isRecording, livePreviewSession == nil else { return }
+    guard canStartLivePreview else { return }
     await clearCurrentMedia()
-    isLoading = true
-    lastError = nil
+    mode = .loading
 
     do {
       await storeOriginalShowTouches(for: deviceID)
       await updateShowTouches(for: deviceID)
 
       let session = try await captureService.startLivePreview(for: deviceID)
-      livePreviewSession = session
-
       let media = try await session.waitUntilReady()
-      currentMedia = media
-      isLoading = false
-      lastError = nil
+      mode = .livePreview(session: session, media: media)
     } catch {
-      isLoading = false
-      lastError = error.localizedDescription
+      mode = .error(error.localizedDescription)
       await restoreShowTouchesIfNeeded()
     }
   }
 
-  func stopLivePreview(refreshPreview: Bool = false) async {
-    guard let session = livePreviewSession else { return }
+  func stopLivePreview(withRefresh refresh: Bool = false) async {
+    guard case .livePreview(let session, _) = mode else { return }
+    mode = .loading
+
     let error = await captureService.stopLivePreview(session: session)
     if let error {
-      lastError = error.localizedDescription
-    }
-    livePreviewSession = nil
-    await clearCurrentMedia()
-    isLoading = false
-
-    Task { [weak self] in
-      await self?.restoreShowTouchesIfNeeded()
+      mode = .error(error.localizedDescription)
+    } else {
+      mode = .idle
     }
 
-    if refreshPreview {
-      Task { [weak self] in
-        await self?.refreshPreview(for: session.deviceID)
-      }
+    await restoreShowTouchesIfNeeded()
+
+    if refresh {
+      await refreshPreview(for: session.deviceID)
     }
   }
+
+  // MARK: - Show Touches
 
   private func restoreShowTouchesIfNeeded() async {
     guard let deviceID = showTouchesDeviceID else { return }
@@ -206,14 +242,18 @@ final class CaptureViewModel {
   }
 
   func applyShowTouchesSetting(_ value: Bool) async {
-    guard isRecording || livePreviewSession != nil, let deviceID = showTouchesDeviceID else { return }
+    guard let deviceID = showTouchesDeviceID else { return }
     await updateShowTouches(for: deviceID, enabled: value)
   }
 
   private func clearCurrentMedia() async {
-    if livePreviewSession != nil {
+    switch mode {
+    case .livePreview:
       await stopLivePreview()
+    case .showing, .error:
+      mode = .idle
+    default:
+      break
     }
-    currentMedia = nil
   }
 }
