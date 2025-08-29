@@ -6,15 +6,17 @@ private let log = SnapOLog.recording
 @Observable
 final class CaptureWindowCoordinator {
   let captureVM: CaptureViewModel
-  let deviceVM: DeviceListViewModel
 
   private let appCoordinator: AppCoordinator
   private let fileStore: FileStore
   private let adb: ADBClient
   let settings: AppSettings
 
+  var devices: [Device] = []
+  var selectedDeviceID: String?
+
   var canCapture: Bool {
-    deviceVM.currentDevice != nil && !captureVM.isRecording && !captureVM.isLoading
+    currentDevice != nil && !captureVM.isRecording && !captureVM.isLoading
   }
 
   init(appCoordinator: AppCoordinator) {
@@ -23,7 +25,6 @@ final class CaptureWindowCoordinator {
     adb = appCoordinator.adbClient
     fileStore = appCoordinator.fileStore
 
-    deviceVM = DeviceListViewModel()
     captureVM = CaptureViewModel(
       adb: adb,
       store: fileStore,
@@ -40,13 +41,13 @@ final class CaptureWindowCoordinator {
   }
 
   func refreshPreview() async {
-    if let deviceID = deviceVM.currentDevice?.id {
+    if let deviceID = currentDevice?.id {
       await captureVM.refreshPreview(for: deviceID)
     }
   }
 
   func startRecording() async {
-    if let deviceID = deviceVM.currentDevice?.id {
+    if let deviceID = currentDevice?.id {
       log.info("Start recording for device=\(deviceID, privacy: .public)")
       await captureVM.startRecording(for: deviceID)
     }
@@ -57,7 +58,7 @@ final class CaptureWindowCoordinator {
   }
 
   func startLivePreview() async {
-    if let deviceID = deviceVM.currentDevice?.id {
+    if let deviceID = currentDevice?.id {
       log.info("Start live preview for device=\(deviceID, privacy: .public)")
       await captureVM.startLivePreview(for: deviceID)
     }
@@ -77,15 +78,57 @@ final class CaptureWindowCoordinator {
   }
 
   var canStartRecordingNow: Bool {
-    deviceVM.currentDevice != nil && captureVM.canStartRecording
+    currentDevice != nil && captureVM.canStartRecording
   }
 
   var canStartLivePreviewNow: Bool {
-    deviceVM.currentDevice != nil && captureVM.canStartLivePreview
+    currentDevice != nil && captureVM.canStartLivePreview
   }
 
   var showTouchesDuringCapture: Bool {
     get { settings.showTouchesDuringCapture }
     set { settings.showTouchesDuringCapture = newValue }
+  }
+
+  // MARK: - Device Selection
+
+  var currentDevice: Device? {
+    guard let id = selectedDeviceID else { return nil }
+    return devices.first { $0.id == id }
+  }
+
+  func onDevicesChanged(_ list: [Device]) {
+    devices = list
+    if let sel = selectedDeviceID,
+       list.contains(where: { $0.id == sel }) {
+      // keep selection
+    } else {
+      selectedDeviceID = list.first?.id
+    }
+  }
+
+  private var currentIndex: Int? {
+    guard let id = selectedDeviceID else { return nil }
+    return devices.firstIndex { $0.id == id }
+  }
+
+  func selectNextDevice() {
+    guard !devices.isEmpty else { selectedDeviceID = nil
+      return
+    }
+    guard let idx = currentIndex else { selectedDeviceID = devices.first?.id
+      return
+    }
+    selectedDeviceID = devices[(idx + 1) % devices.count].id
+  }
+
+  func selectPreviousDevice() {
+    guard !devices.isEmpty else { selectedDeviceID = nil
+      return
+    }
+    guard let idx = currentIndex else { selectedDeviceID = devices.first?.id
+      return
+    }
+    selectedDeviceID = devices[(idx - 1 + devices.count) % devices.count].id
   }
 }
