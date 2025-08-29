@@ -7,7 +7,6 @@ private let log = SnapOLog.recording
 final class CaptureWindowCoordinator {
   let captureVM: CaptureViewModel
 
-  private let appCoordinator: AppCoordinator
   private let fileStore: FileStore
   private let adb: ADBClient
   let settings: AppSettings
@@ -19,11 +18,10 @@ final class CaptureWindowCoordinator {
     currentDevice != nil && !captureVM.isRecording && !captureVM.isLoading
   }
 
-  init(appCoordinator: AppCoordinator) {
-    self.appCoordinator = appCoordinator
-    settings = appCoordinator.settings
-    adb = appCoordinator.adbClient
-    fileStore = appCoordinator.fileStore
+  init(services: AppServices) {
+    settings = services.settings
+    adb = services.adbService.client
+    fileStore = services.fileStore
 
     captureVM = CaptureViewModel(
       adb: adb,
@@ -66,15 +64,6 @@ final class CaptureWindowCoordinator {
 
   func stopLivePreview(refreshPreview: Bool = false) {
     captureVM.stopLivePreview(refreshPreview: refreshPreview)
-  }
-
-  func promptForADBPath() async {
-    let mgr = ADBPathManager()
-    await MainActor.run {
-      mgr.promptForADBPath()
-    }
-    let chosen = ADBPathManager.lastKnownADBURL()
-    await adb.setURL(chosen)
   }
 
   var canStartRecordingNow: Bool {

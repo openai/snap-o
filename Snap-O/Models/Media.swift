@@ -1,7 +1,7 @@
-import Foundation
-import CoreGraphics
-import ImageIO
 @preconcurrency import AVFoundation
+import CoreGraphics
+import Foundation
+import ImageIO
 
 enum Media: Equatable, Sendable {
   case image(url: URL, data: MediaCommon)
@@ -17,18 +17,21 @@ struct MediaCommon: Equatable, Sendable {
 }
 
 // MARK: - Conveniences
+
 extension Media {
   var common: MediaCommon {
     switch self {
-    case .image(_, let d), .video(_, let d), .livePreview(let d): d
+    case .image(_, let data), .video(_, let data), .livePreview(let data): data
     }
   }
+
   var url: URL? {
     switch self {
-    case .image(let u, _), .video(let u, _): u
+    case .image(let urlValue, _), .video(let urlValue, _): urlValue
     case .livePreview: nil
     }
   }
+
   var isImage: Bool { if case .image = self { true } else { false } }
   var isVideo: Bool { if case .video = self { true } else { false } }
   var isLivePreview: Bool { if case .livePreview = self { true } else { false } }
@@ -60,6 +63,7 @@ extension MediaSaveKind {
 }
 
 // MARK: - Factories
+
 extension Media {
   static func image(
     url: URL,
