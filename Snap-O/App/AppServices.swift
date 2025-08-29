@@ -7,12 +7,14 @@ final class AppServices {
   let deviceService: DeviceService
   let fileStore: FileStore
   let settings: AppSettings
+  let captureService: CaptureService
 
   init() {
     settings = AppSettings()
     adbService = ADBService()
     deviceService = DeviceService(adbService: adbService)
     fileStore = FileStore()
+    captureService = CaptureService(adb: adbService.client, fileStore: fileStore)
   }
 
   func start() async {

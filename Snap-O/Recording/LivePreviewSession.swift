@@ -15,18 +15,13 @@ final class LivePreviewSession {
   private var streamTask: Task<Void, Never>?
   private var hasStopped = false
 
-  private let onReady: (Media) -> Void
-  private let onStop: (Error?, Bool) -> Void
+  private var readyContinuation: CheckedContinuation<Media, Error>?
+  private var stopContinuation: CheckedContinuation<Error?, Never>?
+  private var readyResult: Media?
+  private var stopResult: Error??
 
-  init(
-    deviceID: String,
-    adb: ADBClient,
-    onReady: @escaping (Media) -> Void,
-    onStop: @escaping (Error?, Bool) -> Void
-  ) async throws {
+  init(deviceID: String, adb: ADBClient) async throws {
     self.deviceID = deviceID
-    self.onReady = onReady
-    self.onStop = onStop
 
     densityScale = try await adb.screenDensityScale(deviceID: deviceID)
     screenStream = try await adb.startScreenStream(deviceID: deviceID)
@@ -35,9 +30,23 @@ final class LivePreviewSession {
     startStreamTask()
   }
 
-  func cancel(refreshPreview: Bool) {
+  func waitUntilReady() async throws -> Media {
+    if let readyResult { return readyResult }
+    return try await withCheckedThrowingContinuation { continuation in
+      readyContinuation = continuation
+    }
+  }
+
+  func waitUntilStop() async -> Error? {
+    if let stopResult { return stopResult }
+    return await withCheckedContinuation { continuation in
+      stopContinuation = continuation
+    }
+  }
+
+  func cancel() {
     Task {
-      await finish(with: nil, refreshPreview: refreshPreview)
+      await finish(with: nil)
     }
   }
 
@@ -59,7 +68,9 @@ final class LivePreviewSession {
           densityScale: self.densityScale
         )
         self.media = media
-        self.onReady(media)
+        self.readyResult = media
+        self.readyContinuation?.resume(returning: media)
+        self.readyContinuation = nil
       }
     }
     self.decoder = decoder
@@ -77,14 +88,14 @@ final class LivePreviewSession {
           guard let data = try handle.read(upToCount: 4096), !data.isEmpty else { break }
           decoderRef.value.append(data)
         }
-        await finish(with: nil, refreshPreview: false)
+        await finish(with: nil)
       } catch {
-        await finish(with: error, refreshPreview: false)
+        await finish(with: error)
       }
     }
   }
 
-  private func finish(with error: Error?, refreshPreview: Bool) async {
+  private func finish(with error: Error?) async {
     guard !hasStopped else { return }
     hasStopped = true
 
@@ -93,7 +104,14 @@ final class LivePreviewSession {
     screenStream.process.terminate()
     decoder = nil
 
-    onStop(error, refreshPreview)
+    stopResult = error
+    stopContinuation?.resume(returning: error)
+    stopContinuation = nil
+
+    if readyResult == nil {
+      readyContinuation?.resume(throwing: error ?? CancellationError())
+      readyContinuation = nil
+    }
   }
 }
 

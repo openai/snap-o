@@ -34,7 +34,7 @@ struct IdleOverlayView: View {
         .transition(.opacity)
       } else if captureVM.currentMedia?.isLivePreview == true {
         Button {
-          captureVM.stopLivePreview(refreshPreview: true)
+          Task { await captureVM.stopLivePreview(refreshPreview: true) }
         } label: {
           HStack {
             Text("Stop Live Preview")
