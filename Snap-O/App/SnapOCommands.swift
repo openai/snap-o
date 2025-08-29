@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 struct SnapOCommands: Commands {
@@ -5,9 +6,11 @@ struct SnapOCommands: Commands {
   var coordinator: CaptureWindowCoordinator?
 
   @Bindable var settings: AppSettings
+  private let adbService: ADBService
 
-  init(settings: AppSettings) {
+  init(settings: AppSettings, adbService: ADBService) {
     self.settings = settings
+    self.adbService = adbService
   }
 
   var body: some Commands {
@@ -106,7 +109,7 @@ struct SnapOCommands: Commands {
     }
     CommandMenu("ADB") {
       Button("Set ADB path…") {
-        Task { await coordinator?.promptForADBPath() }
+        Task { await adbService.promptForPath() }
       }
       if let url = ADBPathManager.lastKnownADBURL() {
         Text("Current: \(url.path)")

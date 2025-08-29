@@ -5,17 +5,25 @@ struct SnapOApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self)
   var appDelegate
 
-  private let coordinator = AppCoordinator()
+  private let services: AppServices
+
+  init() {
+    let services = AppServices()
+    self.services = services
+    Task { await services.start() }
+  }
 
   var body: some Scene {
     WindowGroup {
-      CaptureWindow(appCoordinator: coordinator)
-        .task { await coordinator.trackDevices() }
+      CaptureWindow(services: services)
     }
     .defaultSize(width: 480, height: 480)
     .windowToolbarStyle(.unified)
     .commands {
-      SnapOCommands(settings: coordinator.settings)
+      SnapOCommands(
+        settings: services.settings,
+        adbService: services.adbService
+      )
     }
   }
 }

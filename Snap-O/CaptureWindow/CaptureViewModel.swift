@@ -38,7 +38,7 @@ final class CaptureViewModel {
   var canStopLivePreview: Bool { livePreviewSession != nil }
 
   func copy() {
-    guard let media = currentMedia, case let .image(url, _) = media else { return }
+    guard let media = currentMedia, case .image(let url, _) = media else { return }
     guard let image = NSImage(contentsOf: url) else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.writeObjects([image])

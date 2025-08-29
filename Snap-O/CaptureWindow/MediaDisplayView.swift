@@ -7,7 +7,7 @@ struct MediaDisplayView: View {
   var body: some View {
     Group {
       switch media {
-      case let .image(url, _):
+      case .image(let url, _):
         if let nsImage = NSImage(contentsOf: url) {
           Image(nsImage: nsImage)
             .resizable()
@@ -16,7 +16,7 @@ struct MediaDisplayView: View {
         } else {
           Color.black
         }
-      case let .video(url, _):
+      case .video(let url, _):
         ZStack {
           VideoLoopingView(url: url)
           // Keep a small overlay area to make drag easier
