@@ -33,19 +33,23 @@ struct WindowSizingController: NSViewRepresentable {
 
   @MainActor
   final class Coordinator: NSObject, NSWindowDelegate {
+    // MARK: Properties
+
     private weak var window: NSWindow?
 
     private let minimumEdge: CGFloat
     private var lastMediaStamp: Date?
     private var currentAspect: CGFloat = 1
 
-    private static let defaultContentSize = CGSize(width: 480, height: 480)
     private weak static var restorableWindow: NSWindow?
 
     init(minimumEdge: CGFloat) {
       self.minimumEdge = minimumEdge
     }
 
+    // MARK: Window Attachment
+
+    /// Attach to a window once and configure delegate and restoration.
     func attach(to window: NSWindow) {
       guard self.window !== window else { return }
       self.window = window
@@ -54,36 +58,37 @@ struct WindowSizingController: NSViewRepresentable {
       window.isRestorable = false
     }
 
+    // MARK: Window Sizing
+
+    /// Size the window to fit the given media while preserving aspect ratio
+    /// and minimum content edge. Frame animations are dispatched on main to
+    /// ensure proper AppKit animation.
     func sizeWindow(for media: Media) {
       guard lastMediaStamp != media.capturedAt else { return }
       lastMediaStamp = media.capturedAt
 
-      let targetSize = scaledContentSize(for: media)
-      currentAspect = targetSize.width / max(targetSize.height, 1)
+      let targetContentSize = scaledContentSize(for: media)
+      currentAspect = targetContentSize.width / max(targetContentSize.height, 1)
 
       guard let window else { return }
-      let titlebar = window.frame.height - window.contentLayoutRect.height
-      let frame = NSRect(
-        x: window.frame.origin.x,
-        y: window.frame.origin.y,
-        width: targetSize.width,
-        height: targetSize.height + titlebar
-      )
+      let frame = frameFor(window: window, contentSize: targetContentSize)
 
-      let minSize = minimumContentSize(for: targetSize)
+      let contentMin = minimumContentSize(for: targetContentSize)
 
       DispatchQueue.main.async {
         window.setFrame(frame, display: true, animate: true)
-        window.contentAspectRatio = targetSize
-        window.contentMinSize = minSize
+        window.contentAspectRatio = targetContentSize
+        window.contentMinSize = contentMin
       }
     }
+
+    // MARK: NSWindowDelegate
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
       // Avoid conflicting with AppKit's built-in handling of aspect ratio and
       // minimum sizing driven by `contentAspectRatio` and `contentMinSize`.
       // Returning the proposed size prevents visual jumping during drags.
-      let titlebar = sender.frame.height - sender.contentLayoutRect.height
+      let titlebar = titlebarHeight(for: sender)
       if frameSize.height - titlebar <= 0 { return frameSize }
       return frameSize
     }
@@ -104,8 +109,29 @@ struct WindowSizingController: NSViewRepresentable {
       }
     }
 
-    // MARK: Helpers
+    // MARK: Geometry Helpers
 
+    /// Current titlebar height for a window (frame minus content layout).
+    private func titlebarHeight(for window: NSWindow) -> CGFloat {
+      window.frame.height - window.contentLayoutRect.height
+    }
+
+    /// Build a window frame for a given content size, preserving origin and
+    /// adding the titlebar height to the content height.
+    private func frameFor(window: NSWindow, contentSize: CGSize) -> NSRect {
+      let titlebar = titlebarHeight(for: window)
+      return NSRect(
+        x: window.frame.origin.x,
+        y: window.frame.origin.y,
+        width: contentSize.width,
+        height: contentSize.height + titlebar
+      )
+    }
+
+    // MARK: Sizing Helpers
+
+    /// Compute a content size for media, downscaling by density if present and
+    /// ensuring the smaller edge is at least `minimumEdge`.
     private func scaledContentSize(for media: Media) -> CGSize {
       var width = media.size.width
       var height = media.size.height
@@ -119,6 +145,8 @@ struct WindowSizingController: NSViewRepresentable {
       return CGSize(width: width, height: height)
     }
 
+    /// Minimum content size that keeps the smaller edge at least
+    /// `minimumEdge`, preserving aspect ratio.
     private func minimumContentSize(for contentSize: CGSize) -> CGSize {
       // Minimum content size keeps the smaller edge at least `minimumEdge`,
       // preserving aspect ratio. Do not clamp the scale to 1; the minimum may
