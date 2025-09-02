@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct IdleOverlayView: View {
-  let captureVM: CaptureViewModel
+  let controller: CaptureController
   let hasDevices: Bool
 
   var body: some View {
@@ -11,9 +11,9 @@ struct IdleOverlayView: View {
         .frame(width: 64, height: 64)
         .infiniteRotate(animated: hasDevices)
 
-      if captureVM.isRecording {
+      if controller.isRecording {
         Button {
-          Task { await captureVM.stopRecording() }
+          Task { await controller.stopRecording() }
         } label: {
           HStack(spacing: 8) {
             Text("Stop Recording")
@@ -32,9 +32,9 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if captureVM.currentMedia?.isLivePreview == true {
+      } else if controller.currentMedia?.isLivePreview == true {
         Button {
-          Task { await captureVM.stopLivePreview(withRefresh: true) }
+          Task { await controller.stopLivePreview(withRefresh: true) }
         } label: {
           HStack {
             Text("Stop Live Preview")
@@ -49,19 +49,19 @@ struct IdleOverlayView: View {
           .transition(.opacity)
       }
 
-      if let err = captureVM.lastError {
+      if let err = controller.lastError {
         Text(err)
           .font(.footnote)
           .foregroundStyle(.red)
           .transition(.opacity)
       }
     }
-    .animation(.snappy(duration: 0.25), value: captureVM.isRecording)
+    .animation(.snappy(duration: 0.25), value: controller.isRecording)
     .animation(
       .snappy(duration: 0.25),
-      value: captureVM.currentMedia?.isLivePreview == true
+      value: controller.currentMedia?.isLivePreview == true
     )
-    .animation(.snappy(duration: 0.25), value: captureVM.lastError != nil)
+    .animation(.snappy(duration: 0.25), value: controller.lastError != nil)
     .animation(.snappy(duration: 0.25), value: hasDevices)
   }
 }

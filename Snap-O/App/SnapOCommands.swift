@@ -3,7 +3,7 @@ import SwiftUI
 
 struct SnapOCommands: Commands {
   @FocusedValue(\.captureWindow)
-  var coordinator: CaptureWindowCoordinator?
+  var controller: CaptureController?
 
   @Bindable var settings: AppSettings
   private let adbService: ADBService
@@ -18,42 +18,42 @@ struct SnapOCommands: Commands {
       Divider()
 
       Button("New Screenshot") {
-        Task { await coordinator?.refreshPreview() }
+        Task { await controller?.refreshPreview() }
       }
       .keyboardShortcut("r", modifiers: [.command])
-      .disabled(coordinator?.canCapture != true)
+      .disabled(controller?.canCapture != true)
 
-      if coordinator?.captureVM.isRecording == true {
+      if controller?.isRecording == true {
         Button("Stop Screen Recording") {
-          Task { await coordinator?.stopRecording() }
+          Task { await controller?.stopRecording() }
         }
         .keyboardShortcut(.escape, modifiers: [])
       } else {
         Button("Start Screen Recording") {
-          Task { await coordinator?.startRecording() }
+          Task { await controller?.startRecording() }
         }
         .keyboardShortcut("r", modifiers: [.command, .shift])
-        .disabled(coordinator?.canStartRecordingNow != true)
+        .disabled(controller?.canStartRecordingNow != true)
       }
 
-      if coordinator?.captureVM.currentMedia?.isLivePreview == true {
+      if controller?.currentMedia?.isLivePreview == true {
         Button("Stop Live Preview") {
-          Task { await coordinator?.stopLivePreview(withRefresh: true) }
+          Task { await controller?.stopLivePreview(withRefresh: true) }
         }
         .keyboardShortcut(.escape, modifiers: [])
       } else {
         Button("Start Live Preview") {
-          Task { await coordinator?.startLivePreview() }
+          Task { await controller?.startLivePreview() }
         }
         .keyboardShortcut("l", modifiers: [.command, .shift])
-        .disabled(coordinator?.canStartLivePreviewNow != true)
+        .disabled(controller?.canStartLivePreviewNow != true)
       }
     }
 
     CommandGroup(before: .saveItem) {
       Button("Save As…") {
         guard
-          let media = coordinator?.captureVM.currentMedia,
+          let media = controller?.currentMedia,
           let url = media.url,
           let saveKind = media.saveKind
         else { return }
@@ -76,33 +76,33 @@ struct SnapOCommands: Commands {
           }
         }
       }
-      .disabled(coordinator?.captureVM.currentMedia?.url == nil)
+      .disabled(controller?.currentMedia?.url == nil)
       .keyboardShortcut("s", modifiers: [.command])
     }
     CommandGroup(replacing: .pasteboard) {
       Button("Copy") {
-        coordinator?.captureVM.copy()
+        controller?.copy()
       }
       .keyboardShortcut("c", modifiers: [.command])
-      .disabled(coordinator?.captureVM.currentMedia?.isImage != true)
+      .disabled(controller?.currentMedia?.isImage != true)
     }
     CommandGroup(replacing: .undoRedo) {}
     CommandMenu("Device") {
       Button("Previous Device") {
-        coordinator?.selectPreviousDevice()
+        controller?.selectPreviousDevice()
       }
       .keyboardShortcut(.upArrow, modifiers: [.command])
       .disabled(
-        !(coordinator?.canCapture ?? false) ||
-          (coordinator?.devices.available.count ?? 0) < 2
+        !(controller?.canCapture ?? false) ||
+          (controller?.devices.available.count ?? 0) < 2
       )
       Button("Next Device") {
-        coordinator?.selectNextDevice()
+        controller?.selectNextDevice()
       }
       .keyboardShortcut(.downArrow, modifiers: [.command])
       .disabled(
-        coordinator?.canCapture != true ||
-          (coordinator?.devices.available.count ?? 0) < 2
+        controller?.canCapture != true ||
+          (controller?.devices.available.count ?? 0) < 2
       )
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)

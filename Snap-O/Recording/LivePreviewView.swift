@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 struct LivePreviewView: NSViewRepresentable {
-  let captureVM: CaptureViewModel
+  let controller: CaptureController
 
   func makeCoordinator() -> Coordinator {
     Coordinator()
@@ -15,12 +15,12 @@ struct LivePreviewView: NSViewRepresentable {
     if view.layer == nil {
       view.layer = CALayer()
     }
-    context.coordinator.setup(in: view, captureVM: captureVM)
+    context.coordinator.setup(in: view, controller: controller)
     return view
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {
-    context.coordinator.captureVM = captureVM
+    context.coordinator.controller = controller
     context.coordinator.attachToSession()
   }
 
@@ -31,15 +31,15 @@ struct LivePreviewView: NSViewRepresentable {
   @MainActor
   final class Coordinator {
     let displayLayer = AVSampleBufferDisplayLayer()
-    weak var captureVM: CaptureViewModel?
+    weak var controller: CaptureController?
 
     init() {
       displayLayer.videoGravity = .resizeAspect
       displayLayer.backgroundColor = NSColor.black.cgColor
     }
 
-    func setup(in view: NSView, captureVM: CaptureViewModel) {
-      self.captureVM = captureVM
+    func setup(in view: NSView, controller: CaptureController) {
+      self.controller = controller
       displayLayer.frame = view.bounds
       displayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
       view.layer?.addSublayer(displayLayer)
@@ -52,13 +52,13 @@ struct LivePreviewView: NSViewRepresentable {
     }
 
     func attachToSession() {
-      captureVM?.livePreviewSession?.sampleBufferHandler = { [weak self] sample in
+      controller?.livePreviewSession?.sampleBufferHandler = { [weak self] sample in
         self?.enqueue(sample)
       }
     }
 
     func teardown() {
-      captureVM?.livePreviewSession?.sampleBufferHandler = nil
+      controller?.livePreviewSession?.sampleBufferHandler = nil
       displayLayer.sampleBufferRenderer.flush()
       displayLayer.sampleBufferRenderer.stopRequestingMediaData()
     }
