@@ -65,3 +65,5 @@ struct IdleOverlayView: View {
     .animation(.snappy(duration: 0.25), value: hasDevices)
   }
 }
+
+// Moved InfiniteRotate to UI/InfiniteRotate.swift

@@ -2,7 +2,7 @@ import Observation
 import SwiftUI
 
 struct SnapOCommands: Commands {
-  @FocusedValue(\.captureWindow)
+  @FocusedValue(\.captureController)
   var controller: CaptureController?
 
   @Bindable var settings: AppSettings

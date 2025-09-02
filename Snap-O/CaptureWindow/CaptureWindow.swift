@@ -4,88 +4,62 @@ struct CaptureWindow: View {
   let services: AppServices
 
   @State private var controller: CaptureController
+  @State private var windowTitle: String = "Snap-O"
 
   init(services: AppServices) {
     self.services = services
     _controller = State(initialValue: CaptureController(services: services))
   }
 
+  private var deviceStore: DeviceStore { services.deviceService.store }
+
   var body: some View {
-    CaptureContentView(controller: controller, deviceStore: services.deviceService.store)
-      .focusedSceneValue(\.captureWindow, controller)
-      .toolbar {
-        ToolbarItemGroup(placement: .primaryAction) {
-          Button {
-            Task { await controller.refreshPreview() }
-          } label: {
-            Label("New Screenshot", systemImage: "camera")
-              .labelStyle(.iconOnly)
-          }
-          .help("New Screenshot (⌘R)")
-          .disabled(controller.canCapture != true)
-          .keyboardShortcut("r", modifiers: [.command])
+    ZStack {
+      Color.black.ignoresSafeArea()
 
-          if controller.isRecording {
-            Button {
-              Task { await controller.stopRecording() }
-            } label: {
-              Label("Stop", systemImage: "stop.fill")
-                .fontWeight(.semibold)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.red))
-                .foregroundStyle(Color.white)
-            }
-            .buttonStyle(.plain)
-            .help("Stop Recording (⎋)")
-            .keyboardShortcut(.escape, modifiers: [])
-          } else {
-            Button {
-              Task { await controller.startRecording() }
-            } label: {
-              Label("Record", systemImage: "record.circle")
-            }
-            .help("Start Recording (⌘⇧R)")
-            .keyboardShortcut("r", modifiers: [.command, .shift])
-            .disabled(controller.canStartRecordingNow != true)
-          }
-
-          ToolbarDivider()
-
-          if controller.currentMedia?.isLivePreview == true {
-            Button {
-              Task { await controller.stopLivePreview(withRefresh: true) }
-            } label: {
-              Label("Live", systemImage: "pause.fill")
-                .fontWeight(.semibold)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 8).fill(.blue))
-                .foregroundStyle(Color.white)
-            }
-            .buttonStyle(.plain)
-            .help("Stop Preview (⎋)")
-            .keyboardShortcut(.escape, modifiers: [])
-          } else {
-            Button {
-              Task { await controller.startLivePreview() }
-            } label: {
-              Label("Live", systemImage: "play.circle")
-            }
-            .help("Live Preview (⌘⇧L)")
-            .keyboardShortcut("l", modifiers: [.command, .shift])
-            .disabled(controller.canStartLivePreviewNow != true)
-          }
-        }
+      if let media = controller.currentMedia {
+        MediaDisplayView(media: media, controller: controller)
+          .transition(
+            media.isLivePreview
+              ? AnyTransition.opacity
+              : AnyTransition.scale(scale: 0.8).combined(with: .opacity)
+          )
+      } else {
+        IdleOverlayView(controller: controller, hasDevices: !controller.devices.available.isEmpty)
       }
+    }
+    .animation(.snappy(duration: 0.25), value: controller.currentMedia != nil)
+    .background(
+      WindowSizingController(currentMedia: controller.currentMedia)
+        .frame(width: 0, height: 0)
+    )
+    .onOpenURL { controller.handle(url: $0) }
+    .onAppear { controller.onDevicesChanged(deviceStore.devices) }
+    .onChange(of: deviceStore.devices) { _, devices in
+      controller.onDevicesChanged(devices)
+      updateTitle(controller.devices.currentDevice)
+    }
+    .onChange(of: controller.devices.selectedID) { _, newID in
+      updateTitle(controller.devices.currentDevice)
+      if let id = newID {
+        Task { await controller.refreshPreview(for: id) }
+      }
+    }
+    .onChange(of: controller.showTouchesDuringCapture) { _, newValue in
+      Task { await controller.applyShowTouchesSetting(newValue) }
+    }
+    .task {
+      updateTitle(controller.devices.currentDevice)
+      if let id = controller.devices.selectedID {
+        await controller.refreshPreview(for: id)
+      }
+    }
+    .navigationTitle(windowTitle)
+    .focusedSceneValue(\.captureController, controller)
+    .toolbar { CaptureToolbar(controller: controller) }
   }
-}
 
-struct ToolbarDivider: View {
-  var body: some View {
-    Rectangle()
-      .frame(width: 1, height: 22)
-      .opacity(0.2) // adapts in dark/light
-      .accessibilityHidden(true)
+  private func updateTitle(_ device: Device?) {
+    windowTitle = device?.readableTitle ?? "Snap-O"
   }
 }
