@@ -18,7 +18,7 @@ struct CaptureContentView: View {
               : AnyTransition.scale(scale: 0.8).combined(with: .opacity)
           )
       } else {
-        IdleOverlayView(captureVM: coordinator.captureVM, hasDevices: !deviceStore.devices.isEmpty)
+        IdleOverlayView(captureVM: coordinator.captureVM, hasDevices: !coordinator.devices.available.isEmpty)
       }
     }
     .animation(.snappy(duration: 0.25), value: coordinator.captureVM.currentMedia != nil)
@@ -34,10 +34,10 @@ struct CaptureContentView: View {
     }
     .onChange(of: deviceStore.devices) { _, devices in
       coordinator.onDevicesChanged(devices)
-      updateTitle(coordinator.currentDevice)
+      updateTitle(coordinator.devices.currentDevice)
     }
-    .onChange(of: coordinator.selectedDeviceID) { _, newID in
-      updateTitle(coordinator.currentDevice)
+    .onChange(of: coordinator.devices.selectedID) { _, newID in
+      updateTitle(coordinator.devices.currentDevice)
       if let id = newID {
         Task { await coordinator.captureVM.refreshPreview(for: id) }
       }
@@ -46,8 +46,8 @@ struct CaptureContentView: View {
       Task { await coordinator.captureVM.applyShowTouchesSetting(newValue) }
     }
     .task {
-      updateTitle(coordinator.currentDevice)
-      if let id = coordinator.selectedDeviceID {
+      updateTitle(coordinator.devices.currentDevice)
+      if let id = coordinator.devices.selectedID {
         await coordinator.captureVM.refreshPreview(for: id)
       }
     }

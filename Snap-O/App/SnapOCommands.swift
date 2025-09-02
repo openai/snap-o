@@ -94,7 +94,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut(.upArrow, modifiers: [.command])
       .disabled(
         !(coordinator?.canCapture ?? false) ||
-          (coordinator?.devices.count ?? 0) < 2
+          (coordinator?.devices.available.count ?? 0) < 2
       )
       Button("Next Device") {
         coordinator?.selectNextDevice()
@@ -102,7 +102,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut(.downArrow, modifiers: [.command])
       .disabled(
         coordinator?.canCapture != true ||
-          (coordinator?.devices.count ?? 0) < 2
+          (coordinator?.devices.available.count ?? 0) < 2
       )
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
