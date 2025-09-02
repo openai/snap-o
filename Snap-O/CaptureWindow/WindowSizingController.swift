@@ -80,21 +80,12 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+      // Avoid conflicting with AppKit's built-in handling of aspect ratio and
+      // minimum sizing driven by `contentAspectRatio` and `contentMinSize`.
+      // Returning the proposed size prevents visual jumping during drags.
       let titlebar = sender.frame.height - sender.contentLayoutRect.height
-      var height = frameSize.height - titlebar
-      if height <= 0 { return frameSize }
-      var width = height * currentAspect
-
-      if width < minimumEdge {
-        width = minimumEdge
-        height = width / currentAspect
-      }
-      if height < minimumEdge {
-        height = minimumEdge
-        width = height * currentAspect
-      }
-
-      return NSSize(width: width, height: height + titlebar)
+      if frameSize.height - titlebar <= 0 { return frameSize }
+      return frameSize
     }
 
     func windowDidBecomeMain(_ notification: Notification) {
@@ -129,7 +120,10 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     private func minimumContentSize(for contentSize: CGSize) -> CGSize {
-      let scale = max(minimumEdge / contentSize.width, minimumEdge / contentSize.height, 1)
+      // Minimum content size keeps the smaller edge at least `minimumEdge`,
+      // preserving aspect ratio. Do not clamp the scale to 1; the minimum may
+      // be smaller than the current content size for large media.
+      let scale = max(minimumEdge / contentSize.width, minimumEdge / contentSize.height)
       return CGSize(width: contentSize.width * scale, height: contentSize.height * scale)
     }
   }
