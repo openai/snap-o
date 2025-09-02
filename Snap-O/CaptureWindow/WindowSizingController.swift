@@ -85,12 +85,15 @@ struct WindowSizingController: NSViewRepresentable {
     // MARK: NSWindowDelegate
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-      // Avoid conflicting with AppKit's built-in handling of aspect ratio and
-      // minimum sizing driven by `contentAspectRatio` and `contentMinSize`.
-      // Returning the proposed size prevents visual jumping during drags.
+      // Maintain aspect based on the actual layout area (contentLayoutRect),
+      // which excludes the titlebar/toolbar. Compute height from width so the
+      // visible content keeps the intended aspect without letterboxing.
       let titlebar = titlebarHeight(for: sender)
-      if frameSize.height - titlebar <= 0 { return frameSize }
-      return frameSize
+      let aspect = max(currentAspect, 0.0001)
+      let newHeight = titlebar + (frameSize.width / aspect)
+      // Respect minimums driven by contentMinSize via AppKit; we simply shape
+      // the proposed size to the correct relationship here.
+      return NSSize(width: frameSize.width, height: newHeight)
     }
 
     func windowDidBecomeMain(_ notification: Notification) {
@@ -117,7 +120,8 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     /// Build a window frame for a given content size, preserving origin and
-    /// adding the titlebar height to the content height.
+    /// matching the window's contentLayoutRect so the visible area (excluding
+    /// titlebar/toolbar) equals `contentSize`.
     private func frameFor(window: NSWindow, contentSize: CGSize) -> NSRect {
       let titlebar = titlebarHeight(for: window)
       return NSRect(
