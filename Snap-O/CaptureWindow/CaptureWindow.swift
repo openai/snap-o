@@ -4,7 +4,6 @@ struct CaptureWindow: View {
   let services: AppServices
 
   @State private var controller: CaptureController
-  @State private var windowTitle: String = "Snap-O"
 
   init(services: AppServices) {
     self.services = services
@@ -30,17 +29,19 @@ struct CaptureWindow: View {
     }
     .animation(.snappy(duration: 0.25), value: controller.currentMedia != nil)
     .background(
-      WindowSizingController(currentMedia: controller.currentMedia)
-        .frame(width: 0, height: 0)
+      ZStack {
+        WindowSizingController(currentMedia: controller.currentMedia)
+          .frame(width: 0, height: 0)
+        WindowTitleVisibilityController()
+          .frame(width: 0, height: 0)
+      }
     )
     .onOpenURL { controller.handle(url: $0) }
     .onAppear { controller.onDevicesChanged(deviceStore.devices) }
     .onChange(of: deviceStore.devices) { _, devices in
       controller.onDevicesChanged(devices)
-      updateTitle(controller.devices.currentDevice)
     }
     .onChange(of: controller.devices.selectedID) { _, newID in
-      updateTitle(controller.devices.currentDevice)
       if let id = newID {
         Task { await controller.refreshPreview(for: id) }
       }
@@ -49,17 +50,14 @@ struct CaptureWindow: View {
       Task { await controller.applyShowTouchesSetting(newValue) }
     }
     .task {
-      updateTitle(controller.devices.currentDevice)
       if let id = controller.devices.selectedID {
         await controller.refreshPreview(for: id)
       }
     }
-    .navigationTitle(windowTitle)
     .focusedSceneValue(\.captureController, controller)
-    .toolbar { CaptureToolbar(controller: controller) }
-  }
-
-  private func updateTitle(_ device: Device?) {
-    windowTitle = device?.displayTitle ?? "Snap-O"
+    .toolbar {
+      TitleDevicePickerToolbar(controller: controller)
+      CaptureToolbar(controller: controller)
+    }
   }
 }
