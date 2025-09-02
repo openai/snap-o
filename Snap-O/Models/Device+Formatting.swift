@@ -1,11 +1,15 @@
 import Foundation
 
 extension Device {
-  var readableTitle: String {
-    if androidVersion != "?" {
-      "\(model) • Android \(androidVersion)"
-    } else {
-      "\(model) • \(id)"
+  // Primary display name prefers vendor model when available.
+  var displayTitle: String {
+    // Prefer emulator AVD name when available
+    if let avdName, !avdName.isEmpty {
+      return avdName
     }
+    if let vendorModel, !vendorModel.isEmpty {
+      return vendorModel
+    }
+    return model
   }
 }
