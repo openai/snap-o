@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct CaptureWindowKey: FocusedValueKey {
-  typealias Value = CaptureWindowCoordinator
+  typealias Value = CaptureController
 }
 
 extension FocusedValues {
-  var captureWindow: CaptureWindowCoordinator? {
+  var captureWindow: CaptureController? {
     get { self[CaptureWindowKey.self] }
     set { self[CaptureWindowKey.self] = newValue }
   }

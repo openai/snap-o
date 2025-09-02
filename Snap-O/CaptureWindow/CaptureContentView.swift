@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CaptureContentView: View {
-  let coordinator: CaptureWindowCoordinator
+  let controller: CaptureController
   let deviceStore: DeviceStore
 
   @State private var windowTitle: String = "Snap-O"
@@ -10,45 +10,45 @@ struct CaptureContentView: View {
     ZStack {
       Color.black.ignoresSafeArea()
 
-      if let media = coordinator.captureVM.currentMedia {
-        MediaDisplayView(media: media, captureVM: coordinator.captureVM)
+      if let media = controller.currentMedia {
+        MediaDisplayView(media: media, controller: controller)
           .transition(
             media.isLivePreview
               ? AnyTransition.opacity
               : AnyTransition.scale(scale: 0.8).combined(with: .opacity)
           )
       } else {
-        IdleOverlayView(captureVM: coordinator.captureVM, hasDevices: !coordinator.devices.available.isEmpty)
+        IdleOverlayView(controller: controller, hasDevices: !controller.devices.available.isEmpty)
       }
     }
-    .animation(.snappy(duration: 0.25), value: coordinator.captureVM.currentMedia != nil)
+    .animation(.snappy(duration: 0.25), value: controller.currentMedia != nil)
     .background(
-      WindowSizingController(currentMedia: coordinator.captureVM.currentMedia)
+      WindowSizingController(currentMedia: controller.currentMedia)
         .frame(width: 0, height: 0)
     )
     .onOpenURL {
-      coordinator.handle(url: $0)
+      controller.handle(url: $0)
     }
     .onAppear {
-      coordinator.onDevicesChanged(deviceStore.devices)
+      controller.onDevicesChanged(deviceStore.devices)
     }
     .onChange(of: deviceStore.devices) { _, devices in
-      coordinator.onDevicesChanged(devices)
-      updateTitle(coordinator.devices.currentDevice)
+      controller.onDevicesChanged(devices)
+      updateTitle(controller.devices.currentDevice)
     }
-    .onChange(of: coordinator.devices.selectedID) { _, newID in
-      updateTitle(coordinator.devices.currentDevice)
+    .onChange(of: controller.devices.selectedID) { _, newID in
+      updateTitle(controller.devices.currentDevice)
       if let id = newID {
-        Task { await coordinator.captureVM.refreshPreview(for: id) }
+        Task { await controller.refreshPreview(for: id) }
       }
     }
-    .onChange(of: coordinator.showTouchesDuringCapture) { _, newValue in
-      Task { await coordinator.captureVM.applyShowTouchesSetting(newValue) }
+    .onChange(of: controller.showTouchesDuringCapture) { _, newValue in
+      Task { await controller.applyShowTouchesSetting(newValue) }
     }
     .task {
-      updateTitle(coordinator.devices.currentDevice)
-      if let id = coordinator.devices.selectedID {
-        await coordinator.captureVM.refreshPreview(for: id)
+      updateTitle(controller.devices.currentDevice)
+      if let id = controller.devices.selectedID {
+        await controller.refreshPreview(for: id)
       }
     }
     .navigationTitle(windowTitle) // works when embedded; for window title see below.

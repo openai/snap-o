@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MediaDisplayView: View {
   let media: Media
-  let captureVM: CaptureViewModel
+  let controller: CaptureController
 
   var body: some View {
     Group {
@@ -25,13 +25,13 @@ struct MediaDisplayView: View {
         }
         .onDrag { dragItemProvider(kind: .video) }
       case .livePreview:
-        LivePreviewView(captureVM: captureVM)
+        LivePreviewView(controller: controller)
       }
     }
   }
 
   private func dragItemProvider(kind: MediaSaveKind) -> NSItemProvider {
-    if let url = captureVM.makeTempDragFile(kind: kind) {
+    if let url = controller.makeTempDragFile(kind: kind) {
       NSItemProvider(object: url as NSURL)
     } else {
       NSItemProvider()

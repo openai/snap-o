@@ -3,31 +3,31 @@ import SwiftUI
 struct CaptureWindow: View {
   let services: AppServices
 
-  @State private var coordinator: CaptureWindowCoordinator
+  @State private var controller: CaptureController
 
   init(services: AppServices) {
     self.services = services
-    _coordinator = State(initialValue: CaptureWindowCoordinator(services: services))
+    _controller = State(initialValue: CaptureController(services: services))
   }
 
   var body: some View {
-    CaptureContentView(coordinator: coordinator, deviceStore: services.deviceService.store)
-      .focusedSceneValue(\.captureWindow, coordinator)
+    CaptureContentView(controller: controller, deviceStore: services.deviceService.store)
+      .focusedSceneValue(\.captureWindow, controller)
       .toolbar {
         ToolbarItemGroup(placement: .primaryAction) {
           Button {
-            Task { await coordinator.refreshPreview() }
+            Task { await controller.refreshPreview() }
           } label: {
             Label("New Screenshot", systemImage: "camera")
               .labelStyle(.iconOnly)
           }
           .help("New Screenshot (⌘R)")
-          .disabled(coordinator.canCapture != true)
+          .disabled(controller.canCapture != true)
           .keyboardShortcut("r", modifiers: [.command])
 
-          if coordinator.captureVM.isRecording {
+          if controller.isRecording {
             Button {
-              Task { await coordinator.stopRecording() }
+              Task { await controller.stopRecording() }
             } label: {
               Label("Stop", systemImage: "stop.fill")
                 .fontWeight(.semibold)
@@ -41,20 +41,20 @@ struct CaptureWindow: View {
             .keyboardShortcut(.escape, modifiers: [])
           } else {
             Button {
-              Task { await coordinator.startRecording() }
+              Task { await controller.startRecording() }
             } label: {
               Label("Record", systemImage: "record.circle")
             }
             .help("Start Recording (⌘⇧R)")
             .keyboardShortcut("r", modifiers: [.command, .shift])
-            .disabled(coordinator.canStartRecordingNow != true)
+            .disabled(controller.canStartRecordingNow != true)
           }
 
           ToolbarDivider()
 
-          if coordinator.captureVM.currentMedia?.isLivePreview == true {
+          if controller.currentMedia?.isLivePreview == true {
             Button {
-              Task { await coordinator.stopLivePreview(withRefresh: true) }
+              Task { await controller.stopLivePreview(withRefresh: true) }
             } label: {
               Label("Live", systemImage: "pause.fill")
                 .fontWeight(.semibold)
@@ -68,13 +68,13 @@ struct CaptureWindow: View {
             .keyboardShortcut(.escape, modifiers: [])
           } else {
             Button {
-              Task { await coordinator.startLivePreview() }
+              Task { await controller.startLivePreview() }
             } label: {
               Label("Live", systemImage: "play.circle")
             }
             .help("Live Preview (⌘⇧L)")
             .keyboardShortcut("l", modifiers: [.command, .shift])
-            .disabled(coordinator.canStartLivePreviewNow != true)
+            .disabled(controller.canStartLivePreviewNow != true)
           }
         }
       }
