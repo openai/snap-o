@@ -60,6 +60,6 @@ struct CaptureWindow: View {
   }
 
   private func updateTitle(_ device: Device?) {
-    windowTitle = device?.readableTitle ?? "Snap-O"
+    windowTitle = device?.displayTitle ?? "Snap-O"
   }
 }

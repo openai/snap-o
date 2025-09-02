@@ -149,7 +149,14 @@ actor DeviceTracker {
       }
 
       let info = await deviceInfo(for: id, fallbackModel: modelFromList)
-      results.append(Device(id: id, model: info.model, androidVersion: info.version))
+      results.append(Device(
+        id: id,
+        model: info.model,
+        androidVersion: info.version,
+        vendorModel: info.vendorModel,
+        manufacturer: info.manufacturer,
+        avdName: info.avdName
+      ))
     }
 
     return results
@@ -167,7 +174,34 @@ actor DeviceTracker {
 
     async let versionTask: String = await (try? adbClient.getProp(deviceID: id, key: "ro.build.version.release")) ?? "Unknown API"
 
-    let info = await DeviceInfo(model: modelTask, version: versionTask)
+    // Prefer vendor model/manufacturer when available, with sensible fallbacks.
+    async let vendorModelTask: String? = {
+      let v = await (try? adbClient.getProp(deviceID: id, key: "ro.product.vendor.model"))
+      let trimmed = v?.trimmingCharacters(in: .whitespacesAndNewlines)
+      return (trimmed?.isEmpty == false) ? trimmed : nil
+    }()
+    async let manufacturerTask: String? = {
+      // Prefer vendor.manufacturer, fall back to product.manufacturer.
+      let vendor = await (try? adbClient.getProp(deviceID: id, key: "ro.product.vendor.manufacturer"))?.trimmingCharacters(in: .whitespacesAndNewlines)
+      if let vendor, !vendor.isEmpty { return vendor }
+      let prod = await (try? adbClient.getProp(deviceID: id, key: "ro.product.manufacturer"))?.trimmingCharacters(in: .whitespacesAndNewlines)
+      return (prod?.isEmpty == false) ? prod : nil
+    }()
+
+    // Emulator AVD name (underscores replaced with spaces)
+    async let avdNameTask: String? = {
+      let raw = await (try? adbClient.getProp(deviceID: id, key: "ro.boot.qemu.avd_name"))?.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard let raw, !raw.isEmpty else { return nil }
+      return raw.replacingOccurrences(of: "_", with: " ")
+    }()
+
+    let info = await DeviceInfo(
+      model: modelTask,
+      version: versionTask,
+      vendorModel: vendorModelTask,
+      manufacturer: manufacturerTask,
+      avdName: avdNameTask
+    )
     infoCache[id] = info
     return info
   }
@@ -177,6 +211,9 @@ actor DeviceTracker {
   private struct DeviceInfo {
     let model: String
     let version: String
+    let vendorModel: String?
+    let manufacturer: String?
+    let avdName: String?
   }
 
   /// Parses the output stream from `adb track-devices -l`. The stream begins
