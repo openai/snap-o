@@ -1,27 +1,50 @@
 import AppKit
 import SwiftUI
 
-@MainActor
-final class ADBService {
-  let client: ADBClient
+actor ADBService {
+  private var adbURL: URL?
+  private var configurationWaiters: [CheckedContinuation<Void, Never>] = []
 
   init(defaultURL: URL? = ADBPathManager.lastKnownADBURL()) {
-    client = ADBClient(adbURL: defaultURL)
+    adbURL = defaultURL
   }
 
+  // Configuration/UI
   func ensureConfigured() async {
-    if await client.currentURL() == nil {
+    if adbURL == nil {
       await promptForPath()
-      await client.awaitConfigured()
+      await awaitConfigured()
     }
   }
 
   func promptForPath() async {
     let mgr = ADBPathManager()
-    await MainActor.run {
-      mgr.promptForADBPath()
-    }
+    await MainActor.run { mgr.promptForADBPath() }
     let chosen = ADBPathManager.lastKnownADBURL()
-    await client.setURL(chosen)
+    setURL(chosen)
+  }
+
+  // State API merged from previous client
+  func setURL(_ newURL: URL?) {
+    adbURL = newURL
+    if let url = newURL, FileManager.default.fileExists(atPath: url.path) {
+      let waiters = configurationWaiters
+      configurationWaiters.removeAll()
+      for w in waiters { w.resume() }
+    }
+  }
+
+  func currentURL() -> URL? { adbURL }
+
+  func awaitConfigured() async {
+    if let url = adbURL, FileManager.default.fileExists(atPath: url.path) { return }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      configurationWaiters.append(continuation)
+    }
+  }
+
+  func exec() throws -> ADBExec {
+    guard let url = adbURL else { throw ADBError.adbNotFound }
+    return ADBExec(url: url)
   }
 }

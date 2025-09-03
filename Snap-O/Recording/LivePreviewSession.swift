@@ -20,11 +20,12 @@ final class LivePreviewSession {
   private var readyResult: Media?
   private var stopResult: Error??
 
-  init(deviceID: String, adb: ADBClient) async throws {
+  init(deviceID: String, adb: ADBService) async throws {
     self.deviceID = deviceID
 
-    densityScale = try await adb.screenDensityScale(deviceID: deviceID)
-    screenStream = try await adb.startScreenStream(deviceID: deviceID)
+    let exec = try await adb.exec()
+    densityScale = try await exec.screenDensityScale(deviceID: deviceID)
+    screenStream = try await exec.startScreenStream(deviceID: deviceID)
 
     setupDecoder()
     startStreamTask()

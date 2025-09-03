@@ -8,7 +8,7 @@ final class DeviceService {
   private var started = false
 
   init(adbService: ADBService) {
-    tracker = DeviceTracker(adbClient: adbService.client)
+    tracker = DeviceTracker(adbService: adbService)
     store = DeviceStore(tracker: tracker)
   }
 

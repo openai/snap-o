@@ -7,7 +7,7 @@ private let log = SnapOLog.recording
 @Observable
 final class CaptureController {
   private let fileStore: FileStore
-  private let adb: ADBClient
+  private let adb: ADBService
   let settings: AppSettings
   private let captureService: CaptureService
 
@@ -75,7 +75,7 @@ final class CaptureController {
 
   init(services: AppServices) {
     settings = services.settings
-    adb = services.adbService.client
+    adb = services.adbService
     fileStore = services.fileStore
     captureService = services.captureService
   }
@@ -266,7 +266,7 @@ final class CaptureController {
     guard let original else { return }
 
     do {
-      try await adb.setShowTouches(deviceID: deviceID, enabled: original)
+      try await adb.exec().setShowTouches(deviceID: deviceID, enabled: original)
     } catch {
       log.error("Failed to restore show touches: \(error.localizedDescription)")
     }
@@ -275,7 +275,7 @@ final class CaptureController {
   private func updateShowTouches(for deviceID: String, enabled: Bool? = nil) async {
     let value = enabled ?? settings.showTouchesDuringCapture
     do {
-      try await adb.setShowTouches(deviceID: deviceID, enabled: value)
+      try await adb.exec().setShowTouches(deviceID: deviceID, enabled: value)
     } catch {
       log.error("Failed to set show touches: \(error.localizedDescription)")
     }
@@ -283,7 +283,7 @@ final class CaptureController {
 
   private func storeOriginalShowTouches(for deviceID: String) async {
     do {
-      showTouchesOriginalValue = try await adb.getShowTouches(deviceID: deviceID)
+      showTouchesOriginalValue = try await adb.exec().getShowTouches(deviceID: deviceID)
     } catch {
       showTouchesOriginalValue = nil
       log.error("Failed to query show_touches: \(error.localizedDescription)")

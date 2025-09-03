@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Places a compact, custom title on the leading side with a chevron-only
 /// button to switch devices via a popover. The native window title is hidden
@@ -64,7 +64,7 @@ private struct DevicePickerList: View {
   var body: some View {
     let devices = controller.devices.available
     let currentID = controller.devices.selectedID
-    let currentIndex = devices.firstIndex(where: { $0.id == currentID })
+    let currentIndex = devices.firstIndex { $0.id == currentID }
 
     return VStack(alignment: .leading, spacing: 4) {
       if devices.isEmpty {
@@ -74,8 +74,8 @@ private struct DevicePickerList: View {
       } else {
         ForEach(Array(devices.enumerated()), id: \.element.id) { index, device in
           let isSelected = (device.id == currentID)
-          let showUpHint = (currentIndex != nil && index == currentIndex! - 1)
-          let showDownHint = (currentIndex != nil && index == currentIndex! + 1)
+          let showUpHint = currentIndex.map { index == $0 - 1 } ?? false
+          let showDownHint = currentIndex.map { index == $0 + 1 } ?? false
 
           Button {
             controller.devices.selectedID = device.id
@@ -112,4 +112,3 @@ private struct DevicePickerList: View {
     }
   }
 }
-
