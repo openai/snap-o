@@ -119,54 +119,25 @@ actor DeviceTracker {
       return cached
     }
 
-    // Kick off concurrent lookups
-    async let modelRaw: String? = try? await exec.getProp(deviceID: id, key: "ro.product.model")
-    async let versionRaw: String? = try? await exec.getProp(deviceID: id, key: "ro.build.version.release")
-    async let vendorModelRaw: String? = try? await exec.getProp(deviceID: id, key: "ro.product.vendor.model")
-    async let vendorManufacturerRaw: String? = try? await exec.getProp(deviceID: id, key: "ro.product.vendor.manufacturer")
-    async let productManufacturerRaw: String? = try? await exec.getProp(deviceID: id, key: "ro.product.manufacturer")
-    async let avdNameRaw: String? = try? await exec.getProp(deviceID: id, key: "ro.boot.qemu.avd_name")
+    // Single getprop dump and extract the properties we care about
+    let props = await (try? exec.getProperties(deviceID: id, prefix: "ro.")) ?? [:]
 
-    // Resolve values with fallbacks
-    let modelRawVal = await modelRaw
-    let versionRawVal = await versionRaw
-    let vendorModelRawVal = await vendorModelRaw
-    let vendorManufacturerRawVal = await vendorManufacturerRaw
-    let productManufacturerRawVal = await productManufacturerRaw
-    let avdNameRawVal = await avdNameRaw
-
-    let modelValue: String = {
-      if let m = fallbackModel { return m }
-      let trimmed = modelRawVal?.trimmingCharacters(in: .whitespacesAndNewlines)
-      return trimmed ?? "Unknown Model"
-    }()
-
-    let versionValue: String = versionRawVal?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Unknown API"
-
-    let vendorModelValue: String? = {
-      let trimmed = vendorModelRawVal?.trimmingCharacters(in: .whitespacesAndNewlines)
-      return (trimmed?.isEmpty == false) ? trimmed : nil
-    }()
-
-    let manufacturerValue: String? = {
-      let vendor = vendorManufacturerRawVal?.trimmingCharacters(in: .whitespacesAndNewlines)
-      if let vendor, !vendor.isEmpty { return vendor }
-      let prod = productManufacturerRawVal?.trimmingCharacters(in: .whitespacesAndNewlines)
-      return (prod?.isEmpty == false) ? prod : nil
-    }()
-
-    let avdNameValue: String? = {
-      let raw = avdNameRawVal?.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard let raw, !raw.isEmpty else { return nil }
-      return raw.replacingOccurrences(of: "_", with: " ")
-    }()
+    let model = fallbackModel
+      ?? cleanProp("ro.product.model", in: props)
+      ?? "Unknown Model"
+    let version = cleanProp("ro.build.version.release", in: props) ?? "Unknown API"
+    let vendorModel = cleanProp("ro.product.vendor.model", in: props)
+    let manufacturer = cleanProp("ro.product.vendor.manufacturer", in: props)
+      ?? cleanProp("ro.product.manufacturer", in: props)
+    let avdName = cleanProp("ro.boot.qemu.avd_name", in: props)
+      .map { $0.replacingOccurrences(of: "_", with: " ") }
 
     let info = DeviceInfo(
-      model: modelValue,
-      version: versionValue,
-      vendorModel: vendorModelValue,
-      manufacturer: manufacturerValue,
-      avdName: avdNameValue
+      model: model,
+      version: version,
+      vendorModel: vendorModel,
+      manufacturer: manufacturer,
+      avdName: avdName
     )
     infoCache[id] = info
     return info
@@ -180,5 +151,12 @@ actor DeviceTracker {
     let vendorModel: String?
     let manufacturer: String?
     let avdName: String?
+  }
+
+  // MARK: - Property helpers
+
+  private func cleanProp(_ key: String, in props: [String: String]) -> String? {
+    guard let raw = props[key]?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+    return raw.isEmpty ? nil : raw
   }
 }

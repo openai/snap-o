@@ -62,11 +62,10 @@ extension ADBExec {
     timeLimitSeconds: Int = 60 * 60 * 3,
     size: String? = nil
   ) async throws -> RecordingSession {
-    let sizeArg: String?
-    if let provided = size, !provided.isEmpty {
-      sizeArg = provided
+    let sizeArg: String? = if let provided = size, !provided.isEmpty {
+      provided
     } else {
-      sizeArg = try? await getCurrentDisplaySize(deviceID: deviceID)
+      try? await getCurrentDisplaySize(deviceID: deviceID)
     }
     let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
 
@@ -176,6 +175,28 @@ extension ADBExec {
     return String(match.output.size)
   }
 
+  // Fetch and parse all system properties (or only those with a given prefix).
+  // Output lines are like: [ro.product.model]: [Pixel 7]
+  func getProperties(deviceID: String, prefix: String? = nil) async throws -> [String: String] {
+    let output = try await runString(["-s", deviceID, "shell", "getprop"]) // full dump
+    var result: [String: String] = [:]
+    for line in output.split(separator: "\n") {
+      guard let keyStart = line.firstIndex(of: "["),
+            let keyEnd = line[keyStart...].firstIndex(of: "]"),
+            let valStart = line[keyEnd...].firstIndex(of: "["),
+            let valEnd = line[valStart...].firstIndex(of: "]")
+      else { continue }
+      let key = String(line[line.index(after: keyStart) ..< keyEnd])
+      let value = String(line[line.index(after: valStart) ..< valEnd])
+      if let prefix {
+        if key.hasPrefix(prefix) { result[key] = value }
+      } else {
+        result[key] = value
+      }
+    }
+    return result
+  }
+
   func trackDevices() throws -> (handles: ExecProcess, stream: AsyncStream<String>) {
     let handles = try startProcess(["track-devices", "-l"])
 
@@ -198,7 +219,9 @@ extension ADBExec {
         } else {
           Task {
             let payloads = await state.ingest(data)
-            for payload in payloads { continuation.yield(payload) }
+            for payload in payloads {
+              continuation.yield(payload)
+            }
           }
         }
       }

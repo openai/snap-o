@@ -30,7 +30,9 @@ actor ADBService {
     if let url = newURL, FileManager.default.fileExists(atPath: url.path) {
       let waiters = configurationWaiters
       configurationWaiters.removeAll()
-      for w in waiters { w.resume() }
+      for w in waiters {
+        w.resume()
+      }
     }
   }
 
