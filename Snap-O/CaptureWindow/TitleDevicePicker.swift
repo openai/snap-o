@@ -6,10 +6,11 @@ import SwiftUI
 /// elsewhere so this becomes the sole title UI.
 struct TitleDevicePickerToolbar: ToolbarContent {
   let controller: CaptureController
+  let isDeviceListInitialized: Bool
 
   var body: some ToolbarContent {
     ToolbarItem(placement: .navigation) {
-      TitleDeviceTitleView(controller: controller)
+      TitleDeviceTitleView(controller: controller, isDeviceListInitialized: isDeviceListInitialized)
     }
     // Flexible spacer to push primaryAction items to the trailing edge.
     ToolbarItem(placement: .automatic) {
@@ -20,6 +21,7 @@ struct TitleDevicePickerToolbar: ToolbarContent {
 
 private struct TitleDeviceTitleView: View {
   let controller: CaptureController
+  let isDeviceListInitialized: Bool
   @State private var showPicker = false
 
   private var selectedDevice: Device? { controller.devices.currentDevice }
@@ -46,7 +48,11 @@ private struct TitleDeviceTitleView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showPicker, arrowEdge: .bottom) {
-          DevicePickerList(controller: controller, isPresented: $showPicker)
+          DevicePickerList(
+            controller: controller,
+            isPresented: $showPicker,
+            isDeviceListInitialized: isDeviceListInitialized
+          )
             .frame(minWidth: 260)
             .padding(8)
         }
@@ -60,6 +66,7 @@ private struct TitleDeviceTitleView: View {
 private struct DevicePickerList: View {
   let controller: CaptureController
   @Binding var isPresented: Bool
+  let isDeviceListInitialized: Bool
 
   var body: some View {
     let devices = controller.devices.available
@@ -68,9 +75,19 @@ private struct DevicePickerList: View {
 
     return VStack(alignment: .leading, spacing: 4) {
       if devices.isEmpty {
-        Text("No devices found")
-          .foregroundStyle(.secondary)
+        if !isDeviceListInitialized {
+          HStack {
+            ProgressView()
+              .controlSize(.small)
+            Text("Loading devices…")
+              .foregroundStyle(.secondary)
+          }
           .padding(6)
+        } else {
+          Text("Waiting for device...")
+            .foregroundStyle(.secondary)
+            .padding(6)
+        }
       } else {
         ForEach(Array(devices.enumerated()), id: \.element.id) { index, device in
           let isSelected = (device.id == currentID)

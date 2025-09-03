@@ -5,6 +5,7 @@ import SwiftUI
 final class DeviceStore {
   private let tracker: DeviceTracker
   var devices: [Device] = [] // published for all windows
+  var hasReceivedInitialDeviceList: Bool = false
 
   init(tracker: DeviceTracker) {
     self.tracker = tracker
@@ -12,6 +13,7 @@ final class DeviceStore {
 
   func start() async {
     for await list in await tracker.deviceStream() {
+      if !hasReceivedInitialDeviceList { hasReceivedInitialDeviceList = true }
       devices = list
     }
   }

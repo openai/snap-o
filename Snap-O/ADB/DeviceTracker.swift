@@ -9,6 +9,7 @@ actor DeviceTracker {
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
   private var latestDevices: [Device] = []
   private var infoCache: [String: DeviceInfo] = [:]
+  private var hasSeenFirstMessage: Bool = false
 
   init(adbService: ADBService) {
     self.adbService = adbService
@@ -20,7 +21,9 @@ actor DeviceTracker {
     let id = UUID()
     return AsyncStream { continuation in
       continuations[id] = continuation
-      continuation.yield(latestDevices)
+      if self.hasSeenFirstMessage {
+        continuation.yield(self.latestDevices)
+      }
       continuation.onTermination = { [weak self] _ in
         Task { await self?.removeContinuation(id) }
       }
@@ -49,6 +52,7 @@ actor DeviceTracker {
 
   private func broadcast(_ devices: [Device]) {
     latestDevices = devices
+    hasSeenFirstMessage = true
     for continuation in continuations.values {
       continuation.yield(devices)
     }
@@ -65,7 +69,7 @@ actor DeviceTracker {
 
       guard let exec = try? await adbService.exec(),
             let (handles, stream) = try? exec.trackDevices() else {
-        broadcast([])
+        if hasSeenFirstMessage { broadcast([]) }
         await pause()
         continue
       }
@@ -85,7 +89,7 @@ actor DeviceTracker {
       } catch is CancellationError {
         break
       } catch {
-        broadcast([])
+        if hasSeenFirstMessage { broadcast([]) }
         await pause()
       }
     }
