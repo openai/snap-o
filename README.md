@@ -41,7 +41,9 @@ I'm open-sourcing.
 
 ### ADB Selection
 
-The first time you run Snap-O you will need to tell it where `adb` lives. The app is sandboxed so it cannot scan arbitrary folders, and it does not ship with the platform tools.
+The first time you run Snap-O you will need to tell it where `adb` lives. Snap‑O does not ship with the Android Platform Tools and it will prompt you to choose your installed `adb` binary.
+
+Note: Snap‑O uses the macOS Hardened Runtime. It executes the `adb` binary you select; always choose a trusted `adb` from the official Android Platform Tools.
 
 ### Drag and Drop
 

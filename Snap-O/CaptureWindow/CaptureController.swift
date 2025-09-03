@@ -95,7 +95,7 @@ final class CaptureController {
 
   func startRecording() async {
     guard let deviceID = devices.currentDevice?.id else { return }
-    log.info("Start recording for device=\(deviceID, privacy: .public)")
+    log.info("Start recording for device=\(deviceID, privacy: .private)")
     await startRecording(for: deviceID)
   }
 
@@ -118,7 +118,7 @@ final class CaptureController {
 
   func startLivePreview() async {
     guard let deviceID = devices.currentDevice?.id else { return }
-    log.info("Start live preview for device=\(deviceID, privacy: .public)")
+    log.info("Start live preview for device=\(deviceID, privacy: .private)")
     await startLivePreview(for: deviceID)
   }
 
