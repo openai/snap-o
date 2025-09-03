@@ -53,7 +53,8 @@ After capturing a screenshot or screen recording, drag and drop works without sa
 |-------------------------|----------|
 | New screenshot          | `⌘R`     |
 | Start recording         | `⌘⇧R`    |
-| Stop recording          | `⎋`      |
+| Start live preview      | `⌘⇧L`    |
+| Stop recording/ preview | `⎋`      |
 | Save as                 | `⌘S`     |
 | Copy image to clipboard | `⌘C`     |
 | Previous device         | `⌘↑`     |
@@ -79,8 +80,9 @@ Snap-O relies on AVKit because it is the most polished video player to embed on 
 
 ## Alternatives
 
-Snap-O does not stream live video. If you need that, take a look at
-[scrcpy](https://github.com/Genymobile/scrcpy).
+Snap-O doesn't support interactions in its Live Preview mode, yet.
+
+For a more fully-featured live preview, take a look at [scrcpy](https://github.com/Genymobile/scrcpy).
 
 ## Project status
 
