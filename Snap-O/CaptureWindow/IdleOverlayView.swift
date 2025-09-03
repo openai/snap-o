@@ -3,13 +3,14 @@ import SwiftUI
 struct IdleOverlayView: View {
   let controller: CaptureController
   let hasDevices: Bool
+  let isDeviceListInitialized: Bool
 
   var body: some View {
     VStack(spacing: 12) {
       Image("Aperture")
         .resizable()
         .frame(width: 64, height: 64)
-        .infiniteRotate(animated: hasDevices)
+        .infiniteRotate(animated: true)
 
       if controller.isRecording {
         Button {
@@ -43,8 +44,8 @@ struct IdleOverlayView: View {
         }
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if !hasDevices {
-        Text("No device found")
+      } else if !hasDevices, isDeviceListInitialized {
+        Text("Waiting for device…")
           .foregroundStyle(.gray)
           .transition(.opacity)
       }
@@ -63,7 +64,6 @@ struct IdleOverlayView: View {
     )
     .animation(.snappy(duration: 0.25), value: controller.lastError != nil)
     .animation(.snappy(duration: 0.25), value: hasDevices)
+    .animation(.snappy(duration: 0.25), value: isDeviceListInitialized)
   }
 }
-
-// Moved InfiniteRotate to UI/InfiniteRotate.swift

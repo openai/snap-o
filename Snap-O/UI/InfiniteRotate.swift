@@ -23,4 +23,3 @@ extension View {
     modifier(InfiniteRotate(duration: duration, animated: animated))
   }
 }
-

@@ -3,52 +3,54 @@ import CoreGraphics
 import Foundation
 
 actor CaptureService {
-  private let adb: ADBClient
+  private let adb: ADBService
   private let fileStore: FileStore
 
-  init(adb: ADBClient, fileStore: FileStore) {
+  init(adb: ADBService, fileStore: FileStore) {
     self.adb = adb
     self.fileStore = fileStore
   }
 
   func captureScreenshot(for deviceID: String) async throws -> Media {
-    let data = try await adb.screencapPNG(deviceID: deviceID)
-    let capturedAt = Date()
-    let destination = fileStore.makePreviewDestination(deviceID: deviceID, kind: .image)
+    // Build a stateless exec from config for parallel commands.
+    let exec = try await adb.exec()
 
-    async let writeAndSize: CGSize = Task.detached(priority: .utility) {
+    async let dataTask: Data = try await exec.screencapPNG(deviceID: deviceID)
+    async let densityAsync: CGFloat? = await (try? exec.screenDensityScale(deviceID: deviceID))
+    let data = try await dataTask
+    let capturedAt = Date()
+
+    let destination = fileStore.makePreviewDestination(deviceID: deviceID, kind: .image)
+    let writeTask = Task(priority: .utility) { () throws -> CGSize in
       try data.write(to: destination, options: [.atomic])
       return try pngSize(from: data)
-    }.value
-    async let densityTask = adb.screenDensityScale(deviceID: deviceID)
-
-    let size = try await writeAndSize
-    let density: CGFloat?
-    do {
-      density = try await densityTask
-    } catch {
-      density = nil
     }
 
-    return .image(
+    let size = try await writeTask.value
+    let density = await densityAsync
+
+    let media: Media = .image(
       url: destination,
       capturedAt: capturedAt,
       size: size,
       densityScale: density
     )
+    return media
   }
 
   func startRecording(for deviceID: String) async throws -> RecordingSession {
-    try await adb.startScreenrecord(deviceID: deviceID)
+    let exec = try await adb.exec()
+    return try await exec.startScreenrecord(deviceID: deviceID)
   }
 
   func stopRecording(session: RecordingSession, deviceID: String) async throws -> Media? {
     let destination = fileStore.makePreviewDestination(deviceID: deviceID, kind: .video)
-    try await adb.stopScreenrecord(session: session, savingTo: destination)
+    let exec = try await adb.exec()
+    try await exec.stopScreenrecord(session: session, deviceID: deviceID, savingTo: destination)
     let asset = AVURLAsset(url: destination)
 
     let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in
-      try? await adb.screenDensityScale(deviceID: deviceID)
+      try? await adb.exec().screenDensityScale(deviceID: deviceID)
     }
 
     if let media = try await Media.video(

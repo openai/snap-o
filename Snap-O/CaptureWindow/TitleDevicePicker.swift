@@ -1,15 +1,16 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Places a compact, custom title on the leading side with a chevron-only
 /// button to switch devices via a popover. The native window title is hidden
 /// elsewhere so this becomes the sole title UI.
 struct TitleDevicePickerToolbar: ToolbarContent {
   let controller: CaptureController
+  let isDeviceListInitialized: Bool
 
   var body: some ToolbarContent {
     ToolbarItem(placement: .navigation) {
-      TitleDeviceTitleView(controller: controller)
+      TitleDeviceTitleView(controller: controller, isDeviceListInitialized: isDeviceListInitialized)
     }
     // Flexible spacer to push primaryAction items to the trailing edge.
     ToolbarItem(placement: .automatic) {
@@ -20,6 +21,7 @@ struct TitleDevicePickerToolbar: ToolbarContent {
 
 private struct TitleDeviceTitleView: View {
   let controller: CaptureController
+  let isDeviceListInitialized: Bool
   @State private var showPicker = false
 
   private var selectedDevice: Device? { controller.devices.currentDevice }
@@ -46,9 +48,13 @@ private struct TitleDeviceTitleView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showPicker, arrowEdge: .bottom) {
-          DevicePickerList(controller: controller, isPresented: $showPicker)
-            .frame(minWidth: 260)
-            .padding(8)
+          DevicePickerList(
+            controller: controller,
+            isPresented: $showPicker,
+            isDeviceListInitialized: isDeviceListInitialized
+          )
+          .frame(minWidth: 260)
+          .padding(8)
         }
       }
     }
@@ -60,22 +66,33 @@ private struct TitleDeviceTitleView: View {
 private struct DevicePickerList: View {
   let controller: CaptureController
   @Binding var isPresented: Bool
+  let isDeviceListInitialized: Bool
 
   var body: some View {
     let devices = controller.devices.available
     let currentID = controller.devices.selectedID
-    let currentIndex = devices.firstIndex(where: { $0.id == currentID })
+    let currentIndex = devices.firstIndex { $0.id == currentID }
 
     return VStack(alignment: .leading, spacing: 4) {
       if devices.isEmpty {
-        Text("No devices found")
-          .foregroundStyle(.secondary)
+        if !isDeviceListInitialized {
+          HStack {
+            ProgressView()
+              .controlSize(.small)
+            Text("Loading devices…")
+              .foregroundStyle(.secondary)
+          }
           .padding(6)
+        } else {
+          Text("Waiting for device...")
+            .foregroundStyle(.secondary)
+            .padding(6)
+        }
       } else {
         ForEach(Array(devices.enumerated()), id: \.element.id) { index, device in
           let isSelected = (device.id == currentID)
-          let showUpHint = (currentIndex != nil && index == currentIndex! - 1)
-          let showDownHint = (currentIndex != nil && index == currentIndex! + 1)
+          let showUpHint = currentIndex.map { index == $0 - 1 } ?? false
+          let showDownHint = currentIndex.map { index == $0 + 1 } ?? false
 
           Button {
             controller.devices.selectedID = device.id
@@ -112,4 +129,3 @@ private struct DevicePickerList: View {
     }
   }
 }
-
