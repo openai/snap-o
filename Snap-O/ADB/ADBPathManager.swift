@@ -38,7 +38,7 @@ actor ADBPathManager {
       // Ensure the chosen file is exactly the adb executable and is runnable.
       let isAdbName = (url.lastPathComponent == "adb")
       let isExecutable = FileManager.default.isExecutableFile(atPath: url.path)
-      guard isAdbName && isExecutable else {
+      guard isAdbName, isExecutable else {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Invalid Selection"

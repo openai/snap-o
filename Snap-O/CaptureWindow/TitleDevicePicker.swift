@@ -53,8 +53,8 @@ private struct TitleDeviceTitleView: View {
             isPresented: $showPicker,
             isDeviceListInitialized: isDeviceListInitialized
           )
-            .frame(minWidth: 260)
-            .padding(8)
+          .frame(minWidth: 260)
+          .padding(8)
         }
       }
     }

@@ -44,7 +44,7 @@ struct IdleOverlayView: View {
         }
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if !hasDevices && isDeviceListInitialized {
+      } else if !hasDevices, isDeviceListInitialized {
         Text("Waiting for device…")
           .foregroundStyle(.gray)
           .transition(.opacity)
