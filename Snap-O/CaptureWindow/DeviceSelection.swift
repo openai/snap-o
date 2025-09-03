@@ -1,10 +1,10 @@
+import Combine
 import SwiftUI
 
 @MainActor
-@Observable
-final class DeviceSelection {
-  var available: [Device] = []
-  var selectedID: String?
+final class DeviceSelection: ObservableObject {
+  @Published var available: [Device] = []
+  @Published var selectedID: String?
 
   var currentDevice: Device? {
     guard let id = selectedID else { return nil }

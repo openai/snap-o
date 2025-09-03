@@ -5,7 +5,7 @@ struct SnapOCommands: Commands {
   @FocusedValue(\.captureController)
   var controller: CaptureController?
 
-  @Bindable var settings: AppSettings
+  @ObservedObject var settings: AppSettings
   private let adbService: ADBService
 
   init(settings: AppSettings, adbService: ADBService) {

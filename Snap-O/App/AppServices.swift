@@ -1,24 +1,23 @@
 import AppKit
 import SwiftUI
 
-@MainActor
-final class AppServices {
+final actor AppServices {
+  static let shared = AppServices()
+
   let adbService: ADBService
-  let deviceService: DeviceService
+  let deviceTracker: DeviceTracker
   let fileStore: FileStore
-  let settings: AppSettings
   let captureService: CaptureService
 
   init() {
-    settings = AppSettings()
     adbService = ADBService()
-    deviceService = DeviceService(adbService: adbService)
+    deviceTracker = DeviceTracker(adbService: adbService)
     fileStore = FileStore()
     captureService = CaptureService(adb: adbService, fileStore: fileStore)
   }
 
   func start() async {
     await adbService.ensureConfigured()
-    await deviceService.start()
+    deviceTracker.startTracking()
   }
 }

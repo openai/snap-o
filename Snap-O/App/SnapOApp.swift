@@ -6,22 +6,28 @@ struct SnapOApp: App {
   var appDelegate
 
   private let services: AppServices
+  private let settings: AppSettings
 
   init() {
-    let services = AppServices()
+    let services = AppServices.shared
     self.services = services
-    Task { await services.start() }
+
+    settings = AppSettings.shared
+
+    Task.detached(priority: .userInitiated) {
+      await services.start()
+    }
   }
 
   var body: some Scene {
     WindowGroup {
-      CaptureWindow(services: services)
+      CaptureWindow()
     }
     .defaultSize(width: 480, height: 480)
     .windowToolbarStyle(.unified)
     .commands {
       SnapOCommands(
-        settings: services.settings,
+        settings: settings,
         adbService: services.adbService
       )
     }

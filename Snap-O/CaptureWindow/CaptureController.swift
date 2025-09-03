@@ -1,15 +1,17 @@
 import AppKit
+import Combine
 import SwiftUI
 
 private let log = SnapOLog.recording
 
 @MainActor
-@Observable
-final class CaptureController {
+final class CaptureController: ObservableObject {
   private let fileStore: FileStore
   private let adb: ADBService
   let settings: AppSettings
   private let captureService: CaptureService
+  let deviceStore: DeviceStore
+  private var cancellables: Set<AnyCancellable> = []
 
   let devices = DeviceSelection()
 
@@ -24,7 +26,7 @@ final class CaptureController {
     case error(String)
   }
 
-  var mode: Mode = .idle
+  @Published var mode: Mode = .idle
   var pendingCommand: SnapOCommand?
 
   private var showTouchesOriginalValue: Bool?
@@ -73,11 +75,57 @@ final class CaptureController {
     }()
   }
 
-  init(services: AppServices) {
-    settings = services.settings
+  init(services: AppServices, settings: AppSettings) {
+    self.settings = settings
     adb = services.adbService
     fileStore = services.fileStore
     captureService = services.captureService
+    deviceStore = DeviceStore(tracker: services.deviceTracker)
+
+    // Forward nested object changes to this controller so SwiftUI refreshes.
+    deviceStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    devices.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    settings.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+
+    // Centralized reactions
+    deviceStore.$devices
+      .sink { [weak self] devices in
+        self?.onDevicesChanged(devices)
+      }
+      .store(in: &cancellables)
+
+    devices.$selectedID
+      .dropFirst()
+      .compactMap(\.self)
+      .sink { [weak self] id in
+        guard let self else { return }
+        Task { await self.refreshPreview(for: id) }
+      }
+      .store(in: &cancellables)
+
+    settings.$showTouchesDuringCapture
+      .dropFirst()
+      .sink { [weak self] newValue in
+        guard let self else { return }
+        Task { await self.applyShowTouchesSetting(newValue) }
+      }
+      .store(in: &cancellables)
+
+    onDevicesChanged(deviceStore.devices)
+    if let id = devices.selectedID {
+      Task { await refreshPreview(for: id) }
+    }
+    // Device stream started by the view via `.task { await deviceStore.start() }`.
+  }
+
+  convenience init() {
+    self.init(services: AppServices.shared, settings: AppSettings.shared)
   }
 
   func handle(url: URL) {

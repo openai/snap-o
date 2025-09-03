@@ -2,12 +2,19 @@ import Foundation
 
 private let log = SnapOLog.tracker
 
-actor DeviceTracker {
+final class DeviceTracker: @unchecked Sendable {
   private let adbService: ADBService
 
   private var trackTask: Task<Void, Never>?
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
-  private var latestDevices: [Device] = []
+  private let lock = NSLock()
+  private var _latestDevices: [Device] = []
+  var latestDevices: [Device] {
+    lock.lock()
+    defer { lock.unlock() }
+    return _latestDevices
+  }
+
   private var infoCache: [String: DeviceInfo] = [:]
   private var hasSeenFirstMessage: Bool = false
 
@@ -20,22 +27,22 @@ actor DeviceTracker {
   func deviceStream() -> AsyncStream<[Device]> {
     let id = UUID()
     return AsyncStream { continuation in
+      lock.lock()
       continuations[id] = continuation
+      lock.unlock()
       if self.hasSeenFirstMessage {
         continuation.yield(self.latestDevices)
       }
+
       continuation.onTermination = { [weak self] _ in
-        Task { await self?.removeContinuation(id) }
-      }
-      if trackTask == nil {
-        startTracking()
+        self?.removeContinuation(id)
       }
     }
   }
 
   // MARK: - Tracking
 
-  private func startTracking() {
+  func startTracking() {
     trackTask?.cancel()
     trackTask = Task { [weak self] in
       await self?.trackLoop()
@@ -51,9 +58,12 @@ actor DeviceTracker {
   }
 
   private func broadcast(_ devices: [Device]) {
-    latestDevices = devices
+    lock.lock()
+    _latestDevices = devices
     hasSeenFirstMessage = true
-    for continuation in continuations.values {
+    let snapshot = Array(continuations.values)
+    lock.unlock()
+    for continuation in snapshot {
       continuation.yield(devices)
     }
   }
