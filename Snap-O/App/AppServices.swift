@@ -14,7 +14,7 @@ final class AppServices {
     adbService = ADBService()
     deviceService = DeviceService(adbService: adbService)
     fileStore = FileStore()
-    captureService = CaptureService(adb: adbService.client, fileStore: fileStore)
+    captureService = CaptureService(adb: adbService, fileStore: fileStore)
   }
 
   func start() async {

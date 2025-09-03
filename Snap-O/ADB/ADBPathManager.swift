@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 actor ADBPathManager {
   // Static so static funcs can use it without hard-coding the string.
@@ -27,11 +28,24 @@ actor ADBPathManager {
     panel.canChooseFiles = true
     panel.canChooseDirectories = false
     panel.allowsMultipleSelection = false
+    // Only allow Unix executables to be selected in the dialog.
+    panel.allowedContentTypes = [.unixExecutable]
     let defaultPath = FileManager.default.homeDirectoryForCurrentUser
       .appendingPathComponent("Library/Android/sdk/platform-tools", isDirectory: true)
     panel.directoryURL = defaultPath
 
     if panel.runModal() == .OK, let url = panel.url {
+      // Ensure the chosen file is exactly the adb executable and is runnable.
+      let isAdbName = (url.lastPathComponent == "adb")
+      let isExecutable = FileManager.default.isExecutableFile(atPath: url.path)
+      guard isAdbName, isExecutable else {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Invalid Selection"
+        alert.informativeText = "Please select the 'adb' executable from Android Platform Tools."
+        alert.runModal()
+        return
+      }
       do {
         let bookmark = try url.bookmarkData(
           options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],

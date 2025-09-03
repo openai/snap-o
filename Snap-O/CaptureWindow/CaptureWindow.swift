@@ -21,13 +21,17 @@ struct CaptureWindow: View {
           .transition(
             media.isLivePreview
               ? AnyTransition.opacity
-              : AnyTransition.scale(scale: 0.8).combined(with: .opacity)
+              : AnyTransition.scale(scale: 0.9).combined(with: .opacity)
           )
       } else {
-        IdleOverlayView(controller: controller, hasDevices: !controller.devices.available.isEmpty)
+        IdleOverlayView(
+          controller: controller,
+          hasDevices: !controller.devices.available.isEmpty,
+          isDeviceListInitialized: deviceStore.hasReceivedInitialDeviceList
+        )
       }
     }
-    .animation(.snappy(duration: 0.25), value: controller.currentMedia != nil)
+    .animation(.snappy(duration: 0.15), value: controller.currentMedia != nil)
     .background(
       ZStack {
         WindowSizingController(currentMedia: controller.currentMedia)
@@ -56,7 +60,10 @@ struct CaptureWindow: View {
     }
     .focusedSceneValue(\.captureController, controller)
     .toolbar {
-      TitleDevicePickerToolbar(controller: controller)
+      TitleDevicePickerToolbar(
+        controller: controller,
+        isDeviceListInitialized: deviceStore.hasReceivedInitialDeviceList
+      )
       CaptureToolbar(controller: controller)
     }
   }

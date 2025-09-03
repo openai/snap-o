@@ -22,4 +22,3 @@ struct WindowTitleVisibilityController: NSViewRepresentable {
     window.title = ""
   }
 }
-

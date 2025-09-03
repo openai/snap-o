@@ -41,7 +41,9 @@ I'm open-sourcing.
 
 ### ADB Selection
 
-The first time you run Snap-O you will need to tell it where `adb` lives. The app is sandboxed so it cannot scan arbitrary folders, and it does not ship with the platform tools.
+The first time you run Snap-O you will need to tell it where `adb` lives. Snap‑O does not ship with the Android Platform Tools and it will prompt you to choose your installed `adb` binary.
+
+Note: Snap‑O uses the macOS Hardened Runtime. It executes the `adb` binary you select; always choose a trusted `adb` from the official Android Platform Tools.
 
 ### Drag and Drop
 
@@ -53,7 +55,8 @@ After capturing a screenshot or screen recording, drag and drop works without sa
 |-------------------------|----------|
 | New screenshot          | `⌘R`     |
 | Start recording         | `⌘⇧R`    |
-| Stop recording          | `⎋`      |
+| Start live preview      | `⌘⇧L`    |
+| Stop recording/ preview | `⎋`      |
 | Save as                 | `⌘S`     |
 | Copy image to clipboard | `⌘C`     |
 | Previous device         | `⌘↑`     |
@@ -79,8 +82,9 @@ Snap-O relies on AVKit because it is the most polished video player to embed on 
 
 ## Alternatives
 
-Snap-O does not stream live video. If you need that, take a look at
-[scrcpy](https://github.com/Genymobile/scrcpy).
+Snap-O doesn't support interactions in its Live Preview mode, yet.
+
+For a more fully-featured live preview, take a look at [scrcpy](https://github.com/Genymobile/scrcpy).
 
 ## Project status
 

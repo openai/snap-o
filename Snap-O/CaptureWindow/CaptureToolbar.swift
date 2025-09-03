@@ -46,7 +46,6 @@ struct CaptureToolbar: ToolbarContent {
         }
         .help("New Screenshot (⌘R)")
         .disabled(controller.canCapture != true)
-        .keyboardShortcut("r", modifiers: [.command])
 
         Button {
           Task { await controller.startRecording() }
@@ -54,7 +53,6 @@ struct CaptureToolbar: ToolbarContent {
           Label("Record", systemImage: "record.circle")
         }
         .help("Start Recording (⌘⇧R)")
-        .keyboardShortcut("r", modifiers: [.command, .shift])
         .disabled(controller.canStartRecordingNow != true)
 
         ToolbarDivider()
@@ -65,7 +63,6 @@ struct CaptureToolbar: ToolbarContent {
           Label("Live", systemImage: "play.circle")
         }
         .help("Live Preview (⌘⇧L)")
-        .keyboardShortcut("l", modifiers: [.command, .shift])
         .disabled(controller.canStartLivePreviewNow != true)
       }
     }
