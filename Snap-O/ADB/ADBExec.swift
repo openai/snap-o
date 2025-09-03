@@ -197,101 +197,56 @@ extension ADBExec {
     return result
   }
 
-  func trackDevices() throws -> (handles: ExecProcess, stream: AsyncStream<String>) {
+  func trackDevices() throws -> (handles: ExecProcess, stream: AsyncThrowingStream<String, Error>) {
+    enum EOF: Error { case reached }
+
     let handles = try startProcess(["track-devices", "-l"])
+    let fh = handles.stdout.fileHandleForReading
 
-    actor TrackState {
-      var parser = TrackParser()
-      var buffer = Data()
-      func ingest(_ data: Data) -> [String] {
-        buffer.append(data)
-        return parser.drain(&buffer)
+    func readExactly(_ count: Int) throws -> Data {
+      var remaining = count
+      var out = Data()
+      while remaining > 0 {
+        if Task.isCancelled { throw CancellationError() }
+        guard let chunk = try fh.read(upToCount: remaining) else { throw EOF.reached }
+        if chunk.isEmpty { throw EOF.reached }
+        out.append(chunk)
+        remaining -= chunk.count
       }
+      return out
     }
-    let state = TrackState()
 
-    let stream = AsyncStream<String> { continuation in
-      handles.stdout.fileHandleForReading.readabilityHandler = { handle in
-        let data = handle.availableData
-        if data.isEmpty {
-          handle.readabilityHandler = nil
-          continuation.finish()
-        } else {
-          Task {
-            let payloads = await state.ingest(data)
-            for payload in payloads {
-              continuation.yield(payload)
+    let stream = AsyncThrowingStream<String, Error> { continuation in
+      let streamTask = Task(priority: .userInitiated) {
+        defer { continuation.finish() }
+        do {
+          while true {
+            // 4 ASCII hex digits -> payload length
+            let header = try readExactly(4)
+            guard let hex = String(data: header, encoding: .ascii),
+                  let len = Int(hex, radix: 16)
+            else {
+              // realign by skipping one byte and keep going
+              _ = try? fh.read(upToCount: 1)
+              continue
+            }
+
+            let payload = try readExactly(len)
+            if let payloadString = String(data: payload, encoding: .utf8) {
+              continuation.yield(payloadString)
             }
           }
+        } catch is CancellationError {
+          // cancelled by caller; just finish
+        } catch EOF.reached {
+          // clean EOF; finish
+        } catch {
+          continuation.finish(throwing: error)
         }
       }
-      continuation.onTermination = { _ in
-        handles.stdout.fileHandleForReading.readabilityHandler = nil
-      }
+      continuation.onTermination = { _ in streamTask.cancel() }
     }
+
     return (handles, stream)
-  }
-
-  // Parses `adb track-devices -l` output into cohesive payload strings.
-  private struct TrackParser {
-    enum Mode { case lengthPrefixed, lineDelimited }
-
-    private var mode: Mode = .lengthPrefixed
-    private var expectedLength: Int?
-
-    private let lf2 = Data([0x0A, 0x0A])
-    private let crlf2 = Data([0x0D, 0x0A, 0x0D, 0x0A])
-    private let maxBuffer = 1 << 20 // 1MB safety cap
-
-    mutating func drain(_ buffer: inout Data) -> [String] {
-      var payloads: [String] = []
-
-      parseLoop: while true {
-        switch mode {
-        case .lengthPrefixed:
-          if expectedLength == nil {
-            guard buffer.count >= 4 else { break parseLoop }
-            let prefix = buffer.prefix(4)
-            guard let hex = String(data: prefix, encoding: .ascii), let len = Int(hex, radix: 16) else {
-              mode = .lineDelimited
-              expectedLength = nil
-              continue parseLoop
-            }
-            expectedLength = len
-            buffer.removeFirst(4)
-          }
-
-          guard let length = expectedLength, buffer.count >= length else { break parseLoop }
-          let payload = buffer.prefix(length)
-          buffer.removeFirst(length)
-          expectedLength = nil
-          if let string = String(data: payload, encoding: .utf8) {
-            payloads.append("List of devices attached\n" + string + "\n")
-          }
-
-        case .lineDelimited:
-          let lfRange = buffer.range(of: lf2)
-          let crlfRange = buffer.range(of: crlf2)
-          let separatorRange: Range<Data.Index>? = switch (lfRange, crlfRange) {
-          case (let lf?, let crlf?): lf.lowerBound < crlf.lowerBound ? lf : crlf
-          case (let lf?, nil): lf
-          case (nil, let crlf?): crlf
-          default: nil
-          }
-          guard let range = separatorRange else { break parseLoop }
-          let block = buffer.subdata(in: buffer.startIndex ..< range.lowerBound)
-          buffer.removeSubrange(buffer.startIndex ..< range.upperBound)
-          if let string = String(data: block, encoding: .utf8), !string.isEmpty {
-            payloads.append("List of devices attached\n" + string + "\n")
-          }
-        }
-
-        if buffer.count > maxBuffer {
-          buffer.removeAll(keepingCapacity: true)
-        }
-      }
-
-      return payloads
-    }
   }
 }

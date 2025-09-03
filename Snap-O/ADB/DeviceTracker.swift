@@ -55,63 +55,101 @@ actor DeviceTracker {
   }
 
   private func trackLoop() async {
+    @inline(__always)
+    func pause() async {
+      try? await Task.sleep(for: .milliseconds(300))
+    }
+
     while !Task.isCancelled {
       await adbService.awaitConfigured()
-      guard let exec = try? await adbService.exec() else {
+
+      guard let exec = try? await adbService.exec(),
+            let (handles, stream) = try? exec.trackDevices() else {
         broadcast([])
-        try? await Task.sleep(for: .milliseconds(300))
-        continue
-      }
-      guard let (processHandles, stream) = try? exec.trackDevices() else {
-        broadcast([])
-        try? await Task.sleep(for: .milliseconds(300))
+        await pause()
         continue
       }
 
-      for await payload in stream {
-        if Task.isCancelled { break }
-        let devices = await parseDevices(from: payload, exec: exec)
-        broadcast(devices)
+      defer {
+        if handles.process.isRunning { handles.process.terminate() }
+        _ = try? handles.stderr.fileHandleForReading.readToEnd()
       }
 
-      if processHandles.process.isRunning { processHandles.process.terminate() }
-      _ = try? processHandles.stderr.fileHandleForReading.readToEnd()
-
-      try? await Task.sleep(for: .milliseconds(300))
+      do {
+        for try await payload in stream {
+          if Task.isCancelled { break }
+          let devices = await parseDevices(from: payload, exec: exec)
+          broadcast(devices)
+        }
+        await pause()
+      } catch is CancellationError {
+        break
+      } catch {
+        broadcast([])
+        await pause()
+      }
     }
   }
 
   // MARK: - Device parsing
 
   private func parseDevices(from payload: String, exec: ADBExec) async -> [Device] {
-    let lines = payload.split(separator: "\n").dropFirst() // drop header
-    var results: [Device] = []
+    let parsed = payload
+      .split(separator: "\n", omittingEmptySubsequences: true)
+      .compactMap(parseDeviceRow)
 
-    for line in lines {
-      let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !trimmed.isEmpty, !trimmed.contains("offline") else { continue }
-
-      let parts = trimmed.split(separator: " ")
-      guard let serial = parts.first else { continue }
-      let id = String(serial)
-
-      var modelFromList: String?
-      for part in parts where part.hasPrefix("model:") {
-        modelFromList = String(part.dropFirst(6))
+    return await withTaskGroup(of: Device?.self) { group in
+      for (id, fields) in parsed {
+        group.addTask {
+          let info = await self.deviceInfo(for: id, fallbackModel: fields["model"], exec: exec)
+          return Device(
+            id: id,
+            model: info.model,
+            androidVersion: info.version,
+            vendorModel: info.vendorModel,
+            manufacturer: info.manufacturer,
+            avdName: info.avdName
+          )
+        }
       }
+      var out: [Device] = []
+      for await device in group {
+        if let device { out.append(device) }
+      }
+      return out
+    }
+  }
 
-      let info = await deviceInfo(for: id, fallbackModel: modelFromList, exec: exec)
-      results.append(Device(
-        id: id,
-        model: info.model,
-        androidVersion: info.version,
-        vendorModel: info.vendorModel,
-        manufacturer: info.manufacturer,
-        avdName: info.avdName
-      ))
+  /// Parses a single `adb devices -l` row like:
+  ///   `<serial> device product:foo model:Pixel_7 device:panther transport_id:3`
+  /// Returns nil for headers, empties, or unwanted states (offline/unauthorized).
+  private func parseDeviceRow(_ line: Substring) -> (id: String, fields: [String: String])? {
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let parts = trimmed.split(whereSeparator: \.isWhitespace)
+    guard let first = parts.first else { return nil }
+    let id = String(first)
+
+    if parts.count >= 2 {
+      let state = parts[1].lowercased()
+      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") {
+        return nil
+      }
     }
 
-    return results
+    // Parse key:value pairs into a dictionary.
+    var fields: [String: String] = [:]
+    fields.reserveCapacity(6)
+    for part in parts.dropFirst() {
+      if let idx = part.firstIndex(of: ":") {
+        let key = String(part[..<idx])
+        let value = String(part[part.index(after: idx)...])
+        fields[key] = value
+      }
+    }
+
+    return (id, fields)
   }
 
   private func deviceInfo(for id: String, fallbackModel: String?, exec: ADBExec) async -> DeviceInfo {
