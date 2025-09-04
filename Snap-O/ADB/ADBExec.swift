@@ -53,7 +53,7 @@ struct ADBExec {
 
 extension ADBExec {
   func screencapPNG(deviceID: String) async throws -> Data {
-    try await runData(["-s", deviceID, "exec-out", "sh", "-c", "screencap -p 2>/dev/null"])
+    try await runData(["-s", deviceID, "shell", "screencap -p 2>/dev/null"])
   }
 
   func startScreenrecord(
@@ -104,7 +104,7 @@ extension ADBExec {
 
   func startScreenStream(deviceID: String, bitRateMbps: Int = 8, size: String? = nil) async throws -> ScreenStreamSession {
     var args = [
-      "-s", deviceID, "exec-out",
+      "-s", deviceID, "shell",
       "screenrecord",
       "--output-format=h264",
       "--bit-rate", "\(bitRateMbps * 1_000_000)",

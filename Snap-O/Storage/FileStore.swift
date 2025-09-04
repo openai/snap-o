@@ -51,7 +51,9 @@ actor FileStore {
     let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
     var out = String(raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
     out = out.replacingOccurrences(of: "/", with: "-")
-    while out.contains("--") { out = out.replacingOccurrences(of: "--", with: "-") }
+    while out.contains("--") {
+      out = out.replacingOccurrences(of: "--", with: "-")
+    }
     out = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     if out.isEmpty { out = "device" }
     if out.count > 80 { out = String(out.prefix(80)) }

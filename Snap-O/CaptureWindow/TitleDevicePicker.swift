@@ -5,7 +5,7 @@ import SwiftUI
 /// button to switch devices via a popover. The native window title is hidden
 /// elsewhere so this becomes the sole title UI.
 struct TitleDevicePickerToolbar: ToolbarContent {
-  let controller: CaptureController
+  @ObservedObject var controller: CaptureController
   let isDeviceListInitialized: Bool
 
   var body: some ToolbarContent {
@@ -20,7 +20,7 @@ struct TitleDevicePickerToolbar: ToolbarContent {
 }
 
 private struct TitleDeviceTitleView: View {
-  let controller: CaptureController
+  @ObservedObject var controller: CaptureController
   let isDeviceListInitialized: Bool
   @State private var showPicker = false
 
@@ -64,7 +64,7 @@ private struct TitleDeviceTitleView: View {
 }
 
 private struct DevicePickerList: View {
-  let controller: CaptureController
+  @ObservedObject var controller: CaptureController
   @Binding var isPresented: Bool
   let isDeviceListInitialized: Bool
 

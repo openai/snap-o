@@ -27,6 +27,7 @@ final class CaptureController: ObservableObject {
   }
 
   @Published var mode: Mode = .idle
+  @Published private(set) var isStoppingLivePreview: Bool = false
   var pendingCommand: SnapOCommand?
 
   private var showTouchesOriginalValue: Bool?
@@ -73,6 +74,10 @@ final class CaptureController: ObservableObject {
         false
       }
     }()
+  }
+
+  var isLivePreviewActive: Bool {
+    if case .livePreview = mode { true } else { false }
   }
 
   init(services: AppServices, settings: AppSettings) {
@@ -179,6 +184,7 @@ final class CaptureController: ObservableObject {
 
   func stopLivePreview(withRefresh refresh: Bool = false) async {
     guard case .livePreview(let session, _) = mode else { return }
+    isStoppingLivePreview = true
     mode = .loading
 
     let error = await captureService.stopLivePreview(session: session)
@@ -193,6 +199,7 @@ final class CaptureController: ObservableObject {
     if refresh {
       await refreshPreview(for: session.deviceID)
     }
+    isStoppingLivePreview = false
   }
 
   var canStartRecordingNow: Bool { canCapture }

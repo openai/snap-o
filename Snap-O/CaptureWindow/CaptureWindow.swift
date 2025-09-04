@@ -33,7 +33,7 @@ struct CaptureWindow: View {
     )
     .onOpenURL { controller.handle(url: $0) }
     .task { await controller.deviceStore.start() }
-    .focusedSceneValue(\.captureController, controller)
+    .focusedSceneObject(controller)
     .toolbar {
       TitleDevicePickerToolbar(
         controller: controller,
