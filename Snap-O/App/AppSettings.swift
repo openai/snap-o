@@ -1,9 +1,11 @@
+import Combine
 import SwiftUI
 
 @MainActor
-@Observable
-final class AppSettings {
-  var showTouchesDuringCapture: Bool {
+final class AppSettings: ObservableObject {
+  static let shared = AppSettings()
+
+  @Published var showTouchesDuringCapture: Bool {
     didSet {
       UserDefaults.standard.set(showTouchesDuringCapture, forKey: Self.key)
     }

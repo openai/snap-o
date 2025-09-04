@@ -1,11 +1,10 @@
-import Observation
 import SwiftUI
 
 struct SnapOCommands: Commands {
-  @FocusedValue(\.captureController)
+  @FocusedObject
   var controller: CaptureController?
 
-  @Bindable var settings: AppSettings
+  @ObservedObject var settings: AppSettings
   private let adbService: ADBService
 
   init(settings: AppSettings, adbService: ADBService) {
@@ -36,11 +35,12 @@ struct SnapOCommands: Commands {
         .disabled(controller?.canStartRecordingNow != true)
       }
 
-      if controller?.currentMedia?.isLivePreview == true {
+      if (controller?.isLivePreviewActive == true) || (controller?.isStoppingLivePreview == true) {
         Button("Stop Live Preview") {
           Task { await controller?.stopLivePreview(withRefresh: true) }
         }
         .keyboardShortcut(.escape, modifiers: [])
+        .disabled(controller?.isStoppingLivePreview == true)
       } else {
         Button("Start Live Preview") {
           Task { await controller?.startLivePreview() }

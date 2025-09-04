@@ -33,7 +33,7 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if controller.currentMedia?.isLivePreview == true {
+      } else if controller.isLivePreviewActive || controller.isStoppingLivePreview {
         Button {
           Task { await controller.stopLivePreview(withRefresh: true) }
         } label: {
@@ -43,6 +43,7 @@ struct IdleOverlayView: View {
           }
         }
         .keyboardShortcut(.cancelAction)
+        .disabled(controller.isStoppingLivePreview)
         .transition(.opacity)
       } else if !hasDevices, isDeviceListInitialized {
         Text("Waiting for device…")

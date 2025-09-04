@@ -1,16 +1,7 @@
 import SwiftUI
 
 struct CaptureWindow: View {
-  let services: AppServices
-
-  @State private var controller: CaptureController
-
-  init(services: AppServices) {
-    self.services = services
-    _controller = State(initialValue: CaptureController(services: services))
-  }
-
-  private var deviceStore: DeviceStore { services.deviceService.store }
+  @StateObject private var controller = CaptureController()
 
   var body: some View {
     ZStack {
@@ -27,7 +18,7 @@ struct CaptureWindow: View {
         IdleOverlayView(
           controller: controller,
           hasDevices: !controller.devices.available.isEmpty,
-          isDeviceListInitialized: deviceStore.hasReceivedInitialDeviceList
+          isDeviceListInitialized: controller.deviceStore.hasReceivedInitialDeviceList
         )
       }
     }
@@ -41,28 +32,12 @@ struct CaptureWindow: View {
       }
     )
     .onOpenURL { controller.handle(url: $0) }
-    .onAppear { controller.onDevicesChanged(deviceStore.devices) }
-    .onChange(of: deviceStore.devices) { _, devices in
-      controller.onDevicesChanged(devices)
-    }
-    .onChange(of: controller.devices.selectedID) { _, newID in
-      if let id = newID {
-        Task { await controller.refreshPreview(for: id) }
-      }
-    }
-    .onChange(of: controller.showTouchesDuringCapture) { _, newValue in
-      Task { await controller.applyShowTouchesSetting(newValue) }
-    }
-    .task {
-      if let id = controller.devices.selectedID {
-        await controller.refreshPreview(for: id)
-      }
-    }
-    .focusedSceneValue(\.captureController, controller)
+    .task { await controller.deviceStore.start() }
+    .focusedSceneObject(controller)
     .toolbar {
       TitleDevicePickerToolbar(
         controller: controller,
-        isDeviceListInitialized: deviceStore.hasReceivedInitialDeviceList
+        isDeviceListInitialized: controller.deviceStore.hasReceivedInitialDeviceList
       )
       CaptureToolbar(controller: controller)
     }

@@ -1,15 +1,17 @@
 import AppKit
+import Combine
 import SwiftUI
 
 private let log = SnapOLog.recording
 
 @MainActor
-@Observable
-final class CaptureController {
+final class CaptureController: ObservableObject {
   private let fileStore: FileStore
   private let adb: ADBService
   let settings: AppSettings
   private let captureService: CaptureService
+  let deviceStore: DeviceStore
+  private var cancellables: Set<AnyCancellable> = []
 
   let devices = DeviceSelection()
 
@@ -24,7 +26,8 @@ final class CaptureController {
     case error(String)
   }
 
-  var mode: Mode = .idle
+  @Published var mode: Mode = .idle
+  @Published private(set) var isStoppingLivePreview: Bool = false
   var pendingCommand: SnapOCommand?
 
   private var showTouchesOriginalValue: Bool?
@@ -73,11 +76,62 @@ final class CaptureController {
     }()
   }
 
-  init(services: AppServices) {
-    settings = services.settings
+  var isLivePreviewActive: Bool {
+    if case .livePreview = mode { true } else { false }
+  }
+
+  init(services: AppServices, settings: AppSettings) {
+    self.settings = settings
     adb = services.adbService
     fileStore = services.fileStore
     captureService = services.captureService
+    deviceStore = DeviceStore(tracker: services.deviceTracker)
+
+    // Forward nested object changes to this controller so SwiftUI refreshes.
+    deviceStore.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    devices.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+    settings.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
+      .store(in: &cancellables)
+
+    // Centralized reactions
+    deviceStore.$devices
+      .sink { [weak self] devices in
+        self?.onDevicesChanged(devices)
+      }
+      .store(in: &cancellables)
+
+    devices.$selectedID
+      .dropFirst()
+      .compactMap(\.self)
+      .sink { [weak self] id in
+        guard let self else { return }
+        Task { await self.refreshPreview(for: id) }
+      }
+      .store(in: &cancellables)
+
+    settings.$showTouchesDuringCapture
+      .dropFirst()
+      .sink { [weak self] newValue in
+        guard let self else { return }
+        Task { await self.applyShowTouchesSetting(newValue) }
+      }
+      .store(in: &cancellables)
+
+    onDevicesChanged(deviceStore.devices)
+    if let id = devices.selectedID {
+      Perf.step(.appFirstSnapshot, "Starting task to refreshPreview")
+      Task { await refreshPreview(for: id) }
+    }
+    // Device stream started by the view via `.task { await deviceStore.start() }`.
+  }
+
+  convenience init() {
+    self.init(services: AppServices.shared, settings: AppSettings.shared)
   }
 
   func handle(url: URL) {
@@ -101,11 +155,17 @@ final class CaptureController {
 
   func stopRecording() async {
     guard case .recording(let session) = mode else { return }
+    Perf.step(.appFirstSnapshot, "before: Stop Recording → Render")
+    Perf.startIfNeeded(.recordingRender, name: "Stop Recording → Video Rendered")
+    Perf.step(.recordingRender, "begin stopRecording")
     mode = .loading
 
     do {
+      Perf.step(.recordingRender, "invoking captureService.stopRecording")
       if let media = try await captureService.stopRecording(session: session, deviceID: session.deviceID) {
+        Perf.step(.recordingRender, "captureService returned media")
         mode = .showing(media)
+        Perf.step(.recordingRender, "mode set to .showing")
       } else {
         mode = .idle
       }
@@ -124,6 +184,7 @@ final class CaptureController {
 
   func stopLivePreview(withRefresh refresh: Bool = false) async {
     guard case .livePreview(let session, _) = mode else { return }
+    isStoppingLivePreview = true
     mode = .loading
 
     let error = await captureService.stopLivePreview(session: session)
@@ -138,6 +199,7 @@ final class CaptureController {
     if refresh {
       await refreshPreview(for: session.deviceID)
     }
+    isStoppingLivePreview = false
   }
 
   var canStartRecordingNow: Bool { canCapture }
@@ -181,6 +243,9 @@ final class CaptureController {
 
   func refreshPreview(for deviceID: String) async {
     guard canCapture else { return }
+    Perf.step(.appFirstSnapshot, "before: Snapshot Request")
+    Perf.startIfNeeded(.captureRequest, name: "Snapshot Request → Render")
+    Perf.step(.captureRequest, "begin refreshPreview")
 
     if pendingCommand == .record {
       pendingCommand = nil
@@ -193,12 +258,15 @@ final class CaptureController {
       return
     }
     pendingCommand = nil
-
+    Perf.step(.captureRequest, "clearing current media")
     await clearCurrentMedia()
     mode = .loading
     do {
+      Perf.step(.captureRequest, "invoking captureService.captureScreenshot")
       let media = try await captureService.captureScreenshot(for: deviceID)
+      Perf.step(.captureRequest, "captureService returned media")
       mode = .showing(media)
+      Perf.step(.captureRequest, "mode set to .showing")
     } catch {
       mode = .error(error.localizedDescription)
     }
@@ -222,6 +290,9 @@ final class CaptureController {
 
   func startRecording(for deviceID: String) async {
     guard canStartRecordingNow else { return }
+    Perf.step(.appFirstSnapshot, "before: Start Recording")
+    Perf.startIfNeeded(.recordingStart, name: "Start Recording Request → Recording Started")
+    Perf.step(.recordingStart, "begin startRecording")
     await clearCurrentMedia()
     mode = .loading
     do {
@@ -230,6 +301,9 @@ final class CaptureController {
 
       let session = try await captureService.startRecording(for: deviceID)
       mode = .recording(session: session)
+      Perf.step(.recordingStart, "session started; mode .recording")
+      Perf.end(.recordingStart, finalLabel: "recording started")
+      Perf.step(.appFirstSnapshot, "after: Start Recording")
     } catch {
       mode = .error(error.localizedDescription)
       await restoreShowTouchesIfNeeded()
@@ -238,6 +312,9 @@ final class CaptureController {
 
   func startLivePreview(for deviceID: String) async {
     guard canStartLivePreviewNow else { return }
+    Perf.step(.appFirstSnapshot, "before: Start Live Preview")
+    Perf.startIfNeeded(.livePreviewStart, name: "Start Live Preview Request → First Frame")
+    Perf.step(.livePreviewStart, "begin startLivePreview")
     await clearCurrentMedia()
     mode = .loading
 
@@ -248,6 +325,7 @@ final class CaptureController {
       let session = try await captureService.startLivePreview(for: deviceID)
       let media = try await session.waitUntilReady()
       mode = .livePreview(session: session, media: media)
+      Perf.step(.livePreviewStart, "session ready; mode .livePreview")
     } catch {
       mode = .error(error.localizedDescription)
       await restoreShowTouchesIfNeeded()

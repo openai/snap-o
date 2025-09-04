@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct CaptureToolbar: ToolbarContent {
-  let controller: CaptureController
+  @ObservedObject var controller: CaptureController
 
   var body: some ToolbarContent {
     ToolbarItemGroup(placement: .primaryAction) {
       let isRecording = controller.isRecording
-      let isLivePreview = (controller.currentMedia?.isLivePreview == true)
+      let isLivePreview = controller.isLivePreviewActive || controller.isStoppingLivePreview
 
       // Show only the active-stop action when engaged; otherwise show all controls
       if isRecording {
@@ -37,6 +37,7 @@ struct CaptureToolbar: ToolbarContent {
         .buttonStyle(.plain)
         .help("Stop Preview (⎋)")
         .keyboardShortcut(.escape, modifiers: [])
+        .disabled(controller.isStoppingLivePreview)
       } else {
         Button {
           Task { await controller.refreshPreview() }

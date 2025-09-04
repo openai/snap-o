@@ -32,6 +32,7 @@ struct LivePreviewView: NSViewRepresentable {
   final class Coordinator {
     let displayLayer = AVSampleBufferDisplayLayer()
     weak var controller: CaptureController?
+    private var endedLivePreviewTrace = false
 
     init() {
       displayLayer.videoGravity = .resizeAspect
@@ -49,6 +50,12 @@ struct LivePreviewView: NSViewRepresentable {
     func enqueue(_ sample: CMSampleBuffer) {
       displayLayer.sampleBufferRenderer.flush()
       displayLayer.sampleBufferRenderer.enqueue(sample)
+      if !endedLivePreviewTrace {
+        endedLivePreviewTrace = true
+        Perf.step(.appFirstSnapshot, "after: Start Live Preview")
+        Perf.end(.livePreviewStart, finalLabel: "first frame enqueued")
+        Perf.end(.appFirstSnapshot, finalLabel: "first media appeared (live)")
+      }
     }
 
     func attachToSession() {
