@@ -14,6 +14,9 @@ struct SnapOApp: App {
 
     settings = AppSettings.shared
 
+    // Perf: App start → first snapshot rendered (compiled out when disabled)
+    Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
+
     Task.detached(priority: .userInitiated) {
       await services.start()
     }

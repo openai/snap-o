@@ -119,6 +119,7 @@ final class CaptureController: ObservableObject {
 
     onDevicesChanged(deviceStore.devices)
     if let id = devices.selectedID {
+      Perf.step(.appFirstSnapshot, "Starting task to refreshPreview")
       Task { await refreshPreview(for: id) }
     }
     // Device stream started by the view via `.task { await deviceStore.start() }`.
@@ -149,11 +150,17 @@ final class CaptureController: ObservableObject {
 
   func stopRecording() async {
     guard case .recording(let session) = mode else { return }
+    Perf.step(.appFirstSnapshot, "before: Stop Recording → Render")
+    Perf.startIfNeeded(.recordingRender, name: "Stop Recording → Video Rendered")
+    Perf.step(.recordingRender, "begin stopRecording")
     mode = .loading
 
     do {
+      Perf.step(.recordingRender, "invoking captureService.stopRecording")
       if let media = try await captureService.stopRecording(session: session, deviceID: session.deviceID) {
+        Perf.step(.recordingRender, "captureService returned media")
         mode = .showing(media)
+        Perf.step(.recordingRender, "mode set to .showing")
       } else {
         mode = .idle
       }
@@ -229,6 +236,9 @@ final class CaptureController: ObservableObject {
 
   func refreshPreview(for deviceID: String) async {
     guard canCapture else { return }
+    Perf.step(.appFirstSnapshot, "before: Snapshot Request")
+    Perf.startIfNeeded(.captureRequest, name: "Snapshot Request → Render")
+    Perf.step(.captureRequest, "begin refreshPreview")
 
     if pendingCommand == .record {
       pendingCommand = nil
@@ -241,12 +251,15 @@ final class CaptureController: ObservableObject {
       return
     }
     pendingCommand = nil
-
+    Perf.step(.captureRequest, "clearing current media")
     await clearCurrentMedia()
     mode = .loading
     do {
+      Perf.step(.captureRequest, "invoking captureService.captureScreenshot")
       let media = try await captureService.captureScreenshot(for: deviceID)
+      Perf.step(.captureRequest, "captureService returned media")
       mode = .showing(media)
+      Perf.step(.captureRequest, "mode set to .showing")
     } catch {
       mode = .error(error.localizedDescription)
     }
@@ -270,6 +283,9 @@ final class CaptureController: ObservableObject {
 
   func startRecording(for deviceID: String) async {
     guard canStartRecordingNow else { return }
+    Perf.step(.appFirstSnapshot, "before: Start Recording")
+    Perf.startIfNeeded(.recordingStart, name: "Start Recording Request → Recording Started")
+    Perf.step(.recordingStart, "begin startRecording")
     await clearCurrentMedia()
     mode = .loading
     do {
@@ -278,6 +294,9 @@ final class CaptureController: ObservableObject {
 
       let session = try await captureService.startRecording(for: deviceID)
       mode = .recording(session: session)
+      Perf.step(.recordingStart, "session started; mode .recording")
+      Perf.end(.recordingStart, finalLabel: "recording started")
+      Perf.step(.appFirstSnapshot, "after: Start Recording")
     } catch {
       mode = .error(error.localizedDescription)
       await restoreShowTouchesIfNeeded()
@@ -286,6 +305,9 @@ final class CaptureController: ObservableObject {
 
   func startLivePreview(for deviceID: String) async {
     guard canStartLivePreviewNow else { return }
+    Perf.step(.appFirstSnapshot, "before: Start Live Preview")
+    Perf.startIfNeeded(.livePreviewStart, name: "Start Live Preview Request → First Frame")
+    Perf.step(.livePreviewStart, "begin startLivePreview")
     await clearCurrentMedia()
     mode = .loading
 
@@ -296,6 +318,7 @@ final class CaptureController: ObservableObject {
       let session = try await captureService.startLivePreview(for: deviceID)
       let media = try await session.waitUntilReady()
       mode = .livePreview(session: session, media: media)
+      Perf.step(.livePreviewStart, "session ready; mode .livePreview")
     } catch {
       mode = .error(error.localizedDescription)
       await restoreShowTouchesIfNeeded()
