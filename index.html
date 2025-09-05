@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Snap‑O — Android screen capture tool for macOS</title>
+    <meta
+      name="description"
+      content="Snap‑O is a tidy, speedy macOS app for capturing Android screenshots and screen recordings."
+    />
+
+    <!-- Social cards -->
+    <meta property="og:title" content="Snap‑O — Android screen capture tool for macOS" />
+    <meta
+      property="og:description"
+      content="Capture Android screenshots and screen recordings on macOS. Fast drag‑and‑drop. Notarized builds."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="assets/snapo-banner.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Favicon / app icon -->
+    <link rel="icon" type="image/png" href="assets/icon-64.png" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0"
+    />
+
+    <style>
+      :root {
+        color-scheme: light;
+        --brand-1: #194b2b; /* deep green */
+        --brand-2: #59cd76; /* main accent */
+        --brand-3: #a6f8ab; /* light accent */
+        --surface-0: #f5faf7;
+        --surface-1: #ffffff;
+        --surface-2: #eef7f0;
+        --text-1: #082c1b;
+        --text-2: #485f55;
+        --line: color-mix(in srgb, var(--text-2) 20%, transparent);
+        --shadow-1: 0 0 0 1px var(--line), 0 18px 40px -20px hsl(0 0% 0% / 0.45);
+        --rad: 8px;
+        --rad-lg: 8px;
+        --max-width: 1120px;
+
+        --space-2xs: clamp(4px, 0.6vw, 8px);
+        --space-xs: clamp(8px, 0.8vw, 12px);
+        --space-sm: clamp(12px, 1.1vw, 18px);
+        --space-md: clamp(16px, 1.5vw, 24px);
+        --space-lg: clamp(24px, 3vw, 40px);
+        --space-xl: clamp(40px, 5vw, 72px);
+        --space-2xl: clamp(64px, 8vw, 120px);
+        --space-3xl: clamp(96px, 12vw, 180px);
+
+        --ease-spring: cubic-bezier(0.18, 0.89, 0.32, 1.28);
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100svh;
+        font: clamp(16px, 0.9vw + 0.5rem, 18px) / 1.55 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color: var(--text-1);
+        background: var(--surface-0);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .page {
+        position: relative;
+      }
+
+      .container {
+        width: 100%;
+        max-width: var(--max-width);
+        margin-inline: auto;
+        padding-inline: clamp(20px, 4vw, 48px);
+        container-type: inline-size;
+      }
+
+      .hero {
+        position: relative;
+        padding-block: var(--space-3xl) var(--space-lg);
+        overflow: clip;
+        isolation: isolate;
+      }
+
+      .hero::before,
+      .hero::after {
+        content: "";
+        position: absolute;
+        width: clamp(300px, 40vw, 600px);
+        aspect-ratio: 1 / 1;
+        border-radius: 50%;
+        filter: blur(60px);
+        opacity: 0.28;
+        z-index: -1;
+        background: radial-gradient(circle, color-mix(in srgb, var(--brand-2) 32%, white), transparent 70%);
+        transform: translate3d(0, 0, 0);
+        animation: float-one 18s infinite linear alternate;
+      }
+
+      .hero::after {
+        background: radial-gradient(circle, color-mix(in srgb, var(--brand-3) 40%, white), transparent 70%);
+        right: -10%;
+        top: 30%;
+        animation-name: float-two;
+      }
+
+      .hero::before {
+        left: -12%;
+        top: 0%;
+      }
+
+      @keyframes float-one {
+        0% {
+          transform: translate(0, 0) rotate(0deg);
+        }
+        50% {
+          transform: translate(10%, -6%) rotate(180deg);
+        }
+        100% {
+          transform: translate(-2%, 8%) rotate(360deg);
+        }
+      }
+
+      @keyframes float-two {
+        0% {
+          transform: translate(0, 0) rotate(0deg);
+        }
+        50% {
+          transform: translate(-8%, -12%) rotate(-180deg);
+        }
+        100% {
+          transform: translate(6%, 4%) rotate(-360deg);
+        }
+      }
+
+      .hero__container {
+        display: grid;
+        align-items: center;
+        gap: var(--space-xl);
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      }
+
+      @container (max-width: 900px) {
+        .hero__container {
+          grid-template-columns: 1fr;
+          text-align: center;
+        }
+
+        .hero-content {
+          margin-inline: auto;
+        }
+
+        .hero-art {
+          order: -1;
+          max-width: min(480px, 100%);
+          margin-inline: auto;
+        }
+
+        .cta {
+          justify-content: center;
+        }
+      }
+
+      .hero-content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-md);
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-weight: 800;
+        font-size: clamp(2.8rem, 6vw, 4.5rem);
+        letter-spacing: -0.02em;
+      }
+
+      .lead {
+        margin: 0;
+        max-width: 50ch;
+        color: var(--text-2);
+        font-size: 1.05em;
+      }
+
+      .note {
+        margin: 0;
+        color: var(--text-2);
+        font-size: 0.9em;
+      }
+
+      .hero-art {
+        margin: 0;
+        border-radius: var(--rad);
+        overflow: hidden;
+        box-shadow: var(--shadow-1);
+        background: var(--surface-1);
+        border: 1px solid var(--line);
+      }
+
+      .hero-art img {
+        width: 100%;
+        display: block;
+        height: auto;
+      }
+
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+      }
+
+      .btn {
+        --btn-height: 46px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6em;
+        padding-inline: 1.4em;
+        min-height: var(--btn-height);
+        border-radius: calc(var(--btn-height) / 2);
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        text-decoration: none;
+        position: relative;
+        cursor: pointer;
+        transition: transform 0.2s var(--ease-spring), box-shadow 0.3s ease;
+        will-change: transform;
+      }
+
+      .btn .material-symbols-rounded {
+        font-size: 22px;
+      }
+
+      .btn.primary {
+        color: #082c1b;
+        background: linear-gradient(
+          120deg,
+          color-mix(in srgb, var(--brand-2) 85%, white),
+          color-mix(in srgb, var(--brand-3) 90%, white)
+        );
+        background-size: 200% 200%;
+        box-shadow: 0 2px 4px hsl(0 0% 0% / 0.08), 0 18px 36px -20px color-mix(in srgb, var(--brand-2) 40%, black);
+        border: 0;
+        animation: gradient-shift 12s ease-in-out infinite;
+        overflow: hidden;
+      }
+
+      .btn.primary::before {
+        content: "";
+        position: absolute;
+        inset: -2px;
+        border-radius: inherit;
+        background: radial-gradient(circle at 50% 50%, #ffffff 0%, transparent 70%);
+        opacity: 0;
+        transform: scale(0.6);
+        transition: opacity 0.6s var(--ease-spring), transform 0.6s var(--ease-spring);
+        mix-blend-mode: overlay;
+      }
+
+      .btn.primary:hover,
+      .btn.primary:focus-visible {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 28px -12px color-mix(in srgb, var(--brand-1) 60%, black);
+        background-position: 100% 0;
+      }
+
+      .btn.primary:hover::before,
+      .btn.primary:focus-visible::before {
+        opacity: 0.25;
+        transform: scale(1);
+      }
+
+      @keyframes gradient-shift {
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
+      }
+
+      .btn.secondary {
+        background: var(--surface-1);
+        border: 1px solid var(--line);
+        color: var(--text-1);
+        box-shadow: var(--shadow-1);
+      }
+
+      .btn.secondary:hover,
+      .btn.secondary:focus-visible {
+        transform: translateY(-2px);
+        background: color-mix(in srgb, var(--brand-1) 8%, var(--surface-1));
+      }
+
+      .features {
+        padding-block: var(--space-xl);
+      }
+
+      .feature-card {
+        background: var(--surface-1);
+        border-radius: var(--rad-lg);
+        padding: var(--space-lg);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow-1);
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        margin-inline: 0;
+      }
+
+      .feature-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, color-mix(in srgb, var(--brand-3) 24%, white), color-mix(in srgb, var(--brand-2) 18%, white));
+        opacity: 0;
+        transition: opacity 0.35s ease;
+      }
+
+      .feature-card:hover::before {
+        opacity: 0.06;
+      }
+
+      .feature-card h3 {
+        margin: 0;
+        font-weight: 700;
+        font-size: 1.15em;
+      }
+
+      .feature-card p {
+        margin: 0;
+        color: var(--text-2);
+        font-size: 0.95em;
+      }
+
+      .feature-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-md);
+        position: relative;
+      }
+
+      .feature-item {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: var(--space-sm);
+        align-items: start;
+      }
+
+      .feature-item .material-symbols-rounded {
+        font-size: 28px;
+        color: var(--brand-2);
+      }
+
+      .callout {
+        padding-block: var(--space-md) var(--space-3xl);
+      }
+
+      .callout-inner {
+        background: linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--brand-3) 18%, var(--surface-1)),
+          color-mix(in srgb, var(--brand-2) 12%, var(--surface-1))
+        );
+        border-radius: var(--rad-lg);
+        padding: var(--space-lg);
+        box-shadow: var(--shadow-1);
+        border: 1px solid var(--line);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .callout-inner::before {
+        content: "";
+        position: absolute;
+        top: -20%;
+        right: -10%;
+        width: clamp(220px, 30vw, 360px);
+        aspect-ratio: 1 / 1;
+        pointer-events: none;
+        background: radial-gradient(circle, color-mix(in srgb, var(--brand-3) 40%, white), transparent 70%);
+        filter: blur(30px);
+        opacity: 0.25;
+      }
+
+      .callout-text {
+        position: relative;
+        max-width: 60ch;
+      }
+
+      .callout h3 {
+        margin: 0 0 var(--space-xs);
+        font-size: 1.5em;
+      }
+
+      .callout p {
+        margin: 0;
+        color: var(--text-2);
+      }
+
+      .callout .actions {
+        margin-top: var(--space-sm);
+      }
+
+      .text-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
+        font-weight: 600;
+        color: var(--text-1);
+        text-decoration: none;
+        position: relative;
+      }
+
+      .text-link::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: -2px;
+        width: 100%;
+        height: 2px;
+        background: currentColor;
+        transform-origin: left;
+        transform: scaleX(0);
+        transition: transform 0.4s var(--ease-spring);
+      }
+
+      .text-link:hover::after,
+      .text-link:focus-visible::after {
+        transform: scaleX(1);
+      }
+
+      footer {
+        opacity: 0.85;
+        text-align: center;
+        font-size: 0.875rem;
+        padding-block: var(--space-lg) var(--space-md);
+        color: var(--text-2);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+
+        .hero::before,
+        .hero::after,
+        .btn.primary {
+          animation: none;
+        }
+
+        .btn.primary {
+          background-position: 0% 50%;
+        }
+      }
+    </style>
+  </head>
+  <body class="grain">
+    <div class="page">
+      <main aria-labelledby="title">
+        <section class="hero">
+          <div class="container hero__container">
+            <div class="hero-content">
+              <h1 id="title">Snap‑O</h1>
+              <p class="lead">Android screenshots and screen recordings on macOS without the friction.</p>
+              <div class="cta">
+                <a class="btn primary" href="https://github.com/openai/snap-o/releases/latest">
+                  <span class="material-symbols-rounded" aria-hidden="true">download</span>
+                  Download for macOS
+                </a>
+                <a class="btn secondary" href="https://github.com/openai/snap-o">
+                  <span class="material-symbols-rounded" aria-hidden="true">star</span>
+                  Star / Fork on GitHub
+                </a>
+              </div>
+              <p class="note">Requires macOS 15+ and <code>adb</code> from Android Platform Tools.</p>
+            </div>
+            <figure class="hero-art">
+              <img src="assets/snapo-banner.png" alt="Snap‑O — Android screen capture tool for macOS" />
+            </figure>
+          </div>
+        </section>
+
+        <section class="features">
+          <div class="container">
+            <article class="feature-card">
+              <ul class="feature-list">
+                <li class="feature-item">
+                  <span class="material-symbols-rounded" aria-hidden="true">bolt</span>
+                  <div>
+                    <h3>Fast and clean</h3>
+                    <p>Opens with an immediate screenshot, and starts/ends recordings quickly so you stay in the flow.</p>
+                  </div>
+                </li>
+                <li class="feature-item">
+                  <span class="material-symbols-rounded" aria-hidden="true">pan_tool_alt</span>
+                  <div>
+                    <h3>Drag‑and‑drop everything</h3>
+                    <p>Drop screenshots and videos straight into GitHub, Slack, or anywhere—no saving required.</p>
+                  </div>
+                </li>
+                <li class="feature-item">
+                  <span class="material-symbols-rounded" aria-hidden="true">shortcut</span>
+                  <div>
+                    <h3>Trigger from other apps</h3>
+                    <p>Use Android Studio External Tools or your own hotkeys in other apps to control Snap‑O.</p>
+                  </div>
+                </li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="callout">
+          <div class="container">
+            <div class="callout-inner">
+              <div class="callout-text">
+                <h3>Learn more</h3>
+                <p>Read the full README for shortcuts, External Tools setup, and contributor notes.</p>
+                <p class="actions">
+                  <a class="text-link" href="https://github.com/openai/snap-o#readme">
+                    View README on GitHub
+                    <span class="material-symbols-rounded" aria-hidden="true">arrow_right_alt</span>
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <div>© <span id="year"></span> OpenAI • Apache 2.0 • Built for macOS</div>
+      </footer>
+    </div>
+
+    <script>
+      document.getElementById("year").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
