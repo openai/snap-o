@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 struct LivePreviewView: NSViewRepresentable {
-  let controller: CaptureController
+  @ObservedObject var controller: CaptureController
 
   func makeCoordinator() -> Coordinator {
     Coordinator()

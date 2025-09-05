@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MediaDisplayView: View {
   let media: Media
-  let controller: CaptureController
+  @ObservedObject var controller: CaptureController
 
   var body: some View {
     Group {
