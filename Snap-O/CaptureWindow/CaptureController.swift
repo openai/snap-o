@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import SwiftUI
 
 private let log = SnapOLog.recording
 

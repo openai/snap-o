@@ -1,5 +1,4 @@
-import AppKit
-import SwiftUI
+import Foundation
 
 final actor AppServices {
   static let shared = AppServices()

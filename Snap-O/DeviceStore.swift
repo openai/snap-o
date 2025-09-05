@@ -1,5 +1,4 @@
 import Combine
-import SwiftUI
 
 @MainActor
 final class DeviceStore: ObservableObject {

@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 import UniformTypeIdentifiers
 
 actor ADBPathManager {
