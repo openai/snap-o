@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct IdleOverlayView: View {
-  let controller: CaptureController
+  @ObservedObject var controller: CaptureController
   let hasDevices: Bool
   let isDeviceListInitialized: Bool
 
@@ -58,13 +58,28 @@ struct IdleOverlayView: View {
           .transition(.opacity)
       }
     }
-    .animation(.snappy(duration: 0.25), value: controller.isRecording)
-    .animation(
-      .snappy(duration: 0.25),
-      value: controller.currentMedia?.isLivePreview == true
-    )
-    .animation(.snappy(duration: 0.25), value: controller.lastError != nil)
-    .animation(.snappy(duration: 0.25), value: hasDevices)
-    .animation(.snappy(duration: 0.25), value: isDeviceListInitialized)
+    .animation(.snappy(duration: 0.25), value: animationState)
   }
+
+  private var animationState: AnimationState {
+    AnimationState(
+      isRecording: controller.isRecording,
+      isLivePreviewActive: controller.isLivePreviewActive,
+      isStoppingLivePreview: controller.isStoppingLivePreview,
+      isLivePreviewMedia: controller.currentMedia?.isLivePreview == true,
+      hasDevices: hasDevices,
+      isDeviceListInitialized: isDeviceListInitialized,
+      hasError: controller.lastError != nil
+    )
+  }
+}
+
+private struct AnimationState: Equatable {
+  var isRecording: Bool
+  var isLivePreviewActive: Bool
+  var isStoppingLivePreview: Bool
+  var isLivePreviewMedia: Bool
+  var hasDevices: Bool
+  var isDeviceListInitialized: Bool
+  var hasError: Bool
 }
