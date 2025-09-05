@@ -37,7 +37,7 @@ I'm open-sourcing.
 1. Connect an Android device with USB debugging enabled or start an emulator
 2. Launch Snap-O
 3. Enjoy the immediate screenshot
-4. `⌘R` to refresh the screenshot. `⌘⇧R` to start a screen recording.
+4. `⌘R` to refresh the screenshot. `⇧⌘R` to start a screen recording.
 
 ### ADB Selection
 
@@ -54,13 +54,13 @@ After capturing a screenshot or screen recording, drag and drop works without sa
 | Action                  | Shortcut |
 |-------------------------|----------|
 | New screenshot          | `⌘R`     |
-| Start recording         | `⌘⇧R`    |
-| Start live preview      | `⌘⇧L`    |
+| Start recording         | `⇧⌘R`    |
+| Start live preview      | `⇧⌘L`    |
 | Stop recording/ preview | `⎋`      |
 | Save as                 | `⌘S`     |
 | Copy image to clipboard | `⌘C`     |
-| Previous device         | `⌘↑`     |
-| Next device             | `⌘↓`     |
+| Previous device         | `⌘▲`     |
+| Next device             | `⌘▼`     |
 
 ### Android Studio External Tools
 
@@ -72,7 +72,7 @@ Use Android Studio’s External Tools to trigger Snap-O directly from the IDE.
    - Arguments: `snapo://capture`
 3. Repeat to add "Snap-O Recording" with the same Program and the Arguments `snapo://record`.
 4. The new tools appear under `Tools` → `External Tools`.
-5. Assign keymap shortcuts if you like, e.g. `⌘⇧S` to activate a screenshot.
+5. Assign keymap shortcuts if you like, e.g. `⇧⌘S` to activate a screenshot.
 
 Running these tools launches Snap-O (or brings it to the foreground) and immediately starts a capture or recording.
 
