@@ -13,12 +13,12 @@ final class CheckForUpdatesViewModel: ObservableObject {
 }
 
 struct CheckForUpdatesView: View {
-  @ObservedObject private var viewModel: CheckForUpdatesViewModel
+  @StateObject private var viewModel: CheckForUpdatesViewModel
   private let updater: SPUUpdater
 
   init(updater: SPUUpdater) {
+    _viewModel = StateObject(wrappedValue: CheckForUpdatesViewModel(updater: updater))
     self.updater = updater
-    viewModel = CheckForUpdatesViewModel(updater: updater)
   }
 
   var body: some View {
