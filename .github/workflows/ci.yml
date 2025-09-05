@@ -44,8 +44,6 @@ jobs:
 
   swiftformat:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/nicklockwood/swiftformat:0.57.2@sha256:4a2e5729efd304cf7cffa961d3f866df500c1b49fcece8e2643826a1cad790c7
 
     steps:
       - name: Checkout
@@ -53,4 +51,6 @@ jobs:
         with:
           fetch-depth: 1
       - name: Run SwiftFormat (lint mode)
-        run: swiftformat . --lint --config .swiftformat
+        uses: docker://ghcr.io/nicklockwood/swiftformat:0.57.2@sha256:4a2e5729efd304cf7cffa961d3f866df500c1b49fcece8e2643826a1cad790c7
+        with:
+          args: . --lint --config .swiftformat
