@@ -17,7 +17,7 @@ struct CheckForUpdatesView: View {
   private let updater: SPUUpdater
 
   init(updater: SPUUpdater) {
-    self._viewModel = StateObject(wrappedValue: CheckForUpdatesViewModel(updater: updater))
+    _viewModel = StateObject(wrappedValue: CheckForUpdatesViewModel(updater: updater))
     self.updater = updater
   }
 
