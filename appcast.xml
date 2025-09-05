@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Snap‑O Appcast</title>
+    <link>https://github.com/openai/snap-o/releases</link>
+    <description>Software updates for Snap‑O</description>
+
+    <item>
+      <title>Snap‑O 0.5.0</title>
+      <pubDate>Fri, 05 Sep 2025 23:14:10 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
+      <enclosure
+          url="https://github.com/openai/snap-o/releases/download/v0.5.0/Snap-O-v0.5.0.zip"
+          length="4750740"
+          type="application/octet-stream"
+          sparkle:edSignature="/B1dva+5cqOjqrWPO1K6yEh3dcH6Ev1FUYQFtDqbrZmzS/hkQHHe6TFi2OTXF2M2De+dDtfETPGWeK2GKtyCDA==" />
+    </item>
+
+  </channel>
+</rss>
+
