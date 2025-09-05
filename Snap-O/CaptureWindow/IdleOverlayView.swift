@@ -33,18 +33,6 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if controller.isLivePreviewActive || controller.isStoppingLivePreview {
-        Button {
-          Task { await controller.stopLivePreview(withRefresh: true) }
-        } label: {
-          HStack {
-            Text("Stop Live Preview")
-            Text("⎋").tint(.secondary)
-          }
-        }
-        .keyboardShortcut(.cancelAction)
-        .disabled(controller.isStoppingLivePreview)
-        .transition(.opacity)
       } else if !hasDevices, isDeviceListInitialized {
         Text("Waiting for device…")
           .foregroundStyle(.gray)
