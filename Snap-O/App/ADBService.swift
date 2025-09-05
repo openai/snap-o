@@ -1,5 +1,4 @@
-import AppKit
-import SwiftUI
+import Foundation
 
 actor ADBService {
   private var adbURL: URL?
