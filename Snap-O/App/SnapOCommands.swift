@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct SnapOCommands: Commands {
-  @FocusedObject
-  var controller: CaptureController?
+  @FocusedObject var controller: CaptureController?
 
   @ObservedObject var settings: AppSettings
   private let adbService: ADBService

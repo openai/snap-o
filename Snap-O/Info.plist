@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>SUFeedURL</key>
+	<string>https://openai.github.io/snap-o/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>9aHCqS6UAikxHxXKyO+KASCo1EV2LftnhZCRWtxhjUo=</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
