@@ -11,6 +11,7 @@ final class CaptureController: ObservableObject {
   private let captureService: CaptureService
   let deviceStore: DeviceStore
   private var cancellables: Set<AnyCancellable> = []
+  private lazy var pointerInjector = LivePreviewPointerInjector(adb: adb)
 
   let devices = DeviceSelection()
 
@@ -144,6 +145,18 @@ final class CaptureController: ObservableObject {
   func refreshPreview() async {
     guard let deviceID = devices.currentDevice?.id else { return }
     await refreshPreview(for: deviceID)
+  }
+
+  func sendPointerEvent(
+    action: LivePreviewPointerAction,
+    source: LivePreviewPointerSource,
+    location: CGPoint
+  ) {
+    guard case .livePreview(let session, _) = mode else { return }
+    let command = LivePreviewPointerCommand(action: action, source: source, location: location)
+    Task {
+      await pointerInjector.send(event: command, to: session.deviceID)
+    }
   }
 
   func startRecording() async {
