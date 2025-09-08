@@ -124,11 +124,13 @@ struct WindowSizingController: NSViewRepresentable {
     /// titlebar/toolbar) equals `contentSize`.
     private func frameFor(window: NSWindow, contentSize: CGSize) -> NSRect {
       let titlebar = titlebarHeight(for: window)
+      let newHeight = contentSize.height + titlebar
+      let top = window.frame.maxY
       return NSRect(
         x: window.frame.origin.x,
-        y: window.frame.origin.y,
+        y: top - newHeight,
         width: contentSize.width,
-        height: contentSize.height + titlebar
+        height: newHeight
       )
     }
 

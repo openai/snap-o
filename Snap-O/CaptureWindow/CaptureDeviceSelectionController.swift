@@ -1,9 +1,16 @@
 import Combine
 
+enum DeviceTransitionDirection {
+  case up
+  case down
+  case neutral
+}
+
 @MainActor
 final class CaptureDeviceSelectionController: ObservableObject {
   let deviceStore: DeviceStore
   let devices = DeviceSelection()
+  @Published private(set) var transitionDirection: DeviceTransitionDirection = .neutral
   private var shouldPreserveSelection = false
 
   private var cancellables: Set<AnyCancellable> = []
@@ -50,29 +57,27 @@ final class CaptureDeviceSelectionController: ObservableObject {
   }
 
   func selectNextDevice() {
-    if let nextID = deviceID(offsetFromCurrent: 1) {
-      devices.selectedID = nextID
-    }
+    guard let nextID = deviceID(offsetFromCurrent: 1) else { return }
+    setSelectedDevice(id: nextID, direction: .down)
   }
 
   func selectPreviousDevice() {
-    if let previousID = deviceID(offsetFromCurrent: -1) {
-      devices.selectedID = previousID
-    }
+    guard let previousID = deviceID(offsetFromCurrent: -1) else { return }
+    setSelectedDevice(id: previousID, direction: .up)
   }
 
   func selectDevice(withID id: String?) {
-    devices.selectedID = id
+    setSelectedDevice(id: id, direction: .neutral)
   }
 
   func handleDeviceUnavailable(currentDeviceID: String) {
     let available = devices.available
     if let alternative = available.first(where: { $0.id != currentDeviceID }) {
-      devices.selectedID = alternative.id
+      setSelectedDevice(id: alternative.id, direction: .down)
     } else if let fallback = available.first {
-      devices.selectedID = fallback.id
+      setSelectedDevice(id: fallback.id, direction: .down)
     } else {
-      devices.selectedID = nil
+      setSelectedDevice(id: nil, direction: .neutral)
     }
   }
 
@@ -83,7 +88,15 @@ final class CaptureDeviceSelectionController: ObservableObject {
   }
 
   private func onDevicesChanged(_ list: [Device]) {
-    devices.updateDevices(list, preserveSelectedIfMissing: shouldPreserveSelection)
+    let previousSelectedID = devices.selectedID
+    let preserve = shouldPreserveSelection && previousSelectedID != nil
+    devices.updateDevices(list, preserveSelectedIfMissing: preserve)
+
+    if previousSelectedID == nil, devices.selectedID != nil {
+      transitionDirection = .down
+    } else if devices.selectedID == nil {
+      transitionDirection = .neutral
+    }
   }
 
   private func deviceID(offsetFromCurrent offset: Int) -> String? {
@@ -101,5 +114,16 @@ final class CaptureDeviceSelectionController: ObservableObject {
     var newIndex = (currentIndex + offset) % count
     if newIndex < 0 { newIndex += count }
     return available[newIndex].id
+  }
+
+  private func setSelectedDevice(
+    id: String?,
+    direction: DeviceTransitionDirection
+  ) {
+    transitionDirection = direction
+    Task { @MainActor in
+      await Task.yield()
+      devices.selectedID = id
+    }
   }
 }
