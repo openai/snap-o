@@ -51,7 +51,7 @@
         --space-4: clamp(40px, 4vw, 64px);
         --space-5: clamp(64px, 7vw, 96px);
 
-        --title: 48px;
+        --title: 42px;
         --lead: clamp(1.05rem, 1.5vw, 1.2rem);
       }
       * {
@@ -122,11 +122,10 @@
         font-weight: 700;
         text-decoration: none;
         letter-spacing: 0.01em;
-        border: 1px solid var(--line); /* thin line, no heavy shadows */
+        border: 1px solid var(--line);
       }
       .material-symbols-rounded {
         font-family: "Material Symbols Rounded";
-        font-weight: 500;
         font-style: normal;
         font-size: 22px;
         display: inline-flex;
@@ -225,16 +224,16 @@
       .feature {
         display: grid;
         grid-template-columns: auto 1fr;
-        gap: var(--space-2);
         align-items: start;
       }
       .feature .material-symbols-rounded {
         font-size: 28px;
         color: var(--green-1);
+        width: var(--space-4);
       }
 
       .callout {
-        padding: var(--space-3);
+        padding: var(--space-3) var(--space-4);
       }
       .callout h3 {
         margin: 0.1rem 0 0.4rem;
@@ -293,7 +292,7 @@
             <h1>Snap-O</h1>
             <p class="lead">
               Android screenshots and screen recordings on macOS without the
-              friction.
+              friction
             </p>
             <div class="cta">
               <a
@@ -345,7 +344,9 @@
                 <div>
                   <h3 style="margin: 0.1rem 0 0.3rem">Fast and clean</h3>
                   <p style="margin: 0; color: var(--ink-2)">
-                  Opens with an instant screenshot and starts or ends recordings without delay. Frame-by-frame previews make it easy to check your work right away.
+                    Opens with an instant screenshot and starts or ends
+                    recordings without delay. Frame-by-frame previews make it
+                    easy to check your work right away.
                   </p>
                 </div>
               </li>
@@ -360,7 +361,8 @@
                     Drag-and-drop everything
                   </h3>
                   <p style="margin: 0; color: var(--ink-2)">
-                  Share screenshots and videos directly into GitHub, Slack, or any other tool, for easier collaboration.
+                    Share screenshots and videos directly into GitHub, Slack, or
+                    any other tool, for easier collaboration.
                   </p>
                 </div>
               </li>
@@ -375,7 +377,8 @@
                     Trigger from other apps
                   </h3>
                   <p style="margin: 0; color: var(--ink-2)">
-                  Control Snap-O through Android Studio External Tools or your own hotkeys in other apps.
+                    Control Snap-O through Android Studio External Tools or your
+                    own hotkeys in other apps.
                   </p>
                 </div>
               </li>
