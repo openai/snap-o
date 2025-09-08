@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SnapOCommands: Commands {
   @FocusedObject var controller: CaptureController?
+  @FocusedObject var deviceController: CaptureDeviceSelectionController?
 
   @ObservedObject var settings: AppSettings
   private let adbService: ADBService
@@ -87,22 +88,19 @@ struct SnapOCommands: Commands {
     }
     CommandGroup(replacing: .undoRedo) {}
     CommandMenu("Device") {
+      let selectedDeviceID = deviceController?.devices.selectedID
+      let hasAlternativeDevice = deviceController?.hasAlternativeDevice(comparedTo: selectedDeviceID) ?? false
+
       Button("Previous Device") {
-        controller?.selectPreviousDevice()
+        deviceController?.selectPreviousDevice()
       }
       .keyboardShortcut(.upArrow, modifiers: [.command])
-      .disabled(
-        !(controller?.canCapture ?? false) ||
-          (controller?.devices.available.count ?? 0) < 2
-      )
+      .disabled(!hasAlternativeDevice)
       Button("Next Device") {
-        controller?.selectNextDevice()
+        deviceController?.selectNextDevice()
       }
       .keyboardShortcut(.downArrow, modifiers: [.command])
-      .disabled(
-        controller?.canCapture != true ||
-          (controller?.devices.available.count ?? 0) < 2
-      )
+      .disabled(!hasAlternativeDevice)
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
     }
