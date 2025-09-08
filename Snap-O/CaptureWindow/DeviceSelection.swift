@@ -3,20 +3,34 @@ import Combine
 @MainActor
 final class DeviceSelection: ObservableObject {
   @Published var available: [Device] = []
-  @Published var selectedID: String?
+  @Published var selectedID: String? {
+    didSet {
+      guard selectedID != oldValue else { return }
+      cachedSelectedDevice =
+        selectedID.flatMap { id in available.first { $0.id == id } } ?? cachedSelectedDevice
+      if selectedID == nil {
+        cachedSelectedDevice = nil
+      }
+    }
+  }
+
+  private var cachedSelectedDevice: Device?
 
   var currentDevice: Device? {
     guard let id = selectedID else { return nil }
-    return available.first { $0.id == id }
+    if let live = available.first(where: { $0.id == id }) {
+      cachedSelectedDevice = live
+      return live
+    }
+    return cachedSelectedDevice
   }
 
-  func updateDevices(_ list: [Device]) {
+  func updateDevices(_ list: [Device], preserveSelectedIfMissing: Bool) {
     available = list
-    guard selectedID != nil else {
-      selectedID = list.first?.id
-      return
-    }
-    if !list.contains(where: { $0.id == selectedID }) {
+
+    if let selectedID, let live = list.first(where: { $0.id == selectedID }) {
+      cachedSelectedDevice = live
+    } else if selectedID == nil || !preserveSelectedIfMissing {
       selectedID = list.first?.id
     }
   }

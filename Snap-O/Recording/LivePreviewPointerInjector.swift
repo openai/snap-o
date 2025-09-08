@@ -2,8 +2,8 @@ import AppKit
 import Foundation
 
 enum LivePreviewPointerSource: String {
-  case touchscreen = "touchscreen"
-  case mouse = "mouse"
+  case touchscreen
+  case mouse
 }
 
 enum LivePreviewPointerAction: String {
