@@ -24,7 +24,8 @@ final class CaptureController: ObservableObject {
     case error(String)
   }
 
-  @Published var mode: Mode = .idle
+  @Published private(set) var displayInfo: DisplayInfo?
+  @Published private(set) var mode: Mode = .idle
   @Published private(set) var isStoppingLivePreview: Bool = false
   @Published private(set) var deviceUnavailableSignal: Bool = false
   var pendingCommand: SnapOCommand?
@@ -147,6 +148,7 @@ final class CaptureController: ObservableObject {
       if let media = try await captureService.stopRecording(session: session, deviceID: deviceID) {
         Perf.step(.recordingRender, "captureService returned media")
         mode = .showing(media)
+        updateSizingMedia(with: media)
         Perf.step(.recordingRender, "mode set to .showing")
       } else {
         mode = .idle
@@ -203,6 +205,36 @@ final class CaptureController: ObservableObject {
     NSPasteboard.general.writeObjects([image])
   }
 
+  private func refreshProjectedMediaIfNeeded() {
+    guard currentMedia == nil else { return }
+    Task {
+      guard let displayInfo = await fetchProjectedDisplayInfo() else { return }
+      await MainActor.run { updateProjectedSize(displayInfo) }
+    }
+  }
+
+  private func fetchProjectedDisplayInfo() async -> DisplayInfo? {
+    do {
+      let adbService = AppServices.shared.adbService
+      let exec = try await adbService.exec()
+      let sizeString = try await exec.getCurrentDisplaySize(deviceID: deviceID)
+      guard let size = parseDisplaySize(sizeString) else { return nil }
+      let density = try? await exec.screenDensityScale(deviceID: deviceID)
+      return DisplayInfo(size: size, densityScale: density)
+    } catch {
+      return nil
+    }
+  }
+
+  private func parseDisplaySize(_ rawValue: String) -> CGSize? {
+    let parts = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "x")
+    guard parts.count == 2,
+          let width = Double(parts[0]),
+          let height = Double(parts[1])
+    else { return nil }
+    return CGSize(width: width, height: height)
+  }
+
   func refreshPreview() async {
     guard canCapture else { return }
     Perf.step(.appFirstSnapshot, "before: Snapshot Request")
@@ -223,11 +255,15 @@ final class CaptureController: ObservableObject {
     Perf.step(.captureRequest, "clearing current media")
     await clearCurrentMedia()
     mode = .loading
+
+    refreshProjectedMediaIfNeeded()
+
     do {
       Perf.step(.captureRequest, "invoking captureService.captureScreenshot")
       let media = try await captureService.captureScreenshot(for: deviceID)
       Perf.step(.captureRequest, "captureService returned media")
       mode = .showing(media)
+      updateSizingMedia(with: media)
       Perf.step(.captureRequest, "mode set to .showing")
     } catch {
       handleDeviceFailure(error)
@@ -258,6 +294,7 @@ final class CaptureController: ObservableObject {
     Perf.step(.recordingStart, "begin startRecording")
     await clearCurrentMedia()
     mode = .loading
+    refreshProjectedMediaIfNeeded()
     do {
       await storeOriginalShowTouches(for: deviceID)
       await updateShowTouches(for: deviceID)
@@ -289,6 +326,7 @@ final class CaptureController: ObservableObject {
       let session = try await captureService.startLivePreview(for: deviceID)
       let media = try await session.waitUntilReady()
       mode = .livePreview(session: session, media: media)
+      updateSizingMedia(with: media)
       Perf.step(.livePreviewStart, "session ready; mode .livePreview")
     } catch {
       handleDeviceFailure(error)
@@ -364,5 +402,14 @@ final class CaptureController: ObservableObject {
         message.contains("no devices/emulators found")
     }
     return false
+  }
+
+  func updateProjectedSize(_ displayInfo: DisplayInfo?) {
+    guard currentMedia == nil else { return }
+    self.displayInfo = displayInfo
+  }
+
+  private func updateSizingMedia(with media: Media) {
+    displayInfo = media.common.display
   }
 }

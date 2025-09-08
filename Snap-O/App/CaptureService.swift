@@ -28,12 +28,12 @@ actor CaptureService {
 
     let size = try await writeTask.value
     let density = await densityAsync
+    let display = DisplayInfo(size: size, densityScale: density)
 
     let media: Media = .image(
       url: destination,
       capturedAt: capturedAt,
-      size: size,
-      densityScale: density
+      display: display
     )
     return media
   }

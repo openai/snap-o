@@ -43,8 +43,6 @@ private struct CaptureDeviceView: View {
 
   @StateObject private var controller: CaptureController
   private let dismissalDelayNanoseconds: UInt64 = 300_000_000
-  @State private var projectedMedia: Media?
-  @State private var isProjecting = false
   private var isCurrentSelection: Bool {
     deviceSelectionController.devices.selectedID == deviceID
   }
@@ -78,7 +76,7 @@ private struct CaptureDeviceView: View {
     }
     .animation(.snappy(duration: 0.15), value: controller.currentMedia != nil)
     .background(
-      WindowSizingController(currentMedia: controller.currentMedia ?? projectedMedia)
+      WindowSizingController(displayInfo: controller.displayInfo)
         .frame(width: 0, height: 0)
     )
     .onOpenURL { controller.handle(url: $0) }
@@ -96,8 +94,6 @@ private struct CaptureDeviceView: View {
         await controller.prepareForDismissal()
       }
       deviceSelectionController.updateShouldPreserveSelection(false)
-      projectedMedia = nil
-      isProjecting = false
     }
     .onChange(of: controller.deviceUnavailableSignal) {
       deviceSelectionController.handleDeviceUnavailable(currentDeviceID: deviceID)
@@ -110,44 +106,8 @@ private struct CaptureDeviceView: View {
     deviceSelectionController.updateShouldPreserveSelection(shouldPreserveSelection)
 
     guard media == nil else {
-      projectedMedia = nil
-      isProjecting = false
       return
     }
-
-    refreshProjectedMediaIfNeeded()
-  }
-
-  private func refreshProjectedMediaIfNeeded() {
-    guard controller.currentMedia == nil, !isProjecting else { return }
-    isProjecting = true
-    Task {
-      defer { DispatchQueue.main.async { isProjecting = false } }
-      guard let media = await fetchProjectedMedia() else { return }
-      await MainActor.run { projectedMedia = media }
-    }
-  }
-
-  private func fetchProjectedMedia() async -> Media? {
-    do {
-      let adbService = AppServices.shared.adbService
-      let exec = try await adbService.exec()
-      let sizeString = try await exec.getCurrentDisplaySize(deviceID: deviceID)
-      guard let size = parseDisplaySize(sizeString) else { return nil }
-      let density = try? await exec.screenDensityScale(deviceID: deviceID)
-      return Media.livePreview(capturedAt: Date(), size: size, densityScale: density)
-    } catch {
-      return nil
-    }
-  }
-
-  private func parseDisplaySize(_ rawValue: String) -> CGSize? {
-    let parts = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "x")
-    guard parts.count == 2,
-          let width = Double(parts[0]),
-          let height = Double(parts[1])
-    else { return nil }
-    return CGSize(width: width, height: height)
   }
 }
 

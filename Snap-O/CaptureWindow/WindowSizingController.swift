@@ -7,7 +7,7 @@ import SwiftUI
 /// most recently active window. Only the focused window is marked restorable so
 /// reopened sessions bring back that single window.
 struct WindowSizingController: NSViewRepresentable {
-  let currentMedia: Media?
+  let displayInfo: DisplayInfo?
 
   private static let minimumEdge: CGFloat = 240
 
@@ -25,8 +25,8 @@ struct WindowSizingController: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {
-    guard let media = currentMedia else { return }
-    context.coordinator.sizeWindow(for: media)
+    guard let displayInfo else { return }
+    context.coordinator.sizeWindow(for: displayInfo)
   }
 
   // MARK: - Coordinator
@@ -63,11 +63,8 @@ struct WindowSizingController: NSViewRepresentable {
     /// Size the window to fit the given media while preserving aspect ratio
     /// and minimum content edge. Frame animations are dispatched on main to
     /// ensure proper AppKit animation.
-    func sizeWindow(for media: Media) {
-      guard lastMediaStamp != media.capturedAt else { return }
-      lastMediaStamp = media.capturedAt
-
-      let targetContentSize = scaledContentSize(for: media)
+    func sizeWindow(for displayInfo: DisplayInfo) {
+      let targetContentSize = scaledContentSize(for: displayInfo)
       currentAspect = targetContentSize.width / max(targetContentSize.height, 1)
 
       guard let window else { return }
@@ -138,10 +135,10 @@ struct WindowSizingController: NSViewRepresentable {
 
     /// Compute a content size for media, downscaling by density if present and
     /// ensuring the smaller edge is at least `minimumEdge`.
-    private func scaledContentSize(for media: Media) -> CGSize {
-      var width = media.size.width
-      var height = media.size.height
-      if let density = media.densityScale, density > 0 {
+    private func scaledContentSize(for display: DisplayInfo) -> CGSize {
+      var width = display.size.width
+      var height = display.size.height
+      if let density = display.densityScale, density > 0 {
         width /= density
         height /= density
       }

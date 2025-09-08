@@ -58,26 +58,26 @@ final class CaptureDeviceSelectionController: ObservableObject {
 
   func selectNextDevice() {
     guard let nextID = deviceID(offsetFromCurrent: 1) else { return }
-    setSelectedDevice(id: nextID, direction: .down)
+    setSelectedDevice(id: nextID, direction: .down, deferUntilNextRunLoop: true)
   }
 
   func selectPreviousDevice() {
     guard let previousID = deviceID(offsetFromCurrent: -1) else { return }
-    setSelectedDevice(id: previousID, direction: .up)
+    setSelectedDevice(id: previousID, direction: .up, deferUntilNextRunLoop: true)
   }
 
   func selectDevice(withID id: String?) {
-    setSelectedDevice(id: id, direction: .neutral)
+    setSelectedDevice(id: id, direction: .neutral, deferUntilNextRunLoop: false)
   }
 
   func handleDeviceUnavailable(currentDeviceID: String) {
     let available = devices.available
     if let alternative = available.first(where: { $0.id != currentDeviceID }) {
-      setSelectedDevice(id: alternative.id, direction: .down)
+      setSelectedDevice(id: alternative.id, direction: .down, deferUntilNextRunLoop: false)
     } else if let fallback = available.first {
-      setSelectedDevice(id: fallback.id, direction: .down)
+      setSelectedDevice(id: fallback.id, direction: .down, deferUntilNextRunLoop: false)
     } else {
-      setSelectedDevice(id: nil, direction: .neutral)
+      setSelectedDevice(id: nil, direction: .neutral, deferUntilNextRunLoop: false)
     }
   }
 
@@ -118,9 +118,21 @@ final class CaptureDeviceSelectionController: ObservableObject {
 
   private func setSelectedDevice(
     id: String?,
-    direction: DeviceTransitionDirection
+    direction: DeviceTransitionDirection,
+    deferUntilNextRunLoop: Bool
   ) {
+    guard devices.selectedID != id else {
+      transitionDirection = direction
+      return
+    }
+
     transitionDirection = direction
+
+    guard deferUntilNextRunLoop else {
+      devices.selectedID = id
+      return
+    }
+
     Task { @MainActor in
       await Task.yield()
       devices.selectedID = id

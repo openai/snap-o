@@ -11,8 +11,12 @@ enum Media: Equatable, Sendable {
 
 struct MediaCommon: Equatable, Sendable {
   var capturedAt: Date
-  var size: CGSize
-  var densityScale: CGFloat?
+  var display: DisplayInfo
+}
+
+struct DisplayInfo: Equatable, Sendable {
+  let size: CGSize
+  let densityScale: CGFloat?
   var aspectRatio: CGFloat { size.width / size.height }
 }
 
@@ -35,10 +39,10 @@ extension Media {
   var isImage: Bool { if case .image = self { true } else { false } }
   var isVideo: Bool { if case .video = self { true } else { false } }
   var isLivePreview: Bool { if case .livePreview = self { true } else { false } }
-  var aspectRatio: CGFloat { common.aspectRatio }
-  var size: CGSize { common.size }
+  var aspectRatio: CGFloat { common.display.aspectRatio }
+  var size: CGSize { common.display.size }
   var capturedAt: Date { common.capturedAt }
-  var densityScale: CGFloat? { common.densityScale }
+  var densityScale: CGFloat? { common.display.densityScale }
   var saveKind: MediaSaveKind? {
     switch self {
     case .image: .image
@@ -68,34 +72,31 @@ extension Media {
   static func image(
     url: URL,
     capturedAt: Date,
-    size: CGSize,
-    densityScale: CGFloat?
+    display: DisplayInfo
   ) -> Media {
     .image(
       url: url,
-      data: MediaCommon(capturedAt: capturedAt, size: size, densityScale: densityScale)
+      data: MediaCommon(capturedAt: capturedAt, display: display)
     )
   }
 
   static func video(
     url: URL,
     capturedAt: Date,
-    size: CGSize,
-    densityScale: CGFloat?
+    display: DisplayInfo
   ) -> Media {
     .video(
       url: url,
-      data: MediaCommon(capturedAt: capturedAt, size: size, densityScale: densityScale)
+      data: MediaCommon(capturedAt: capturedAt, display: display)
     )
   }
 
   static func livePreview(
     capturedAt: Date,
-    size: CGSize,
-    densityScale: CGFloat?
+    display: DisplayInfo
   ) -> Media {
     .livePreview(
-      data: MediaCommon(capturedAt: capturedAt, size: size, densityScale: densityScale)
+      data: MediaCommon(capturedAt: capturedAt, display: display)
     )
   }
 }
@@ -131,12 +132,12 @@ extension Media {
     let density = await densityTask
     let applied = naturalSize.applying(transform)
     let size = CGSize(width: abs(applied.width), height: abs(applied.height))
+    let display = DisplayInfo(size: size, densityScale: density)
 
     return Media.video(
       url: url,
       capturedAt: capturedAt,
-      size: size,
-      densityScale: density
+      display: display
     )
   }
 }
