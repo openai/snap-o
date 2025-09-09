@@ -18,11 +18,10 @@ struct ADBExec: Sendable {
     timeLimitSeconds: Int = 60 * 60 * 3,
     size: String? = nil
   ) async throws -> RecordingSession {
-    let sizeArg: String?
-    if let provided = size, !provided.isEmpty {
-      sizeArg = provided
+    let sizeArg: String? = if let provided = size, !provided.isEmpty {
+      provided
     } else {
-      sizeArg = try? await getCurrentDisplaySize(deviceID: deviceID)
+      try? await getCurrentDisplaySize(deviceID: deviceID)
     }
 
     let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
@@ -47,16 +46,11 @@ struct ADBExec: Sendable {
       throw ADBError.parseFailure("Unable to determine screenrecord pid")
     }
 
-    let completionTask = Task.detached(priority: .userInitiated) {
-      _ = try connection.readToEnd()
-    }
-
     return RecordingSession(
       deviceID: deviceID,
       remotePath: remote,
       pid: pidValue,
       connection: connection,
-      completionTask: completionTask,
       startedAt: Date()
     )
   }
@@ -230,13 +224,13 @@ struct ADBExec: Sendable {
   // MARK: - Private helpers
 
   private func runShellData(deviceID: String, command: String) async throws -> Data {
-    return try await runCommand(deviceID: deviceID, command: command, executor: { connection, command in
+    try await runCommand(deviceID: deviceID, command: command) { connection, command in
       try connection.sendShell(command)
-    })
+    }
   }
 
   private func runExecData(deviceID: String, command: String) async throws -> Data {
-    return try await runCommand(deviceID: deviceID, command: command) { connection, command in
+    try await runCommand(deviceID: deviceID, command: command) { connection, command in
       try connection.sendExec(command)
     }
   }
@@ -246,7 +240,7 @@ struct ADBExec: Sendable {
     command: String,
     executor: @escaping @Sendable (ADBSocketConnection, String) throws -> Void
   ) async throws -> Data {
-    return try await withConnection { connection in
+    try await withConnection { connection in
       try connection.sendTransport(to: deviceID)
       try executor(connection, command)
       return try connection.readToEnd()
@@ -265,46 +259,41 @@ struct ADBExec: Sendable {
     maxAttempts: Int = 3,
     _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
   ) async throws -> T where T: Sendable {
-    var attemptsRemaining = maxAttempts
-    var didRestartServer = false
-
-    while true {
-      try await ADBExec.serverLauncher.waitForOngoingRestart()
-      do {
-        return try await Task.detached(priority: .userInitiated) {
-          let connection = try ADBSocketConnection()
-          defer { connection.close() }
-          return try body(connection)
-        }.value
-      } catch {
-        let normalized = normalize(error)
-        attemptsRemaining -= 1
-        guard attemptsRemaining >= 0 else { throw normalized }
-
-        guard shouldAttemptServerRestart(for: normalized) else { throw normalized }
-
-        if !didRestartServer {
-          try await startServerIfNeeded()
-          didRestartServer = true
-        }
-
-        try await Task.sleep(nanoseconds: 100_000_000)
-      }
+    try await performAttempt(maxAttempts: maxAttempts, keepConnectionOnSuccess: false) { connection in
+      try await Task.detached(priority: .userInitiated) {
+        try body(connection)
+      }.value
     }
   }
 
   private func makePersistentConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
-    var attemptsRemaining = maxAttempts
+    try await performAttempt(maxAttempts: maxAttempts, keepConnectionOnSuccess: true) { connection in connection }
+  }
+
+  private func performAttempt<T>(
+    maxAttempts: Int,
+    keepConnectionOnSuccess: Bool,
+    _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
+  ) async throws -> T where T: Sendable {
+    var lastError: Error?
     var didRestartServer = false
 
-    while true {
+    for _ in 0 ..< maxAttempts {
       try await ADBExec.serverLauncher.waitForOngoingRestart()
+
       do {
-        return try ADBSocketConnection()
+        let connection = try ADBSocketConnection()
+        do {
+          let value = try await operation(connection)
+          if !keepConnectionOnSuccess { connection.close() }
+          return value
+        } catch {
+          connection.close()
+          throw error
+        }
       } catch {
         let normalized = normalize(error)
-        attemptsRemaining -= 1
-        guard attemptsRemaining >= 0 else { throw normalized }
+        lastError = normalized
 
         guard shouldAttemptServerRestart(for: normalized) else { throw normalized }
 
@@ -316,6 +305,8 @@ struct ADBExec: Sendable {
         try await Task.sleep(nanoseconds: 100_000_000)
       }
     }
+
+    throw lastError ?? ADBError.serverUnavailable("Failed to communicate with adb server")
   }
 
   private func startServerIfNeeded() async throws {

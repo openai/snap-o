@@ -1,5 +1,5 @@
-import Foundation
 import Darwin
+import Foundation
 
 final class ADBSocketConnection {
   private enum Constants {
@@ -12,41 +12,7 @@ final class ADBSocketConnection {
   private var isClosed = false
 
   init() throws {
-    let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-    guard descriptor >= 0 else {
-      throw Self.makeSocketError(errno, context: "socket")
-    }
-
-    var noSigPipe: Int32 = 1
-    _ = withUnsafePointer(to: &noSigPipe) {
-      setsockopt(
-        descriptor,
-        SOL_SOCKET,
-        SO_NOSIGPIPE,
-        $0,
-        socklen_t(MemoryLayout<Int32>.size)
-      )
-    }
-
-    var address = sockaddr_in()
-    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-    address.sin_family = sa_family_t(AF_INET)
-    address.sin_port = Constants.port.bigEndian
-    address.sin_addr = in_addr(s_addr: inet_addr(Constants.host))
-
-    let result = withUnsafePointer(to: &address) { pointer -> Int32 in
-      pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { addrPtr in
-        Darwin.connect(descriptor, addrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
-      }
-    }
-
-    if result != 0 {
-      let error = Self.makeSocketError(errno, context: "connect")
-      Darwin.close(descriptor)
-      throw error
-    }
-
-    socketDescriptor = descriptor
+    socketDescriptor = try Self.openSocket()
   }
 
   deinit {
@@ -59,13 +25,6 @@ final class ADBSocketConnection {
     shutdown(socketDescriptor, SHUT_RDWR)
     Darwin.close(socketDescriptor)
   }
-
-    guard let payload = request.data(using: .utf8) else {
-      throw ADBError.protocolFailure("unable to encode request")
-    }
-    guard let headerData = header.data(using: .ascii) else {
-      throw ADBError.protocolFailure("unable to encode request header")
-    }
 
   func sendTrackDevices() throws {
     try sendRequest("host:track-devices-l")
@@ -114,14 +73,12 @@ final class ADBSocketConnection {
 
   func readToEnd() throws -> Data {
     var accumulator = Data()
-    var buffer = [UInt8](repeating: 0, count: Constants.bufferSize)
-
+    var scratch = [UInt8](repeating: 0, count: Constants.bufferSize)
     while true {
-      guard let bytesRead = try readOnce(into: &buffer) else { break }
-      if bytesRead == 0 { break }
-      accumulator.append(buffer, count: bytesRead)
+      let count = try readOnce(into: &scratch)
+      if count == 0 { break }
+      accumulator.append(scratch, count: count)
     }
-
     return accumulator
   }
 
@@ -134,10 +91,10 @@ final class ADBSocketConnection {
   }
 
   func readChunk(maxLength: Int) throws -> Data? {
-    var buffer = [UInt8](repeating: 0, count: maxLength)
-    guard let bytesRead = try readOnce(into: &buffer) else { return nil }
-    if bytesRead == 0 { return nil }
-    return Data(buffer.prefix(bytesRead))
+    var scratch = [UInt8](repeating: 0, count: maxLength)
+    let count = try readOnce(into: &scratch)
+    if count == 0 { return nil }
+    return Data(scratch.prefix(count))
   }
 
   func readLengthPrefixedPayload() throws -> Data? {
@@ -152,12 +109,8 @@ final class ADBSocketConnection {
 
   func sendSyncRequest(id: String, path: String) throws {
     guard id.count == 4 else { throw ADBError.protocolFailure("invalid sync id") }
-    guard let idData = id.data(using: .ascii) else {
-      throw ADBError.protocolFailure("unable to encode sync id")
-    }
-    guard let pathData = path.data(using: .utf8) else {
-      throw ADBError.protocolFailure("unable to encode sync path")
-    }
+    let idData = try Self.asciiData(id, label: "sync id")
+    let pathData = try Self.utf8Data(path, label: "sync path")
 
     var length = UInt32(pathData.count).littleEndian
     let lengthData = withUnsafeBytes(of: &length) { Data($0) }
@@ -231,41 +184,34 @@ final class ADBSocketConnection {
 
   func readLine() throws -> String? {
     var collected = Data()
-    var buffer = [UInt8](repeating: 0, count: 256)
+    var scratch = [UInt8](repeating: 0, count: 256)
 
     while true {
-      guard let bytesRead = try readOnce(into: &buffer) else {
-        return collected.isEmpty ? nil : collected.stringByTrimmingNewlines()
-      }
+      let count = try readOnce(into: &scratch)
+      if count == 0 { return collected.stringByTrimmingNewlines() }
 
-      if bytesRead == 0 {
-        return collected.isEmpty ? nil : collected.stringByTrimmingNewlines()
-      }
-
-      if let newlineIndex = buffer[..<bytesRead].firstIndex(of: UInt8(ascii: "\n")) {
-        collected.append(contentsOf: buffer[..<newlineIndex])
+      if let newline = scratch[..<count].firstIndex(of: UInt8(ascii: "\n")) {
+        collected.append(contentsOf: scratch[..<newline])
         return collected.stringByTrimmingNewlines()
       }
 
-      collected.append(contentsOf: buffer[..<bytesRead])
+      collected.append(contentsOf: scratch[..<count])
     }
   }
 
-  private func readOnce(into buffer: inout [UInt8]) throws -> Int? {
+  private func readOnce(into buffer: inout [UInt8]) throws -> Int {
     while true {
       try Task.checkCancellation()
       let result = buffer.withUnsafeMutableBytes { pointer -> Int in
         guard let baseAddress = pointer.baseAddress else { return -1 }
-        return Darwin.recv(socketDescriptor, baseAddress, pointer.count, 0)
+        return Int(Darwin.recv(socketDescriptor, baseAddress, pointer.count, 0))
       }
 
       if result > 0 { return result }
       if result == 0 { return 0 }
 
-      let errorCode = errno
-      if errorCode == EINTR { continue }
-
-      throw Self.makeSocketError(errorCode, context: "recv")
+      if errno == EINTR { continue }
+      throw Self.makeSocketError(errno, context: "recv")
     }
   }
 
@@ -276,10 +222,7 @@ final class ADBSocketConnection {
 
     while remaining > 0 {
       var temp = [UInt8](repeating: 0, count: remaining)
-      guard let read = try readOnce(into: &temp) else {
-        throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
-      }
-
+      let read = try readOnce(into: &temp)
       if read == 0 {
         throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
       }
@@ -298,10 +241,7 @@ final class ADBSocketConnection {
 
     while remaining > 0 {
       var temp = [UInt8](repeating: 0, count: remaining)
-      guard let read = try readOnce(into: &temp) else {
-        return buffer.isEmpty ? nil : buffer
-      }
-
+      let read = try readOnce(into: &temp)
       if read == 0 {
         if buffer.isEmpty {
           return nil
@@ -320,8 +260,7 @@ final class ADBSocketConnection {
   private func readLengthPrefix() throws -> Int {
     let header = try readExact(4)
     guard let headerString = String(data: header, encoding: .ascii),
-          let length = Int(headerString, radix: 16)
-    else {
+          let length = Int(headerString, radix: 16) else {
       throw ADBError.protocolFailure("invalid length header")
     }
     return length
@@ -344,9 +283,55 @@ final class ADBSocketConnection {
 
 extension ADBSocketConnection: @unchecked Sendable {}
 
+private extension ADBSocketConnection {
+  static func openSocket() throws -> Int32 {
+    let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+    guard descriptor >= 0 else { throw makeSocketError(errno, context: "socket") }
+
+    var noSigPipe: Int32 = 1
+    withUnsafePointer(to: &noSigPipe) {
+      _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, $0, socklen_t(MemoryLayout<Int32>.size))
+    }
+
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = Constants.port.bigEndian
+    address.sin_addr = in_addr(s_addr: inet_addr(Constants.host))
+
+    let result = withUnsafePointer(to: &address) { pointer -> Int32 in
+      pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { addrPtr in
+        Darwin.connect(descriptor, addrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+      }
+    }
+
+    guard result == 0 else {
+      let error = makeSocketError(errno, context: "connect")
+      Darwin.close(descriptor)
+      throw error
+    }
+
+    return descriptor
+  }
+
+  static func asciiData(_ value: String, label: String) throws -> Data {
+    guard let data = value.data(using: .ascii) else {
+      throw ADBError.protocolFailure("unable to encode \(label)")
+    }
+    return data
+  }
+
+  static func utf8Data(_ value: String, label: String) throws -> Data {
+    guard let data = value.data(using: .utf8) else {
+      throw ADBError.protocolFailure("unable to encode \(label)")
+    }
+    return data
+  }
+}
+
 private extension Data {
   func stringByTrimmingNewlines() -> String? {
-    guard let string = String(data: self, encoding: .utf8) else { return nil }
+    guard !self.isEmpty, let string = String(data: self, encoding: .utf8) else { return nil }
     return string.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }

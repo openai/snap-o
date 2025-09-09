@@ -5,16 +5,26 @@ final class RecordingSession: @unchecked Sendable {
   let remotePath: String
   let startedAt: Date
   let pid: Int32
+
   private let connection: ADBSocketConnection
   private let completionTask: Task<Void, Error>
 
-  init(deviceID: String, remotePath: String, pid: Int32, connection: ADBSocketConnection, completionTask: Task<Void, Error>, startedAt: Date) {
+  init(deviceID: String, remotePath: String, pid: Int32, connection: ADBSocketConnection, startedAt: Date) {
     self.deviceID = deviceID
     self.remotePath = remotePath
     self.pid = pid
     self.connection = connection
-    self.completionTask = completionTask
     self.startedAt = startedAt
+
+    completionTask = Task.detached(priority: .userInitiated) { [connection] in
+      do {
+        try connection.drainToEnd()
+      } catch is CancellationError {
+        return
+      } catch {
+        throw error
+      }
+    }
   }
 
   func waitUntilStopped() async throws {
@@ -22,6 +32,7 @@ final class RecordingSession: @unchecked Sendable {
   }
 
   func close() {
+    completionTask.cancel()
     connection.close()
   }
 }
