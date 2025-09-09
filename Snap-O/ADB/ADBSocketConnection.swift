@@ -229,6 +229,28 @@ final class ADBSocketConnection {
     }
   }
 
+  func readLine() throws -> String? {
+    var collected = Data()
+    var buffer = [UInt8](repeating: 0, count: 256)
+
+    while true {
+      guard let bytesRead = try readOnce(into: &buffer) else {
+        return collected.isEmpty ? nil : collected.stringByTrimmingNewlines()
+      }
+
+      if bytesRead == 0 {
+        return collected.isEmpty ? nil : collected.stringByTrimmingNewlines()
+      }
+
+      if let newlineIndex = buffer[..<bytesRead].firstIndex(of: UInt8(ascii: "\n")) {
+        collected.append(contentsOf: buffer[..<newlineIndex])
+        return collected.stringByTrimmingNewlines()
+      }
+
+      collected.append(contentsOf: buffer[..<bytesRead])
+    }
+  }
+
   private func readOnce(into buffer: inout [UInt8]) throws -> Int? {
     while true {
       try Task.checkCancellation()
@@ -321,3 +343,10 @@ final class ADBSocketConnection {
 }
 
 extension ADBSocketConnection: @unchecked Sendable {}
+
+private extension Data {
+  func stringByTrimmingNewlines() -> String? {
+    guard let string = String(data: self, encoding: .utf8) else { return nil }
+    return string.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+}

@@ -38,24 +38,38 @@ struct ADBExec: Sendable {
 
     let connection = try await makePersistentConnection()
     try connection.sendTransport(to: deviceID)
-    try connection.sendShell(command.joined(separator: " "))
+    try connection.sendShell("sh -c 'echo $$; exec \(command)'")
+
+    guard let pidLine = try connection.readLine(),
+          let pidValue = Int32(pidLine.trimmingCharacters(in: .whitespacesAndNewlines))
+    else {
+      connection.close()
+      throw ADBError.parseFailure("Unable to determine screenrecord pid")
+    }
+
+    let completionTask = Task.detached(priority: .userInitiated) {
+      _ = try connection.readToEnd()
+    }
 
     return RecordingSession(
       deviceID: deviceID,
       remotePath: remote,
+      pid: pidValue,
       connection: connection,
+      completionTask: completionTask,
       startedAt: Date()
     )
   }
 
   func stopScreenrecord(session: RecordingSession, deviceID: String, savingTo localURL: URL) async throws {
-    session.stop()
-    try? await Task.sleep(nanoseconds: 1_000_000_000)
+    await sendSigIntIfNeeded(deviceID: deviceID, pid: session.pid)
+    try await session.waitUntilStopped()
     try await pull(deviceID: session.deviceID, remote: session.remotePath, to: localURL)
     _ = try? await runShellString(
       deviceID: session.deviceID,
       command: "rm -f \(session.remotePath)"
     )
+    session.close()
   }
 
   func startScreenStream(deviceID: String, bitRateMbps: Int = 8, size: String? = nil) async throws -> ScreenStreamSession {
@@ -306,6 +320,11 @@ struct ADBExec: Sendable {
 
   private func startServerIfNeeded() async throws {
     try await ADBExec.serverLauncher.startServer(at: url)
+  }
+
+  private func sendSigIntIfNeeded(deviceID: String, pid: Int32) async {
+    let command = "kill -INT \(pid) >/dev/null 2>&1 || true"
+    _ = try? await runShellString(deviceID: deviceID, command: command)
   }
 
   private func shouldAttemptServerRestart(for error: Error) -> Bool {
