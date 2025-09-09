@@ -222,10 +222,9 @@ struct ADBExec: Sendable {
   }
 
   private func runExecData(deviceID: String, command: String) async throws -> Data {
-    return try await runCommand(deviceID: deviceID, command: command, executor: { connection, command in
-      print("sendExec")
+    return try await runCommand(deviceID: deviceID, command: command) { connection, command in
       try connection.sendExec(command)
-    })
+    }
   }
 
   private func runCommand(
@@ -233,13 +232,10 @@ struct ADBExec: Sendable {
     command: String,
     executor: @escaping @Sendable (ADBSocketConnection, String) throws -> Void
   ) async throws -> Data {
-    try await withConnection { connection in
-      print("sendTransport")
+    return try await withConnection { connection in
       try connection.sendTransport(to: deviceID)
-      print("executor")
       try executor(connection, command)
-      Perf.step(.appFirstSnapshot, "Start readToEnd: \(command)")
-      return try connection.readToEnd(command: command)
+      return try connection.readToEnd()
     }
   }
 
@@ -259,20 +255,14 @@ struct ADBExec: Sendable {
     var didRestartServer = false
 
     while true {
+      try await ADBExec.serverLauncher.waitForOngoingRestart()
       do {
         return try await Task.detached(priority: .userInitiated) {
-          print("Create connection")
           let connection = try ADBSocketConnection()
           defer { connection.close() }
-          print("Run connection body")
-          do {
-            return try body(connection)
-          } catch {
-            throw error
-          }
+          return try body(connection)
         }.value
       } catch {
-        print("Failed to create ADB Socket connection")
         let normalized = normalize(error)
         attemptsRemaining -= 1
         guard attemptsRemaining >= 0 else { throw normalized }
@@ -294,6 +284,7 @@ struct ADBExec: Sendable {
     var didRestartServer = false
 
     while true {
+      try await ADBExec.serverLauncher.waitForOngoingRestart()
       do {
         return try ADBSocketConnection()
       } catch {
@@ -383,16 +374,26 @@ private actor ADBServerLauncher {
         let errData = stderr.fileHandleForReading.readDataToEndOfFile()
         let errString = String(data: errData, encoding: .utf8)
         throw ADBError.nonZeroExit(status, stderr: errString)
+      } else {
+        // Have to wait just a little bit before the server's actually available?
+        try await Task.sleep(nanoseconds: 100_000_000)
       }
     }
 
     currentTask = launchTask
     do {
       try await launchTask.value
+      Perf.step(.captureRequest, "Restarted server")
     } catch {
       currentTask = nil
       throw error
     }
     currentTask = nil
+  }
+
+  func waitForOngoingRestart() async throws {
+    if let currentTask {
+      try await currentTask.value
+    }
   }
 }

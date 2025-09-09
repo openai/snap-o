@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 final class ADBSocketConnection {
   private enum Constants {
@@ -7,41 +8,45 @@ final class ADBSocketConnection {
     static let bufferSize = 64 * 1024
   }
 
-  private let input: InputStream
-  private let output: OutputStream
+  private let socketDescriptor: Int32
   private var isClosed = false
 
   init() throws {
-    var readStream: Unmanaged<CFReadStream>?
-    var writeStream: Unmanaged<CFWriteStream>?
-
-    CFStreamCreatePairWithSocketToHost(
-      nil,
-      Constants.host as CFString,
-      UInt32(Constants.port),
-      &readStream,
-      &writeStream
-    )
-
-    guard let unwrappedInput = readStream?.takeRetainedValue(),
-          let unwrappedOutput = writeStream?.takeRetainedValue()
-    else {
-      throw ADBError.serverUnavailable("unable to create socket streams")
+    let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+    guard descriptor >= 0 else {
+      throw Self.makeSocketError(errno, context: "socket")
     }
 
-    input = unwrappedInput
-    output = unwrappedOutput
-
-    input.open()
-    output.open()
-
-    if input.streamStatus == .error || output.streamStatus == .error {
-      let message = input.streamError?.localizedDescription
-        ?? output.streamError?.localizedDescription
-        ?? "unknown socket open error"
-      close()
-      throw ADBError.serverUnavailable(message)
+    var noSigPipe: Int32 = 1
+    _ = withUnsafePointer(to: &noSigPipe) {
+      setsockopt(
+        descriptor,
+        SOL_SOCKET,
+        SO_NOSIGPIPE,
+        $0,
+        socklen_t(MemoryLayout<Int32>.size)
+      )
     }
+
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = Constants.port.bigEndian
+    address.sin_addr = in_addr(s_addr: inet_addr(Constants.host))
+
+    let result = withUnsafePointer(to: &address) { pointer -> Int32 in
+      pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { addrPtr in
+        Darwin.connect(descriptor, addrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+      }
+    }
+
+    if result != 0 {
+      let error = Self.makeSocketError(errno, context: "connect")
+      Darwin.close(descriptor)
+      throw error
+    }
+
+    socketDescriptor = descriptor
   }
 
   deinit {
@@ -51,8 +56,8 @@ final class ADBSocketConnection {
   func close() {
     guard !isClosed else { return }
     isClosed = true
-    input.close()
-    output.close()
+    shutdown(socketDescriptor, SHUT_RDWR)
+    Darwin.close(socketDescriptor)
   }
 
     guard let payload = request.data(using: .utf8) else {
@@ -62,8 +67,6 @@ final class ADBSocketConnection {
       throw ADBError.protocolFailure("unable to encode request header")
     }
 
-    print("writeFully \(header)")
-    print("writeFully \(payload)")
   func sendTrackDevices() throws {
     try sendRequest("host:track-devices-l")
   }
@@ -109,26 +112,16 @@ final class ADBSocketConnection {
     throw ADBError.protocolFailure("unexpected adb status: \(status)")
   }
 
-  func readToEnd(command: String) throws -> Data {
+  func readToEnd() throws -> Data {
     var accumulator = Data()
     var buffer = [UInt8](repeating: 0, count: Constants.bufferSize)
 
     while true {
-      let count = buffer.withUnsafeMutableBytes { pointer in
-        guard let baseAddress = pointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return -1 }
-        return input.read(baseAddress, maxLength: pointer.count)
-      }
-
-      if count > 0 {
-        accumulator.append(buffer, count: count)
-      } else if count == 0 {
-        break
-      } else {
-        throw input.streamError ?? ADBError.protocolFailure("socket read failed")
-      }
+      guard let bytesRead = try readOnce(into: &buffer) else { break }
+      if bytesRead == 0 { break }
+      accumulator.append(buffer, count: bytesRead)
     }
 
-    Perf.step(.appFirstSnapshot, "Return readToEnd \(command)")
     return accumulator
   }
 
@@ -142,18 +135,9 @@ final class ADBSocketConnection {
 
   func readChunk(maxLength: Int) throws -> Data? {
     var buffer = [UInt8](repeating: 0, count: maxLength)
-    let count = buffer.withUnsafeMutableBytes { pointer in
-      guard let baseAddress = pointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return -1 }
-      return input.read(baseAddress, maxLength: maxLength)
-    }
-
-    if count > 0 {
-      return Data(buffer.prefix(count))
-    }
-    if count == 0 {
-      return nil
-    }
-    throw input.streamError ?? ADBError.protocolFailure("socket read failed")
+    guard let bytesRead = try readOnce(into: &buffer) else { return nil }
+    if bytesRead == 0 { return nil }
+    return Data(buffer.prefix(bytesRead))
   }
 
   func readLengthPrefixedPayload() throws -> Data? {
@@ -202,7 +186,7 @@ final class ADBSocketConnection {
         let payload = try readExact(expected)
         try callback(payload)
       case "DONE":
-        _ = try readExact(4) // mtime
+        _ = try readExact(4)
         return
       case "FAIL":
         let length = try readLittleEndianLength()
@@ -216,30 +200,50 @@ final class ADBSocketConnection {
   }
 
   private func writeFully(_ data: Data) throws {
-    try data.withUnsafeBytes { rawBuffer in
-      guard let base = rawBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+    try data.withUnsafeBytes { buffer in
+      guard let start = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
         throw ADBError.protocolFailure("invalid buffer state")
       }
 
-      var bytesRemaining = rawBuffer.count
-      var pointer = base
+      var remaining = buffer.count
+      var pointer = start
 
-      while bytesRemaining > 0 {
+      while remaining > 0 {
         try Task.checkCancellation()
-        print("Write to output")
-        let written = output.write(pointer, maxLength: bytesRemaining)
-        print("Wrote to output")
+        let written = Darwin.send(socketDescriptor, pointer, remaining, 0)
+
         if written > 0 {
-          bytesRemaining -= written
           pointer = pointer.advanced(by: written)
-        } else if written == 0 {
-          print("Wrote nothing")
-          throw ADBError.protocolFailure("socket closed during write")
-        } else {
-          print("Socket write failure")
-          throw output.streamError ?? ADBError.protocolFailure("socket write failed")
+          remaining -= written
+          continue
         }
+
+        if written == 0 {
+          throw ADBError.serverUnavailable("socket closed during write")
+        }
+
+        let errorCode = errno
+        if errorCode == EINTR { continue }
+        throw Self.makeSocketError(errorCode, context: "send")
       }
+    }
+  }
+
+  private func readOnce(into buffer: inout [UInt8]) throws -> Int? {
+    while true {
+      try Task.checkCancellation()
+      let result = buffer.withUnsafeMutableBytes { pointer -> Int in
+        guard let baseAddress = pointer.baseAddress else { return -1 }
+        return Darwin.recv(socketDescriptor, baseAddress, pointer.count, 0)
+      }
+
+      if result > 0 { return result }
+      if result == 0 { return 0 }
+
+      let errorCode = errno
+      if errorCode == EINTR { continue }
+
+      throw Self.makeSocketError(errorCode, context: "recv")
     }
   }
 
@@ -249,24 +253,43 @@ final class ADBSocketConnection {
     buffer.reserveCapacity(count)
 
     while remaining > 0 {
-      try Task.checkCancellation()
       var temp = [UInt8](repeating: 0, count: remaining)
-      let read = temp.withUnsafeMutableBytes { pointer in
-        guard let base = pointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return -1 }
-        return input.read(base, maxLength: remaining)
-      }
-
-      if read > 0 {
-        buffer.append(contentsOf: temp.prefix(read))
-        remaining -= read
-        continue
+      guard let read = try readOnce(into: &temp) else {
+        throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
       }
 
       if read == 0 {
         throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
       }
 
-      throw input.streamError ?? ADBError.protocolFailure("socket read failed")
+      buffer.append(contentsOf: temp.prefix(read))
+      remaining -= read
+    }
+
+    return buffer
+  }
+
+  private func readOptionalExact(_ count: Int) throws -> Data? {
+    var remaining = count
+    var buffer = Data()
+    buffer.reserveCapacity(count)
+
+    while remaining > 0 {
+      var temp = [UInt8](repeating: 0, count: remaining)
+      guard let read = try readOnce(into: &temp) else {
+        return buffer.isEmpty ? nil : buffer
+      }
+
+      if read == 0 {
+        if buffer.isEmpty {
+          return nil
+        } else {
+          throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
+        }
+      }
+
+      buffer.append(contentsOf: temp.prefix(read))
+      remaining -= read
     }
 
     return buffer
@@ -291,37 +314,9 @@ final class ADBSocketConnection {
     return Int(UInt32(littleEndian: value))
   }
 
-  private func readOptionalExact(_ count: Int) throws -> Data? {
-    var remaining = count
-    var buffer = Data()
-    buffer.reserveCapacity(count)
-
-    while remaining > 0 {
-      try Task.checkCancellation()
-      var temp = [UInt8](repeating: 0, count: remaining)
-      let read = temp.withUnsafeMutableBytes { pointer in
-        guard let base = pointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return -1 }
-        return input.read(base, maxLength: remaining)
-      }
-
-      if read > 0 {
-        buffer.append(contentsOf: temp.prefix(read))
-        remaining -= read
-        continue
-      }
-
-      if read == 0 {
-        if buffer.isEmpty {
-          return nil
-        } else {
-          throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
-        }
-      }
-
-      throw input.streamError ?? ADBError.protocolFailure("socket read failed")
-    }
-
-    return buffer
+  private static func makeSocketError(_ code: Int32, context: String) -> ADBError {
+    let message = String(cString: strerror(code))
+    return ADBError.serverUnavailable("\(context) failed: \(message)")
   }
 }
 
