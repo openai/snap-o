@@ -71,10 +71,8 @@ final class DeviceTracker: @unchecked Sendable {
     }
 
     while !Task.isCancelled {
-      await adbService.awaitConfigured()
-
-      guard let exec = try? await adbService.exec(),
-            let (handle, stream) = try? await exec.trackDevices() else {
+      let exec = await adbService.exec()
+      guard let (handle, stream) = try? await exec.trackDevices() else {
         if hasSeenFirstMessage { broadcast([]) }
         await pause()
         continue

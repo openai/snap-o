@@ -16,7 +16,7 @@ actor CaptureService {
 
   func captureScreenshot(for deviceID: String) async throws -> Media {
     // Build a stateless exec from config for parallel commands.
-    let exec = try await adb.exec()
+    let exec = await adb.exec()
 
     async let dataTask: Data = try await exec.screencapPNG(deviceID: deviceID)
     async let densityAsync: CGFloat? = await (try? exec.screenDensityScale(deviceID: deviceID))
@@ -42,18 +42,16 @@ actor CaptureService {
   }
 
   func startRecording(for deviceID: String) async throws -> RecordingSession {
-    let exec = try await adb.exec()
-    return try await exec.startScreenrecord(deviceID: deviceID)
+    return try await adb.exec().startScreenrecord(deviceID: deviceID)
   }
 
   func stopRecording(session: RecordingSession, deviceID: String) async throws -> Media? {
     let destination = fileStore.makePreviewDestination(deviceID: deviceID, kind: .video)
-    let exec = try await adb.exec()
-    try await exec.stopScreenrecord(session: session, deviceID: deviceID, savingTo: destination)
+    try await adb.exec().stopScreenrecord(session: session, deviceID: deviceID, savingTo: destination)
     let asset = AVURLAsset(url: destination)
 
     let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in
-      try? await adb.exec().screenDensityScale(deviceID: deviceID)
+      return try? await adb.exec().screenDensityScale(deviceID: deviceID)
     }
 
     if let media = try await Media.video(

@@ -231,7 +231,7 @@ final class CaptureController: ObservableObject {
   private func fetchProjectedDisplayInfo() async -> DisplayInfo? {
     do {
       let adbService = AppServices.shared.adbService
-      let exec = try await adbService.exec()
+      let exec = await adbService.exec()
       let sizeString = try await exec.getCurrentDisplaySize(deviceID: deviceID)
       guard let size = parseDisplaySize(sizeString) else { return nil }
       let density = try? await exec.screenDensityScale(deviceID: deviceID)

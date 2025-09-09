@@ -17,7 +17,6 @@ final actor AppServices {
 
   func start() async {
     Perf.step(.appFirstSnapshot, "services start")
-    await adbService.ensureConfigured()
     Perf.step(.appFirstSnapshot, "start tracking")
     deviceTracker.startTracking()
 

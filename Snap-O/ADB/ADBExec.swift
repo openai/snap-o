@@ -2,7 +2,11 @@ import CoreGraphics
 import Foundation
 
 struct ADBExec: Sendable {
-  let url: URL
+  typealias PathResolver = @Sendable () async throws -> URL
+  typealias ServerObserver = @Sendable () async -> Void
+
+  private let pathResolver: PathResolver
+  private let serverObserver: ServerObserver?
 
   private static let serverLauncher = ADBServerLauncher()
   private enum RetryPolicy {
@@ -10,6 +14,11 @@ struct ADBExec: Sendable {
   }
 
   // MARK: - Public entry points
+
+  init(pathResolver: @escaping PathResolver, serverObserver: ServerObserver? = nil) {
+    self.pathResolver = pathResolver
+    self.serverObserver = serverObserver
+  }
 
   func screencapPNG(deviceID: String) async throws -> Data {
     try await runExecData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
@@ -269,6 +278,7 @@ struct ADBExec: Sendable {
         do {
           let value = try await operation(connection)
           if lifetime == .ephemeral { connection.close() }
+          await notifyServerAvailable()
           return value
         } catch {
           connection.close()
@@ -281,8 +291,7 @@ struct ADBExec: Sendable {
         guard shouldAttemptServerRestart(for: normalized) else { throw normalized }
 
         if !didRestartServer {
-          try await startServerIfNeeded()
-          didRestartServer = true
+          didRestartServer = try await startServerIfNeeded()
         }
 
         try await Task.sleep(nanoseconds: RetryPolicy.maxServerWaitNanoseconds)
@@ -292,8 +301,19 @@ struct ADBExec: Sendable {
     throw lastError ?? ADBError.serverUnavailable("Failed to communicate with adb server")
   }
 
-  private func startServerIfNeeded() async throws {
-    try await ADBExec.serverLauncher.startServer(at: url)
+  private func startServerIfNeeded() async throws -> Bool {
+    do {
+      let url = try await pathResolver()
+      try await ADBExec.serverLauncher.startServer(at: url)
+      return true
+    } catch ADBError.adbNotFound {
+      return false
+    }
+  }
+
+  private func notifyServerAvailable() async {
+    guard let serverObserver else { return }
+    await serverObserver()
   }
 
   private func sendSigIntIfNeeded(deviceID: String, pid: Int32) async {
