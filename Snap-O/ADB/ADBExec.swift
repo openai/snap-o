@@ -5,6 +5,9 @@ struct ADBExec: Sendable {
   let url: URL
 
   private static let serverLauncher = ADBServerLauncher()
+  private enum RetryPolicy {
+    static let maxServerWaitNanoseconds: UInt64 = 100_000_000
+  }
 
   // MARK: - Public entry points
 
@@ -18,22 +21,14 @@ struct ADBExec: Sendable {
     timeLimitSeconds: Int = 60 * 60 * 3,
     size: String? = nil
   ) async throws -> RecordingSession {
-    let sizeArg: String? = if let provided = size, !provided.isEmpty {
-      provided
-    } else {
-      try? await getCurrentDisplaySize(deviceID: deviceID)
-    }
-
+    let sizeHint = try await resolvedDisplaySize(deviceID: deviceID, providedSize: size)
     let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
-    var command = [
-      "screenrecord",
-      "--bit-rate",
-      "\(bitRateMbps * 1_000_000)",
-      "--time-limit",
-      "\(timeLimitSeconds)"
-    ]
-    if let sizeArg, !sizeArg.isEmpty { command += ["--size", sizeArg] }
-    command.append(remote)
+    let command = makeScreenRecordCommand(
+      bitRateMbps: bitRateMbps,
+      timeLimitSeconds: timeLimitSeconds,
+      size: sizeHint,
+      destination: remote
+    )
 
     let connection = try await makePersistentConnection()
     try connection.sendTransport(to: deviceID)
@@ -67,20 +62,12 @@ struct ADBExec: Sendable {
   }
 
   func startScreenStream(deviceID: String, bitRateMbps: Int = 8, size: String? = nil) async throws -> ScreenStreamSession {
-    var components = [
-      "screenrecord",
-      "--output-format=h264",
-      "--bit-rate",
-      "\(bitRateMbps * 1_000_000)",
-      "--time-limit",
-      "0"
-    ]
-    if let size, !size.isEmpty { components += ["--size", size] }
-    components.append("-")
+    let sizeHint = try await resolvedDisplaySize(deviceID: deviceID, providedSize: size)
+    let command = makeScreenStreamCommand(bitRateMbps: bitRateMbps, size: sizeHint)
 
     let connection = try await makePersistentConnection()
     try connection.sendTransport(to: deviceID)
-    try connection.sendShell(components.joined(separator: " "))
+    try connection.sendShell(command)
 
     _ = try? await keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
     return ScreenStreamSession(
@@ -91,16 +78,16 @@ struct ADBExec: Sendable {
   }
 
   func screenDensityScale(deviceID: String) async throws -> CGFloat {
-    if let wmOutput = try? await runShellString(deviceID: deviceID, command: "wm density") {
-      if let match = wmOutput.firstMatch(of: /Physical density:\s*(\d+)/) {
-        if let value = Double(match.1) { return CGFloat(value) / 160.0 }
-      }
+    if let wmOutput = try? await runShellString(deviceID: deviceID, command: "wm density"),
+       let density = parseDensity(from: wmOutput) {
+      return density
     }
-    if let prop = try? await runShellString(deviceID: deviceID, command: "getprop ro.sf.lcd_density") {
-      if let value = Double(prop.trimmingCharacters(in: .whitespacesAndNewlines)) {
-        return CGFloat(value) / 160.0
-      }
+
+    if let prop = try? await runShellString(deviceID: deviceID, command: "getprop ro.sf.lcd_density"),
+       let density = parseDensity(from: prop) {
+      return density
     }
+
     throw ADBError.parseFailure("Unable to determine device density")
   }
 
@@ -171,17 +158,11 @@ struct ADBExec: Sendable {
     let output = try await runShellString(deviceID: deviceID, command: "getprop")
     var result: [String: String] = [:]
     for line in output.split(separator: "\n") {
-      guard let keyStart = line.firstIndex(of: "["),
-            let keyEnd = line[keyStart...].firstIndex(of: "]"),
-            let valStart = line[keyEnd...].firstIndex(of: "["),
-            let valEnd = line[valStart...].firstIndex(of: "]")
-      else { continue }
-      let key = String(line[line.index(after: keyStart) ..< keyEnd])
-      let value = String(line[line.index(after: valStart) ..< valEnd])
+      guard let property = parsePropertyLine(line) else { continue }
       if let prefix {
-        if key.hasPrefix(prefix) { result[key] = value }
+        if property.key.hasPrefix(prefix) { result[property.key] = property.value }
       } else {
-        result[key] = value
+        result[property.key] = property.value
       }
     }
     return result
@@ -193,14 +174,13 @@ struct ADBExec: Sendable {
 
     let stream = AsyncThrowingStream<String, Error> { continuation in
       let streamTask = Task.detached(priority: .userInitiated) {
-        defer { continuation.finish() }
         do {
           while !Task.isCancelled {
             guard let payload = try connection.readLengthPrefixedPayload() else { break }
-            if let payloadString = String(data: payload, encoding: .utf8) {
-              continuation.yield(payloadString)
-            }
+            let payloadString = String(decoding: payload, as: UTF8.self)
+            continuation.yield(payloadString)
           }
+          continuation.finish()
         } catch is CancellationError {
           // Stream cancelled intentionally; swallow.
         } catch {
@@ -255,24 +235,27 @@ struct ADBExec: Sendable {
     return output
   }
 
+  private enum ConnectionLifetime {
+    case ephemeral
+    case persistent
+  }
+
   private func withConnection<T>(
     maxAttempts: Int = 3,
     _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
   ) async throws -> T where T: Sendable {
-    try await performAttempt(maxAttempts: maxAttempts, keepConnectionOnSuccess: false) { connection in
-      try await Task.detached(priority: .userInitiated) {
-        try body(connection)
-      }.value
+    try await runWithRetry(maxAttempts: maxAttempts, lifetime: .ephemeral) { connection in
+      try body(connection)
     }
   }
 
   private func makePersistentConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
-    try await performAttempt(maxAttempts: maxAttempts, keepConnectionOnSuccess: true) { connection in connection }
+    try await runWithRetry(maxAttempts: maxAttempts, lifetime: .persistent) { connection in connection }
   }
 
-  private func performAttempt<T>(
+  private func runWithRetry<T>(
     maxAttempts: Int,
-    keepConnectionOnSuccess: Bool,
+    lifetime: ConnectionLifetime,
     _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
   ) async throws -> T where T: Sendable {
     var lastError: Error?
@@ -285,7 +268,7 @@ struct ADBExec: Sendable {
         let connection = try ADBSocketConnection()
         do {
           let value = try await operation(connection)
-          if !keepConnectionOnSuccess { connection.close() }
+          if lifetime == .ephemeral { connection.close() }
           return value
         } catch {
           connection.close()
@@ -302,7 +285,7 @@ struct ADBExec: Sendable {
           didRestartServer = true
         }
 
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: RetryPolicy.maxServerWaitNanoseconds)
       }
     }
 
@@ -316,6 +299,81 @@ struct ADBExec: Sendable {
   private func sendSigIntIfNeeded(deviceID: String, pid: Int32) async {
     let command = "kill -INT \(pid) >/dev/null 2>&1 || true"
     _ = try? await runShellString(deviceID: deviceID, command: command)
+  }
+
+  private func resolvedDisplaySize(deviceID: String, providedSize: String?) async throws -> String? {
+    guard let provided = providedSize?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !provided.isEmpty else {
+      return try? await getCurrentDisplaySize(deviceID: deviceID)
+    }
+    return provided
+  }
+
+  private func makeScreenRecordCommand(
+    bitRateMbps: Int,
+    timeLimitSeconds: Int,
+    size: String?,
+    destination: String
+  ) -> String {
+    let arguments = makeScreenRecordArguments(
+      bitRateMbps: bitRateMbps,
+      timeLimitSeconds: timeLimitSeconds,
+      size: size
+    ) + [destination]
+    return arguments.joined(separator: " ")
+  }
+
+  private func makeScreenStreamCommand(bitRateMbps: Int, size: String?) -> String {
+    let arguments = makeScreenRecordArguments(
+      bitRateMbps: bitRateMbps,
+      timeLimitSeconds: 0,
+      size: size,
+      extraFlags: ["--output-format=h264"]
+    ) + ["-"]
+    return arguments.joined(separator: " ")
+  }
+
+  private func makeScreenRecordArguments(
+    bitRateMbps: Int,
+    timeLimitSeconds: Int,
+    size: String?,
+    extraFlags: [String] = []
+  ) -> [String] {
+    var arguments = ["screenrecord"]
+    arguments.append(contentsOf: extraFlags)
+    arguments.append(contentsOf: ["--bit-rate", "\(bitRateMbps * 1_000_000)"])
+    arguments.append(contentsOf: ["--time-limit", "\(timeLimitSeconds)"])
+    if let size, !size.isEmpty { arguments.append(contentsOf: ["--size", size]) }
+    return arguments
+  }
+
+  private func parseDensity(from value: String) -> CGFloat? {
+    if let match = value.firstMatch(of: /Physical density:\s*(\d+)/),
+       let number = Double(match.1) {
+      return CGFloat(number) / 160.0
+    }
+
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let number = Double(trimmed) {
+      return CGFloat(number) / 160.0
+    }
+    return nil
+  }
+
+  private func parsePropertyLine(_ line: Substring) -> (key: String, value: String)? {
+    guard let keyStart = line.firstIndex(of: "["),
+          let keyEnd = line[keyStart...].firstIndex(of: "]"),
+          let valueStart = line[keyEnd...].firstIndex(of: "["),
+          let valueEnd = line[valueStart...].firstIndex(of: "]")
+    else { return nil }
+
+    let keyRange = line.index(after: keyStart) ..< keyEnd
+    let valueRange = line.index(after: valueStart) ..< valueEnd
+
+    return (
+      key: String(line[keyRange]),
+      value: String(line[valueRange])
+    )
   }
 
   private func shouldAttemptServerRestart(for error: Error) -> Bool {

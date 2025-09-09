@@ -2,6 +2,29 @@ import Darwin
 import Foundation
 
 final class ADBSocketConnection {
+  enum Request {
+    case trackDevices
+    case transport(deviceID: String)
+    case shell(command: String)
+    case exec(command: String)
+    case sync
+
+    fileprivate var rawValue: String {
+      switch self {
+      case .trackDevices:
+        return "host:track-devices-l"
+      case let .transport(deviceID):
+        return "host:transport:\(deviceID)"
+      case let .shell(command):
+        return "shell:\(command)"
+      case let .exec(command):
+        return "exec:\(command)"
+      case .sync:
+        return "sync:"
+      }
+    }
+  }
+
   private enum Constants {
     static let host = "127.0.0.1"
     static let port: UInt16 = 5037
@@ -27,23 +50,27 @@ final class ADBSocketConnection {
   }
 
   func sendTrackDevices() throws {
-    try sendRequest("host:track-devices-l")
+    try send(.trackDevices)
   }
 
   func sendTransport(to deviceID: String) throws {
-    try sendRequest("host:transport:\(deviceID)")
+    try send(.transport(deviceID: deviceID))
   }
 
   func sendShell(_ command: String) throws {
-    try sendRequest("shell:\(command)")
+    try send(.shell(command: command))
   }
 
   func sendExec(_ command: String) throws {
-    try sendRequest("exec:\(command)")
+    try send(.exec(command: command))
   }
 
   func sendSync() throws {
-    try sendRequest("sync:")
+    try send(.sync)
+  }
+
+  private func send(_ request: Request) throws {
+    try sendRequest(request.rawValue)
   }
 
   private func sendRequest(_ request: String) throws {
@@ -216,25 +243,17 @@ final class ADBSocketConnection {
   }
 
   private func readExact(_ count: Int) throws -> Data {
-    var remaining = count
-    var buffer = Data()
-    buffer.reserveCapacity(count)
-
-    while remaining > 0 {
-      var temp = [UInt8](repeating: 0, count: remaining)
-      let read = try readOnce(into: &temp)
-      if read == 0 {
-        throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
-      }
-
-      buffer.append(contentsOf: temp.prefix(read))
-      remaining -= read
+    guard let data = try readExact(count, allowEarlyEOF: false) else {
+      throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
     }
-
-    return buffer
+    return data
   }
 
   private func readOptionalExact(_ count: Int) throws -> Data? {
+    try readExact(count, allowEarlyEOF: true)
+  }
+
+  private func readExact(_ count: Int, allowEarlyEOF: Bool) throws -> Data? {
     var remaining = count
     var buffer = Data()
     buffer.reserveCapacity(count)
@@ -244,10 +263,13 @@ final class ADBSocketConnection {
       let read = try readOnce(into: &temp)
       if read == 0 {
         if buffer.isEmpty {
-          return nil
-        } else {
+          if allowEarlyEOF { return nil }
           throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
         }
+        guard allowEarlyEOF else {
+          throw ADBError.protocolFailure("unexpected EOF while reading from adb server")
+        }
+        return buffer
       }
 
       buffer.append(contentsOf: temp.prefix(read))
