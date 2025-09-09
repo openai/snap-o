@@ -74,6 +74,10 @@ final class ADBSocketConnection {
     try sendRequest("shell:\(command)")
   }
 
+  func sendExec(_ command: String) throws {
+    try sendRequest("exec:\(command)")
+  }
+
   func sendSync() throws {
     try sendRequest("sync:")
   }
@@ -103,7 +107,7 @@ final class ADBSocketConnection {
     throw ADBError.protocolFailure("unexpected adb status: \(status)")
   }
 
-  func readToEnd() throws -> Data {
+  func readToEnd(command: String) throws -> Data {
     var accumulator = Data()
     var buffer = [UInt8](repeating: 0, count: Constants.bufferSize)
 
@@ -122,6 +126,7 @@ final class ADBSocketConnection {
       }
     }
 
+    Perf.step(.appFirstSnapshot, "Return readToEnd \(command)")
     return accumulator
   }
 

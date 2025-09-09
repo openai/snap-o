@@ -7,7 +7,7 @@ struct ADBExec: Sendable {
   // MARK: - Public entry points
 
   func screencapPNG(deviceID: String) async throws -> Data {
-    try await runShellData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
+    try await runExecData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
   }
 
   func startScreenrecord(
@@ -214,10 +214,27 @@ struct ADBExec: Sendable {
   // MARK: - Private helpers
 
   private func runShellData(deviceID: String, command: String) async throws -> Data {
+    return try await runCommand(deviceID: deviceID, command: command, executor: { connection, command in
+      try connection.sendShell(command)
+    })
+  }
+
+  private func runExecData(deviceID: String, command: String) async throws -> Data {
+    return try await runCommand(deviceID: deviceID, command: command, executor: { connection, command in
+      try connection.sendExec(command)
+    })
+  }
+
+  private func runCommand(
+    deviceID: String,
+    command: String,
+    executor: @escaping @Sendable (ADBSocketConnection, String) throws -> Void
+  ) async throws -> Data {
     try await withConnection { connection in
       try connection.sendTransport(to: deviceID)
-      try connection.sendShell(command)
-      return try connection.readToEnd()
+      try executor(connection, command)
+      Perf.step(.appFirstSnapshot, "Start readToEnd: \(command)")
+      return try connection.readToEnd(command: command)
     }
   }
 
