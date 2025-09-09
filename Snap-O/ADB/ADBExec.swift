@@ -178,7 +178,7 @@ extension ADBExec {
   // Fetch and parse all system properties (or only those with a given prefix).
   // Output lines are like: [ro.product.model]: [Pixel 7]
   func getProperties(deviceID: String, prefix: String? = nil) async throws -> [String: String] {
-    let output = try await runString(["-s", deviceID, "shell", "getprop"]) // full dump
+    let output = try await runString(["-s", deviceID, "shell", "getprop"])
     var result: [String: String] = [:]
     for line in output.split(separator: "\n") {
       guard let keyStart = line.firstIndex(of: "["),

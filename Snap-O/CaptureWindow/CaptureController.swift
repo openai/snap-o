@@ -7,6 +7,7 @@ private let log = SnapOLog.recording
 final class CaptureController: ObservableObject {
   private let fileStore: FileStore
   private let adb: ADBService
+  private let services: AppServices
   let settings: AppSettings
   private let captureService: CaptureService
   let deviceID: String
@@ -85,6 +86,7 @@ final class CaptureController: ObservableObject {
   ) {
     self.settings = settings
     self.deviceID = deviceID
+    self.services = services
     adb = services.adbService
     fileStore = services.fileStore
     captureService = services.captureService
@@ -102,8 +104,21 @@ final class CaptureController: ObservableObject {
       }
       .store(in: &cancellables)
 
-    Perf.step(.appFirstSnapshot, "Starting task to refreshPreview")
-    Task { await refreshPreview() }
+    Perf.step(.appFirstSnapshot, "Starting initial preview load")
+    Task.detached(priority: .userInitiated) { [weak self] in
+      Perf.step(.appFirstSnapshot, "consume preloaded screenshot")
+      if let media = await services.captureService.consumePreloadedScreenshot(for: deviceID) {
+        Perf.step(.appFirstSnapshot, "Using preloaded screenshot")
+        Task { @MainActor [weak self] in
+          self?.mode = .showing(media)
+          self?.updateSizingMedia(with: media)
+        }
+        return
+      }
+
+      Perf.step(.appFirstSnapshot, "Preload missing; refreshing preview")
+      await self?.refreshPreview()
+    }
   }
 
   convenience init(

@@ -6,6 +6,9 @@ actor CaptureService {
   private let adb: ADBService
   private let fileStore: FileStore
 
+  private var preloadedScreenshotTask: Task<Media, Error>?
+  private var preloadedScreenshotDeviceID: String?
+
   init(adb: ADBService, fileStore: FileStore) {
     self.adb = adb
     self.fileStore = fileStore
@@ -71,5 +74,36 @@ actor CaptureService {
   func stopLivePreview(session: LivePreviewSession) async -> Error? {
     await session.cancel()
     return await session.waitUntilStop()
+  }
+
+  func preloadScreenshot(for deviceID: String) async {
+    guard preloadedScreenshotTask == nil else { return }
+
+    preloadedScreenshotDeviceID = deviceID
+    preloadedScreenshotTask = Task {
+      Perf.step(.appFirstSnapshot, "Preloading first screenshot")
+      return try await self.captureScreenshot(for: deviceID)
+    }
+  }
+
+  func consumePreloadedScreenshot(for deviceID: String) async -> Media? {
+    guard preloadedScreenshotDeviceID == deviceID,
+          let task = preloadedScreenshotTask else {
+      return nil
+    }
+
+    preloadedScreenshotTask = nil
+    preloadedScreenshotDeviceID = nil
+
+    do {
+      let media = try await task.value
+      guard Date().timeIntervalSince(media.capturedAt) <= 1 else {
+        return nil
+      }
+      Perf.step(.appFirstSnapshot, "return media")
+      return media
+    } catch {
+      return nil
+    }
   }
 }
