@@ -62,6 +62,8 @@ final class ADBSocketConnection {
       throw ADBError.protocolFailure("unable to encode request header")
     }
 
+    print("writeFully \(header)")
+    print("writeFully \(payload)")
   func sendTrackDevices() throws {
     try sendRequest("host:track-devices-l")
   }
@@ -224,13 +226,17 @@ final class ADBSocketConnection {
 
       while bytesRemaining > 0 {
         try Task.checkCancellation()
+        print("Write to output")
         let written = output.write(pointer, maxLength: bytesRemaining)
+        print("Wrote to output")
         if written > 0 {
           bytesRemaining -= written
           pointer = pointer.advanced(by: written)
         } else if written == 0 {
+          print("Wrote nothing")
           throw ADBError.protocolFailure("socket closed during write")
         } else {
+          print("Socket write failure")
           throw output.streamError ?? ADBError.protocolFailure("socket write failed")
         }
       }

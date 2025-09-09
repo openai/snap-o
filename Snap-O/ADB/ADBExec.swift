@@ -4,6 +4,8 @@ import Foundation
 struct ADBExec: Sendable {
   let url: URL
 
+  private static let serverLauncher = ADBServerLauncher()
+
   // MARK: - Public entry points
 
   func screencapPNG(deviceID: String) async throws -> Data {
@@ -221,6 +223,7 @@ struct ADBExec: Sendable {
 
   private func runExecData(deviceID: String, command: String) async throws -> Data {
     return try await runCommand(deviceID: deviceID, command: command, executor: { connection, command in
+      print("sendExec")
       try connection.sendExec(command)
     })
   }
@@ -231,7 +234,9 @@ struct ADBExec: Sendable {
     executor: @escaping @Sendable (ADBSocketConnection, String) throws -> Void
   ) async throws -> Data {
     try await withConnection { connection in
+      print("sendTransport")
       try connection.sendTransport(to: deviceID)
+      print("executor")
       try executor(connection, command)
       Perf.step(.appFirstSnapshot, "Start readToEnd: \(command)")
       return try connection.readToEnd(command: command)
@@ -246,62 +251,70 @@ struct ADBExec: Sendable {
     return output
   }
 
-  private func withConnection<T>(allowRetry: Bool = true, _ body: @escaping @Sendable (ADBSocketConnection) throws -> T) async throws -> T where T: Sendable {
-    do {
-      return try await Task.detached(priority: .userInitiated) {
-        let connection = try ADBSocketConnection()
-        defer { connection.close() }
-        return try body(connection)
-      }.value
-    } catch {
-      if allowRetry, shouldAttemptServerRestart(for: error) {
-        try await startServerIfNeeded()
-        return try await withConnection(allowRetry: false, body)
+  private func withConnection<T>(
+    maxAttempts: Int = 3,
+    _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
+  ) async throws -> T where T: Sendable {
+    var attemptsRemaining = maxAttempts
+    var didRestartServer = false
+
+    while true {
+      do {
+        return try await Task.detached(priority: .userInitiated) {
+          print("Create connection")
+          let connection = try ADBSocketConnection()
+          defer { connection.close() }
+          print("Run connection body")
+          do {
+            return try body(connection)
+          } catch {
+            throw error
+          }
+        }.value
+      } catch {
+        print("Failed to create ADB Socket connection")
+        let normalized = normalize(error)
+        attemptsRemaining -= 1
+        guard attemptsRemaining >= 0 else { throw normalized }
+
+        guard shouldAttemptServerRestart(for: normalized) else { throw normalized }
+
+        if !didRestartServer {
+          try await startServerIfNeeded()
+          didRestartServer = true
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
       }
-      throw normalize(error)
     }
   }
 
-  private func makePersistentConnection(allowRetry: Bool = true) async throws -> ADBSocketConnection {
-    do {
-      return try await Task.detached(priority: .userInitiated) {
-        try ADBSocketConnection()
-      }.value
-    } catch {
-      if allowRetry, shouldAttemptServerRestart(for: error) {
-        try await startServerIfNeeded()
-        return try await makePersistentConnection(allowRetry: false)
+  private func makePersistentConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
+    var attemptsRemaining = maxAttempts
+    var didRestartServer = false
+
+    while true {
+      do {
+        return try ADBSocketConnection()
+      } catch {
+        let normalized = normalize(error)
+        attemptsRemaining -= 1
+        guard attemptsRemaining >= 0 else { throw normalized }
+
+        guard shouldAttemptServerRestart(for: normalized) else { throw normalized }
+
+        if !didRestartServer {
+          try await startServerIfNeeded()
+          didRestartServer = true
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
       }
-      throw normalize(error)
     }
   }
 
   private func startServerIfNeeded() async throws {
-    guard FileManager.default.fileExists(atPath: url.path) else {
-      throw ADBError.adbNotFound
-    }
-
-    let ok = url.startAccessingSecurityScopedResource()
-    defer { if ok { url.stopAccessingSecurityScopedResource() } }
-
-    try await Task.detached(priority: .userInitiated) {
-      let process = Process()
-      process.executableURL = url
-      process.arguments = ["start-server"]
-      let stderr = Pipe()
-      process.standardError = stderr
-      process.standardOutput = Pipe()
-
-      try process.run()
-      process.waitUntilExit()
-
-      let status = process.terminationStatus
-      if status != 0 {
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-        let errString = String(data: errData, encoding: .utf8)
-        throw ADBError.nonZeroExit(status, stderr: errString)
-      }
-    }.value
+    try await ADBExec.serverLauncher.startServer(at: url)
   }
 
   private func shouldAttemptServerRestart(for error: Error) -> Bool {
@@ -335,5 +348,51 @@ struct TrackDevicesHandle {
 
   func cancel() {
     cancelClosure()
+  }
+}
+
+private actor ADBServerLauncher {
+  private var currentTask: Task<Void, Error>?
+
+  func startServer(at url: URL) async throws {
+    if let currentTask {
+      try await currentTask.value
+      return
+    }
+
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      throw ADBError.adbNotFound
+    }
+
+    let launchTask = Task.detached(priority: .userInitiated) {
+      let ok = url.startAccessingSecurityScopedResource()
+      defer { if ok { url.stopAccessingSecurityScopedResource() } }
+
+      let process = Process()
+      process.executableURL = url
+      process.arguments = ["start-server"]
+      let stderr = Pipe()
+      process.standardError = stderr
+      process.standardOutput = Pipe()
+
+      try process.run()
+      process.waitUntilExit()
+
+      let status = process.terminationStatus
+      if status != 0 {
+        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        let errString = String(data: errData, encoding: .utf8)
+        throw ADBError.nonZeroExit(status, stderr: errString)
+      }
+    }
+
+    currentTask = launchTask
+    do {
+      try await launchTask.value
+    } catch {
+      currentTask = nil
+      throw error
+    }
+    currentTask = nil
   }
 }
