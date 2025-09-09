@@ -11,10 +11,17 @@ struct SnapOApp: App {
   private let updaterController: SPUStandardUpdaterController
 
   init() {
+    // Perf: App start → first snapshot rendered (compiled out when disabled)
+    Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
+
     let services = AppServices.shared
     self.services = services
 
     settings = AppSettings.shared
+
+    Task.detached(priority: .userInitiated) {
+      await services.start()
+    }
 
     // Initialize Sparkle updater controller; starts checks automatically
     updaterController = SPUStandardUpdaterController(
@@ -22,13 +29,6 @@ struct SnapOApp: App {
       updaterDelegate: nil,
       userDriverDelegate: nil
     )
-
-    // Perf: App start → first snapshot rendered (compiled out when disabled)
-    Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
-
-    Task.detached(priority: .userInitiated) {
-      await services.start()
-    }
   }
 
   var body: some Scene {
