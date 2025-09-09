@@ -51,10 +51,6 @@ final class DeviceTracker: @unchecked Sendable {
 
   private func removeContinuation(_ id: UUID) {
     continuations.removeValue(forKey: id)
-    if continuations.isEmpty {
-      trackTask?.cancel()
-      trackTask = nil
-    }
   }
 
   private func broadcast(_ devices: [Device]) {
