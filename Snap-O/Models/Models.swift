@@ -20,6 +20,8 @@ public enum ADBError: Error, LocalizedError {
   case noSuchRecording
   case alreadyRecording
   case notRecording
+  case serverUnavailable(String?)
+  case protocolFailure(String)
 
   public var errorDescription: String? {
     switch self {
@@ -29,6 +31,10 @@ public enum ADBError: Error, LocalizedError {
     case .noSuchRecording: "No such recording handle"
     case .alreadyRecording: "Already recording on this device"
     case .notRecording: "Not currently recording"
+    case .serverUnavailable(let message):
+      "Could not connect to the adb server: \(message ?? "<unknown>")"
+    case .protocolFailure(let message):
+      "ADB protocol error: \(message)"
     }
   }
 }

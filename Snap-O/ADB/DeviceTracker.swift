@@ -78,16 +78,13 @@ final class DeviceTracker: @unchecked Sendable {
       await adbService.awaitConfigured()
 
       guard let exec = try? await adbService.exec(),
-            let (handles, stream) = try? exec.trackDevices() else {
+            let (handle, stream) = try? await exec.trackDevices() else {
         if hasSeenFirstMessage { broadcast([]) }
         await pause()
         continue
       }
 
-      defer {
-        if handles.process.isRunning { handles.process.terminate() }
-        _ = try? handles.stderr.fileHandleForReading.readToEnd()
-      }
+      defer { handle.cancel() }
 
       do {
         for try await payload in stream {

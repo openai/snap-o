@@ -3,15 +3,17 @@ import Foundation
 final class RecordingSession: @unchecked Sendable {
   let deviceID: String
   let remotePath: String
-  let process: Process
-  let stderrPipe: Pipe
   let startedAt: Date
+  private let connection: ADBSocketConnection
 
-  init(deviceID: String, remotePath: String, process: Process, stderrPipe: Pipe, startedAt: Date) {
+  init(deviceID: String, remotePath: String, connection: ADBSocketConnection, startedAt: Date) {
     self.deviceID = deviceID
     self.remotePath = remotePath
-    self.process = process
-    self.stderrPipe = stderrPipe
+    self.connection = connection
     self.startedAt = startedAt
+  }
+
+  func stop() {
+    connection.close()
   }
 }

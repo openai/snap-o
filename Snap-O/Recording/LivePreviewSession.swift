@@ -83,11 +83,10 @@ final class LivePreviewSession {
     let session = screenStream
     streamTask = Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
-      let handle = session.stdoutPipe.fileHandleForReading
       do {
         while !Task.isCancelled {
-          guard let data = try handle.read(upToCount: 4096), !data.isEmpty else { break }
-          decoderRef.value.append(data)
+          guard let chunk = try session.read(maxLength: 4096), !chunk.isEmpty else { break }
+          decoderRef.value.append(chunk)
         }
         await finish(with: nil)
       } catch {
@@ -102,7 +101,7 @@ final class LivePreviewSession {
 
     streamTask?.cancel()
     streamTask = nil
-    screenStream.process.terminate()
+    screenStream.close()
     decoder = nil
 
     stopResult = error

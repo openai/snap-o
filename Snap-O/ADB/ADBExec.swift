@@ -1,59 +1,13 @@
 import CoreGraphics
 import Foundation
 
-struct ADBExec {
+struct ADBExec: Sendable {
   let url: URL
 
-  struct ExecProcess {
-    let process: Process
-    let stdout: Pipe
-    let stderr: Pipe
-  }
+  // MARK: - Public entry points
 
-  func startProcess(_ args: [String]) throws -> ExecProcess {
-    guard FileManager.default.fileExists(atPath: url.path) else { throw ADBError.adbNotFound }
-    let ok = url.startAccessingSecurityScopedResource()
-    defer { if ok { url.stopAccessingSecurityScopedResource() } }
-
-    let process = Process()
-    let stdout = Pipe()
-    let stderr = Pipe()
-    process.executableURL = url
-    process.arguments = args
-    process.standardOutput = stdout
-    process.standardError = stderr
-
-    try process.run()
-    return ExecProcess(process: process, stdout: stdout, stderr: stderr)
-  }
-
-  func runData(_ args: [String]) async throws -> Data {
-    let handles = try startProcess(args)
-    return try await Task(priority: .userInitiated) { () -> Data in
-      let outData = handles.stdout.fileHandleForReading.readDataToEndOfFile()
-      handles.process.waitUntilExit()
-      let status = handles.process.terminationStatus
-      if status != 0 {
-        let errData = handles.stderr.fileHandleForReading.readDataToEndOfFile()
-        let errString = String(data: errData, encoding: .utf8)
-        throw ADBError.nonZeroExit(status, stderr: errString)
-      }
-      return outData
-    }.value
-  }
-
-  func runString(_ args: [String]) async throws -> String {
-    let data = try await runData(args)
-    guard let str = String(data: data, encoding: .utf8) else {
-      throw ADBError.parseFailure("non-utf8 output")
-    }
-    return str
-  }
-}
-
-extension ADBExec {
   func screencapPNG(deviceID: String) async throws -> Data {
-    try await runData(["-s", deviceID, "shell", "screencap -p 2>/dev/null"])
+    try await runShellData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
   }
 
   func startScreenrecord(
@@ -62,77 +16,77 @@ extension ADBExec {
     timeLimitSeconds: Int = 60 * 60 * 3,
     size: String? = nil
   ) async throws -> RecordingSession {
-    let sizeArg: String? = if let provided = size, !provided.isEmpty {
-      provided
+    let sizeArg: String?
+    if let provided = size, !provided.isEmpty {
+      sizeArg = provided
     } else {
-      try? await getCurrentDisplaySize(deviceID: deviceID)
+      sizeArg = try? await getCurrentDisplaySize(deviceID: deviceID)
     }
+
     let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
-
-    var args = [
-      "-s", deviceID, "shell", "screenrecord",
-      "--bit-rate", "\(bitRateMbps * 1_000_000)",
-      "--time-limit", "\(timeLimitSeconds)"
+    var command = [
+      "screenrecord",
+      "--bit-rate",
+      "\(bitRateMbps * 1_000_000)",
+      "--time-limit",
+      "\(timeLimitSeconds)"
     ]
-    if let sizeArg, !sizeArg.isEmpty { args += ["--size", sizeArg] }
-    args += [remote]
+    if let sizeArg, !sizeArg.isEmpty { command += ["--size", sizeArg] }
+    command.append(remote)
 
-    let handles = try startProcess(args)
+    let connection = try await makePersistentConnection()
+    try connection.sendTransport(to: deviceID)
+    try connection.sendShell(command.joined(separator: " "))
+
     return RecordingSession(
       deviceID: deviceID,
       remotePath: remote,
-      process: handles.process,
-      stderrPipe: handles.stderr,
+      connection: connection,
       startedAt: Date()
     )
   }
 
   func stopScreenrecord(session: RecordingSession, deviceID: String, savingTo localURL: URL) async throws {
-    session.process.terminate()
-    session.process.waitUntilExit()
-    let status = session.process.terminationStatus
-    if status != 0, status != 15 {
-      let data = try? session.stderrPipe.fileHandleForReading.readToEnd() ?? Data()
-      let err = data.flatMap { String(data: $0, encoding: .utf8) }
-      throw ADBError.nonZeroExit(session.process.terminationStatus, stderr: err)
-    }
-    // Give device time to flush the file before pulling
+    session.stop()
     try? await Task.sleep(nanoseconds: 1_000_000_000)
     try await pull(deviceID: session.deviceID, remote: session.remotePath, to: localURL)
-    _ = try? await runString(["-s", session.deviceID, "shell", "rm", "-f", session.remotePath])
+    _ = try? await runShellString(
+      deviceID: session.deviceID,
+      command: "rm -f \(session.remotePath)"
+    )
   }
 
   func startScreenStream(deviceID: String, bitRateMbps: Int = 8, size: String? = nil) async throws -> ScreenStreamSession {
-    var args = [
-      "-s", deviceID, "shell",
+    var components = [
       "screenrecord",
       "--output-format=h264",
-      "--bit-rate", "\(bitRateMbps * 1_000_000)",
-      "--time-limit", "0"
+      "--bit-rate",
+      "\(bitRateMbps * 1_000_000)",
+      "--time-limit",
+      "0"
     ]
-    if let size, !size.isEmpty { args += ["--size", size] }
-    args += ["-"]
+    if let size, !size.isEmpty { components += ["--size", size] }
+    components.append("-")
 
-    let handles = try startProcess(args)
+    let connection = try await makePersistentConnection()
+    try connection.sendTransport(to: deviceID)
+    try connection.sendShell(components.joined(separator: " "))
+
     _ = try? await keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
     return ScreenStreamSession(
       deviceID: deviceID,
-      process: handles.process,
-      stdoutPipe: handles.stdout,
-      stderrPipe: handles.stderr,
+      connection: connection,
       startedAt: Date()
     )
   }
 
-  // MARK: - Other Commands
-
   func screenDensityScale(deviceID: String) async throws -> CGFloat {
-    if let wmOutput = try? await runString(["-s", deviceID, "shell", "wm", "density"]) {
+    if let wmOutput = try? await runShellString(deviceID: deviceID, command: "wm density") {
       if let match = wmOutput.firstMatch(of: /Physical density:\s*(\d+)/) {
         if let value = Double(match.1) { return CGFloat(value) / 160.0 }
       }
     }
-    if let prop = try? await runString(["-s", deviceID, "shell", "getprop", "ro.sf.lcd_density"]) {
+    if let prop = try? await runShellString(deviceID: deviceID, command: "getprop ro.sf.lcd_density") {
       if let value = Double(prop.trimmingCharacters(in: .whitespacesAndNewlines)) {
         return CGFloat(value) / 160.0
       }
@@ -142,43 +96,69 @@ extension ADBExec {
 
   @discardableResult
   func keyEvent(deviceID: String, keyCode: String) async throws -> String {
-    try await runString(["-s", deviceID, "shell", "input", "keyevent", keyCode])
+    try await runShellString(deviceID: deviceID, command: "input keyevent \(keyCode)")
   }
 
   func getProp(deviceID: String, key: String) async throws -> String {
-    try await runString(["-s", deviceID, "shell", "getprop", key])
+    try await runShellString(deviceID: deviceID, command: "getprop \(key)")
   }
 
   func setShowTouches(deviceID: String, enabled: Bool) async throws {
-    _ = try await runString([
-      "-s", deviceID, "shell", "settings", "put", "system", "show_touches", enabled ? "1" : "0"
-    ])
+    _ = try await runShellString(
+      deviceID: deviceID,
+      command: "settings put system show_touches \(enabled ? "1" : "0")"
+    )
   }
 
   func getShowTouches(deviceID: String) async throws -> Bool {
-    let value = try await runString([
-      "-s", deviceID, "shell", "settings", "get", "system", "show_touches"
-    ]).trimmingCharacters(in: .whitespacesAndNewlines)
+    let value = try await runShellString(
+      deviceID: deviceID,
+      command: "settings get system show_touches"
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
     return value == "1"
   }
 
+  func runShellCommand(deviceID: String, command: String) async throws -> String {
+    try await runShellString(deviceID: deviceID, command: command)
+  }
+
   func pull(deviceID: String, remote: String, to localURL: URL) async throws {
-    try FileManager.default.createDirectory(at: localURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-    _ = try await runString(["-s", deviceID, "pull", remote, localURL.path])
+    try FileManager.default.createDirectory(
+      at: localURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+
+    try await withConnection { connection in
+      try connection.sendTransport(to: deviceID)
+      try connection.sendSync()
+      try connection.sendSyncRequest(id: "RECV", path: remote)
+
+      if FileManager.default.fileExists(atPath: localURL.path) {
+        try FileManager.default.removeItem(at: localURL)
+      }
+      FileManager.default.createFile(atPath: localURL.path, contents: nil)
+
+      guard let handle = FileHandle(forWritingAtPath: localURL.path) else {
+        throw ADBError.protocolFailure("unable to open destination file for pull")
+      }
+      defer { try? handle.close() }
+
+      try connection.readSyncData { chunk in
+        try handle.write(contentsOf: chunk)
+      }
+    }
   }
 
   func getCurrentDisplaySize(deviceID: String) async throws -> String {
-    let result = try await runString(["-s", deviceID, "shell", "dumpsys", "window", "displays"])
+    let result = try await runShellString(deviceID: deviceID, command: "dumpsys window displays")
     guard let match = result.firstMatch(of: /cur=(?<size>\d+x\d+)/) else {
       throw ADBError.parseFailure("Unable to find window size")
     }
     return String(match.output.size)
   }
 
-  // Fetch and parse all system properties (or only those with a given prefix).
-  // Output lines are like: [ro.product.model]: [Pixel 7]
   func getProperties(deviceID: String, prefix: String? = nil) async throws -> [String: String] {
-    let output = try await runString(["-s", deviceID, "shell", "getprop"])
+    let output = try await runShellString(deviceID: deviceID, command: "getprop")
     var result: [String: String] = [:]
     for line in output.split(separator: "\n") {
       guard let keyStart = line.firstIndex(of: "["),
@@ -197,56 +177,146 @@ extension ADBExec {
     return result
   }
 
-  func trackDevices() throws -> (handles: ExecProcess, stream: AsyncThrowingStream<String, Error>) {
-    enum EOF: Error { case reached }
-
-    let handles = try startProcess(["track-devices", "-l"])
-    let fh = handles.stdout.fileHandleForReading
-
-    func readExactly(_ count: Int) throws -> Data {
-      var remaining = count
-      var out = Data()
-      while remaining > 0 {
-        if Task.isCancelled { throw CancellationError() }
-        guard let chunk = try fh.read(upToCount: remaining) else { throw EOF.reached }
-        if chunk.isEmpty { throw EOF.reached }
-        out.append(chunk)
-        remaining -= chunk.count
-      }
-      return out
-    }
+  func trackDevices() async throws -> (handle: TrackDevicesHandle, stream: AsyncThrowingStream<String, Error>) {
+    let connection = try await makePersistentConnection()
+    try connection.sendTrackDevices()
 
     let stream = AsyncThrowingStream<String, Error> { continuation in
-      let streamTask = Task(priority: .userInitiated) {
+      let streamTask = Task.detached(priority: .userInitiated) {
         defer { continuation.finish() }
         do {
-          while true {
-            // 4 ASCII hex digits -> payload length
-            let header = try readExactly(4)
-            guard let hex = String(data: header, encoding: .ascii),
-                  let len = Int(hex, radix: 16)
-            else {
-              // realign by skipping one byte and keep going
-              _ = try? fh.read(upToCount: 1)
-              continue
-            }
-
-            let payload = try readExactly(len)
+          while !Task.isCancelled {
+            guard let payload = try connection.readLengthPrefixedPayload() else { break }
             if let payloadString = String(data: payload, encoding: .utf8) {
               continuation.yield(payloadString)
             }
           }
         } catch is CancellationError {
-          // cancelled by caller; just finish
-        } catch EOF.reached {
-          // clean EOF; finish
+          // Stream cancelled intentionally; swallow.
         } catch {
           continuation.finish(throwing: error)
         }
       }
-      continuation.onTermination = { _ in streamTask.cancel() }
+
+      continuation.onTermination = { _ in
+        streamTask.cancel()
+        connection.close()
+      }
     }
 
-    return (handles, stream)
+    let handle = TrackDevicesHandle {
+      connection.close()
+    }
+
+    return (handle, stream)
+  }
+
+  // MARK: - Private helpers
+
+  private func runShellData(deviceID: String, command: String) async throws -> Data {
+    try await withConnection { connection in
+      try connection.sendTransport(to: deviceID)
+      try connection.sendShell(command)
+      return try connection.readToEnd()
+    }
+  }
+
+  private func runShellString(deviceID: String, command: String) async throws -> String {
+    let data = try await runShellData(deviceID: deviceID, command: command)
+    guard let output = String(data: data, encoding: .utf8) else {
+      throw ADBError.parseFailure("non-utf8 output from adb")
+    }
+    return output
+  }
+
+  private func withConnection<T>(allowRetry: Bool = true, _ body: @escaping @Sendable (ADBSocketConnection) throws -> T) async throws -> T where T: Sendable {
+    do {
+      return try await Task.detached(priority: .userInitiated) {
+        let connection = try ADBSocketConnection()
+        defer { connection.close() }
+        return try body(connection)
+      }.value
+    } catch {
+      if allowRetry, shouldAttemptServerRestart(for: error) {
+        try await startServerIfNeeded()
+        return try await withConnection(allowRetry: false, body)
+      }
+      throw normalize(error)
+    }
+  }
+
+  private func makePersistentConnection(allowRetry: Bool = true) async throws -> ADBSocketConnection {
+    do {
+      return try await Task.detached(priority: .userInitiated) {
+        try ADBSocketConnection()
+      }.value
+    } catch {
+      if allowRetry, shouldAttemptServerRestart(for: error) {
+        try await startServerIfNeeded()
+        return try await makePersistentConnection(allowRetry: false)
+      }
+      throw normalize(error)
+    }
+  }
+
+  private func startServerIfNeeded() async throws {
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      throw ADBError.adbNotFound
+    }
+
+    let ok = url.startAccessingSecurityScopedResource()
+    defer { if ok { url.stopAccessingSecurityScopedResource() } }
+
+    try await Task.detached(priority: .userInitiated) {
+      let process = Process()
+      process.executableURL = url
+      process.arguments = ["start-server"]
+      let stderr = Pipe()
+      process.standardError = stderr
+      process.standardOutput = Pipe()
+
+      try process.run()
+      process.waitUntilExit()
+
+      let status = process.terminationStatus
+      if status != 0 {
+        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        let errString = String(data: errData, encoding: .utf8)
+        throw ADBError.nonZeroExit(status, stderr: errString)
+      }
+    }.value
+  }
+
+  private func shouldAttemptServerRestart(for error: Error) -> Bool {
+    if let adbError = error as? ADBError {
+      if case .serverUnavailable = adbError { return true }
+      return false
+    }
+    if error is POSIXError { return true }
+    if (error as NSError).domain == NSPOSIXErrorDomain { return true }
+    return false
+  }
+
+  private func normalize(_ error: Error) -> Error {
+    if let adbError = error as? ADBError { return adbError }
+    if let posix = error as? POSIXError {
+      return ADBError.serverUnavailable(posix.localizedDescription)
+    }
+    if (error as NSError).domain == NSPOSIXErrorDomain {
+      return ADBError.serverUnavailable((error as NSError).localizedDescription)
+    }
+    return error
+  }
+}
+
+struct TrackDevicesHandle {
+  private let cancelClosure: @Sendable () -> Void
+
+  init(_ cancelClosure: @escaping @Sendable () -> Void) {
+    self.cancelClosure = cancelClosure
+  }
+
+  func cancel() {
+    cancelClosure()
   }
 }
