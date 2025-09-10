@@ -139,7 +139,7 @@ final class DeviceTracker: @unchecked Sendable {
 
     if parts.count >= 2 {
       let state = parts[1].lowercased()
-      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") {
+      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") || state.contains("authorizing") {
         return nil
       }
     }
