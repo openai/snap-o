@@ -38,6 +38,10 @@ struct CaptureDeviceView: View {
       WindowSizingController(displayInfo: controller.displayInfo)
         .frame(width: 0, height: 0)
     )
+    .background(
+      WindowLevelController(shouldFloat: controller.isRecording || controller.isLivePreviewActive)
+        .frame(width: 0, height: 0)
+    )
     .onOpenURL { controller.handle(url: $0) }
     .focusedSceneObject(controller)
     .toolbar {
