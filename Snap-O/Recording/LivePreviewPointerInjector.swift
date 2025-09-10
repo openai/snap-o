@@ -58,6 +58,7 @@ actor LivePreviewPointerInjector {
 
   private func flushQueue() async {
     guard let connection = try? await adb.exec().makeConnection() else {
+      isFlushing = false
       return
     }
     while !pendingEvents.isEmpty {

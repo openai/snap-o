@@ -110,7 +110,6 @@ struct LivePreviewView: NSViewRepresentable {
     }
 
     func enqueue(_ sample: CMSampleBuffer) {
-      displayLayer.sampleBufferRenderer.flush()
       displayLayer.sampleBufferRenderer.enqueue(sample)
       if !endedLivePreviewTrace {
         endedLivePreviewTrace = true

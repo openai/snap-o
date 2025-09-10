@@ -177,7 +177,7 @@ final class CaptureController: ObservableObject {
 
   func stopLivePreview(withRefresh refresh: Bool = false) async {
     guard case .livePreview(let session, _) = mode else { return }
-    isStoppingLivePreview = true
+    isStoppingLivePreview = true; defer { isStoppingLivePreview = false }
     mode = .loading
 
     let error = await captureService.stopLivePreview(session: session)
@@ -192,7 +192,6 @@ final class CaptureController: ObservableObject {
     if refresh {
       await refreshPreview()
     }
-    isStoppingLivePreview = false
   }
 
   var canStartRecordingNow: Bool { canCapture }

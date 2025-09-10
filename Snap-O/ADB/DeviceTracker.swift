@@ -50,6 +50,7 @@ final class DeviceTracker: @unchecked Sendable {
   }
 
   private func removeContinuation(_ id: UUID) {
+    lock.lock(); defer { lock.unlock() }
     continuations.removeValue(forKey: id)
   }
 

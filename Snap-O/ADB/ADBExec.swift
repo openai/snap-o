@@ -9,9 +9,6 @@ struct ADBExec: Sendable {
   private let notifyServerAvailable: ServerObserver
 
   private static let serverLauncher = ADBServerLauncher()
-  private enum RetryPolicy {
-    static let maxServerWaitNanoseconds: UInt64 = 100_000_000
-  }
 
   // MARK: - Public entry points
 
@@ -252,7 +249,7 @@ struct ADBExec: Sendable {
     var lastError: Error?
     var didRestartServer = false
 
-    for _ in 0 ..< maxAttempts {
+    for attempt in 0 ..< maxAttempts {
       try await ADBExec.serverLauncher.waitForOngoingRestart()
 
       do {
@@ -275,7 +272,8 @@ struct ADBExec: Sendable {
           didRestartServer = try await startServerIfNeeded()
         }
 
-        try await Task.sleep(nanoseconds: RetryPolicy.maxServerWaitNanoseconds)
+        let backoff = UInt64(min(1_000_000_000, 100_000_000 << attempt))
+        try await Task.sleep(nanoseconds: backoff)
       }
     }
 
