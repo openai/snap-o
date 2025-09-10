@@ -24,7 +24,7 @@ final class LivePreviewSession {
     self.deviceID = deviceID
 
     let exec = await adb.exec()
-    densityScale = try await exec.screenDensityScale(deviceID: deviceID)
+    densityScale = try await exec.displayDensity(deviceID: deviceID)
     screenStream = try await exec.startScreenStream(deviceID: deviceID)
 
     setupDecoder()

@@ -19,7 +19,7 @@ actor CaptureService {
     let exec = await adb.exec()
 
     async let dataTask: Data = try await exec.screencapPNG(deviceID: deviceID)
-    async let densityAsync: CGFloat? = await (try? exec.screenDensityScale(deviceID: deviceID))
+    async let densityAsync: CGFloat? = await (try? exec.displayDensity(deviceID: deviceID))
     let data = try await dataTask
     let capturedAt = Date()
 
@@ -51,7 +51,7 @@ actor CaptureService {
     let asset = AVURLAsset(url: destination)
 
     let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in
-      try? await adb.exec().screenDensityScale(deviceID: deviceID)
+      try? await adb.exec().displayDensity(deviceID: deviceID)
     }
 
     if let media = try await Media.video(

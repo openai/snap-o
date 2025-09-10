@@ -232,9 +232,9 @@ final class CaptureController: ObservableObject {
     do {
       let adbService = AppServices.shared.adbService
       let exec = await adbService.exec()
-      let sizeString = try await exec.getCurrentDisplaySize(deviceID: deviceID)
+      let sizeString = try await exec.displaySize(deviceID: deviceID)
       guard let size = parseDisplaySize(sizeString) else { return nil }
-      let density = try? await exec.screenDensityScale(deviceID: deviceID)
+      let density = try? await exec.displayDensity(deviceID: deviceID)
       return DisplayInfo(size: size, densityScale: density)
     } catch {
       return nil

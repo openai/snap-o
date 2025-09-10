@@ -6,7 +6,7 @@ struct ADBExec: Sendable {
   typealias ServerObserver = @Sendable () async -> Void
 
   private let pathResolver: PathResolver
-  private let serverObserver: ServerObserver
+  private let notifyServerAvailable: ServerObserver
 
   private static let serverLauncher = ADBServerLauncher()
   private enum RetryPolicy {
@@ -17,20 +17,19 @@ struct ADBExec: Sendable {
 
   init(pathResolver: @escaping PathResolver, serverObserver: @escaping ServerObserver) {
     self.pathResolver = pathResolver
-    self.serverObserver = serverObserver
+    notifyServerAvailable = serverObserver
   }
 
   func screencapPNG(deviceID: String) async throws -> Data {
-    try await runExecData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
+    try await runShellData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
   }
 
   func startScreenrecord(
     deviceID: String,
     bitRateMbps: Int = 8,
-    timeLimitSeconds: Int = 60 * 60 * 3,
-    size: String? = nil
+    timeLimitSeconds: Int = 60 * 60 * 3
   ) async throws -> RecordingSession {
-    let sizeHint = try await resolvedDisplaySize(deviceID: deviceID, providedSize: size)
+    let sizeHint = try? await displaySize(deviceID: deviceID)
     let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
     let command = makeScreenRecordCommand(
       bitRateMbps: bitRateMbps,
@@ -60,7 +59,7 @@ struct ADBExec: Sendable {
   }
 
   func stopScreenrecord(session: RecordingSession, savingTo localURL: URL) async throws {
-    await sendSigIntIfNeeded(deviceID: session.deviceID, pid: session.pid)
+    await sendSigInt(deviceID: session.deviceID, pid: session.pid)
     try await session.waitUntilStopped()
     try await pull(deviceID: session.deviceID, remote: session.remotePath, to: localURL)
     _ = try? await runShellString(
@@ -70,9 +69,15 @@ struct ADBExec: Sendable {
     session.close()
   }
 
-  func startScreenStream(deviceID: String, bitRateMbps: Int = 8, size: String? = nil) async throws -> ScreenStreamSession {
-    let sizeHint = try await resolvedDisplaySize(deviceID: deviceID, providedSize: size)
-    let command = makeScreenStreamCommand(bitRateMbps: bitRateMbps, size: sizeHint)
+  func startScreenStream(deviceID: String, bitRateMbps: Int = 8) async throws -> ScreenStreamSession {
+    let sizeHint = try? await displaySize(deviceID: deviceID)
+    let command = makeScreenRecordCommand(
+      bitRateMbps: bitRateMbps,
+      timeLimitSeconds: 0,
+      size: sizeHint,
+      destination: "-",
+      outputFormat: "h264"
+    )
 
     let connection = try await makeConnection()
     try connection.sendTransport(to: deviceID)
@@ -86,7 +91,15 @@ struct ADBExec: Sendable {
     )
   }
 
-  func screenDensityScale(deviceID: String) async throws -> CGFloat {
+  func displaySize(deviceID: String) async throws -> String {
+    let result = try await runShellString(deviceID: deviceID, command: "dumpsys window displays")
+    guard let match = result.firstMatch(of: /cur=(?<size>\d+x\d+)/) else {
+      throw ADBError.parseFailure("Unable to find window size")
+    }
+    return String(match.output.size)
+  }
+
+  func displayDensity(deviceID: String) async throws -> CGFloat {
     if let wmOutput = try? await runShellString(deviceID: deviceID, command: "wm density"),
        let density = parseDensity(from: wmOutput) {
       return density
@@ -124,10 +137,6 @@ struct ADBExec: Sendable {
     return value == "1"
   }
 
-  func runShellCommand(deviceID: String, command: String) async throws -> String {
-    try await runShellString(deviceID: deviceID, command: command)
-  }
-
   func pull(deviceID: String, remote: String, to localURL: URL) async throws {
     try FileManager.default.createDirectory(
       at: localURL.deletingLastPathComponent(),
@@ -153,14 +162,6 @@ struct ADBExec: Sendable {
         try handle.write(contentsOf: chunk)
       }
     }
-  }
-
-  func getCurrentDisplaySize(deviceID: String) async throws -> String {
-    let result = try await runShellString(deviceID: deviceID, command: "dumpsys window displays")
-    guard let match = result.firstMatch(of: /cur=(?<size>\d+x\d+)/) else {
-      throw ADBError.parseFailure("Unable to find window size")
-    }
-    return String(match.output.size)
   }
 
   func getProperties(deviceID: String, prefix: String? = nil) async throws -> [String: String] {
@@ -219,25 +220,9 @@ struct ADBExec: Sendable {
   // MARK: - Private helpers
 
   private func runShellData(deviceID: String, command: String) async throws -> Data {
-    try await runCommand(deviceID: deviceID, command: command) { connection, command in
-      try connection.sendShell(command)
-    }
-  }
-
-  private func runExecData(deviceID: String, command: String) async throws -> Data {
-    try await runCommand(deviceID: deviceID, command: command) { connection, command in
-      try connection.sendExec(command)
-    }
-  }
-
-  private func runCommand(
-    deviceID: String,
-    command: String,
-    executor: @escaping @Sendable (ADBSocketConnection, String) throws -> Void
-  ) async throws -> Data {
     try await withConnection { connection in
       try connection.sendTransport(to: deviceID)
-      try executor(connection, command)
+      try connection.sendShell(command)
       return try connection.readToEnd()
     }
   }
@@ -307,59 +292,23 @@ struct ADBExec: Sendable {
     }
   }
 
-  private func notifyServerAvailable() async {
-    await serverObserver()
-  }
-
-  private func sendSigIntIfNeeded(deviceID: String, pid: Int32) async {
+  private func sendSigInt(deviceID: String, pid: Int32) async {
     let command = "kill -INT \(pid) >/dev/null 2>&1 || true"
     _ = try? await runShellString(deviceID: deviceID, command: command)
-  }
-
-  private func resolvedDisplaySize(deviceID: String, providedSize: String?) async throws -> String? {
-    guard let provided = providedSize?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !provided.isEmpty else {
-      return try? await getCurrentDisplaySize(deviceID: deviceID)
-    }
-    return provided
   }
 
   private func makeScreenRecordCommand(
     bitRateMbps: Int,
     timeLimitSeconds: Int,
     size: String?,
-    destination: String
+    destination: String,
+    outputFormat: String? = nil
   ) -> String {
-    let arguments = makeScreenRecordArguments(
-      bitRateMbps: bitRateMbps,
-      timeLimitSeconds: timeLimitSeconds,
-      size: size
-    ) + [destination]
-    return arguments.joined(separator: " ")
-  }
-
-  private func makeScreenStreamCommand(bitRateMbps: Int, size: String?) -> String {
-    let arguments = makeScreenRecordArguments(
-      bitRateMbps: bitRateMbps,
-      timeLimitSeconds: 0,
-      size: size,
-      extraFlags: ["--output-format=h264"]
-    ) + ["-"]
-    return arguments.joined(separator: " ")
-  }
-
-  private func makeScreenRecordArguments(
-    bitRateMbps: Int,
-    timeLimitSeconds: Int,
-    size: String?,
-    extraFlags: [String] = []
-  ) -> [String] {
-    var arguments = ["screenrecord"]
-    arguments.append(contentsOf: extraFlags)
-    arguments.append(contentsOf: ["--bit-rate", "\(bitRateMbps * 1_000_000)"])
-    arguments.append(contentsOf: ["--time-limit", "\(timeLimitSeconds)"])
-    if let size, !size.isEmpty { arguments.append(contentsOf: ["--size", size]) }
-    return arguments
+    var command = "screenrecord --bit-rate \(bitRateMbps * 1_000_000) --time-limit \(timeLimitSeconds)"
+    if let outputFormat, !outputFormat.isEmpty { command += " --output-format=\(outputFormat)" }
+    if let size, !size.isEmpty { command += " --size \(size)" }
+    command += " \(destination)"
+    return command
   }
 
   private func parseDensity(from value: String) -> CGFloat? {

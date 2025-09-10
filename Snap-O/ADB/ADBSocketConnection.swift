@@ -61,10 +61,6 @@ final class ADBSocketConnection {
     try send(.shell(command: command))
   }
 
-  func sendExec(_ command: String) throws {
-    try send(.exec(command: command))
-  }
-
   func sendSync() throws {
     try send(.sync)
   }
