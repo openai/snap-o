@@ -68,7 +68,6 @@ struct WindowSizingController: NSViewRepresentable {
 
       DispatchQueue.main.async {
         window.setFrame(frame, display: true, animate: true)
-        window.contentAspectRatio = targetContentSize
         window.contentMinSize = contentMin
       }
     }
@@ -81,7 +80,7 @@ struct WindowSizingController: NSViewRepresentable {
       // visible content keeps the intended aspect without letterboxing.
       let titlebar = titlebarHeight(for: sender)
       let aspect = max(currentAspect, 0.0001)
-      let newHeight = titlebar + (frameSize.width / aspect)
+      let newHeight = (titlebar + (frameSize.width / aspect)).rounded()
       // Respect minimums driven by contentMinSize via AppKit; we simply shape
       // the proposed size to the correct relationship here.
       return NSSize(width: frameSize.width, height: newHeight)
@@ -115,15 +114,15 @@ struct WindowSizingController: NSViewRepresentable {
     /// ensuring the smaller edge is at least `minimumEdge`.
     private func scaledContentSize(for display: DisplayInfo) -> CGSize {
       var width = display.size.width
-      var height = display.size.height
       if let density = display.densityScale, density > 0 {
         width /= density
-        height /= density
       }
+      width = width.rounded()
+      var height = width / display.aspectRatio
       let scale = max(minimumEdge / width, minimumEdge / height, 1)
       width *= scale
       height *= scale
-      return CGSize(width: width, height: height)
+      return CGSize(width: width.rounded(), height: height.rounded())
     }
 
     /// Minimum content size that keeps the smaller edge at least
