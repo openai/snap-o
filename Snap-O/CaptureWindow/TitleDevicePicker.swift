@@ -78,19 +78,9 @@ private struct DevicePickerList: View {
 
     return VStack(alignment: .leading, spacing: 4) {
       if devices.isEmpty {
-        if !isDeviceListInitialized {
-          HStack {
-            ProgressView()
-              .controlSize(.small)
-            Text("Loading devices…")
-              .foregroundStyle(.secondary)
-          }
+        Text("Waiting for device...")
+          .foregroundStyle(.secondary)
           .padding(6)
-        } else {
-          Text("Waiting for device...")
-            .foregroundStyle(.secondary)
-            .padding(6)
-        }
       } else {
         ForEach(Array(devices.enumerated()), id: \.element.id) { index, device in
           let isSelected = (device.id == currentID)
