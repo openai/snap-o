@@ -94,13 +94,13 @@ actor ADBService {
   }
 
   private func requireADBURL() async throws -> URL {
-    if let url = await validStoredURL() { return url }
+    if let url = validStoredURL() { return url }
     if let resolved = await promptForPathIfNeeded(forcePrompt: true) { return resolved }
     throw ADBError.adbNotFound
   }
 
   private func pathForServerRestart() async throws -> URL {
-    if let url = await validStoredURL() { return url }
+    if let url = validStoredURL() { return url }
     if let resolved = await promptForPathIfNeeded(forcePrompt: false, waitForSelection: false) {
       return resolved
     }
