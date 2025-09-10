@@ -6,7 +6,7 @@ struct ADBExec: Sendable {
   typealias ServerObserver = @Sendable () async -> Void
 
   private let pathResolver: PathResolver
-  private let serverObserver: ServerObserver?
+  private let serverObserver: ServerObserver
 
   private static let serverLauncher = ADBServerLauncher()
   private enum RetryPolicy {
@@ -15,7 +15,7 @@ struct ADBExec: Sendable {
 
   // MARK: - Public entry points
 
-  init(pathResolver: @escaping PathResolver, serverObserver: ServerObserver? = nil) {
+  init(pathResolver: @escaping PathResolver, serverObserver: @escaping ServerObserver) {
     self.pathResolver = pathResolver
     self.serverObserver = serverObserver
   }
@@ -39,7 +39,7 @@ struct ADBExec: Sendable {
       destination: remote
     )
 
-    let connection = try await makePersistentConnection()
+    let connection = try await makeConnection()
     try connection.sendTransport(to: deviceID)
     try connection.sendShell("sh -c 'echo $$; exec \(command)'")
 
@@ -74,7 +74,7 @@ struct ADBExec: Sendable {
     let sizeHint = try await resolvedDisplaySize(deviceID: deviceID, providedSize: size)
     let command = makeScreenStreamCommand(bitRateMbps: bitRateMbps, size: sizeHint)
 
-    let connection = try await makePersistentConnection()
+    let connection = try await makeConnection()
     try connection.sendTransport(to: deviceID)
     try connection.sendShell(command)
 
@@ -178,7 +178,7 @@ struct ADBExec: Sendable {
   }
 
   func trackDevices() async throws -> (handle: TrackDevicesHandle, stream: AsyncThrowingStream<String, Error>) {
-    let connection = try await makePersistentConnection()
+    let connection = try await makeConnection()
     try connection.sendTrackDevices()
 
     let stream = AsyncThrowingStream<String, Error> { continuation in
@@ -208,6 +208,12 @@ struct ADBExec: Sendable {
     }
 
     return (handle, stream)
+  }
+
+  // Currently exposed for LivePreviewPointerInjector which issues multiple calls over a single connection.
+  // Need a more consistent API.
+  func makeConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
+    try await runWithRetry(maxAttempts: maxAttempts) { connection in connection }
   }
 
   // MARK: - Private helpers
@@ -244,27 +250,18 @@ struct ADBExec: Sendable {
     return output
   }
 
-  private enum ConnectionLifetime {
-    case ephemeral
-    case persistent
-  }
-
   private func withConnection<T>(
     maxAttempts: Int = 3,
     _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
   ) async throws -> T where T: Sendable {
-    try await runWithRetry(maxAttempts: maxAttempts, lifetime: .ephemeral) { connection in
-      try body(connection)
+    try await runWithRetry(maxAttempts: maxAttempts) { connection in
+      defer { connection.close() }
+      return try body(connection)
     }
-  }
-
-  private func makePersistentConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
-    try await runWithRetry(maxAttempts: maxAttempts, lifetime: .persistent) { connection in connection }
   }
 
   private func runWithRetry<T>(
     maxAttempts: Int,
-    lifetime: ConnectionLifetime,
     _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
   ) async throws -> T where T: Sendable {
     var lastError: Error?
@@ -277,7 +274,6 @@ struct ADBExec: Sendable {
         let connection = try ADBSocketConnection()
         do {
           let value = try await operation(connection)
-          if lifetime == .ephemeral { connection.close() }
           await notifyServerAvailable()
           return value
         } catch {
@@ -312,7 +308,6 @@ struct ADBExec: Sendable {
   }
 
   private func notifyServerAvailable() async {
-    guard let serverObserver else { return }
     await serverObserver()
   }
 

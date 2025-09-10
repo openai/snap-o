@@ -64,11 +64,15 @@ actor LivePreviewPointerInjector {
   }
 
   private func flushQueue() async {
+    guard let connection = try? await adb.exec().makeConnection() else {
+      return
+    }
     while !pendingEvents.isEmpty {
       let (event, deviceID) = pendingEvents.removeFirst()
 
       do {
-        _ = try await adb.exec().runShellCommand(deviceID: deviceID, command: event.shellCommand())
+        try connection.sendTransport(to: deviceID)
+        try connection.sendShell(event.shellCommand())
       } catch {
         SnapOLog.ui.error(
           "Failed to send pointer event: \(error.localizedDescription, privacy: .public)"
@@ -76,6 +80,7 @@ actor LivePreviewPointerInjector {
         pendingEvents.removeAll(keepingCapacity: true)
       }
     }
+    connection.close()
 
     isFlushing = false
 
