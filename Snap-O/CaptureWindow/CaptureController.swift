@@ -144,10 +144,10 @@ final class CaptureController: ObservableObject {
     source: LivePreviewPointerSource,
     location: CGPoint
   ) {
-    guard case .livePreview(let session, _) = mode else { return }
-    let command = LivePreviewPointerCommand(action: action, source: source, location: location)
+    guard case .livePreview = mode else { return }
+    let command = LivePreviewPointerEvent(deviceID: deviceID, action: action, source: source, location: location)
     Task {
-      await pointerInjector.send(event: command, to: session.deviceID)
+      await pointerInjector.enqueue(command)
     }
   }
 

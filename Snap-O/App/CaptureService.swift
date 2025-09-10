@@ -47,7 +47,7 @@ actor CaptureService {
 
   func stopRecording(session: RecordingSession, deviceID: String) async throws -> Media? {
     let destination = fileStore.makePreviewDestination(deviceID: deviceID, kind: .video)
-    try await adb.exec().stopScreenrecord(session: session, deviceID: deviceID, savingTo: destination)
+    try await adb.exec().stopScreenrecord(session: session, savingTo: destination)
     let asset = AVURLAsset(url: destination)
 
     let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in

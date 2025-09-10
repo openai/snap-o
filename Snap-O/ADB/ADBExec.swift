@@ -59,8 +59,8 @@ struct ADBExec: Sendable {
     )
   }
 
-  func stopScreenrecord(session: RecordingSession, deviceID: String, savingTo localURL: URL) async throws {
-    await sendSigIntIfNeeded(deviceID: deviceID, pid: session.pid)
+  func stopScreenrecord(session: RecordingSession, savingTo localURL: URL) async throws {
+    await sendSigIntIfNeeded(deviceID: session.deviceID, pid: session.pid)
     try await session.waitUntilStopped()
     try await pull(deviceID: session.deviceID, remote: session.remotePath, to: localURL)
     _ = try? await runShellString(

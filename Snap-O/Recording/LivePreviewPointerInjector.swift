@@ -13,12 +13,11 @@ enum LivePreviewPointerAction: String {
   case cancel = "CANCEL"
 }
 
-struct LivePreviewPointerCommand {
-  var action: LivePreviewPointerAction
-  var source: LivePreviewPointerSource
-  var location: CGPoint
-  var pointerIdentifier: Int = 0
-  var displayIdentifier: Int = 0
+struct LivePreviewPointerEvent {
+  let deviceID: String
+  let action: LivePreviewPointerAction
+  let source: LivePreviewPointerSource
+  let location: CGPoint
 
   func shellCommand() -> String {
     let roundedX = Int(location.x.rounded())
@@ -27,8 +26,6 @@ struct LivePreviewPointerCommand {
     let components: [String] = [
       "input",
       source.rawValue,
-      "-d",
-      "\(displayIdentifier)",
       "motionevent",
       action.rawValue,
       "\(roundedX)",
@@ -41,22 +38,18 @@ struct LivePreviewPointerCommand {
 
 actor LivePreviewPointerInjector {
   private let adb: ADBService
-  private var pendingEvents: [(command: LivePreviewPointerCommand, deviceID: String)] = []
+  private var pendingEvents: [LivePreviewPointerEvent] = []
   private var isFlushing = false
 
   init(adb: ADBService) {
     self.adb = adb
   }
 
-  func send(event: LivePreviewPointerCommand, to deviceID: String) async {
-    await enqueue(event, for: deviceID)
-  }
-
-  private func enqueue(_ event: LivePreviewPointerCommand, for deviceID: String) async {
+  func enqueue(_ event: LivePreviewPointerEvent) async {
     if event.action == .move {
-      pendingEvents.removeAll { $0.deviceID == deviceID && $0.command.action == .move }
+      pendingEvents.removeAll { $0.deviceID == event.deviceID && $0.action == .move }
     }
-    pendingEvents.append((event, deviceID))
+    pendingEvents.append(event)
 
     guard !isFlushing else { return }
     isFlushing = true
@@ -68,10 +61,10 @@ actor LivePreviewPointerInjector {
       return
     }
     while !pendingEvents.isEmpty {
-      let (event, deviceID) = pendingEvents.removeFirst()
+      let event = pendingEvents.removeFirst()
 
       do {
-        try connection.sendTransport(to: deviceID)
+        try connection.sendTransport(to: event.deviceID)
         try connection.sendShell(event.shellCommand())
       } catch {
         SnapOLog.ui.error(
