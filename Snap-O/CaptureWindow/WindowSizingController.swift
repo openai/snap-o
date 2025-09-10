@@ -4,8 +4,7 @@ import SwiftUI
 /// Bridges SwiftUI and AppKit to keep a window sized to the current media
 /// aspect ratio while enforcing a sensible minimum edge length. The first
 /// window opens at 480×480 points; subsequent windows inherit the size of the
-/// most recently active window. Only the focused window is marked restorable so
-/// reopened sessions bring back that single window.
+/// most recently active window.
 struct WindowSizingController: NSViewRepresentable {
   let displayInfo: DisplayInfo?
 
@@ -38,10 +37,7 @@ struct WindowSizingController: NSViewRepresentable {
     private weak var window: NSWindow?
 
     private let minimumEdge: CGFloat
-    private var lastMediaStamp: Date?
     private var currentAspect: CGFloat = 1
-
-    private weak static var restorableWindow: NSWindow?
 
     init(minimumEdge: CGFloat) {
       self.minimumEdge = minimumEdge
@@ -49,13 +45,10 @@ struct WindowSizingController: NSViewRepresentable {
 
     // MARK: Window Attachment
 
-    /// Attach to a window once and configure delegate and restoration.
     func attach(to window: NSWindow) {
       guard self.window !== window else { return }
       self.window = window
       window.delegate = self
-      window.setFrameAutosaveName("SnapOWindow")
-      window.isRestorable = false
     }
 
     // MARK: Window Sizing
@@ -91,22 +84,6 @@ struct WindowSizingController: NSViewRepresentable {
       // Respect minimums driven by contentMinSize via AppKit; we simply shape
       // the proposed size to the correct relationship here.
       return NSSize(width: frameSize.width, height: newHeight)
-    }
-
-    func windowDidBecomeMain(_ notification: Notification) {
-      guard let window else { return }
-      if let existing = Self.restorableWindow, existing !== window {
-        existing.isRestorable = false
-      }
-      window.isRestorable = true
-      Self.restorableWindow = window
-    }
-
-    func windowWillClose(_ notification: Notification) {
-      guard let window else { return }
-      if Self.restorableWindow === window {
-        Self.restorableWindow = nil
-      }
     }
 
     // MARK: Geometry Helpers
