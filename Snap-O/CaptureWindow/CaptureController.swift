@@ -292,7 +292,9 @@ final class CaptureController: ObservableObject {
         capturedAt: media.capturedAt,
         kind: kind
       )
-      try FileManager.default.copyItem(at: srcURL, to: url)
+      if !FileManager.default.fileExists(atPath: url.path) {
+        try FileManager.default.copyItem(at: srcURL, to: url)
+      }
       return url
     } catch {
       log.error("Drag temp copy failed: \(error.localizedDescription)")
