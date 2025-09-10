@@ -177,7 +177,8 @@ final class CaptureController: ObservableObject {
 
   func stopLivePreview(withRefresh refresh: Bool = false) async {
     guard case .livePreview(let session, _) = mode else { return }
-    isStoppingLivePreview = true; defer { isStoppingLivePreview = false }
+    isStoppingLivePreview = true
+    defer { isStoppingLivePreview = false }
     mode = .loading
 
     let error = await captureService.stopLivePreview(session: session)
@@ -304,7 +305,8 @@ final class CaptureController: ObservableObject {
 
   func startRecording() async {
     guard canStartRecordingNow else { return }
-    log.info("Start recording for device=\(self.deviceID, privacy: .private)")
+    let deviceID = deviceID
+    log.info("Start recording for device=\(deviceID, privacy: .private)")
     Perf.step(.appFirstSnapshot, "before: Start Recording")
     Perf.startIfNeeded(.recordingStart, name: "Start Recording Request → Recording Started")
     Perf.step(.recordingStart, "begin startRecording")
@@ -328,7 +330,8 @@ final class CaptureController: ObservableObject {
 
   func startLivePreview() async {
     guard canStartLivePreviewNow else { return }
-    log.info("Start live preview for device=\(self.deviceID, privacy: .private)")
+    let deviceID = deviceID
+    log.info("Start live preview for device=\(deviceID, privacy: .private)")
     Perf.step(.appFirstSnapshot, "before: Start Live Preview")
     Perf.startIfNeeded(.livePreviewStart, name: "Start Live Preview Request → First Frame")
     Perf.step(.livePreviewStart, "begin startLivePreview")

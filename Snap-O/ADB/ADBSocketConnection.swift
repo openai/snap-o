@@ -349,6 +349,7 @@ private extension ADBSocketConnection {
 
 private extension Data {
   func stringByTrimmingNewlines() -> String {
-    String(decoding: self, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let decoded = String(bytes: self, encoding: .utf8) else { return "" }
+    return decoded.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }
