@@ -54,7 +54,7 @@ actor LivePreviewPointerInjector {
 
   private func enqueue(_ event: LivePreviewPointerCommand, for deviceID: String) async {
     if event.action == .move {
-      pendingEvents.removeAll(where: { $0.deviceID == deviceID && $0.command.action == .move })
+      pendingEvents.removeAll { $0.deviceID == deviceID && $0.command.action == .move }
     }
     pendingEvents.append((event, deviceID))
 

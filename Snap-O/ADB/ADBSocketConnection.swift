@@ -12,15 +12,15 @@ final class ADBSocketConnection {
     fileprivate var rawValue: String {
       switch self {
       case .trackDevices:
-        return "host:track-devices-l"
-      case let .transport(deviceID):
-        return "host:transport:\(deviceID)"
-      case let .shell(command):
-        return "shell:\(command)"
-      case let .exec(command):
-        return "exec:\(command)"
+        "host:track-devices-l"
+      case .transport(let deviceID):
+        "host:transport:\(deviceID)"
+      case .shell(let command):
+        "shell:\(command)"
+      case .exec(let command):
+        "exec:\(command)"
       case .sync:
-        return "sync:"
+        "sync:"
       }
     }
   }
@@ -102,9 +102,9 @@ final class ADBSocketConnection {
     var accumulator = Data()
     var scratch = [UInt8](repeating: 0, count: Constants.bufferSize)
     while true {
-      let count = try readOnce(into: &scratch)
-      if count == 0 { break }
-      accumulator.append(scratch, count: count)
+      let size = try readOnce(into: &scratch)
+      if size == 0 { break }
+      accumulator.append(scratch, count: size)
     }
     return accumulator
   }
@@ -112,16 +112,16 @@ final class ADBSocketConnection {
   func drainToEnd() throws {
     var scratch = [UInt8](repeating: 0, count: Constants.bufferSize)
     while true {
-      let count = try readOnce(into: &scratch)
-      if count == 0 { break }
+      let size = try readOnce(into: &scratch)
+      if size == 0 { break }
     }
   }
 
   func readChunk(maxLength: Int) throws -> Data? {
     var scratch = [UInt8](repeating: 0, count: maxLength)
-    let count = try readOnce(into: &scratch)
-    if count == 0 { return nil }
-    return Data(scratch.prefix(count))
+    let size = try readOnce(into: &scratch)
+    if size == 0 { return nil }
+    return Data(scratch.prefix(size))
   }
 
   func readLengthPrefixedPayload() throws -> Data? {
@@ -214,15 +214,15 @@ final class ADBSocketConnection {
     var scratch = [UInt8](repeating: 0, count: 256)
 
     while true {
-      let count = try readOnce(into: &scratch)
-      if count == 0 { return collected.stringByTrimmingNewlines() }
+      let size = try readOnce(into: &scratch)
+      if size == 0 { return collected.stringByTrimmingNewlines() }
 
-      if let newline = scratch[..<count].firstIndex(of: UInt8(ascii: "\n")) {
+      if let newline = scratch[..<size].firstIndex(of: UInt8(ascii: "\n")) {
         collected.append(contentsOf: scratch[..<newline])
         return collected.stringByTrimmingNewlines()
       }
 
-      collected.append(contentsOf: scratch[..<count])
+      collected.append(contentsOf: scratch[..<size])
     }
   }
 
@@ -353,7 +353,7 @@ private extension ADBSocketConnection {
 
 private extension Data {
   func stringByTrimmingNewlines() -> String? {
-    guard !self.isEmpty, let string = String(data: self, encoding: .utf8) else { return nil }
+    guard !isEmpty, let string = String(data: self, encoding: .utf8) else { return nil }
     return string.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }

@@ -55,7 +55,7 @@ actor ADBService {
     ADBExec(
       pathResolver: { [weak self] in
         guard let self else { throw ADBError.adbNotFound }
-        return try await self.pathForServerRestart()
+        return try await pathForServerRestart()
       },
       serverObserver: { [weak self] in
         await self?.serverAvailable()
@@ -68,7 +68,7 @@ actor ADBService {
     waitForSelection: Bool = true
   ) async -> URL? {
     if let url = validStoredURL() { return url }
-    if didCancelPrompt && !forcePrompt { return nil }
+    if didCancelPrompt, !forcePrompt { return nil }
 
     if let currentPrompt = promptState {
       return waitForSelection ? await currentPrompt.task.value : nil
@@ -77,14 +77,14 @@ actor ADBService {
     let currentURL = validStoredURL()
     let task = Task<URL?, Never> { [weak self, currentURL] in
       guard let self else { return currentURL }
-      let chosen = await self.presentADBPrompt(forcePrompt: forcePrompt)
-      let stored = await self.validStoredURL()
+      let chosen = await presentADBPrompt(forcePrompt: forcePrompt)
+      let stored = await validStoredURL()
       return chosen ?? stored
     }
     promptState = PromptState(task: task, dismissHandler: nil, wasAutoDismissed: false)
 
     if !waitForSelection {
-      Task { await handlePromptCompletion(await task.value) }
+      Task { await handlePromptCompletion(task.value) }
       return nil
     }
 
@@ -133,7 +133,7 @@ actor ADBService {
 
   private func presentADBPrompt(forcePrompt: Bool) async -> URL? {
     let previouslyCancelled = didCancelPrompt
-    if previouslyCancelled && !forcePrompt { return nil }
+    if previouslyCancelled, !forcePrompt { return nil }
 
     return await withCheckedContinuation { continuation in
       Task { @MainActor in
@@ -167,7 +167,9 @@ actor ADBService {
     let alert = NSAlert()
     alert.alertStyle = .informational
     alert.messageText = "Waiting for ADB server..."
-    alert.informativeText = "You may need to start the ADB server with \"adb start-server\". Snap-O can do it automatically if you set your ADB path."
+    alert.informativeText = """
+    You may need to start the ADB server with "adb start-server". Snap-O can do it automatically if you set your ADB path."
+    """
     alert.addButton(withTitle: "Choose ADB Path…")
     alert.addButton(withTitle: "Cancel")
 

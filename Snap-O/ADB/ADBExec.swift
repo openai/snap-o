@@ -186,7 +186,7 @@ struct ADBExec: Sendable {
         do {
           while !Task.isCancelled {
             guard let payload = try connection.readLengthPrefixedPayload() else { break }
-            let payloadString = String(decoding: payload, as: UTF8.self)
+            guard let payloadString = String(bytes: payload, encoding: .utf8) else { break }
             continuation.yield(payloadString)
           }
           continuation.finish()

@@ -42,7 +42,7 @@ actor CaptureService {
   }
 
   func startRecording(for deviceID: String) async throws -> RecordingSession {
-    return try await adb.exec().startScreenrecord(deviceID: deviceID)
+    try await adb.exec().startScreenrecord(deviceID: deviceID)
   }
 
   func stopRecording(session: RecordingSession, deviceID: String) async throws -> Media? {
@@ -51,7 +51,7 @@ actor CaptureService {
     let asset = AVURLAsset(url: destination)
 
     let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in
-      return try? await adb.exec().screenDensityScale(deviceID: deviceID)
+      try? await adb.exec().screenDensityScale(deviceID: deviceID)
     }
 
     if let media = try await Media.video(
