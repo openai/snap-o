@@ -19,6 +19,7 @@ struct WindowSizingController: NSViewRepresentable {
     DispatchQueue.main.async {
       guard let window = view.window else { return }
       context.coordinator.attach(to: window)
+      updateNSView(view, context: context)
     }
     return view
   }
