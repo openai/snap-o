@@ -1,3 +1,4 @@
+import Sparkle
 import SwiftUI
 
 struct SnapOCommands: Commands {
@@ -7,12 +8,23 @@ struct SnapOCommands: Commands {
   @ObservedObject var settings: AppSettings
   private let adbService: ADBService
 
+  private let updaterController: SPUStandardUpdaterController
+
   init(settings: AppSettings, adbService: ADBService) {
     self.settings = settings
     self.adbService = adbService
+    // Initialize Sparkle updater controller; starts checks automatically
+    updaterController = SPUStandardUpdaterController(
+      startingUpdater: true,
+      updaterDelegate: nil,
+      userDriverDelegate: nil
+    )
   }
 
   var body: some Commands {
+    CommandGroup(after: .appInfo) {
+      CheckForUpdatesView(updater: updaterController.updater)
+    }
     CommandGroup(after: .newItem) {
       Divider()
 

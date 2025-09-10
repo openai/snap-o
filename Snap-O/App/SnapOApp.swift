@@ -1,4 +1,3 @@
-import Sparkle
 import SwiftUI
 
 @main
@@ -8,10 +7,8 @@ struct SnapOApp: App {
 
   private let services: AppServices
   private let settings: AppSettings
-  private let updaterController: SPUStandardUpdaterController
 
   init() {
-    // Perf: App start → first snapshot rendered (compiled out when disabled)
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
 
     let services = AppServices.shared
@@ -22,13 +19,6 @@ struct SnapOApp: App {
     Task.detached(priority: .userInitiated) {
       await services.start()
     }
-
-    // Initialize Sparkle updater controller; starts checks automatically
-    updaterController = SPUStandardUpdaterController(
-      startingUpdater: true,
-      updaterDelegate: nil,
-      userDriverDelegate: nil
-    )
   }
 
   var body: some Scene {
@@ -38,9 +28,6 @@ struct SnapOApp: App {
     .defaultSize(width: 480, height: 480)
     .windowToolbarStyle(.unified)
     .commands {
-      CommandGroup(after: .appInfo) {
-        CheckForUpdatesView(updater: updaterController.updater)
-      }
       SnapOCommands(
         settings: settings,
         adbService: services.adbService
