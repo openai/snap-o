@@ -58,27 +58,22 @@ final class CaptureDeviceSelectionController: ObservableObject {
 
   func selectNextDevice() {
     guard let nextID = deviceID(offsetFromCurrent: 1) else { return }
-    setSelectedDevice(id: nextID, direction: .down, deferUntilNextRunLoop: true)
+    setSelectedDevice(id: nextID, direction: .down)
   }
 
   func selectPreviousDevice() {
     guard let previousID = deviceID(offsetFromCurrent: -1) else { return }
-    setSelectedDevice(id: previousID, direction: .up, deferUntilNextRunLoop: true)
+    setSelectedDevice(id: previousID, direction: .up)
   }
 
   func selectDevice(withID id: String?) {
-    setSelectedDevice(id: id, direction: .neutral, deferUntilNextRunLoop: false)
+    setSelectedDevice(id: id, direction: .neutral)
   }
 
   func handleDeviceUnavailable(currentDeviceID: String) {
     let available = devices.available
-    if let alternative = available.first(where: { $0.id != currentDeviceID }) {
-      setSelectedDevice(id: alternative.id, direction: .down, deferUntilNextRunLoop: false)
-    } else if let fallback = available.first {
-      setSelectedDevice(id: fallback.id, direction: .down, deferUntilNextRunLoop: false)
-    } else {
-      setSelectedDevice(id: nil, direction: .neutral, deferUntilNextRunLoop: false)
-    }
+    let nextDevice = available.first { $0.id != currentDeviceID } ?? available.first
+    setSelectedDevice(id: nextDevice?.id, direction: .neutral)
   }
 
   func updateShouldPreserveSelection(_ preserve: Bool) {
@@ -118,8 +113,7 @@ final class CaptureDeviceSelectionController: ObservableObject {
 
   private func setSelectedDevice(
     id: String?,
-    direction: DeviceTransitionDirection,
-    deferUntilNextRunLoop: Bool
+    direction: DeviceTransitionDirection
   ) {
     guard devices.selectedID != id else {
       transitionDirection = direction
@@ -128,12 +122,8 @@ final class CaptureDeviceSelectionController: ObservableObject {
 
     transitionDirection = direction
 
-    guard deferUntilNextRunLoop else {
-      devices.selectedID = id
-      return
-    }
-
     Task { @MainActor in
+      // Yielding ensures the transitions are updated before changing the view.
       await Task.yield()
       devices.selectedID = id
     }

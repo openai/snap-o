@@ -13,11 +13,7 @@ struct CaptureDeviceView: View {
   init(deviceID: String, deviceSelectionController: CaptureDeviceSelectionController) {
     self.deviceID = deviceID
     self.deviceSelectionController = deviceSelectionController
-    _controller = StateObject(
-      wrappedValue: CaptureController(
-        deviceID: deviceID
-      )
-    )
+    _controller = StateObject(wrappedValue: CaptureController(deviceID: deviceID))
   }
 
   var body: some View {
@@ -51,13 +47,6 @@ struct CaptureDeviceView: View {
     .onChange(of: controller.currentMedia) { _, newMedia in
       handleMediaChange(newMedia)
     }
-    .onDisappear {
-      Task {
-        try? await Task.sleep(nanoseconds: dismissalDelayNanoseconds)
-        await controller.prepareForDismissal()
-      }
-      deviceSelectionController.updateShouldPreserveSelection(false)
-    }
     .onChange(of: controller.deviceUnavailableSignal) {
       deviceSelectionController.handleDeviceUnavailable(currentDeviceID: deviceID)
     }
@@ -67,9 +56,5 @@ struct CaptureDeviceView: View {
   private func handleMediaChange(_ media: Media?) {
     let shouldPreserveSelection = media?.isLivePreview == false
     deviceSelectionController.updateShouldPreserveSelection(shouldPreserveSelection)
-
-    guard media == nil else {
-      return
-    }
   }
 }

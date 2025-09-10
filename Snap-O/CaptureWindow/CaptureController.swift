@@ -397,10 +397,6 @@ final class CaptureController: ObservableObject {
     }
   }
 
-  func prepareForDismissal() async {
-    await clearCurrentMedia()
-  }
-
   private func handleDeviceFailure(_ error: Error) {
     if isDeviceUnavailableError(error) {
       deviceUnavailableSignal.toggle()
