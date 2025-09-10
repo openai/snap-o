@@ -11,7 +11,6 @@
 --trimwhitespace always
 --commas inline
 --semicolons never
---self remove
 --ifdef no-indent
 --patternlet inline
 --exclude Carthage,Pods,DerivedData,.build

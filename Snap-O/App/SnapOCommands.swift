@@ -1,17 +1,30 @@
+import Sparkle
 import SwiftUI
 
 struct SnapOCommands: Commands {
   @FocusedObject var controller: CaptureController?
+  @FocusedObject var deviceController: CaptureDeviceSelectionController?
 
   @ObservedObject var settings: AppSettings
   private let adbService: ADBService
 
+  private let updaterController: SPUStandardUpdaterController
+
   init(settings: AppSettings, adbService: ADBService) {
     self.settings = settings
     self.adbService = adbService
+    // Initialize Sparkle updater controller; starts checks automatically
+    updaterController = SPUStandardUpdaterController(
+      startingUpdater: true,
+      updaterDelegate: nil,
+      userDriverDelegate: nil
+    )
   }
 
   var body: some Commands {
+    CommandGroup(after: .appInfo) {
+      CheckForUpdatesView(updater: updaterController.updater)
+    }
     CommandGroup(after: .newItem) {
       Divider()
 
@@ -87,22 +100,19 @@ struct SnapOCommands: Commands {
     }
     CommandGroup(replacing: .undoRedo) {}
     CommandMenu("Device") {
+      let selectedDeviceID = deviceController?.devices.selectedID
+      let hasAlternativeDevice = deviceController?.hasAlternativeDevice(comparedTo: selectedDeviceID) ?? false
+
       Button("Previous Device") {
-        controller?.selectPreviousDevice()
+        deviceController?.selectPreviousDevice()
       }
       .keyboardShortcut(.upArrow, modifiers: [.command])
-      .disabled(
-        !(controller?.canCapture ?? false) ||
-          (controller?.devices.available.count ?? 0) < 2
-      )
+      .disabled(!hasAlternativeDevice)
       Button("Next Device") {
-        controller?.selectNextDevice()
+        deviceController?.selectNextDevice()
       }
       .keyboardShortcut(.downArrow, modifiers: [.command])
-      .disabled(
-        controller?.canCapture != true ||
-          (controller?.devices.available.count ?? 0) < 2
-      )
+      .disabled(!hasAlternativeDevice)
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
     }

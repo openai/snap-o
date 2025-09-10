@@ -1,45 +1,53 @@
 import SwiftUI
 
 struct CaptureWindow: View {
-  @StateObject private var controller = CaptureController()
+  @StateObject private var deviceSelectionController = CaptureDeviceSelectionController()
 
   var body: some View {
     ZStack {
       Color.black.ignoresSafeArea()
 
-      if let media = controller.currentMedia {
-        MediaDisplayView(media: media, controller: controller)
-          .transition(
-            media.isLivePreview
-              ? AnyTransition.opacity
-              : AnyTransition.scale(scale: 0.9).combined(with: .opacity)
-          )
-      } else {
-        IdleOverlayView(
-          controller: controller,
-          hasDevices: !controller.devices.available.isEmpty,
-          isDeviceListInitialized: controller.deviceStore.hasReceivedInitialDeviceList
+      let transition = transition(for: deviceSelectionController.transitionDirection)
+
+      if let deviceID = deviceSelectionController.devices.selectedID {
+        CaptureDeviceView(
+          deviceID: deviceID,
+          deviceSelectionController: deviceSelectionController
         )
+        .id(deviceID)
+        .transition(transition)
+      } else {
+        WaitingForDeviceView(isDeviceListInitialized: deviceSelectionController.isDeviceListInitialized)
+          .transition(transition)
       }
     }
-    .animation(.snappy(duration: 0.15), value: controller.currentMedia != nil)
-    .background(
-      ZStack {
-        WindowSizingController(currentMedia: controller.currentMedia)
-          .frame(width: 0, height: 0)
-        WindowTitleVisibilityController()
-          .frame(width: 0, height: 0)
-      }
-    )
-    .onOpenURL { controller.handle(url: $0) }
-    .task { await controller.deviceStore.start() }
-    .focusedSceneObject(controller)
+    .task { await deviceSelectionController.start() }
+    .focusedSceneObject(deviceSelectionController)
     .toolbar {
-      TitleDevicePickerToolbar(
-        controller: controller,
-        isDeviceListInitialized: controller.deviceStore.hasReceivedInitialDeviceList
-      )
-      CaptureToolbar(controller: controller)
+      TitleDevicePickerToolbar(deviceSelection: deviceSelectionController)
     }
+    .animation(.snappy(duration: 0.25), value: deviceSelectionController.devices.selectedID)
+    .background(
+      WindowTitleVisibilityController()
+        .frame(width: 0, height: 0)
+    )
+  }
+}
+
+extension CaptureWindow {
+  private func transition(for direction: DeviceTransitionDirection) -> AnyTransition {
+    switch direction {
+    case .up: yTransition(offset: 60)
+    case .down: yTransition(offset: -60)
+    case .neutral: .opacity
+    }
+  }
+
+  private func yTransition(offset: CGFloat) -> AnyTransition {
+    let move = AnyTransition.offset(y: offset).combined(with: .opacity)
+    return .asymmetric(
+      insertion: move,
+      removal: .offset(y: -offset).combined(with: .opacity)
+    )
   }
 }

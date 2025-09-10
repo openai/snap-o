@@ -50,11 +50,9 @@ final class DeviceTracker: @unchecked Sendable {
   }
 
   private func removeContinuation(_ id: UUID) {
+    lock.lock()
+    defer { lock.unlock() }
     continuations.removeValue(forKey: id)
-    if continuations.isEmpty {
-      trackTask?.cancel()
-      trackTask = nil
-    }
   }
 
   private func broadcast(_ devices: [Device]) {
@@ -75,19 +73,14 @@ final class DeviceTracker: @unchecked Sendable {
     }
 
     while !Task.isCancelled {
-      await adbService.awaitConfigured()
-
-      guard let exec = try? await adbService.exec(),
-            let (handles, stream) = try? exec.trackDevices() else {
+      let exec = await adbService.exec()
+      guard let (handle, stream) = try? await exec.trackDevices() else {
         if hasSeenFirstMessage { broadcast([]) }
         await pause()
         continue
       }
 
-      defer {
-        if handles.process.isRunning { handles.process.terminate() }
-        _ = try? handles.stderr.fileHandleForReading.readToEnd()
-      }
+      defer { handle.cancel() }
 
       do {
         for try await payload in stream {
@@ -147,7 +140,7 @@ final class DeviceTracker: @unchecked Sendable {
 
     if parts.count >= 2 {
       let state = parts[1].lowercased()
-      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") {
+      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") || state.contains("authorizing") {
         return nil
       }
     }

@@ -23,8 +23,8 @@ final class LivePreviewSession {
   init(deviceID: String, adb: ADBService) async throws {
     self.deviceID = deviceID
 
-    let exec = try await adb.exec()
-    densityScale = try await exec.screenDensityScale(deviceID: deviceID)
+    let exec = await adb.exec()
+    densityScale = try await exec.displayDensity(deviceID: deviceID)
     screenStream = try await exec.startScreenStream(deviceID: deviceID)
 
     setupDecoder()
@@ -63,10 +63,10 @@ final class LivePreviewSession {
       let dims = CMVideoFormatDescriptionGetDimensions(format)
       Task { @MainActor in
         let size = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
+        let display = DisplayInfo(size: size, densityScale: self.densityScale)
         let media = Media.livePreview(
           capturedAt: Date(),
-          size: size,
-          densityScale: self.densityScale
+          display: display
         )
         self.media = media
         self.readyResult = media
@@ -83,11 +83,10 @@ final class LivePreviewSession {
     let session = screenStream
     streamTask = Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
-      let handle = session.stdoutPipe.fileHandleForReading
       do {
         while !Task.isCancelled {
-          guard let data = try handle.read(upToCount: 4096), !data.isEmpty else { break }
-          decoderRef.value.append(data)
+          guard let chunk = try session.read(maxLength: 4096), !chunk.isEmpty else { break }
+          decoderRef.value.append(chunk)
         }
         await finish(with: nil)
       } catch {
@@ -102,7 +101,7 @@ final class LivePreviewSession {
 
     streamTask?.cancel()
     streamTask = nil
-    screenStream.process.terminate()
+    screenStream.close()
     decoder = nil
 
     stopResult = error
