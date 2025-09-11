@@ -7,17 +7,17 @@ struct WindowTitleVisibilityController: NSViewRepresentable {
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
     DispatchQueue.main.async {
-      guard let window = view.window else { return }
-      configure(window: window)
+      configure(window: view.window)
     }
     return view
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {
-    if let window = nsView.window { configure(window: window) }
+    configure(window: nsView.window)
   }
 
-  private func configure(window: NSWindow) {
+  private func configure(window: NSWindow?) {
+    guard let window else { return }
     window.titleVisibility = .hidden
     window.title = ""
   }
