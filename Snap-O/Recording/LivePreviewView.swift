@@ -87,11 +87,11 @@ final class PointerTrackingView: NSView {
   }
 
   override func mouseEntered(with event: NSEvent) { handlePointer(.hoverEnter, event: event) }
-  override func mouseMoved(with event: NSEvent)   { handlePointer(.hoverMove,  event: event) }
-  override func mouseExited(with event: NSEvent)  { handlePointer(.hoverExit,  event: event) }
-  override func mouseDown(with event: NSEvent)    { handlePointer(.down,       event: event) }
-  override func mouseDragged(with event: NSEvent) { handlePointer(.drag,       event: event) }
-  override func mouseUp(with event: NSEvent)      { handlePointer(.up,         event: event) }
+  override func mouseMoved(with event: NSEvent) { handlePointer(.hoverMove, event: event) }
+  override func mouseExited(with event: NSEvent) { handlePointer(.hoverExit, event: event) }
+  override func mouseDown(with event: NSEvent) { handlePointer(.down, event: event) }
+  override func mouseDragged(with event: NSEvent) { handlePointer(.drag, event: event) }
+  override func mouseUp(with event: NSEvent) { handlePointer(.up, event: event) }
 
   // MARK: - Pointer pipeline
 
@@ -99,66 +99,68 @@ final class PointerTrackingView: NSView {
 
   private func handlePointer(_ phase: PointerPhase, event: NSEvent) {
     guard controller?.isLivePreviewActive == true else { return }
-    let mappedPoint = convertToDevicePoint(event: event)
+    let devicePoint = convertToDevicePoint(event: event)
 
     switch phase {
     case .hoverEnter:
-      guard let p = mappedPoint else { return }
-      pointerState.lastDeviceLocation = p
+      guard let devicePoint else { return }
+      pointerState.lastDeviceLocation = devicePoint
       pointerState.lastHoverTimestamp = event.timestamp
-      sendPointer(.move, .mouse, p)
+      sendPointer(.move, .mouse, devicePoint)
 
     case .hoverMove:
-      guard !pointerState.isPointerDown, let p = mappedPoint,
+      guard !pointerState.isPointerDown, let devicePoint,
             shouldSendHoverEvent(at: event.timestamp) else { return }
-      pointerState.lastDeviceLocation = p
-      sendPointer(.move, .mouse, p)
+      pointerState.lastDeviceLocation = devicePoint
+      sendPointer(.move, .mouse, devicePoint)
 
     case .hoverExit:
       guard !pointerState.isPointerDown,
-            let p = mappedPoint ?? pointerState.lastDeviceLocation else { return }
-      pointerState.lastDeviceLocation = p
+            let devicePoint = devicePoint ?? pointerState.lastDeviceLocation else { return }
+      pointerState.lastDeviceLocation = devicePoint
       pointerState.lastHoverTimestamp = 0
-      sendPointer(.move, .mouse, p)
-      sendPointer(.cancel, .mouse, p)
+      sendPointer(.move, .mouse, devicePoint)
+      sendPointer(.cancel, .mouse, devicePoint)
 
     case .down:
-      guard let p = mappedPoint else { return }
+      guard let devicePoint else { return }
       pointerState.isPointerDown = true
-      pointerState.lastDeviceLocation = p
+      pointerState.lastDeviceLocation = devicePoint
       pointerState.lastDragTimestamp = event.timestamp
-      sendPointer(.down, .touchscreen, p)
+      sendPointer(.down, .touchscreen, devicePoint)
 
     case .drag:
-      guard pointerState.isPointerDown, let p = mappedPoint,
+      guard pointerState.isPointerDown, let devicePoint,
             shouldSendDragEvent(at: event.timestamp) else { return }
-      pointerState.lastDeviceLocation = p
-      sendPointer(.move, .touchscreen, p)
+      pointerState.lastDeviceLocation = devicePoint
+      sendPointer(.move, .touchscreen, devicePoint)
 
     case .up:
       guard pointerState.isPointerDown,
-            let p = mappedPoint ?? pointerState.lastDeviceLocation else { return }
+            let devicePoint = devicePoint ?? pointerState.lastDeviceLocation else { return }
       pointerState.isPointerDown = false
-      pointerState.lastDeviceLocation = p
-      sendPointer(.up, .touchscreen, p)
+      pointerState.lastDeviceLocation = devicePoint
+      sendPointer(.up, .touchscreen, devicePoint)
     }
   }
 
-  private func shouldSendHoverEvent(at t: TimeInterval) -> Bool {
-    guard t - pointerState.lastHoverTimestamp >= hoverThrottleInterval else { return false }
-    pointerState.lastHoverTimestamp = t
+  private func shouldSendHoverEvent(at timestamp: TimeInterval) -> Bool {
+    guard timestamp - pointerState.lastHoverTimestamp >= hoverThrottleInterval else { return false }
+    pointerState.lastHoverTimestamp = timestamp
     return true
   }
 
-  private func shouldSendDragEvent(at t: TimeInterval) -> Bool {
-    guard t - pointerState.lastDragTimestamp >= dragThrottleInterval else { return false }
-    pointerState.lastDragTimestamp = t
+  private func shouldSendDragEvent(at timestamp: TimeInterval) -> Bool {
+    guard timestamp - pointerState.lastDragTimestamp >= dragThrottleInterval else { return false }
+    pointerState.lastDragTimestamp = timestamp
     return true
   }
 
-  private func sendPointer(_ action: LivePreviewPointerAction,
-                           _ source: LivePreviewPointerSource,
-                           _ location: CGPoint) {
+  private func sendPointer(
+    _ action: LivePreviewPointerAction,
+    _ source: LivePreviewPointerSource,
+    _ location: CGPoint
+  ) {
     controller?.sendPointerEvent(action: action, source: source, location: location)
   }
 
@@ -177,7 +179,7 @@ final class PointerTrackingView: NSView {
     let scale = min(bounds.width / contentSize.width, bounds.height / contentSize.height)
     let w = contentSize.width * scale
     let h = contentSize.height * scale
-    return CGRect(x: bounds.midX - w/2, y: bounds.midY - h/2, width: w, height: h)
+    return CGRect(x: bounds.midX - w / 2, y: bounds.midY - h / 2, width: w, height: h)
   }
 
   private func livePreviewMediaSize() -> CGSize? {
