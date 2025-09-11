@@ -8,34 +8,20 @@ import SwiftUI
 struct WindowLevelController: NSViewRepresentable {
   let shouldFloat: Bool
 
-  func makeCoordinator() -> Coordinator {
-    Coordinator()
-  }
-
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
     DispatchQueue.main.async {
-      context.coordinator.updateWindowLevel(shouldFloat: shouldFloat, for: view.window)
+      configure(window: view.window)
     }
     return view
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {
-    DispatchQueue.main.async {
-      context.coordinator.updateWindowLevel(shouldFloat: shouldFloat, for: nsView.window)
-    }
+    configure(window: nsView.window)
   }
 
-  // MARK: - Coordinator
-
-  final class Coordinator {
-    private var lastAppliedLevel: NSWindow.Level?
-
-    func updateWindowLevel(shouldFloat: Bool, for window: NSWindow?) {
-      guard let window else { return }
-      DispatchQueue.main.async {
-        window.level = shouldFloat ? .floating : .normal
-      }
-    }
+  private func configure(window: NSWindow?) {
+    guard let window else { return }
+    window.level = shouldFloat ? .floating : .normal
   }
 }
