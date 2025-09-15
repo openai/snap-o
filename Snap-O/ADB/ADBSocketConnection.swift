@@ -4,6 +4,7 @@ import Foundation
 final class ADBSocketConnection {
   enum Request {
     case trackDevices
+    case devicesList
     case transport(deviceID: String)
     case shell(command: String)
     case exec(command: String)
@@ -13,6 +14,8 @@ final class ADBSocketConnection {
       switch self {
       case .trackDevices:
         "host:track-devices-l"
+      case .devicesList:
+        "host:devices-l"
       case .transport(let deviceID):
         "host:transport:\(deviceID)"
       case .shell(let command):
@@ -51,6 +54,10 @@ final class ADBSocketConnection {
 
   func sendTrackDevices() throws {
     try send(.trackDevices)
+  }
+
+  func sendDevicesList() throws {
+    try send(.devicesList)
   }
 
   func sendTransport(to deviceID: String) throws {

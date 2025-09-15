@@ -31,7 +31,7 @@ struct SnapOCommands: Commands {
         Task { await captureController?.captureScreenshots() }
       }
       .keyboardShortcut("r", modifiers: [.command])
-      .disabled(!(captureController?.hasDevices ?? false) || captureController?.isProcessing == true)
+      .disabled(captureController?.canCaptureNow != true)
 
       if captureController?.isRecording == true {
         Button("Stop Screen Recording") {
@@ -43,10 +43,22 @@ struct SnapOCommands: Commands {
           Task { await captureController?.startRecording() }
         }
         .keyboardShortcut("r", modifiers: [.command, .shift])
-        .disabled(!(captureController?.hasDevices ?? false) || captureController?.isProcessing == true)
+        .disabled(captureController?.canStartRecordingNow != true)
       }
 
-      // Live preview is not currently available when capturing multiple devices simultaneously.
+      if captureController?.isLivePreviewActive == true || captureController?.isStoppingLivePreview == true {
+        Button("Stop Live Preview") {
+          Task { await captureController?.stopLivePreview() }
+        }
+        .keyboardShortcut(.escape, modifiers: [])
+        .disabled(captureController?.isStoppingLivePreview == true)
+      } else {
+        Button("Start Live Preview") {
+          Task { await captureController?.startLivePreview() }
+        }
+        .keyboardShortcut("l", modifiers: [.command, .shift])
+        .disabled(captureController?.canStartLivePreviewNow != true)
+      }
     }
 
     CommandGroup(before: .saveItem) {

@@ -4,6 +4,7 @@ import SwiftUI
 struct MediaDisplayView: View {
   let media: Media
   var makeTempDragFile: (MediaSaveKind) -> URL?
+  var livePreviewRenderer: LivePreviewRenderer?
 
   var body: some View {
     Group {
@@ -27,7 +28,11 @@ struct MediaDisplayView: View {
         .onDrag { dragItemProvider(kind: .video) }
         .onAppear { markPerfMilestones() }
       case .livePreview:
-        Color.black
+        if let renderer = livePreviewRenderer {
+          LivePreviewView(renderer: renderer)
+        } else {
+          Color.black
+        }
       }
     }
   }

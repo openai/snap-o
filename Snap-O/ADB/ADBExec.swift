@@ -208,6 +208,14 @@ struct ADBExec: Sendable {
     return (handle, stream)
   }
 
+  func devicesList() async throws -> String {
+    try await withConnection { connection in
+      try connection.sendDevicesList()
+      guard let payload = try connection.readLengthPrefixedPayload() else { return "" }
+      return String(data: payload, encoding: .utf8) ?? ""
+    }
+  }
+
   // Currently exposed for LivePreviewPointerInjector which issues multiple calls over a single connection.
   // Need a more consistent API.
   func makeConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {

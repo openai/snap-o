@@ -4,20 +4,20 @@ import SwiftUI
 
 struct LivePreviewView: NSViewRepresentable {
   // Observable is optional; SwiftUI will re-run updateNSView when this changes anyway.
-  @ObservedObject var controller: CaptureController
+  let renderer: LivePreviewRenderer
 
   func makeNSView(context: Context) -> PointerTrackingView {
     let view = PointerTrackingView()
     view.wantsLayer = true
     if view.layer == nil { view.layer = CALayer() }
     view.configureIfNeeded()
-    view.controller = controller
+    view.renderer = renderer
     view.attachToSession()
     return view
   }
 
   func updateNSView(_ nsView: PointerTrackingView, context: Context) {
-    nsView.controller = controller
+    nsView.renderer = renderer
     nsView.attachToSession()
   }
 
@@ -27,7 +27,7 @@ struct LivePreviewView: NSViewRepresentable {
 }
 
 final class PointerTrackingView: NSView {
-  weak var controller: CaptureController?
+  var renderer: LivePreviewRenderer?
 
   private var trackingArea: NSTrackingArea?
   private let displayLayer = AVSampleBufferDisplayLayer()
@@ -50,13 +50,13 @@ final class PointerTrackingView: NSView {
   }
 
   func attachToSession() {
-    controller?.livePreviewSession?.sampleBufferHandler = { [weak self] sample in
+    renderer?.session.sampleBufferHandler = { [weak self] sample in
       self?.enqueue(sample)
     }
   }
 
   func teardown() {
-    controller?.livePreviewSession?.sampleBufferHandler = nil
+    renderer?.session.sampleBufferHandler = nil
     displayLayer.sampleBufferRenderer.flush()
     displayLayer.sampleBufferRenderer.stopRequestingMediaData()
   }
@@ -98,7 +98,7 @@ final class PointerTrackingView: NSView {
   enum PointerPhase { case hoverEnter, hoverMove, hoverExit, down, drag, up }
 
   private func handlePointer(_ phase: PointerPhase, event: NSEvent) {
-    guard controller?.isLivePreviewActive == true else { return }
+    guard renderer != nil else { return }
     let devicePoint = convertToDevicePoint(event: event)
 
     switch phase {
@@ -161,7 +161,7 @@ final class PointerTrackingView: NSView {
     _ source: LivePreviewPointerSource,
     _ location: CGPoint
   ) {
-    controller?.sendPointerEvent(action: action, source: source, location: location)
+    renderer?.sendPointer(action, source, location)
   }
 
   private func convertToDevicePoint(event: NSEvent) -> CGPoint? {
@@ -183,9 +183,8 @@ final class PointerTrackingView: NSView {
   }
 
   private func livePreviewMediaSize() -> CGSize? {
-    guard let controller,
-          case .livePreview(_, let media) = controller.mode else { return nil }
-    return media.size
+    guard let renderer else { return nil }
+    return renderer.size
   }
 
   private struct PointerState {
@@ -194,4 +193,11 @@ final class PointerTrackingView: NSView {
     var lastDragTimestamp: TimeInterval = 0
     var lastDeviceLocation: CGPoint?
   }
+}
+
+struct LivePreviewRenderer {
+  let session: LivePreviewSession
+  let deviceID: String
+  let size: CGSize
+  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint) -> Void
 }

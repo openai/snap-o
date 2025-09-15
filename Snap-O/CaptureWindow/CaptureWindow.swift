@@ -19,6 +19,7 @@ struct CaptureWindow: View {
       }
     }
     .task { await controller.start() }
+    .onDisappear { controller.tearDown() }
     .focusedSceneObject(controller)
     .toolbar {
       TitleCapturePickerToolbar(controller: controller)

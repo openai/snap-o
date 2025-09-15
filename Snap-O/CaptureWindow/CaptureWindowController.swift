@@ -12,18 +12,18 @@ final class CaptureWindowController: ObservableObject {
   @Published private(set) var isDeviceListInitialized: Bool = false
   @Published private(set) var isProcessing: Bool = false
   @Published private(set) var isRecording: Bool = false
+  @Published private(set) var isLivePreviewActive: Bool = false
+  @Published private(set) var isStoppingLivePreview: Bool = false
   @Published private(set) var lastError: String?
 
   private var knownDevices: [Device] = []
   private var recordingSessions: [String: RecordingSession] = [:]
   private var deviceStreamTask: Task<Void, Never>?
+  private var livePreviewManager: LivePreviewManager?
+  private var pendingPreferredDeviceID: String?
 
   init(services: AppServices = .shared) {
     self.services = services
-  }
-
-  deinit {
-    deviceStreamTask?.cancel()
   }
 
   func start() async {
@@ -85,14 +85,18 @@ final class CaptureWindowController: ObservableObject {
 
   var hasDevices: Bool { !knownDevices.isEmpty }
 
+  var canCaptureNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
+  var canStartRecordingNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
+  var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
+
   var currentCapture: CaptureMedia? {
     guard let id = selectedMediaID else { return mediaList.first }
     return mediaList.first { $0.id == id }
   }
 
   func captureScreenshots() async {
+    guard canCaptureNow else { return }
     let devices = knownDevices
-    guard !devices.isEmpty else { return }
 
     isProcessing = true
     lastError = nil
@@ -106,10 +110,12 @@ final class CaptureWindowController: ObservableObject {
   }
 
   func startRecording() async {
+    guard canStartRecordingNow else { return }
     let devices = knownDevices
-    guard !devices.isEmpty, !isRecording else { return }
     isProcessing = true
     lastError = nil
+    pendingPreferredDeviceID = currentCapture?.deviceID
+    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: false)
 
     let deviceIDs = devices.map { $0.id }
     var sessions: [String: RecordingSession] = [:]
@@ -172,6 +178,51 @@ final class CaptureWindowController: ObservableObject {
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
     recordingSessions.removeAll()
     isRecording = false
+  }
+
+  func startLivePreview() async {
+    guard canStartLivePreviewNow else { return }
+    isProcessing = true
+    lastError = nil
+    pendingPreferredDeviceID = currentCapture?.deviceID ?? knownDevices.first?.id
+
+    let manager = LivePreviewManager(services: services) { [weak self] media in
+      guard let self else { return }
+      self.handleLivePreviewMediaUpdate(media)
+    }
+    livePreviewManager?.stop()
+    livePreviewManager = manager
+    isLivePreviewActive = true
+    await manager.start(with: knownDevices)
+  }
+
+  func stopLivePreview() async {
+    guard isLivePreviewActive, !isStoppingLivePreview else { return }
+    isStoppingLivePreview = true
+    let preferredDeviceID = currentCapture?.deviceID
+    livePreviewManager?.stop()
+    livePreviewManager = nil
+    isLivePreviewActive = false
+    pendingPreferredDeviceID = preferredDeviceID
+    isStoppingLivePreview = false
+    if !hasDevices {
+      isProcessing = false
+      pendingPreferredDeviceID = nil
+      return
+    }
+    if isProcessing { isProcessing = false }
+    await captureScreenshots()
+  }
+
+  func tearDown() {
+    deviceStreamTask?.cancel()
+    deviceStreamTask = nil
+
+    livePreviewManager?.stop()
+    livePreviewManager = nil
+    isLivePreviewActive = false
+    isStoppingLivePreview = false
+    pendingPreferredDeviceID = nil
   }
 
   func copyCurrentImage() {
@@ -248,23 +299,17 @@ final class CaptureWindowController: ObservableObject {
     }
 
     if !newMedia.isEmpty {
-      let previousDeviceID = selectedMediaID.flatMap { currentID in
-        mediaList.first(where: { $0.id == currentID })?.deviceID
-      }
-
-      mediaList = newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle }
-
-      if let previousDeviceID,
-         let preserved = mediaList.first(where: { $0.deviceID == previousDeviceID }) {
-        selectedMediaID = preserved.id
-      } else {
-        selectedMediaID = mediaList.first?.id
-      }
-
-      transitionDirection = .neutral
+      let targetDeviceID = pendingPreferredDeviceID ?? currentCapture?.deviceID
+      updateMediaList(
+        newMedia,
+        preserveDeviceID: targetDeviceID,
+        shouldSort: true,
+        resetTransition: true
+      )
     }
 
     isProcessing = false
+    pendingPreferredDeviceID = nil
   }
 
   private func handleDeviceUpdate(_ devices: [Device]) {
@@ -272,6 +317,62 @@ final class CaptureWindowController: ObservableObject {
     if mediaList.isEmpty {
       selectedMediaID = nil
     }
+    Task { @MainActor [weak self] in
+      await self?.livePreviewManager?.updateDevices(devices)
+    }
   }
 
+  private func handleLivePreviewMediaUpdate(_ media: [CaptureMedia]) {
+    let preferredDeviceID: String?
+    if let pendingPreferredDeviceID {
+      preferredDeviceID = pendingPreferredDeviceID
+    } else if let currentID = selectedMediaID,
+              let current = mediaList.first(where: { $0.id == currentID }) {
+      preferredDeviceID = current.deviceID
+    } else {
+      preferredDeviceID = nil
+    }
+
+    updateMediaList(
+      media,
+      preserveDeviceID: preferredDeviceID,
+      shouldSort: false,
+      resetTransition: false
+    )
+
+    if !media.isEmpty {
+      isProcessing = false
+    }
+    pendingPreferredDeviceID = nil
+  }
+
+  private func updateMediaList(
+    _ newMedia: [CaptureMedia],
+    preserveDeviceID: String?,
+    shouldSort: Bool,
+    resetTransition: Bool
+  ) {
+    let ordered = shouldSort ? newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle } : newMedia
+    mediaList = ordered
+
+    if ordered.isEmpty {
+      selectedMediaID = nil
+    } else if let preserve = preserveDeviceID,
+              let preserved = ordered.first(where: { $0.deviceID == preserve }) {
+      selectedMediaID = preserved.id
+    } else if let currentID = selectedMediaID,
+              ordered.contains(where: { $0.id == currentID }) {
+      // Keep current selection
+    } else {
+      selectedMediaID = ordered.first?.id
+    }
+
+    if resetTransition {
+      transitionDirection = .neutral
+    }
+  }
+
+  func livePreviewRenderer(for deviceID: String, size: CGSize) -> LivePreviewRenderer? {
+    livePreviewManager?.renderer(for: deviceID, size: size)
+  }
 }
