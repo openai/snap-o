@@ -1,32 +1,30 @@
 import SwiftUI
 
 struct CaptureWindow: View {
-  @StateObject private var deviceSelectionController = CaptureDeviceSelectionController()
+  @StateObject private var controller = CaptureWindowController()
 
   var body: some View {
     ZStack {
       Color.black.ignoresSafeArea()
 
-      let transition = transition(for: deviceSelectionController.transitionDirection)
+      let transition = transition(for: controller.transitionDirection)
 
-      if let deviceID = deviceSelectionController.devices.selectedID {
-        CaptureDeviceView(
-          deviceID: deviceID,
-          deviceSelectionController: deviceSelectionController
-        )
-        .id(deviceID)
-        .transition(transition)
+      if controller.isDeviceListInitialized || controller.currentCapture != nil {
+        CaptureMediaView(controller: controller)
+          .id(controller.currentCapture?.id)
+          .transition(transition)
       } else {
-        WaitingForDeviceView(isDeviceListInitialized: deviceSelectionController.isDeviceListInitialized)
+        WaitingForDeviceView(isDeviceListInitialized: controller.isDeviceListInitialized)
           .transition(transition)
       }
     }
-    .task { await deviceSelectionController.start() }
-    .focusedSceneObject(deviceSelectionController)
+    .task { await controller.start() }
+    .focusedSceneObject(controller)
     .toolbar {
-      TitleDevicePickerToolbar(deviceSelection: deviceSelectionController)
+      TitleCapturePickerToolbar(controller: controller)
+      CaptureToolbar(controller: controller)
     }
-    .animation(.snappy(duration: 0.25), value: deviceSelectionController.devices.selectedID)
+    .animation(.snappy(duration: 0.25), value: controller.currentCapture?.id)
     .background(
       WindowTitleVisibilityController()
         .frame(width: 0, height: 0)

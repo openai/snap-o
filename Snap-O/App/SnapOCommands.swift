@@ -2,8 +2,7 @@ import Sparkle
 import SwiftUI
 
 struct SnapOCommands: Commands {
-  @FocusedObject var controller: CaptureController?
-  @FocusedObject var deviceController: CaptureDeviceSelectionController?
+  @FocusedObject var captureController: CaptureWindowController?
 
   @ObservedObject var settings: AppSettings
   private let adbService: ADBService
@@ -29,43 +28,31 @@ struct SnapOCommands: Commands {
       Divider()
 
       Button("New Screenshot") {
-        Task { await controller?.refreshPreview() }
+        Task { await captureController?.captureScreenshots() }
       }
       .keyboardShortcut("r", modifiers: [.command])
-      .disabled(controller?.canCapture != true)
+      .disabled(!(captureController?.hasDevices ?? false) || captureController?.isProcessing == true)
 
-      if controller?.isRecording == true {
+      if captureController?.isRecording == true {
         Button("Stop Screen Recording") {
-          Task { await controller?.stopRecording() }
+          Task { await captureController?.stopRecording() }
         }
         .keyboardShortcut(.escape, modifiers: [])
       } else {
         Button("Start Screen Recording") {
-          Task { await controller?.startRecording() }
+          Task { await captureController?.startRecording() }
         }
         .keyboardShortcut("r", modifiers: [.command, .shift])
-        .disabled(controller?.canStartRecordingNow != true)
+        .disabled(!(captureController?.hasDevices ?? false) || captureController?.isProcessing == true)
       }
 
-      if (controller?.isLivePreviewActive == true) || (controller?.isStoppingLivePreview == true) {
-        Button("Stop Live Preview") {
-          Task { await controller?.stopLivePreview(withRefresh: true) }
-        }
-        .keyboardShortcut(.escape, modifiers: [])
-        .disabled(controller?.isStoppingLivePreview == true)
-      } else {
-        Button("Start Live Preview") {
-          Task { await controller?.startLivePreview() }
-        }
-        .keyboardShortcut("l", modifiers: [.command, .shift])
-        .disabled(controller?.canStartLivePreviewNow != true)
-      }
+      // Live preview is not currently available when capturing multiple devices simultaneously.
     }
 
     CommandGroup(before: .saveItem) {
       Button("Save As…") {
         guard
-          let media = controller?.currentMedia,
+          let media = captureController?.currentCapture?.media,
           let url = media.url,
           let saveKind = media.saveKind
         else { return }
@@ -88,31 +75,31 @@ struct SnapOCommands: Commands {
           }
         }
       }
-      .disabled(controller?.currentMedia?.url == nil)
+      .disabled(captureController?.currentCapture?.media.url == nil)
       .keyboardShortcut("s", modifiers: [.command])
     }
     CommandGroup(replacing: .pasteboard) {
       Button("Copy") {
-        controller?.copy()
+        captureController?.copyCurrentImage()
       }
       .keyboardShortcut("c", modifiers: [.command])
-      .disabled(controller?.currentMedia?.isImage != true)
+      .disabled(captureController?.currentCapture?.media.isImage != true)
     }
     CommandGroup(replacing: .undoRedo) {}
-    CommandMenu("Device") {
-      let selectedDeviceID = deviceController?.devices.selectedID
-      let hasAlternativeDevice = deviceController?.hasAlternativeDevice(comparedTo: selectedDeviceID) ?? false
+    CommandMenu("Capture") {
+      let hasAlternativeMedia = captureController?.hasAlternativeMedia() ?? false
 
-      Button("Previous Device") {
-        deviceController?.selectPreviousDevice()
+      Button("Previous Capture") {
+        captureController?.selectPreviousMedia()
       }
       .keyboardShortcut(.upArrow, modifiers: [.command])
-      .disabled(!hasAlternativeDevice)
-      Button("Next Device") {
-        deviceController?.selectNextDevice()
+      .disabled(!hasAlternativeMedia)
+
+      Button("Next Capture") {
+        captureController?.selectNextMedia()
       }
       .keyboardShortcut(.downArrow, modifiers: [.command])
-      .disabled(!hasAlternativeDevice)
+      .disabled(!hasAlternativeMedia)
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
     }

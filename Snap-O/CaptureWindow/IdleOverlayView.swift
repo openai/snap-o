@@ -1,16 +1,14 @@
 import SwiftUI
 
 struct IdleOverlayView: View {
-  @ObservedObject var controller: CaptureController
-  let hasDevices: Bool
-  let isDeviceListInitialized: Bool
+  @ObservedObject var controller: CaptureWindowController
 
   var body: some View {
     VStack(spacing: 12) {
       Image("Aperture")
         .resizable()
         .frame(width: 64, height: 64)
-        .infiniteRotate(animated: true)
+        .infiniteRotate(animated: controller.isProcessing)
 
       if controller.isRecording {
         Button {
@@ -33,7 +31,7 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if !hasDevices, isDeviceListInitialized {
+      } else if !controller.hasDevices, controller.isDeviceListInitialized {
         Text("Waiting for device…")
           .foregroundStyle(.gray)
           .transition(.opacity)
@@ -52,11 +50,8 @@ struct IdleOverlayView: View {
   private var animationState: AnimationState {
     AnimationState(
       isRecording: controller.isRecording,
-      isLivePreviewActive: controller.isLivePreviewActive,
-      isStoppingLivePreview: controller.isStoppingLivePreview,
-      isLivePreviewMedia: controller.currentMedia?.isLivePreview == true,
-      hasDevices: hasDevices,
-      isDeviceListInitialized: isDeviceListInitialized,
+      hasDevices: controller.hasDevices,
+      isDeviceListInitialized: controller.isDeviceListInitialized,
       hasError: controller.lastError != nil
     )
   }
@@ -64,9 +59,6 @@ struct IdleOverlayView: View {
 
 private struct AnimationState: Equatable {
   var isRecording: Bool
-  var isLivePreviewActive: Bool
-  var isStoppingLivePreview: Bool
-  var isLivePreviewMedia: Bool
   var hasDevices: Bool
   var isDeviceListInitialized: Bool
   var hasError: Bool

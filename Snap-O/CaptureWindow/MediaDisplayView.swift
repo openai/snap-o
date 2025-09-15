@@ -1,8 +1,9 @@
+import AppKit
 import SwiftUI
 
 struct MediaDisplayView: View {
   let media: Media
-  @ObservedObject var controller: CaptureController
+  var makeTempDragFile: (MediaSaveKind) -> URL?
 
   var body: some View {
     Group {
@@ -11,42 +12,37 @@ struct MediaDisplayView: View {
         if let nsImage = NSImage(contentsOf: url) {
           Image(nsImage: nsImage)
             .resizable()
-            .scaledToFit()
+            .scaledToFill()
             .onDrag { dragItemProvider(kind: .image) }
-            .onAppear {
-              // End traces that conclude when media first appears and record appStart 'after' steps.
-              Perf.end(.captureRequest, finalLabel: "snapshot rendered")
-              Perf.end(.recordingRender, finalLabel: "video rendered")
-              Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
-            }
+            .onAppear { markPerfMilestones() }
         } else {
           Color.black
         }
       case .video(let url, _):
         ZStack {
           VideoLoopingView(url: url)
-          // Keep a small overlay area to make drag easier
           Color.gray.opacity(0.01)
             .padding([.bottom], 40)
         }
         .onDrag { dragItemProvider(kind: .video) }
-        .onAppear {
-          // End traces that conclude when media first appears and record appStart 'after' steps.
-          Perf.end(.captureRequest, finalLabel: "snapshot rendered")
-          Perf.end(.recordingRender, finalLabel: "video rendered")
-          Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
-        }
+        .onAppear { markPerfMilestones() }
       case .livePreview:
-        LivePreviewView(controller: controller)
+        Color.black
       }
     }
   }
 
   private func dragItemProvider(kind: MediaSaveKind) -> NSItemProvider {
-    if let url = controller.makeTempDragFile(kind: kind) {
+    if let url = makeTempDragFile(kind) {
       NSItemProvider(object: url as NSURL)
     } else {
       NSItemProvider()
     }
+  }
+
+  private func markPerfMilestones() {
+    Perf.end(.captureRequest, finalLabel: "snapshot rendered")
+    Perf.end(.recordingRender, finalLabel: "video rendered")
+    Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
   }
 }
