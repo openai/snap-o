@@ -30,7 +30,7 @@ struct SnapOCommands: Commands {
       Button("New Screenshot") {
         Task { await captureController?.captureScreenshots() }
       }
-      .keyboardShortcut("r", modifiers: [.command])
+      .keyboardShortcut("r")
       .disabled(captureController?.canCaptureNow != true)
 
       if captureController?.isRecording == true {
@@ -88,29 +88,29 @@ struct SnapOCommands: Commands {
         }
       }
       .disabled(captureController?.currentCapture?.media.url == nil)
-      .keyboardShortcut("s", modifiers: [.command])
+      .keyboardShortcut("s")
     }
     CommandGroup(replacing: .pasteboard) {
       Button("Copy") {
         captureController?.copyCurrentImage()
       }
-      .keyboardShortcut("c", modifiers: [.command])
+      .keyboardShortcut("c")
       .disabled(captureController?.currentCapture?.media.isImage != true)
     }
     CommandGroup(replacing: .undoRedo) {}
-    CommandMenu("Capture") {
+    CommandMenu("Device") {
       let hasAlternativeMedia = captureController?.hasAlternativeMedia() ?? false
 
-      Button("Previous Capture") {
+      Button("Previous Device") {
         captureController?.selectPreviousMedia()
       }
-      .keyboardShortcut(.leftArrow, modifiers: [.command])
+      .keyboardShortcut("[")
       .disabled(!hasAlternativeMedia)
 
-      Button("Next Capture") {
+      Button("Next Device") {
         captureController?.selectNextMedia()
       }
-      .keyboardShortcut(.rightArrow, modifiers: [.command])
+      .keyboardShortcut("]")
       .disabled(!hasAlternativeMedia)
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
