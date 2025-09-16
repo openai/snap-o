@@ -5,17 +5,19 @@ import Foundation
 actor CaptureService {
   private let adb: ADBService
   private let fileStore: FileStore
+  private let deviceTracker: DeviceTracker
 
-  private var preloadedTask: Task<[CaptureMedia], Error>?
+  private var preloadedTask: Task<([CaptureMedia], Error?), Error>?
   private var didLogPreloadStart = false
 
-  init(adb: ADBService, fileStore: FileStore) {
+  init(adb: ADBService, fileStore: FileStore, deviceTracker: DeviceTracker) {
     self.adb = adb
     self.fileStore = fileStore
+    self.deviceTracker = deviceTracker
   }
 
-  func captureScreenshots(for devices: [Device]) async -> ([CaptureMedia], Error?) {
-    await collectMedia(for: devices) { device in
+  func captureScreenshots() async -> ([CaptureMedia], Error?) {
+    await collectMedia(for: deviceTracker.latestDevices) { device in
       try await self.captureScreenshot(for: device)
     }
   }
@@ -81,21 +83,18 @@ actor CaptureService {
     return await session.waitUntilStop()
   }
 
-  func preloadScreenshots(for devices: [Device]) async {
-    guard !didLogPreloadStart else { return }
+  func preloadScreenshots() async {
+    let devices = deviceTracker.latestDevices
+
+    guard !didLogPreloadStart, !devices.isEmpty else {
+      return
+    }
 
     Perf.step(.appFirstSnapshot, "Preloading first screenshot")
     didLogPreloadStart = true
 
-    let previousTask = preloadedTask
     preloadedTask = Task {
-      var accumulated: [CaptureMedia] = []
-      if let previousTask {
-        accumulated = (try? await previousTask.value) ?? []
-      }
-      let (media, _) = await self.captureScreenshots(for: devices)
-      accumulated.append(contentsOf: media)
-      return accumulated
+      await self.captureScreenshots()
     }
   }
 
@@ -103,13 +102,52 @@ actor CaptureService {
     guard let task = preloadedTask else { return [] }
     preloadedTask = nil
     do {
-      let media = try await task.value
+      let (media, _) = try await task.value
       let fresh = media.filter { Date().timeIntervalSince($0.media.capturedAt) <= 1 }
       if fresh.isEmpty { return [] }
       Perf.step(.appFirstSnapshot, "return media")
       return fresh
     } catch {
       return []
+    }
+  }
+
+  func startRecordings(for devices: [Device]) async -> ([String: RecordingSession], Error?) {
+    var sessions: [String: RecordingSession] = [:]
+    var encounteredError: Error?
+
+    await withTaskGroup(of: (String, Result<RecordingSession, Error>).self) { group in
+      for device in devices {
+        group.addTask {
+          do {
+            let session = try await self.startRecording(for: device.id)
+            return (device.id, .success(session))
+          } catch {
+            return (device.id, .failure(error))
+          }
+        }
+      }
+
+      for await (deviceID, result) in group {
+        switch result {
+        case .success(let session):
+          sessions[deviceID] = session
+        case .failure(let error):
+          encounteredError = error
+        }
+      }
+    }
+
+    return (sessions, encounteredError)
+  }
+
+  func stopRecordings(
+    for devices: [Device],
+    sessions: [String: RecordingSession]
+  ) async -> ([CaptureMedia], Error?) {
+    await collectOptionalMedia(for: devices) { device in
+      guard let session = sessions[device.id] else { return nil }
+      return try await self.stopRecording(session: session, device: device)
     }
   }
 
@@ -135,6 +173,39 @@ actor CaptureService {
         switch outcome {
         case .success(let media):
           results.append(media)
+        case .failure(let error):
+          encounteredError = error
+        }
+      }
+    }
+
+    return (results, encounteredError)
+  }
+
+  private func collectOptionalMedia(
+    for devices: [Device],
+    action: @escaping @Sendable (Device) async throws -> CaptureMedia?
+  ) async -> ([CaptureMedia], Error?) {
+    var results: [CaptureMedia] = []
+    var encounteredError: Error?
+
+    await withTaskGroup(of: Result<CaptureMedia?, Error>.self) { group in
+      for device in devices {
+        group.addTask {
+          do {
+            return .success(try await action(device))
+          } catch {
+            return .failure(error)
+          }
+        }
+      }
+
+      for await outcome in group {
+        switch outcome {
+        case .success(let media?):
+          results.append(media)
+        case .success(nil):
+          continue
         case .failure(let error):
           encounteredError = error
         }

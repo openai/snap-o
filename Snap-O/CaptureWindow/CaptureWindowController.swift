@@ -98,7 +98,6 @@ final class CaptureWindowController: ObservableObject {
 
   func captureScreenshots() async {
     guard canCaptureNow else { return }
-    let devices = knownDevices
 
     isProcessing = true
     lastError = nil
@@ -110,7 +109,7 @@ final class CaptureWindowController: ObservableObject {
     }
 
     let captureService = services.captureService
-    let (newMedia, encounteredError) = await captureService.captureScreenshots(for: devices)
+    let (newMedia, encounteredError) = await captureService.captureScreenshots()
 
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
   }
@@ -123,33 +122,8 @@ final class CaptureWindowController: ObservableObject {
     pendingPreferredDeviceID = currentCapture?.device.id
     updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: false)
 
-    let deviceIDs = devices.map { $0.id }
-    var sessions: [String: RecordingSession] = [:]
-    var encounteredError: Error?
-
     let captureService = services.captureService
-
-    await withTaskGroup(of: (String, Result<RecordingSession, Error>).self) { group in
-      for deviceID in deviceIDs {
-        group.addTask {
-          do {
-            let session = try await captureService.startRecording(for: deviceID)
-            return (deviceID, .success(session))
-          } catch {
-            return (deviceID, .failure(error))
-          }
-        }
-      }
-
-      for await (deviceID, result) in group {
-        switch result {
-        case .success(let session):
-          sessions[deviceID] = session
-        case .failure(let error):
-          encounteredError = error
-        }
-      }
-    }
+    let (sessions, encounteredError) = await captureService.startRecordings(for: devices)
 
     if let error = encounteredError {
       lastError = error.localizedDescription
@@ -175,11 +149,10 @@ final class CaptureWindowController: ObservableObject {
     lastError = nil
 
     let captureService = services.captureService
-    let sessions = recordingSessions
-    let (newMedia, encounteredError) = await collectMedia(for: devices) { device in
-      guard let session = sessions[device.id] else { return nil }
-      return try await captureService.stopRecording(session: session, device: device)
-    }
+    let (newMedia, encounteredError) = await captureService.stopRecordings(
+      for: devices,
+      sessions: recordingSessions
+    )
 
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
     recordingSessions.removeAll()
@@ -307,8 +280,8 @@ final class CaptureWindowController: ObservableObject {
       hasAttemptedPreloadConsumption = true
     }
 
-    let collected = await captureService.consumeAllPreloadedScreenshots()
-    guard !collected.isEmpty else {
+    let preloaded = await captureService.consumeAllPreloadedScreenshots()
+    guard !preloaded.isEmpty else {
       if shouldLog {
         Perf.step(.appFirstSnapshot, "Preload missing; refreshing preview")
       }
@@ -318,7 +291,7 @@ final class CaptureWindowController: ObservableObject {
     if shouldLog {
       Perf.step(.appFirstSnapshot, "Using preloaded screenshot")
     }
-    return collected
+    return preloaded
   }
 
   private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
@@ -357,9 +330,9 @@ final class CaptureWindowController: ObservableObject {
     if mediaList.isEmpty {
       selectedMediaID = nil
     }
-    Task.detached(priority: .utility) { [weak self, devices] in
+    Task.detached(priority: .utility) { [weak self] in
       guard let self else { return }
-      await self.services.captureService.preloadScreenshots(for: devices)
+      await self.services.captureService.preloadScreenshots()
     }
     if !devices.isEmpty {
       startPreloadConsumptionIfNeeded()
