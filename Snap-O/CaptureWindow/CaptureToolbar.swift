@@ -17,19 +17,28 @@ struct CaptureToolbar: ToolbarContent {
 
   @ViewBuilder
   private func recordingControls() -> some View {
-    Button {
-      Task { await controller.stopRecording() }
-    } label: {
-      Label("Stop", systemImage: "stop.fill")
-        .fontWeight(.semibold)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.red))
-        .foregroundStyle(Color.white)
+    if controller.isProcessing {
+      ProgressView()
+        .progressViewStyle(.circular)
+        .tint(.red)
+        .controlSize(.small)
+        .frame(width: 24, height: 24)
+        .help("Stopping Recording…")
+    } else {
+      Button {
+        Task { await controller.stopRecording() }
+      } label: {
+        Label("Stop", systemImage: "stop.fill")
+          .fontWeight(.semibold)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 6)
+          .background(RoundedRectangle(cornerRadius: 8).fill(Color.red))
+          .foregroundStyle(Color.white)
+      }
+      .buttonStyle(.plain)
+      .help("Stop Recording (⎋)")
+      .keyboardShortcut(.escape, modifiers: [])
     }
-    .buttonStyle(.plain)
-    .help("Stop Recording (⎋)")
-    .keyboardShortcut(.escape, modifiers: [])
   }
 
   @ViewBuilder

@@ -10,7 +10,7 @@ struct IdleOverlayView: View {
         .frame(width: 64, height: 64)
         .infiniteRotate(animated: controller.isProcessing)
 
-      if controller.isRecording {
+      if controller.isRecording && !controller.isProcessing {
         Button {
           Task { await controller.stopRecording() }
         } label: {
@@ -31,6 +31,11 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
+      } else if controller.isRecording {
+        ProgressView()
+          .progressViewStyle(.circular)
+          .tint(.white)
+          .controlSize(.large)
       } else if !controller.hasDevices, controller.isDeviceListInitialized {
         Text("Waiting for device…")
           .foregroundStyle(.gray)

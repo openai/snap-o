@@ -31,7 +31,6 @@ struct CaptureWindow: View {
 
 extension CaptureWindow {
   private func transition(for direction: DeviceTransitionDirection) -> AnyTransition {
-    print("transition for \(direction)")
     return switch direction {
     case .previous: xTransition(insertion: .leading, removal: .trailing)
     case .next: xTransition(insertion: .trailing, removal: .leading)
