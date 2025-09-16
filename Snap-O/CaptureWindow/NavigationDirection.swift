@@ -1,5 +1,5 @@
 enum DeviceTransitionDirection {
-  case up
-  case down
+  case previous
+  case next
   case neutral
 }

@@ -62,11 +62,11 @@ final class CaptureWindowController: ObservableObject {
     guard let currentID = selectedMediaID,
           let currentIndex = mediaList.firstIndex(where: { $0.id == currentID })
     else {
-      selectMedia(id: mediaList.first?.id, direction: .down)
+      selectMedia(id: mediaList.first?.id, direction: .next)
       return
     }
     let nextIndex = (currentIndex + 1) % mediaList.count
-    selectMedia(id: mediaList[nextIndex].id, direction: .down)
+    selectMedia(id: mediaList[nextIndex].id, direction: .next)
   }
 
   func selectPreviousMedia() {
@@ -74,11 +74,11 @@ final class CaptureWindowController: ObservableObject {
     guard let currentID = selectedMediaID,
           let currentIndex = mediaList.firstIndex(where: { $0.id == currentID })
     else {
-      selectMedia(id: mediaList.first?.id, direction: .up)
+      selectMedia(id: mediaList.first?.id, direction: .previous)
       return
     }
     let previousIndex = (currentIndex - 1 + mediaList.count) % mediaList.count
-    selectMedia(id: mediaList[previousIndex].id, direction: .up)
+    selectMedia(id: mediaList[previousIndex].id, direction: .previous)
   }
 
   func hasAlternativeMedia() -> Bool {

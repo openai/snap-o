@@ -32,17 +32,17 @@ struct CaptureWindow: View {
 extension CaptureWindow {
   private func transition(for direction: DeviceTransitionDirection) -> AnyTransition {
     switch direction {
-    case .up: yTransition(offset: 60)
-    case .down: yTransition(offset: -60)
+    case .previous: xTransition(offset: 60)
+    case .next: xTransition(offset: -60)
     case .neutral: .opacity
     }
   }
 
-  private func yTransition(offset: CGFloat) -> AnyTransition {
-    let move = AnyTransition.offset(y: offset).combined(with: .opacity)
+  private func xTransition(offset: CGFloat) -> AnyTransition {
+    let move = AnyTransition.offset(x: offset).combined(with: .opacity)
     return .asymmetric(
       insertion: move,
-      removal: .offset(y: -offset).combined(with: .opacity)
+      removal: .offset(x: -offset).combined(with: .opacity)
     )
   }
 }
