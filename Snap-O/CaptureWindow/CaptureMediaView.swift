@@ -13,7 +13,7 @@ struct CaptureMediaView: View {
         MediaDisplayView(
           media: capture.media,
           makeTempDragFile: { controller.makeTempDragFile(kind: $0) },
-          livePreviewRenderer: controller.livePreviewRenderer(for: capture.deviceID, size: capture.media.size)
+          livePreviewRenderer: capture.media.isLivePreview ? controller.livePreviewRenderer(for: capture.deviceID) : nil
         )
         .transition(.opacity)
       } else {

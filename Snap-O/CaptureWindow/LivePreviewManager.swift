@@ -61,12 +61,11 @@ final class LivePreviewManager {
     notifyMediaChanged()
   }
 
-  func renderer(for deviceID: String, size: CGSize) -> LivePreviewRenderer? {
+  func renderer(for deviceID: String) -> LivePreviewRenderer? {
     guard let session = sessions[deviceID] else { return nil }
     return LivePreviewRenderer(
       session: session,
       deviceID: deviceID,
-      size: size,
       sendPointer: { [weak self] action, source, location in
         Task { await self?.sendPointerEvent(deviceID: deviceID, action: action, source: source, location: location) }
       }

@@ -21,15 +21,11 @@ struct CaptureWindow: View {
     .task { await controller.start() }
     .onDisappear { controller.tearDown() }
     .focusedSceneObject(controller)
+    .navigationTitle("")
     .toolbar {
-      TitleCapturePickerToolbar(controller: controller)
       CaptureToolbar(controller: controller)
     }
     .animation(.snappy(duration: 0.25), value: controller.currentCapture?.id)
-    .background(
-      WindowTitleVisibilityController()
-        .frame(width: 0, height: 0)
-    )
   }
 }
 

@@ -372,7 +372,7 @@ final class CaptureWindowController: ObservableObject {
     }
   }
 
-  func livePreviewRenderer(for deviceID: String, size: CGSize) -> LivePreviewRenderer? {
-    livePreviewManager?.renderer(for: deviceID, size: size)
+  func livePreviewRenderer(for deviceID: String) -> LivePreviewRenderer? {
+    livePreviewManager?.renderer(for: deviceID)
   }
 }
