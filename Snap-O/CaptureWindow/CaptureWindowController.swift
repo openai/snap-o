@@ -122,7 +122,7 @@ final class CaptureWindowController: ObservableObject {
     let devices = knownDevices
     isProcessing = true
     lastError = nil
-    pendingPreferredDeviceID = currentCapture?.deviceID
+    pendingPreferredDeviceID = currentCapture?.device.id
     updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: false)
 
     let deviceIDs = devices.map { $0.id }
@@ -192,7 +192,7 @@ final class CaptureWindowController: ObservableObject {
     guard canStartLivePreviewNow else { return }
     isProcessing = true
     lastError = nil
-    pendingPreferredDeviceID = currentCapture?.deviceID ?? knownDevices.first?.id
+    pendingPreferredDeviceID = currentCapture?.device.id ?? knownDevices.first?.id
 
     let manager = LivePreviewManager(services: services) { [weak self] media in
       guard let self else { return }
@@ -207,7 +207,7 @@ final class CaptureWindowController: ObservableObject {
   func stopLivePreview() async {
     guard isLivePreviewActive, !isStoppingLivePreview else { return }
     isStoppingLivePreview = true
-    let preferredDeviceID = currentCapture?.deviceID
+    let preferredDeviceID = currentCapture?.device.id
     livePreviewManager?.stop()
     livePreviewManager = nil
     isLivePreviewActive = false
@@ -326,7 +326,7 @@ final class CaptureWindowController: ObservableObject {
   private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
     updateMediaList(
       mediaList,
-      preserveDeviceID: mediaList.first?.deviceID,
+      preserveDeviceID: mediaList.first?.device.id,
       shouldSort: false,
       resetTransition: true
     )
@@ -341,7 +341,7 @@ final class CaptureWindowController: ObservableObject {
     }
 
     if !newMedia.isEmpty {
-      let targetDeviceID = pendingPreferredDeviceID ?? currentCapture?.deviceID
+      let targetDeviceID = pendingPreferredDeviceID ?? currentCapture?.device.id
       updateMediaList(
         newMedia,
         preserveDeviceID: targetDeviceID,
@@ -394,7 +394,7 @@ final class CaptureWindowController: ObservableObject {
       preferredDeviceID = pendingPreferredDeviceID
     } else if let currentID = selectedMediaID,
               let current = mediaList.first(where: { $0.id == currentID }) {
-      preferredDeviceID = current.deviceID
+      preferredDeviceID = current.device.id
     } else {
       preferredDeviceID = nil
     }
@@ -424,7 +424,7 @@ final class CaptureWindowController: ObservableObject {
     if ordered.isEmpty {
       selectedMediaID = nil
     } else if let preserve = preserveDeviceID,
-              let preserved = ordered.first(where: { $0.deviceID == preserve }) {
+              let preserved = ordered.first(where: { $0.device.id == preserve }) {
       selectedMediaID = preserved.id
     } else if let currentID = selectedMediaID,
               ordered.contains(where: { $0.id == currentID }) {

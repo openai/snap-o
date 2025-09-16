@@ -123,7 +123,6 @@ final class LivePreviewManager {
     captureIDs[device.id] = id
     mediaByDeviceID[device.id] = CaptureMedia(
       id: id,
-      deviceID: device.id,
       device: device,
       media: media
     )

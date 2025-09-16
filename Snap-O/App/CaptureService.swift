@@ -38,7 +38,7 @@ actor CaptureService {
       capturedAt: capturedAt,
       display: display
     )
-    let captureMedia = CaptureMedia(deviceID: device.id, device: device, media: media)
+    let captureMedia = CaptureMedia(device: device, media: media)
     return captureMedia
   }
 
@@ -61,7 +61,7 @@ actor CaptureService {
       capturedAt: Date(),
       densityProvider: { await densityTask.value }
     ) {
-      return CaptureMedia(deviceID: device.id, device: device, media: media)
+      return CaptureMedia(device: device, media: media)
     }
     return nil
   }
