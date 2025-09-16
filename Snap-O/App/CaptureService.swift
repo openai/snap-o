@@ -58,6 +58,10 @@ actor CaptureService {
     let destination = fileStore.makePreviewDestination(deviceID: device.id, kind: .video)
     try await adb.exec().stopScreenrecord(session: session, savingTo: destination)
     let asset = AVURLAsset(url: destination)
+    let duration = try await asset.load(.duration)
+    if duration.seconds <= 0 {
+      return nil
+    }
 
     let densityTask = Task<CGFloat?, Never> { [adb, device] in
       try? await adb.exec().displayDensity(deviceID: device.id)

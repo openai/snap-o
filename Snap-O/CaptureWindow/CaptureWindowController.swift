@@ -154,6 +154,14 @@ final class CaptureWindowController: ObservableObject {
       sessions: recordingSessions
     )
 
+    if encounteredError == nil && newMedia.isEmpty {
+      recordingSessions.removeAll()
+      isRecording = false
+      isProcessing = false
+      await captureScreenshots()
+      return
+    }
+
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
     recordingSessions.removeAll()
     isRecording = false
