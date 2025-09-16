@@ -101,6 +101,8 @@ final class CaptureWindowController: ObservableObject {
 
     isProcessing = true
     lastError = nil
+    pendingPreferredDeviceID = currentCapture?.device.id
+    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: false)
 
     if let media = await consumePreloadedMedia() {
       applyPreloadedMedia(media)

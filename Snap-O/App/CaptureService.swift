@@ -50,11 +50,46 @@ actor CaptureService {
     return captureMedia
   }
 
-  func startRecording(for deviceID: String) async throws -> RecordingSession {
-    try await adb.exec().startScreenrecord(deviceID: deviceID)
+  func startRecordings(for devices: [Device]) async -> ([String: RecordingSession], Error?) {
+    var sessions: [String: RecordingSession] = [:]
+    var encounteredError: Error?
+
+    await withTaskGroup(of: (String, Result<RecordingSession, Error>).self) { group in
+      for device in devices {
+        group.addTask {
+          do {
+            let session = try await self.adb.exec().startScreenrecord(deviceID: device.id)
+            return (device.id, .success(session))
+          } catch {
+            return (device.id, .failure(error))
+          }
+        }
+      }
+
+      for await (deviceID, result) in group {
+        switch result {
+        case .success(let session):
+          sessions[deviceID] = session
+        case .failure(let error):
+          encounteredError = error
+        }
+      }
+    }
+
+    return (sessions, encounteredError)
   }
 
-  func stopRecording(session: RecordingSession, device: Device) async throws -> CaptureMedia? {
+  func stopRecordings(
+    for devices: [Device],
+    sessions: [String: RecordingSession]
+  ) async -> ([CaptureMedia], Error?) {
+    await collectOptionalMedia(for: devices) { device in
+      guard let session = sessions[device.id] else { return nil }
+      return try await self.stopRecording(session: session, device: device)
+    }
+  }
+
+  private func stopRecording(session: RecordingSession, device: Device) async throws -> CaptureMedia? {
     let destination = fileStore.makePreviewDestination(deviceID: device.id, kind: .video)
     try await adb.exec().stopScreenrecord(session: session, savingTo: destination)
     let asset = AVURLAsset(url: destination)
@@ -113,45 +148,6 @@ actor CaptureService {
       return fresh
     } catch {
       return []
-    }
-  }
-
-  func startRecordings(for devices: [Device]) async -> ([String: RecordingSession], Error?) {
-    var sessions: [String: RecordingSession] = [:]
-    var encounteredError: Error?
-
-    await withTaskGroup(of: (String, Result<RecordingSession, Error>).self) { group in
-      for device in devices {
-        group.addTask {
-          do {
-            let session = try await self.startRecording(for: device.id)
-            return (device.id, .success(session))
-          } catch {
-            return (device.id, .failure(error))
-          }
-        }
-      }
-
-      for await (deviceID, result) in group {
-        switch result {
-        case .success(let session):
-          sessions[deviceID] = session
-        case .failure(let error):
-          encounteredError = error
-        }
-      }
-    }
-
-    return (sessions, encounteredError)
-  }
-
-  func stopRecordings(
-    for devices: [Device],
-    sessions: [String: RecordingSession]
-  ) async -> ([CaptureMedia], Error?) {
-    await collectOptionalMedia(for: devices) { device in
-      guard let session = sessions[device.id] else { return nil }
-      return try await self.stopRecording(session: session, device: device)
     }
   }
 
