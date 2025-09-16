@@ -103,7 +103,7 @@ final class CaptureWindowController: ObservableObject {
     isProcessing = true
     lastError = nil
 
-    if let media = await consumePreloadedMedia(for: devices) {
+    if let media = await consumePreloadedMedia() {
       applyPreloadedMedia(media)
       isProcessing = false
       return
@@ -111,7 +111,7 @@ final class CaptureWindowController: ObservableObject {
 
     let captureService = services.captureService
     let (newMedia, encounteredError) = await collectMedia(for: devices) { device in
-      try await captureService.captureScreenshot(for: device.id)
+      try await captureService.captureScreenshot(for: device)
     }
 
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
@@ -180,7 +180,7 @@ final class CaptureWindowController: ObservableObject {
     let sessions = recordingSessions
     let (newMedia, encounteredError) = await collectMedia(for: devices) { device in
       guard let session = sessions[device.id] else { return nil }
-      return try await captureService.stopRecording(session: session, deviceID: device.id)
+      return try await captureService.stopRecording(session: session, device: device)
     }
 
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
@@ -268,29 +268,27 @@ final class CaptureWindowController: ObservableObject {
 
   private func collectMedia(
     for devices: [Device],
-    action: @Sendable @escaping (Device) async throws -> Media?
+    action: @Sendable @escaping (Device) async throws -> CaptureMedia?
   ) async -> ([CaptureMedia], Error?) {
     var newMedia: [CaptureMedia] = []
     var encounteredError: Error?
 
-    await withTaskGroup(of: (Device, Result<Media?, Error>).self) { group in
+    await withTaskGroup(of: Result<CaptureMedia?, Error>.self) { group in
       for device in devices {
         group.addTask {
           do {
-            return (device, .success(try await action(device)))
+            return .success(try await action(device))
           } catch {
-            return (device, .failure(error))
+            return .failure(error)
           }
         }
       }
 
-      for await (device, result) in group {
+      for await result in group {
         switch result {
         case .success(let media):
           if let media {
-            newMedia.append(
-              CaptureMedia(deviceID: device.id, device: device, media: media)
-            )
+            newMedia.append(media)
           }
         case .failure(let error):
           encounteredError = error
@@ -301,8 +299,7 @@ final class CaptureWindowController: ObservableObject {
     return (newMedia, encounteredError)
   }
 
-  private func consumePreloadedMedia(for devices: [Device]) async -> [CaptureMedia]? {
-    guard !devices.isEmpty else { return nil }
+  private func consumePreloadedMedia() async -> [CaptureMedia]? {
     let captureService = services.captureService
 
     let shouldLog = !hasAttemptedPreloadConsumption
@@ -312,13 +309,7 @@ final class CaptureWindowController: ObservableObject {
       hasAttemptedPreloadConsumption = true
     }
 
-    var collected: [CaptureMedia] = []
-    for device in devices {
-      if let media = await captureService.consumePreloadedScreenshot(for: device.id) {
-        collected.append(CaptureMedia(deviceID: device.id, device: device, media: media))
-      }
-    }
-
+    let collected = await captureService.consumeAllPreloadedScreenshots()
     guard !collected.isEmpty else {
       if shouldLog {
         Perf.step(.appFirstSnapshot, "Preload missing; refreshing preview")
@@ -368,29 +359,24 @@ final class CaptureWindowController: ObservableObject {
     if mediaList.isEmpty {
       selectedMediaID = nil
     }
-    for device in devices {
-      Task.detached(priority: .utility) { [services] in
-        await services.captureService.preloadScreenshot(for: device.id)
-      }
+    Task.detached(priority: .utility) { [weak self, devices] in
+      guard let self else { return }
+      await self.services.captureService.preloadScreenshots(for: devices)
     }
     if !devices.isEmpty {
-      startPreloadConsumptionIfNeeded(devices: devices)
+      startPreloadConsumptionIfNeeded()
     }
     Task { @MainActor [weak self] in
       await self?.livePreviewManager?.updateDevices(devices)
     }
   }
 
-  private func startPreloadConsumptionIfNeeded(devices: [Device]) {
+  private func startPreloadConsumptionIfNeeded() {
     guard preloadConsumptionTask == nil else { return }
     guard mediaList.isEmpty else { return }
     preloadConsumptionTask = Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
-      guard !devices.isEmpty else {
-        await MainActor.run { self.preloadConsumptionTask = nil }
-        return
-      }
-      if let preloaded = await self.consumePreloadedMedia(for: devices) {
+      if let preloaded = await self.consumePreloadedMedia() {
         await MainActor.run {
           self.applyPreloadedMedia(preloaded)
           self.isProcessing = false

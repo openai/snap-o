@@ -6,23 +6,24 @@ actor CaptureService {
   private let adb: ADBService
   private let fileStore: FileStore
 
-  private var preloadedScreenshots: [String: Task<Media, Error>] = [:]
+  private var preloadedScreenshots: [String: Task<CaptureMedia, Error>] = [:]
+  private var didLogPreloadStart = false
 
   init(adb: ADBService, fileStore: FileStore) {
     self.adb = adb
     self.fileStore = fileStore
   }
 
-  func captureScreenshot(for deviceID: String) async throws -> Media {
+  func captureScreenshot(for device: Device) async throws -> CaptureMedia {
     // Build a stateless exec from config for parallel commands.
     let exec = await adb.exec()
 
-    async let dataTask: Data = try await exec.screencapPNG(deviceID: deviceID)
-    async let densityAsync: CGFloat? = await (try? exec.displayDensity(deviceID: deviceID))
+    async let dataTask: Data = try await exec.screencapPNG(deviceID: device.id)
+    async let densityAsync: CGFloat? = await (try? exec.displayDensity(deviceID: device.id))
     let data = try await dataTask
     let capturedAt = Date()
 
-    let destination = fileStore.makePreviewDestination(deviceID: deviceID, kind: .image)
+    let destination = fileStore.makePreviewDestination(deviceID: device.id, kind: .image)
     let writeTask = Task(priority: .utility) { () throws -> CGSize in
       try data.write(to: destination, options: [.atomic])
       return try pngSize(from: data)
@@ -37,20 +38,21 @@ actor CaptureService {
       capturedAt: capturedAt,
       display: display
     )
-    return media
+    let captureMedia = CaptureMedia(deviceID: device.id, device: device, media: media)
+    return captureMedia
   }
 
   func startRecording(for deviceID: String) async throws -> RecordingSession {
     try await adb.exec().startScreenrecord(deviceID: deviceID)
   }
 
-  func stopRecording(session: RecordingSession, deviceID: String) async throws -> Media? {
-    let destination = fileStore.makePreviewDestination(deviceID: deviceID, kind: .video)
+  func stopRecording(session: RecordingSession, device: Device) async throws -> CaptureMedia? {
+    let destination = fileStore.makePreviewDestination(deviceID: device.id, kind: .video)
     try await adb.exec().stopScreenrecord(session: session, savingTo: destination)
     let asset = AVURLAsset(url: destination)
 
-    let densityTask = Task<CGFloat?, Never> { [adb, deviceID] in
-      try? await adb.exec().displayDensity(deviceID: deviceID)
+    let densityTask = Task<CGFloat?, Never> { [adb, device] in
+      try? await adb.exec().displayDensity(deviceID: device.id)
     }
 
     if let media = try await Media.video(
@@ -59,7 +61,7 @@ actor CaptureService {
       capturedAt: Date(),
       densityProvider: { await densityTask.value }
     ) {
-      return media
+      return CaptureMedia(deviceID: device.id, device: device, media: media)
     }
     return nil
   }
@@ -73,26 +75,42 @@ actor CaptureService {
     return await session.waitUntilStop()
   }
 
-  func preloadScreenshot(for deviceID: String) async {
-    guard preloadedScreenshots[deviceID] == nil else { return }
+  func preloadScreenshots(for devices: [Device]) async {
+    guard !devices.isEmpty else { return }
 
-    if preloadedScreenshots.isEmpty {
+    if !didLogPreloadStart {
       Perf.step(.appFirstSnapshot, "Preloading first screenshot")
+      didLogPreloadStart = true
     }
 
-    preloadedScreenshots[deviceID] = Task {
-      try await self.captureScreenshot(for: deviceID)
+    for device in devices {
+      if preloadedScreenshots[device.id] == nil {
+        preloadedScreenshots[device.id] = Task {
+          try await self.captureScreenshot(for: device)
+        }
+      }
     }
   }
 
-  func consumePreloadedScreenshot(for deviceID: String) async -> Media? {
+  func consumeAllPreloadedScreenshots() async -> [CaptureMedia] {
+    let deviceIDs = Array(preloadedScreenshots.keys)
+    var results: [CaptureMedia] = []
+    for id in deviceIDs {
+      if let media = await consumePreloadedScreenshot(for: id) {
+        results.append(media)
+      }
+    }
+    return results
+  }
+
+  private func consumePreloadedScreenshot(for deviceID: String) async -> CaptureMedia? {
     guard let task = preloadedScreenshots.removeValue(forKey: deviceID) else {
       return nil
     }
 
     do {
       let media = try await task.value
-      guard Date().timeIntervalSince(media.capturedAt) <= 1 else {
+      guard Date().timeIntervalSince(media.media.capturedAt) <= 1 else {
         return nil
       }
       Perf.step(.appFirstSnapshot, "return media")
