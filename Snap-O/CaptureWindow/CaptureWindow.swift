@@ -21,7 +21,7 @@ struct CaptureWindow: View {
     .task { await controller.start() }
     .onDisappear { controller.tearDown() }
     .focusedSceneObject(controller)
-    .navigationTitle("")
+    .navigationTitle(controller.currentCapture?.device.displayTitle ?? "Snap-O")
     .toolbar {
       CaptureToolbar(controller: controller)
     }

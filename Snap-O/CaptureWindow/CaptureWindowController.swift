@@ -21,6 +21,8 @@ final class CaptureWindowController: ObservableObject {
   private var deviceStreamTask: Task<Void, Never>?
   private var livePreviewManager: LivePreviewManager?
   private var pendingPreferredDeviceID: String?
+  private var preloadConsumptionTask: Task<Void, Never>?
+  private var hasAttemptedPreloadConsumption = false
 
   init(services: AppServices = .shared) {
     self.services = services
@@ -100,6 +102,12 @@ final class CaptureWindowController: ObservableObject {
 
     isProcessing = true
     lastError = nil
+
+    if let media = await consumePreloadedMedia(for: devices) {
+      applyPreloadedMedia(media)
+      isProcessing = false
+      return
+    }
 
     let captureService = services.captureService
     let (newMedia, encounteredError) = await collectMedia(for: devices) { device in
@@ -223,6 +231,9 @@ final class CaptureWindowController: ObservableObject {
     isLivePreviewActive = false
     isStoppingLivePreview = false
     pendingPreferredDeviceID = nil
+    preloadConsumptionTask?.cancel()
+    preloadConsumptionTask = nil
+    hasAttemptedPreloadConsumption = false
   }
 
   func copyCurrentImage() {
@@ -290,6 +301,46 @@ final class CaptureWindowController: ObservableObject {
     return (newMedia, encounteredError)
   }
 
+  private func consumePreloadedMedia(for devices: [Device]) async -> [CaptureMedia]? {
+    guard !devices.isEmpty else { return nil }
+    let captureService = services.captureService
+
+    let shouldLog = !hasAttemptedPreloadConsumption
+    if shouldLog {
+      Perf.step(.appFirstSnapshot, "Starting initial preview load")
+      Perf.step(.appFirstSnapshot, "consume preloaded screenshot")
+      hasAttemptedPreloadConsumption = true
+    }
+
+    var collected: [CaptureMedia] = []
+    for device in devices {
+      if let media = await captureService.consumePreloadedScreenshot(for: device.id) {
+        collected.append(CaptureMedia(deviceID: device.id, device: device, media: media))
+      }
+    }
+
+    guard !collected.isEmpty else {
+      if shouldLog {
+        Perf.step(.appFirstSnapshot, "Preload missing; refreshing preview")
+      }
+      return nil
+    }
+
+    if shouldLog {
+      Perf.step(.appFirstSnapshot, "Using preloaded screenshot")
+    }
+    return collected
+  }
+
+  private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
+    updateMediaList(
+      mediaList,
+      preserveDeviceID: mediaList.first?.deviceID,
+      shouldSort: false,
+      resetTransition: true
+    )
+  }
+
   private func applyCaptureResults(
     newMedia: [CaptureMedia],
     encounteredError: Error?
@@ -317,8 +368,37 @@ final class CaptureWindowController: ObservableObject {
     if mediaList.isEmpty {
       selectedMediaID = nil
     }
+    for device in devices {
+      Task.detached(priority: .utility) { [services] in
+        await services.captureService.preloadScreenshot(for: device.id)
+      }
+    }
+    if !devices.isEmpty {
+      startPreloadConsumptionIfNeeded(devices: devices)
+    }
     Task { @MainActor [weak self] in
       await self?.livePreviewManager?.updateDevices(devices)
+    }
+  }
+
+  private func startPreloadConsumptionIfNeeded(devices: [Device]) {
+    guard preloadConsumptionTask == nil else { return }
+    guard mediaList.isEmpty else { return }
+    preloadConsumptionTask = Task.detached(priority: .userInitiated) { [weak self] in
+      guard let self else { return }
+      guard !devices.isEmpty else {
+        await MainActor.run { self.preloadConsumptionTask = nil }
+        return
+      }
+      if let preloaded = await self.consumePreloadedMedia(for: devices) {
+        await MainActor.run {
+          self.applyPreloadedMedia(preloaded)
+          self.isProcessing = false
+          self.preloadConsumptionTask = nil
+        }
+      } else {
+        await MainActor.run { self.preloadConsumptionTask = nil }
+      }
     }
   }
 

@@ -84,7 +84,6 @@ final class LivePreviewDisplayView: NSView {
   }
 
   private func enqueue(_ sample: CMSampleBuffer) {
-    guard displayLayer.sampleBufferRenderer.isReadyForMoreMediaData else { return }
     displayLayer.sampleBufferRenderer.enqueue(sample)
     if !endedLivePreviewTrace {
       endedLivePreviewTrace = true

@@ -104,13 +104,13 @@ struct SnapOCommands: Commands {
       Button("Previous Capture") {
         captureController?.selectPreviousMedia()
       }
-      .keyboardShortcut(.upArrow, modifiers: [.command])
+      .keyboardShortcut(.leftArrow, modifiers: [.command])
       .disabled(!hasAlternativeMedia)
 
       Button("Next Capture") {
         captureController?.selectNextMedia()
       }
-      .keyboardShortcut(.downArrow, modifiers: [.command])
+      .keyboardShortcut(.rightArrow, modifiers: [.command])
       .disabled(!hasAlternativeMedia)
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
