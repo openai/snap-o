@@ -26,6 +26,7 @@ final actor AppServices {
       Perf.step(.appFirstSnapshot, "query device stream")
       for await devices in stream {
         await captureService.preloadScreenshots(for: devices)
+        break
       }
     }
   }

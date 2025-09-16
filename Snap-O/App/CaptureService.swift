@@ -6,7 +6,7 @@ actor CaptureService {
   private let adb: ADBService
   private let fileStore: FileStore
 
-  private var preloadedScreenshots: [String: Task<CaptureMedia, Error>] = [:]
+  private var preloadedTask: Task<[CaptureMedia], Error>?
   private var didLogPreloadStart = false
 
   init(adb: ADBService, fileStore: FileStore) {
@@ -14,7 +14,13 @@ actor CaptureService {
     self.fileStore = fileStore
   }
 
-  func captureScreenshot(for device: Device) async throws -> CaptureMedia {
+  func captureScreenshots(for devices: [Device]) async -> ([CaptureMedia], Error?) {
+    await collectMedia(for: devices) { device in
+      try await self.captureScreenshot(for: device)
+    }
+  }
+
+  private func captureScreenshot(for device: Device) async throws -> CaptureMedia {
     // Build a stateless exec from config for parallel commands.
     let exec = await adb.exec()
 
@@ -24,7 +30,7 @@ actor CaptureService {
     let capturedAt = Date()
 
     let destination = fileStore.makePreviewDestination(deviceID: device.id, kind: .image)
-    let writeTask = Task(priority: .utility) { () throws -> CGSize in
+    let writeTask = Task(priority: .userInitiated) { () throws -> CGSize in
       try data.write(to: destination, options: [.atomic])
       return try pngSize(from: data)
     }
@@ -76,47 +82,65 @@ actor CaptureService {
   }
 
   func preloadScreenshots(for devices: [Device]) async {
-    guard !devices.isEmpty else { return }
+    guard !didLogPreloadStart else { return }
 
-    if !didLogPreloadStart {
-      Perf.step(.appFirstSnapshot, "Preloading first screenshot")
-      didLogPreloadStart = true
-    }
+    Perf.step(.appFirstSnapshot, "Preloading first screenshot")
+    didLogPreloadStart = true
 
-    for device in devices {
-      if preloadedScreenshots[device.id] == nil {
-        preloadedScreenshots[device.id] = Task {
-          try await self.captureScreenshot(for: device)
-        }
+    let previousTask = preloadedTask
+    preloadedTask = Task {
+      var accumulated: [CaptureMedia] = []
+      if let previousTask {
+        accumulated = (try? await previousTask.value) ?? []
       }
+      let (media, _) = await self.captureScreenshots(for: devices)
+      accumulated.append(contentsOf: media)
+      return accumulated
     }
   }
 
   func consumeAllPreloadedScreenshots() async -> [CaptureMedia] {
-    let deviceIDs = Array(preloadedScreenshots.keys)
-    var results: [CaptureMedia] = []
-    for id in deviceIDs {
-      if let media = await consumePreloadedScreenshot(for: id) {
-        results.append(media)
-      }
-    }
-    return results
-  }
-
-  private func consumePreloadedScreenshot(for deviceID: String) async -> CaptureMedia? {
-    guard let task = preloadedScreenshots.removeValue(forKey: deviceID) else {
-      return nil
-    }
-
+    guard let task = preloadedTask else { return [] }
+    preloadedTask = nil
     do {
       let media = try await task.value
-      guard Date().timeIntervalSince(media.media.capturedAt) <= 1 else {
-        return nil
-      }
+      let fresh = media.filter { Date().timeIntervalSince($0.media.capturedAt) <= 1 }
+      if fresh.isEmpty { return [] }
       Perf.step(.appFirstSnapshot, "return media")
-      return media
+      return fresh
     } catch {
-      return nil
+      return []
     }
+  }
+
+  private func collectMedia(
+    for devices: [Device],
+    action: @escaping @Sendable (Device) async throws -> CaptureMedia
+  ) async -> ([CaptureMedia], Error?) {
+    var results: [CaptureMedia] = []
+    var encounteredError: Error?
+
+    await withTaskGroup(of: Result<CaptureMedia, Error>.self) { group in
+      for device in devices {
+        group.addTask {
+          do {
+            return .success(try await action(device))
+          } catch {
+            return .failure(error)
+          }
+        }
+      }
+
+      for await outcome in group {
+        switch outcome {
+        case .success(let media):
+          results.append(media)
+        case .failure(let error):
+          encounteredError = error
+        }
+      }
+    }
+
+    return (results, encounteredError)
   }
 }

@@ -110,9 +110,7 @@ final class CaptureWindowController: ObservableObject {
     }
 
     let captureService = services.captureService
-    let (newMedia, encounteredError) = await collectMedia(for: devices) { device in
-      try await captureService.captureScreenshot(for: device)
-    }
+    let (newMedia, encounteredError) = await captureService.captureScreenshots(for: devices)
 
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
   }
