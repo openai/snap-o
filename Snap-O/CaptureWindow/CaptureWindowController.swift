@@ -511,15 +511,6 @@ final class CaptureWindowController: ObservableObject {
     return mediaList.first { $0.id == id }
   }
 
-  func handleTitlebarHover(_ isHovering: Bool) {
-    if isHovering {
-      showPreviewHintIfNeeded(transient: false)
-      setPreviewHintHovering(true)
-    } else {
-      setPreviewHintHovering(false)
-    }
-  }
-
   private func showPreviewHintIfNeeded(transient: Bool) {
     guard mediaList.count > 1 else {
       shouldShowPreviewHint = false
@@ -548,6 +539,15 @@ final class CaptureWindowController: ObservableObject {
       if shouldShowPreviewHint {
         schedulePreviewHintDismiss(after: 0.5)
       }
+    }
+  }
+
+  func setProgressHovering(_ isHovering: Bool) {
+    if isHovering {
+      showPreviewHintIfNeeded(transient: false)
+      setPreviewHintHovering(true)
+    } else {
+      setPreviewHintHovering(false)
     }
   }
 
