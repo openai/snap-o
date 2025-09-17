@@ -30,6 +30,7 @@ final class CaptureWindowController: ObservableObject {
   private var currentCaptureSource: CaptureMedia?
   private var lastViewedDeviceID: String?
   private var previewHintTask: Task<Void, Never>?
+  private var isPreviewHintHovered: Bool = false
 
   init(services: AppServices = .shared) {
     self.services = services
@@ -494,6 +495,7 @@ final class CaptureWindowController: ObservableObject {
       }
       previewHintTask?.cancel()
       previewHintTask = nil
+      isPreviewHintHovered = false
       return
     }
 
@@ -505,11 +507,29 @@ final class CaptureWindowController: ObservableObject {
     }
 
     guard transient else { return }
+    schedulePreviewHintDismiss(after: 2)
+  }
 
+  func setPreviewHintHovering(_ isHovering: Bool) {
+    if isHovering {
+      isPreviewHintHovered = true
+      previewHintTask?.cancel()
+      previewHintTask = nil
+    } else {
+      isPreviewHintHovered = false
+      if shouldShowPreviewHint {
+        schedulePreviewHintDismiss(after: 1.5)
+      }
+    }
+  }
+
+  private func schedulePreviewHintDismiss(after seconds: Double) {
+    previewHintTask?.cancel()
     previewHintTask = Task { [weak self] in
-      try? await Task.sleep(nanoseconds: 2_000_000_000)
+      let delay = UInt64(seconds * 1_000_000_000)
+      try? await Task.sleep(nanoseconds: delay)
       await MainActor.run {
-        guard let self else { return }
+        guard let self, !self.isPreviewHintHovered else { return }
         withAnimation(.easeInOut(duration: 0.35)) {
           self.shouldShowPreviewHint = false
         }
