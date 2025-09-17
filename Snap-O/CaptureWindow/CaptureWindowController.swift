@@ -15,6 +15,7 @@ final class CaptureWindowController: ObservableObject {
   @Published private(set) var isLivePreviewActive: Bool = false
   @Published private(set) var isStoppingLivePreview: Bool = false
   @Published private(set) var lastError: String?
+  @Published private(set) var currentCaptureViewID: UUID?
 
   private var knownDevices: [Device] = []
   private var recordingSessions: [String: RecordingSession] = [:]
@@ -56,7 +57,10 @@ final class CaptureWindowController: ObservableObject {
     transitionDirection = direction
     Task { @MainActor [weak self] in
       await Task.yield()
-      self?.selectedMediaID = id
+      guard let self else { return }
+      self.selectedMediaID = id
+      let baseCapture = self.capture(for: id) ?? self.mediaList.first
+      self.updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
     }
   }
 
@@ -94,16 +98,7 @@ final class CaptureWindowController: ObservableObject {
   var canStartRecordingNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
   var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
 
-  var currentCapture: CaptureMedia? {
-    let baseCapture: CaptureMedia?
-    if let id = selectedMediaID {
-      baseCapture = mediaList.first { $0.id == id }
-    } else {
-      baseCapture = mediaList.first
-    }
-    updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
-    return currentCaptureSnapshot
-  }
+  var currentCapture: CaptureMedia? { currentCaptureSnapshot }
 
   func captureScreenshots() async {
     guard canCaptureNow else { return }
@@ -113,7 +108,7 @@ final class CaptureWindowController: ObservableObject {
     if pendingPreferredDeviceID == nil {
       pendingPreferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
     }
-    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: false)
+    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: true)
 
     if let media = await consumePreloadedMedia() {
       applyPreloadedMedia(media)
@@ -133,7 +128,7 @@ final class CaptureWindowController: ObservableObject {
     isProcessing = true
     lastError = nil
     pendingPreferredDeviceID = currentCapture?.device.id
-    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: false)
+    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: true)
 
     let captureService = services.captureService
     let (sessions, encounteredError) = await captureService.startRecordings(for: devices)
@@ -264,18 +259,19 @@ final class CaptureWindowController: ObservableObject {
     guard let baseCapture else {
       currentCaptureSnapshot = nil
       currentCaptureSource = nil
+      currentCaptureViewID = nil
       return
     }
 
-    if currentCaptureSource != baseCapture {
-      currentCaptureSnapshot = CaptureMedia(
-        id: baseCapture.id,
-        device: baseCapture.device,
-        media: baseCapture.media
-      )
-      currentCaptureSource = baseCapture
-      lastViewedDeviceID = baseCapture.device.id
+    let didChangeCapture = currentCaptureSource?.id != baseCapture.id
+
+    currentCaptureSnapshot = baseCapture
+    currentCaptureSource = baseCapture
+
+    if didChangeCapture {
+      currentCaptureViewID = UUID()
     }
+    lastViewedDeviceID = baseCapture.device.id
   }
 
   private func collectMedia(
@@ -371,6 +367,7 @@ final class CaptureWindowController: ObservableObject {
     knownDevices = devices
     if mediaList.isEmpty {
       selectedMediaID = nil
+      updateCurrentCaptureSnapshotIfNeeded(with: nil)
     }
     Task.detached(priority: .utility) { [weak self] in
       guard let self else { return }
@@ -447,6 +444,14 @@ final class CaptureWindowController: ObservableObject {
     if resetTransition {
       transitionDirection = .neutral
     }
+
+    let baseCapture: CaptureMedia?
+    if let currentID = selectedMediaID {
+      baseCapture = ordered.first { $0.id == currentID }
+    } else {
+      baseCapture = ordered.first
+    }
+    updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
   }
 
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
@@ -466,5 +471,10 @@ final class CaptureWindowController: ObservableObject {
       renderer.session.cancel()
       _ = await renderer.session.waitUntilStop()
     }
+  }
+
+  private func capture(for id: CaptureMedia.ID?) -> CaptureMedia? {
+    guard let id else { return nil }
+    return mediaList.first { $0.id == id }
   }
 }

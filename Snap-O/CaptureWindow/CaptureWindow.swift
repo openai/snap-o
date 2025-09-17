@@ -11,7 +11,7 @@ struct CaptureWindow: View {
 
       if controller.isDeviceListInitialized || controller.currentCapture != nil {
         CaptureMediaView(controller: controller)
-          .id(controller.currentCapture?.id)
+          .id(controller.currentCaptureViewID)
           .transition(transition)
       } else {
         WaitingForDeviceView(isDeviceListInitialized: controller.isDeviceListInitialized)
@@ -25,7 +25,7 @@ struct CaptureWindow: View {
     .toolbar {
       CaptureToolbar(controller: controller)
     }
-    .animation(.snappy(duration: 0.25), value: controller.currentCapture?.id)
+    .animation(.snappy(duration: 0.25), value: controller.currentCaptureViewID)
   }
 }
 
