@@ -15,6 +15,7 @@ struct LiveCaptureView: View {
         Color.black
       }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .onAppear { startStreamIfNeeded() }
     .onDisappear { stopStream() }
   }

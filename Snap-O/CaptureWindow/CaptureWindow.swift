@@ -26,10 +26,13 @@ struct CaptureWindow: View {
     .toolbar {
       CaptureToolbar(controller: controller)
     }
-    .overlay(alignment: .bottom) {
+    .overlay(alignment: .top) {
       if controller.mediaList.count > 1 {
         CapturePreviewStrip(controller: controller)
-          .transition(.move(edge: .bottom).combined(with: .opacity))
+          .opacity(controller.shouldShowPreviewHint ? 1 : 0)
+//          .offset(y: controller.shouldShowPreviewHint ? 0 : -20)
+          .padding(.top, 12)
+          .allowsHitTesting(controller.shouldShowPreviewHint)
       }
     }
     .animation(.snappy(duration: 0.25), value: controller.currentCaptureViewID)
@@ -75,10 +78,17 @@ private struct CapturePreviewStrip: View {
       .padding(.horizontal, 24)
       .padding(.vertical, 16)
       .background(.ultraThinMaterial)
+      .overlay(
+        LinearGradient(
+          colors: [Color.black.opacity(0.45), Color.black.opacity(0.1)],
+          startPoint: .bottom,
+          endPoint: .top
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+      )
       .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
       .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
       .padding(.horizontal, 24)
-      .padding(.bottom, 24)
   }
 }
 

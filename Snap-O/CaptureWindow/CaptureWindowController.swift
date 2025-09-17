@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import SwiftUI
 
 @MainActor
 final class CaptureWindowController: ObservableObject {
@@ -16,6 +17,7 @@ final class CaptureWindowController: ObservableObject {
   @Published private(set) var isStoppingLivePreview: Bool = false
   @Published private(set) var lastError: String?
   @Published private(set) var currentCaptureViewID: UUID?
+  @Published private(set) var shouldShowPreviewHint: Bool = false
 
   private var knownDevices: [Device] = []
   private var recordingSessions: [String: RecordingSession] = [:]
@@ -27,6 +29,7 @@ final class CaptureWindowController: ObservableObject {
   private var currentCaptureSnapshot: CaptureMedia?
   private var currentCaptureSource: CaptureMedia?
   private var lastViewedDeviceID: String?
+  private var previewHintTask: Task<Void, Never>?
 
   init(services: AppServices = .shared) {
     self.services = services
@@ -61,6 +64,7 @@ final class CaptureWindowController: ObservableObject {
       self.selectedMediaID = id
       let baseCapture = self.capture(for: id) ?? self.mediaList.first
       self.updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
+      self.showPreviewHintIfNeeded(transient: true)
     }
   }
 
@@ -220,6 +224,9 @@ final class CaptureWindowController: ObservableObject {
     isLivePreviewActive = false
     isStoppingLivePreview = false
     pendingPreferredDeviceID = nil
+    previewHintTask?.cancel()
+    previewHintTask = nil
+    shouldShowPreviewHint = false
     preloadConsumptionTask?.cancel()
     preloadConsumptionTask = nil
     hasAttemptedPreloadConsumption = false
@@ -418,6 +425,7 @@ final class CaptureWindowController: ObservableObject {
 
     isProcessing = false
     pendingPreferredDeviceID = nil
+    showPreviewHintIfNeeded(transient: true)
   }
 
   private func updateMediaList(
@@ -452,6 +460,7 @@ final class CaptureWindowController: ObservableObject {
       baseCapture = ordered.first
     }
     updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
+    showPreviewHintIfNeeded(transient: true)
   }
 
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
@@ -477,4 +486,36 @@ final class CaptureWindowController: ObservableObject {
     guard let id else { return nil }
     return mediaList.first { $0.id == id }
   }
+
+  private func showPreviewHintIfNeeded(transient: Bool) {
+    guard mediaList.count > 1 else {
+      withAnimation(.easeInOut(duration: 0.2)) {
+        shouldShowPreviewHint = false
+      }
+      previewHintTask?.cancel()
+      previewHintTask = nil
+      return
+    }
+
+    previewHintTask?.cancel()
+    previewHintTask = nil
+
+    withAnimation(.easeInOut(duration: 0.35)) {
+      shouldShowPreviewHint = true
+    }
+
+    guard transient else { return }
+
+    previewHintTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: 2_000_000_000)
+      await MainActor.run {
+        guard let self else { return }
+        withAnimation(.easeInOut(duration: 0.35)) {
+          self.shouldShowPreviewHint = false
+        }
+        self.previewHintTask = nil
+      }
+    }
+  }
+
 }

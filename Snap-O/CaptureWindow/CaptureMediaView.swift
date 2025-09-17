@@ -14,45 +14,48 @@ struct CaptureMediaView: View {
     currentCapture?.media.common.display
   }
 
-  var body: some View {
-    ZStack {
-      if let capture = currentCapture {
-        switch capture.media {
-        case .image(let url, _):
-          ImageCaptureView(
-            url: url,
-            makeTempDragFile: { controller.makeTempDragFile(kind: $0) }
-          )
-          .transition(.opacity)
+var body: some View {
+    GeometryReader { proxy in
+      ZStack {
+        if let capture = currentCapture {
+          switch capture.media {
+          case .image(let url, _):
+            ImageCaptureView(
+              url: url,
+              makeTempDragFile: { controller.makeTempDragFile(kind: $0) }
+            )
+            .transition(.opacity)
 
-        case .video(let url, _):
-          VideoCaptureView(
-            url: url,
-            makeTempDragFile: { controller.makeTempDragFile(kind: $0) }
-          )
-          .transition(.opacity)
+          case .video(let url, _):
+            VideoCaptureView(
+              url: url,
+              makeTempDragFile: { controller.makeTempDragFile(kind: $0) }
+            )
+            .transition(.opacity)
 
-        case .livePreview:
-          LiveCaptureView(controller: controller, capture: capture)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+          case .livePreview:
+            LiveCaptureView(controller: controller, capture: capture)
+              .transition(.opacity)
+          }
+        } else {
+          IdleOverlayView(controller: controller)
             .transition(.opacity)
         }
-      } else {
-        IdleOverlayView(controller: controller)
-          .transition(.opacity)
       }
-    }
-    .zIndex(isCurrentSelection ? 1 : 2)
-    .animation(.snappy(duration: 0.15), value: controller.currentCapture?.id)
-    .background(
-      WindowSizingController(displayInfo: displayInfo)
-        .frame(width: 0, height: 0)
-    )
-    .background(
-      WindowLevelController(
-        shouldFloat: controller.isRecording || controller.isLivePreviewActive
+      .frame(width: proxy.size.width, height: proxy.size.height)
+      .clipped()
+      .zIndex(isCurrentSelection ? 1 : 2)
+      .animation(.snappy(duration: 0.15), value: controller.currentCapture?.id)
+      .background(
+        WindowSizingController(displayInfo: displayInfo)
+          .frame(width: 0, height: 0)
       )
-        .frame(width: 0, height: 0)
-    )
+      .background(
+        WindowLevelController(
+          shouldFloat: controller.isRecording || controller.isLivePreviewActive
+        )
+          .frame(width: 0, height: 0)
+      )
+    }
   }
 }

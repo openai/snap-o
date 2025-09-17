@@ -10,10 +10,13 @@ struct ImageCaptureView: View {
       Image(nsImage: nsImage)
         .resizable()
         .scaledToFill()
+        .clipped()
         .onDrag { dragItemProvider(kind: .image) }
         .onAppear { markPerfMilestones() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else {
       Color.black
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 
@@ -36,8 +39,10 @@ struct VideoCaptureView: View {
       Color.gray.opacity(0.01)
         .padding([.bottom], 40)
     }
+    .clipped()
     .onDrag { dragItemProvider(kind: .video) }
     .onAppear { markPerfMilestones() }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
   private func dragItemProvider(kind: MediaSaveKind) -> NSItemProvider {
