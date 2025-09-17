@@ -47,7 +47,14 @@ struct CaptureWindow: View {
         CapturePreviewStrip(
           captures: captures,
           selectedID: controller.selectedMediaID
-        ) { controller.selectMedia(id: $0, direction: .neutral) }
+        ) { selection in
+          let direction = overlayDirection(
+            forSelection: selection,
+            in: captures,
+            currentSelection: controller.selectedMediaID
+          )
+          controller.selectMedia(id: selection, direction: direction)
+        }
         .opacity(controller.shouldShowPreviewHint ? 1 : 0)
         .offset(y: controller.shouldShowPreviewHint ? 0 : -20)
         .padding(.top, 12)
@@ -67,6 +74,22 @@ extension CaptureWindow {
     case .next: xTransition(insertion: .trailing, removal: .leading)
     case .neutral: .opacity
     }
+  }
+
+  private func overlayDirection(
+    forSelection selection: CaptureMedia.ID,
+    in captures: [CaptureMedia],
+    currentSelection: CaptureMedia.ID?
+  ) -> DeviceTransitionDirection {
+    guard let currentSelection,
+          let currentIndex = captures.firstIndex(where: { $0.id == currentSelection }),
+          let newIndex = captures.firstIndex(where: { $0.id == selection }),
+          currentIndex != newIndex
+    else {
+      return .neutral
+    }
+
+    return newIndex > currentIndex ? .next : .previous
   }
 
   private func xTransition(insertion: Edge, removal: Edge) -> AnyTransition {
