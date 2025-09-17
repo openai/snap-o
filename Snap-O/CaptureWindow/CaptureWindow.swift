@@ -127,7 +127,7 @@ private struct CapturePreviewThumbnail: View {
   let capture: CaptureMedia
   let isSelected: Bool
 
-  private let height: CGFloat = 72
+  private let height: CGFloat = 64
 
   var body: some View {
     ZStack {

@@ -100,8 +100,12 @@ struct WindowSizingController: NSViewRepresentable {
       let titlebar = titlebarHeight(for: window)
       let newHeight = contentSize.height + titlebar
       let top = window.frame.maxY
+
+      let currentMidX = window.frame.midX
+      let newOriginX = currentMidX - (contentSize.width / 2)
+
       return NSRect(
-        x: window.frame.origin.x,
+        x: newOriginX,
         y: top - newHeight,
         width: contentSize.width,
         height: newHeight

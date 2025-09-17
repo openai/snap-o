@@ -61,10 +61,6 @@ struct CaptureToolbar: ToolbarContent {
 
   @ViewBuilder
   private func idleControls() -> some View {
-    Rectangle()
-      .frame(width: 1, height: 24)
-      .foregroundStyle(.separator)
-
     Button {
       Task { await controller.captureScreenshots() }
     } label: {
