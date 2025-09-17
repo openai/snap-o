@@ -10,9 +10,7 @@ struct CaptureMediaView: View {
     return controller.selectedMediaID == capture.id
   }
 
-  private var displayInfo: DisplayInfo? {
-    currentCapture?.media.common.display
-  }
+  private var displayInfo: DisplayInfo? { controller.displayInfoForSizing }
 
   var body: some View {
     GeometryReader { proxy in

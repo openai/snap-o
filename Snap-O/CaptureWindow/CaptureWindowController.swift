@@ -32,6 +32,7 @@ final class CaptureWindowController: ObservableObject {
   private var lastViewedDeviceID: String?
   private var previewHintTask: Task<Void, Never>?
   private var isPreviewHintHovered: Bool = false
+  private var lastPreviewDisplayInfo: DisplayInfo?
   private static let titleFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = .init(identifier: "en_US_POSIX")
@@ -127,6 +128,13 @@ final class CaptureWindowController: ObservableObject {
           let index = mediaList.firstIndex(where: { $0.id == selectedID })
     else { return nil }
     return "\(index + 1)/\(mediaList.count)"
+  }
+
+  var displayInfoForSizing: DisplayInfo? {
+    if isRecording {
+      return lastPreviewDisplayInfo ?? currentCapture?.media.common.display
+    }
+    return currentCapture?.media.common.display
   }
 
   func captureScreenshots() async {
@@ -256,6 +264,7 @@ final class CaptureWindowController: ObservableObject {
     preloadConsumptionTask = nil
     hasAttemptedPreloadConsumption = false
     overlayMediaList = []
+    lastPreviewDisplayInfo = nil
   }
 
   func copyCurrentImage() {
@@ -300,6 +309,7 @@ final class CaptureWindowController: ObservableObject {
 
     currentCaptureSnapshot = baseCapture
     currentCaptureSource = baseCapture
+    lastPreviewDisplayInfo = baseCapture.media.common.display
 
     if didChangeCapture {
       currentCaptureViewID = UUID()
