@@ -108,6 +108,18 @@ private struct CapturePreviewStrip: View {
       .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
       .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
       .padding(.horizontal, 24)
+      .overlayPreferenceValue(PreviewSelectionBoundsKey.self) { anchor in
+        GeometryReader { proxy in
+          if let anchor {
+            let rect = proxy[anchor]
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+              .stroke(Color.accentColor, lineWidth: 3)
+              .frame(width: rect.width, height: rect.height)
+              .position(x: rect.midX, y: rect.midY)
+              .animation(.easeInOut(duration: 0.25), value: controller.selectedMediaID)
+          }
+        }
+      }
   }
 }
 
@@ -128,10 +140,7 @@ private struct CapturePreviewThumbnail: View {
     }
     .frame(width: targetWidth, height: height)
     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 4, style: .continuous)
-        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
-    )
+    .anchorPreference(key: PreviewSelectionBoundsKey.self, value: .bounds) { isSelected ? $0 : nil }
   }
 
   private var thumbnail: some View {
@@ -183,5 +192,16 @@ private struct CapturePreviewThumbnail: View {
     let minWidth = height * 0.6
     let maxWidth = height * 2.5
     return min(max(rawWidth, minWidth), maxWidth)
+  }
+
+}
+
+private struct PreviewSelectionBoundsKey: PreferenceKey {
+  static let defaultValue: Anchor<CGRect>? = nil
+
+  static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+    if let next = nextValue() {
+      value = next
+    }
   }
 }
