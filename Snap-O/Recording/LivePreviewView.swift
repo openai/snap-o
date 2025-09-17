@@ -8,7 +8,7 @@ struct LivePreviewRenderer {
   let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint) -> Void
 }
 
-struct LivePreviewView: NSViewRepresentable {
+struct LivePreviewRendererView: NSViewRepresentable {
   let renderer: LivePreviewRenderer
 
   func makeNSView(context: Context) -> LivePreviewDisplayView {
@@ -51,7 +51,13 @@ final class LivePreviewDisplayView: NSView {
   override var isFlipped: Bool { true }
 
   func update(with renderer: LivePreviewRenderer?) {
-    if self.renderer?.deviceID != renderer?.deviceID {
+    let shouldDetach: Bool
+    switch (self.renderer?.session, renderer?.session) {
+    case let (lhs?, rhs?): shouldDetach = lhs !== rhs
+    case (nil, nil): shouldDetach = false
+    default: shouldDetach = true
+    }
+    if shouldDetach {
       detachSession()
     }
     self.renderer = renderer
@@ -80,6 +86,7 @@ final class LivePreviewDisplayView: NSView {
     renderer?.session.sampleBufferHandler = nil
     displayLayer.sampleBufferRenderer.stopRequestingMediaData()
     displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+    displayLayer.sampleBufferRenderer.requestMediaDataWhenReady(on: .main) {}
     endedLivePreviewTrace = false
   }
 
