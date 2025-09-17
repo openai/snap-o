@@ -34,6 +34,7 @@ struct CaptureWindow: View {
           .padding(.top, 12)
           .allowsHitTesting(controller.shouldShowPreviewHint)
           .onHover { controller.setPreviewHintHovering($0) }
+          .animation(.easeInOut(duration: 0.35), value: controller.shouldShowPreviewHint)
       }
     }
     .background(

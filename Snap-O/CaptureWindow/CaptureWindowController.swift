@@ -499,9 +499,7 @@ final class CaptureWindowController: ObservableObject {
 
   private func showPreviewHintIfNeeded(transient: Bool) {
     guard mediaList.count > 1 else {
-      withAnimation(.easeInOut(duration: 0.2)) {
-        shouldShowPreviewHint = false
-      }
+      shouldShowPreviewHint = false
       previewHintTask?.cancel()
       previewHintTask = nil
       isPreviewHintHovered = false
@@ -511,9 +509,7 @@ final class CaptureWindowController: ObservableObject {
     previewHintTask?.cancel()
     previewHintTask = nil
 
-    withAnimation(.easeInOut(duration: 0.35)) {
-      shouldShowPreviewHint = true
-    }
+    shouldShowPreviewHint = true
 
     guard transient else { return }
     schedulePreviewHintDismiss(after: 2)
@@ -527,7 +523,7 @@ final class CaptureWindowController: ObservableObject {
     } else {
       isPreviewHintHovered = false
       if shouldShowPreviewHint {
-        schedulePreviewHintDismiss(after: 1.5)
+        schedulePreviewHintDismiss(after: 0.5)
       }
     }
   }
@@ -539,9 +535,7 @@ final class CaptureWindowController: ObservableObject {
       try? await Task.sleep(nanoseconds: delay)
       await MainActor.run {
         guard let self, !self.isPreviewHintHovered else { return }
-        withAnimation(.easeInOut(duration: 0.35)) {
-          self.shouldShowPreviewHint = false
-        }
+        self.shouldShowPreviewHint = false
         self.previewHintTask = nil
       }
     }
