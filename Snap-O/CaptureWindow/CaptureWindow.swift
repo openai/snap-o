@@ -36,6 +36,10 @@ struct CaptureWindow: View {
           .onHover { controller.setPreviewHintHovering($0) }
       }
     }
+    .background(
+      TitlebarHoverWatcher(controller: controller)
+        .frame(width: 0, height: 0)
+    )
     .animation(.snappy(duration: 0.25), value: controller.currentCaptureViewID)
   }
 }
@@ -79,14 +83,6 @@ private struct CapturePreviewStrip: View {
       .padding(.horizontal, 24)
       .padding(.vertical, 16)
       .background(.ultraThinMaterial)
-//      .overlay(
-//        LinearGradient(
-//          colors: [Color.black.opacity(0.45), Color.black.opacity(0.1)],
-//          startPoint: .bottom,
-//          endPoint: .top
-//        )
-//        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-//      )
       .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
       .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
       .padding(.horizontal, 24)
@@ -153,5 +149,86 @@ private struct CapturePreviewThumbnail: View {
     let aspect = max(capture.media.aspectRatio, 0.1)
     let rawWidth = height * aspect
     return min(max(rawWidth, 56), 140)
+  }
+}
+
+// MARK: - Titlebar Hover Tracking
+
+private struct TitlebarHoverWatcher: NSViewRepresentable {
+  @ObservedObject var controller: CaptureWindowController
+
+  func makeNSView(context: Context) -> TitlebarHoverTrackingView {
+    let view = TitlebarHoverTrackingView()
+    view.controller = controller
+    return view
+  }
+
+  func updateNSView(_ nsView: TitlebarHoverTrackingView, context: Context) {
+    nsView.controller = controller
+    nsView.updateTrackingIfNeeded()
+  }
+
+  static func dismantleNSView(_ nsView: TitlebarHoverTrackingView, coordinator: ()) {
+    nsView.removeTrackingArea()
+  }
+}
+
+private final class TitlebarHoverTrackingView: NSView {
+  weak var controller: CaptureWindowController?
+  private weak var trackedTitlebarView: NSView?
+  private var trackingArea: NSTrackingArea?
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    updateTrackingIfNeeded()
+  }
+
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    removeTrackingArea()
+    super.viewWillMove(toWindow: newWindow)
+  }
+
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    updateTrackingIfNeeded()
+  }
+
+  func updateTrackingIfNeeded() {
+    guard let window else { return }
+
+    let titlebarView = window.standardWindowButton(.closeButton)?.superview
+    guard let titlebarView else {
+      removeTrackingArea()
+      return
+    }
+
+    if titlebarView !== trackedTitlebarView {
+      removeTrackingArea()
+      trackedTitlebarView = titlebarView
+      let area = NSTrackingArea(
+        rect: titlebarView.bounds,
+        options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+        owner: self,
+        userInfo: nil
+      )
+      titlebarView.addTrackingArea(area)
+      trackingArea = area
+    }
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    controller?.handleTitlebarHover(true)
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    controller?.handleTitlebarHover(false)
+  }
+
+  func removeTrackingArea() {
+    if let area = trackingArea, let view = trackedTitlebarView {
+      view.removeTrackingArea(area)
+    }
+    trackingArea = nil
+    trackedTitlebarView = nil
   }
 }
