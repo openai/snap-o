@@ -44,21 +44,10 @@ struct CaptureWindow: View {
     .overlay(alignment: .top) {
       if controller.mediaList.count > 1 {
         let captures = controller.overlayMediaList.isEmpty ? controller.mediaList : controller.overlayMediaList
-        VStack(spacing: 8) {
-          CapturePreviewStrip(
-            captures: captures,
-            selectedID: controller.selectedMediaID
-          ) { controller.selectMedia(id: $0, direction: .neutral) }
-
-          if let title = controller.currentCaptureDeviceTitle {
-            Text(title)
-              .font(.system(size: 13, weight: .semibold))
-              .padding(.horizontal, 16)
-              .padding(.vertical, 8)
-              .background(.ultraThinMaterial)
-              .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-          }
-        }
+        CapturePreviewStrip(
+          captures: captures,
+          selectedID: controller.selectedMediaID
+        ) { controller.selectMedia(id: $0, direction: .neutral) }
         .opacity(controller.shouldShowPreviewHint ? 1 : 0)
         .offset(y: controller.shouldShowPreviewHint ? 0 : -20)
         .padding(.top, 12)
@@ -134,7 +123,7 @@ private struct CapturePreviewThumbnail: View {
   let capture: CaptureMedia
   let isSelected: Bool
 
-  private let height: CGFloat = 64
+  private let height: CGFloat = 80
 
   var body: some View {
     ZStack {
