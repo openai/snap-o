@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct CaptureWindow: View {
@@ -42,8 +41,13 @@ struct CaptureWindow: View {
     }
     .overlay(alignment: .top) {
       if controller.mediaList.count > 1 {
+        let captures = controller.overlayMediaList.isEmpty ? controller.mediaList : controller.overlayMediaList
         VStack(spacing: 8) {
-          CapturePreviewStrip(controller: controller)
+          CapturePreviewStrip(
+            captures: captures,
+            selectedID: controller.selectedMediaID,
+            onSelect: { controller.selectMedia(id: $0, direction: .neutral) }
+          )
 
           if let title = controller.currentCaptureDeviceTitle {
             Text(title)
@@ -86,17 +90,19 @@ extension CaptureWindow {
 // MARK: - Preview Strip
 
 private struct CapturePreviewStrip: View {
-  @ObservedObject var controller: CaptureWindowController
+  let captures: [CaptureMedia]
+  let selectedID: CaptureMedia.ID?
+  let onSelect: (CaptureMedia.ID) -> Void
 
   var body: some View {
       HStack(spacing: 16) {
-        ForEach(controller.mediaList) { capture in
+        ForEach(captures) { capture in
           Button {
-            controller.selectMedia(id: capture.id, direction: .neutral)
+            onSelect(capture.id)
           } label: {
             CapturePreviewThumbnail(
               capture: capture,
-              isSelected: capture.id == controller.selectedMediaID
+              isSelected: capture.id == selectedID
             )
           }
           .buttonStyle(.plain)
@@ -116,7 +122,7 @@ private struct CapturePreviewStrip: View {
               .stroke(Color.accentColor, lineWidth: 3)
               .frame(width: rect.width, height: rect.height)
               .position(x: rect.midX, y: rect.midY)
-              .animation(.easeInOut(duration: 0.25), value: controller.selectedMediaID)
+              .animation(.easeInOut(duration: 0.25), value: selectedID)
           }
         }
       }

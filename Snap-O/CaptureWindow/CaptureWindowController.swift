@@ -18,6 +18,7 @@ final class CaptureWindowController: ObservableObject {
   @Published private(set) var lastError: String?
   @Published private(set) var currentCaptureViewID: UUID?
   @Published private(set) var shouldShowPreviewHint: Bool = false
+  @Published private(set) var overlayMediaList: [CaptureMedia] = []
 
   private var knownDevices: [Device] = []
   private var recordingSessions: [String: RecordingSession] = [:]
@@ -254,6 +255,7 @@ final class CaptureWindowController: ObservableObject {
     preloadConsumptionTask?.cancel()
     preloadConsumptionTask = nil
     hasAttemptedPreloadConsumption = false
+    overlayMediaList = []
   }
 
   func copyCurrentImage() {
@@ -458,6 +460,10 @@ final class CaptureWindowController: ObservableObject {
     shouldSort: Bool,
     resetTransition: Bool
   ) {
+    if shouldShowPreviewHint {
+      dismissPreviewHintImmediately()
+    }
+
     let ordered = shouldSort ? newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle } : newMedia
     mediaList = ordered
 
@@ -517,12 +523,14 @@ final class CaptureWindowController: ObservableObject {
       previewHintTask?.cancel()
       previewHintTask = nil
       isPreviewHintHovered = false
+      overlayMediaList = []
       return
     }
 
     previewHintTask?.cancel()
     previewHintTask = nil
 
+    overlayMediaList = mediaList
     shouldShowPreviewHint = true
 
     guard transient else { return }
@@ -559,9 +567,18 @@ final class CaptureWindowController: ObservableObject {
       await MainActor.run {
         guard let self, !self.isPreviewHintHovered else { return }
         self.shouldShowPreviewHint = false
+        self.overlayMediaList = []
         self.previewHintTask = nil
       }
     }
+  }
+
+  private func dismissPreviewHintImmediately() {
+    previewHintTask?.cancel()
+    previewHintTask = nil
+    shouldShowPreviewHint = false
+    isPreviewHintHovered = false
+    overlayMediaList = []
   }
 
 }
