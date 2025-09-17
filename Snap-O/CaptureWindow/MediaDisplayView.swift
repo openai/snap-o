@@ -5,16 +5,16 @@ struct ImageCaptureView: View {
   let url: URL
   var makeTempDragFile: () -> URL?
 
+  @StateObject private var loader = ImageLoader()
+
   var body: some View {
-    if let nsImage = NSImage(contentsOf: url) {
+    if let nsImage = loader.image(url: url) {
       Image(nsImage: nsImage)
         .resizable()
         .scaledToFill()
         .clipped()
         .onDrag { dragItemProvider() }
-        .onAppear {
-          markPerfMilestones()
-        }
+        .onAppear { markPerfMilestones() }
     } else {
       Color.black
     }
@@ -58,4 +58,18 @@ private func markPerfMilestones() {
   Perf.end(.captureRequest, finalLabel: "snapshot rendered")
   Perf.end(.recordingRender, finalLabel: "video rendered")
   Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
+}
+
+@MainActor
+final class ImageLoader: ObservableObject {
+  private var image: NSImage?
+  private var url: URL?
+
+  func image(url: URL) -> NSImage? {
+    guard url != self.url else { return image }
+    self.url = url
+    let nsImage = NSImage(contentsOf: url)
+    image = nsImage
+    return nsImage
+  }
 }
