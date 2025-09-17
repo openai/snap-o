@@ -265,6 +265,7 @@ final class CaptureWindowController: ObservableObject {
     hasAttemptedPreloadConsumption = false
     overlayMediaList = []
     lastPreviewDisplayInfo = nil
+    lastPreviewDisplayInfo = nil
   }
 
   func copyCurrentImage() {
@@ -302,6 +303,7 @@ final class CaptureWindowController: ObservableObject {
       currentCaptureSnapshot = nil
       currentCaptureSource = nil
       currentCaptureViewID = nil
+      lastPreviewDisplayInfo = nil
       return
     }
 
