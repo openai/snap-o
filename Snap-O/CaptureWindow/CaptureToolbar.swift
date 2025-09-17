@@ -4,14 +4,23 @@ struct CaptureToolbar: ToolbarContent {
   @ObservedObject var controller: CaptureWindowController
 
   var body: some ToolbarContent {
-    ToolbarItemGroup(placement: .primaryAction) {
-      if controller.isRecording {
+    if controller.isRecording {
+      ToolbarItemGroup(placement: .primaryAction) {
         recordingControls()
-      } else if controller.isLivePreviewActive || controller.isStoppingLivePreview {
-        livePreviewControls()
-      } else {
-        idleControls()
       }
+    } else if controller.isLivePreviewActive || controller.isStoppingLivePreview {
+      ToolbarItemGroup(placement: .primaryAction) {
+        livePreviewControls()
+      }
+    } else {
+      IdleToolbarControls(
+        screenshot: { Task { await controller.captureScreenshots() } },
+        canCaptureNow: controller.canCaptureNow,
+        startRecording: { Task { await controller.startRecording() } },
+        canStartRecordingNow: controller.canStartRecordingNow,
+        startLivePreview: { Task { await controller.startLivePreview() } },
+        canStartLivePreviewNow: controller.canStartLivePreviewNow
+      )
     }
   }
 
@@ -58,32 +67,42 @@ struct CaptureToolbar: ToolbarContent {
     .keyboardShortcut(.escape, modifiers: [])
     .disabled(controller.isStoppingLivePreview)
   }
+}
 
-  @ViewBuilder
-  private func idleControls() -> some View {
-    Button {
-      Task { await controller.captureScreenshots() }
-    } label: {
-      Label("New Screenshot", systemImage: "camera")
-        .labelStyle(.iconOnly)
-    }
-    .help("New Screenshot (⌘R)")
-    .disabled(!controller.canCaptureNow)
+struct IdleToolbarControls: ToolbarContent {
+  let screenshot: @MainActor () -> Void
+  let canCaptureNow: Bool
+  let startRecording: @MainActor () -> Void
+  let canStartRecordingNow: Bool
+  let startLivePreview: @MainActor () -> Void
+  let canStartLivePreviewNow: Bool
 
-    Button {
-      Task { await controller.startRecording() }
-    } label: {
-      Label("Record", systemImage: "record.circle")
-    }
-    .help("Start Recording (⌘⇧R)")
-    .disabled(!controller.canStartRecordingNow)
+  var body: some ToolbarContent {
+    ToolbarItemGroup(placement: .primaryAction) {
+      Button {
+        screenshot()
+      } label: {
+        Label("New Screenshot", systemImage: "camera")
+          .labelStyle(.iconOnly)
+      }
+      .help("New Screenshot (⌘R)")
+      .disabled(!canCaptureNow)
 
-    Button {
-      Task { await controller.startLivePreview() }
-    } label: {
-      Label("Live", systemImage: "play.circle")
+      Button {
+        startRecording()
+      } label: {
+        Label("Record", systemImage: "record.circle")
+      }
+      .help("Start Recording (⌘⇧R)")
+      .disabled(!canStartRecordingNow)
+
+      Button {
+        startLivePreview()
+      } label: {
+        Label("Live", systemImage: "play.circle")
+      }
+      .help("Live Preview (⌘⇧L)")
+      .disabled(!canStartLivePreviewNow)
     }
-    .help("Live Preview (⌘⇧L)")
-    .disabled(!controller.canStartLivePreviewNow)
   }
 }
