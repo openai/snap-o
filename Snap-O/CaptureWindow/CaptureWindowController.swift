@@ -31,6 +31,12 @@ final class CaptureWindowController: ObservableObject {
   private var lastViewedDeviceID: String?
   private var previewHintTask: Task<Void, Never>?
   private var isPreviewHintHovered: Bool = false
+  private static let titleFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = .init(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+    return formatter
+  }()
 
   init(services: AppServices = .shared) {
     self.services = services
@@ -104,6 +110,15 @@ final class CaptureWindowController: ObservableObject {
   var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
 
   var currentCapture: CaptureMedia? { currentCaptureSnapshot }
+
+  var navigationTitle: String {
+    guard let date = currentCapture?.media.capturedAt else { return "Snap-O" }
+    return Self.titleFormatter.string(from: date)
+  }
+
+  var currentCaptureDeviceTitle: String? {
+    currentCapture?.device.displayTitle
+  }
 
   func captureScreenshots() async {
     guard canCaptureNow else { return }

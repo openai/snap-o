@@ -22,19 +22,30 @@ struct CaptureWindow: View {
     .task { await controller.start() }
     .onDisappear { controller.tearDown() }
     .focusedSceneObject(controller)
-    .navigationTitle(controller.currentCapture?.device.displayTitle ?? "Snap-O")
+    .navigationTitle(controller.navigationTitle)
     .toolbar {
       CaptureToolbar(controller: controller)
     }
     .overlay(alignment: .top) {
       if controller.mediaList.count > 1 {
-        CapturePreviewStrip(controller: controller)
-          .opacity(controller.shouldShowPreviewHint ? 1 : 0)
-          .offset(y: controller.shouldShowPreviewHint ? 0 : -20)
-          .padding(.top, 12)
-          .allowsHitTesting(controller.shouldShowPreviewHint)
-          .onHover { controller.setPreviewHintHovering($0) }
-          .animation(.easeInOut(duration: 0.35), value: controller.shouldShowPreviewHint)
+        VStack(spacing: 8) {
+          CapturePreviewStrip(controller: controller)
+
+          if let title = controller.currentCaptureDeviceTitle {
+            Text(title)
+              .font(.system(size: 13, weight: .semibold))
+              .padding(.horizontal, 16)
+              .padding(.vertical, 8)
+              .background(.ultraThinMaterial)
+              .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+          }
+        }
+        .opacity(controller.shouldShowPreviewHint ? 1 : 0)
+        .offset(y: controller.shouldShowPreviewHint ? 0 : -20)
+        .padding(.top, 12)
+        .allowsHitTesting(controller.shouldShowPreviewHint)
+        .onHover { controller.setPreviewHintHovering($0) }
+        .animation(.easeInOut(duration: 0.35), value: controller.shouldShowPreviewHint)
       }
     }
     .background(
