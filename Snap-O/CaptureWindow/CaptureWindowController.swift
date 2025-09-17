@@ -34,7 +34,7 @@ final class CaptureWindowController: ObservableObject {
   private static let titleFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = .init(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+    formatter.dateFormat = "MMM d · h:mm a"
     return formatter
   }()
 
@@ -118,6 +118,14 @@ final class CaptureWindowController: ObservableObject {
 
   var currentCaptureDeviceTitle: String? {
     currentCapture?.device.displayTitle
+  }
+
+  var captureProgressText: String? {
+    guard mediaList.count > 1,
+          let selectedID = selectedMediaID,
+          let index = mediaList.firstIndex(where: { $0.id == selectedID })
+    else { return nil }
+    return "\(index + 1)/\(mediaList.count)"
   }
 
   func captureScreenshots() async {

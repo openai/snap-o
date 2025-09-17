@@ -25,6 +25,16 @@ struct CaptureWindow: View {
     .navigationTitle(controller.navigationTitle)
     .toolbar {
       CaptureToolbar(controller: controller)
+      ToolbarItem(placement: .status) {
+        if let progress = controller.captureProgressText {
+          Text(progress)
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .background(Capsule()
+              .fill(.ultraThinMaterial)
+              .padding(.horizontal, -8)
+              .padding(.vertical, -6))
+        }
+      }
     }
     .overlay(alignment: .top) {
       if controller.mediaList.count > 1 {
