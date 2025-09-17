@@ -410,7 +410,7 @@ final class CaptureWindowController: ObservableObject {
           self.preloadConsumptionTask = nil
         }
       } else {
-        await self.captureScreenshots()
+        await captureScreenshots()
         await MainActor.run { self.preloadConsumptionTask = nil }
       }
     }

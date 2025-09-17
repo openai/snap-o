@@ -14,7 +14,7 @@ struct CaptureWindow: View {
       if let capture = controller.currentCapture {
         CaptureMediaView(
           controller: controller,
-          capture: capture,
+          capture: capture
         )
         .id(controller.currentCaptureViewID)
         .zIndex(1)
@@ -26,7 +26,7 @@ struct CaptureWindow: View {
           isProcessing: controller.isProcessing,
           isRecording: controller.isRecording,
           stopRecording: { Task { await controller.stopRecording() } },
-          lastError: controller.lastError,
+          lastError: controller.lastError
         )
       } else {
         WaitingForDeviceView(isDeviceListInitialized: controller.isDeviceListInitialized)
