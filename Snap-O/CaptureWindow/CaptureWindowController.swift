@@ -36,7 +36,7 @@ final class CaptureWindowController: ObservableObject {
   private static let titleFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = .init(identifier: "en_US_POSIX")
-    formatter.dateFormat = "MMM d · h:mm a"
+    formatter.dateFormat = "MMM d, h:mm a"
     return formatter
   }()
 
@@ -475,7 +475,15 @@ final class CaptureWindowController: ObservableObject {
       dismissPreviewHintImmediately()
     }
 
-    let ordered = shouldSort ? newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle } : newMedia
+    var ordered = shouldSort ? newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle } : newMedia
+
+    if let preserve = preserveDeviceID,
+       let index = ordered.firstIndex(where: { $0.device.id == preserve }),
+       index != ordered.startIndex {
+      let preferred = ordered.remove(at: index)
+      ordered.insert(preferred, at: ordered.startIndex)
+    }
+
     mediaList = ordered
 
     if ordered.isEmpty {
