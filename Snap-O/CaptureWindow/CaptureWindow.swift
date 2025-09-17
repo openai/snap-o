@@ -31,18 +31,18 @@ struct CaptureWindow: View {
 
 extension CaptureWindow {
   private func transition(for direction: DeviceTransitionDirection) -> AnyTransition {
-    switch direction {
-    case .previous: xTransition(offset: 60)
-    case .next: xTransition(offset: -60)
+    print("transition for \(direction)")
+    return switch direction {
+    case .previous: xTransition(insertion: .leading, removal: .trailing)
+    case .next: xTransition(insertion: .trailing, removal: .leading)
     case .neutral: .opacity
     }
   }
 
-  private func xTransition(offset: CGFloat) -> AnyTransition {
-    let move = AnyTransition.offset(x: offset).combined(with: .opacity)
+  private func xTransition(insertion: Edge, removal: Edge) -> AnyTransition {
     return .asymmetric(
-      insertion: move,
-      removal: .offset(x: -offset).combined(with: .opacity)
+      insertion: .move(edge: insertion).combined(with: .opacity),
+      removal: .move(edge: removal).combined(with: .opacity)
     )
   }
 }

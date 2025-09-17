@@ -3,6 +3,10 @@ import SwiftUI
 struct CaptureMediaView: View {
   @ObservedObject var controller: CaptureWindowController
 
+  private var isCurrentSelection: Bool {
+    controller.selectedMediaID == capture?.id
+  }
+
   private var displayInfo: DisplayInfo? {
     controller.currentCapture?.media.common.display
   }
@@ -21,6 +25,7 @@ struct CaptureMediaView: View {
           .transition(.opacity)
       }
     }
+    .zIndex(isCurrentSelection ? 1 : 2)
     .animation(.snappy(duration: 0.15), value: controller.currentCapture?.media.url)
     .background(
       WindowSizingController(displayInfo: displayInfo)

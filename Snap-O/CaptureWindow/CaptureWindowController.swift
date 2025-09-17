@@ -23,6 +23,8 @@ final class CaptureWindowController: ObservableObject {
   private var pendingPreferredDeviceID: String?
   private var preloadConsumptionTask: Task<Void, Never>?
   private var hasAttemptedPreloadConsumption = false
+  private var currentCaptureSnapshot: CaptureMedia?
+  private var currentCaptureSource: CaptureMedia?
 
   init(services: AppServices = .shared) {
     self.services = services
@@ -92,8 +94,14 @@ final class CaptureWindowController: ObservableObject {
   var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
 
   var currentCapture: CaptureMedia? {
-    guard let id = selectedMediaID else { return mediaList.first }
-    return mediaList.first { $0.id == id }
+    let baseCapture: CaptureMedia?
+    if let id = selectedMediaID {
+      baseCapture = mediaList.first { $0.id == id }
+    } else {
+      baseCapture = mediaList.first
+    }
+    updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
+    return currentCaptureSnapshot
   }
 
   func captureScreenshots() async {
@@ -244,6 +252,19 @@ final class CaptureWindowController: ObservableObject {
       return fileURL
     } catch {
       return nil
+    }
+  }
+
+  private func updateCurrentCaptureSnapshotIfNeeded(with baseCapture: CaptureMedia?) {
+    guard let baseCapture else {
+      currentCaptureSnapshot = nil
+      currentCaptureSource = nil
+      return
+    }
+
+    if currentCaptureSource != baseCapture {
+      currentCaptureSnapshot = CaptureMedia(device: baseCapture.device, media: baseCapture.media)
+      currentCaptureSource = baseCapture
     }
   }
 
