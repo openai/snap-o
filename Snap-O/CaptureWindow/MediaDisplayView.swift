@@ -1,52 +1,75 @@
+import AppKit
 import SwiftUI
 
-struct MediaDisplayView: View {
-  let media: Media
-  @ObservedObject var controller: CaptureController
+struct ImageCaptureView: View {
+  let url: URL
+  var makeTempDragFile: () -> URL?
+
+  @StateObject private var loader = ImageLoader()
 
   var body: some View {
-    Group {
-      switch media {
-      case .image(let url, _):
-        if let nsImage = NSImage(contentsOf: url) {
-          Image(nsImage: nsImage)
-            .resizable()
-            .scaledToFit()
-            .onDrag { dragItemProvider(kind: .image) }
-            .onAppear {
-              // End traces that conclude when media first appears and record appStart 'after' steps.
-              Perf.end(.captureRequest, finalLabel: "snapshot rendered")
-              Perf.end(.recordingRender, finalLabel: "video rendered")
-              Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
-            }
-        } else {
-          Color.black
-        }
-      case .video(let url, _):
-        ZStack {
-          VideoLoopingView(url: url)
-          // Keep a small overlay area to make drag easier
-          Color.gray.opacity(0.01)
-            .padding([.bottom], 40)
-        }
-        .onDrag { dragItemProvider(kind: .video) }
-        .onAppear {
-          // End traces that conclude when media first appears and record appStart 'after' steps.
-          Perf.end(.captureRequest, finalLabel: "snapshot rendered")
-          Perf.end(.recordingRender, finalLabel: "video rendered")
-          Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
-        }
-      case .livePreview:
-        LivePreviewView(controller: controller)
-      }
+    if let nsImage = loader.image(url: url) {
+      Image(nsImage: nsImage)
+        .resizable()
+        .scaledToFill()
+        .clipped()
+        .onDrag { dragItemProvider() }
+        .onAppear { markPerfMilestones() }
+    } else {
+      Color.black
     }
   }
 
-  private func dragItemProvider(kind: MediaSaveKind) -> NSItemProvider {
-    if let url = controller.makeTempDragFile(kind: kind) {
+  private func dragItemProvider() -> NSItemProvider {
+    if let url = makeTempDragFile() {
       NSItemProvider(object: url as NSURL)
     } else {
       NSItemProvider()
     }
+  }
+}
+
+struct VideoCaptureView: View {
+  let url: URL
+  var makeTempDragFile: () -> URL?
+
+  var body: some View {
+    ZStack {
+      VideoLoopingView(url: url)
+      Color.gray.opacity(0.01)
+        .padding([.bottom], 40)
+    }
+    .clipped()
+    .onDrag { dragItemProvider() }
+    .onAppear { markPerfMilestones() }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private func dragItemProvider() -> NSItemProvider {
+    if let url = makeTempDragFile() {
+      NSItemProvider(object: url as NSURL)
+    } else {
+      NSItemProvider()
+    }
+  }
+}
+
+private func markPerfMilestones() {
+  Perf.end(.captureRequest, finalLabel: "snapshot rendered")
+  Perf.end(.recordingRender, finalLabel: "video rendered")
+  Perf.end(.appFirstSnapshot, finalLabel: "first media appeared")
+}
+
+@MainActor
+final class ImageLoader: ObservableObject {
+  private var image: NSImage?
+  private var url: URL?
+
+  func image(url: URL) -> NSImage? {
+    guard url != self.url else { return image }
+    self.url = url
+    let nsImage = NSImage(contentsOf: url)
+    image = nsImage
+    return nsImage
   }
 }

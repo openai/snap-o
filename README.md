@@ -4,8 +4,6 @@
 
 # Snap-O: Android Screen Capture Tool
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-
 Snap-O is a fast, tidy macOS app for capturing screenshots and screen recordings from Android devices and emulators.
 
 It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
@@ -26,10 +24,11 @@ I'm open-sourcing.
 ## Features
 
 - Shows a screenshot the moment the window opens
-- Records Android device screens with a single command
-- Keeps your disk uncluttered by cleaning up after itself
+- Instantly preview screen recordings, and step through frame-by-frame.
 - Lets you drag and drop captures anywhere without saving them first
+- Multi-device support
 - Supports multiple windows of captures at once
+- Keeps your disk uncluttered by cleaning up after itself
 - Integrates with Android Studio External Tools
 
 ## Usage
@@ -61,8 +60,8 @@ After you capture a screenshot or screen recording, you can drag and drop it wit
 | Stop recording / preview | `⎋`      |
 | Save as                  | `⌘S`     |
 | Copy image to clipboard  | `⌘C`     |
-| Previous device          | `⌘▲`     |
-| Next device              | `⌘▼`     |
+| Previous device          | `⌘[`     |
+| Next device              | `⌘]`     |
 
 ### Android Studio External Tools
 

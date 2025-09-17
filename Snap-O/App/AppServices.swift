@@ -12,22 +12,23 @@ final actor AppServices {
     adbService = ADBService()
     deviceTracker = DeviceTracker(adbService: adbService)
     fileStore = FileStore()
-    captureService = CaptureService(adb: adbService, fileStore: fileStore)
+    captureService = CaptureService(
+      adb: adbService,
+      fileStore: fileStore,
+      deviceTracker: deviceTracker
+    )
   }
 
   func start() async {
     Perf.step(.appFirstSnapshot, "services start")
-    Perf.step(.appFirstSnapshot, "start tracking")
     deviceTracker.startTracking()
 
     Task {
       Perf.step(.appFirstSnapshot, "start preload task")
       let stream = deviceTracker.deviceStream()
       Perf.step(.appFirstSnapshot, "query device stream")
-      for await devices in stream {
-        guard let deviceID = devices.first?.id else { continue }
-        Perf.step(.appFirstSnapshot, "have first device")
-        await captureService.preloadScreenshot(for: deviceID)
+      for await devices in stream where !devices.isEmpty {
+        await captureService.preloadScreenshots()
         break
       }
     }

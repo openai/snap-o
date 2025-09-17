@@ -2,33 +2,33 @@ import AppKit
 @preconcurrency import AVFoundation
 import SwiftUI
 
-struct LivePreviewView: NSViewRepresentable {
-  // Observable is optional; SwiftUI will re-run updateNSView when this changes anyway.
-  @ObservedObject var controller: CaptureController
+struct LivePreviewRenderer {
+  let session: LivePreviewSession
+  let deviceID: String
+  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint) -> Void
+}
 
-  func makeNSView(context: Context) -> PointerTrackingView {
-    let view = PointerTrackingView()
+struct LivePreviewRendererView: NSViewRepresentable {
+  let renderer: LivePreviewRenderer
+
+  func makeNSView(context: Context) -> LivePreviewDisplayView {
+    let view = LivePreviewDisplayView()
     view.wantsLayer = true
     if view.layer == nil { view.layer = CALayer() }
-    view.configureIfNeeded()
-    view.controller = controller
-    view.attachToSession()
     return view
   }
 
-  func updateNSView(_ nsView: PointerTrackingView, context: Context) {
-    nsView.controller = controller
-    nsView.attachToSession()
+  func updateNSView(_ nsView: LivePreviewDisplayView, context: Context) {
+    nsView.update(with: renderer)
   }
 
-  static func dismantleNSView(_ nsView: PointerTrackingView, coordinator: Void) {
-    nsView.teardown()
+  static func dismantleNSView(_ nsView: LivePreviewDisplayView, coordinator: Void) {
+    nsView.update(with: nil)
   }
 }
 
-final class PointerTrackingView: NSView {
-  weak var controller: CaptureController?
-
+final class LivePreviewDisplayView: NSView {
+  private var renderer: LivePreviewRenderer?
   private var trackingArea: NSTrackingArea?
   private let displayLayer = AVSampleBufferDisplayLayer()
   private var endedLivePreviewTrace = false
@@ -37,28 +37,56 @@ final class PointerTrackingView: NSView {
   private let hoverThrottleInterval: TimeInterval = 1.0 / 45.0
   private let dragThrottleInterval: TimeInterval = 1.0 / 60.0
 
+  override init(frame frameRect: NSRect) {
+    super.init(frame: frameRect)
+    configureLayerIfNeeded()
+  }
+
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+    configureLayerIfNeeded()
+  }
+
   override var acceptsFirstResponder: Bool { true }
   override var isFlipped: Bool { true }
 
-  func configureIfNeeded() {
+  func update(with renderer: LivePreviewRenderer?) {
+    let shouldDetach: Bool = switch (self.renderer?.session, renderer?.session) {
+    case (let lhs?, let rhs?): lhs !== rhs
+    case (nil, nil): false
+    default: true
+    }
+    if shouldDetach {
+      detachSession()
+    }
+    self.renderer = renderer
+    attachSession()
+  }
+
+  private func configureLayerIfNeeded() {
     guard displayLayer.superlayer == nil else { return }
+    wantsLayer = true
+    layer?.addSublayer(displayLayer)
     displayLayer.videoGravity = .resizeAspect
     displayLayer.backgroundColor = NSColor.black.cgColor
     displayLayer.frame = bounds
     displayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-    layer?.addSublayer(displayLayer)
   }
 
-  func attachToSession() {
-    controller?.livePreviewSession?.sampleBufferHandler = { [weak self] sample in
+  private func attachSession() {
+    guard let session = renderer?.session else { return }
+    session.sampleBufferHandler = { [weak self] sample in
       self?.enqueue(sample)
     }
+    endedLivePreviewTrace = false
   }
 
-  func teardown() {
-    controller?.livePreviewSession?.sampleBufferHandler = nil
-    displayLayer.sampleBufferRenderer.flush()
+  private func detachSession() {
+    renderer?.session.sampleBufferHandler = nil
     displayLayer.sampleBufferRenderer.stopRequestingMediaData()
+    displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+    displayLayer.sampleBufferRenderer.requestMediaDataWhenReady(on: .main) {}
+    endedLivePreviewTrace = false
   }
 
   private func enqueue(_ sample: CMSampleBuffer) {
@@ -70,8 +98,6 @@ final class PointerTrackingView: NSView {
       Perf.end(.appFirstSnapshot, finalLabel: "first media appeared (live)")
     }
   }
-
-  // MARK: - Tracking
 
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
@@ -93,12 +119,10 @@ final class PointerTrackingView: NSView {
   override func mouseDragged(with event: NSEvent) { handlePointer(.drag, event: event) }
   override func mouseUp(with event: NSEvent) { handlePointer(.up, event: event) }
 
-  // MARK: - Pointer pipeline
-
-  enum PointerPhase { case hoverEnter, hoverMove, hoverExit, down, drag, up }
+  private enum PointerPhase { case hoverEnter, hoverMove, hoverExit, down, drag, up }
 
   private func handlePointer(_ phase: PointerPhase, event: NSEvent) {
-    guard controller?.isLivePreviewActive == true else { return }
+    guard renderer != nil else { return }
     let devicePoint = convertToDevicePoint(event: event)
 
     switch phase {
@@ -161,17 +185,17 @@ final class PointerTrackingView: NSView {
     _ source: LivePreviewPointerSource,
     _ location: CGPoint
   ) {
-    controller?.sendPointerEvent(action: action, source: source, location: location)
+    renderer?.sendPointer(action, source, location)
   }
 
   private func convertToDevicePoint(event: NSEvent) -> CGPoint? {
-    guard let mediaSize = livePreviewMediaSize(), mediaSize.width > 0, mediaSize.height > 0 else { return nil }
+    guard let size = renderer?.session.media?.size, size.width > 0, size.height > 0 else { return nil }
     let localPoint = convert(event.locationInWindow, from: nil)
-    let fitted = fittedMediaRect(contentSize: mediaSize, in: bounds)
+    let fitted = fittedMediaRect(contentSize: size, in: bounds)
     guard fitted.contains(localPoint) else { return nil }
     let nx = (localPoint.x - fitted.minX) / fitted.width
     let ny = (localPoint.y - fitted.minY) / fitted.height
-    return CGPoint(x: nx * mediaSize.width, y: ny * mediaSize.height)
+    return CGPoint(x: nx * size.width, y: ny * size.height)
   }
 
   private func fittedMediaRect(contentSize: CGSize, in bounds: CGRect) -> CGRect {
@@ -180,12 +204,6 @@ final class PointerTrackingView: NSView {
     let w = contentSize.width * scale
     let h = contentSize.height * scale
     return CGRect(x: bounds.midX - w / 2, y: bounds.midY - h / 2, width: w, height: h)
-  }
-
-  private func livePreviewMediaSize() -> CGSize? {
-    guard let controller,
-          case .livePreview(_, let media) = controller.mode else { return nil }
-    return media.size
   }
 
   private struct PointerState {

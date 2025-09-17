@@ -1,20 +1,23 @@
 import SwiftUI
 
 struct IdleOverlayView: View {
-  @ObservedObject var controller: CaptureController
   let hasDevices: Bool
   let isDeviceListInitialized: Bool
+  let isProcessing: Bool
+  let isRecording: Bool
+  let stopRecording: () -> Void
+  let lastError: String?
 
   var body: some View {
     VStack(spacing: 12) {
       Image("Aperture")
         .resizable()
         .frame(width: 64, height: 64)
-        .infiniteRotate(animated: true)
+        .infiniteRotate(animated: isProcessing)
 
-      if controller.isRecording {
+      if isRecording, !isProcessing {
         Button {
-          Task { await controller.stopRecording() }
+          stopRecording()
         } label: {
           HStack(spacing: 8) {
             Text("Stop Recording")
@@ -33,13 +36,18 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
+      } else if isRecording {
+        ProgressView()
+          .progressViewStyle(.circular)
+          .tint(.white)
+          .controlSize(.large)
       } else if !hasDevices, isDeviceListInitialized {
         Text("Waiting for device…")
           .foregroundStyle(.gray)
           .transition(.opacity)
       }
 
-      if let err = controller.lastError {
+      if let err = lastError {
         Text(err)
           .font(.footnote)
           .foregroundStyle(.red)
@@ -51,22 +59,16 @@ struct IdleOverlayView: View {
 
   private var animationState: AnimationState {
     AnimationState(
-      isRecording: controller.isRecording,
-      isLivePreviewActive: controller.isLivePreviewActive,
-      isStoppingLivePreview: controller.isStoppingLivePreview,
-      isLivePreviewMedia: controller.currentMedia?.isLivePreview == true,
+      isRecording: isRecording,
       hasDevices: hasDevices,
       isDeviceListInitialized: isDeviceListInitialized,
-      hasError: controller.lastError != nil
+      hasError: lastError != nil
     )
   }
 }
 
 private struct AnimationState: Equatable {
   var isRecording: Bool
-  var isLivePreviewActive: Bool
-  var isStoppingLivePreview: Bool
-  var isLivePreviewMedia: Bool
   var hasDevices: Bool
   var isDeviceListInitialized: Bool
   var hasError: Bool
