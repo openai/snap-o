@@ -11,19 +11,41 @@ struct CaptureWindow: View {
 
       let transition = transition(for: controller.transitionDirection)
 
-      if controller.isDeviceListInitialized || controller.currentCapture != nil {
-        CaptureMediaView(controller: controller)
-          .id(controller.currentCaptureViewID)
-          .transition(transition)
+      if let capture = controller.currentCapture {
+        CaptureMediaView(
+          controller: controller,
+          capture: capture,
+        )
+        .id(controller.currentCaptureViewID)
+        .zIndex(1)
+        .transition(transition)
+      } else if controller.isDeviceListInitialized {
+        IdleOverlayView(
+          hasDevices: controller.hasDevices,
+          isDeviceListInitialized: controller.isDeviceListInitialized,
+          isProcessing: controller.isProcessing,
+          isRecording: controller.isRecording,
+          stopRecording: { Task { await controller.stopRecording() } },
+          lastError: controller.lastError,
+        )
       } else {
         WaitingForDeviceView(isDeviceListInitialized: controller.isDeviceListInitialized)
-          .transition(transition)
       }
     }
     .task { await controller.start() }
     .onDisappear { controller.tearDown() }
     .focusedSceneObject(controller)
     .navigationTitle(controller.navigationTitle)
+    .background(
+      WindowSizingController(displayInfo: controller.displayInfoForSizing)
+        .frame(width: 0, height: 0)
+    )
+    .background(
+      WindowLevelController(
+        shouldFloat: controller.isRecording || controller.isLivePreviewActive
+      )
+      .frame(width: 0, height: 0)
+    )
     .toolbar {
       CaptureToolbar(controller: controller)
 

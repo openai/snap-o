@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ImageCaptureView: View {
   let url: URL
-  var makeTempDragFile: (MediaSaveKind) -> URL?
+  var makeTempDragFile: () -> URL?
 
   var body: some View {
     if let nsImage = NSImage(contentsOf: url) {
@@ -11,17 +11,17 @@ struct ImageCaptureView: View {
         .resizable()
         .scaledToFill()
         .clipped()
-        .onDrag { dragItemProvider(kind: .image) }
-        .onAppear { markPerfMilestones() }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onDrag { dragItemProvider() }
+        .onAppear {
+          markPerfMilestones()
+        }
     } else {
       Color.black
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 
-  private func dragItemProvider(kind: MediaSaveKind) -> NSItemProvider {
-    if let url = makeTempDragFile(kind) {
+  private func dragItemProvider() -> NSItemProvider {
+    if let url = makeTempDragFile() {
       NSItemProvider(object: url as NSURL)
     } else {
       NSItemProvider()
@@ -31,7 +31,7 @@ struct ImageCaptureView: View {
 
 struct VideoCaptureView: View {
   let url: URL
-  var makeTempDragFile: (MediaSaveKind) -> URL?
+  var makeTempDragFile: () -> URL?
 
   var body: some View {
     ZStack {
@@ -40,13 +40,13 @@ struct VideoCaptureView: View {
         .padding([.bottom], 40)
     }
     .clipped()
-    .onDrag { dragItemProvider(kind: .video) }
+    .onDrag { dragItemProvider() }
     .onAppear { markPerfMilestones() }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
-  private func dragItemProvider(kind: MediaSaveKind) -> NSItemProvider {
-    if let url = makeTempDragFile(kind) {
+  private func dragItemProvider() -> NSItemProvider {
+    if let url = makeTempDragFile() {
       NSItemProvider(object: url as NSURL)
     } else {
       NSItemProvider()

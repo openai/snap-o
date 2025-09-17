@@ -270,27 +270,6 @@ final class CaptureWindowController: ObservableObject {
     NSPasteboard.general.writeObjects([image])
   }
 
-  func makeTempDragFile(kind: MediaSaveKind) -> URL? {
-    guard let media = currentCapture?.media,
-          let url = media.url,
-          media.saveKind == kind
-    else { return nil }
-
-    do {
-      let fileStore = services.fileStore
-      let fileURL = fileStore.makeDragDestination(
-        capturedAt: media.capturedAt,
-        kind: kind
-      )
-      if !FileManager.default.fileExists(atPath: fileURL.path) {
-        try FileManager.default.copyItem(at: url, to: fileURL)
-      }
-      return fileURL
-    } catch {
-      return nil
-    }
-  }
-
   private func updateCurrentCaptureSnapshotIfNeeded(with baseCapture: CaptureMedia?) {
     guard let baseCapture else {
       currentCaptureSnapshot = nil
@@ -431,6 +410,7 @@ final class CaptureWindowController: ObservableObject {
           self.preloadConsumptionTask = nil
         }
       } else {
+        await self.captureScreenshots()
         await MainActor.run { self.preloadConsumptionTask = nil }
       }
     }

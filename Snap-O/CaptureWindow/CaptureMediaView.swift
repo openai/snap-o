@@ -1,57 +1,48 @@
 import SwiftUI
 
 struct CaptureMediaView: View {
-  @ObservedObject var controller: CaptureWindowController
-
-  private var currentCapture: CaptureMedia? { controller.currentCapture }
-
-  private var isCurrentSelection: Bool {
-    guard let capture = currentCapture else { return false }
-    return controller.selectedMediaID == capture.id
-  }
-
-  private var displayInfo: DisplayInfo? { controller.displayInfoForSizing }
+  let controller: CaptureWindowController
+  let capture: CaptureMedia
 
   var body: some View {
     GeometryReader { proxy in
       ZStack {
-        if let capture = currentCapture {
-          switch capture.media {
-          case .image(let url, _):
-            ImageCaptureView(
-              url: url
-            ) { controller.makeTempDragFile(kind: $0) }
-              .transition(.opacity)
+        switch capture.media {
+        case .image(let url, _):
+          ImageCaptureView(
+            url: url
+          ) { makeTempDragFile() }
 
-          case .video(let url, _):
-            VideoCaptureView(
-              url: url
-            ) { controller.makeTempDragFile(kind: $0) }
-              .transition(.opacity)
+        case .video(let url, _):
+          VideoCaptureView(
+            url: url
+          ) { makeTempDragFile() }
 
-          case .livePreview:
-            LiveCaptureView(controller: controller, capture: capture)
-              .transition(.opacity)
-          }
-        } else {
-          IdleOverlayView(controller: controller)
-            .transition(.opacity)
+        case .livePreview:
+          LiveCaptureView(controller: controller, capture: capture)
         }
       }
       .frame(width: proxy.size.width, height: proxy.size.height)
       .clipped()
-      .zIndex(isCurrentSelection ? 1 : 2)
-      .animation(.snappy(duration: 0.15), value: controller.currentCapture?.id)
-      .background(
-        WindowSizingController(displayInfo: displayInfo)
-          .frame(width: 0, height: 0)
+      .id(capture.id)
+    }
+  }
+
+  private func makeTempDragFile() -> URL? {
+    guard let kind = capture.media.saveKind, let url = capture.media.url else { return nil }
+
+    do {
+      let fileStore = AppServices.shared.fileStore
+      let fileURL = fileStore.makeDragDestination(
+        capturedAt: capture.media.capturedAt,
+        kind: kind
       )
-      .background(
-        WindowLevelController(
-          shouldFloat: controller.isRecording || controller.isLivePreviewActive
-        )
-        .frame(width: 0, height: 0)
-      )
+      if !FileManager.default.fileExists(atPath: fileURL.path) {
+        try FileManager.default.copyItem(at: url, to: fileURL)
+      }
+      return fileURL
+    } catch {
+      return nil
     }
   }
 }

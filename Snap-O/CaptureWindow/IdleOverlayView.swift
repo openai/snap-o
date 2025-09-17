@@ -1,18 +1,23 @@
 import SwiftUI
 
 struct IdleOverlayView: View {
-  @ObservedObject var controller: CaptureWindowController
+  let hasDevices: Bool
+  let isDeviceListInitialized: Bool
+  let isProcessing: Bool
+  let isRecording: Bool
+  let stopRecording: () -> Void
+  let lastError: String?
 
   var body: some View {
     VStack(spacing: 12) {
       Image("Aperture")
         .resizable()
         .frame(width: 64, height: 64)
-        .infiniteRotate(animated: controller.isProcessing)
+        .infiniteRotate(animated: isProcessing)
 
-      if controller.isRecording, !controller.isProcessing {
+      if isRecording, !isProcessing {
         Button {
-          Task { await controller.stopRecording() }
+          stopRecording()
         } label: {
           HStack(spacing: 8) {
             Text("Stop Recording")
@@ -31,18 +36,18 @@ struct IdleOverlayView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .transition(.opacity)
-      } else if controller.isRecording {
+      } else if isRecording {
         ProgressView()
           .progressViewStyle(.circular)
           .tint(.white)
           .controlSize(.large)
-      } else if !controller.hasDevices, controller.isDeviceListInitialized {
+      } else if !hasDevices, isDeviceListInitialized {
         Text("Waiting for device…")
           .foregroundStyle(.gray)
           .transition(.opacity)
       }
 
-      if let err = controller.lastError {
+      if let err = lastError {
         Text(err)
           .font(.footnote)
           .foregroundStyle(.red)
@@ -54,10 +59,10 @@ struct IdleOverlayView: View {
 
   private var animationState: AnimationState {
     AnimationState(
-      isRecording: controller.isRecording,
-      hasDevices: controller.hasDevices,
-      isDeviceListInitialized: controller.isDeviceListInitialized,
-      hasError: controller.lastError != nil
+      isRecording: isRecording,
+      hasDevices: hasDevices,
+      isDeviceListInitialized: isDeviceListInitialized,
+      hasError: lastError != nil
     )
   }
 }

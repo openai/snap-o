@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LiveCaptureView: View {
-  @ObservedObject var controller: CaptureWindowController
+  let controller: CaptureWindowController
   let capture: CaptureMedia
 
   @State private var renderer: LivePreviewRenderer?
