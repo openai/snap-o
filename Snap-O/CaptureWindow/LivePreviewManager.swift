@@ -3,7 +3,6 @@ import Foundation
 
 @MainActor
 final class LivePreviewManager {
-
   private enum LivePreviewError: Error {
     case unknownDevice
   }
@@ -53,11 +52,10 @@ final class LivePreviewManager {
     let session = try await services.captureService.startLivePreview(for: deviceID)
     let renderer = LivePreviewRenderer(
       session: session,
-      deviceID: deviceID,
-      sendPointer: { [weak self] action, source, location in
-        Task { await self?.sendPointerEvent(deviceID: deviceID, action: action, source: source, location: location) }
-      }
-    )
+      deviceID: deviceID
+    ) { [weak self] action, source, location in
+      Task { await self?.sendPointerEvent(deviceID: deviceID, action: action, source: source, location: location) }
+    }
 
     Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
@@ -95,7 +93,7 @@ final class LivePreviewManager {
   // MARK: - Device + Media Management
 
   private func syncDevices(with devices: [Device], requireRefresh: Bool) async {
-    let currentIDs = Set(devices.map { $0.id })
+    let currentIDs = Set(devices.map(\.id))
 
     for id in Array(deviceInfo.keys) where !currentIDs.contains(id) {
       deviceInfo.removeValue(forKey: id)
@@ -111,11 +109,10 @@ final class LivePreviewManager {
       deviceInfo[device.id] = device
     }
 
-    let devicesToFetch: [Device]
-    if requireRefresh {
-      devicesToFetch = devices
+    let devicesToFetch: [Device] = if requireRefresh {
+      devices
     } else {
-      devicesToFetch = devices.filter { lastDisplayInfo[$0.id] == nil }
+      devices.filter { lastDisplayInfo[$0.id] == nil }
     }
 
     if !devicesToFetch.isEmpty {
@@ -243,7 +240,7 @@ final class LivePreviewManager {
   }
 }
 
-fileprivate func parseDisplaySize(_ value: String) -> CGSize? {
+private func parseDisplaySize(_ value: String) -> CGSize? {
   let components = value.split(separator: "x")
   guard components.count == 2,
         let width = Double(components[0]),

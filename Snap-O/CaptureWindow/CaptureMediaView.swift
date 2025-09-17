@@ -14,24 +14,22 @@ struct CaptureMediaView: View {
     currentCapture?.media.common.display
   }
 
-var body: some View {
+  var body: some View {
     GeometryReader { proxy in
       ZStack {
         if let capture = currentCapture {
           switch capture.media {
           case .image(let url, _):
             ImageCaptureView(
-              url: url,
-              makeTempDragFile: { controller.makeTempDragFile(kind: $0) }
-            )
-            .transition(.opacity)
+              url: url
+            ) { controller.makeTempDragFile(kind: $0) }
+              .transition(.opacity)
 
           case .video(let url, _):
             VideoCaptureView(
-              url: url,
-              makeTempDragFile: { controller.makeTempDragFile(kind: $0) }
-            )
-            .transition(.opacity)
+              url: url
+            ) { controller.makeTempDragFile(kind: $0) }
+              .transition(.opacity)
 
           case .livePreview:
             LiveCaptureView(controller: controller, capture: capture)
@@ -54,7 +52,7 @@ var body: some View {
         WindowLevelController(
           shouldFloat: controller.isRecording || controller.isLivePreviewActive
         )
-          .frame(width: 0, height: 0)
+        .frame(width: 0, height: 0)
       )
     }
   }

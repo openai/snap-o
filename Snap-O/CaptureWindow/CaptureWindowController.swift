@@ -69,10 +69,10 @@ final class CaptureWindowController: ObservableObject {
     Task { @MainActor [weak self] in
       await Task.yield()
       guard let self else { return }
-      self.selectedMediaID = id
-      let baseCapture = self.capture(for: id) ?? self.mediaList.first
-      self.updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
-      self.showPreviewHintIfNeeded(transient: true)
+      selectedMediaID = id
+      let baseCapture = capture(for: id) ?? mediaList.first
+      updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
+      showPreviewHintIfNeeded(transient: true)
     }
   }
 
@@ -191,7 +191,7 @@ final class CaptureWindowController: ObservableObject {
       sessions: recordingSessions
     )
 
-    if encounteredError == nil && newMedia.isEmpty {
+    if encounteredError == nil, newMedia.isEmpty {
       recordingSessions.removeAll()
       isRecording = false
       isProcessing = false
@@ -213,7 +213,7 @@ final class CaptureWindowController: ObservableObject {
 
     let manager = LivePreviewManager(services: services) { [weak self] media in
       guard let self else { return }
-      self.handleLivePreviewMediaUpdate(media)
+      handleLivePreviewMediaUpdate(media)
     }
     livePreviewManager?.stop()
     livePreviewManager = manager
@@ -318,7 +318,7 @@ final class CaptureWindowController: ObservableObject {
       for device in devices {
         group.addTask {
           do {
-            return .success(try await action(device))
+            return try await .success(action(device))
           } catch {
             return .failure(error)
           }
@@ -404,7 +404,7 @@ final class CaptureWindowController: ObservableObject {
     }
     Task.detached(priority: .utility) { [weak self] in
       guard let self else { return }
-      await self.services.captureService.preloadScreenshots()
+      await services.captureService.preloadScreenshots()
     }
     if !devices.isEmpty {
       startPreloadConsumptionIfNeeded()
@@ -419,7 +419,7 @@ final class CaptureWindowController: ObservableObject {
     guard mediaList.isEmpty else { return }
     preloadConsumptionTask = Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
-      if let preloaded = await self.consumePreloadedMedia() {
+      if let preloaded = await consumePreloadedMedia() {
         await MainActor.run {
           self.applyPreloadedMedia(preloaded)
           self.isProcessing = false
@@ -432,14 +432,13 @@ final class CaptureWindowController: ObservableObject {
   }
 
   private func handleLivePreviewMediaUpdate(_ media: [CaptureMedia]) {
-    let preferredDeviceID: String?
-    if let pendingPreferredDeviceID {
-      preferredDeviceID = pendingPreferredDeviceID
+    let preferredDeviceID: String? = if let pendingPreferredDeviceID {
+      pendingPreferredDeviceID
     } else if let currentID = selectedMediaID,
               let current = mediaList.first(where: { $0.id == currentID }) {
-      preferredDeviceID = current.device.id
+      current.device.id
     } else {
-      preferredDeviceID = nil
+      nil
     }
 
     updateMediaList(
@@ -483,11 +482,10 @@ final class CaptureWindowController: ObservableObject {
       transitionDirection = .neutral
     }
 
-    let baseCapture: CaptureMedia?
-    if let currentID = selectedMediaID {
-      baseCapture = ordered.first { $0.id == currentID }
+    let baseCapture: CaptureMedia? = if let currentID = selectedMediaID {
+      ordered.first { $0.id == currentID }
     } else {
-      baseCapture = ordered.first
+      ordered.first
     }
     updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
     showPreviewHintIfNeeded(transient: true)
@@ -580,5 +578,4 @@ final class CaptureWindowController: ObservableObject {
     isPreviewHintHovered = false
     overlayMediaList = []
   }
-
 }

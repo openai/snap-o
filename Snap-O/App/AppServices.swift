@@ -27,11 +27,9 @@ final actor AppServices {
       Perf.step(.appFirstSnapshot, "start preload task")
       let stream = deviceTracker.deviceStream()
       Perf.step(.appFirstSnapshot, "query device stream")
-      for await devices in stream {
-        if !devices.isEmpty {
-          await captureService.preloadScreenshots()
-          break
-        }
+      for await devices in stream where !devices.isEmpty {
+        await captureService.preloadScreenshots()
+        break
       }
     }
   }

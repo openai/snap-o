@@ -162,7 +162,7 @@ actor CaptureService {
       for device in devices {
         group.addTask {
           do {
-            return .success(try await action(device))
+            return try await .success(action(device))
           } catch {
             return .failure(error)
           }
@@ -193,7 +193,7 @@ actor CaptureService {
       for device in devices {
         group.addTask {
           do {
-            return .success(try await action(device))
+            return try await .success(action(device))
           } catch {
             return .failure(error)
           }

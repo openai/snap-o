@@ -51,11 +51,10 @@ final class LivePreviewDisplayView: NSView {
   override var isFlipped: Bool { true }
 
   func update(with renderer: LivePreviewRenderer?) {
-    let shouldDetach: Bool
-    switch (self.renderer?.session, renderer?.session) {
-    case let (lhs?, rhs?): shouldDetach = lhs !== rhs
-    case (nil, nil): shouldDetach = false
-    default: shouldDetach = true
+    let shouldDetach: Bool = switch (self.renderer?.session, renderer?.session) {
+    case (let lhs?, let rhs?): lhs !== rhs
+    case (nil, nil): false
+    default: true
     }
     if shouldDetach {
       detachSession()

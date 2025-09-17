@@ -45,9 +45,8 @@ struct CaptureWindow: View {
         VStack(spacing: 8) {
           CapturePreviewStrip(
             captures: captures,
-            selectedID: controller.selectedMediaID,
-            onSelect: { controller.selectMedia(id: $0, direction: .neutral) }
-          )
+            selectedID: controller.selectedMediaID
+          ) { controller.selectMedia(id: $0, direction: .neutral) }
 
           if let title = controller.currentCaptureDeviceTitle {
             Text(title)
@@ -72,7 +71,7 @@ struct CaptureWindow: View {
 
 extension CaptureWindow {
   private func transition(for direction: DeviceTransitionDirection) -> AnyTransition {
-    return switch direction {
+    switch direction {
     case .previous: xTransition(insertion: .leading, removal: .trailing)
     case .next: xTransition(insertion: .trailing, removal: .leading)
     case .neutral: .opacity
@@ -80,7 +79,7 @@ extension CaptureWindow {
   }
 
   private func xTransition(insertion: Edge, removal: Edge) -> AnyTransition {
-    return .asymmetric(
+    .asymmetric(
       insertion: .move(edge: insertion).combined(with: .opacity),
       removal: .move(edge: removal).combined(with: .opacity)
     )
@@ -95,37 +94,37 @@ private struct CapturePreviewStrip: View {
   let onSelect: (CaptureMedia.ID) -> Void
 
   var body: some View {
-      HStack(spacing: 16) {
-        ForEach(captures) { capture in
-          Button {
-            onSelect(capture.id)
-          } label: {
-            CapturePreviewThumbnail(
-              capture: capture,
-              isSelected: capture.id == selectedID
-            )
-          }
-          .buttonStyle(.plain)
+    HStack(spacing: 16) {
+      ForEach(captures) { capture in
+        Button {
+          onSelect(capture.id)
+        } label: {
+          CapturePreviewThumbnail(
+            capture: capture,
+            isSelected: capture.id == selectedID
+          )
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .padding(.horizontal, 24)
+    .padding(.vertical, 16)
+    .background(.ultraThinMaterial)
+    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
+    .padding(.horizontal, 24)
+    .overlayPreferenceValue(PreviewSelectionBoundsKey.self) { anchor in
+      GeometryReader { proxy in
+        if let anchor {
+          let rect = proxy[anchor]
+          RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .stroke(Color.accentColor, lineWidth: 3)
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+            .animation(.easeInOut(duration: 0.25), value: selectedID)
         }
       }
-      .padding(.horizontal, 24)
-      .padding(.vertical, 16)
-      .background(.ultraThinMaterial)
-      .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-      .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
-      .padding(.horizontal, 24)
-      .overlayPreferenceValue(PreviewSelectionBoundsKey.self) { anchor in
-        GeometryReader { proxy in
-          if let anchor {
-            let rect = proxy[anchor]
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-              .stroke(Color.accentColor, lineWidth: 3)
-              .frame(width: rect.width, height: rect.height)
-              .position(x: rect.midX, y: rect.midY)
-              .animation(.easeInOut(duration: 0.25), value: selectedID)
-          }
-        }
-      }
+    }
   }
 }
 
@@ -153,25 +152,25 @@ private struct CapturePreviewThumbnail: View {
     switch capture.media {
     case .image(let url, _):
       if let image = NSImage(contentsOf: url) {
-        return AnyView(
+        AnyView(
           Image(nsImage: image)
             .resizable()
             .scaledToFill()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
       } else {
-        return AnyView(
+        AnyView(
           Color.gray
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
       }
     case .video:
-      return AnyView(
+      AnyView(
         Color.gray.opacity(0.8)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       )
     case .livePreview:
-      return AnyView(
+      AnyView(
         Color.black
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       )
@@ -181,14 +180,14 @@ private struct CapturePreviewThumbnail: View {
   private var overlayContent: some View {
     switch capture.media {
     case .video:
-      return AnyView(
+      AnyView(
         Image(systemName: "play.fill")
           .foregroundColor(.white)
           .font(.system(size: 20, weight: .semibold))
           .shadow(radius: 4)
       )
     default:
-      return AnyView(EmptyView())
+      AnyView(EmptyView())
     }
   }
 
@@ -199,7 +198,6 @@ private struct CapturePreviewThumbnail: View {
     let maxWidth = height * 2.5
     return min(max(rawWidth, minWidth), maxWidth)
   }
-
 }
 
 private struct PreviewSelectionBoundsKey: PreferenceKey {

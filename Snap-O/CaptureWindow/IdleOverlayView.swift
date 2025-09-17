@@ -10,7 +10,7 @@ struct IdleOverlayView: View {
         .frame(width: 64, height: 64)
         .infiniteRotate(animated: controller.isProcessing)
 
-      if controller.isRecording && !controller.isProcessing {
+      if controller.isRecording, !controller.isProcessing {
         Button {
           Task { await controller.stopRecording() }
         } label: {
