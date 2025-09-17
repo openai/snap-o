@@ -84,7 +84,7 @@ private struct CapturePreviewStrip: View {
       .padding(.horizontal, 24)
       .padding(.vertical, 16)
       .background(.ultraThinMaterial)
-      .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
       .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
       .padding(.horizontal, 24)
   }
@@ -105,7 +105,7 @@ private struct CapturePreviewThumbnail: View {
 
       overlayContent
     }
-    .frame(width: clampedWidth, height: height)
+    .frame(width: targetWidth, height: height)
     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     .overlay(
       RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -121,14 +121,24 @@ private struct CapturePreviewThumbnail: View {
           Image(nsImage: image)
             .resizable()
             .scaledToFill()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
       } else {
-        return AnyView(Color.gray)
+        return AnyView(
+          Color.gray
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        )
       }
     case .video:
-      return AnyView(Color.gray.opacity(0.8))
+      return AnyView(
+        Color.gray.opacity(0.8)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      )
     case .livePreview:
-      return AnyView(Color.black)
+      return AnyView(
+        Color.black
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      )
     }
   }
 
@@ -146,10 +156,12 @@ private struct CapturePreviewThumbnail: View {
     }
   }
 
-  private var clampedWidth: CGFloat {
-    let aspect = max(capture.media.aspectRatio, 0.1)
+  private var targetWidth: CGFloat {
+    let aspect = max(CGFloat(capture.media.aspectRatio), 0.1)
     let rawWidth = height * aspect
-    return min(max(rawWidth, 56), 140)
+    let minWidth = height * 0.6
+    let maxWidth = height * 2.5
+    return min(max(rawWidth, minWidth), maxWidth)
   }
 }
 
