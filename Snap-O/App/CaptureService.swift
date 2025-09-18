@@ -9,6 +9,7 @@ actor CaptureService {
 
   private var preloadedTask: Task<([CaptureMedia], Error?), Error>?
   private var didLogPreloadStart = false
+  private var lastCaptureTimestamp: Date? // Keeps filenames unique when captures share a real timestamp.
 
   init(adb: ADBService, fileStore: FileStore, deviceTracker: DeviceTracker) {
     self.adb = adb
@@ -29,7 +30,7 @@ actor CaptureService {
     async let dataTask: Data = try await exec.screencapPNG(deviceID: device.id)
     async let densityAsync: CGFloat? = await (try? exec.displayDensity(deviceID: device.id))
     let data = try await dataTask
-    let capturedAt = Date()
+    let capturedAt = nextCaptureTimestamp(basedOn: Date())
 
     let destination = fileStore.makePreviewDestination(deviceID: device.id, kind: .image)
     let writeTask = Task(priority: .userInitiated) { () throws -> CGSize in
@@ -105,12 +106,31 @@ actor CaptureService {
     if let media = try await Media.video(
       from: asset,
       url: destination,
-      capturedAt: Date(),
+      capturedAt: nextCaptureTimestamp(basedOn: Date()),
       densityProvider: { await densityTask.value }
     ) {
       return CaptureMedia(device: device, media: media)
     }
     return nil
+  }
+
+  private func nextCaptureTimestamp(basedOn proposed: Date) -> Date {
+    guard let last = lastCaptureTimestamp else {
+      lastCaptureTimestamp = proposed
+      return proposed
+    }
+
+    let lastRounded = floor(last.timeIntervalSince1970)
+    let proposedRounded = floor(proposed.timeIntervalSince1970)
+
+    if proposedRounded <= lastRounded {
+      let adjusted = Date(timeIntervalSince1970: lastRounded + 1)
+      lastCaptureTimestamp = adjusted
+      return adjusted
+    }
+
+    lastCaptureTimestamp = proposed
+    return proposed
   }
 
   func startLivePreview(for deviceID: String) async throws -> LivePreviewSession {
