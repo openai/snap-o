@@ -16,7 +16,7 @@ struct CapturePreviewStrip: View {
           CapturePreviewThumbnail(
             capture: capture,
             isSelected: capture.id == selectedID
-          )
+          ) { dragItemProvider(for: capture) }
         }
         .buttonStyle(.plain)
       }
@@ -44,6 +44,7 @@ struct CapturePreviewStrip: View {
 private struct CapturePreviewThumbnail: View {
   let capture: CaptureMedia
   let isSelected: Bool
+  var dragItemProvider: () -> NSItemProvider
 
   private let height: CGFloat = 80
 
@@ -59,6 +60,7 @@ private struct CapturePreviewThumbnail: View {
     .frame(width: targetWidth, height: height)
     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     .anchorPreference(key: PreviewSelectionBoundsKey.self, value: .bounds) { isSelected ? $0 : nil }
+    .onDrag { dragItemProvider() }
   }
 
   @ViewBuilder private var thumbnail: some View {
@@ -100,6 +102,33 @@ private struct CapturePreviewThumbnail: View {
     let minWidth = height * 0.6
     let maxWidth = height * 2.5
     return min(max(rawWidth, minWidth), maxWidth)
+  }
+}
+
+private extension CapturePreviewStrip {
+  func makeTempDragFile(for capture: CaptureMedia) -> URL? {
+    guard let kind = capture.media.saveKind, let url = capture.media.url else { return nil }
+
+    do {
+      let fileStore = AppServices.shared.fileStore
+      let fileURL = fileStore.makeDragDestination(
+        capturedAt: capture.media.capturedAt,
+        kind: kind
+      )
+      if !FileManager.default.fileExists(atPath: fileURL.path) {
+        try FileManager.default.copyItem(at: url, to: fileURL)
+      }
+      return fileURL
+    } catch {
+      return nil
+    }
+  }
+
+  func dragItemProvider(for capture: CaptureMedia) -> NSItemProvider {
+    if let url = makeTempDragFile(for: capture) {
+      return NSItemProvider(object: url as NSURL)
+    }
+    return NSItemProvider()
   }
 }
 
