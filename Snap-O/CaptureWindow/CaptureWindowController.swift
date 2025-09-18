@@ -7,18 +7,14 @@ import SwiftUI
 final class CaptureWindowController: ObservableObject {
   private let services: AppServices
 
-  @Published private(set) var mediaList: [CaptureMedia] = []
-  @Published private(set) var selectedMediaID: CaptureMedia.ID?
-  @Published private(set) var transitionDirection: DeviceTransitionDirection = .neutral
+  let snapshotController = CaptureSnapshotController()
+
   @Published private(set) var isDeviceListInitialized: Bool = false
   @Published private(set) var isProcessing: Bool = false
   @Published private(set) var isRecording: Bool = false
   @Published private(set) var isLivePreviewActive: Bool = false
   @Published private(set) var isStoppingLivePreview: Bool = false
   @Published private(set) var lastError: String?
-  @Published private(set) var currentCaptureViewID: UUID?
-  @Published private(set) var shouldShowPreviewHint: Bool = false
-  @Published private(set) var overlayMediaList: [CaptureMedia] = []
 
   private var knownDevices: [Device] = []
   private var recordingSessions: [String: RecordingSession] = [:]
@@ -27,15 +23,12 @@ final class CaptureWindowController: ObservableObject {
   private var pendingPreferredDeviceID: String?
   private var preloadConsumptionTask: Task<Void, Never>?
   private var hasAttemptedPreloadConsumption = false
-  private var currentCaptureSnapshot: CaptureMedia?
-  private var currentCaptureSource: CaptureMedia?
-  private var lastViewedDeviceID: String?
-  private var previewHintTask: Task<Void, Never>?
-  private var isPreviewHintHovered: Bool = false
-  private var lastPreviewDisplayInfo: DisplayInfo?
+  private var snapshotCancellable: AnyCancellable?
 
   init(services: AppServices = .shared) {
     self.services = services
+    snapshotCancellable = snapshotController.objectWillChange
+      .sink { [weak self] _ in self?.objectWillChange.send() }
   }
 
   func start() async {
@@ -54,49 +47,24 @@ final class CaptureWindowController: ObservableObject {
     }
   }
 
-  func selectMedia(id: CaptureMedia.ID?, direction: DeviceTransitionDirection) {
-    guard selectedMediaID != id else {
-      transitionDirection = direction
-      return
-    }
+  func selectMedia(id: CaptureMedia.ID) {
+    snapshotController.selectMedia(id: id)
+  }
 
-    transitionDirection = direction
-    Task { @MainActor [weak self] in
-      await Task.yield()
-      guard let self else { return }
-      selectedMediaID = id
-      let baseCapture = capture(for: id) ?? mediaList.first
-      updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
-      await showPreviewHintIfNeeded(transient: true)
-    }
+  func selectMedia(id: CaptureMedia.ID?) {
+    snapshotController.selectMedia(id: id)
   }
 
   func selectNextMedia() {
-    guard !mediaList.isEmpty else { return }
-    guard let currentID = selectedMediaID,
-          let currentIndex = mediaList.firstIndex(where: { $0.id == currentID })
-    else {
-      selectMedia(id: mediaList.first?.id, direction: .next)
-      return
-    }
-    let nextIndex = (currentIndex + 1) % mediaList.count
-    selectMedia(id: mediaList[nextIndex].id, direction: .next)
+    snapshotController.selectNextMedia()
   }
 
   func selectPreviousMedia() {
-    guard !mediaList.isEmpty else { return }
-    guard let currentID = selectedMediaID,
-          let currentIndex = mediaList.firstIndex(where: { $0.id == currentID })
-    else {
-      selectMedia(id: mediaList.first?.id, direction: .previous)
-      return
-    }
-    let previousIndex = (currentIndex - 1 + mediaList.count) % mediaList.count
-    selectMedia(id: mediaList[previousIndex].id, direction: .previous)
+    snapshotController.selectPreviousMedia()
   }
 
   func hasAlternativeMedia() -> Bool {
-    mediaList.count > 1
+    snapshotController.hasAlternativeMedia
   }
 
   var hasDevices: Bool { !knownDevices.isEmpty }
@@ -105,7 +73,14 @@ final class CaptureWindowController: ObservableObject {
   var canStartRecordingNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
   var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
 
-  var currentCapture: CaptureMedia? { currentCaptureSnapshot }
+  var mediaList: [CaptureMedia] { snapshotController.mediaList }
+  var selectedMediaID: CaptureMedia.ID? { snapshotController.selectedMediaID }
+  var currentCaptureViewID: UUID? { snapshotController.currentCaptureViewID }
+  var shouldShowPreviewHint: Bool { snapshotController.shouldShowPreviewHint }
+  var overlayMediaList: [CaptureMedia] { snapshotController.overlayMediaList }
+  var lastViewedDeviceID: String? { snapshotController.lastViewedDeviceID }
+
+  var currentCapture: CaptureMedia? { snapshotController.currentCapture }
 
   var navigationTitle: String {
     currentCapture?.device.displayTitle ?? "Snap-O"
@@ -115,17 +90,11 @@ final class CaptureWindowController: ObservableObject {
     currentCapture?.device.displayTitle
   }
 
-  var captureProgressText: String? {
-    guard mediaList.count > 1,
-          let selectedID = selectedMediaID,
-          let index = mediaList.firstIndex(where: { $0.id == selectedID })
-    else { return nil }
-    return "\(index + 1)/\(mediaList.count)"
-  }
+  var captureProgressText: String? { snapshotController.captureProgressText }
 
   var displayInfoForSizing: DisplayInfo? {
     if isRecording {
-      return lastPreviewDisplayInfo ?? currentCapture?.media.common.display
+      return snapshotController.lastPreviewDisplayInfo ?? currentCapture?.media.common.display
     }
     return currentCapture?.media.common.display
   }
@@ -138,7 +107,11 @@ final class CaptureWindowController: ObservableObject {
     if pendingPreferredDeviceID == nil {
       pendingPreferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
     }
-    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: true)
+    snapshotController.updateMediaList(
+      [],
+      preserveDeviceID: nil,
+      shouldSort: false
+    )
 
     if let media = await consumePreloadedMedia() {
       applyPreloadedMedia(media)
@@ -158,7 +131,11 @@ final class CaptureWindowController: ObservableObject {
     isProcessing = true
     lastError = nil
     pendingPreferredDeviceID = currentCapture?.device.id
-    updateMediaList([], preserveDeviceID: nil, shouldSort: false, resetTransition: true)
+    snapshotController.updateMediaList(
+      [],
+      preserveDeviceID: nil,
+      shouldSort: false
+    )
 
     let captureService = services.captureService
     let (sessions, encounteredError) = await captureService.startRecordings(for: devices)
@@ -230,7 +207,7 @@ final class CaptureWindowController: ObservableObject {
     livePreviewManager = nil
     isLivePreviewActive = false
     pendingPreferredDeviceID = preferredDeviceID
-    if let preferredDeviceID { lastViewedDeviceID = preferredDeviceID }
+    if let preferredDeviceID { snapshotController.updateLastViewedDeviceID(preferredDeviceID) }
     isStoppingLivePreview = false
     if !hasDevices {
       isProcessing = false
@@ -250,15 +227,10 @@ final class CaptureWindowController: ObservableObject {
     isLivePreviewActive = false
     isStoppingLivePreview = false
     pendingPreferredDeviceID = nil
-    previewHintTask?.cancel()
-    previewHintTask = nil
-    shouldShowPreviewHint = false
     preloadConsumptionTask?.cancel()
     preloadConsumptionTask = nil
     hasAttemptedPreloadConsumption = false
-    overlayMediaList = []
-    lastPreviewDisplayInfo = nil
-    lastPreviewDisplayInfo = nil
+    snapshotController.tearDown()
   }
 
   func copyCurrentImage() {
@@ -268,27 +240,6 @@ final class CaptureWindowController: ObservableObject {
     else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.writeObjects([image])
-  }
-
-  private func updateCurrentCaptureSnapshotIfNeeded(with baseCapture: CaptureMedia?) {
-    guard let baseCapture else {
-      currentCaptureSnapshot = nil
-      currentCaptureSource = nil
-      currentCaptureViewID = nil
-      lastPreviewDisplayInfo = nil
-      return
-    }
-
-    let didChangeCapture = currentCaptureSource?.id != baseCapture.id
-
-    currentCaptureSnapshot = baseCapture
-    currentCaptureSource = baseCapture
-    lastPreviewDisplayInfo = baseCapture.media.common.display
-
-    if didChangeCapture {
-      currentCaptureViewID = UUID()
-    }
-    lastViewedDeviceID = baseCapture.device.id
   }
 
   private func collectMedia(
@@ -349,11 +300,10 @@ final class CaptureWindowController: ObservableObject {
   }
 
   private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
-    updateMediaList(
+    snapshotController.updateMediaList(
       mediaList,
       preserveDeviceID: mediaList.first?.device.id,
-      shouldSort: false,
-      resetTransition: true
+      shouldSort: false
     )
   }
 
@@ -368,11 +318,10 @@ final class CaptureWindowController: ObservableObject {
     if !newMedia.isEmpty {
       let targetDeviceID = pendingPreferredDeviceID ?? currentCapture?.device.id
         ?? lastViewedDeviceID
-      updateMediaList(
+      snapshotController.updateMediaList(
         newMedia,
         preserveDeviceID: targetDeviceID,
-        shouldSort: true,
-        resetTransition: true
+        shouldSort: true
       )
     }
 
@@ -383,8 +332,7 @@ final class CaptureWindowController: ObservableObject {
   private func handleDeviceUpdate(_ devices: [Device]) {
     knownDevices = devices
     if mediaList.isEmpty {
-      selectedMediaID = nil
-      updateCurrentCaptureSnapshotIfNeeded(with: nil)
+      snapshotController.clearSelection()
     }
     Task.detached(priority: .utility) { [weak self] in
       guard let self else { return }
@@ -426,62 +374,14 @@ final class CaptureWindowController: ObservableObject {
       nil
     }
 
-    updateMediaList(
+    snapshotController.updateMediaList(
       media,
       preserveDeviceID: preferredDeviceID,
-      shouldSort: false,
-      resetTransition: false
+      shouldSort: false
     )
 
     isProcessing = false
     pendingPreferredDeviceID = nil
-    Task { await showPreviewHintIfNeeded(transient: true) }
-  }
-
-  private func updateMediaList(
-    _ newMedia: [CaptureMedia],
-    preserveDeviceID: String?,
-    shouldSort: Bool,
-    resetTransition: Bool
-  ) {
-    if shouldShowPreviewHint {
-      dismissPreviewHintImmediately()
-    }
-
-    var ordered = shouldSort ? newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle } : newMedia
-
-    if let preserve = preserveDeviceID,
-       let index = ordered.firstIndex(where: { $0.device.id == preserve }),
-       index != ordered.startIndex {
-      let preferred = ordered.remove(at: index)
-      ordered.insert(preferred, at: ordered.startIndex)
-    }
-
-    mediaList = ordered
-
-    if ordered.isEmpty {
-      selectedMediaID = nil
-    } else if let preserve = preserveDeviceID,
-              let preserved = ordered.first(where: { $0.device.id == preserve }) {
-      selectedMediaID = preserved.id
-    } else if let currentID = selectedMediaID,
-              ordered.contains(where: { $0.id == currentID }) {
-      // Keep current selection
-    } else {
-      selectedMediaID = ordered.first?.id
-    }
-
-    if resetTransition {
-      transitionDirection = .neutral
-    }
-
-    let baseCapture: CaptureMedia? = if let currentID = selectedMediaID {
-      ordered.first { $0.id == currentID }
-    } else {
-      ordered.first
-    }
-    updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
-    Task { await showPreviewHintIfNeeded(transient: true) }
   }
 
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
@@ -503,75 +403,13 @@ final class CaptureWindowController: ObservableObject {
     }
   }
 
-  private func capture(for id: CaptureMedia.ID?) -> CaptureMedia? {
-    guard let id else { return nil }
-    return mediaList.first { $0.id == id }
-  }
-
-  private func showPreviewHintIfNeeded(transient: Bool) async {
-    await Task.yield()
-
-    guard mediaList.count > 1 else {
-      shouldShowPreviewHint = false
-      previewHintTask?.cancel()
-      previewHintTask = nil
-      isPreviewHintHovered = false
-      overlayMediaList = []
-      return
-    }
-
-    previewHintTask?.cancel()
-    previewHintTask = nil
-
-    overlayMediaList = mediaList
-    shouldShowPreviewHint = true
-
-    guard transient else { return }
-    schedulePreviewHintDismiss(after: 2)
-  }
-
   func setPreviewHintHovering(_ isHovering: Bool) {
-    if isHovering {
-      isPreviewHintHovered = true
-      previewHintTask?.cancel()
-      previewHintTask = nil
-    } else {
-      isPreviewHintHovered = false
-      if shouldShowPreviewHint {
-        schedulePreviewHintDismiss(after: 0.5)
-      }
-    }
+    snapshotController.setPreviewHintHovering(isHovering)
   }
 
   func setProgressHovering(_ isHovering: Bool) {
-    if isHovering {
-      setPreviewHintHovering(true)
-      Task { await showPreviewHintIfNeeded(transient: false) }
-    } else {
-      setPreviewHintHovering(false)
-    }
-  }
-
-  private func schedulePreviewHintDismiss(after seconds: Double) {
-    previewHintTask?.cancel()
-    previewHintTask = Task { [weak self] in
-      let delay = UInt64(seconds * 1_000_000_000)
-      try? await Task.sleep(nanoseconds: delay)
-      guard !Task.isCancelled else { return }
-      await MainActor.run {
-        guard let self, !self.isPreviewHintHovered else { return }
-        self.shouldShowPreviewHint = false
-        self.overlayMediaList = []
-        self.previewHintTask = nil
-      }
-    }
-  }
-
-  private func dismissPreviewHintImmediately() {
-    previewHintTask?.cancel()
-    previewHintTask = nil
-    shouldShowPreviewHint = false
-    isPreviewHintHovered = false
-    overlayMediaList = []
+    snapshotController.setProgressHovering(isHovering)
   }
 }
+
+extension CaptureWindowController: LivePreviewHosting {}

@@ -67,7 +67,7 @@ struct WindowSizingController: NSViewRepresentable {
       let contentMin = minimumContentSize(for: targetContentSize)
 
       DispatchQueue.main.async {
-        window.setFrame(frame, display: true, animate: true)
+        window.setFrame(frame, display: true, animate: false)
         window.contentMinSize = contentMin
       }
     }

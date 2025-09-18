@@ -1,7 +1,13 @@
 import SwiftUI
 
-struct LiveCaptureView: View {
-  let controller: CaptureWindowController
+@MainActor
+protocol LivePreviewHosting: AnyObject {
+  func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer?
+  func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async
+}
+
+struct LiveCaptureView<Host: LivePreviewHosting>: View {
+  let host: Host
   let capture: CaptureMedia
 
   @State private var renderer: LivePreviewRenderer?
@@ -30,7 +36,7 @@ struct LiveCaptureView: View {
 
     let deviceID = capture.device.id
     streamTask = Task(priority: .userInitiated) {
-      let newRenderer = await controller.startLivePreviewStream(for: deviceID)
+      let newRenderer = await host.startLivePreviewStream(for: deviceID)
       await MainActor.run {
         renderer = newRenderer
         streamTask = nil
@@ -44,7 +50,7 @@ struct LiveCaptureView: View {
     guard let renderer else { return }
     self.renderer = nil
     Task {
-      await controller.stopLivePreviewStream(renderer)
+      await host.stopLivePreviewStream(renderer)
     }
   }
 

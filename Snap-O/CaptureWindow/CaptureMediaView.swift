@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct CaptureMediaView: View {
-  let controller: CaptureWindowController
+struct CaptureMediaView<Host: LivePreviewHosting>: View {
+  let livePreviewHost: Host
   let capture: CaptureMedia
 
   var body: some View {
@@ -19,7 +19,7 @@ struct CaptureMediaView: View {
           ) { makeTempDragFile() }
 
         case .livePreview:
-          LiveCaptureView(controller: controller, capture: capture)
+          LiveCaptureView(host: livePreviewHost, capture: capture)
         }
       }
       .frame(width: proxy.size.width, height: proxy.size.height)
