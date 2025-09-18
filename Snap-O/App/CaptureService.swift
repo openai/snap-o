@@ -120,8 +120,11 @@ actor CaptureService {
       return proposed
     }
 
-    if proposed.timeIntervalSince(last) < 1 {
-      let adjusted = last.addingTimeInterval(1)
+    let lastRounded = floor(last.timeIntervalSince1970)
+    let proposedRounded = floor(proposed.timeIntervalSince1970)
+
+    if proposedRounded <= lastRounded {
+      let adjusted = Date(timeIntervalSince1970: lastRounded + 1)
       lastCaptureTimestamp = adjusted
       return adjusted
     }
