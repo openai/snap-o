@@ -15,9 +15,8 @@ struct CapturePreviewStrip: View {
         } label: {
           CapturePreviewThumbnail(
             capture: capture,
-            isSelected: capture.id == selectedID,
-            dragItemProvider: { dragItemProvider(for: capture) }
-          )
+            isSelected: capture.id == selectedID
+          ) { dragItemProvider(for: capture) }
         }
         .buttonStyle(.plain)
       }
