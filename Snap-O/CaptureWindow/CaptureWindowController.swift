@@ -54,9 +54,28 @@ final class CaptureWindowController: ObservableObject {
     }
   }
 
+  func selectMedia(id: CaptureMedia.ID) {
+    let direction = selectionDirection(forSelection: id)
+    selectMedia(id: id, direction: direction)
+  }
+
+  private func selectionDirection(
+    forSelection selection: CaptureMedia.ID
+  ) -> DeviceTransitionDirection {
+    guard let selectedMediaID,
+          let currentIndex = mediaList.firstIndex(where: { $0.id == selectedMediaID }),
+          let newIndex = mediaList.firstIndex(where: { $0.id == selection }),
+          currentIndex != newIndex
+    else {
+      return .neutral
+    }
+
+    return newIndex > currentIndex ? .next : .previous
+  }
+
   func selectMedia(id: CaptureMedia.ID?, direction: DeviceTransitionDirection) {
     guard selectedMediaID != id else {
-      transitionDirection = direction
+      transitionDirection = .neutral
       return
     }
 

@@ -69,20 +69,13 @@ struct CaptureWindow: View {
         CapturePreviewStrip(
           captures: captures,
           selectedID: controller.selectedMediaID
-        ) { selection in
-          let direction = overlayDirection(
-            forSelection: selection,
-            in: captures,
-            currentSelection: controller.selectedMediaID
-          )
-          controller.selectMedia(id: selection, direction: direction)
-        }
-        .opacity(controller.shouldShowPreviewHint ? 1 : 0)
-        .offset(y: controller.shouldShowPreviewHint ? 0 : -20)
-        .padding(.top, 12)
-        .allowsHitTesting(controller.shouldShowPreviewHint)
-        .onHover { controller.setPreviewHintHovering($0) }
-        .animation(.easeInOut(duration: 0.35), value: controller.shouldShowPreviewHint)
+        ) { controller.selectMedia(id: $0) }
+          .opacity(controller.shouldShowPreviewHint ? 1 : 0)
+          .offset(y: controller.shouldShowPreviewHint ? 0 : -20)
+          .padding(.top, 12)
+          .allowsHitTesting(controller.shouldShowPreviewHint)
+          .onHover { controller.setPreviewHintHovering($0) }
+          .animation(.easeInOut(duration: 0.35), value: controller.shouldShowPreviewHint)
       }
     }
     .animation(.snappy(duration: 0.25), value: controller.currentCaptureViewID)
@@ -96,22 +89,6 @@ extension CaptureWindow {
     case .next: xTransition(insertion: .trailing, removal: .leading)
     case .neutral: .opacity
     }
-  }
-
-  private func overlayDirection(
-    forSelection selection: CaptureMedia.ID,
-    in captures: [CaptureMedia],
-    currentSelection: CaptureMedia.ID?
-  ) -> DeviceTransitionDirection {
-    guard let currentSelection,
-          let currentIndex = captures.firstIndex(where: { $0.id == currentSelection }),
-          let newIndex = captures.firstIndex(where: { $0.id == selection }),
-          currentIndex != newIndex
-    else {
-      return .neutral
-    }
-
-    return newIndex > currentIndex ? .next : .previous
   }
 
   private func xTransition(insertion: Edge, removal: Edge) -> AnyTransition {
