@@ -5,7 +5,6 @@ import SwiftUI
 final class CaptureSnapshotController: ObservableObject {
   @Published private(set) var mediaList: [CaptureMedia] = []
   @Published private(set) var selectedMediaID: CaptureMedia.ID?
-  @Published private(set) var transitionDirection: DeviceTransitionDirection = .neutral
   @Published private(set) var currentCaptureViewID: UUID?
   @Published private(set) var shouldShowPreviewHint: Bool = false
   @Published private(set) var overlayMediaList: [CaptureMedia] = []
@@ -31,20 +30,13 @@ final class CaptureSnapshotController: ObservableObject {
   var hasAlternativeMedia: Bool { mediaList.count > 1 }
 
   func selectMedia(id: CaptureMedia.ID) {
-    let direction = selectionDirection(forSelection: id)
-    selectMedia(id: id, direction: direction)
+    selectMedia(id: Optional(id))
   }
 
-  func selectMedia(id: CaptureMedia.ID?, direction: DeviceTransitionDirection) {
-    guard selectedMediaID != id else {
-      transitionDirection = .neutral
-      return
-    }
-
-    transitionDirection = direction
+  func selectMedia(id: CaptureMedia.ID?) {
+    guard selectedMediaID != id else { return }
     Task { @MainActor [weak self] in
       guard let self else { return }
-      await Task.yield()
       selectedMediaID = id
       let baseCapture = capture(for: id) ?? mediaList.first
       updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
@@ -57,11 +49,11 @@ final class CaptureSnapshotController: ObservableObject {
     guard let currentID = selectedMediaID,
           let currentIndex = mediaList.firstIndex(where: { $0.id == currentID })
     else {
-      selectMedia(id: mediaList.first?.id, direction: .next)
+      selectMedia(id: mediaList.first?.id)
       return
     }
     let nextIndex = (currentIndex + 1) % mediaList.count
-    selectMedia(id: mediaList[nextIndex].id, direction: .next)
+    selectMedia(id: mediaList[nextIndex].id)
   }
 
   func selectPreviousMedia() {
@@ -69,18 +61,17 @@ final class CaptureSnapshotController: ObservableObject {
     guard let currentID = selectedMediaID,
           let currentIndex = mediaList.firstIndex(where: { $0.id == currentID })
     else {
-      selectMedia(id: mediaList.first?.id, direction: .previous)
+      selectMedia(id: mediaList.first?.id)
       return
     }
     let previousIndex = (currentIndex - 1 + mediaList.count) % mediaList.count
-    selectMedia(id: mediaList[previousIndex].id, direction: .previous)
+    selectMedia(id: mediaList[previousIndex].id)
   }
 
   func updateMediaList(
     _ newMedia: [CaptureMedia],
     preserveDeviceID: String?,
-    shouldSort: Bool,
-    resetTransition: Bool
+    shouldSort: Bool
   ) {
     if shouldShowPreviewHint {
       dismissPreviewHintImmediately()
@@ -107,10 +98,6 @@ final class CaptureSnapshotController: ObservableObject {
       // Keep current selection
     } else {
       selectedMediaID = ordered.first?.id
-    }
-
-    if resetTransition {
-      transitionDirection = .neutral
     }
 
     let baseCapture: CaptureMedia? = if let currentID = selectedMediaID {
@@ -175,20 +162,6 @@ final class CaptureSnapshotController: ObservableObject {
   func clearSelection() {
     selectedMediaID = nil
     updateCurrentCaptureSnapshotIfNeeded(with: nil)
-  }
-
-  private func selectionDirection(
-    forSelection selection: CaptureMedia.ID
-  ) -> DeviceTransitionDirection {
-    guard let selectedMediaID,
-          let currentIndex = mediaList.firstIndex(where: { $0.id == selectedMediaID }),
-          let newIndex = mediaList.firstIndex(where: { $0.id == selection }),
-          currentIndex != newIndex
-    else {
-      return .neutral
-    }
-
-    return newIndex > currentIndex ? .next : .previous
   }
 
   private func capture(for id: CaptureMedia.ID?) -> CaptureMedia? {

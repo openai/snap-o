@@ -35,7 +35,6 @@ struct IdleOverlayView: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
-        .transition(.opacity)
       } else if isRecording {
         ProgressView()
           .progressViewStyle(.circular)
@@ -44,32 +43,13 @@ struct IdleOverlayView: View {
       } else if !hasDevices, isDeviceListInitialized {
         Text("Waiting for device…")
           .foregroundStyle(.gray)
-          .transition(.opacity)
       }
 
       if let err = lastError {
         Text(err)
           .font(.footnote)
           .foregroundStyle(.red)
-          .transition(.opacity)
       }
     }
-    .animation(.snappy(duration: 0.25), value: animationState)
   }
-
-  private var animationState: AnimationState {
-    AnimationState(
-      isRecording: isRecording,
-      hasDevices: hasDevices,
-      isDeviceListInitialized: isDeviceListInitialized,
-      hasError: lastError != nil
-    )
-  }
-}
-
-private struct AnimationState: Equatable {
-  var isRecording: Bool
-  var hasDevices: Bool
-  var isDeviceListInitialized: Bool
-  var hasError: Bool
 }

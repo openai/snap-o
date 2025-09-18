@@ -51,8 +51,8 @@ final class CaptureWindowController: ObservableObject {
     snapshotController.selectMedia(id: id)
   }
 
-  func selectMedia(id: CaptureMedia.ID?, direction: DeviceTransitionDirection) {
-    snapshotController.selectMedia(id: id, direction: direction)
+  func selectMedia(id: CaptureMedia.ID?) {
+    snapshotController.selectMedia(id: id)
   }
 
   func selectNextMedia() {
@@ -75,7 +75,6 @@ final class CaptureWindowController: ObservableObject {
 
   var mediaList: [CaptureMedia] { snapshotController.mediaList }
   var selectedMediaID: CaptureMedia.ID? { snapshotController.selectedMediaID }
-  var transitionDirection: DeviceTransitionDirection { snapshotController.transitionDirection }
   var currentCaptureViewID: UUID? { snapshotController.currentCaptureViewID }
   var shouldShowPreviewHint: Bool { snapshotController.shouldShowPreviewHint }
   var overlayMediaList: [CaptureMedia] { snapshotController.overlayMediaList }
@@ -111,8 +110,7 @@ final class CaptureWindowController: ObservableObject {
     snapshotController.updateMediaList(
       [],
       preserveDeviceID: nil,
-      shouldSort: false,
-      resetTransition: true
+      shouldSort: false
     )
 
     if let media = await consumePreloadedMedia() {
@@ -136,8 +134,7 @@ final class CaptureWindowController: ObservableObject {
     snapshotController.updateMediaList(
       [],
       preserveDeviceID: nil,
-      shouldSort: false,
-      resetTransition: true
+      shouldSort: false
     )
 
     let captureService = services.captureService
@@ -306,8 +303,7 @@ final class CaptureWindowController: ObservableObject {
     snapshotController.updateMediaList(
       mediaList,
       preserveDeviceID: mediaList.first?.device.id,
-      shouldSort: false,
-      resetTransition: true
+      shouldSort: false
     )
   }
 
@@ -325,8 +321,7 @@ final class CaptureWindowController: ObservableObject {
       snapshotController.updateMediaList(
         newMedia,
         preserveDeviceID: targetDeviceID,
-        shouldSort: true,
-        resetTransition: true
+        shouldSort: true
       )
     }
 
@@ -382,8 +377,7 @@ final class CaptureWindowController: ObservableObject {
     snapshotController.updateMediaList(
       media,
       preserveDeviceID: preferredDeviceID,
-      shouldSort: false,
-      resetTransition: false
+      shouldSort: false
     )
 
     isProcessing = false

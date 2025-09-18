@@ -35,7 +35,6 @@ struct CapturePreviewStrip: View {
             .stroke(Color.accentColor, lineWidth: 3)
             .frame(width: rect.width, height: rect.height)
             .position(x: rect.midX, y: rect.midY)
-            .animation(.easeInOut(duration: 0.25), value: selectedID)
         }
       }
     }
