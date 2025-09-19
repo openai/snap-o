@@ -1,3 +1,5 @@
+[![download](https://img.shields.io/github/v/release/openai/snap-o?label=download&color=brightgreen)](https://github.com/openai/snap-o/releases/latest)
+
 <p>
   <img src=".github/banner.png" alt="Snap-O: Android screen capture tool for macOS">
 </p>
