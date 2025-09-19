@@ -114,6 +114,7 @@ struct SnapOCommands: Commands {
       .disabled(!hasAlternativeMedia)
       Divider()
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
+      Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }
     CommandMenu("ADB") {
       Button("Set ADB path…") {

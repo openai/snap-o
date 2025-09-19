@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CaptureWindow: View {
   @StateObject private var controller = CaptureWindowController()
+  @StateObject private var settings = AppSettings.shared
 
   var body: some View {
     ZStack {
@@ -40,7 +41,7 @@ struct CaptureWindow: View {
       .frame(width: 0, height: 0)
     )
     .toolbar {
-      CaptureToolbar(controller: controller)
+      CaptureToolbar(controller: controller, settings: settings)
 
       if let progress = controller.captureProgressText {
         ToolbarItem(placement: .status) {

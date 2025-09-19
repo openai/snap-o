@@ -7,13 +7,21 @@ final class AppSettings: ObservableObject {
 
   @Published var showTouchesDuringCapture: Bool {
     didSet {
-      UserDefaults.standard.set(showTouchesDuringCapture, forKey: Self.key)
+      UserDefaults.standard.set(showTouchesDuringCapture, forKey: Self.showTouchesKey)
     }
   }
 
-  private static let key = "showTouchesDuringCapture"
+  @Published var recordAsBugReport: Bool {
+    didSet {
+      UserDefaults.standard.set(recordAsBugReport, forKey: Self.bugReportKey)
+    }
+  }
+
+  private static let showTouchesKey = "showTouchesDuringCapture"
+  private static let bugReportKey = "recordAsBugReport"
 
   init() {
-    showTouchesDuringCapture = UserDefaults.standard.object(forKey: Self.key) as? Bool ?? true
+    showTouchesDuringCapture = UserDefaults.standard.object(forKey: Self.showTouchesKey) as? Bool ?? true
+    recordAsBugReport = UserDefaults.standard.object(forKey: Self.bugReportKey) as? Bool ?? false
   }
 }
