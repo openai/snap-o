@@ -24,7 +24,8 @@ struct ADBExec: Sendable {
   func startScreenrecord(
     deviceID: String,
     bitRateMbps: Int = 8,
-    timeLimitSeconds: Int = 60 * 60 * 3
+    timeLimitSeconds: Int = 60 * 60 * 3,
+    bugReport: Bool = false
   ) async throws -> RecordingSession {
     let sizeHint = try? await displaySize(deviceID: deviceID)
     let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
@@ -32,7 +33,8 @@ struct ADBExec: Sendable {
       bitRateMbps: bitRateMbps,
       timeLimitSeconds: timeLimitSeconds,
       size: sizeHint,
-      destination: remote
+      destination: remote,
+      bugReport: bugReport
     )
 
     let connection = try await makeConnection()
@@ -308,11 +310,13 @@ struct ADBExec: Sendable {
     timeLimitSeconds: Int,
     size: String?,
     destination: String,
-    outputFormat: String? = nil
+    outputFormat: String? = nil,
+    bugReport: Bool = false
   ) -> String {
     var command = "screenrecord --bit-rate \(bitRateMbps * 1_000_000) --time-limit \(timeLimitSeconds)"
     if let outputFormat, !outputFormat.isEmpty { command += " --output-format=\(outputFormat)" }
     if let size, !size.isEmpty { command += " --size \(size)" }
+    if bugReport { command += " --bugreport" }
     command += " \(destination)"
     return command
   }

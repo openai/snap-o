@@ -12,7 +12,11 @@ actor CaptureService {
   private var lastCaptureTimestamp: Date? // Keeps filenames unique when captures share a real timestamp.
   private var showTouchesOverrides: [String: Task<Bool?, Never>] = [:]
 
-  init(adb: ADBService, fileStore: FileStore, deviceTracker: DeviceTracker) {
+  init(
+    adb: ADBService,
+    fileStore: FileStore,
+    deviceTracker: DeviceTracker
+  ) {
     self.adb = adb
     self.fileStore = fileStore
     self.deviceTracker = deviceTracker
@@ -55,14 +59,18 @@ actor CaptureService {
   func startRecordings(for devices: [Device]) async -> ([String: RecordingSession], Error?) {
     var sessions: [String: RecordingSession] = [:]
     var encounteredError: Error?
+    let targetBugReport = await AppSettings.shared.recordAsBugReport
 
     await withTaskGroup(of: (String, Result<RecordingSession, Error>).self) { group in
+      let exec = await adb.exec()
       for device in devices {
         group.addTask {
-          let exec = await self.adb.exec()
+          await self.beginShowTouchesOverride(deviceID: device.id)
           do {
-            let session = try await exec.startScreenrecord(deviceID: device.id)
-            await self.beginShowTouchesOverride(deviceID: device.id)
+            let session = try await exec.startScreenrecord(
+              deviceID: device.id,
+              bugReport: targetBugReport
+            )
             return (device.id, .success(session))
           } catch {
             await self.scheduleRestoreShowTouches(deviceID: device.id)
@@ -147,8 +155,9 @@ actor CaptureService {
   }
 
   func startLivePreview(for deviceID: String) async throws -> LivePreviewSession {
+    beginShowTouchesOverride(deviceID: deviceID)
+
     do {
-      beginShowTouchesOverride(deviceID: deviceID)
       return try await LivePreviewSession(deviceID: deviceID, adb: adb)
     } catch {
       await scheduleRestoreShowTouches(deviceID: deviceID)
@@ -197,10 +206,10 @@ actor CaptureService {
     guard showTouchesOverrides[deviceID] == nil else { return }
 
     let task = Task<Bool?, Never> {
+      let targetValue = await AppSettings.shared.showTouchesDuringCapture
+      let exec = await adb.exec()
       do {
-        let exec = await adb.exec()
         let originalValue = try await exec.getShowTouches(deviceID: deviceID)
-        let targetValue = await AppSettings.shared.showTouchesDuringCapture
         if originalValue != targetValue {
           try await exec.setShowTouches(deviceID: deviceID, enabled: targetValue)
         }
@@ -217,10 +226,10 @@ actor CaptureService {
   }
 
   private func scheduleRestoreShowTouches(deviceID: String) async {
-    guard let state = showTouchesOverrides.removeValue(forKey: deviceID) else { return }
+    guard let task = showTouchesOverrides.removeValue(forKey: deviceID) else { return }
     let exec = await adb.exec()
     Task.detached(priority: .utility) {
-      let originalValue = await state.value
+      let originalValue = await task.value
       guard let originalValue else { return }
       do {
         try await exec.setShowTouches(deviceID: deviceID, enabled: originalValue)
