@@ -23,8 +23,7 @@ struct CapturePreviewStrip: View {
     }
     .padding(.horizontal, 24)
     .padding(.vertical, 16)
-    .background(.ultraThinMaterial)
-    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(.ultraThinMaterial))
     .shadow(color: Color.black.opacity(0.25), radius: 10, x: 0, y: 6)
     .padding(.horizontal, 24)
     .overlayPreferenceValue(PreviewSelectionBoundsKey.self) { anchor in
@@ -47,9 +46,11 @@ private struct CapturePreviewThumbnail: View {
   var dragItemProvider: () -> NSItemProvider
 
   private let height: CGFloat = 80
+  @StateObject private var imageLoader = ImageLoader()
+  @State private var isHovered = false
 
   var body: some View {
-    ZStack {
+    let preview = ZStack {
       thumbnail
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.6))
@@ -60,13 +61,24 @@ private struct CapturePreviewThumbnail: View {
     .frame(width: targetWidth, height: height)
     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     .anchorPreference(key: PreviewSelectionBoundsKey.self, value: .bounds) { isSelected ? $0 : nil }
-    .onDrag { dragItemProvider() }
+
+    return preview
+      .onDrag { dragItemProvider() }
+      .onHover { isHovered = $0 }
+      .overlay(alignment: .bottom) {
+        if isHovered {
+          TextBubble(text: capture.device.displayTitle)
+            .fixedSize(horizontal: true, vertical: true)
+            .offset(y: 32)
+            .allowsHitTesting(false)
+        }
+      }
   }
 
   @ViewBuilder private var thumbnail: some View {
     switch capture.media {
     case .image(let url, _):
-      if let image = NSImage(contentsOf: url) {
+      if let image = imageLoader.image(url: url) {
         Image(nsImage: image)
           .resizable()
           .scaledToFill()
@@ -198,6 +210,22 @@ private struct VideoPreviewThumbnail: View {
         thumbnail = image
       }
     }
+  }
+}
+
+private struct TextBubble: View {
+  let text: String
+
+  var body: some View {
+    Text(text)
+      .multilineTextAlignment(.center)
+      .font(.system(size: 13, weight: .medium))
+      .padding(.horizontal, 14)
+      .padding(.vertical, 6)
+      .background(
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .fill(.ultraThinMaterial)
+      )
   }
 }
 
