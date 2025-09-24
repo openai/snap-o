@@ -6,12 +6,14 @@ struct SnapOCommands: Commands {
 
   @ObservedObject var settings: AppSettings
   private let adbService: ADBService
+  private let networkInspectorController: NetworkInspectorWindowController
 
   private let updaterController: SPUStandardUpdaterController
 
-  init(settings: AppSettings, adbService: ADBService) {
+  init(settings: AppSettings, adbService: ADBService, networkInspectorController: NetworkInspectorWindowController) {
     self.settings = settings
     self.adbService = adbService
+    self.networkInspectorController = networkInspectorController
     // Initialize Sparkle updater controller; starts checks automatically
     updaterController = SPUStandardUpdaterController(
       startingUpdater: true,
@@ -116,7 +118,11 @@ struct SnapOCommands: Commands {
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }
-    CommandMenu("ADB") {
+    CommandMenu("Tools") {
+      Button("Network Inspector") {
+        networkInspectorController.showWindow()
+      }
+      Divider()
       Button("Set ADB path…") {
         Task { await adbService.promptForPath() }
       }

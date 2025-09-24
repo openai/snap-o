@@ -7,6 +7,7 @@ struct SnapOApp: App {
 
   private let services: AppServices
   private let settings: AppSettings
+  private let networkInspectorController = NetworkInspectorWindowController()
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
@@ -30,7 +31,8 @@ struct SnapOApp: App {
     .commands {
       SnapOCommands(
         settings: settings,
-        adbService: services.adbService
+        adbService: services.adbService,
+        networkInspectorController: networkInspectorController
       )
     }
   }
