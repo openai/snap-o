@@ -23,7 +23,7 @@ final class NetworkInspectorWindowController: NSObject, NSWindowDelegate {
     let hostingController = NSHostingController(rootView: NetworkInspectorView(store: store))
     let window = NSWindow(contentViewController: hostingController)
     window.title = "Network Inspector"
-    window.setContentSize(NSSize(width: 640, height: 480))
+    window.setContentSize(NSSize(width: 960, height: 520))
     window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
     window.isReleasedWhenClosed = false
     window.center()
