@@ -7,6 +7,7 @@ final actor AppServices {
   let deviceTracker: DeviceTracker
   let fileStore: FileStore
   let captureService: CaptureService
+  let networkInspector: NetworkInspectorService
 
   init() {
     adbService = ADBService()
@@ -17,11 +18,16 @@ final actor AppServices {
       fileStore: fileStore,
       deviceTracker: deviceTracker
     )
+    networkInspector = NetworkInspectorService(
+      adbService: adbService,
+      deviceTracker: deviceTracker
+    )
   }
 
   func start() async {
     Perf.step(.appFirstSnapshot, "services start")
     deviceTracker.startTracking()
+    await networkInspector.start()
 
     Task {
       Perf.step(.appFirstSnapshot, "start preload task")

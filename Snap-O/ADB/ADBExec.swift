@@ -1,5 +1,14 @@
 import CoreGraphics
+import Darwin
 import Foundation
+
+struct ADBForwardHandle: Sendable {
+  fileprivate let deviceID: String
+  fileprivate let localPort: UInt16
+  fileprivate let remote: String
+
+  var port: UInt16 { localPort }
+}
 
 struct ADBExec: Sendable {
   typealias PathResolver = @Sendable () async throws -> URL
@@ -218,6 +227,35 @@ struct ADBExec: Sendable {
     }
   }
 
+  func listUnixSockets(deviceID: String) async throws -> String {
+    try await runShellString(deviceID: deviceID, command: "cat /proc/net/unix")
+  }
+
+  func forwardLocalAbstract(deviceID: String, abstractSocket: String) async throws -> ADBForwardHandle {
+    try await withConnection { connection in
+      let remote = "localabstract:\(abstractSocket)"
+      let portValue = try Self.allocateEphemeralPort()
+      _ = try connection.sendHostCommand(
+        "host-serial:\(deviceID):forward:tcp:\(portValue);\(remote)",
+        expectsResponse: false
+      )
+      return ADBForwardHandle(
+        deviceID: deviceID,
+        localPort: portValue,
+        remote: remote
+      )
+    }
+  }
+
+  func removeForward(_ handle: ADBForwardHandle) async {
+    _ = try? await withConnection { connection in
+      try connection.sendHostCommand(
+        "host-serial:\(handle.deviceID):killforward:tcp:\(handle.localPort)",
+        expectsResponse: false
+      )
+    }
+  }
+
   // Currently exposed for LivePreviewPointerInjector which issues multiple calls over a single connection.
   // Need a more consistent API.
   func makeConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
@@ -369,6 +407,44 @@ struct ADBExec: Sendable {
       return ADBError.serverUnavailable((error as NSError).localizedDescription)
     }
     return error
+  }
+
+  private static func allocateEphemeralPort() throws -> UInt16 {
+    let fd = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+    guard fd >= 0 else {
+      let error = errno
+      throw POSIXError(POSIXError.Code(rawValue: error) ?? .EIO)
+    }
+    defer { Darwin.close(fd) }
+
+    var addr = sockaddr_in()
+    addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+    addr.sin_port = in_port_t(0).bigEndian
+
+    let bindResult = withUnsafePointer(to: &addr) {
+      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+        Darwin.bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+      }
+    }
+    guard bindResult == 0 else {
+      let error = errno
+      throw POSIXError(POSIXError.Code(rawValue: error) ?? .EIO)
+    }
+
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let nameResult = withUnsafeMutablePointer(to: &addr) {
+      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+        getsockname(fd, pointer, &length)
+      }
+    }
+    guard nameResult == 0 else {
+      let error = errno
+      throw POSIXError(POSIXError.Code(rawValue: error) ?? .EIO)
+    }
+
+    return UInt16(bigEndian: addr.sin_port)
   }
 }
 

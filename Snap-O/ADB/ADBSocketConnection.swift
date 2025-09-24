@@ -72,6 +72,22 @@ final class ADBSocketConnection {
     try send(.sync)
   }
 
+  func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String? {
+    let payload = try Self.utf8Data(command, label: "request")
+    let header = String(format: "%04X", payload.count)
+    let headerData = try Self.asciiData(header, label: "header")
+    try writeFully(headerData)
+    try writeFully(payload)
+    try expectOkay()
+
+    guard expectsResponse else { return nil }
+    guard let payload = try readLengthPrefixedPayload() else { return nil }
+    guard let text = String(data: payload, encoding: .utf8) else {
+      throw ADBError.protocolFailure("non-utf8 host command response")
+    }
+    return text
+  }
+
   private func send(_ request: Request) throws {
     try sendRequest(request.rawValue)
   }

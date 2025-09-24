@@ -4,6 +4,12 @@ import SwiftUI
 @MainActor
 final class NetworkInspectorWindowController: NSObject, NSWindowDelegate {
   private var windowController: NSWindowController?
+  private let service: NetworkInspectorService
+  private var store: NetworkInspectorStore?
+
+  init(service: NetworkInspectorService) {
+    self.service = service
+  }
 
   func showWindow() {
     if let windowController {
@@ -13,7 +19,8 @@ final class NetworkInspectorWindowController: NSObject, NSWindowDelegate {
       return
     }
 
-    let hostingController = NSHostingController(rootView: NetworkInspectorView())
+    let store = makeStore()
+    let hostingController = NSHostingController(rootView: NetworkInspectorView(store: store))
     let window = NSWindow(contentViewController: hostingController)
     window.title = "Network Inspector"
     window.setContentSize(NSSize(width: 640, height: 480))
@@ -37,5 +44,13 @@ final class NetworkInspectorWindowController: NSObject, NSWindowDelegate {
 
     window.delegate = nil
     windowController = nil
+    store = nil
+  }
+
+  private func makeStore() -> NetworkInspectorStore {
+    if let store { return store }
+    let newStore = NetworkInspectorStore(service: service)
+    store = newStore
+    return newStore
   }
 }

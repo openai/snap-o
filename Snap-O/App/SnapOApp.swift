@@ -7,7 +7,7 @@ struct SnapOApp: App {
 
   private let services: AppServices
   private let settings: AppSettings
-  private let networkInspectorController = NetworkInspectorWindowController()
+  private let networkInspectorController: NetworkInspectorWindowController
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
@@ -16,6 +16,10 @@ struct SnapOApp: App {
     self.services = services
 
     settings = AppSettings.shared
+
+    networkInspectorController = NetworkInspectorWindowController(
+      service: services.networkInspector
+    )
 
     Task.detached(priority: .userInitiated) {
       await services.start()
