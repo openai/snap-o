@@ -122,6 +122,7 @@ struct SnapOCommands: Commands {
       Button("Network Inspector") {
         networkInspectorController.showWindow()
       }
+      .keyboardShortcut("i", modifiers: [.command, .option])
       Divider()
       Button("Set ADB path…") {
         Task { await adbService.promptForPath() }

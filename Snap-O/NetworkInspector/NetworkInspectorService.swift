@@ -18,6 +18,9 @@ actor NetworkInspectorService {
   private var events: [NetworkInspectorEvent] = []
   private var serverContinuations: [UUID: AsyncStream<[NetworkInspectorServer]>.Continuation] = [:]
   private var eventContinuations: [UUID: AsyncStream<NetworkInspectorEvent>.Continuation] = [:]
+  private var requestStates: [NetworkInspectorRequest.ID: NetworkInspectorRequest] = [:]
+  private var requestOrder: [NetworkInspectorRequest.ID] = []
+  private var requestContinuations: [UUID: AsyncStream<[NetworkInspectorRequest]>.Continuation] = [:]
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -72,12 +75,27 @@ actor NetworkInspectorService {
     }
   }
 
+  func requestsStream() -> AsyncStream<[NetworkInspectorRequest]> {
+    let id = UUID()
+    return AsyncStream { continuation in
+      requestContinuations[id] = continuation
+      continuation.yield(currentRequests())
+      continuation.onTermination = { [weak self] _ in
+        Task { await self?.removeRequestContinuation(id) }
+      }
+    }
+  }
+
   private func removeServerContinuation(_ id: UUID) {
     serverContinuations.removeValue(forKey: id)
   }
 
   private func removeEventContinuation(_ id: UUID) {
     eventContinuations.removeValue(forKey: id)
+  }
+
+  private func removeRequestContinuation(_ id: UUID) {
+    requestContinuations.removeValue(forKey: id)
   }
 
   private func updateDevices(_ devices: [Device]) async {
@@ -193,6 +211,7 @@ actor NetworkInspectorService {
       deviceSockets[id.deviceID] = sockets
     }
     broadcastServers()
+    removeRequests(for: id)
   }
 
   private func removeForward(_ handle: ADBForwardHandle) async {
@@ -203,11 +222,18 @@ actor NetworkInspectorService {
   private func handle(record: SnapONetRecord, from serverID: NetworkInspectorServer.ID) async {
     guard var state = serverStates[serverID] else { return }
     var shouldBroadcastServers = false
+    var shouldBroadcastRequests = false
 
     switch record {
     case .hello(let hello):
       state.server.hello = hello
       shouldBroadcastServers = true
+    case .requestWillBeSent(let requestRecord):
+      shouldBroadcastRequests = updateRequest(for: serverID, with: requestRecord)
+    case .responseReceived(let responseRecord):
+      shouldBroadcastRequests = updateRequest(for: serverID, with: responseRecord)
+    case .requestFailed(let failureRecord):
+      shouldBroadcastRequests = updateRequest(for: serverID, with: failureRecord)
     default:
       break
     }
@@ -217,6 +243,10 @@ actor NetworkInspectorService {
 
     if shouldBroadcastServers {
       broadcastServers()
+    }
+
+    if shouldBroadcastRequests {
+      broadcastRequests()
     }
 
     let event = NetworkInspectorEvent(
@@ -250,6 +280,13 @@ actor NetworkInspectorService {
     }
   }
 
+  private func broadcastRequests() {
+    let snapshot = currentRequests()
+    for continuation in requestContinuations.values {
+      continuation.yield(snapshot)
+    }
+  }
+
   private func currentServers() -> [NetworkInspectorServer] {
     serverStates.values.map(\.server).sorted { lhs, rhs in
       if lhs.deviceID == rhs.deviceID {
@@ -257,6 +294,79 @@ actor NetworkInspectorService {
       }
       return lhs.deviceID < rhs.deviceID
     }
+  }
+
+  private func currentRequests() -> [NetworkInspectorRequest] {
+    requestOrder.compactMap { requestStates[$0] }
+  }
+
+  private func removeRequests(for serverID: NetworkInspectorServer.ID) {
+    requestOrder.removeAll { $0.serverID == serverID }
+    requestStates = requestStates.filter { key, _ in key.serverID != serverID }
+    broadcastRequests()
+  }
+
+  private func updateRequest(for serverID: NetworkInspectorServer.ID, with record: SnapONetRequestWillBeSentRecord) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorRequest.ID(serverID: serverID, requestID: record.id)
+    var updated = requestStates[identifier]
+
+    if updated == nil {
+      updated = NetworkInspectorRequest(serverID: serverID, request: record, timestamp: timestamp)
+      requestOrder.append(identifier)
+    } else {
+      updated?.request = record
+      updated?.failure = nil
+    }
+
+    updated?.lastUpdatedAt = timestamp
+    if let updated {
+      requestStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateRequest(for serverID: NetworkInspectorServer.ID, with record: SnapONetResponseReceivedRecord) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorRequest.ID(serverID: serverID, requestID: record.id)
+    var updated = requestStates[identifier]
+
+    if updated == nil {
+      updated = NetworkInspectorRequest(serverID: serverID, requestID: record.id, timestamp: timestamp)
+      requestOrder.append(identifier)
+    }
+
+    updated?.response = record
+    updated?.failure = nil
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      requestStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateRequest(for serverID: NetworkInspectorServer.ID, with record: SnapONetRequestFailedRecord) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorRequest.ID(serverID: serverID, requestID: record.id)
+    var updated = requestStates[identifier]
+
+    if updated == nil {
+      updated = NetworkInspectorRequest(serverID: serverID, requestID: record.id, timestamp: timestamp)
+      requestOrder.append(identifier)
+    }
+
+    updated?.failure = record
+    updated?.response = nil
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      requestStates[identifier] = updated
+      return true
+    }
+    return false
   }
 
   private static func parseServers(from output: String) -> Set<String> {

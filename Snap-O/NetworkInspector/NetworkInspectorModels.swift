@@ -21,6 +21,50 @@ struct NetworkInspectorEvent: Identifiable, Sendable {
   let receivedAt: Date
 }
 
+struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
+  struct ID: Hashable, Sendable {
+    let serverID: NetworkInspectorServer.ID
+    let requestID: String
+  }
+
+  var id: ID { ID(serverID: serverID, requestID: requestID) }
+  let serverID: NetworkInspectorServer.ID
+  let requestID: String
+  var request: SnapONetRequestWillBeSentRecord?
+  var response: SnapONetResponseReceivedRecord?
+  var failure: SnapONetRequestFailedRecord?
+  let firstSeenAt: Date
+  var lastUpdatedAt: Date
+
+  init(
+    serverID: NetworkInspectorServer.ID,
+    request: SnapONetRequestWillBeSentRecord,
+    timestamp: Date
+  ) {
+    self.serverID = serverID
+    requestID = request.id
+    self.request = request
+    response = nil
+    failure = nil
+    firstSeenAt = timestamp
+    lastUpdatedAt = timestamp
+  }
+
+  init(
+    serverID: NetworkInspectorServer.ID,
+    requestID: String,
+    timestamp: Date
+  ) {
+    self.serverID = serverID
+    self.requestID = requestID
+    request = nil
+    response = nil
+    failure = nil
+    firstSeenAt = timestamp
+    lastUpdatedAt = timestamp
+  }
+}
+
 enum SnapONetRecord: Sendable {
   case hello(SnapONetHelloRecord)
   case replayComplete(SnapONetReplayCompleteRecord)
