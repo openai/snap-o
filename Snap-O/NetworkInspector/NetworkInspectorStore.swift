@@ -210,8 +210,19 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     if let responseRecord = request.response {
       if let text = responseRecord.body ?? responseRecord.bodyPreview {
         let capturedBytes = Int64(text.lengthOfBytes(using: .utf8))
+        let contentType = responseRecord.headers.first { $0.key.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
+        let prettyPrinted = ResponseBody.prettyPrintedJSON(from: text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let startsLikeJSON = trimmed.first.map { ["{", "[", "\""].contains(String($0)) } ?? false
+        let isLikelyJSON =
+          (contentType?.localizedCaseInsensitiveContains("json") ?? false) ||
+          prettyPrinted != nil ||
+          startsLikeJSON
+
         responseBody = ResponseBody(
-          text: text,
+          rawText: text,
+          prettyPrintedText: prettyPrinted,
+          isLikelyJSON: isLikelyJSON,
           isPreview: responseRecord.body == nil,
           truncatedBytes: responseRecord.bodyTruncatedBytes,
           totalBytes: responseRecord.bodySize,
@@ -232,11 +243,24 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   }
 
   struct ResponseBody: Hashable {
-    let text: String
+    let rawText: String
+    let prettyPrintedText: String?
+    let isLikelyJSON: Bool
     let isPreview: Bool
     let truncatedBytes: Int64?
     let totalBytes: Int64?
     let capturedBytes: Int64
+
+    static func prettyPrintedJSON(from text: String) -> String? {
+      guard let data = text.data(using: .utf8) else { return nil }
+      do {
+        let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        let prettyData = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted])
+        return String(data: prettyData, encoding: .utf8)
+      } catch {
+        return nil
+      }
+    }
   }
 }
 

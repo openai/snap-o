@@ -453,7 +453,14 @@ private struct NetworkInspectorHeadersSection: View {
 
 private struct NetworkInspectorBodySection: View {
   let title: String
-  let responseBody: NetworkInspectorRequestViewModel.ResponseBody
+  let payload: NetworkInspectorRequestViewModel.ResponseBody
+  @State private var usePrettyPrinted: Bool
+
+  init(title: String, responseBody: NetworkInspectorRequestViewModel.ResponseBody) {
+    self.title = title
+    payload = responseBody
+    _usePrettyPrinted = State(initialValue: responseBody.prettyPrintedText != nil)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -466,7 +473,16 @@ private struct NetworkInspectorBodySection: View {
           .foregroundStyle(.secondary)
       }
 
-      Text(responseBody.text)
+      if payload.prettyPrintedText != nil {
+        Toggle("Pretty print JSON", isOn: $usePrettyPrinted)
+          .font(.caption)
+      } else if payload.isLikelyJSON {
+        Text("Unable to pretty print (invalid or truncated JSON)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Text(displayText)
         .font(.body.monospaced())
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -479,27 +495,34 @@ private struct NetworkInspectorBodySection: View {
   private var metadataText: String? {
     var parts: [String] = []
 
-    if responseBody.capturedBytes > 0 {
-      parts.append("Captured \(formatBytes(responseBody.capturedBytes))")
-      if let total = responseBody.totalBytes {
+    if payload.capturedBytes > 0 {
+      parts.append("Captured \(formatBytes(payload.capturedBytes))")
+      if let total = payload.totalBytes {
         parts.append("of \(formatBytes(total))")
       }
-    } else if let total = responseBody.totalBytes {
+    } else if let total = payload.totalBytes {
       parts.append("Total \(formatBytes(total))")
     }
 
-    if let truncated = responseBody.truncatedBytes {
+    if let truncated = payload.truncatedBytes {
       if truncated > 0 {
         parts.append("(\(formatBytes(truncated)) truncated)")
-      } else if truncated == 0 && !responseBody.isPreview {
+      } else if truncated == 0 && !payload.isPreview {
         parts.append("(complete)")
       }
-    } else if responseBody.isPreview {
+    } else if payload.isPreview {
       parts.append("(preview)")
     }
 
     guard !parts.isEmpty else { return nil }
     return parts.joined(separator: " ")
+  }
+
+  private var displayText: String {
+    if usePrettyPrinted, let pretty = payload.prettyPrintedText {
+      return pretty
+    }
+    return payload.rawText
   }
 }
 
