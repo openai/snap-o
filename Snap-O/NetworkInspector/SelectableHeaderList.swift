@@ -12,6 +12,7 @@ struct SelectableHeaderList: NSViewRepresentable {
     textView.backgroundColor = .clear
     textView.textContainerInset = .zero
     textView.linkTextAttributes = [:]
+
     let attributedString = makeHeaderAttributedString(headers: headers)
     textView.textStorage?.setAttributedString(attributedString)
     return textView
@@ -19,7 +20,6 @@ struct SelectableHeaderList: NSViewRepresentable {
 
   func updateNSView(_ textView: NSTextView, context: Context) {
     let previousSelection = textView.selectedRange()
-    textView.textContainer?.lineFragmentPadding = 0
 
     let attributedString = makeHeaderAttributedString(headers: headers)
     textView.textStorage?.setAttributedString(attributedString)
@@ -31,24 +31,21 @@ struct SelectableHeaderList: NSViewRepresentable {
     textView.setSelectedRange(NSRange(location: clampedLocation, length: clampedLength))
   }
 
-  func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextView, context: Context) -> CGSize? {
-    guard let textStorage = nsView.textStorage else {
-      return CGSize(width: proposal.width ?? 0, height: 0)
+  func sizeThatFits(
+    _ proposal: ProposedViewSize,
+    nsView textView: NSTextView,
+    context: Context
+  ) -> CGSize? {
+    guard let textStorage = textView.textStorage else { return .zero }
+    let width: CGFloat = switch proposal.width {
+    case 0: 300
+    default: proposal.width ?? CGFloat.greatestFiniteMagnitude
     }
-
-    let boundingSize = NSSize(
-      width: proposal.width ?? CGFloat.greatestFiniteMagnitude,
-      height: proposal.height ?? CGFloat.greatestFiniteMagnitude
-    )
+    let boundingSize = NSSize(width: width, height: .greatestFiniteMagnitude)
     let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-    let attributedString = NSAttributedString(attributedString: textStorage)
-    let measuredRect = attributedString.boundingRect(with: boundingSize, options: options)
-
-    let measuredHeight = ceil(measuredRect.height)
-    let measuredWidth = ceil(measuredRect.width)
-    let size = CGSize(width: measuredWidth, height: measuredHeight)
-
-    return size
+    let rect = NSAttributedString(attributedString: textStorage)
+      .boundingRect(with: boundingSize, options: options)
+    return CGSize(width: ceil(rect.width), height: ceil(rect.height))
   }
 }
 
