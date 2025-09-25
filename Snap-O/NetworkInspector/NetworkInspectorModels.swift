@@ -72,6 +72,15 @@ enum SnapONetRecord: Sendable {
   case requestWillBeSent(SnapONetRequestWillBeSentRecord)
   case responseReceived(SnapONetResponseReceivedRecord)
   case requestFailed(SnapONetRequestFailedRecord)
+  case webSocketWillOpen(SnapONetWebSocketWillOpenRecord)
+  case webSocketOpened(SnapONetWebSocketOpenedRecord)
+  case webSocketMessageSent(SnapONetWebSocketMessageSentRecord)
+  case webSocketMessageReceived(SnapONetWebSocketMessageReceivedRecord)
+  case webSocketClosing(SnapONetWebSocketClosingRecord)
+  case webSocketClosed(SnapONetWebSocketClosedRecord)
+  case webSocketFailed(SnapONetWebSocketFailedRecord)
+  case webSocketCloseRequested(SnapONetWebSocketCloseRequestedRecord)
+  case webSocketCancelled(SnapONetWebSocketCancelledRecord)
   case unknown(type: String, rawJSON: String)
 }
 
@@ -185,6 +194,13 @@ struct SnapONetLifecycleRecord: Decodable, Hashable, Sendable {
 }
 
 protocol SnapONetPerRequestRecord: Decodable, Sendable {
+  var schemaVersion: String { get }
+  var id: String { get }
+  var tWallMs: Int64 { get }
+  var tMonoNs: Int64 { get }
+}
+
+protocol SnapONetPerWebSocketRecord: Decodable, Sendable {
   var schemaVersion: String { get }
   var id: String { get }
   var tWallMs: Int64 { get }
@@ -394,9 +410,429 @@ struct SnapONetTimings: Decodable, Hashable, Sendable {
   }
 }
 
+struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let url: String
+  let headers: [String: String]
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    url: String,
+    headers: [String: String] = [:]
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.url = url
+    self.headers = headers
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    url = try container.decode(String.self, forKey: .url)
+    headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case url
+    case headers
+  }
+}
+
+struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let code: Int
+  let headers: [String: String]
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    code: Int,
+    headers: [String: String] = [:]
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.code = code
+    self.headers = headers
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    code = try container.decode(Int.self, forKey: .code)
+    headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case code
+    case headers
+  }
+}
+
+struct SnapONetWebSocketMessageSentRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let opcode: String
+  let preview: String?
+  let payloadSize: Int64?
+  let enqueued: Bool
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    opcode: String,
+    preview: String? = nil,
+    payloadSize: Int64? = nil,
+    enqueued: Bool
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.opcode = opcode
+    self.preview = preview
+    self.payloadSize = payloadSize
+    self.enqueued = enqueued
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    opcode = try container.decode(String.self, forKey: .opcode)
+    preview = try container.decodeIfPresent(String.self, forKey: .preview)
+    payloadSize = try container.decodeIfPresent(Int64.self, forKey: .payloadSize)
+    enqueued = try container.decode(Bool.self, forKey: .enqueued)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case opcode
+    case preview
+    case payloadSize
+    case enqueued
+  }
+}
+
+struct SnapONetWebSocketMessageReceivedRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let opcode: String
+  let preview: String?
+  let payloadSize: Int64?
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    opcode: String,
+    preview: String? = nil,
+    payloadSize: Int64? = nil
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.opcode = opcode
+    self.preview = preview
+    self.payloadSize = payloadSize
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    opcode = try container.decode(String.self, forKey: .opcode)
+    preview = try container.decodeIfPresent(String.self, forKey: .preview)
+    payloadSize = try container.decodeIfPresent(Int64.self, forKey: .payloadSize)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case opcode
+    case preview
+    case payloadSize
+  }
+}
+
+struct SnapONetWebSocketClosingRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let code: Int
+  let reason: String?
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    code: Int,
+    reason: String? = nil
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.code = code
+    self.reason = reason
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    code = try container.decode(Int.self, forKey: .code)
+    reason = try container.decodeIfPresent(String.self, forKey: .reason)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case code
+    case reason
+  }
+}
+
+struct SnapONetWebSocketClosedRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let code: Int
+  let reason: String?
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    code: Int,
+    reason: String? = nil
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.code = code
+    self.reason = reason
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    code = try container.decode(Int.self, forKey: .code)
+    reason = try container.decodeIfPresent(String.self, forKey: .reason)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case code
+    case reason
+  }
+}
+
+struct SnapONetWebSocketFailedRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let errorKind: String
+  let message: String?
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    errorKind: String,
+    message: String? = nil
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.errorKind = errorKind
+    self.message = message
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    errorKind = try container.decode(String.self, forKey: .errorKind)
+    message = try container.decodeIfPresent(String.self, forKey: .message)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case errorKind
+    case message
+  }
+}
+
+struct SnapONetWebSocketCloseRequestedRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let code: Int
+  let reason: String?
+  let initiated: String
+  let accepted: Bool
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    code: Int,
+    reason: String? = nil,
+    initiated: String = "client",
+    accepted: Bool
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.code = code
+    self.reason = reason
+    self.initiated = initiated
+    self.accepted = accepted
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    code = try container.decode(Int.self, forKey: .code)
+    reason = try container.decodeIfPresent(String.self, forKey: .reason)
+    initiated = try container.decodeIfPresent(String.self, forKey: .initiated) ?? "client"
+    accepted = try container.decode(Bool.self, forKey: .accepted)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case code
+    case reason
+    case initiated
+    case accepted
+  }
+}
+
+struct SnapONetWebSocketCancelledRecord: SnapONetPerWebSocketRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+  }
+}
+
 enum SnapONetRecordDecoder {
   static let defaultSchemaVersion = "1.0"
-  static let defaultCapabilities = ["network"]
+  static let defaultCapabilities = ["network", "websocket"]
   private struct Discriminator: Decodable {
     let type: String
   }
@@ -423,6 +859,33 @@ enum SnapONetRecordDecoder {
     case "RequestFailed":
       let record = try decoder.decode(SnapONetRequestFailedRecord.self, from: data)
       return .requestFailed(record)
+    case "WebSocketWillOpen":
+      let record = try decoder.decode(SnapONetWebSocketWillOpenRecord.self, from: data)
+      return .webSocketWillOpen(record)
+    case "WebSocketOpened":
+      let record = try decoder.decode(SnapONetWebSocketOpenedRecord.self, from: data)
+      return .webSocketOpened(record)
+    case "WebSocketMessageSent":
+      let record = try decoder.decode(SnapONetWebSocketMessageSentRecord.self, from: data)
+      return .webSocketMessageSent(record)
+    case "WebSocketMessageReceived":
+      let record = try decoder.decode(SnapONetWebSocketMessageReceivedRecord.self, from: data)
+      return .webSocketMessageReceived(record)
+    case "WebSocketClosing":
+      let record = try decoder.decode(SnapONetWebSocketClosingRecord.self, from: data)
+      return .webSocketClosing(record)
+    case "WebSocketClosed":
+      let record = try decoder.decode(SnapONetWebSocketClosedRecord.self, from: data)
+      return .webSocketClosed(record)
+    case "WebSocketFailed":
+      let record = try decoder.decode(SnapONetWebSocketFailedRecord.self, from: data)
+      return .webSocketFailed(record)
+    case "WebSocketCloseRequested":
+      let record = try decoder.decode(SnapONetWebSocketCloseRequestedRecord.self, from: data)
+      return .webSocketCloseRequested(record)
+    case "WebSocketCancelled":
+      let record = try decoder.decode(SnapONetWebSocketCancelledRecord.self, from: data)
+      return .webSocketCancelled(record)
     default:
       let raw = String(data: data, encoding: .utf8) ?? "<unparseable>"
       return .unknown(type: discriminator.type, rawJSON: raw)
