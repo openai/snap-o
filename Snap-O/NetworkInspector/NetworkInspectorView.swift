@@ -445,7 +445,6 @@ private struct NetworkInspectorHeadersSection: View {
       } else {
         SelectableHeaderList(attributedString: makeHeaderAttributedString(headers: headers))
           .frame(maxWidth: .infinity, alignment: .leading)
-          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -602,6 +601,15 @@ private func appendValue(_ value: String, to line: NSMutableAttributedString, va
 private struct SelectableHeaderList: NSViewRepresentable {
   let attributedString: NSAttributedString
 
+  final class Coordinator {
+    var lastMeasuredWidth: CGFloat?
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+
   func makeNSView(context: Context) -> NSTextView {
     let textView = NSTextView()
     textView.isEditable = false
@@ -616,6 +624,7 @@ private struct SelectableHeaderList: NSViewRepresentable {
 
   func updateNSView(_ textView: NSTextView, context: Context) {
     let previousSelection = textView.selectedRange()
+    textView.textContainer?.lineFragmentPadding = 0
     textView.textStorage?.setAttributedString(attributedString)
 
     let length = attributedString.length
@@ -630,11 +639,19 @@ private struct SelectableHeaderList: NSViewRepresentable {
       return CGSize(width: proposal.width ?? 0, height: 0)
     }
 
-    let constrainedWidth = switch proposal {
-    case .zero: CGFloat.greatestFiniteMagnitude
-    case .infinity: CGFloat.greatestFiniteMagnitude
-    case .unspecified: CGFloat.greatestFiniteMagnitude
-    default: proposal.width ?? CGFloat.greatestFiniteMagnitude
+    let proposedWidth = proposal.width ?? 0
+
+    let constrainedWidth: CGFloat
+    if proposedWidth > 0 {
+      constrainedWidth = proposedWidth
+      context.coordinator.lastMeasuredWidth = proposedWidth
+    } else if let lastWidth = context.coordinator.lastMeasuredWidth {
+      constrainedWidth = lastWidth
+    } else if nsView.bounds.width > 0 {
+      constrainedWidth = nsView.bounds.width
+    } else {
+      constrainedWidth = 480
+      context.coordinator.lastMeasuredWidth = 480
     }
 
     let boundingSize = NSSize(width: constrainedWidth, height: .greatestFiniteMagnitude)
@@ -643,7 +660,7 @@ private struct SelectableHeaderList: NSViewRepresentable {
     let measuredRect = attributedString.boundingRect(with: boundingSize, options: options)
 
     let measuredHeight = ceil(measuredRect.height)
-    let measuredWidth = ceil(measuredRect.width)
+    let measuredWidth = constrainedWidth > 0 ? constrainedWidth : ceil(measuredRect.width)
     let size = CGSize(width: measuredWidth, height: measuredHeight)
 
     return size

@@ -2,18 +2,17 @@ import Sparkle
 import SwiftUI
 
 struct SnapOCommands: Commands {
+  @Environment(\.openWindow) private var openWindow
   @FocusedObject var captureController: CaptureWindowController?
 
   @ObservedObject var settings: AppSettings
   private let adbService: ADBService
-  private let networkInspectorController: NetworkInspectorWindowController
 
   private let updaterController: SPUStandardUpdaterController
 
-  init(settings: AppSettings, adbService: ADBService, networkInspectorController: NetworkInspectorWindowController) {
+  init(settings: AppSettings, adbService: ADBService) {
     self.settings = settings
     self.adbService = adbService
-    self.networkInspectorController = networkInspectorController
     // Initialize Sparkle updater controller; starts checks automatically
     updaterController = SPUStandardUpdaterController(
       startingUpdater: true,
@@ -120,7 +119,7 @@ struct SnapOCommands: Commands {
     }
     CommandMenu("Tools") {
       Button("Network Inspector") {
-        networkInspectorController.showWindow()
+        openWindow(id: NetworkInspectorWindowID.main)
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
       Divider()
