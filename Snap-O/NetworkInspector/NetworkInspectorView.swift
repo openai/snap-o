@@ -1,7 +1,5 @@
-import SwiftUI
-#if os(macOS)
 import AppKit
-#endif
+import SwiftUI
 
 struct NetworkInspectorView: View {
   @ObservedObject var store: NetworkInspectorStore
@@ -198,25 +196,8 @@ private struct NetworkInspectorRequestDetailView: View {
           .font(.subheadline)
           .foregroundStyle(.secondary)
       } else {
-#if os(macOS)
         SelectableHeaderList(attributedString: makeHeaderAttributedString(headers: headers))
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .fixedSize(horizontal: false, vertical: true)
-#else
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-          ForEach(headers) { header in
-            GridRow(alignment: .firstTextBaseline) {
-              Text(header.name)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-              Text(header.value)
-                .font(.callout)
-                .textSelection(.enabled)
-            }
-          }
-        }
-#endif
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
       }
     }
   }
@@ -248,7 +229,6 @@ private struct NetworkInspectorRequestDetailView: View {
 }
 
 private extension NetworkInspectorRequestDetailView {
-#if os(macOS)
   func makeHeaderAttributedString(headers: [NetworkInspectorRequestViewModel.Header]) -> NSAttributedString {
     guard !headers.isEmpty else { return NSAttributedString() }
 
@@ -315,15 +295,13 @@ private extension NetworkInspectorRequestDetailView {
       line.append(NSAttributedString(string: String(component), attributes: valueAttributes))
     }
   }
-#endif
 }
 
-#if os(macOS)
 private struct SelectableHeaderList: NSViewRepresentable {
   let attributedString: NSAttributedString
 
   func makeNSView(context: Context) -> NSTextView {
-    let textView = NSTextView()
+    let textView = SelectableHeaderTextView()
     textView.isEditable = false
     textView.isSelectable = true
     textView.drawsBackground = false
@@ -335,6 +313,8 @@ private struct SelectableHeaderList: NSViewRepresentable {
     textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
     textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     textView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    textView.setContentHuggingPriority(.defaultHigh, for: .vertical)
+    textView.setContentCompressionResistancePriority(.required, for: .vertical)
 
     if let container = textView.textContainer {
       container.lineFragmentPadding = 0
@@ -351,6 +331,10 @@ private struct SelectableHeaderList: NSViewRepresentable {
     let previousSelection = textView.selectedRange()
     textView.textStorage?.setAttributedString(attributedString)
 
+    if let selectableTextView = textView as? SelectableHeaderTextView {
+      selectableTextView.measuredSize = .zero
+    }
+
     let length = attributedString.length
     let clampedLocation = min(previousSelection.location, length)
     let remainingLength = max(length - clampedLocation, 0)
@@ -359,30 +343,55 @@ private struct SelectableHeaderList: NSViewRepresentable {
 
     if let container = textView.textContainer {
       let width = max(textView.bounds.width, 1)
-      container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+      container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
       textView.layoutManager?.ensureLayout(for: container)
     }
 
     textView.invalidateIntrinsicContentSize()
   }
 
-  static func sizeThatFits(_ proposal: ProposedViewSize, nsView textView: NSTextView, context: Context) -> CGSize {
-    guard let container = textView.textContainer else {
+  func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextView, context: Context) -> CGSize? {
+    guard let textStorage = nsView.textStorage else {
       return CGSize(width: proposal.width ?? 0, height: 0)
     }
 
-    let inset = textView.textContainerInset
-    let proposedWidth = proposal.width ?? textView.bounds.width
-    let targetWidth = max(proposedWidth, 1)
+    let inset = nsView.textContainerInset
+    let constrainedWidth = proposal.width.map { max($0 - inset.width * 2, 1) }
+    let measurementWidth = constrainedWidth ?? CGFloat.greatestFiniteMagnitude
 
-    container.containerSize = NSSize(width: targetWidth, height: .greatestFiniteMagnitude)
-    textView.layoutManager?.ensureLayout(for: container)
-    let usedRect = textView.layoutManager?.usedRect(for: container) ?? .zero
+    let boundingSize = NSSize(width: measurementWidth, height: .greatestFiniteMagnitude)
+    let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+    let attributedString = NSAttributedString(attributedString: textStorage)
+    let measuredRect = attributedString.boundingRect(with: boundingSize, options: options)
 
-    let height = ceil(usedRect.height) + inset.height * 2
-    let width = proposal.width ?? ceil(usedRect.width) + inset.width * 2
+    let measuredHeight = ceil(measuredRect.height) + inset.height * 2
+    let measuredWidth = proposal.width ?? ceil(measuredRect.width) + inset.width * 2
+    let size = CGSize(width: measuredWidth, height: measuredHeight)
 
-    return CGSize(width: width, height: height)
+    if let selectableTextView = nsView as? SelectableHeaderTextView {
+      selectableTextView.measuredSize = size
+    }
+
+    if let container = nsView.textContainer {
+      let targetWidth = max((proposal.width ?? measuredWidth) - inset.width * 2, 1)
+      container.containerSize = NSSize(width: targetWidth, height: .greatestFiniteMagnitude)
+      nsView.layoutManager?.ensureLayout(for: container)
+    }
+
+    return size
   }
 }
-#endif
+
+private final class SelectableHeaderTextView: NSTextView {
+  var measuredSize: NSSize = .zero {
+    didSet {
+      if measuredSize != oldValue {
+        invalidateIntrinsicContentSize()
+      }
+    }
+  }
+
+  override var intrinsicContentSize: NSSize {
+    measuredSize == .zero ? NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric) : measuredSize
+  }
+}
