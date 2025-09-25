@@ -128,6 +128,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let secondaryPath: String
   let firstSeenAt: Date
   let lastUpdatedAt: Date
+  let responseBody: ResponseBody?
 
   init(request: NetworkInspectorRequest, server: NetworkInspectorServerViewModel?) {
     id = request.id
@@ -205,12 +206,37 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     } else {
       responseHeaders = []
     }
+
+    if let responseRecord = request.response {
+      if let text = responseRecord.body ?? responseRecord.bodyPreview {
+        let capturedBytes = Int64(text.lengthOfBytes(using: .utf8))
+        responseBody = ResponseBody(
+          text: text,
+          isPreview: responseRecord.body == nil,
+          truncatedBytes: responseRecord.bodyTruncatedBytes,
+          totalBytes: responseRecord.bodySize,
+          capturedBytes: capturedBytes
+        )
+      } else {
+        responseBody = nil
+      }
+    } else {
+      responseBody = nil
+    }
   }
 
   struct Header: Identifiable, Hashable {
     let id = UUID()
     let name: String
     let value: String
+  }
+
+  struct ResponseBody: Hashable {
+    let text: String
+    let isPreview: Bool
+    let truncatedBytes: Int64?
+    let totalBytes: Int64?
+    let capturedBytes: Int64
   }
 }
 

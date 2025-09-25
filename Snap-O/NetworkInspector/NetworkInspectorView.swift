@@ -121,8 +121,8 @@ struct NetworkInspectorView: View {
       return "Pending"
     case .success(let code):
       return "\(code)"
-    case .failure:
-      return "Failed"
+    case .failure(let message):
+      return message?.isEmpty == false ? message! : "Failed"
     }
   }
 
@@ -148,6 +148,10 @@ private struct NetworkInspectorRequestDetailView: View {
 
         NetworkInspectorHeadersSection(title: "Request Headers", headers: request.requestHeaders)
         NetworkInspectorHeadersSection(title: "Response Headers", headers: request.responseHeaders)
+
+        if let responseBody = request.responseBody {
+          NetworkInspectorBodySection(title: "Response Body", responseBody: responseBody)
+        }
       }
       .padding(24)
     }
@@ -444,6 +448,58 @@ private struct NetworkInspectorHeadersSection: View {
           .fixedSize(horizontal: false, vertical: true)
       }
     }
+  }
+}
+
+private struct NetworkInspectorBodySection: View {
+  let title: String
+  let responseBody: NetworkInspectorRequestViewModel.ResponseBody
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title)
+        .font(.headline)
+
+      if let metadata = metadataText {
+        Text(metadata)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Text(responseBody.text)
+        .font(.body.monospaced())
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+  }
+
+  private var metadataText: String? {
+    var parts: [String] = []
+
+    if responseBody.capturedBytes > 0 {
+      parts.append("Captured \(formatBytes(responseBody.capturedBytes))")
+      if let total = responseBody.totalBytes {
+        parts.append("of \(formatBytes(total))")
+      }
+    } else if let total = responseBody.totalBytes {
+      parts.append("Total \(formatBytes(total))")
+    }
+
+    if let truncated = responseBody.truncatedBytes {
+      if truncated > 0 {
+        parts.append("(\(formatBytes(truncated)) truncated)")
+      } else if truncated == 0 && !responseBody.isPreview {
+        parts.append("(complete)")
+      }
+    } else if responseBody.isPreview {
+      parts.append("(preview)")
+    }
+
+    guard !parts.isEmpty else { return nil }
+    return parts.joined(separator: " ")
   }
 }
 

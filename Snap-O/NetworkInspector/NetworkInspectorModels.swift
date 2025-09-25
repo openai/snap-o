@@ -383,6 +383,8 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
   let tMonoNs: Int64
   let code: Int
   let headers: [String: String]
+  let body: String?
+  let bodyTruncatedBytes: Int64?
   let bodyPreview: String?
   let bodySize: Int64?
   let timings: SnapONetTimings
@@ -394,6 +396,8 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     tMonoNs: Int64,
     code: Int,
     headers: [String: String] = [:],
+    body: String? = nil,
+    bodyTruncatedBytes: Int64? = nil,
     bodyPreview: String? = nil,
     bodySize: Int64? = nil,
     timings: SnapONetTimings = SnapONetTimings()
@@ -404,6 +408,8 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     self.tMonoNs = tMonoNs
     self.code = code
     self.headers = headers
+    self.body = body
+    self.bodyTruncatedBytes = bodyTruncatedBytes
     self.bodyPreview = bodyPreview
     self.bodySize = bodySize
     self.timings = timings
@@ -418,6 +424,8 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
     code = try container.decode(Int.self, forKey: .code)
     headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+    body = try container.decodeIfPresent(String.self, forKey: .body)
+    bodyTruncatedBytes = try container.decodeIfPresent(Int64.self, forKey: .bodyTruncatedBytes)
     bodyPreview = try container.decodeIfPresent(String.self, forKey: .bodyPreview)
     bodySize = try container.decodeIfPresent(Int64.self, forKey: .bodySize)
     timings = try container.decodeIfPresent(SnapONetTimings.self, forKey: .timings)
@@ -431,6 +439,8 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     case tMonoNs
     case code
     case headers
+    case body
+    case bodyTruncatedBytes
     case bodyPreview
     case bodySize
     case timings
