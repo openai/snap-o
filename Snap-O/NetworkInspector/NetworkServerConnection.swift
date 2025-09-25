@@ -9,7 +9,12 @@ final class NetworkServerConnection {
   private var buffer = Data()
   private var isStopped = false
 
-  init(port: UInt16, queueLabel: String, onEvent: @escaping @Sendable (SnapONetRecord) -> Void, onClose: @escaping @Sendable (Error?) -> Void) {
+  init(
+    port: UInt16,
+    queueLabel: String,
+    onEvent: @escaping @Sendable (SnapONetRecord) -> Void,
+    onClose: @escaping @Sendable (Error?) -> Void
+  ) {
     let host = NWEndpoint.Host.ipv4(IPv4Address("127.0.0.1")!)
     let portValue = NWEndpoint.Port(rawValue: port)!
     queue = DispatchQueue(label: queueLabel)
@@ -23,9 +28,9 @@ final class NetworkServerConnection {
       guard let self else { return }
       switch state {
       case .failed(let error):
-        self.finish(with: error)
+        finish(with: error)
       case .cancelled:
-        self.finish(with: nil)
+        finish(with: nil)
       default:
         break
       }
@@ -38,8 +43,8 @@ final class NetworkServerConnection {
   func stop() {
     queue.async { [weak self] in
       guard let self, !self.isStopped else { return }
-      self.isStopped = true
-      self.connection.cancel()
+      isStopped = true
+      connection.cancel()
     }
   }
 
@@ -48,25 +53,25 @@ final class NetworkServerConnection {
       guard let self else { return }
 
       if let error {
-        self.finish(with: error)
+        finish(with: error)
         return
       }
 
       if let data, !data.isEmpty {
-        self.handleIncomingData(data)
+        handleIncomingData(data)
       }
 
       if isComplete {
-        if !self.buffer.isEmpty {
-          let remaining = self.buffer
-          self.buffer.removeAll(keepingCapacity: false)
-          self.processLine(remaining)
+        if !buffer.isEmpty {
+          let remaining = buffer
+          buffer.removeAll(keepingCapacity: false)
+          processLine(remaining)
         }
-        self.finish(with: nil)
+        finish(with: nil)
         return
       }
 
-      self.receive()
+      receive()
     }
   }
 

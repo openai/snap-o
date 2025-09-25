@@ -26,24 +26,24 @@ final class NetworkInspectorStore: ObservableObject {
       for await servers in await self.service.serversStream() {
         let viewModels = servers.map(NetworkInspectorServerViewModel.init)
         self.servers = viewModels
-        self.serverLookup = Dictionary(uniqueKeysWithValues: viewModels.map { ($0.id, $0) })
-        self.rebuildViewModels()
+        serverLookup = Dictionary(uniqueKeysWithValues: viewModels.map { ($0.id, $0) })
+        rebuildViewModels()
       }
     })
 
     tasks.append(Task { [weak self] in
       guard let self else { return }
       for await requests in await self.service.requestsStream() {
-        self.latestRequests = requests
-        self.rebuildViewModels()
+        latestRequests = requests
+        rebuildViewModels()
       }
     })
 
     tasks.append(Task { [weak self] in
       guard let self else { return }
       for await webSockets in await self.service.webSocketsStream() {
-        self.latestWebSockets = webSockets
-        self.rebuildViewModels()
+        latestWebSockets = webSockets
+        rebuildViewModels()
       }
     })
   }
@@ -193,7 +193,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
     if let requestRecord = request.request {
       requestHeaders = requestRecord.headers
-        .sorted(by: { $0.key.lowercased() < $1.key.lowercased() })
+        .sorted { $0.key.lowercased() < $1.key.lowercased() }
         .map { Header(name: $0.key, value: $0.value) }
     } else {
       requestHeaders = []
@@ -201,7 +201,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
     if let responseRecord = request.response {
       responseHeaders = responseRecord.headers
-        .sorted(by: { $0.key.lowercased() < $1.key.lowercased() })
+        .sorted { $0.key.lowercased() < $1.key.lowercased() }
         .map { Header(name: $0.key, value: $0.value) }
     } else {
       responseHeaders = []
@@ -381,11 +381,11 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
     }
 
     requestHeaders = session.willOpen?.headers
-      .sorted(by: { $0.key.lowercased() < $1.key.lowercased() })
+      .sorted { $0.key.lowercased() < $1.key.lowercased() }
       .map { NetworkInspectorRequestViewModel.Header(name: $0.key, value: $0.value) } ?? []
 
     responseHeaders = session.opened?.headers
-      .sorted(by: { $0.key.lowercased() < $1.key.lowercased() })
+      .sorted { $0.key.lowercased() < $1.key.lowercased() }
       .map { NetworkInspectorRequestViewModel.Header(name: $0.key, value: $0.value) } ?? []
 
     willOpen = session.willOpen
@@ -412,45 +412,45 @@ struct NetworkInspectorListItemViewModel: Identifiable {
   var id: NetworkInspectorItemID {
     switch kind {
     case .request(let request):
-      return .request(request.id)
+      .request(request.id)
     case .webSocket(let webSocket):
-      return .webSocket(webSocket.id)
+      .webSocket(webSocket.id)
     }
   }
 
   var method: String {
     switch kind {
     case .request(let request):
-      return request.method
+      request.method
     case .webSocket(let webSocket):
-      return webSocket.method
+      webSocket.method
     }
   }
 
   var status: NetworkInspectorRequestViewModel.Status {
     switch kind {
     case .request(let request):
-      return request.status
+      request.status
     case .webSocket(let webSocket):
-      return webSocket.status
+      webSocket.status
     }
   }
 
   var primaryPathComponent: String {
     switch kind {
     case .request(let request):
-      return request.primaryPathComponent
+      request.primaryPathComponent
     case .webSocket(let webSocket):
-      return webSocket.primaryPathComponent
+      webSocket.primaryPathComponent
     }
   }
 
   var secondaryPath: String {
     switch kind {
     case .request(let request):
-      return request.secondaryPath
+      request.secondaryPath
     case .webSocket(let webSocket):
-      return webSocket.secondaryPath
+      webSocket.secondaryPath
     }
   }
 }
