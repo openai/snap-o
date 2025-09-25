@@ -1,3 +1,4 @@
+import AppKit
 import Sparkle
 import SwiftUI
 
@@ -92,6 +93,11 @@ struct SnapOCommands: Commands {
       .keyboardShortcut("s")
     }
     CommandGroup(replacing: .pasteboard) {
+      Button("Select All") {
+        NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: nil)
+      }
+      .keyboardShortcut("a")
+
       Button("Copy") {
         captureController?.copyCurrentImage()
       }

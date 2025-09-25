@@ -5,73 +5,97 @@ import SwiftUI
 struct NetworkInspectorView: View {
   @ObservedObject var store: NetworkInspectorStore
   @State private var selectedItem: NetworkInspectorItemID?
+  @State private var requestSearchText = ""
+
+  private var filteredItems: [NetworkInspectorListItemViewModel] {
+    guard !requestSearchText.isEmpty else {
+      return store.items
+    }
+
+    return store.items.filter { item in
+      item.url.localizedCaseInsensitiveContains(requestSearchText)
+    }
+  }
 
   var body: some View {
+    let displayedItems = filteredItems
+
     NavigationView {
-      List(selection: $selectedItem) {
-        Section("Servers") {
-          if store.servers.isEmpty {
-            Text("No active servers")
-              .foregroundStyle(.secondary)
-          } else {
-            ForEach(store.servers) { server in
-              VStack(alignment: .leading, spacing: 2) {
-                Text(server.displayName)
-                  .font(.headline)
-                if let hello = server.helloSummary {
-                  Text(hello)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-              }
-            }
-          }
-        }
-
-        Section("Requests & WebSockets") {
-          if store.items.isEmpty {
-            Text("No activity yet")
-              .foregroundStyle(.secondary)
-          } else {
-            ForEach(store.items) { item in
-              VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .center, spacing: 8) {
-                  Text(item.method)
-                    .font(.system(.caption, design: .monospaced))
-                    .bold()
-                    .foregroundStyle(.secondary)
-
-                  VStack(alignment: .leading, spacing: 2) {
-                    Text(item.primaryPathComponent)
-                      .font(.subheadline.weight(.medium))
-                      .lineLimit(1)
-                    if !item.secondaryPath.isEmpty {
-                      Text(item.secondaryPath)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    }
+      VStack(spacing: 8) {
+        List(selection: $selectedItem) {
+          Section("Servers") {
+            if store.servers.isEmpty {
+              Text("No active servers")
+                .foregroundStyle(.secondary)
+            } else {
+              ForEach(store.servers) { server in
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(server.displayName)
+                    .font(.headline)
+                  if let hello = server.helloSummary {
+                    Text(hello)
+                      .font(.caption)
+                      .foregroundStyle(.secondary)
                   }
-
-                  Spacer()
-
-                  Text(statusLabel(for: item.status))
-                    .font(.caption)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(statusColor(for: item.status).opacity(0.15))
-                    .foregroundStyle(statusColor(for: item.status))
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
               }
-              .padding(.vertical, 6)
-              .contentShape(Rectangle())
-              .tag(item.id)
+            }
+          }
+
+          Section("Requests & WebSockets") {
+            TextField("Filter by URL", text: $requestSearchText)
+              .font(.caption)
+              .textFieldStyle(.roundedBorder)
+              .listRowInsets(EdgeInsets())
+
+            if store.items.isEmpty {
+              Text("No activity yet")
+                .foregroundStyle(.secondary)
+            } else if displayedItems.isEmpty {
+              Text("No matches")
+                .foregroundStyle(.secondary)
+            } else {
+              ForEach(displayedItems) { item in
+                VStack(alignment: .leading, spacing: 6) {
+                  HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading) {
+                      Text(item.primaryPathComponent)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                      if !item.secondaryPath.isEmpty {
+                        Text(item.secondaryPath)
+                          .font(.caption)
+                          .foregroundStyle(.secondary)
+                          .lineLimit(1)
+                          .truncationMode(.middle)
+                      }
+                    }
+
+                    Spacer()
+
+                    Text(item.method)
+                      .font(.system(.caption, design: .monospaced))
+                      .bold()
+                      .foregroundStyle(.secondary)
+
+                    Text(statusLabel(for: item.status))
+                      .font(.caption)
+                      .padding(.horizontal, 6)
+                      .padding(.vertical, 2)
+                      .background(statusColor(for: item.status).opacity(0.15))
+                      .foregroundStyle(statusColor(for: item.status))
+                      .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                  }
+                }
+                .contentShape(Rectangle())
+                .tag(item.id)
+              }
             }
           }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       .frame(minWidth: 300, idealWidth: 340)
       .navigationTitle("Network Inspector")
 
@@ -101,6 +125,26 @@ struct NetworkInspectorView: View {
         return
       }
 
+      if let selection = selectedItem {
+        if requestSearchText.isEmpty {
+          if ids.contains(selection) {
+            return
+          }
+        } else if filteredItems.contains(where: { $0.id == selection }) {
+          return
+        }
+      }
+
+      if let next = filteredItems.first?.id ?? ids.first {
+        selectedItem = next
+      }
+    }
+    .onChange(of: filteredItems.map(\.id)) { _, ids in
+      guard !ids.isEmpty else {
+        selectedItem = nil
+        return
+      }
+
       if let selection = selectedItem,
          ids.contains(selection) {
         return
@@ -110,7 +154,7 @@ struct NetworkInspectorView: View {
     }
     .onAppear {
       if selectedItem == nil {
-        selectedItem = store.items.first?.id
+        selectedItem = filteredItems.first?.id ?? store.items.first?.id
       }
     }
   }

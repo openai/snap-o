@@ -453,6 +453,15 @@ struct NetworkInspectorListItemViewModel: Identifiable {
       webSocket.secondaryPath
     }
   }
+
+  var url: String {
+    switch kind {
+    case .request(let request):
+      request.url
+    case .webSocket(let webSocket):
+      webSocket.url
+    }
+  }
 }
 
 enum NetworkInspectorDetailViewModel {
