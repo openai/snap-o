@@ -17,9 +17,7 @@ struct SnapOApp: App {
 
     settings = AppSettings.shared
 
-    networkInspectorController = NetworkInspectorWindowController(
-      service: services.networkInspector
-    )
+    networkInspectorController = NetworkInspectorWindowController()
 
     Task.detached(priority: .userInitiated) {
       await services.start()

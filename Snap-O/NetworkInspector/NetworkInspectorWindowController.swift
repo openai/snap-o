@@ -4,12 +4,7 @@ import SwiftUI
 @MainActor
 final class NetworkInspectorWindowController: NSObject, NSWindowDelegate {
   private var windowController: NSWindowController?
-  private let service: NetworkInspectorService
   private var store: NetworkInspectorStore?
-
-  init(service: NetworkInspectorService) {
-    self.service = service
-  }
 
   func showWindow() {
     if let windowController {
@@ -49,6 +44,7 @@ final class NetworkInspectorWindowController: NSObject, NSWindowDelegate {
 
   private func makeStore() -> NetworkInspectorStore {
     if let store { return store }
+    let service = NetworkInspectorService(adbService: AppServices.shared.adbService, deviceTracker: AppServices.shared.deviceTracker)
     let newStore = NetworkInspectorStore(service: service)
     store = newStore
     return newStore
