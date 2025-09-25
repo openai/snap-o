@@ -21,6 +21,9 @@ actor NetworkInspectorService {
   private var requestStates: [NetworkInspectorRequest.ID: NetworkInspectorRequest] = [:]
   private var requestOrder: [NetworkInspectorRequest.ID] = []
   private var requestContinuations: [UUID: AsyncStream<[NetworkInspectorRequest]>.Continuation] = [:]
+  private var webSocketStates: [NetworkInspectorWebSocket.ID: NetworkInspectorWebSocket] = [:]
+  private var webSocketOrder: [NetworkInspectorWebSocket.ID] = []
+  private var webSocketContinuations: [UUID: AsyncStream<[NetworkInspectorWebSocket]>.Continuation] = [:]
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -86,6 +89,17 @@ actor NetworkInspectorService {
     }
   }
 
+  func webSocketsStream() -> AsyncStream<[NetworkInspectorWebSocket]> {
+    let id = UUID()
+    return AsyncStream { continuation in
+      webSocketContinuations[id] = continuation
+      continuation.yield(currentWebSockets())
+      continuation.onTermination = { [weak self] _ in
+        Task { await self?.removeWebSocketContinuation(id) }
+      }
+    }
+  }
+
   private func removeServerContinuation(_ id: UUID) {
     serverContinuations.removeValue(forKey: id)
   }
@@ -96,6 +110,10 @@ actor NetworkInspectorService {
 
   private func removeRequestContinuation(_ id: UUID) {
     requestContinuations.removeValue(forKey: id)
+  }
+
+  private func removeWebSocketContinuation(_ id: UUID) {
+    webSocketContinuations.removeValue(forKey: id)
   }
 
   private func updateDevices(_ devices: [Device]) async {
@@ -212,6 +230,7 @@ actor NetworkInspectorService {
     }
     broadcastServers()
     removeRequests(for: id)
+    removeWebSockets(for: id)
   }
 
   private func removeForward(_ handle: ADBForwardHandle) async {
@@ -223,6 +242,7 @@ actor NetworkInspectorService {
     guard var state = serverStates[serverID] else { return }
     var shouldBroadcastServers = false
     var shouldBroadcastRequests = false
+    var shouldBroadcastWebSockets = false
 
     switch record {
     case .hello(let hello):
@@ -234,6 +254,24 @@ actor NetworkInspectorService {
       shouldBroadcastRequests = updateRequest(for: serverID, with: responseRecord)
     case .requestFailed(let failureRecord):
       shouldBroadcastRequests = updateRequest(for: serverID, with: failureRecord)
+    case .webSocketWillOpen(let willOpenRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: willOpenRecord)
+    case .webSocketOpened(let openedRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: openedRecord)
+    case .webSocketMessageSent(let sentRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: sentRecord)
+    case .webSocketMessageReceived(let receivedRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: receivedRecord)
+    case .webSocketClosing(let closingRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: closingRecord)
+    case .webSocketClosed(let closedRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: closedRecord)
+    case .webSocketFailed(let failedRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: failedRecord)
+    case .webSocketCloseRequested(let closeRequestedRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: closeRequestedRecord)
+    case .webSocketCancelled(let cancelledRecord):
+      shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: cancelledRecord)
     default:
       break
     }
@@ -247,6 +285,10 @@ actor NetworkInspectorService {
 
     if shouldBroadcastRequests {
       broadcastRequests()
+    }
+
+    if shouldBroadcastWebSockets {
+      broadcastWebSockets()
     }
 
     let event = NetworkInspectorEvent(
@@ -287,6 +329,13 @@ actor NetworkInspectorService {
     }
   }
 
+  private func broadcastWebSockets() {
+    let snapshot = currentWebSockets()
+    for continuation in webSocketContinuations.values {
+      continuation.yield(snapshot)
+    }
+  }
+
   private func currentServers() -> [NetworkInspectorServer] {
     serverStates.values.map(\.server).sorted { lhs, rhs in
       if lhs.deviceID == rhs.deviceID {
@@ -300,10 +349,20 @@ actor NetworkInspectorService {
     requestOrder.compactMap { requestStates[$0] }
   }
 
+  private func currentWebSockets() -> [NetworkInspectorWebSocket] {
+    webSocketOrder.compactMap { webSocketStates[$0] }
+  }
+
   private func removeRequests(for serverID: NetworkInspectorServer.ID) {
     requestOrder.removeAll { $0.serverID == serverID }
     requestStates = requestStates.filter { key, _ in key.serverID != serverID }
     broadcastRequests()
+  }
+
+  private func removeWebSockets(for serverID: NetworkInspectorServer.ID) {
+    webSocketOrder.removeAll { $0.serverID == serverID }
+    webSocketStates = webSocketStates.filter { key, _ in key.serverID != serverID }
+    broadcastWebSockets()
   }
 
   private func updateRequest(for serverID: NetworkInspectorServer.ID, with record: SnapONetRequestWillBeSentRecord) -> Bool {
@@ -364,6 +423,254 @@ actor NetworkInspectorService {
 
     if let updated {
       requestStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketWillOpenRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      updated = NetworkInspectorWebSocket(serverID: serverID, willOpen: record, timestamp: timestamp)
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.willOpen = record
+    }
+
+    updated?.failed = nil
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketOpenedRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.opened = record
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.opened = record
+    }
+
+    updated?.failed = nil
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketMessageSentRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.messages.append(SnapONetWebSocketMessage(sent: record))
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.messages.append(SnapONetWebSocketMessage(sent: record))
+    }
+
+    updated?.messages.sort { lhs, rhs in
+      if lhs.tWallMs == rhs.tWallMs {
+        return lhs.tMonoNs < rhs.tMonoNs
+      }
+      return lhs.tWallMs < rhs.tWallMs
+    }
+
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketMessageReceivedRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.messages.append(SnapONetWebSocketMessage(received: record))
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.messages.append(SnapONetWebSocketMessage(received: record))
+    }
+
+    updated?.messages.sort { lhs, rhs in
+      if lhs.tWallMs == rhs.tWallMs {
+        return lhs.tMonoNs < rhs.tMonoNs
+      }
+      return lhs.tWallMs < rhs.tWallMs
+    }
+
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketClosingRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.closing = record
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.closing = record
+    }
+
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketClosedRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.closed = record
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.closed = record
+    }
+
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketFailedRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.failed = record
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.failed = record
+    }
+
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketCloseRequestedRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.closeRequested = record
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.closeRequested = record
+    }
+
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
+      return true
+    }
+    return false
+  }
+
+  private func updateWebSocket(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetWebSocketCancelledRecord
+  ) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    var updated = webSocketStates[identifier]
+
+    if updated == nil {
+      var session = NetworkInspectorWebSocket(serverID: serverID, socketID: record.id, timestamp: timestamp)
+      session.cancelled = record
+      updated = session
+      webSocketOrder.append(identifier)
+    } else {
+      updated?.cancelled = record
+    }
+
+    updated?.lastUpdatedAt = timestamp
+
+    if let updated {
+      webSocketStates[identifier] = updated
       return true
     }
     return false

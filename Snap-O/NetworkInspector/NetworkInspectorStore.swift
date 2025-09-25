@@ -4,13 +4,15 @@ import Foundation
 @MainActor
 final class NetworkInspectorStore: ObservableObject {
   @Published private(set) var servers: [NetworkInspectorServerViewModel] = []
-  @Published private(set) var requests: [NetworkInspectorRequestViewModel] = []
+  @Published private(set) var items: [NetworkInspectorListItemViewModel] = []
 
   private let service: NetworkInspectorService
   private var tasks: [Task<Void, Never>] = []
   private var serverLookup: [NetworkInspectorServer.ID: NetworkInspectorServerViewModel] = [:]
   private var latestRequests: [NetworkInspectorRequest] = []
+  private var latestWebSockets: [NetworkInspectorWebSocket] = []
   private var requestLookup: [NetworkInspectorRequest.ID: NetworkInspectorRequestViewModel] = [:]
+  private var webSocketLookup: [NetworkInspectorWebSocket.ID: NetworkInspectorWebSocketViewModel] = [:]
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -25,7 +27,7 @@ final class NetworkInspectorStore: ObservableObject {
         let viewModels = servers.map(NetworkInspectorServerViewModel.init)
         self.servers = viewModels
         self.serverLookup = Dictionary(uniqueKeysWithValues: viewModels.map { ($0.id, $0) })
-        self.rebuildRequestViewModels()
+        self.rebuildViewModels()
       }
     })
 
@@ -33,7 +35,15 @@ final class NetworkInspectorStore: ObservableObject {
       guard let self else { return }
       for await requests in await self.service.requestsStream() {
         self.latestRequests = requests
-        self.rebuildRequestViewModels()
+        self.rebuildViewModels()
+      }
+    })
+
+    tasks.append(Task { [weak self] in
+      guard let self else { return }
+      for await webSockets in await self.service.webSocketsStream() {
+        self.latestWebSockets = webSockets
+        self.rebuildViewModels()
       }
     })
   }
@@ -44,17 +54,40 @@ final class NetworkInspectorStore: ObservableObject {
     }
   }
 
-  private func rebuildRequestViewModels() {
-    let rebuilt = latestRequests.map { request in
+  private func rebuildViewModels() {
+    let requestViewModels = latestRequests.map { request in
       let server = serverLookup[request.serverID]
       return NetworkInspectorRequestViewModel(request: request, server: server)
     }
-    requests = rebuilt
-    requestLookup = Dictionary(uniqueKeysWithValues: rebuilt.map { ($0.id, $0) })
+    requestLookup = Dictionary(uniqueKeysWithValues: requestViewModels.map { ($0.id, $0) })
+
+    let webSocketViewModels = latestWebSockets.map { session in
+      let server = serverLookup[session.serverID]
+      return NetworkInspectorWebSocketViewModel(session: session, server: server)
+    }
+    webSocketLookup = Dictionary(uniqueKeysWithValues: webSocketViewModels.map { ($0.id, $0) })
+
+    let combined: [NetworkInspectorListItemViewModel] =
+      requestViewModels.map { NetworkInspectorListItemViewModel(kind: .request($0), firstSeenAt: $0.firstSeenAt) } +
+      webSocketViewModels.map { NetworkInspectorListItemViewModel(kind: .webSocket($0), firstSeenAt: $0.firstSeenAt) }
+
+    items = combined.sorted { lhs, rhs in
+      if lhs.firstSeenAt == rhs.firstSeenAt {
+        return lhs.id.hashValue < rhs.id.hashValue
+      }
+      return lhs.firstSeenAt < rhs.firstSeenAt
+    }
   }
 
-  func requestViewModel(for id: NetworkInspectorRequest.ID) -> NetworkInspectorRequestViewModel? {
-    requestLookup[id]
+  func detail(for id: NetworkInspectorItemID) -> NetworkInspectorDetailViewModel? {
+    switch id {
+    case .request(let requestID):
+      guard let viewModel = requestLookup[requestID] else { return nil }
+      return .request(viewModel)
+    case .webSocket(let socketID):
+      guard let viewModel = webSocketLookup[socketID] else { return nil }
+      return .webSocket(viewModel)
+    }
   }
 }
 
@@ -93,6 +126,8 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let responseHeaders: [Header]
   let primaryPathComponent: String
   let secondaryPath: String
+  let firstSeenAt: Date
+  let lastUpdatedAt: Date
 
   init(request: NetworkInspectorRequest, server: NetworkInspectorServerViewModel?) {
     id = request.id
@@ -123,6 +158,9 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     }
 
     requestIdentifier = "Request ID: \(request.requestID)"
+
+    firstSeenAt = request.firstSeenAt
+    lastUpdatedAt = request.lastUpdatedAt
 
     let start = request.firstSeenAt.formatted(date: .omitted, time: .standard)
     let last = request.lastUpdatedAt.formatted(date: .omitted, time: .standard)
@@ -174,4 +212,200 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     let name: String
     let value: String
   }
+}
+
+struct NetworkInspectorWebSocketViewModel: Identifiable {
+  struct Message: Identifiable, Hashable {
+    let id: UUID
+    let direction: SnapONetWebSocketMessage.Direction
+    let opcode: String
+    let preview: String?
+    let payloadSize: Int64?
+    let enqueued: Bool?
+    let timestamp: Date
+
+    init(message: SnapONetWebSocketMessage) {
+      id = message.id
+      direction = message.direction
+      opcode = message.opcode
+      preview = message.preview
+      payloadSize = message.payloadSize
+      enqueued = message.enqueued
+      timestamp = message.timestamp
+    }
+  }
+
+  let id: NetworkInspectorWebSocket.ID
+  let method: String
+  let url: String
+  let status: NetworkInspectorRequestViewModel.Status
+  let serverSummary: String
+  let socketIdentifier: String
+  let timingSummary: String
+  let requestHeaders: [NetworkInspectorRequestViewModel.Header]
+  let responseHeaders: [NetworkInspectorRequestViewModel.Header]
+  let primaryPathComponent: String
+  let secondaryPath: String
+  let willOpen: SnapONetWebSocketWillOpenRecord?
+  let opened: SnapONetWebSocketOpenedRecord?
+  let closing: SnapONetWebSocketClosingRecord?
+  let closed: SnapONetWebSocketClosedRecord?
+  let failed: SnapONetWebSocketFailedRecord?
+  let closeRequested: SnapONetWebSocketCloseRequestedRecord?
+  let cancelled: SnapONetWebSocketCancelledRecord?
+  let messages: [Message]
+  let firstSeenAt: Date
+  let lastUpdatedAt: Date
+
+  init(session: NetworkInspectorWebSocket, server: NetworkInspectorServerViewModel?) {
+    id = session.id
+
+    let urlString = session.willOpen?.url ?? "websocket://\(session.socketID)"
+    url = urlString
+
+    if let scheme = URLComponents(string: urlString)?.scheme?.uppercased(), !scheme.isEmpty {
+      method = scheme
+    } else {
+      method = "WS"
+    }
+
+    if let failure = session.failed {
+      status = .failure(message: failure.message)
+    } else if session.cancelled != nil {
+      status = .failure(message: "Cancelled")
+    } else if let closed = session.closed {
+      status = .success(code: closed.code)
+    } else if let closing = session.closing {
+      status = .success(code: closing.code)
+    } else if let opened = session.opened {
+      status = .success(code: opened.code)
+    } else {
+      status = .pending
+    }
+
+    if let server {
+      if let summary = server.helloSummary {
+        serverSummary = summary
+      } else {
+        serverSummary = server.displayName
+      }
+    } else {
+      serverSummary = "\(session.serverID.deviceID) • \(session.serverID.socketName)"
+    }
+
+    socketIdentifier = "Socket ID: \(session.socketID)"
+
+    firstSeenAt = session.firstSeenAt
+    lastUpdatedAt = session.lastUpdatedAt
+
+    let start = session.firstSeenAt.formatted(date: .omitted, time: .standard)
+    let last = session.lastUpdatedAt.formatted(date: .omitted, time: .standard)
+    if session.lastUpdatedAt == session.firstSeenAt {
+      timingSummary = "Started at \(start)"
+    } else {
+      timingSummary = "Updated at \(last) (started \(start))"
+    }
+
+    let components = URLComponents(string: urlString)
+    if let path = components?.path, !path.isEmpty {
+      let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+      primaryPathComponent = parts.last.map(String.init) ?? path
+      let remaining = parts.dropLast()
+      if remaining.isEmpty {
+        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+      } else {
+        let base = "/" + remaining.joined(separator: "/")
+        if let query = components?.percentEncodedQuery, !query.isEmpty {
+          secondaryPath = base + "?" + query
+        } else {
+          secondaryPath = base
+        }
+      }
+    } else {
+      primaryPathComponent = components?.host ?? session.socketID
+      if let query = components?.percentEncodedQuery, !query.isEmpty {
+        secondaryPath = "?\(query)"
+      } else {
+        secondaryPath = ""
+      }
+    }
+
+    requestHeaders = session.willOpen?.headers
+      .sorted(by: { $0.key.lowercased() < $1.key.lowercased() })
+      .map { NetworkInspectorRequestViewModel.Header(name: $0.key, value: $0.value) } ?? []
+
+    responseHeaders = session.opened?.headers
+      .sorted(by: { $0.key.lowercased() < $1.key.lowercased() })
+      .map { NetworkInspectorRequestViewModel.Header(name: $0.key, value: $0.value) } ?? []
+
+    willOpen = session.willOpen
+    opened = session.opened
+    closing = session.closing
+    closed = session.closed
+    failed = session.failed
+    closeRequested = session.closeRequested
+    cancelled = session.cancelled
+
+    messages = session.messages.map(Message.init)
+  }
+}
+
+struct NetworkInspectorListItemViewModel: Identifiable {
+  enum Kind {
+    case request(NetworkInspectorRequestViewModel)
+    case webSocket(NetworkInspectorWebSocketViewModel)
+  }
+
+  let kind: Kind
+  let firstSeenAt: Date
+
+  var id: NetworkInspectorItemID {
+    switch kind {
+    case .request(let request):
+      return .request(request.id)
+    case .webSocket(let webSocket):
+      return .webSocket(webSocket.id)
+    }
+  }
+
+  var method: String {
+    switch kind {
+    case .request(let request):
+      return request.method
+    case .webSocket(let webSocket):
+      return webSocket.method
+    }
+  }
+
+  var status: NetworkInspectorRequestViewModel.Status {
+    switch kind {
+    case .request(let request):
+      return request.status
+    case .webSocket(let webSocket):
+      return webSocket.status
+    }
+  }
+
+  var primaryPathComponent: String {
+    switch kind {
+    case .request(let request):
+      return request.primaryPathComponent
+    case .webSocket(let webSocket):
+      return webSocket.primaryPathComponent
+    }
+  }
+
+  var secondaryPath: String {
+    switch kind {
+    case .request(let request):
+      return request.secondaryPath
+    case .webSocket(let webSocket):
+      return webSocket.secondaryPath
+    }
+  }
+}
+
+enum NetworkInspectorDetailViewModel {
+  case request(NetworkInspectorRequestViewModel)
+  case webSocket(NetworkInspectorWebSocketViewModel)
 }

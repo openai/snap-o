@@ -65,6 +65,115 @@ struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
   }
 }
 
+enum NetworkInspectorItemID: Hashable, Sendable {
+  case request(NetworkInspectorRequest.ID)
+  case webSocket(NetworkInspectorWebSocket.ID)
+}
+
+struct NetworkInspectorWebSocket: Identifiable, Hashable, Sendable {
+  struct ID: Hashable, Sendable {
+    let serverID: NetworkInspectorServer.ID
+    let socketID: String
+  }
+
+  var id: ID { ID(serverID: serverID, socketID: socketID) }
+  let serverID: NetworkInspectorServer.ID
+  let socketID: String
+  var willOpen: SnapONetWebSocketWillOpenRecord?
+  var opened: SnapONetWebSocketOpenedRecord?
+  var closing: SnapONetWebSocketClosingRecord?
+  var closed: SnapONetWebSocketClosedRecord?
+  var failed: SnapONetWebSocketFailedRecord?
+  var closeRequested: SnapONetWebSocketCloseRequestedRecord?
+  var cancelled: SnapONetWebSocketCancelledRecord?
+  var messages: [SnapONetWebSocketMessage] = []
+  let firstSeenAt: Date
+  var lastUpdatedAt: Date
+
+  init(
+    serverID: NetworkInspectorServer.ID,
+    socketID: String,
+    timestamp: Date
+  ) {
+    self.serverID = serverID
+    self.socketID = socketID
+    willOpen = nil
+    opened = nil
+    closing = nil
+    closed = nil
+    failed = nil
+    closeRequested = nil
+    cancelled = nil
+    messages = []
+    firstSeenAt = timestamp
+    lastUpdatedAt = timestamp
+  }
+
+  init(
+    serverID: NetworkInspectorServer.ID,
+    willOpen: SnapONetWebSocketWillOpenRecord,
+    timestamp: Date
+  ) {
+    self.serverID = serverID
+    socketID = willOpen.id
+    self.willOpen = willOpen
+    opened = nil
+    closing = nil
+    closed = nil
+    failed = nil
+    closeRequested = nil
+    cancelled = nil
+    messages = []
+    firstSeenAt = timestamp
+    lastUpdatedAt = timestamp
+  }
+}
+
+struct SnapONetWebSocketMessage: Hashable, Sendable, Identifiable {
+  enum Direction: Hashable, Sendable {
+    case outgoing
+    case incoming
+  }
+
+  let id = UUID()
+  let schemaVersion: String
+  let socketID: String
+  let direction: Direction
+  let opcode: String
+  let preview: String?
+  let payloadSize: Int64?
+  let enqueued: Bool?
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let timestamp: Date
+
+  init(sent record: SnapONetWebSocketMessageSentRecord) {
+    schemaVersion = record.schemaVersion
+    socketID = record.id
+    direction = .outgoing
+    opcode = record.opcode
+    preview = record.preview
+    payloadSize = record.payloadSize
+    enqueued = record.enqueued
+    tWallMs = record.tWallMs
+    tMonoNs = record.tMonoNs
+    timestamp = Date(timeIntervalSince1970: TimeInterval(record.tWallMs) / 1000)
+  }
+
+  init(received record: SnapONetWebSocketMessageReceivedRecord) {
+    schemaVersion = record.schemaVersion
+    socketID = record.id
+    direction = .incoming
+    opcode = record.opcode
+    preview = record.preview
+    payloadSize = record.payloadSize
+    enqueued = nil
+    tWallMs = record.tWallMs
+    tMonoNs = record.tMonoNs
+    timestamp = Date(timeIntervalSince1970: TimeInterval(record.tWallMs) / 1000)
+  }
+}
+
 enum SnapONetRecord: Sendable {
   case hello(SnapONetHelloRecord)
   case replayComplete(SnapONetReplayCompleteRecord)
