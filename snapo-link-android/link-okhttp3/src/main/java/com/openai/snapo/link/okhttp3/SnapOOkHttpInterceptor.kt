@@ -79,7 +79,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             val endMono = SystemClock.elapsedRealtimeNanos()
 
             val responseBody = response.body
-            if (responseBody != null && responseBody.contentType().isEventStream()) {
+            if (responseBody.contentType().isEventStream()) {
                 val relay = ResponseStreamRelay(
                     requestId = requestId,
                     charset = responseBody.contentType().resolveCharset(),

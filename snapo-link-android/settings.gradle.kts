@@ -20,7 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "snap-o-agent"
+rootProject.name = "snapo-link-android"
 include(":link-core")
 include(":link-okhttp3")
 include(":link-okhttp3-noop")
