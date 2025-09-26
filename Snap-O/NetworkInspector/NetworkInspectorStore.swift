@@ -9,7 +9,7 @@ final class NetworkInspectorStore: ObservableObject {
 
   private let service: NetworkInspectorService
   private var tasks: [Task<Void, Never>] = []
-  private var serverLookup: [NetworkInspectorServer.ID: NetworkInspectorServerViewModel] = [:]
+  private var serverLookup: [SnapOLinkServer.ID: NetworkInspectorServerViewModel] = [:]
   private var latestRequests: [NetworkInspectorRequest] = []
   private var latestWebSockets: [NetworkInspectorWebSocket] = []
   private var requestLookup: [NetworkInspectorRequest.ID: NetworkInspectorRequestViewModel] = [:]
@@ -91,7 +91,7 @@ final class NetworkInspectorStore: ObservableObject {
     }
   }
 
-  func setRetainedServerIDs(_ ids: Set<NetworkInspectorServer.ID>) {
+  func setRetainedServerIDs(_ ids: Set<SnapOLinkServer.ID>) {
     Task {
       await service.updateRetainedServers(ids)
     }
@@ -105,7 +105,7 @@ final class NetworkInspectorStore: ObservableObject {
 }
 
 struct NetworkInspectorServerViewModel: Identifiable {
-  let id: NetworkInspectorServer.ID
+  let id: SnapOLinkServer.ID
   let displayName: String
   let helloSummary: String?
   let deviceDisplayTitle: String
@@ -115,7 +115,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let appIcon: NSImage?
   let wallClockBase: Date?
 
-  init(server: NetworkInspectorServer) {
+  init(server: SnapOLinkServer) {
     id = server.id
     deviceID = server.id.deviceID
     deviceDisplayTitle = server.deviceDisplayTitle
@@ -149,7 +149,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let id: NetworkInspectorRequest.ID
   let method: String
   let url: String
-  let serverID: NetworkInspectorServer.ID
+  let serverID: SnapOLinkServer.ID
   let status: Status
   let serverSummary: String
   let requestIdentifier: String
@@ -368,7 +368,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
   let id: NetworkInspectorWebSocket.ID
   let method: String
   let url: String
-  let serverID: NetworkInspectorServer.ID
+  let serverID: SnapOLinkServer.ID
   let status: NetworkInspectorRequestViewModel.Status
   let serverSummary: String
   let socketIdentifier: String
@@ -530,7 +530,7 @@ struct NetworkInspectorListItemViewModel: Identifiable {
     return false
   }
 
-  var serverID: NetworkInspectorServer.ID {
+  var serverID: SnapOLinkServer.ID {
     switch kind {
     case .request(let request):
       request.serverID

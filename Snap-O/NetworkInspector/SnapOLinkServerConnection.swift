@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-final class NetworkServerConnection {
+final class SnapOLinkServerConnection {
   private let connection: NWConnection
   private let queue: DispatchQueue
   private let onEvent: @Sendable (SnapONetRecord) -> Void
@@ -116,4 +116,4 @@ private extension Data {
   }
 }
 
-extension NetworkServerConnection: @unchecked Sendable {}
+extension SnapOLinkServerConnection: @unchecked Sendable {}

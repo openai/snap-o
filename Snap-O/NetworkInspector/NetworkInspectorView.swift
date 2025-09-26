@@ -5,7 +5,7 @@ struct NetworkInspectorView: View {
   @ObservedObject var store: NetworkInspectorStore
   @State private var selectedItem: NetworkInspectorItemID?
   @State private var requestSearchText = ""
-  @State private var selectedServerID: NetworkInspectorServer.ID?
+  @State private var selectedServerID: SnapOLinkServer.ID?
   @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
   @State private var isServerPickerPresented = false
   @State private var activeDetail: NetworkInspectorDetailViewModel?
@@ -101,7 +101,7 @@ struct NetworkInspectorView: View {
       if let id = newValue {
         store.setRetainedServerIDs(Set([id]))
       } else {
-        store.setRetainedServerIDs(Set<NetworkInspectorServer.ID>())
+        store.setRetainedServerIDs(Set<SnapOLinkServer.ID>())
       }
     }
     .onChange(of: store.items.map(\.id)) { _, ids in
@@ -131,7 +131,7 @@ struct NetworkInspectorView: View {
       if let id = selectedServerID {
         store.setRetainedServerIDs(Set([id]))
       } else {
-        store.setRetainedServerIDs(Set<NetworkInspectorServer.ID>())
+        store.setRetainedServerIDs(Set<SnapOLinkServer.ID>())
       }
 
       if selectedItem == nil {

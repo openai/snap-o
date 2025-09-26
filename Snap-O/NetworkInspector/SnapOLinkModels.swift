@@ -1,6 +1,6 @@
 import Foundation
 
-struct NetworkInspectorServer: Identifiable, Hashable, Sendable {
+struct SnapOLinkServer: Identifiable, Hashable, Sendable {
   struct ID: Hashable, Sendable {
     let deviceID: String
     let socketName: String
@@ -18,21 +18,21 @@ struct NetworkInspectorServer: Identifiable, Hashable, Sendable {
   var wallClockBase: Date?
 }
 
-struct NetworkInspectorEvent: Identifiable, Sendable {
+struct SnapOLinkEvent: Identifiable, Sendable {
   let id = UUID()
-  let serverID: NetworkInspectorServer.ID
+  let serverID: SnapOLinkServer.ID
   let record: SnapONetRecord
   let receivedAt: Date
 }
 
 struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
   struct ID: Hashable, Sendable {
-    let serverID: NetworkInspectorServer.ID
+    let serverID: SnapOLinkServer.ID
     let requestID: String
   }
 
   var id: ID { ID(serverID: serverID, requestID: requestID) }
-  let serverID: NetworkInspectorServer.ID
+  let serverID: SnapOLinkServer.ID
   let requestID: String
   var request: SnapONetRequestWillBeSentRecord?
   var response: SnapONetResponseReceivedRecord?
@@ -41,7 +41,7 @@ struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
   var lastUpdatedAt: Date
 
   init(
-    serverID: NetworkInspectorServer.ID,
+    serverID: SnapOLinkServer.ID,
     request: SnapONetRequestWillBeSentRecord,
     timestamp: Date
   ) {
@@ -55,7 +55,7 @@ struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
   }
 
   init(
-    serverID: NetworkInspectorServer.ID,
+    serverID: SnapOLinkServer.ID,
     requestID: String,
     timestamp: Date
   ) {
@@ -76,12 +76,12 @@ enum NetworkInspectorItemID: Hashable, Sendable {
 
 struct NetworkInspectorWebSocket: Identifiable, Hashable, Sendable {
   struct ID: Hashable, Sendable {
-    let serverID: NetworkInspectorServer.ID
+    let serverID: SnapOLinkServer.ID
     let socketID: String
   }
 
   var id: ID { ID(serverID: serverID, socketID: socketID) }
-  let serverID: NetworkInspectorServer.ID
+  let serverID: SnapOLinkServer.ID
   let socketID: String
   var willOpen: SnapONetWebSocketWillOpenRecord?
   var opened: SnapONetWebSocketOpenedRecord?
@@ -95,7 +95,7 @@ struct NetworkInspectorWebSocket: Identifiable, Hashable, Sendable {
   var lastUpdatedAt: Date
 
   init(
-    serverID: NetworkInspectorServer.ID,
+    serverID: SnapOLinkServer.ID,
     socketID: String,
     timestamp: Date
   ) {
@@ -114,7 +114,7 @@ struct NetworkInspectorWebSocket: Identifiable, Hashable, Sendable {
   }
 
   init(
-    serverID: NetworkInspectorServer.ID,
+    serverID: SnapOLinkServer.ID,
     willOpen: SnapONetWebSocketWillOpenRecord,
     timestamp: Date
   ) {
