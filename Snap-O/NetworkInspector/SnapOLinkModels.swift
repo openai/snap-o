@@ -1,6 +1,5 @@
 import Foundation
 
-
 struct SnapONetHeader: Decodable, Hashable, Sendable {
   let name: String
   let value: String

@@ -144,20 +144,24 @@ struct NetworkInspectorSidebarServerControls: View {
 
   @ViewBuilder
   private func serverRowContent(for server: NetworkInspectorServerViewModel) -> some View {
-    serverRow(title: server.displayName,
-              subtitle: server.deviceDisplayTitle,
-              appIcon: server.appIcon,
-              isConnected: server.isConnected)
+    serverRow(
+      title: server.displayName,
+      subtitle: server.deviceDisplayTitle,
+      appIcon: server.appIcon,
+      isConnected: server.isConnected
+    )
   }
 
   private func placeholderRowContent(title: String, subtitle: String) -> some View {
     serverRow(title: title, subtitle: subtitle, appIcon: nil, isConnected: true)
   }
 
-  private func serverRow(title: String,
-                         subtitle: String,
-                         appIcon: NSImage?,
-                         isConnected: Bool) -> some View {
+  private func serverRow(
+    title: String,
+    subtitle: String,
+    appIcon: NSImage?,
+    isConnected: Bool
+  ) -> some View {
     HStack(spacing: 12) {
       appIconView(appIcon: appIcon, isConnected: isConnected)
 

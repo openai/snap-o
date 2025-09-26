@@ -39,9 +39,9 @@ struct NetworkInspectorView: View {
 
     return store.servers.first { candidate in
       candidate.isConnected &&
-      candidate.id != current.id &&
-      candidate.displayName == current.displayName &&
-      candidate.deviceID == current.deviceID
+        candidate.id != current.id &&
+        candidate.displayName == current.displayName &&
+        candidate.deviceID == current.deviceID
     }
   }
 
@@ -76,13 +76,12 @@ struct NetworkInspectorView: View {
     } detail: {
       if let detail = activeDetail {
         detailView(
-          for: detail,
-          onClose: {
+          for: detail
+        ) {
           selectedItem = nil
           activeDetail = nil
           splitViewVisibility = .all
         }
-                   )
       } else {
         VStack(alignment: .center, spacing: 12) {
           Text("Select a record")
@@ -166,7 +165,6 @@ struct NetworkInspectorView: View {
       .red
     }
   }
-
 }
 
 private extension NetworkInspectorView {

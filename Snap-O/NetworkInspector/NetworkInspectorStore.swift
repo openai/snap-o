@@ -199,12 +199,14 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
     let startMillis = request.request?.tWallMs
     let endMillis = request.failure?.tWallMs ?? request.response?.tWallMs
-    timingSummary = Self.makeTimingSummary(status: status,
-                                           startMillis: startMillis,
-                                           endMillis: endMillis,
-                                           fallbackStart: request.firstSeenAt,
-                                           fallbackEnd: request.lastUpdatedAt,
-                                           wallClockBase: server?.wallClockBase)
+    timingSummary = Self.makeTimingSummary(
+      status: status,
+      startMillis: startMillis,
+      endMillis: endMillis,
+      fallbackStart: request.firstSeenAt,
+      fallbackEnd: request.lastUpdatedAt,
+      wallClockBase: server?.wallClockBase
+    )
 
     let components = URLComponents(string: url)
     if let path = components?.path, !path.isEmpty {
@@ -231,11 +233,13 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       let contentType = requestRecord.headers.first { $0.name.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
       let encoding = requestRecord.bodyEncoding ?? contentType
       if let bodyText = requestRecord.body ?? requestRecord.bodyPreview {
-        requestBody = Self.makeBodyPayload(text: bodyText,
-                                           isPreview: requestRecord.body == nil,
-                                           truncatedBytes: requestRecord.bodyTruncatedBytes,
-                                           totalBytes: requestRecord.bodySize,
-                                           encoding: encoding)
+        requestBody = Self.makeBodyPayload(
+          text: bodyText,
+          isPreview: requestRecord.body == nil,
+          truncatedBytes: requestRecord.bodyTruncatedBytes,
+          totalBytes: requestRecord.bodySize,
+          encoding: encoding
+        )
       } else {
         requestBody = nil
       }
@@ -248,11 +252,13 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       responseHeaders = responseRecord.headers.map { Header(name: $0.name, value: $0.value) }
       if let bodyText = responseRecord.body ?? responseRecord.bodyPreview {
         let contentType = responseRecord.headers.first { $0.name.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
-        responseBody = Self.makeBodyPayload(text: bodyText,
-                                            isPreview: responseRecord.body == nil,
-                                            truncatedBytes: responseRecord.bodyTruncatedBytes,
-                                            totalBytes: responseRecord.bodySize,
-                                            encoding: contentType)
+        responseBody = Self.makeBodyPayload(
+          text: bodyText,
+          isPreview: responseRecord.body == nil,
+          truncatedBytes: responseRecord.bodyTruncatedBytes,
+          totalBytes: responseRecord.bodySize,
+          encoding: contentType
+        )
       } else {
         responseBody = nil
       }
@@ -289,12 +295,14 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     }
   }
 
-  static func makeTimingSummary(status: Status,
-                                startMillis: Int64?,
-                                endMillis: Int64?,
-                                fallbackStart: Date,
-                                fallbackEnd: Date,
-                                wallClockBase: Date?) -> String {
+  static func makeTimingSummary(
+    status: Status,
+    startMillis: Int64?,
+    endMillis: Int64?,
+    fallbackStart: Date,
+    fallbackEnd: Date,
+    wallClockBase: Date?
+  ) -> String {
     let startDate = date(fromMillis: startMillis, base: wallClockBase) ?? fallbackStart
     let endDate = date(fromMillis: endMillis, base: wallClockBase) ?? fallbackEnd
 
@@ -303,11 +311,10 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       let startString = startDate.formatted(date: .omitted, time: .standard)
       return "Started at \(startString)"
     case .success, .failure:
-      let durationSeconds: Double
-      if let start = startMillis, let end = endMillis, end > start {
-        durationSeconds = Double(end - start) / 1000
+      let durationSeconds: Double = if let start = startMillis, let end = endMillis, end > start {
+        Double(end - start) / 1000
       } else {
-        durationSeconds = max(endDate.timeIntervalSince(startDate), 0)
+        max(endDate.timeIntervalSince(startDate), 0)
       }
       let durationString = formattedDuration(durationSeconds)
       let startString = startDate.formatted(date: .omitted, time: .standard)
@@ -335,11 +342,13 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     }
   }
 
-  private static func makeBodyPayload(text: String,
-                                      isPreview: Bool,
-                                      truncatedBytes: Int64?,
-                                      totalBytes: Int64?,
-                                      encoding: String?) -> BodyPayload {
+  private static func makeBodyPayload(
+    text: String,
+    isPreview: Bool,
+    truncatedBytes: Int64?,
+    totalBytes: Int64?,
+    encoding: String?
+  ) -> BodyPayload {
     let capturedBytes = Int64(clamping: text.utf8.count)
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let encodingMatchesJSON = encoding?.lowercased().contains("json") == true
@@ -351,13 +360,15 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       isLikelyJSON = true
     }
 
-    return BodyPayload(rawText: text,
-                       prettyPrintedText: prettyPrinted,
-                       isLikelyJSON: isLikelyJSON,
-                       isPreview: isPreview,
-                       truncatedBytes: truncatedBytes,
-                       totalBytes: totalBytes,
-                       capturedBytes: capturedBytes)
+    return BodyPayload(
+      rawText: text,
+      prettyPrintedText: prettyPrinted,
+      isLikelyJSON: isLikelyJSON,
+      isPreview: isPreview,
+      truncatedBytes: truncatedBytes,
+      totalBytes: totalBytes,
+      capturedBytes: capturedBytes
+    )
   }
 }
 
@@ -453,12 +464,14 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       ?? session.closing?.tWallMs
       ?? session.messages.last?.tWallMs
 
-    timingSummary = NetworkInspectorRequestViewModel.makeTimingSummary(status: status,
-                                                                       startMillis: startMillis,
-                                                                       endMillis: endMillis,
-                                                                       fallbackStart: session.firstSeenAt,
-                                                                       fallbackEnd: session.lastUpdatedAt,
-                                                                       wallClockBase: server?.wallClockBase)
+    timingSummary = NetworkInspectorRequestViewModel.makeTimingSummary(
+      status: status,
+      startMillis: startMillis,
+      endMillis: endMillis,
+      fallbackStart: session.firstSeenAt,
+      fallbackEnd: session.lastUpdatedAt,
+      wallClockBase: server?.wallClockBase
+    )
 
     let components = URLComponents(string: urlString)
     if let path = components?.path, !path.isEmpty {

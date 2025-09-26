@@ -46,7 +46,6 @@ struct SelectableHeaderList: NSViewRepresentable {
     default: proposal.width ?? CGFloat.greatestFiniteMagnitude
     }
 
-
     let boundingSize = NSSize(width: widthForContainer, height: .greatestFiniteMagnitude)
 
     let oldSize = textContainer.size
