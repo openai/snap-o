@@ -160,12 +160,22 @@ struct NetworkInspectorWebSocketDetailView: View {
 
   private func messageCard(for message: NetworkInspectorWebSocketViewModel.Message) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 8) {
+      HStack(spacing: 4) {
         directionBadge(for: message)
+        if let size = message.payloadSize {
+          Text("\(formatBytes(size))")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        if let enqueued = message.enqueued {
+          Text(enqueued ? "Enqueued" : "Immediate")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
         Text(message.timestamp.formatted(date: .omitted, time: .standard))
           .font(.caption)
           .foregroundStyle(.secondary)
-        Spacer()
         Text(message.opcode)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
@@ -173,25 +183,12 @@ struct NetworkInspectorWebSocketDetailView: View {
 
       if let preview = message.preview, !preview.isEmpty {
         Text(preview)
-          .font(.body.monospaced())
+          .font(.caption.monospaced())
           .textSelection(.enabled)
       }
-
-      HStack(spacing: 12) {
-        if let size = message.payloadSize {
-          Text("Payload: \(formatBytes(size))")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-
-        if let enqueued = message.enqueued {
-          Text(enqueued ? "Enqueued" : "Immediate")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      }
     }
-    .padding(12)
+    .padding(.horizontal, 6)
+    .padding(.vertical, 4)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color.secondary.opacity(0.08))
     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -199,15 +196,12 @@ struct NetworkInspectorWebSocketDetailView: View {
 
   private func directionBadge(for message: NetworkInspectorWebSocketViewModel.Message) -> some View {
     let color: Color = message.direction == .outgoing ? .blue : .green
-    let label = message.direction == .outgoing ? "OUT" : "IN"
+    let symbolName = message.direction == .outgoing ? "tray" : "paperplane"
 
-    return Text(label)
+    return Image(systemName: symbolName)
       .font(.caption.weight(.semibold))
-      .padding(.horizontal, 6)
-      .padding(.vertical, 2)
-      .background(color.opacity(0.15))
+      .symbolRenderingMode(.hierarchical)
       .foregroundStyle(color)
-      .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
   }
 }
 
