@@ -5,13 +5,15 @@ struct SelectableHeaderList: NSViewRepresentable {
   let headers: [NetworkInspectorRequestViewModel.Header]
 
   func makeNSView(context: Context) -> NSTextView {
-    let textView = NSTextView()
+    let textView = HeaderTextView()
     textView.isEditable = false
     textView.isSelectable = true
     textView.drawsBackground = false
     textView.backgroundColor = .clear
     textView.textContainerInset = .zero
     textView.linkTextAttributes = [:]
+    textView.isRichText = false
+    textView.importsGraphics = false
 
     let attributedString = makeHeaderAttributedString(headers: headers)
     textView.textStorage?.setAttributedString(attributedString)
@@ -56,6 +58,42 @@ struct SelectableHeaderList: NSViewRepresentable {
 
     return CGSize(width: ceil(used.width), height: ceil(used.height))
   }
+}
+
+private final class HeaderTextView: NSTextView {
+  override func writeSelection(to pboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+    let nsRange = selectedRange()
+    guard let range = Range(nsRange, in: string) else {
+      return super.writeSelection(to: pboard, types: types)
+    }
+
+    let rawText = String(string[range])
+    let normalized = normalizeCopiedText(rawText)
+
+    pboard.declareTypes([.string], owner: nil)
+    return pboard.setString(normalized, forType: .string)
+  }
+}
+
+private func normalizeCopiedText(_ text: String) -> String {
+  let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+  var formattedLines: [String] = []
+
+  for line in lines {
+    if line.hasPrefix("\t") {
+      let continuation = line.dropFirst()
+      formattedLines.append("  " + continuation)
+    } else if let tabIndex = line.firstIndex(of: "\t") {
+      let name = line[..<tabIndex]
+      let valueStart = line.index(after: tabIndex)
+      let value = line[valueStart...]
+      formattedLines.append("\(name): \(value)")
+    } else {
+      formattedLines.append(String(line))
+    }
+  }
+
+  return formattedLines.joined(separator: "\n")
 }
 
 private func makeHeaderAttributedString(headers: [NetworkInspectorRequestViewModel.Header]) -> NSAttributedString {
