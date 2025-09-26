@@ -110,7 +110,7 @@ final class SnapOLinkServerConnection {
       onEvent(record)
     } catch {
       let raw = String(data: trimmed, encoding: .utf8) ?? ""
-      SnapOLog.network.error("Failed to decode NDJSON record: \(error.localizedDescription, privacy: .public) :: \(raw, privacy: .public)")
+      SnapOLog.network.error("Failed to decode NDJSON record: \(error.localizedDescription, privacy: .public) :: \(raw, privacy: .private)")
     }
   }
 

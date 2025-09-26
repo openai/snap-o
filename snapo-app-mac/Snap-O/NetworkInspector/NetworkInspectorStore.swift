@@ -731,7 +731,7 @@ struct NetworkInspectorListItemViewModel: Identifiable {
   var method: String {
     switch kind {
     case .request(let request):
-      request.isStreamingResponse ? "\(request.method) • SSE" : request.method
+      request.isStreamingResponse ? "\(request.method) SSE" : request.method
     case .webSocket(let webSocket):
       webSocket.method
     }
