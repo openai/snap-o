@@ -2,6 +2,7 @@
 
 For automated contributors:
 
+- This app targets macOS 15+ ONLY.
 - Follow the existing style. Defer to the repo configs:
   - SwiftLint: `.swiftlint.yml`
   - SwiftFormat: `.swiftformat`
