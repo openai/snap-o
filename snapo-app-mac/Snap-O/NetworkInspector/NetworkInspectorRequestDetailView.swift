@@ -203,16 +203,15 @@ private struct StreamEventCard: View {
 
   init(event: NetworkInspectorRequestViewModel.StreamEvent) {
     self.event = event
+    _usePrettyPrinted = State(initialValue: false)
     if let data = event.data, !data.isEmpty {
       let trimmed = data.trimmingCharacters(in: .whitespacesAndNewlines)
       let pretty = NetworkInspectorRequestViewModel.BodyPayload.prettyPrintedJSON(from: data)
       prettyPrintedData = pretty
       isLikelyJSON = pretty != nil || trimmed.first == "{" || trimmed.first == "["
-      _usePrettyPrinted = State(initialValue: pretty != nil)
     } else {
       prettyPrintedData = nil
       isLikelyJSON = false
-      _usePrettyPrinted = State(initialValue: false)
     }
   }
 

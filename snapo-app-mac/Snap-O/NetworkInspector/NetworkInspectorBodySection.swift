@@ -10,7 +10,7 @@ struct NetworkInspectorBodySection: View {
     self.title = title
     self.payload = payload
     _isExpanded = isExpanded
-    _usePrettyPrinted = State(initialValue: payload.prettyPrintedText != nil)
+    _usePrettyPrinted = State(initialValue: false)
   }
 
   var body: some View {
@@ -45,7 +45,8 @@ struct NetworkInspectorBodySection: View {
             rawText: payload.rawText,
             prettyText: payload.prettyPrintedText,
             isLikelyJSON: payload.isLikelyJSON,
-            usePrettyPrinted: $usePrettyPrinted
+            usePrettyPrinted: $usePrettyPrinted,
+            isExpandable: false
           )
         }
         .padding(.top, 8)

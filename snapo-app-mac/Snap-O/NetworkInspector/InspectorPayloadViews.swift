@@ -53,7 +53,7 @@ struct InspectorExpandableText: View {
         .foregroundStyle(.secondary)
       }
     }
-    .overlay(HeightReader(text: text, font: font))
+    .background(HeightReader(text: text, font: font))
     .onPreferenceChange(TextHeightPreferenceKey.self) { newValue in
       let adjusted = newValue
       if abs(fullHeight - adjusted) > 0.5 || fullHeight == .zero {
@@ -87,17 +87,27 @@ struct InspectorExpandableText: View {
     let font: Font
 
     var body: some View {
-      Text(text)
-        .font(font)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(
-          GeometryReader { proxy in
-            Color.clear.preference(key: TextHeightPreferenceKey.self, value: proxy.size.height)
+      GeometryReader { geometry in
+        let width = geometry.size.width
+        Group {
+          if width > 0 {
+            Text(text)
+              .font(font)
+              .frame(width: width, alignment: .leading)
+              .fixedSize(horizontal: false, vertical: true)
+              .background(
+                GeometryReader { proxy in
+                  Color.clear.preference(key: TextHeightPreferenceKey.self, value: proxy.size.height)
+                }
+              )
+              .hidden()
+          } else {
+            Color.clear
           }
-        )
-        .frame(width: 0, height: 0)
-        .opacity(0)
+        }
         .allowsHitTesting(false)
+      }
+      .allowsHitTesting(false)
     }
   }
 
@@ -115,6 +125,7 @@ struct InspectorPayloadView: View {
   let isLikelyJSON: Bool
   let maximumHeight: CGFloat
   let showsToggle: Bool
+  let isExpandable: Bool
   @Binding private var usePrettyPrinted: Bool
 
   init(
@@ -123,13 +134,15 @@ struct InspectorPayloadView: View {
     isLikelyJSON: Bool,
     usePrettyPrinted: Binding<Bool>,
     maximumHeight: CGFloat = 100,
-    showsToggle: Bool = true
+    showsToggle: Bool = true,
+    isExpandable: Bool = true
   ) {
     self.rawText = rawText
     self.prettyText = prettyText
     self.isLikelyJSON = isLikelyJSON
     self.maximumHeight = maximumHeight
     self.showsToggle = showsToggle
+    self.isExpandable = isExpandable
     _usePrettyPrinted = usePrettyPrinted
   }
 
@@ -145,11 +158,18 @@ struct InspectorPayloadView: View {
           .foregroundStyle(.secondary)
       }
 
-      InspectorExpandableText(
-        text: displayText,
-        font: .callout.monospaced(),
-        maximumHeight: maximumHeight
-      )
+      if isExpandable {
+        InspectorExpandableText(
+          text: displayText,
+          font: .callout.monospaced(),
+          maximumHeight: maximumHeight
+        )
+      } else {
+        Text(displayText)
+          .font(.callout.monospaced())
+          .textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }

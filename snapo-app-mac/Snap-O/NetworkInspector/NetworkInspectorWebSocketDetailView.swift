@@ -182,12 +182,12 @@ private struct MessageCardView: View {
       prettyPrintedPreview = pretty
       let encodingHint = message.opcode.lowercased().contains("json")
       isLikelyJSON = encodingHint || trimmed.first == "{" || trimmed.first == "["
-      _usePrettyPrinted = State(initialValue: pretty != nil)
     } else {
       prettyPrintedPreview = nil
       isLikelyJSON = false
-      _usePrettyPrinted = State(initialValue: false)
     }
+
+    _usePrettyPrinted = State(initialValue: false)
 
     directionSymbolName = message.direction == .outgoing ? "tray" : "paperplane"
     directionColor = message.direction == .outgoing ? .blue : .green
