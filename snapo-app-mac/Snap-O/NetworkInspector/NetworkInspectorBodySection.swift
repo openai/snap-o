@@ -40,23 +40,13 @@ struct NetworkInspectorBodySection: View {
       .buttonStyle(.plain)
 
       if isExpanded {
-        VStack(alignment: .leading, spacing: 8) {
-          if payload.prettyPrintedText != nil {
-            Toggle("Pretty print JSON", isOn: $usePrettyPrinted)
-              .font(.caption)
-          } else if payload.isLikelyJSON {
-            Text("Unable to pretty print (invalid or truncated JSON)")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-
-          Text(displayText)
-            .font(.callout.monospaced())
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        InspectorCard {
+          InspectorPayloadView(
+            rawText: payload.rawText,
+            prettyText: payload.prettyPrintedText,
+            isLikelyJSON: payload.isLikelyJSON,
+            usePrettyPrinted: $usePrettyPrinted
+          )
         }
         .padding(.top, 8)
       }
@@ -87,13 +77,6 @@ struct NetworkInspectorBodySection: View {
 
     guard !parts.isEmpty else { return nil }
     return parts.joined(separator: " ")
-  }
-
-  private var displayText: String {
-    if usePrettyPrinted, let pretty = payload.prettyPrintedText {
-      return pretty
-    }
-    return payload.rawText
   }
 }
 

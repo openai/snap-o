@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct NetworkInspectorWebSocketDetailView: View {
   let webSocket: NetworkInspectorWebSocketViewModel
@@ -153,7 +154,7 @@ struct NetworkInspectorWebSocketDetailView: View {
           .font(.subheadline)
           .foregroundStyle(.secondary)
       } else {
-        LazyVStack(alignment: .leading, spacing: 4) {
+        LazyVStack(alignment: .leading, spacing: 8) {
           ForEach(webSocket.messages) { message in
             MessageCardView(message: message)
           }
@@ -170,7 +171,7 @@ private struct MessageCardView: View {
   private let isLikelyJSON: Bool
   private let directionSymbolName: String
   private let directionColor: Color
-  @State private var usePrettyPrinted: Bool = false
+  @State private var usePrettyPrinted: Bool
 
   init(message: NetworkInspectorWebSocketViewModel.Message) {
     self.message = message
@@ -181,9 +182,11 @@ private struct MessageCardView: View {
       prettyPrintedPreview = pretty
       let encodingHint = message.opcode.lowercased().contains("json")
       isLikelyJSON = encodingHint || trimmed.first == "{" || trimmed.first == "["
+      _usePrettyPrinted = State(initialValue: pretty != nil)
     } else {
       prettyPrintedPreview = nil
       isLikelyJSON = false
+      _usePrettyPrinted = State(initialValue: false)
     }
 
     directionSymbolName = message.direction == .outgoing ? "tray" : "paperplane"
@@ -191,60 +194,57 @@ private struct MessageCardView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 4) {
-        Image(systemName: directionSymbolName)
-          .font(.caption.weight(.semibold))
-          .symbolRenderingMode(.hierarchical)
-          .foregroundStyle(directionColor)
-        if let size = message.payloadSize {
-          Text("\(formatBytes(size))")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
+    InspectorCard {
+      header
 
-        if prettyPrintedPreview != nil {
-          Toggle("Pretty print", isOn: $usePrettyPrinted)
-            .font(.caption)
-            .toggleStyle(.checkbox)
-        }
-
-        Spacer()
-
-        if let enqueued = message.enqueued {
-          Text(enqueued ? "Enqueued" : "Immediate")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        Text(message.timestamp.formatted(date: .omitted, time: .standard))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Text(message.opcode)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-      }
-
-      if let previewText = displayPreview {
-        ExpandableText(text: previewText, font: .callout.monospaced())
-      } else if isLikelyJSON, message.preview != nil {
+      if let preview = message.preview, !preview.isEmpty {
+        InspectorPayloadView(
+          rawText: preview,
+          prettyText: prettyPrintedPreview,
+          isLikelyJSON: isLikelyJSON,
+          usePrettyPrinted: $usePrettyPrinted,
+          showsToggle: false
+        )
+      } else if isLikelyJSON {
         Text("Unable to pretty print (invalid or truncated JSON)")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
     }
-    .padding(.horizontal, 6)
-    .padding(.vertical, 4)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.secondary.opacity(0.08))
-    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
-  private var displayPreview: String? {
-    guard let preview = message.preview, !preview.isEmpty else { return nil }
-    if usePrettyPrinted, let pretty = prettyPrintedPreview {
-      return pretty
+  private var header: some View {
+    HStack(spacing: 4) {
+      Image(systemName: directionSymbolName)
+        .font(.caption.weight(.semibold))
+        .symbolRenderingMode(.hierarchical)
+        .foregroundStyle(directionColor)
+      if let size = message.payloadSize {
+        Text("\(formatBytes(size))")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      if prettyPrintedPreview != nil {
+        Toggle("Pretty print", isOn: $usePrettyPrinted)
+          .font(.caption)
+          .toggleStyle(.checkbox)
+      }
+
+      Spacer()
+
+      if let enqueued = message.enqueued {
+        Text(enqueued ? "Enqueued" : "Immediate")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      Text(message.timestamp.formatted(date: .omitted, time: .standard))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Text(message.opcode)
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
     }
-    return preview
   }
 
   private static func prettyPrintedJSON(from text: String) -> String? {
@@ -255,93 +255,6 @@ private struct MessageCardView: View {
       return String(data: prettyData, encoding: .utf8)
     } catch {
       return nil
-    }
-  }
-}
-
-private struct ExpandableText: View {
-  let text: String
-  let font: Font
-  let maximumHeight: CGFloat
-  @State private var isExpanded = false
-  @State private var fullHeight: CGFloat = .zero
-
-  init(text: String, font: Font, maximumHeight: CGFloat = 100) {
-    self.text = text
-    self.font = font
-    self.maximumHeight = maximumHeight
-  }
-
-  private var needsExpansion: Bool {
-    fullHeight > maximumHeight + 1
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      textView()
-
-      if needsExpansion {
-        Button(isExpanded ? "Show Less" : "Show More") {
-          withAnimation(.easeInOut(duration: 0.2)) {
-            isExpanded.toggle()
-          }
-        }
-        .font(.caption)
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-      }
-    }
-    .overlay(HeightReader(text: text, font: font))
-    .onPreferenceChange(TextHeightPreferenceKey.self) { newValue in
-      if abs(fullHeight - newValue) > 0.5 {
-        fullHeight = newValue
-      } else if fullHeight == 0 {
-        fullHeight = newValue
-      }
-      if fullHeight <= maximumHeight + 1 {
-        isExpanded = false
-      }
-    }
-  }
-
-  @ViewBuilder
-  private func textView() -> some View {
-    if !isExpanded, needsExpansion {
-      Text(text)
-        .font(font)
-        .textSelection(.enabled)
-        .frame(maxHeight: maximumHeight, alignment: .top)
-        .clipped()
-    } else {
-      Text(text)
-        .font(font)
-        .textSelection(.enabled)
-    }
-  }
-
-  private struct HeightReader: View {
-    let text: String
-    let font: Font
-
-    var body: some View {
-      Text(text)
-        .font(font)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(
-          GeometryReader { proxy in
-            Color.clear.preference(key: TextHeightPreferenceKey.self, value: proxy.size.height)
-          }
-        )
-        .frame(width: 0, height: 0)
-        .opacity(0)
-        .allowsHitTesting(false)
-    }
-  }
-
-  private struct TextHeightPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = .zero
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-      value = max(value, nextValue())
     }
   }
 }
