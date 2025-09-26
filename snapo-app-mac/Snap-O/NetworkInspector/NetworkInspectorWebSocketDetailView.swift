@@ -153,17 +153,13 @@ struct NetworkInspectorWebSocketDetailView: View {
           .font(.subheadline)
           .foregroundStyle(.secondary)
       } else {
-        LazyVStack(alignment: .leading, spacing: 12) {
+        LazyVStack(alignment: .leading, spacing: 4) {
           ForEach(webSocket.messages) { message in
-            messageCard(for: message)
+            MessageCardView(message: message)
           }
         }
       }
     }
-  }
-
-  private func messageCard(for message: NetworkInspectorWebSocketViewModel.Message) -> some View {
-    MessageCardView(message: message)
   }
 }
 
