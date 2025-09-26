@@ -137,6 +137,13 @@ struct NetworkInspectorView: View {
     }
     .navigationSplitViewStyle(.balanced)
     .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
+    .onChange(of: selectedServerID) { _, newValue in
+      if let id = newValue {
+        store.setRetainedServerIDs(Set([id]))
+      } else {
+        store.setRetainedServerIDs(Set<NetworkInspectorServer.ID>())
+      }
+    }
     .onChange(of: store.items.map(\.id)) { _, ids in
       reconcileSelection(allIDs: ids, filteredIDs: filteredItems.map(\.id))
     }
@@ -157,6 +164,12 @@ struct NetworkInspectorView: View {
     .onAppear {
       if selectedServerID == nil {
         selectedServerID = store.servers.first?.id
+      }
+
+      if let id = selectedServerID {
+        store.setRetainedServerIDs(Set([id]))
+      } else {
+        store.setRetainedServerIDs(Set<NetworkInspectorServer.ID>())
       }
 
       if selectedItem == nil {
@@ -243,19 +256,16 @@ struct NetworkInspectorView: View {
 
   @ViewBuilder
   private func serverRowContent(for server: NetworkInspectorServerViewModel) -> some View {
-    placeholderRowContent(title: server.displayName, subtitle: server.deviceDisplayTitle)
+    serverRow(title: server.displayName, subtitle: server.deviceDisplayTitle, isConnected: server.isConnected)
   }
 
   private func placeholderRowContent(title: String, subtitle: String) -> some View {
+    serverRow(title: title, subtitle: subtitle, isConnected: true)
+  }
+
+  private func serverRow(title: String, subtitle: String, isConnected: Bool) -> some View {
     HStack(spacing: 12) {
-      RoundedRectangle(cornerRadius: 8)
-        .fill(Color.secondary.opacity(0.12))
-        .frame(width: 32, height: 32)
-        .overlay(
-          Image(systemName: "app.fill")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        )
+      appIconView(isConnected: isConnected)
 
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
@@ -272,6 +282,31 @@ struct NetworkInspectorView: View {
         }
       }
     }
+    .opacity(isConnected ? 1 : 0.75)
+  }
+
+  private func appIconView(isConnected: Bool) -> some View {
+    RoundedRectangle(cornerRadius: 8)
+      .fill(isConnected ? Color.secondary.opacity(0.12) : Color.secondary.opacity(0.05))
+      .overlay(
+        Image(systemName: "app.fill")
+          .font(.subheadline)
+          .foregroundStyle(isConnected ? Color.secondary : Color.secondary.opacity(0.35))
+          .saturation(isConnected ? 1 : 0)
+      )
+      .overlay(alignment: .bottomTrailing) {
+        if !isConnected {
+          Image(systemName: "link.slash")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color.secondary)
+            .padding(4)
+            .background(Circle().fill(Color.secondary.opacity(0.2)))
+            .offset(x: 4, y: 4)
+        }
+      }
+      .saturation(isConnected ? 1 : 0)
+      .opacity(isConnected ? 1 : 0.6)
+      .frame(width: 32, height: 32)
   }
 
   private var serversPopover: some View {
@@ -289,6 +324,7 @@ struct NetworkInspectorView: View {
               (selectedServerID == server.id ? Color.accentColor.opacity(0.12) : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 4)

@@ -3,7 +3,7 @@ import Foundation
 actor NetworkInspectorService {
   private struct ServerState {
     var server: NetworkInspectorServer
-    var forwardHandle: ADBForwardHandle
+    var forwardHandle: ADBForwardHandle?
     var connection: NetworkServerConnection?
   }
 
@@ -25,6 +25,7 @@ actor NetworkInspectorService {
   private var webSocketStates: [NetworkInspectorWebSocket.ID: NetworkInspectorWebSocket] = [:]
   private var webSocketOrder: [NetworkInspectorWebSocket.ID] = []
   private var webSocketContinuations: [UUID: AsyncStream<[NetworkInspectorWebSocket]>.Continuation] = [:]
+  private var retainedServerIDs: Set<NetworkInspectorServer.ID> = []
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -53,6 +54,11 @@ actor NetworkInspectorService {
         await self.updateDevices(devices)
       }
     }
+  }
+
+  func updateRetainedServers(_ ids: Set<NetworkInspectorServer.ID>) async {
+    retainedServerIDs = ids
+    await purgeUnretainedDisconnectedServers()
   }
 
   func serversStream() -> AsyncStream<[NetworkInspectorServer]> {
@@ -203,14 +209,19 @@ actor NetworkInspectorService {
     do {
       let handle = try await exec.forwardLocalAbstract(deviceID: deviceID, abstractSocket: socketName)
       let serverID = NetworkInspectorServer.ID(deviceID: deviceID, socketName: socketName)
-      let server = NetworkInspectorServer(
+      var server = NetworkInspectorServer(
         deviceID: deviceID,
         socketName: socketName,
         localPort: handle.port,
         hello: nil,
         lastEventAt: nil,
-        deviceDisplayTitle: devices[deviceID]?.displayTitle ?? deviceID
+        deviceDisplayTitle: devices[deviceID]?.displayTitle ?? deviceID,
+        isConnected: true
       )
+      if let existing = serverStates[serverID]?.server {
+        server.hello = existing.hello
+        server.lastEventAt = existing.lastEventAt
+      }
       let connection = NetworkServerConnection(
         port: handle.port,
         queueLabel: "com.openai.snapo.netinspector.\(deviceID).\(socketName)",
@@ -237,20 +248,34 @@ actor NetworkInspectorService {
     await removeServer(serverID)
   }
 
-  private func removeServer(_ id: NetworkInspectorServer.ID) async {
-    guard let state = serverStates.removeValue(forKey: id) else { return }
+  private func removeServer(_ id: NetworkInspectorServer.ID, force: Bool = false) async {
+    guard var state = serverStates[id] else { return }
     state.connection?.stop()
     await removeForward(state.forwardHandle)
+    state.connection = nil
+    state.forwardHandle = nil
+
     if var sockets = deviceSockets[id.deviceID] {
       sockets.remove(id.socketName)
       deviceSockets[id.deviceID] = sockets
     }
-    broadcastServers()
-    removeRequests(for: id)
-    removeWebSockets(for: id)
+
+    let shouldRetain = !force && retainedServerIDs.contains(id)
+
+    if shouldRetain {
+      state.server.isConnected = false
+      serverStates[id] = state
+      broadcastServers()
+    } else {
+      serverStates.removeValue(forKey: id)
+      broadcastServers()
+      removeRequests(for: id)
+      removeWebSockets(for: id)
+    }
   }
 
-  private func removeForward(_ handle: ADBForwardHandle) async {
+  private func removeForward(_ handle: ADBForwardHandle?) async {
+    guard let handle else { return }
     let exec = await adbService.exec()
     await exec.removeForward(handle)
   }
@@ -368,6 +393,16 @@ actor NetworkInspectorService {
 
   private func currentWebSockets() -> [NetworkInspectorWebSocket] {
     webSocketOrder.compactMap { webSocketStates[$0] }
+  }
+
+  private func purgeUnretainedDisconnectedServers() async {
+    let idsToRemove = serverStates.compactMap { id, state in
+      (!retainedServerIDs.contains(id) && state.server.isConnected == false) ? id : nil
+    }
+
+    for id in idsToRemove {
+      await removeServer(id, force: true)
+    }
   }
 
   private func removeRequests(for serverID: NetworkInspectorServer.ID) {

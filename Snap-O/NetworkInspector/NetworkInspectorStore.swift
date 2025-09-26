@@ -89,6 +89,12 @@ final class NetworkInspectorStore: ObservableObject {
       return .webSocket(viewModel)
     }
   }
+
+  func setRetainedServerIDs(_ ids: Set<NetworkInspectorServer.ID>) {
+    Task {
+      await service.updateRetainedServers(ids)
+    }
+  }
 }
 
 struct NetworkInspectorServerViewModel: Identifiable {
@@ -96,10 +102,12 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let displayName: String
   let helloSummary: String?
   let deviceDisplayTitle: String
+  let isConnected: Bool
 
   init(server: NetworkInspectorServer) {
     id = server.id
     deviceDisplayTitle = server.deviceDisplayTitle
+    isConnected = server.isConnected
     if let hello = server.hello {
       displayName = hello.packageName
       helloSummary = server.deviceDisplayTitle

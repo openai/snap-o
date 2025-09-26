@@ -13,6 +13,7 @@ struct NetworkInspectorServer: Identifiable, Hashable, Sendable {
   var hello: SnapONetHelloRecord?
   var lastEventAt: Date?
   var deviceDisplayTitle: String
+  var isConnected: Bool
 }
 
 struct NetworkInspectorEvent: Identifiable, Sendable {
