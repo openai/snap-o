@@ -231,7 +231,7 @@ private struct StreamEventCard: View {
       }
 
       if let dataText = displayData {
-        ExpandableText(text: dataText, font: .caption.monospaced())
+        ExpandableText(text: dataText, font: .callout.monospaced())
       } else if isLikelyJSON, event.data != nil {
         Text("Unable to pretty print (invalid or truncated JSON)")
           .font(.caption)

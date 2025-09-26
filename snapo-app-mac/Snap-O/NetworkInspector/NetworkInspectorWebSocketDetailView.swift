@@ -225,7 +225,7 @@ private struct MessageCardView: View {
       }
 
       if let previewText = displayPreview {
-        ExpandableText(text: previewText, font: .caption.monospaced())
+        ExpandableText(text: previewText, font: .callout.monospaced())
       } else if isLikelyJSON, message.preview != nil {
         Text("Unable to pretty print (invalid or truncated JSON)")
           .font(.caption)

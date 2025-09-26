@@ -51,7 +51,7 @@ struct NetworkInspectorBodySection: View {
           }
 
           Text(displayText)
-            .font(.caption.monospaced())
+            .font(.callout.monospaced())
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
