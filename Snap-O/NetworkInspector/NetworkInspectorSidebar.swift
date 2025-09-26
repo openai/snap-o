@@ -46,11 +46,6 @@ struct NetworkInspectorSidebar: View {
         ForEach(filteredItems) { item in
           VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-              Text(item.method)
-                .font(.system(.caption, design: .monospaced))
-                .bold()
-                .foregroundStyle(.secondary)
-
               VStack(alignment: .leading, spacing: 2) {
                 Text(item.primaryPathComponent)
                   .font(.subheadline.weight(.medium))
@@ -65,6 +60,11 @@ struct NetworkInspectorSidebar: View {
               }
 
               Spacer()
+
+              Text(item.method)
+                .font(.system(.caption, design: .monospaced))
+                .bold()
+                .foregroundStyle(.secondary)
 
               Text(statusLabel(for: item.status))
                 .font(.caption)
