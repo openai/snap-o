@@ -9,11 +9,11 @@ final class NetworkInspectorStore: ObservableObject {
 
   private let service: NetworkInspectorService
   private var tasks: [Task<Void, Never>] = []
-  private var serverLookup: [SnapOLinkServer.ID: NetworkInspectorServerViewModel] = [:]
+  private var serverLookup: [SnapOLinkServerID: NetworkInspectorServerViewModel] = [:]
   private var latestRequests: [NetworkInspectorRequest] = []
   private var latestWebSockets: [NetworkInspectorWebSocket] = []
-  private var requestLookup: [NetworkInspectorRequest.ID: NetworkInspectorRequestViewModel] = [:]
-  private var webSocketLookup: [NetworkInspectorWebSocket.ID: NetworkInspectorWebSocketViewModel] = [:]
+  private var requestLookup: [NetworkInspectorRequestID: NetworkInspectorRequestViewModel] = [:]
+  private var webSocketLookup: [NetworkInspectorWebSocketID: NetworkInspectorWebSocketViewModel] = [:]
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -91,7 +91,7 @@ final class NetworkInspectorStore: ObservableObject {
     }
   }
 
-  func setRetainedServerIDs(_ ids: Set<SnapOLinkServer.ID>) {
+  func setRetainedServerIDs(_ ids: Set<SnapOLinkServerID>) {
     Task {
       await service.updateRetainedServers(ids)
     }
@@ -105,7 +105,7 @@ final class NetworkInspectorStore: ObservableObject {
 }
 
 struct NetworkInspectorServerViewModel: Identifiable {
-  let id: SnapOLinkServer.ID
+  let id: SnapOLinkServerID
   let displayName: String
   let helloSummary: String?
   let deviceDisplayTitle: String
@@ -146,10 +146,10 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     case failure(message: String?)
   }
 
-  let id: NetworkInspectorRequest.ID
+  let id: NetworkInspectorRequestID
   let method: String
   let url: String
-  let serverID: SnapOLinkServer.ID
+  let serverID: SnapOLinkServerID
   let status: Status
   let serverSummary: String
   let requestIdentifier: String
@@ -203,8 +203,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       status: status,
       startMillis: startMillis,
       endMillis: endMillis,
-      fallbackStart: request.firstSeenAt,
-      fallbackEnd: request.lastUpdatedAt,
+      fallbackRange: (start: request.firstSeenAt, end: request.lastUpdatedAt),
       wallClockBase: server?.wallClockBase
     )
 
@@ -299,12 +298,11 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     status: Status,
     startMillis: Int64?,
     endMillis: Int64?,
-    fallbackStart: Date,
-    fallbackEnd: Date,
+    fallbackRange: (start: Date, end: Date),
     wallClockBase: Date?
   ) -> String {
-    let startDate = date(fromMillis: startMillis, base: wallClockBase) ?? fallbackStart
-    let endDate = date(fromMillis: endMillis, base: wallClockBase) ?? fallbackEnd
+    let startDate = date(fromMillis: startMillis, base: wallClockBase) ?? fallbackRange.start
+    let endDate = date(fromMillis: endMillis, base: wallClockBase) ?? fallbackRange.end
 
     switch status {
     case .pending:
@@ -393,10 +391,10 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
     }
   }
 
-  let id: NetworkInspectorWebSocket.ID
+  let id: NetworkInspectorWebSocketID
   let method: String
   let url: String
-  let serverID: SnapOLinkServer.ID
+  let serverID: SnapOLinkServerID
   let status: NetworkInspectorRequestViewModel.Status
   let serverSummary: String
   let socketIdentifier: String
@@ -468,8 +466,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       status: status,
       startMillis: startMillis,
       endMillis: endMillis,
-      fallbackStart: session.firstSeenAt,
-      fallbackEnd: session.lastUpdatedAt,
+      fallbackRange: (start: session.firstSeenAt, end: session.lastUpdatedAt),
       wallClockBase: server?.wallClockBase
     )
 
@@ -556,7 +553,7 @@ struct NetworkInspectorListItemViewModel: Identifiable {
     return false
   }
 
-  var serverID: SnapOLinkServer.ID {
+  var serverID: SnapOLinkServerID {
     switch kind {
     case .request(let request):
       request.serverID

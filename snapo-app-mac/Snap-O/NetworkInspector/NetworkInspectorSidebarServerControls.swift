@@ -3,7 +3,7 @@ import SwiftUI
 
 struct NetworkInspectorSidebarServerControls: View {
   @ObservedObject var store: NetworkInspectorStore
-  @Binding var selectedServerID: SnapOLinkServer.ID?
+  @Binding var selectedServerID: SnapOLinkServerID?
   @Binding var isServerPickerPresented: Bool
   let selectedServer: NetworkInspectorServerViewModel?
   let replacementServerCandidate: NetworkInspectorServerViewModel?

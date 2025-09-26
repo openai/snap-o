@@ -15,17 +15,17 @@ actor NetworkInspectorService {
   private var deviceMonitors: [String: Task<Void, Never>] = [:]
   private var deviceSockets: [String: Set<String>] = [:]
   private var devices: [String: Device] = [:]
-  private var serverStates: [SnapOLinkServer.ID: ServerState] = [:]
+  private var serverStates: [SnapOLinkServerID: ServerState] = [:]
   private var events: [SnapOLinkEvent] = []
   private var serverContinuations: [UUID: AsyncStream<[SnapOLinkServer]>.Continuation] = [:]
   private var eventContinuations: [UUID: AsyncStream<SnapOLinkEvent>.Continuation] = [:]
-  private var requestStates: [NetworkInspectorRequest.ID: NetworkInspectorRequest] = [:]
-  private var requestOrder: [NetworkInspectorRequest.ID] = []
+  private var requestStates: [NetworkInspectorRequestID: NetworkInspectorRequest] = [:]
+  private var requestOrder: [NetworkInspectorRequestID] = []
   private var requestContinuations: [UUID: AsyncStream<[NetworkInspectorRequest]>.Continuation] = [:]
-  private var webSocketStates: [NetworkInspectorWebSocket.ID: NetworkInspectorWebSocket] = [:]
-  private var webSocketOrder: [NetworkInspectorWebSocket.ID] = []
+  private var webSocketStates: [NetworkInspectorWebSocketID: NetworkInspectorWebSocket] = [:]
+  private var webSocketOrder: [NetworkInspectorWebSocketID] = []
   private var webSocketContinuations: [UUID: AsyncStream<[NetworkInspectorWebSocket]>.Continuation] = [:]
-  private var retainedServerIDs: Set<SnapOLinkServer.ID> = []
+  private var retainedServerIDs: Set<SnapOLinkServerID> = []
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -56,7 +56,7 @@ actor NetworkInspectorService {
     }
   }
 
-  func updateRetainedServers(_ ids: Set<SnapOLinkServer.ID>) async {
+  func updateRetainedServers(_ ids: Set<SnapOLinkServerID>) async {
     retainedServerIDs = ids
     await purgeUnretainedDisconnectedServers()
   }
@@ -208,7 +208,7 @@ actor NetworkInspectorService {
     let exec = await adbService.exec()
     do {
       let handle = try await exec.forwardLocalAbstract(deviceID: deviceID, abstractSocket: socketName)
-      let serverID = SnapOLinkServer.ID(deviceID: deviceID, socketName: socketName)
+      let serverID = SnapOLinkServerID(deviceID: deviceID, socketName: socketName)
       var server = SnapOLinkServer(
         deviceID: deviceID,
         socketName: socketName,
@@ -239,18 +239,21 @@ actor NetworkInspectorService {
       connection.start()
     } catch {
       SnapOLog.network.error(
-        "Failed to connect to \(socketName, privacy: .public) on \(deviceID, privacy: .public): \(error.localizedDescription, privacy: .public)"
+        """
+        Failed to connect to \(socketName, privacy: .public) on \(deviceID, privacy: .public):
+        \(error.localizedDescription, privacy: .public)
+        """
       )
       deviceSockets[deviceID]?.remove(socketName)
     }
   }
 
   private func stopServerConnection(deviceID: String, socketName: String) async {
-    let serverID = SnapOLinkServer.ID(deviceID: deviceID, socketName: socketName)
+    let serverID = SnapOLinkServerID(deviceID: deviceID, socketName: socketName)
     await removeServer(serverID)
   }
 
-  private func removeServer(_ id: SnapOLinkServer.ID, force: Bool = false) async {
+  private func removeServer(_ id: SnapOLinkServerID, force: Bool = false) async {
     guard var state = serverStates[id] else { return }
     state.connection?.stop()
     await removeForward(state.forwardHandle)
@@ -282,7 +285,7 @@ actor NetworkInspectorService {
     await exec.removeForward(handle)
   }
 
-  private func handle(record: SnapONetRecord, from serverID: SnapOLinkServer.ID) async {
+  private func handle(record: SnapONetRecord, from serverID: SnapOLinkServerID) async {
     let now = Date()
     guard serverStates[serverID] != nil else { return }
     var shouldBroadcastServers = false
@@ -354,10 +357,13 @@ actor NetworkInspectorService {
     broadcast(event: event)
   }
 
-  private func connectionClosed(for serverID: SnapOLinkServer.ID, error: Error?) async {
+  private func connectionClosed(for serverID: SnapOLinkServerID, error: Error?) async {
     if let error {
       SnapOLog.network.error(
-        "Connection closed for \(serverID.deviceID, privacy: .public)/\(serverID.socketName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+        """
+        Connection closed for \(serverID.deviceID, privacy: .public)/\(serverID.socketName, privacy: .public):
+        \(error.localizedDescription, privacy: .public)
+        """
       )
     }
     await removeServer(serverID)
@@ -417,21 +423,21 @@ actor NetworkInspectorService {
     }
   }
 
-  private func removeRequests(for serverID: SnapOLinkServer.ID) {
+  private func removeRequests(for serverID: SnapOLinkServerID) {
     requestOrder.removeAll { $0.serverID == serverID }
     requestStates = requestStates.filter { key, _ in key.serverID != serverID }
     broadcastRequests()
   }
 
-  private func removeWebSockets(for serverID: SnapOLinkServer.ID) {
+  private func removeWebSockets(for serverID: SnapOLinkServerID) {
     webSocketOrder.removeAll { $0.serverID == serverID }
     webSocketStates = webSocketStates.filter { key, _ in key.serverID != serverID }
     broadcastWebSockets()
   }
 
-  private func updateRequest(for serverID: SnapOLinkServer.ID, with record: SnapONetRequestWillBeSentRecord) -> Bool {
+  private func updateRequest(for serverID: SnapOLinkServerID, with record: SnapONetRequestWillBeSentRecord) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorRequest.ID(serverID: serverID, requestID: record.id)
+    let identifier = NetworkInspectorRequestID(serverID: serverID, requestID: record.id)
     var updated = requestStates[identifier]
 
     if updated == nil {
@@ -451,7 +457,7 @@ actor NetworkInspectorService {
   }
 
   private func updateAppIcon(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetAppIconRecord
   ) -> Bool {
     guard var state = serverStates[serverID] else { return false }
@@ -469,9 +475,9 @@ actor NetworkInspectorService {
     return true
   }
 
-  private func updateRequest(for serverID: SnapOLinkServer.ID, with record: SnapONetResponseReceivedRecord) -> Bool {
+  private func updateRequest(for serverID: SnapOLinkServerID, with record: SnapONetResponseReceivedRecord) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorRequest.ID(serverID: serverID, requestID: record.id)
+    let identifier = NetworkInspectorRequestID(serverID: serverID, requestID: record.id)
     var updated = requestStates[identifier]
 
     if updated == nil {
@@ -490,9 +496,9 @@ actor NetworkInspectorService {
     return false
   }
 
-  private func updateRequest(for serverID: SnapOLinkServer.ID, with record: SnapONetRequestFailedRecord) -> Bool {
+  private func updateRequest(for serverID: SnapOLinkServerID, with record: SnapONetRequestFailedRecord) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorRequest.ID(serverID: serverID, requestID: record.id)
+    let identifier = NetworkInspectorRequestID(serverID: serverID, requestID: record.id)
     var updated = requestStates[identifier]
 
     if updated == nil {
@@ -512,11 +518,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketWillOpenRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -537,11 +543,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketOpenedRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -564,11 +570,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketMessageSentRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -597,11 +603,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketMessageReceivedRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -630,11 +636,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketClosingRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -656,11 +662,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketClosedRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -682,11 +688,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketFailedRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -708,11 +714,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketCloseRequestedRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {
@@ -734,11 +740,11 @@ actor NetworkInspectorService {
   }
 
   private func updateWebSocket(
-    for serverID: SnapOLinkServer.ID,
+    for serverID: SnapOLinkServerID,
     with record: SnapONetWebSocketCancelledRecord
   ) -> Bool {
     let timestamp = Date()
-    let identifier = NetworkInspectorWebSocket.ID(serverID: serverID, socketID: record.id)
+    let identifier = NetworkInspectorWebSocketID(serverID: serverID, socketID: record.id)
     var updated = webSocketStates[identifier]
 
     if updated == nil {

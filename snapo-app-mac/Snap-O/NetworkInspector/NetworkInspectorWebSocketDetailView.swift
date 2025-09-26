@@ -55,12 +55,16 @@ struct NetworkInspectorWebSocketDetailView: View {
       }
 
       if let closeRequested = webSocket.closeRequested {
-        Text(
-          "Close requested: \(closeRequested.code) • \(closeRequested.initiated.capitalized) • \(closeRequested.accepted ? "accepted" : "not accepted")"
-        )
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
+        let acceptance = closeRequested.accepted ? "accepted" : "not accepted"
+        let summaryParts = [
+          "Close requested: \(closeRequested.code)",
+          closeRequested.initiated.capitalized,
+          acceptance
+        ]
+        Text(summaryParts.joined(separator: " • "))
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
         if let reason = closeRequested.reason, !reason.isEmpty {
           Text("Reason: \(reason)")
             .font(.footnote)
@@ -161,7 +165,6 @@ struct NetworkInspectorWebSocketDetailView: View {
   private func messageCard(for message: NetworkInspectorWebSocketViewModel.Message) -> some View {
     MessageCardView(message: message)
   }
-
 }
 
 private struct MessageCardView: View {

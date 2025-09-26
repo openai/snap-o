@@ -15,8 +15,10 @@ final class SnapOLinkServerConnection {
     onEvent: @escaping @Sendable (SnapONetRecord) -> Void,
     onClose: @escaping @Sendable (Error?) -> Void
   ) {
-    let host = NWEndpoint.Host.ipv4(IPv4Address("127.0.0.1")!)
-    let portValue = NWEndpoint.Port(rawValue: port)!
+    let host = NWEndpoint.Host("127.0.0.1")
+    guard let portValue = NWEndpoint.Port(rawValue: port) else {
+      preconditionFailure("Invalid Snap-O link port: \(port)")
+    }
     queue = DispatchQueue(label: queueLabel)
     connection = NWConnection(host: host, port: portValue, using: .tcp)
     self.onEvent = onEvent

@@ -3,7 +3,8 @@ import Sparkle
 import SwiftUI
 
 struct SnapOCommands: Commands {
-  @Environment(\.openWindow) private var openWindow
+  @Environment(\.openWindow)
+  private var openWindow
   @FocusedObject var captureController: CaptureWindowController?
 
   @ObservedObject var settings: AppSettings

@@ -216,7 +216,10 @@ actor CaptureService {
         return originalValue
       } catch {
         SnapOLog.recording.error(
-          "Failed to update show touches for \(deviceID, privacy: .private): \(error.localizedDescription, privacy: .public)"
+          """
+          Failed to update show touches for \(deviceID, privacy: .private):
+          \(error.localizedDescription, privacy: .public)
+          """
         )
         return nil
       }
@@ -235,13 +238,18 @@ actor CaptureService {
         try await exec.setShowTouches(deviceID: deviceID, enabled: originalValue)
       } catch {
         SnapOLog.recording.error(
-          "Failed to restore show touches for \(deviceID, privacy: .private): \(error.localizedDescription, privacy: .public)"
+          """
+          Failed to restore show touches for \(deviceID, privacy: .private):
+          \(error.localizedDescription, privacy: .public)
+          """
         )
       }
     }
   }
+}
 
-  private func collectMedia(
+private extension CaptureService {
+  func collectMedia(
     for devices: [Device],
     action: @escaping @Sendable (Device) async throws -> CaptureMedia
   ) async -> ([CaptureMedia], Error?) {
@@ -272,7 +280,7 @@ actor CaptureService {
     return (results, encounteredError)
   }
 
-  private func collectOptionalMedia(
+  func collectOptionalMedia(
     for devices: [Device],
     action: @escaping @Sendable (Device) async throws -> CaptureMedia?
   ) async -> ([CaptureMedia], Error?) {

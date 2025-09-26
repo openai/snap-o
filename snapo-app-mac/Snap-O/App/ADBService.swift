@@ -36,8 +36,8 @@ actor ADBService {
       didCancelPrompt = false
       let waiters = configurationWaiters
       configurationWaiters.removeAll()
-      for w in waiters {
-        w.resume()
+      for waiter in waiters {
+        waiter.resume()
       }
     }
   }
@@ -168,7 +168,8 @@ actor ADBService {
     alert.alertStyle = .informational
     alert.messageText = "Waiting for ADB server..."
     alert.informativeText = """
-    You may need to start the ADB server with "adb start-server". Snap-O can do it automatically if you set your ADB path."
+    You may need to start the ADB server with "adb start-server".
+    Snap-O can do it automatically if you set your ADB path.
     """
     alert.addButton(withTitle: "Choose ADB Path…")
     alert.addButton(withTitle: "Cancel")

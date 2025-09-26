@@ -4,7 +4,7 @@ struct NetworkInspectorSidebar: View {
   @ObservedObject var store: NetworkInspectorStore
   @Binding var selectedItem: NetworkInspectorItemID?
   @Binding var requestSearchText: String
-  @Binding var selectedServerID: SnapOLinkServer.ID?
+  @Binding var selectedServerID: SnapOLinkServerID?
   @Binding var isServerPickerPresented: Bool
   let serverScopedItems: [NetworkInspectorListItemViewModel]
   let filteredItems: [NetworkInspectorListItemViewModel]

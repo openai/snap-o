@@ -66,7 +66,7 @@ struct NetworkInspectorSidebarList: View {
         .font(.caption)
         .foregroundStyle(Color.green)
     case .failure(let message):
-      Text(message?.isEmpty == false ? message! : "Failed")
+      Text(message?.isEmpty == false ? message ?? "Failed" : "Failed")
         .font(.caption)
         .foregroundStyle(Color.red)
     }
