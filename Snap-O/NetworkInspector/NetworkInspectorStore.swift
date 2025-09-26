@@ -95,15 +95,17 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let id: NetworkInspectorServer.ID
   let displayName: String
   let helloSummary: String?
+  let deviceDisplayTitle: String
 
   init(server: NetworkInspectorServer) {
     id = server.id
+    deviceDisplayTitle = server.deviceDisplayTitle
     if let hello = server.hello {
-      displayName = "\(hello.processName) (PID \(hello.pid))"
-      helloSummary = "\(server.deviceID) • \(hello.packageName)"
+      displayName = hello.packageName
+      helloSummary = server.deviceDisplayTitle
     } else {
-      displayName = "\(server.deviceID) • \(server.socketName)"
-      helloSummary = nil
+      displayName = server.socketName
+      helloSummary = server.deviceDisplayTitle
     }
   }
 }
@@ -118,6 +120,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let id: NetworkInspectorRequest.ID
   let method: String
   let url: String
+  let serverID: NetworkInspectorServer.ID
   let status: Status
   let serverSummary: String
   let requestIdentifier: String
@@ -132,6 +135,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
   init(request: NetworkInspectorRequest, server: NetworkInspectorServerViewModel?) {
     id = request.id
+    serverID = request.serverID
     if let record = request.request {
       method = record.method
       url = record.url
@@ -288,6 +292,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
   let id: NetworkInspectorWebSocket.ID
   let method: String
   let url: String
+  let serverID: NetworkInspectorServer.ID
   let status: NetworkInspectorRequestViewModel.Status
   let serverSummary: String
   let socketIdentifier: String
@@ -309,6 +314,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
 
   init(session: NetworkInspectorWebSocket, server: NetworkInspectorServerViewModel?) {
     id = session.id
+    serverID = session.serverID
 
     let urlString = session.willOpen?.url ?? "websocket://\(session.socketID)"
     url = urlString
@@ -433,6 +439,15 @@ struct NetworkInspectorListItemViewModel: Identifiable {
       request.status
     case .webSocket(let webSocket):
       webSocket.status
+    }
+  }
+
+  var serverID: NetworkInspectorServer.ID {
+    switch kind {
+    case .request(let request):
+      request.serverID
+    case .webSocket(let webSocket):
+      webSocket.serverID
     }
   }
 

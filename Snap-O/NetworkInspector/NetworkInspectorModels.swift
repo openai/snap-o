@@ -12,6 +12,7 @@ struct NetworkInspectorServer: Identifiable, Hashable, Sendable {
   let localPort: UInt16
   var hello: SnapONetHelloRecord?
   var lastEventAt: Date?
+  var deviceDisplayTitle: String
 }
 
 struct NetworkInspectorEvent: Identifiable, Sendable {

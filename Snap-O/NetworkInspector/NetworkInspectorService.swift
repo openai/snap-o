@@ -14,6 +14,7 @@ actor NetworkInspectorService {
   private var deviceStreamTask: Task<Void, Never>?
   private var deviceMonitors: [String: Task<Void, Never>] = [:]
   private var deviceSockets: [String: Set<String>] = [:]
+  private var devices: [String: Device] = [:]
   private var serverStates: [NetworkInspectorServer.ID: ServerState] = [:]
   private var events: [NetworkInspectorEvent] = []
   private var serverContinuations: [UUID: AsyncStream<[NetworkInspectorServer]>.Continuation] = [:]
@@ -118,6 +119,7 @@ actor NetworkInspectorService {
 
   private func updateDevices(_ devices: [Device]) async {
     let active = Set(devices.map(\.id))
+    self.devices = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
     let known = Set(deviceMonitors.keys)
 
     for id in active where !known.contains(id) {
@@ -126,6 +128,20 @@ actor NetworkInspectorService {
 
     for id in known where !active.contains(id) {
       await stopMonitoringDevice(id)
+    }
+
+    var didUpdateServers = false
+    for (id, var state) in serverStates {
+      let newTitle = self.devices[id.deviceID]?.displayTitle ?? id.deviceID
+      if state.server.deviceDisplayTitle != newTitle {
+        state.server.deviceDisplayTitle = newTitle
+        serverStates[id] = state
+        didUpdateServers = true
+      }
+    }
+
+    if didUpdateServers {
+      broadcastServers()
     }
   }
 
@@ -192,7 +208,8 @@ actor NetworkInspectorService {
         socketName: socketName,
         localPort: handle.port,
         hello: nil,
-        lastEventAt: nil
+        lastEventAt: nil,
+        deviceDisplayTitle: devices[deviceID]?.displayTitle ?? deviceID
       )
       let connection = NetworkServerConnection(
         port: handle.port,

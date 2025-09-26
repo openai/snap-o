@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NetworkInspectorRequestDetailView: View {
   let request: NetworkInspectorRequestViewModel
+  let onClose: () -> Void
 
   var body: some View {
     ScrollView(.vertical) {
@@ -21,13 +22,23 @@ struct NetworkInspectorRequestDetailView: View {
 
   private var headerSummary: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(request.method)
-          .font(.title3.weight(.semibold))
-          .textSelection(.enabled)
-        Text(request.url)
-          .font(.body)
-          .textSelection(.enabled)
+      HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+          Text(request.method)
+            .font(.title3.weight(.semibold))
+            .textSelection(.enabled)
+          Text(request.url)
+            .font(.body)
+            .textSelection(.enabled)
+        }
+        Spacer()
+        Button(action: onClose) {
+          Image(systemName: "xmark")
+            .font(.title2)
+            .symbolRenderingMode(.hierarchical)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Close request detail")
       }
 
       HStack(spacing: 12) {
