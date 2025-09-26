@@ -11,14 +11,6 @@ import com.openai.snapo.link.core.ResponseStreamEvent
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.link.core.SnapONetRecord
 import com.openai.snapo.link.core.Timings
-import java.io.Closeable
-import java.io.IOException
-import java.nio.charset.Charset
-import java.util.ArrayList
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.max
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +28,14 @@ import okio.BufferedSource
 import okio.ForwardingSource
 import okio.Source
 import okio.buffer
+import java.io.Closeable
+import java.io.IOException
+import java.nio.charset.Charset
+import java.util.ArrayList
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.max
 
 /** OkHttp interceptor that mirrors traffic to the active SnapO link if present. */
 class SnapOOkHttpInterceptor @JvmOverloads constructor(
@@ -518,10 +518,14 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             val truncatedBytes = if (truncated) totalBytes - capturedBytes.size else 0L
             val preview = if (encoding == null && previewBytes > 0L) {
                 val previewLimit = previewBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-                if (bodyValue.length <= previewLimit) bodyValue else bodyValue.substring(
-                    0,
-                    previewLimit
-                )
+                if (bodyValue.length <= previewLimit) {
+                    bodyValue
+                } else {
+                    bodyValue.substring(
+                        0,
+                        previewLimit
+                    )
+                }
             } else {
                 null
             }

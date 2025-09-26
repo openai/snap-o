@@ -4,13 +4,11 @@ import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.Process
-import android.util.Log
 import kotlin.time.Duration.Companion.milliseconds
 
 /**

@@ -13,10 +13,6 @@ import com.openai.snapo.link.core.WebSocketMessageReceived
 import com.openai.snapo.link.core.WebSocketMessageSent
 import com.openai.snapo.link.core.WebSocketOpened
 import com.openai.snapo.link.core.WebSocketWillOpen
-import java.io.Closeable
-import java.util.ArrayList
-import java.util.UUID
-import kotlin.math.min
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +24,10 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import java.io.Closeable
+import java.util.ArrayList
+import java.util.UUID
+import kotlin.math.min
 
 fun WebSocket.Factory.withSnapOInterceptor(
     textPreviewChars: Int = DefaultTextPreviewChars,

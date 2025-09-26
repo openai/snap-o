@@ -34,7 +34,7 @@ data class Hello(
     val pid: Int,
     val serverStartWallMs: Long,
     val serverStartMonoNs: Long,
-    val mode: String,                // "safe" or "unredacted" (placeholder for your pref)
+    val mode: String, // "safe" or "unredacted" (placeholder for your pref)
     val capabilities: List<String> = listOf("network", "websocket", "app-icon"),
 ) : SnapONetRecord
 

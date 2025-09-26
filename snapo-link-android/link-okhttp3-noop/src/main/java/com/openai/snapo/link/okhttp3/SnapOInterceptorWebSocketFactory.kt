@@ -2,10 +2,10 @@
 
 package com.openai.snapo.link.okhttp3
 
-import java.io.Closeable
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import okhttp3.WebSocket
+import java.io.Closeable
 
 fun WebSocket.Factory.withSnapOInterceptor(
     textPreviewChars: Int = 0,

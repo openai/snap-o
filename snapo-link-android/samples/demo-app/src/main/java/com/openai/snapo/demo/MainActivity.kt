@@ -22,12 +22,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.openai.snapo.demo.ui.theme.SnapOLinkTheme
 import com.openai.snapo.link.core.Header
 import com.openai.snapo.link.core.RequestWillBeSent
 import com.openai.snapo.link.core.ResponseReceived
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.link.okhttp3.SnapOOkHttpInterceptor
-import com.openai.snapo.demo.ui.theme.SnapOLinkTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

@@ -13,6 +13,7 @@ import android.net.LocalSocketAddress
 import android.os.Process
 import android.util.Base64
 import android.util.Log
+import androidx.core.graphics.createBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,15 +24,14 @@ import kotlinx.coroutines.sync.withLock
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
-import java.io.OutputStreamWriter
 import java.io.IOException
+import java.io.OutputStreamWriter
+import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.util.ArrayList
 import java.util.Collections
 import java.util.IdentityHashMap
 import kotlin.coroutines.cancellation.CancellationException
-import androidx.core.graphics.createBitmap
-import java.net.SocketTimeoutException
 
 /**
  * App-side server that accepts arbitrary SnapONetRecord events,
@@ -78,8 +78,8 @@ class SnapOLinkServer(
             Log.e(
                 TAG,
                 "Snap-O Link detected in a release build. Link server will NOT start. " +
-                        "Release builds should use link-okhttp3-noop instead, " +
-                        "or set snapo.allow_release=\"true\" if intentional."
+                    "Release builds should use link-okhttp3-noop instead, " +
+                    "or set snapo.allow_release=\"true\" if intentional."
             )
             return
         }
