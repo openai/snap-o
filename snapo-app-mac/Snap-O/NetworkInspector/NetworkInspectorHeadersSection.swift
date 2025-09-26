@@ -3,22 +3,25 @@ import SwiftUI
 struct NetworkInspectorHeadersSection: View {
   let title: String
   let headers: [NetworkInspectorRequestViewModel.Header]
-  @State private var isExpanded: Bool
+  private let externalBinding: Binding<Bool>?
+  @State private var internalExpanded: Bool
 
-  init(title: String, headers: [NetworkInspectorRequestViewModel.Header]) {
+  init(title: String, headers: [NetworkInspectorRequestViewModel.Header], isExpanded: Binding<Bool>? = nil) {
     self.title = title
     self.headers = headers
-    _isExpanded = State(initialValue: true)
+    externalBinding = isExpanded
+    _internalExpanded = State(initialValue: isExpanded?.wrappedValue ?? true)
   }
 
   var body: some View {
+    let binding = externalBinding ?? $internalExpanded
     VStack(alignment: .leading, spacing: 6) {
       Button {
-        isExpanded.toggle()
+        binding.wrappedValue.toggle()
       } label: {
         HStack(spacing: 8) {
           Image(systemName: "chevron.right")
-            .rotationEffect(isExpanded ? .degrees(90) : .zero)
+            .rotationEffect(binding.wrappedValue ? .degrees(90) : .zero)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
 
@@ -30,7 +33,7 @@ struct NetworkInspectorHeadersSection: View {
       }
       .buttonStyle(.plain)
 
-      if isExpanded {
+      if binding.wrappedValue {
         Group {
           if headers.isEmpty {
             Text("None")

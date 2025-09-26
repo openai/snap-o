@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct NetworkInspectorRequestDetailView: View {
+  @ObservedObject var store: NetworkInspectorStore
   let request: NetworkInspectorRequestViewModel
   let onClose: () -> Void
 
@@ -9,18 +10,40 @@ struct NetworkInspectorRequestDetailView: View {
       VStack(alignment: .leading, spacing: 16) {
         headerSummary
 
-        NetworkInspectorHeadersSection(title: "Request Headers", headers: request.requestHeaders)
+        NetworkInspectorHeadersSection(
+          title: "Request Headers",
+          headers: request.requestHeaders,
+          isExpanded: sectionBinding(for: .requestHeaders)
+        )
+
         if let requestBody = request.requestBody {
-          NetworkInspectorBodySection(title: "Request Body", payload: requestBody)
+          NetworkInspectorBodySection(
+            title: "Request Body",
+            payload: requestBody,
+            isExpanded: sectionBinding(for: .requestBody)
+          )
         }
-        NetworkInspectorHeadersSection(title: "Response Headers", headers: request.responseHeaders)
+
+        NetworkInspectorHeadersSection(
+          title: "Response Headers",
+          headers: request.responseHeaders,
+          isExpanded: sectionBinding(for: .responseHeaders)
+        )
 
         if request.isStreamingResponse {
-          StreamEventsSection(events: request.streamEvents, closed: request.streamClosed)
+          StreamEventsSection(
+            events: request.streamEvents,
+            closed: request.streamClosed,
+            isExpanded: sectionBinding(for: .stream)
+          )
         }
 
         if let responseBody = request.responseBody {
-          NetworkInspectorBodySection(title: "Response Body", payload: responseBody)
+          NetworkInspectorBodySection(
+            title: "Response Body",
+            payload: responseBody,
+            isExpanded: sectionBinding(for: .responseBody)
+          )
         }
       }
       .padding(24)
@@ -65,11 +88,24 @@ struct NetworkInspectorRequestDetailView: View {
     }
   }
 
+  private func sectionBinding(for section: NetworkInspectorStore.RequestDetailSection) -> Binding<Bool> {
+    store.bindingForSection(section, requestID: request.id, defaultExpanded: defaultExpansion(for: section))
+  }
+
+  private func defaultExpansion(for section: NetworkInspectorStore.RequestDetailSection) -> Bool {
+    switch section {
+    case .requestBody, .responseBody:
+      false
+    default:
+      true
+    }
+  }
+
   private var statusBadge: some View {
     let label: String
     let color: Color
 
-    if request.isStreamingResponse && request.streamClosed == nil {
+    if request.isStreamingResponse, request.streamClosed == nil {
       label = "Streaming"
       color = .blue
     } else {
@@ -92,47 +128,63 @@ struct NetworkInspectorRequestDetailView: View {
   }
 }
 
-
 private struct StreamEventsSection: View {
   let events: [NetworkInspectorRequestViewModel.StreamEvent]
   let closed: NetworkInspectorRequestViewModel.StreamClosed?
+  @Binding var isExpanded: Bool
+
+  init(
+    events: [NetworkInspectorRequestViewModel.StreamEvent],
+    closed: NetworkInspectorRequestViewModel.StreamClosed?,
+    isExpanded: Binding<Bool>
+  ) {
+    self.events = events
+    self.closed = closed
+    _isExpanded = isExpanded
+  }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    DisclosureGroup(isExpanded: $isExpanded) {
+      contentView()
+        .padding(.top, 6)
+    } label: {
       Text("Server-Sent Events")
         .font(.headline)
+    }
+  }
 
-      if events.isEmpty {
-        Text("Awaiting events…")
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-      } else {
-        LazyVStack(alignment: .leading, spacing: 8) {
-          ForEach(events) { event in
-            StreamEventCard(event: event)
-          }
+  @ViewBuilder
+  private func contentView() -> some View {
+    if events.isEmpty {
+      Text("Awaiting events…")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    } else {
+      LazyVStack(alignment: .leading, spacing: 8) {
+        ForEach(events) { event in
+          StreamEventCard(event: event)
         }
       }
+    }
 
-      if let closed {
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Stream closed (\(closed.reason)) at \(closed.timestamp.formatted(date: .omitted, time: .standard))")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-          if let message = closed.message, !message.isEmpty {
-            Text("Message: \(message)")
-              .font(.footnote)
-              .foregroundStyle(.secondary)
-              .textSelection(.enabled)
-          }
-          Text("Total events: \(closed.totalEvents) • Total bytes: \(closed.totalBytes)")
+    if let closed {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Stream closed (\(closed.reason)) at \(closed.timestamp.formatted(date: .omitted, time: .standard))")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+        if let message = closed.message, !message.isEmpty {
+          Text("Message: \(message)")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .textSelection(.enabled)
         }
-        .padding(.top, 4)
+        Text("Total events: \(closed.totalEvents) • Total bytes: \(closed.totalBytes)")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
       }
+      .padding(.top, 4)
     }
   }
 }
@@ -179,7 +231,7 @@ private struct StreamEventCard: View {
       }
 
       if let dataText = displayData {
-        ExpandableText(text: dataText, font: .system(.callout, design: .monospaced))
+        ExpandableText(text: dataText, font: .caption.monospaced())
       } else if isLikelyJSON, event.data != nil {
         Text("Unable to pretty print (invalid or truncated JSON)")
           .font(.caption)
@@ -204,7 +256,6 @@ private struct StreamEventCard: View {
           .foregroundStyle(.secondary)
           .textSelection(.enabled)
       }
-
     }
     .padding(12)
     .background(
@@ -221,6 +272,7 @@ private struct StreamEventCard: View {
     return data
   }
 }
+
 private struct ExpandableText: View {
   let text: String
   let font: Font
@@ -240,7 +292,7 @@ private struct ExpandableText: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      textView
+      textView()
 
       if needsExpansion {
         Button(isExpanded ? "Show Less" : "Show More") {
@@ -267,8 +319,8 @@ private struct ExpandableText: View {
   }
 
   @ViewBuilder
-  private var textView: some View {
-    if !isExpanded && needsExpansion {
+  private func textView() -> some View {
+    if !isExpanded, needsExpansion {
       Text(text)
         .font(font)
         .textSelection(.enabled)
@@ -294,6 +346,7 @@ private struct ExpandableText: View {
             Color.clear.preference(key: TextHeightPreferenceKey.self, value: proxy.size.height)
           }
         )
+        .frame(width: 0, height: 0)
         .opacity(0)
         .allowsHitTesting(false)
     }
@@ -306,4 +359,3 @@ private struct ExpandableText: View {
     }
   }
 }
-

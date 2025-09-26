@@ -175,7 +175,7 @@ private extension NetworkInspectorView {
   ) -> some View {
     switch detail {
     case .request(let request):
-      NetworkInspectorRequestDetailView(request: request, onClose: onClose)
+      NetworkInspectorRequestDetailView(store: store, request: request, onClose: onClose)
         .id(request.id)
     case .webSocket(let webSocket):
       NetworkInspectorWebSocketDetailView(webSocket: webSocket, onClose: onClose)

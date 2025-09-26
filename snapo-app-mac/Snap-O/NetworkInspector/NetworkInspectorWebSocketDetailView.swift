@@ -278,7 +278,7 @@ private struct ExpandableText: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      textView
+      textView()
 
       if needsExpansion {
         Button(isExpanded ? "Show Less" : "Show More") {
@@ -305,8 +305,8 @@ private struct ExpandableText: View {
   }
 
   @ViewBuilder
-  private var textView: some View {
-    if !isExpanded && needsExpansion {
+  private func textView() -> some View {
+    if !isExpanded, needsExpansion {
       Text(text)
         .font(font)
         .textSelection(.enabled)
@@ -332,6 +332,7 @@ private struct ExpandableText: View {
             Color.clear.preference(key: TextHeightPreferenceKey.self, value: proxy.size.height)
           }
         )
+        .frame(width: 0, height: 0)
         .opacity(0)
         .allowsHitTesting(false)
     }

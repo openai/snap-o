@@ -23,7 +23,7 @@ final class NetworkInspectorStore: ObservableObject {
   private var latestWebSockets: [NetworkInspectorWebSocket] = []
   private var requestLookup: [NetworkInspectorRequestID: NetworkInspectorRequestViewModel] = [:]
   private var webSocketLookup: [NetworkInspectorWebSocketID: NetworkInspectorWebSocketViewModel] = [:]
-  private var requestCollapsedSections: [NetworkInspectorRequestID: Set<RequestDetailSection>] = [:]
+  private var requestSectionStates: [NetworkInspectorRequestID: [RequestDetailSection: Bool]] = [:]
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -88,31 +88,53 @@ final class NetworkInspectorStore: ObservableObject {
       }
       return lhs.firstSeenAt < rhs.firstSeenAt
     }
+
+    let validRequestIDs = Set(requestViewModels.map(\.id))
+    requestSectionStates = requestSectionStates.filter { validRequestIDs.contains($0.key) }
   }
 
-  private func isCollapsed(_ section: RequestDetailSection, for requestID: NetworkInspectorRequestID) -> Bool {
-    requestCollapsedSections[requestID]?.contains(section) ?? false
+  private func isCollapsed(
+    _ section: RequestDetailSection,
+    for requestID: NetworkInspectorRequestID,
+    defaultExpanded: Bool
+  ) -> Bool {
+    if let explicit = requestSectionStates[requestID]?[section] {
+      return explicit
+    }
+    return defaultExpanded ? false : true
   }
 
-  private func setSection(_ section: RequestDetailSection, for requestID: NetworkInspectorRequestID, collapsed: Bool) {
-    var sections = requestCollapsedSections[requestID] ?? Set<RequestDetailSection>()
-    if collapsed {
-      sections.insert(section)
-    } else {
-      sections.remove(section)
-    }
-    if sections.isEmpty {
-      requestCollapsedSections.removeValue(forKey: requestID)
-    } else {
-      requestCollapsedSections[requestID] = sections
-    }
+  private func setSection(
+    _ section: RequestDetailSection,
+    for requestID: NetworkInspectorRequestID,
+    collapsed: Bool,
+    defaultExpanded: Bool
+  ) {
+    let current = requestSectionStates[requestID]?[section] ?? (defaultExpanded ? false : true)
+    guard current != collapsed else { return }
+
     objectWillChange.send()
+    var states = requestSectionStates[requestID] ?? [:]
+    if collapsed == (defaultExpanded ? false : true) {
+      states.removeValue(forKey: section)
+    } else {
+      states[section] = collapsed
+    }
+    if states.isEmpty {
+      requestSectionStates.removeValue(forKey: requestID)
+    } else {
+      requestSectionStates[requestID] = states
+    }
   }
 
-  func bindingForSection(_ section: RequestDetailSection, requestID: NetworkInspectorRequestID) -> Binding<Bool> {
+  func bindingForSection(
+    _ section: RequestDetailSection,
+    requestID: NetworkInspectorRequestID,
+    defaultExpanded: Bool = true
+  ) -> Binding<Bool> {
     Binding(
-      get: { !self.isCollapsed(section, for: requestID) },
-      set: { self.setSection(section, for: requestID, collapsed: !$0) }
+      get: { !self.isCollapsed(section, for: requestID, defaultExpanded: defaultExpanded) },
+      set: { self.setSection(section, for: requestID, collapsed: !$0, defaultExpanded: defaultExpanded) }
     )
   }
 
@@ -620,9 +642,9 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
 
     let startMillis = session.willOpen?.tWallMs ?? session.opened?.tWallMs
     let endMillis = session.failed?.tWallMs
-    ?? session.closed?.tWallMs
-    ?? session.closing?.tWallMs
-    ?? session.messages.last?.tWallMs
+      ?? session.closed?.tWallMs
+      ?? session.closing?.tWallMs
+      ?? session.messages.last?.tWallMs
 
     timingSummary = NetworkInspectorRequestViewModel.makeTimingSummary(
       status: status,
@@ -707,7 +729,7 @@ struct NetworkInspectorListItemViewModel: Identifiable {
   }
 
   var method: String {
-    return switch kind {
+    switch kind {
     case .request(let request):
       request.isStreamingResponse ? "\(request.method) • SSE" : request.method
     case .webSocket(let webSocket):

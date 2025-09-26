@@ -531,7 +531,6 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
   }
 }
 
-
 struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
   let schemaVersion: String
   let id: String

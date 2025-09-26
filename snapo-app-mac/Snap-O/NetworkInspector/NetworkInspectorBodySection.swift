@@ -3,13 +3,13 @@ import SwiftUI
 struct NetworkInspectorBodySection: View {
   let title: String
   let payload: NetworkInspectorRequestViewModel.BodyPayload
-  @State private var isExpanded: Bool
+  @Binding private var isExpanded: Bool
   @State private var usePrettyPrinted: Bool
 
-  init(title: String, payload: NetworkInspectorRequestViewModel.BodyPayload) {
+  init(title: String, payload: NetworkInspectorRequestViewModel.BodyPayload, isExpanded: Binding<Bool>) {
     self.title = title
     self.payload = payload
-    _isExpanded = State(initialValue: false)
+    _isExpanded = isExpanded
     _usePrettyPrinted = State(initialValue: payload.prettyPrintedText != nil)
   }
 
@@ -51,7 +51,7 @@ struct NetworkInspectorBodySection: View {
           }
 
           Text(displayText)
-            .font(.body.monospaced())
+            .font(.caption.monospaced())
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
