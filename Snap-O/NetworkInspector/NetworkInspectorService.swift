@@ -771,4 +771,27 @@ actor NetworkInspectorService {
     }
     return result
   }
+
+  func clearCompletedEntries() {
+    requestStates = requestStates.filter { _, request in
+      request.response == nil && request.failure == nil
+    }
+    requestOrder = requestOrder.filter { requestStates[$0] != nil }
+
+    webSocketStates = webSocketStates.filter { _, session in
+      !isComplete(session)
+    }
+    webSocketOrder = webSocketOrder.filter { webSocketStates[$0] != nil }
+
+    broadcastRequests()
+    broadcastWebSockets()
+  }
+
+  private func isComplete(_ session: NetworkInspectorWebSocket) -> Bool {
+    if session.failed != nil { return true }
+    if session.cancelled != nil { return true }
+    if session.closed != nil { return true }
+    if session.closing != nil { return true }
+    return false
+  }
 }

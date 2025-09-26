@@ -96,6 +96,12 @@ final class NetworkInspectorStore: ObservableObject {
       await service.updateRetainedServers(ids)
     }
   }
+
+  func clearCompleted() {
+    Task {
+      await service.clearCompletedEntries()
+    }
+  }
 }
 
 struct NetworkInspectorServerViewModel: Identifiable {
@@ -515,6 +521,13 @@ struct NetworkInspectorListItemViewModel: Identifiable {
     case .webSocket(let webSocket):
       webSocket.status
     }
+  }
+
+  var isPending: Bool {
+    if case .pending = status {
+      return true
+    }
+    return false
   }
 
   var serverID: NetworkInspectorServer.ID {

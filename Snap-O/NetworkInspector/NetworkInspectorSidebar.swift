@@ -23,8 +23,21 @@ struct NetworkInspectorSidebar: View {
       )
       .padding(.horizontal, 12)
 
-      NetworkInspectorSidebarSearchField(text: $requestSearchText, onMoveSelection: moveSelection)
-        .padding(.horizontal, 12)
+      HStack(spacing: 8) {
+        NetworkInspectorSidebarSearchField(text: $requestSearchText, onMoveSelection: moveSelection)
+          .frame(maxWidth: .infinity)
+
+        Button {
+          store.clearCompleted()
+        } label: {
+          Image(systemName: "trash")
+            .font(.system(size: 13, weight: .semibold))
+        }
+        .buttonStyle(.borderless)
+        .help("Clear completed requests")
+        .disabled(!hasClearableItems)
+      }
+      .padding(.horizontal, 12)
 
       NetworkInspectorSidebarList(
         store: store,
@@ -34,5 +47,11 @@ struct NetworkInspectorSidebar: View {
       )
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+  }
+}
+
+private extension NetworkInspectorSidebar {
+  var hasClearableItems: Bool {
+    store.items.contains { !$0.isPending }
   }
 }
