@@ -61,6 +61,7 @@ class SnapOLinkServer(
     private val eventBuffer: MutableList<SnapONetRecord> = ArrayList()
     private var approxBytes: Long = 0L
     private val openWebSockets: MutableSet<String> = mutableSetOf()
+    private val activeResponseStreams: MutableSet<String> = mutableSetOf()
 
     @Volatile
     private var latestAppIcon: AppIcon? = null
@@ -222,6 +223,7 @@ class SnapOLinkServer(
         insertSorted(record)
         approxBytes += estimateSize(record)
         updateWebSocketStateOnAdd(record)
+        updateStreamStateOnAdd(record)
 
         if (record is TimedRecord) {
             val cutoff = record.tWallMs - config.bufferWindow.inWholeMilliseconds
@@ -319,14 +321,32 @@ class SnapOLinkServer(
         }
     }
 
+    private fun updateStreamStateOnAdd(record: SnapONetRecord) {
+        when (record) {
+            is ResponseStreamEvent -> activeResponseStreams.add(record.id)
+            is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
+            is RequestFailed -> activeResponseStreams.remove(record.id)
+            else -> Unit
+        }
+    }
+
+    private fun updateStreamStateOnRemove(record: SnapONetRecord) {
+        when (record) {
+            is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
+            is RequestFailed -> activeResponseStreams.remove(record.id)
+            else -> Unit
+        }
+    }
+
     private fun evictRequestTerminal(head: RequestWillBeSent, cutoff: Long?): Boolean {
         val iterator = eventBuffer.iterator()
         while (iterator.hasNext()) {
             val candidate = iterator.next()
             if (candidate === head) continue
             val isTerminal = when (candidate) {
-                is ResponseReceived -> candidate.id == head.id
+                is ResponseReceived -> candidate.id == head.id && !activeResponseStreams.contains(head.id)
                 is RequestFailed -> candidate.id == head.id
+                is ResponseStreamClosed -> candidate.id == head.id
                 else -> false
             }
             if (!isTerminal) continue
@@ -338,6 +358,7 @@ class SnapOLinkServer(
             iterator.remove()
             subtractApproxBytes(candidate)
             updateWebSocketStateOnRemove(candidate)
+            updateStreamStateOnRemove(candidate)
             return true
         }
         return false
@@ -360,6 +381,7 @@ class SnapOLinkServer(
                 iterator.remove()
                 subtractApproxBytes(candidate)
                 updateWebSocketStateOnRemove(candidate)
+                updateStreamStateOnRemove(candidate)
             }
         }
         return true
@@ -377,8 +399,11 @@ class SnapOLinkServer(
             if (!isOlderThanCutoff(record, cutoff)) continue
             when (record) {
                 is RequestWillBeSent -> requestStarts[record.id] = record
-                is ResponseReceived -> requestTerminals[record.id] = record
+                is ResponseReceived -> if (!activeResponseStreams.contains(record.id)) {
+                    requestTerminals[record.id] = record
+                }
                 is RequestFailed -> requestTerminals[record.id] = record
+                is ResponseStreamClosed -> requestTerminals[record.id] = record
                 is WebSocketWillOpen ->
                     webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
                 is WebSocketOpened ->
@@ -412,6 +437,7 @@ class SnapOLinkServer(
             iterator.remove()
             subtractApproxBytes(record)
             updateWebSocketStateOnRemove(record)
+            updateStreamStateOnRemove(record)
         }
     }
 
@@ -443,6 +469,7 @@ class SnapOLinkServer(
         iterator.remove()
         subtractApproxBytes(record)
         updateWebSocketStateOnRemove(record)
+        updateStreamStateOnRemove(record)
     }
 
     private fun subtractApproxBytes(record: SnapONetRecord) {

@@ -116,6 +116,39 @@ data class RequestFailed(
     val timings: Timings = Timings(),
 ) : PerRequestRecord
 
+/** Incremental Server-Sent Event payload emitted while streaming. */
+@Serializable
+@SerialName("ResponseStreamEvent")
+data class ResponseStreamEvent(
+    @EncodeDefault
+    override val schemaVersion: String = SCHEMA_VERSION,
+    override val id: String,
+    override val tWallMs: Long,
+    override val tMonoNs: Long,
+    val sequence: Long,
+    val event: String? = null,
+    val data: String? = null,
+    val lastEventId: String? = null,
+    val retryMillis: Long? = null,
+    val comment: String? = null,
+    val raw: String,
+) : PerRequestRecord
+
+/** Indicates the streaming response completed or terminated. */
+@Serializable
+@SerialName("ResponseStreamClosed")
+data class ResponseStreamClosed(
+    @EncodeDefault
+    override val schemaVersion: String = SCHEMA_VERSION,
+    override val id: String,
+    override val tWallMs: Long,
+    override val tMonoNs: Long,
+    val reason: String,
+    val message: String? = null,
+    val totalEvents: Long,
+    val totalBytes: Long,
+) : PerRequestRecord
+
 sealed interface PerWebSocketRecord : SnapONetRecord, TimedRecord {
     val id: String
 }
