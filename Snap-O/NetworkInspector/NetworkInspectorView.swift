@@ -6,6 +6,7 @@ struct NetworkInspectorView: View {
   @ObservedObject var store: NetworkInspectorStore
   @State private var selectedItem: NetworkInspectorItemID?
   @State private var requestSearchText = ""
+  @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
 
   private var filteredItems: [NetworkInspectorListItemViewModel] {
     guard !requestSearchText.isEmpty else {
@@ -17,11 +18,30 @@ struct NetworkInspectorView: View {
     }
   }
 
+  private func moveSelection(by offset: Int) {
+    let items = filteredItems
+    guard !items.isEmpty else { return }
+
+    if let selection = selectedItem,
+       let currentIndex = items.firstIndex(where: { $0.id == selection }) {
+      let nextIndex = min(max(currentIndex + offset, 0), items.count - 1)
+      selectedItem = items[nextIndex].id
+    } else {
+      selectedItem = offset >= 0 ? items.first?.id : items.last?.id
+    }
+  }
+
   var body: some View {
     let displayedItems = filteredItems
 
-    NavigationView {
+    NavigationSplitView(columnVisibility: $splitViewVisibility) {
       VStack(spacing: 8) {
+        NetworkInspectorSearchField(text: $requestSearchText) { direction in
+          moveSelection(by: direction)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+
         List(selection: $selectedItem) {
           Section("Servers") {
             if store.servers.isEmpty {
@@ -52,8 +72,13 @@ struct NetworkInspectorView: View {
             } else {
               ForEach(displayedItems) { item in
                 VStack(alignment: .leading, spacing: 6) {
-                  HStack(alignment: .center, spacing: 8) {
-                    VStack(alignment: .leading) {
+                  HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.method)
+                      .font(.system(.caption, design: .monospaced))
+                      .bold()
+                      .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 2) {
                       Text(item.primaryPathComponent)
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
@@ -68,11 +93,6 @@ struct NetworkInspectorView: View {
 
                     Spacer()
 
-                    Text(item.method)
-                      .font(.system(.caption, design: .monospaced))
-                      .bold()
-                      .foregroundStyle(.secondary)
-
                     Text(statusLabel(for: item.status))
                       .font(.caption)
                       .padding(.horizontal, 6)
@@ -82,25 +102,37 @@ struct NetworkInspectorView: View {
                       .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                   }
                 }
+                .padding(.vertical, 6)
                 .contentShape(Rectangle())
                 .tag(item.id)
               }
             }
           }
         }
+        .listStyle(.sidebar)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-      .frame(minWidth: 300, idealWidth: 340)
       .navigationTitle("Network Inspector")
-
+    } detail: {
       if let selection = selectedItem,
          let detail = store.detail(for: selection) {
-        switch detail {
-        case .request(let request):
-          NetworkInspectorRequestDetailView(request: request)
-        case .webSocket(let webSocket):
-          NetworkInspectorWebSocketDetailView(webSocket: webSocket)
+        ZStack(alignment: .topTrailing) {
+          detailView(for: detail)
+
+          Button {
+            withAnimation {
+              splitViewVisibility = .all
+              selectedItem = nil
+            }
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .font(.title3)
+              .symbolRenderingMode(.hierarchical)
+          }
+          .buttonStyle(.plain)
+          .padding(16)
+          .accessibilityLabel("Close detail")
         }
       } else {
         VStack(alignment: .center, spacing: 12) {
@@ -114,43 +146,17 @@ struct NetworkInspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
-    .searchable(text: $requestSearchText)
+    .navigationSplitViewStyle(.balanced)
+    .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
     .onChange(of: store.items.map(\.id)) { _, ids in
-      guard !ids.isEmpty else {
-        selectedItem = nil
-        return
-      }
-
-      if let selection = selectedItem {
-        if requestSearchText.isEmpty {
-          if ids.contains(selection) {
-            return
-          }
-        } else if filteredItems.contains(where: { $0.id == selection }) {
-          return
-        }
-      }
-
-      if let next = filteredItems.first?.id ?? ids.first {
-        selectedItem = next
-      }
+      reconcileSelection(allIDs: ids, filteredIDs: filteredItems.map(\.id))
     }
-    .onChange(of: filteredItems.map(\.id)) { _, ids in
-      guard !ids.isEmpty else {
-        selectedItem = nil
-        return
-      }
-
-      if let selection = selectedItem,
-         ids.contains(selection) {
-        return
-      }
-
-      selectedItem = ids.first
+    .onChange(of: filteredItems.map(\.id)) { _, filteredIDs in
+      reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredIDs)
     }
     .onAppear {
       if selectedItem == nil {
-        selectedItem = filteredItems.first?.id ?? store.items.first?.id
+        reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredItems.map(\.id))
       }
     }
   }
@@ -174,6 +180,118 @@ struct NetworkInspectorView: View {
       .green
     case .failure:
       .red
+    }
+  }
+}
+
+extension NetworkInspectorView {
+  @ViewBuilder
+  private func detailView(for detail: NetworkInspectorDetailViewModel) -> some View {
+    switch detail {
+    case .request(let request):
+      NetworkInspectorRequestDetailView(request: request)
+    case .webSocket(let webSocket):
+      NetworkInspectorWebSocketDetailView(webSocket: webSocket)
+    }
+  }
+}
+
+private extension NetworkInspectorView {
+  func reconcileSelection(allIDs: [NetworkInspectorItemID],
+                          filteredIDs: [NetworkInspectorItemID]) {
+    guard !allIDs.isEmpty else {
+      selectedItem = nil
+      return
+    }
+
+    if requestSearchText.isEmpty {
+      if let selection = selectedItem,
+         allIDs.contains(selection) {
+        return
+      }
+
+      selectedItem = filteredIDs.first ?? allIDs.first
+    } else {
+      guard !filteredIDs.isEmpty else {
+        selectedItem = nil
+        return
+      }
+
+      if let selection = selectedItem,
+         filteredIDs.contains(selection) {
+        return
+      }
+
+      selectedItem = filteredIDs.first
+    }
+  }
+
+}
+
+private struct NetworkInspectorSearchField: NSViewRepresentable {
+  @Binding var text: String
+  var onMoveSelection: (Int) -> Void
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(text: $text, onMoveSelection: onMoveSelection)
+  }
+
+  func makeNSView(context: Context) -> ArrowHandlingSearchField {
+    let searchField = ArrowHandlingSearchField()
+    searchField.placeholderString = "Filter by URL"
+    searchField.focusRingType = .none
+    searchField.delegate = context.coordinator
+    searchField.stringValue = text
+    searchField.moveSelection = { direction in
+      context.coordinator.moveSelection(by: direction)
+    }
+    return searchField
+  }
+
+  func updateNSView(_ nsView: ArrowHandlingSearchField, context: Context) {
+    if nsView.stringValue != text {
+      nsView.stringValue = text
+    }
+  }
+
+  final class Coordinator: NSObject, NSSearchFieldDelegate {
+    @Binding var text: String
+    private let onMoveSelection: (Int) -> Void
+
+    init(text: Binding<String>, onMoveSelection: @escaping (Int) -> Void) {
+      _text = text
+      self.onMoveSelection = onMoveSelection
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSSearchField else { return }
+      text = field.stringValue
+    }
+
+    func moveSelection(by offset: Int) {
+      onMoveSelection(offset)
+    }
+  }
+
+  final class ArrowHandlingSearchField: NSSearchField {
+    var moveSelection: ((Int) -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+      let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+      if modifiers.isDisjoint(with: [.command, .option, .control]) {
+        switch event.keyCode {
+        case 125: // down arrow
+          moveSelection?(1)
+          return
+        case 126: // up arrow
+          moveSelection?(-1)
+          return
+        default:
+          break
+        }
+      }
+
+      super.keyDown(with: event)
     }
   }
 }
