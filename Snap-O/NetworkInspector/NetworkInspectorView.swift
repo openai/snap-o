@@ -43,11 +43,6 @@ struct NetworkInspectorView: View {
           }
 
           Section("Requests & WebSockets") {
-            TextField("Filter by URL", text: $requestSearchText)
-              .font(.caption)
-              .textFieldStyle(.roundedBorder)
-              .listRowInsets(EdgeInsets())
-
             if store.items.isEmpty {
               Text("No activity yet")
                 .foregroundStyle(.secondary)
@@ -119,6 +114,7 @@ struct NetworkInspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
+    .searchable(text: $requestSearchText)
     .onChange(of: store.items.map(\.id)) { _, ids in
       guard !ids.isEmpty else {
         selectedItem = nil
