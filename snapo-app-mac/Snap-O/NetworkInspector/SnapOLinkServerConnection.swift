@@ -8,7 +8,7 @@ final class SnapOLinkServerConnection {
   private let onClose: @Sendable (Error?) -> Void
   private var buffer = Data()
   private var isStopped = false
-
+  
   init(
     port: UInt16,
     queueLabel: String,
@@ -33,6 +33,8 @@ final class SnapOLinkServerConnection {
         finish(with: error)
       case .cancelled:
         finish(with: nil)
+      case .ready:
+        sendClientHello()
       default:
         break
       }
@@ -74,6 +76,18 @@ final class SnapOLinkServerConnection {
       }
 
       receive()
+    }
+  }
+
+  private func sendClientHello() {
+    queue.async { [weak self] in
+      guard let self, !self.isStopped else { return }
+      let helloData = Data("HelloSnapO/1\n".utf8)
+      connection.send(content: helloData, completion: .contentProcessed { [weak self] error in
+        if let error {
+          self?.finish(with: error)
+        }
+      })
     }
   }
 

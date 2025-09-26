@@ -7,7 +7,6 @@ struct SnapOApp: App {
 
   private let services: AppServices
   private let settings: AppSettings
-  @StateObject private var networkInspectorStore: NetworkInspectorStore
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
@@ -16,11 +15,6 @@ struct SnapOApp: App {
     self.services = services
 
     settings = AppSettings.shared
-    let inspectorService = NetworkInspectorService(
-      adbService: services.adbService,
-      deviceTracker: services.deviceTracker
-    )
-    _networkInspectorStore = StateObject(wrappedValue: NetworkInspectorStore(service: inspectorService))
 
     Task.detached(priority: .userInitiated) {
       await services.start()
@@ -41,8 +35,23 @@ struct SnapOApp: App {
     }
 
     Window("Network Inspector", id: NetworkInspectorWindowID.main) {
-      NetworkInspectorView(store: networkInspectorStore)
+      NetworkInspectorWindowRoot(services: services)
     }
     .defaultSize(width: 960, height: 520)
+  }
+}
+
+private struct NetworkInspectorWindowRoot: View {
+  @StateObject private var store: NetworkInspectorStore
+
+  init(services: AppServices) {
+    _store = StateObject(wrappedValue: NetworkInspectorStore(service: NetworkInspectorService(
+      adbService: services.adbService,
+      deviceTracker: services.deviceTracker
+    )))
+  }
+
+  var body: some View {
+    NetworkInspectorView(store: store)
   }
 }
