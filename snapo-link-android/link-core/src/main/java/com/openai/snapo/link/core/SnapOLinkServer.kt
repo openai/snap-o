@@ -129,8 +129,8 @@ class SnapOLinkServer(
         while (isActiveSafe()) {
             try {
                 val sock: LocalSocket = server.accept()
-                val handshakeResult = performClientHandshake(sock)
-                when (handshakeResult) {
+                when (val handshakeResult = performClientHandshake(sock)) {
+                    is ClientHandshakeResult.Accepted -> Unit
                     is ClientHandshakeResult.Rejected -> {
                         Log.w(
                             TAG,
@@ -142,10 +142,6 @@ class SnapOLinkServer(
                         }
                         continue
                     }
-                    ClientHandshakeResult.LegacyNoHandshake -> {
-                        Log.w(TAG, "Client connection missing handshake; continuing in legacy mode")
-                    }
-                    ClientHandshakeResult.Accepted -> Unit
                 }
 
                 if (config.singleClientOnly && connectedSink != null) {
@@ -513,15 +509,13 @@ class SnapOLinkServer(
     private fun performClientHandshake(socket: LocalSocket): ClientHandshakeResult {
         return try {
             val outcome = readClientHello(socket)
-            if (outcome == null) {
-                ClientHandshakeResult.LegacyNoHandshake
-            } else if (outcome == CLIENT_HELLO_TOKEN) {
+            if (outcome == CLIENT_HELLO_TOKEN) {
                 ClientHandshakeResult.Accepted
             } else {
                 ClientHandshakeResult.Rejected("unexpected handshake token")
             }
         } catch (_: SocketTimeoutException) {
-            ClientHandshakeResult.LegacyNoHandshake
+            ClientHandshakeResult.Rejected("handshake timeout")
         } catch (t: Throwable) {
             ClientHandshakeResult.Rejected(t.localizedMessage ?: "handshake failure")
         }
@@ -535,7 +529,7 @@ class SnapOLinkServer(
             while (buffer.size() <= CLIENT_HELLO_MAX_BYTES) {
                 val value = input.read()
                 if (value == -1) {
-                    return null
+                    throw IOException("client handshake closed without data")
                 }
                 if (value == '\n'.code) {
                     val raw = buffer.toString(StandardCharsets.UTF_8.name())
@@ -641,6 +635,5 @@ private const val CLIENT_HELLO_MAX_BYTES = 4 * 1024
 
 private sealed interface ClientHandshakeResult {
     object Accepted : ClientHandshakeResult
-    object LegacyNoHandshake : ClientHandshakeResult
     data class Rejected(val reason: String) : ClientHandshakeResult
 }
