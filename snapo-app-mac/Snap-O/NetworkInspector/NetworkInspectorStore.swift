@@ -213,7 +213,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       primaryPathComponent = parts.last.map(String.init) ?? path
       let remaining = parts.dropLast()
       if remaining.isEmpty {
-        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? "\n"
       } else {
         let base = "/" + remaining.joined(separator: "/")
         if let query = components?.percentEncodedQuery, !query.isEmpty {
@@ -224,7 +224,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       }
     } else {
       primaryPathComponent = url
-      secondaryPath = ""
+      secondaryPath = "\n"
     }
 
     if let requestRecord = request.request {
@@ -284,13 +284,102 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
     static func prettyPrintedJSON(from text: String) -> String? {
       guard let data = text.data(using: .utf8) else { return nil }
-      do {
-        let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-        let prettyData = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted])
-        return String(data: prettyData, encoding: .utf8)
-      } catch {
+      guard (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil else {
         return nil
       }
+      return formatJSONPreservingOrder(text)
+    }
+
+    private static func formatJSONPreservingOrder(_ text: String) -> String {
+      var result = "\n"
+      var indentLevel = 0
+      var isInsideString = false
+      var isEscaping = false
+      let indentUnit = "  "
+
+      func appendIndent(_ level: Int) {
+        if level > 0 {
+          result.append(String(repeating: indentUnit, count: level))
+        }
+      }
+
+      for character in text {
+        if isEscaping {
+          result.append(character)
+          isEscaping = false
+          continue
+        }
+
+        switch character {
+        case "\":
+          result.append(character)
+          if isInsideString {
+            isEscaping = true
+          }
+        case "\n"":
+          result.append(character)
+          isInsideString.toggle()
+        case "{", "[":
+          result.append(character)
+          guard !isInsideString else { break }
+          result.append("\n")
+          indentLevel += 1
+          appendIndent(indentLevel)
+        case "}", "]":
+          if isInsideString {
+            result.append(character)
+          } else {
+            trimTrailingWhitespace(&result)
+            result.append("\n")
+            indentLevel = max(indentLevel - 1, 0)
+            appendIndent(indentLevel)
+            result.append(character)
+          }
+        case ",":
+          result.append(character)
+          if !isInsideString {
+            result.append("\n")
+            appendIndent(indentLevel)
+          }
+        case ":":
+          if isInsideString {
+            result.append(character)
+          } else {
+            result.append(": ")
+          }
+        case " ", "
+", "
+", "	":
+          if isInsideString {
+            result.append(character)
+          }
+        default:
+          result.append(character)
+        }
+      }
+
+      return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func trimTrailingWhitespace(_ buffer: inout String) {
+      while let last = buffer.last, last == " " || last == "	" {
+        buffer.removeLast()
+      }
+      if buffer.last == "
+" {
+        buffer.removeLast()
+      }
+    }
+      if buffer.last == "
+" {
+        buffer.removeLast()
+      }
+    }
+      if buffer.last == "
+" {
+        buffer.removeLast()
+      }
+    }
     }
   }
 
@@ -421,11 +510,8 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
     let urlString = session.willOpen?.url ?? "websocket://\(session.socketID)"
     url = urlString
 
-    if let scheme = URLComponents(string: urlString)?.scheme?.uppercased(), !scheme.isEmpty {
-      method = scheme
-    } else {
-      method = "WS"
-    }
+    let scheme = URLComponents(string: urlString)?.scheme
+    method = Self.methodBadge(fromScheme: scheme)
 
     if let failure = session.failed {
       status = .failure(message: failure.message)
@@ -476,7 +562,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       primaryPathComponent = parts.last.map(String.init) ?? path
       let remaining = parts.dropLast()
       if remaining.isEmpty {
-        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? "\n"
       } else {
         let base = "/" + remaining.joined(separator: "/")
         if let query = components?.percentEncodedQuery, !query.isEmpty {
@@ -490,7 +576,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       if let query = components?.percentEncodedQuery, !query.isEmpty {
         secondaryPath = "?\(query)"
       } else {
-        secondaryPath = ""
+        secondaryPath = "\n"
       }
     }
 
@@ -508,7 +594,22 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
 
     messages = session.messages.map(Message.init)
   }
-}
+
+  private static func methodBadge(fromScheme scheme: String?) -> String {
+    guard let scheme, !scheme.isEmpty else { return "WS" }
+    switch scheme.lowercased() {
+    case "http":
+      return "WS"
+    case "https":
+      return "WSS"
+    case "ws":
+      return "WS"
+    case "wss":
+      return "WSS"
+    default:
+      return scheme.uppercased()
+    }
+  }
 
 struct NetworkInspectorListItemViewModel: Identifiable {
   enum Kind {
