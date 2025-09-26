@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -97,6 +98,8 @@ final class NetworkInspectorStore: ObservableObject {
   }
 }
 
+import AppKit
+
 struct NetworkInspectorServerViewModel: Identifiable {
   let id: NetworkInspectorServer.ID
   let displayName: String
@@ -105,6 +108,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let isConnected: Bool
   let deviceID: String
   let pid: Int?
+  let appIcon: NSImage?
 
   init(server: NetworkInspectorServer) {
     id = server.id
@@ -112,6 +116,13 @@ struct NetworkInspectorServerViewModel: Identifiable {
     deviceDisplayTitle = server.deviceDisplayTitle
     isConnected = server.isConnected
     pid = server.hello?.pid
+    if let iconRecord = server.appIcon,
+       let data = Data(base64Encoded: iconRecord.base64Data),
+       let image = NSImage(data: data) {
+      appIcon = image
+    } else {
+      appIcon = nil
+    }
     if let hello = server.hello {
       displayName = hello.packageName
       helloSummary = server.deviceDisplayTitle

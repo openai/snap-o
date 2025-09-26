@@ -14,6 +14,7 @@ struct NetworkInspectorServer: Identifiable, Hashable, Sendable {
   var lastEventAt: Date?
   var deviceDisplayTitle: String
   var isConnected: Bool
+  var appIcon: SnapONetAppIconRecord?
 }
 
 struct NetworkInspectorEvent: Identifiable, Sendable {
@@ -180,6 +181,7 @@ enum SnapONetRecord: Sendable {
   case hello(SnapONetHelloRecord)
   case replayComplete(SnapONetReplayCompleteRecord)
   case lifecycle(SnapONetLifecycleRecord)
+  case appIcon(SnapONetAppIconRecord)
   case requestWillBeSent(SnapONetRequestWillBeSentRecord)
   case responseReceived(SnapONetResponseReceivedRecord)
   case requestFailed(SnapONetRequestFailedRecord)
@@ -248,6 +250,51 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     case serverStartMonoNs
     case mode
     case capabilities
+  }
+}
+
+struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {
+  let schemaVersion: String
+  let packageName: String
+  let width: Int
+  let height: Int
+  let format: String
+  let base64Data: String
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    packageName: String,
+    width: Int,
+    height: Int,
+    format: String = "jpg",
+    base64Data: String
+  ) {
+    self.schemaVersion = schemaVersion
+    self.packageName = packageName
+    self.width = width
+    self.height = height
+    self.format = format
+    self.base64Data = base64Data
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    packageName = try container.decode(String.self, forKey: .packageName)
+    width = try container.decode(Int.self, forKey: .width)
+    height = try container.decode(Int.self, forKey: .height)
+    format = try container.decodeIfPresent(String.self, forKey: .format) ?? "jpg"
+    base64Data = try container.decode(String.self, forKey: .base64Data)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case packageName
+    case width
+    case height
+    case format
+    case base64Data
   }
 }
 
@@ -971,6 +1018,9 @@ enum SnapONetRecordDecoder {
     case "Lifecycle":
       let record = try decoder.decode(SnapONetLifecycleRecord.self, from: data)
       return .lifecycle(record)
+    case "AppIcon":
+      let record = try decoder.decode(SnapONetAppIconRecord.self, from: data)
+      return .appIcon(record)
     case "RequestWillBeSent":
       let record = try decoder.decode(SnapONetRequestWillBeSentRecord.self, from: data)
       return .requestWillBeSent(record)

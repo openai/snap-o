@@ -216,7 +216,8 @@ actor NetworkInspectorService {
         hello: nil,
         lastEventAt: nil,
         deviceDisplayTitle: devices[deviceID]?.displayTitle ?? deviceID,
-        isConnected: true
+        isConnected: true,
+        appIcon: serverStates[serverID]?.server.appIcon
       )
       if let existing = serverStates[serverID]?.server {
         server.hello = existing.hello
@@ -281,21 +282,26 @@ actor NetworkInspectorService {
   }
 
   private func handle(record: SnapONetRecord, from serverID: NetworkInspectorServer.ID) async {
-    guard var state = serverStates[serverID] else { return }
+    guard serverStates[serverID] != nil else { return }
     var shouldBroadcastServers = false
     var shouldBroadcastRequests = false
     var shouldBroadcastWebSockets = false
 
     switch record {
     case .hello(let hello):
-      state.server.hello = hello
-      shouldBroadcastServers = true
+      if var state = serverStates[serverID] {
+        state.server.hello = hello
+        serverStates[serverID] = state
+        shouldBroadcastServers = true
+      }
     case .requestWillBeSent(let requestRecord):
       shouldBroadcastRequests = updateRequest(for: serverID, with: requestRecord)
     case .responseReceived(let responseRecord):
       shouldBroadcastRequests = updateRequest(for: serverID, with: responseRecord)
     case .requestFailed(let failureRecord):
       shouldBroadcastRequests = updateRequest(for: serverID, with: failureRecord)
+    case .appIcon(let iconRecord):
+      shouldBroadcastServers = updateAppIcon(for: serverID, with: iconRecord)
     case .webSocketWillOpen(let willOpenRecord):
       shouldBroadcastWebSockets = updateWebSocket(for: serverID, with: willOpenRecord)
     case .webSocketOpened(let openedRecord):
@@ -318,8 +324,10 @@ actor NetworkInspectorService {
       break
     }
 
-    state.server.lastEventAt = Date()
-    serverStates[serverID] = state
+    if var latestState = serverStates[serverID] {
+      latestState.server.lastEventAt = Date()
+      serverStates[serverID] = latestState
+    }
 
     if shouldBroadcastServers {
       broadcastServers()
@@ -436,6 +444,25 @@ actor NetworkInspectorService {
       return true
     }
     return false
+  }
+
+  private func updateAppIcon(
+    for serverID: NetworkInspectorServer.ID,
+    with record: SnapONetAppIconRecord
+  ) -> Bool {
+    guard var state = serverStates[serverID] else { return false }
+    let currentPackage = state.server.hello?.packageName
+    guard currentPackage == nil || currentPackage == record.packageName else { return false }
+
+    if state.server.appIcon?.base64Data == record.base64Data {
+      return false
+    }
+
+    guard Data(base64Encoded: record.base64Data) != nil else { return false }
+
+    state.server.appIcon = record
+    serverStates[serverID] = state
+    return true
   }
 
   private func updateRequest(for serverID: NetworkInspectorServer.ID, with record: SnapONetResponseReceivedRecord) -> Bool {

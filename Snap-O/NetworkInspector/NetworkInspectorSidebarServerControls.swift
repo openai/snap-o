@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct NetworkInspectorSidebarServerControls: View {
@@ -143,16 +144,22 @@ struct NetworkInspectorSidebarServerControls: View {
 
   @ViewBuilder
   private func serverRowContent(for server: NetworkInspectorServerViewModel) -> some View {
-    serverRow(title: server.displayName, subtitle: server.deviceDisplayTitle, isConnected: server.isConnected)
+    serverRow(title: server.displayName,
+              subtitle: server.deviceDisplayTitle,
+              appIcon: server.appIcon,
+              isConnected: server.isConnected)
   }
 
   private func placeholderRowContent(title: String, subtitle: String) -> some View {
-    serverRow(title: title, subtitle: subtitle, isConnected: true)
+    serverRow(title: title, subtitle: subtitle, appIcon: nil, isConnected: true)
   }
 
-  private func serverRow(title: String, subtitle: String, isConnected: Bool) -> some View {
+  private func serverRow(title: String,
+                         subtitle: String,
+                         appIcon: NSImage?,
+                         isConnected: Bool) -> some View {
     HStack(spacing: 12) {
-      appIconView(isConnected: isConnected)
+      appIconView(appIcon: appIcon, isConnected: isConnected)
 
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
@@ -172,15 +179,30 @@ struct NetworkInspectorSidebarServerControls: View {
     .opacity(isConnected ? 1 : 0.75)
   }
 
-  private func appIconView(isConnected: Bool) -> some View {
+  private func appIconView(appIcon: NSImage?, isConnected: Bool) -> some View {
     RoundedRectangle(cornerRadius: 8)
-      .fill(isConnected ? Color.secondary.opacity(0.12) : Color.secondary.opacity(0.05))
-      .overlay(
-        Image(systemName: "app.fill")
-          .font(.subheadline)
-          .foregroundStyle(isConnected ? Color.secondary : Color.secondary.opacity(0.35))
-          .saturation(isConnected ? 1 : 0)
-      )
+      .fill(Color.clear)
+      .overlay {
+        if let icon = appIcon {
+          Image(nsImage: icon)
+            .resizable()
+            .scaledToFill()
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .saturation(isConnected ? 1 : 0)
+            .opacity(isConnected ? 1 : 0.65)
+        } else {
+          RoundedRectangle(cornerRadius: 8)
+            .fill(isConnected ? Color.secondary.opacity(0.12) : Color.secondary.opacity(0.05))
+            .overlay(
+              Image(systemName: "app.fill")
+                .font(.subheadline)
+                .foregroundStyle(isConnected ? Color.secondary : Color.secondary.opacity(0.35))
+                .saturation(isConnected ? 1 : 0)
+            )
+            .saturation(isConnected ? 1 : 0)
+            .opacity(isConnected ? 1 : 0.6)
+        }
+      }
       .overlay(alignment: .bottomTrailing) {
         if !isConnected {
           Image(systemName: "link.slash")
@@ -191,8 +213,6 @@ struct NetworkInspectorSidebarServerControls: View {
             .offset(x: 4, y: 4)
         }
       }
-      .saturation(isConnected ? 1 : 0)
-      .opacity(isConnected ? 1 : 0.6)
       .frame(width: 32, height: 32)
   }
 }
