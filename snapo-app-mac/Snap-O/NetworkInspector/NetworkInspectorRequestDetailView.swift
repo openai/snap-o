@@ -160,7 +160,7 @@ private struct StreamEventsSection: View {
         .font(.subheadline)
         .foregroundStyle(.secondary)
     } else {
-      LazyVStack(alignment: .leading, spacing: 8) {
+      LazyVStack(alignment: .leading, spacing: 4) {
         ForEach(events) { event in
           StreamEventCard(event: event)
         }
@@ -209,7 +209,7 @@ private struct StreamEventCard: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 4) {
       HStack(spacing: 8) {
         Text("#\(event.sequence)")
           .font(.caption.weight(.semibold))
@@ -257,7 +257,8 @@ private struct StreamEventCard: View {
           .textSelection(.enabled)
       }
     }
-    .padding(12)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
     .background(
       RoundedRectangle(cornerRadius: 10, style: .continuous)
         .fill(Color.secondary.opacity(0.05))
