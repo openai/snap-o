@@ -51,13 +51,18 @@ struct NetworkInspectorView: View {
 
     NavigationSplitView(columnVisibility: $splitViewVisibility) {
       VStack(spacing: 8) {
-        serverPicker
-          .padding(.horizontal, 12)
-
         NetworkInspectorSearchField(text: $requestSearchText) { direction in
           moveSelection(by: direction)
         }
         .padding(.horizontal, 12)
+
+        serverPicker
+          .padding(.horizontal, 12)
+
+        if let candidate = replacementServerCandidate {
+          replacementServerButton(for: candidate)
+            .padding(.horizontal, 12)
+        }
 
         List(selection: $selectedItem) {
           if store.items.isEmpty {
@@ -252,6 +257,55 @@ struct NetworkInspectorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
+  }
+
+  private var replacementServerCandidate: NetworkInspectorServerViewModel? {
+    guard let current = selectedServer,
+          current.isConnected == false else { return nil }
+
+    return store.servers.first { server in
+      server.isConnected &&
+      server.id != current.id &&
+      server.displayName == current.displayName &&
+      server.deviceID == current.deviceID
+    }
+  }
+
+  private func replacementServerButton(for server: NetworkInspectorServerViewModel) -> some View {
+    Button {
+      selectedServerID = server.id
+      isServerPickerPresented = false
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: "arrow.triangle.2.circlepath")
+          .font(.headline.weight(.semibold))
+          .foregroundStyle(Color.white)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text("New process available")
+            .font(.headline)
+            .foregroundStyle(Color.white)
+            .lineLimit(1)
+
+          if let pid = server.pid {
+            Text("PID \(pid)")
+              .font(.caption)
+              .foregroundStyle(Color.white.opacity(0.8))
+          }
+        }
+
+        Spacer()
+      }
+      .padding(.vertical, 12)
+      .padding(.horizontal, 16)
+      .frame(maxWidth: .infinity, minHeight: 56)
+      .background(
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(Color.orange)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
   }
 
   @ViewBuilder

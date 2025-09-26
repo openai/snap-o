@@ -103,11 +103,15 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let helloSummary: String?
   let deviceDisplayTitle: String
   let isConnected: Bool
+  let deviceID: String
+  let pid: Int?
 
   init(server: NetworkInspectorServer) {
     id = server.id
+    deviceID = server.id.deviceID
     deviceDisplayTitle = server.deviceDisplayTitle
     isConnected = server.isConnected
+    pid = server.hello?.pid
     if let hello = server.hello {
       displayName = hello.packageName
       helloSummary = server.deviceDisplayTitle
