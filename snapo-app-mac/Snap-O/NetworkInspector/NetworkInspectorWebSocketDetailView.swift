@@ -225,9 +225,7 @@ private struct MessageCardView: View {
       }
 
       if let previewText = displayPreview {
-        Text(previewText)
-          .font(.caption.monospaced())
-          .textSelection(.enabled)
+        ExpandableText(text: previewText, font: .caption.monospaced())
       } else if isLikelyJSON, message.preview != nil {
         Text("Unable to pretty print (invalid or truncated JSON)")
           .font(.caption)
@@ -257,6 +255,48 @@ private struct MessageCardView: View {
       return String(data: prettyData, encoding: .utf8)
     } catch {
       return nil
+    }
+  }
+}
+
+private struct ExpandableText: View {
+  let text: String
+  let font: Font
+  let maximumHeight: CGFloat
+  private let shouldShowButton: Bool
+  @State private var isExpanded = false
+
+  init(text: String, font: Font, maximumHeight: CGFloat = 300) {
+    self.text = text
+    self.font = font
+    self.maximumHeight = maximumHeight
+    shouldShowButton = text.count > 400
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      if isExpanded {
+        Text(text)
+          .font(font)
+          .textSelection(.enabled)
+      } else {
+        Text(text)
+          .font(font)
+          .textSelection(.enabled)
+          .frame(maxHeight: maximumHeight, alignment: .top)
+          .clipped()
+      }
+
+      if shouldShowButton {
+        Button(isExpanded ? "Show Less" : "Show More") {
+          withAnimation(.easeInOut(duration: 0.2)) {
+            isExpanded.toggle()
+          }
+        }
+        .font(.caption)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+      }
     }
   }
 }

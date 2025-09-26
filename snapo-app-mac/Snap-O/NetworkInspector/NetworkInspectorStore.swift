@@ -392,7 +392,6 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     let lastEventId: String?
     let retryMillis: Int64?
     let comment: String?
-    let raw: String
 
     init(record: SnapONetResponseStreamEventRecord, wallClockBase: Date?) {
       id = record.sequence
@@ -404,7 +403,6 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       lastEventId = record.lastEventId
       retryMillis = record.retryMillis
       comment = record.comment
-      raw = record.raw
     }
   }
 

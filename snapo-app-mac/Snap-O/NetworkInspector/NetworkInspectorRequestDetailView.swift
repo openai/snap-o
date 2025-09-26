@@ -139,6 +139,22 @@ private struct StreamEventsSection: View {
 
 private struct StreamEventCard: View {
   let event: NetworkInspectorRequestViewModel.StreamEvent
+  private let prettyPrintedData: String?
+  private let isLikelyJSON: Bool
+  @State private var usePrettyPrinted = false
+
+  init(event: NetworkInspectorRequestViewModel.StreamEvent) {
+    self.event = event
+    if let data = event.data, !data.isEmpty {
+      let trimmed = data.trimmingCharacters(in: .whitespacesAndNewlines)
+      let pretty = NetworkInspectorRequestViewModel.BodyPayload.prettyPrintedJSON(from: data)
+      prettyPrintedData = pretty
+      isLikelyJSON = pretty != nil || trimmed.first == "{" || trimmed.first == "["
+    } else {
+      prettyPrintedData = nil
+      isLikelyJSON = false
+    }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -154,44 +170,41 @@ private struct StreamEventCard: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.primary)
         }
-      }
-
-      VStack(alignment: .leading, spacing: 4) {
-        if let data = event.data, !data.isEmpty {
-          Text(data)
-            .font(.system(.callout, design: .monospaced))
-            .textSelection(.enabled)
-        }
-        if let comment = event.comment, !comment.isEmpty {
-          Text("Comment: \(comment)")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-        }
-        if let lastId = event.lastEventId, !lastId.isEmpty {
-          Text("Last-Event-ID: \(lastId)")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-        }
-        if let retry = event.retryMillis {
-          Text("Retry: \(retry) ms")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
+        Spacer()
+        if prettyPrintedData != nil {
+          Toggle("Pretty print", isOn: $usePrettyPrinted)
+            .font(.caption)
+            .toggleStyle(.checkbox)
         }
       }
 
-      Text(event.raw)
-        .font(.footnote.monospaced())
-        .foregroundStyle(.tertiary)
-        .textSelection(.enabled)
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(Color.secondary.opacity(0.08))
-        )
+      if let dataText = displayData {
+        ExpandableText(text: dataText, font: .system(.callout, design: .monospaced))
+      } else if isLikelyJSON, event.data != nil {
+        Text("Unable to pretty print (invalid or truncated JSON)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      if let comment = event.comment, !comment.isEmpty {
+        Text("Comment: \(comment)")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+      if let lastId = event.lastEventId, !lastId.isEmpty {
+        Text("Last-Event-ID: \(lastId)")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+      if let retry = event.retryMillis {
+        Text("Retry: \(retry) ms")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+
     }
     .padding(12)
     .background(
@@ -199,4 +212,54 @@ private struct StreamEventCard: View {
         .fill(Color.secondary.opacity(0.05))
     )
   }
+
+  private var displayData: String? {
+    guard let data = event.data, !data.isEmpty else { return nil }
+    if usePrettyPrinted, let pretty = prettyPrintedData {
+      return pretty
+    }
+    return data
+  }
 }
+private struct ExpandableText: View {
+  let text: String
+  let font: Font
+  let maximumHeight: CGFloat
+  private let shouldShowButton: Bool
+  @State private var isExpanded = false
+
+  init(text: String, font: Font, maximumHeight: CGFloat = 300) {
+    self.text = text
+    self.font = font
+    self.maximumHeight = maximumHeight
+    shouldShowButton = text.count > 400
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      if isExpanded {
+        Text(text)
+          .font(font)
+          .textSelection(.enabled)
+      } else {
+        Text(text)
+          .font(font)
+          .textSelection(.enabled)
+          .frame(maxHeight: maximumHeight, alignment: .top)
+          .clipped()
+      }
+
+      if shouldShowButton {
+        Button(isExpanded ? "Show Less" : "Show More") {
+          withAnimation(.easeInOut(duration: 0.2)) {
+            isExpanded.toggle()
+          }
+        }
+        .font(.caption)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+      }
+    }
+  }
+}
+
