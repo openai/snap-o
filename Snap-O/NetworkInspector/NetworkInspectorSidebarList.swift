@@ -20,8 +20,8 @@ struct NetworkInspectorSidebarList: View {
       } else {
         ForEach(filteredItems) { item in
           VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-              VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 8) {
+              VStack(alignment: .leading) {
                 Text(item.primaryPathComponent)
                   .font(.subheadline.weight(.medium))
                   .lineLimit(1)
@@ -43,14 +43,9 @@ struct NetworkInspectorSidebarList: View {
 
               Text(statusLabel(for: item.status))
                 .font(.caption)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(statusColor(for: item.status).opacity(0.15))
                 .foregroundStyle(statusColor(for: item.status))
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
           }
-          .padding(.vertical, 6)
           .contentShape(Rectangle())
           .tag(item.id)
         }

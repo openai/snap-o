@@ -86,10 +86,6 @@ struct NetworkInspectorRequestDetailView: View {
 
     return Text(label)
       .font(.caption)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .background(color.opacity(0.15))
       .foregroundStyle(color)
-      .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
   }
 }
