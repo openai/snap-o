@@ -24,12 +24,14 @@ import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.OutputStreamWriter
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.ArrayList
 import java.util.Collections
 import java.util.IdentityHashMap
 import kotlin.coroutines.cancellation.CancellationException
 import androidx.core.graphics.createBitmap
+import java.net.SocketTimeoutException
 
 /**
  * App-side server that accepts arbitrary SnapONetRecord events,
@@ -127,6 +129,25 @@ class SnapOLinkServer(
         while (isActiveSafe()) {
             try {
                 val sock: LocalSocket = server.accept()
+                val handshakeResult = performClientHandshake(sock)
+                when (handshakeResult) {
+                    is ClientHandshakeResult.Rejected -> {
+                        Log.w(
+                            TAG,
+                            "Rejected client connection for ${handshakeResult.reason}"
+                        )
+                        try {
+                            sock.close()
+                        } catch (_: Throwable) {
+                        }
+                        continue
+                    }
+                    ClientHandshakeResult.LegacyNoHandshake -> {
+                        Log.w(TAG, "Client connection missing handshake; continuing in legacy mode")
+                    }
+                    ClientHandshakeResult.Accepted -> Unit
+                }
+
                 if (config.singleClientOnly && connectedSink != null) {
                     // Politely refuse additional clients.
                     sock.use { s ->
@@ -489,6 +510,45 @@ class SnapOLinkServer(
         }
     }
 
+    private fun performClientHandshake(socket: LocalSocket): ClientHandshakeResult {
+        return try {
+            val outcome = readClientHello(socket)
+            if (outcome == null) {
+                ClientHandshakeResult.LegacyNoHandshake
+            } else if (outcome == CLIENT_HELLO_TOKEN) {
+                ClientHandshakeResult.Accepted
+            } else {
+                ClientHandshakeResult.Rejected("unexpected handshake token")
+            }
+        } catch (_: SocketTimeoutException) {
+            ClientHandshakeResult.LegacyNoHandshake
+        } catch (t: Throwable) {
+            ClientHandshakeResult.Rejected(t.localizedMessage ?: "handshake failure")
+        }
+    }
+
+    private fun readClientHello(socket: LocalSocket): String? {
+        socket.soTimeout = CLIENT_HELLO_TIMEOUT_MS
+        val input = socket.inputStream
+        val buffer = ByteArrayOutputStream()
+        return try {
+            while (buffer.size() <= CLIENT_HELLO_MAX_BYTES) {
+                val value = input.read()
+                if (value == -1) {
+                    return null
+                }
+                if (value == '\n'.code) {
+                    val raw = buffer.toString(StandardCharsets.UTF_8.name())
+                    return raw.trimEnd('\r')
+                }
+                buffer.write(value)
+            }
+            throw IOException("client handshake exceeded $CLIENT_HELLO_MAX_BYTES bytes")
+        } finally {
+            socket.soTimeout = 0
+        }
+    }
+
     private fun loadAppIconEvent(): AppIcon? {
         val pm: PackageManager = app.packageManager
         val drawable: Drawable = try {
@@ -575,3 +635,12 @@ class SnapOLinkServer(
 private const val TAG = "SnapOLink"
 private const val TARGET_ICON_SIZE = 96
 private const val ICON_PNG_QUALITY = 100
+private const val CLIENT_HELLO_TOKEN = "HelloSnapO/1"
+private const val CLIENT_HELLO_TIMEOUT_MS = 1_000
+private const val CLIENT_HELLO_MAX_BYTES = 4 * 1024
+
+private sealed interface ClientHandshakeResult {
+    object Accepted : ClientHandshakeResult
+    object LegacyNoHandshake : ClientHandshakeResult
+    data class Rejected(val reason: String) : ClientHandshakeResult
+}
