@@ -25,7 +25,9 @@ import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
-import java.util.ArrayDeque
+import java.util.ArrayList
+import java.util.Collections
+import java.util.IdentityHashMap
 import kotlin.coroutines.cancellation.CancellationException
 import androidx.core.graphics.createBitmap
 
@@ -56,7 +58,7 @@ class SnapOLinkServer(
 
     // --- buffering ---
     private val bufferLock = Mutex()
-    private val ring: ArrayDeque<SnapONetRecord> = ArrayDeque()
+    private val eventBuffer: MutableList<SnapONetRecord> = ArrayList()
     private var approxBytes: Long = 0L
     private val openWebSockets: MutableSet<String> = mutableSetOf()
 
@@ -106,8 +108,8 @@ class SnapOLinkServer(
     }
 
     /**
-     * Publish a record: it’s appended to the in-memory ring and, if a client is connected,
-     * streamed immediately as an NDJSON line.
+     * Publish a record: it’s inserted into the in-memory buffer (kept sorted by wall clock time)
+     * and, if a client is connected, streamed immediately as an NDJSON line.
      */
     suspend fun publish(record: SnapONetRecord) {
         // 1) add to buffer (evicting old items)
@@ -152,7 +154,7 @@ class SnapOLinkServer(
                 writeHandshake(sink)
 
                 // 2) Snapshot (buffer copy under lock to avoid holding it while writing)
-                val snapshot: List<SnapONetRecord> = bufferLock.withLock { ArrayList(ring) }
+                val snapshot: List<SnapONetRecord> = bufferLock.withLock { ArrayList(eventBuffer) }
                 for (rec in snapshot) writeLine(sink, rec)
 
                 // 3) ReplayComplete marker
@@ -217,54 +219,80 @@ class SnapOLinkServer(
 
     /** Append and evict by window/size/count caps. */
     private fun appendWithEviction(record: SnapONetRecord) {
-        ring.addLast(record)
-        approxBytes += Ndjson.encodeToString(record).length // quick estimate; good enough for bounding
+        insertSorted(record)
+        approxBytes += estimateSize(record)
         updateWebSocketStateOnAdd(record)
 
         if (record is TimedRecord) {
             val cutoff = record.tWallMs - config.bufferWindow.inWholeMilliseconds
-            while (evictFirstEligible(cutoff)) {
-            }
+            evictExpiredRecords(cutoff)
         }
 
-        while (approxBytes > config.maxBufferedBytes && ring.isNotEmpty()) {
+        while (approxBytes > config.maxBufferedBytes && eventBuffer.isNotEmpty()) {
             if (!evictFirstEligible(null)) break
         }
-        while (ring.size > config.maxBufferedEvents && ring.isNotEmpty()) {
+        while (eventBuffer.size > config.maxBufferedEvents && eventBuffer.isNotEmpty()) {
             if (!evictFirstEligible(null)) break
         }
     }
 
+    private fun insertSorted(record: SnapONetRecord) {
+        val insertIndex = findInsertIndex(record)
+        eventBuffer.add(insertIndex, record)
+    }
+
+    private fun findInsertIndex(record: SnapONetRecord): Int {
+        var low = 0
+        var high = eventBuffer.size
+        while (low < high) {
+            val mid = (low + high) / 2
+            val cmp = compareEventTimes(eventBuffer[mid], record)
+            if (cmp <= 0) {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low
+    }
+
+    private fun compareEventTimes(a: SnapONetRecord, b: SnapONetRecord): Int {
+        val left = eventTime(a)
+        val right = eventTime(b)
+        return left.compareTo(right)
+    }
+
+    private fun eventTime(record: SnapONetRecord): Long {
+        return (record as? TimedRecord)?.tWallMs ?: Long.MAX_VALUE
+    }
+
     private fun evictFirstEligible(cutoff: Long?): Boolean {
-        val iterator = ring.iterator()
+        val iterator = eventBuffer.iterator()
         while (iterator.hasNext()) {
             val record = iterator.next()
-
-            if (cutoff != null) {
-                val eventTime = when (record) {
-                    is TimedRecord -> record.tWallMs
-                    else -> Long.MAX_VALUE
-                }
-                if (eventTime >= cutoff) continue
-            }
+            if (!isOlderThanCutoff(record, cutoff)) continue
 
             when (record) {
-                is WebSocketWillOpen -> continue
-                is WebSocketOpened -> continue
                 is RequestWillBeSent -> {
-                    if (!evictRequestTerminal(record, cutoff)) {
-                        continue
-                    }
-                    iterator.remove()
-                    approxBytes -= Ndjson.encodeToString(record).length
-                    updateWebSocketStateOnRemove(record)
+                    if (!evictRequestTerminal(record, cutoff)) continue
+                    removeRecord(iterator, record)
+                    return true
+                }
+
+                is WebSocketWillOpen -> {
+                    if (!evictWebSocketConversation(record, cutoff)) continue
+                    removeRecord(iterator, record)
+                    return true
+                }
+
+                is WebSocketOpened -> {
+                    if (!evictWebSocketConversation(record, cutoff)) continue
+                    removeRecord(iterator, record)
                     return true
                 }
 
                 else -> {
-                    iterator.remove()
-                    approxBytes -= Ndjson.encodeToString(record).length
-                    updateWebSocketStateOnRemove(record)
+                    removeRecord(iterator, record)
                     return true
                 }
             }
@@ -292,7 +320,7 @@ class SnapOLinkServer(
     }
 
     private fun evictRequestTerminal(head: RequestWillBeSent, cutoff: Long?): Boolean {
-        val iterator = ring.iterator()
+        val iterator = eventBuffer.iterator()
         while (iterator.hasNext()) {
             val candidate = iterator.next()
             if (candidate === head) continue
@@ -308,11 +336,121 @@ class SnapOLinkServer(
             }
 
             iterator.remove()
-            approxBytes -= Ndjson.encodeToString(candidate).length
+            subtractApproxBytes(candidate)
             updateWebSocketStateOnRemove(candidate)
             return true
         }
         return false
+    }
+
+    private fun evictWebSocketConversation(head: PerWebSocketRecord, cutoff: Long?): Boolean {
+        if (openWebSockets.contains(head.id)) {
+            return false
+        }
+
+        if (!allWebSocketEventsOlderThanCutoff(head, cutoff)) {
+            return false
+        }
+
+        val iterator = eventBuffer.iterator()
+        while (iterator.hasNext()) {
+            val candidate = iterator.next()
+            if (candidate === head) continue
+            if (candidate is PerWebSocketRecord && candidate.id == head.id) {
+                iterator.remove()
+                subtractApproxBytes(candidate)
+                updateWebSocketStateOnRemove(candidate)
+            }
+        }
+        return true
+    }
+
+    private fun evictExpiredRecords(cutoff: Long) {
+        val requestStarts = mutableMapOf<String, RequestWillBeSent>()
+        val requestTerminals = mutableMapOf<String, SnapONetRecord>()
+        val webSocketStarts = mutableMapOf<String, MutableList<PerWebSocketRecord>>()
+        val webSocketTerminals = mutableMapOf<String, PerWebSocketRecord>()
+        val toRemove: MutableSet<SnapONetRecord> =
+            Collections.newSetFromMap(IdentityHashMap<SnapONetRecord, Boolean>())
+
+        for (record in eventBuffer) {
+            if (!isOlderThanCutoff(record, cutoff)) continue
+            when (record) {
+                is RequestWillBeSent -> requestStarts[record.id] = record
+                is ResponseReceived -> requestTerminals[record.id] = record
+                is RequestFailed -> requestTerminals[record.id] = record
+                is WebSocketWillOpen ->
+                    webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
+                is WebSocketOpened ->
+                    webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
+                is WebSocketClosed -> webSocketTerminals[record.id] = record
+                is WebSocketFailed -> webSocketTerminals[record.id] = record
+                is WebSocketCancelled -> webSocketTerminals[record.id] = record
+                else -> toRemove.add(record)
+            }
+        }
+
+        for ((id, head) in requestStarts) {
+            val terminal = requestTerminals[id] ?: continue
+            toRemove.add(head)
+            toRemove.add(terminal)
+        }
+
+        for ((id, headList) in webSocketStarts) {
+            val terminal = webSocketTerminals[id] ?: continue
+            if (openWebSockets.contains(id)) continue
+            toRemove.add(terminal)
+            headList.forEach { toRemove.add(it) }
+        }
+
+        if (toRemove.isEmpty()) return
+
+        val iterator = eventBuffer.iterator()
+        while (iterator.hasNext()) {
+            val record = iterator.next()
+            if (!toRemove.contains(record)) continue
+            iterator.remove()
+            subtractApproxBytes(record)
+            updateWebSocketStateOnRemove(record)
+        }
+    }
+
+    private fun allWebSocketEventsOlderThanCutoff(
+        head: PerWebSocketRecord,
+        cutoff: Long?,
+    ): Boolean {
+        cutoff ?: return true
+        for (candidate in eventBuffer) {
+            if (candidate === head) continue
+            if (candidate is PerWebSocketRecord && candidate.id == head.id) {
+                if (candidate.tWallMs >= cutoff) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    private fun isOlderThanCutoff(record: SnapONetRecord, cutoff: Long?): Boolean {
+        cutoff ?: return true
+        return eventTime(record) < cutoff
+    }
+
+    private fun removeRecord(
+        iterator: MutableIterator<SnapONetRecord>,
+        record: SnapONetRecord,
+    ) {
+        iterator.remove()
+        subtractApproxBytes(record)
+        updateWebSocketStateOnRemove(record)
+    }
+
+    private fun subtractApproxBytes(record: SnapONetRecord) {
+        approxBytes = (approxBytes - estimateSize(record)).coerceAtLeast(0)
+    }
+
+    private fun estimateSize(record: SnapONetRecord): Int {
+        return Ndjson.encodeToString(SnapONetRecord.serializer(), record).length
     }
 
     private fun emitAppIconIfAvailable() {
