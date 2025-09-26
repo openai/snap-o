@@ -159,15 +159,59 @@ struct NetworkInspectorWebSocketDetailView: View {
   }
 
   private func messageCard(for message: NetworkInspectorWebSocketViewModel.Message) -> some View {
+    MessageCardView(message: message)
+  }
+
+}
+
+private struct MessageCardView: View {
+  let message: NetworkInspectorWebSocketViewModel.Message
+
+  private let prettyPrintedPreview: String?
+  private let isLikelyJSON: Bool
+  private let directionSymbolName: String
+  private let directionColor: Color
+  @State private var usePrettyPrinted: Bool = false
+
+  init(message: NetworkInspectorWebSocketViewModel.Message) {
+    self.message = message
+
+    if let preview = message.preview, !preview.isEmpty {
+      let trimmed = preview.trimmingCharacters(in: .whitespacesAndNewlines)
+      let pretty = MessageCardView.prettyPrintedJSON(from: preview)
+      prettyPrintedPreview = pretty
+      let encodingHint = message.opcode.lowercased().contains("json")
+      isLikelyJSON = encodingHint || trimmed.first == "{" || trimmed.first == "["
+    } else {
+      prettyPrintedPreview = nil
+      isLikelyJSON = false
+    }
+
+    directionSymbolName = message.direction == .outgoing ? "tray" : "paperplane"
+    directionColor = message.direction == .outgoing ? .blue : .green
+  }
+
+  var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 4) {
-        directionBadge(for: message)
+        Image(systemName: directionSymbolName)
+          .font(.caption.weight(.semibold))
+          .symbolRenderingMode(.hierarchical)
+          .foregroundStyle(directionColor)
         if let size = message.payloadSize {
           Text("\(formatBytes(size))")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+
+        if prettyPrintedPreview != nil {
+          Toggle("Pretty print", isOn: $usePrettyPrinted)
+            .font(.caption)
+            .toggleStyle(.checkbox)
+        }
+
         Spacer()
+
         if let enqueued = message.enqueued {
           Text(enqueued ? "Enqueued" : "Immediate")
             .font(.caption)
@@ -181,10 +225,14 @@ struct NetworkInspectorWebSocketDetailView: View {
           .foregroundStyle(.secondary)
       }
 
-      if let preview = message.preview, !preview.isEmpty {
-        Text(preview)
+      if let previewText = displayPreview {
+        Text(previewText)
           .font(.caption.monospaced())
           .textSelection(.enabled)
+      } else if isLikelyJSON, message.preview != nil {
+        Text("Unable to pretty print (invalid or truncated JSON)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
     }
     .padding(.horizontal, 6)
@@ -194,14 +242,23 @@ struct NetworkInspectorWebSocketDetailView: View {
     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
-  private func directionBadge(for message: NetworkInspectorWebSocketViewModel.Message) -> some View {
-    let color: Color = message.direction == .outgoing ? .blue : .green
-    let symbolName = message.direction == .outgoing ? "tray" : "paperplane"
+  private var displayPreview: String? {
+    guard let preview = message.preview, !preview.isEmpty else { return nil }
+    if usePrettyPrinted, let pretty = prettyPrintedPreview {
+      return pretty
+    }
+    return preview
+  }
 
-    return Image(systemName: symbolName)
-      .font(.caption.weight(.semibold))
-      .symbolRenderingMode(.hierarchical)
-      .foregroundStyle(color)
+  private static func prettyPrintedJSON(from text: String) -> String? {
+    guard let data = text.data(using: .utf8) else { return nil }
+    do {
+      let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+      let prettyData = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted])
+      return String(data: prettyData, encoding: .utf8)
+    } catch {
+      return nil
+    }
   }
 }
 
