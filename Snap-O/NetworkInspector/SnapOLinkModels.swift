@@ -1,5 +1,11 @@
 import Foundation
 
+
+struct SnapONetHeader: Decodable, Hashable, Sendable {
+  let name: String
+  let value: String
+}
+
 struct SnapOLinkServer: Identifiable, Hashable, Sendable {
   struct ID: Hashable, Sendable {
     let deviceID: String
@@ -373,7 +379,7 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
   let tMonoNs: Int64
   let method: String
   let url: String
-  let headers: [String: String]
+  let headers: [SnapONetHeader]
   let bodyPreview: String?
   let bodySize: Int64?
 
@@ -384,7 +390,7 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
     tMonoNs: Int64,
     method: String,
     url: String,
-    headers: [String: String] = [:],
+    headers: [SnapONetHeader] = [],
     bodyPreview: String? = nil,
     bodySize: Int64? = nil
   ) {
@@ -408,7 +414,7 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
     method = try container.decode(String.self, forKey: .method)
     url = try container.decode(String.self, forKey: .url)
-    headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+    headers = try container.decodeIfPresent([SnapONetHeader].self, forKey: .headers) ?? []
     bodyPreview = try container.decodeIfPresent(String.self, forKey: .bodyPreview)
     bodySize = try container.decodeIfPresent(Int64.self, forKey: .bodySize)
   }
@@ -432,7 +438,7 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
   let tWallMs: Int64
   let tMonoNs: Int64
   let code: Int
-  let headers: [String: String]
+  let headers: [SnapONetHeader]
   let body: String?
   let bodyTruncatedBytes: Int64?
   let bodyPreview: String?
@@ -445,7 +451,7 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     tWallMs: Int64,
     tMonoNs: Int64,
     code: Int,
-    headers: [String: String] = [:],
+    headers: [SnapONetHeader] = [],
     body: String? = nil,
     bodyTruncatedBytes: Int64? = nil,
     bodyPreview: String? = nil,
@@ -473,7 +479,7 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
     code = try container.decode(Int.self, forKey: .code)
-    headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+    headers = try container.decodeIfPresent([SnapONetHeader].self, forKey: .headers) ?? []
     body = try container.decodeIfPresent(String.self, forKey: .body)
     bodyTruncatedBytes = try container.decodeIfPresent(Int64.self, forKey: .bodyTruncatedBytes)
     bodyPreview = try container.decodeIfPresent(String.self, forKey: .bodyPreview)
@@ -585,7 +591,7 @@ struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
   let tWallMs: Int64
   let tMonoNs: Int64
   let url: String
-  let headers: [String: String]
+  let headers: [SnapONetHeader]
 
   init(
     schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
@@ -593,7 +599,7 @@ struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
     tWallMs: Int64,
     tMonoNs: Int64,
     url: String,
-    headers: [String: String] = [:]
+    headers: [SnapONetHeader] = []
   ) {
     self.schemaVersion = schemaVersion
     self.id = id
@@ -611,7 +617,7 @@ struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
     url = try container.decode(String.self, forKey: .url)
-    headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+    headers = try container.decodeIfPresent([SnapONetHeader].self, forKey: .headers) ?? []
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -630,7 +636,7 @@ struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
   let tWallMs: Int64
   let tMonoNs: Int64
   let code: Int
-  let headers: [String: String]
+  let headers: [SnapONetHeader]
 
   init(
     schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
@@ -638,7 +644,7 @@ struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
     tWallMs: Int64,
     tMonoNs: Int64,
     code: Int,
-    headers: [String: String] = [:]
+    headers: [SnapONetHeader] = []
   ) {
     self.schemaVersion = schemaVersion
     self.id = id
@@ -656,7 +662,7 @@ struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
     code = try container.decode(Int.self, forKey: .code)
-    headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+    headers = try container.decodeIfPresent([SnapONetHeader].self, forKey: .headers) ?? []
   }
 
   private enum CodingKeys: String, CodingKey {

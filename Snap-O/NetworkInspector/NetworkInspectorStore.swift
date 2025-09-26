@@ -226,17 +226,13 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     }
 
     if let requestRecord = request.request {
-      requestHeaders = requestRecord.headers
-        .sorted { $0.key.lowercased() < $1.key.lowercased() }
-        .map { Header(name: $0.key, value: $0.value) }
+      requestHeaders = requestRecord.headers.map { Header(name: $0.name, value: $0.value) }
     } else {
       requestHeaders = []
     }
 
     if let responseRecord = request.response {
-      responseHeaders = responseRecord.headers
-        .sorted { $0.key.lowercased() < $1.key.lowercased() }
-        .map { Header(name: $0.key, value: $0.value) }
+      responseHeaders = responseRecord.headers.map { Header(name: $0.name, value: $0.value) }
     } else {
       responseHeaders = []
     }
@@ -244,7 +240,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     if let responseRecord = request.response {
       if let text = responseRecord.body ?? responseRecord.bodyPreview {
         let capturedBytes = Int64(text.lengthOfBytes(using: .utf8))
-        let contentType = responseRecord.headers.first { $0.key.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
+        let contentType = responseRecord.headers.first { $0.name.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
         let prettyPrinted = ResponseBody.prettyPrintedJSON(from: text)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let startsLikeJSON = trimmed.first.map { ["{", "[", "\""].contains(String($0)) } ?? false
@@ -467,13 +463,9 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       }
     }
 
-    requestHeaders = session.willOpen?.headers
-      .sorted { $0.key.lowercased() < $1.key.lowercased() }
-      .map { NetworkInspectorRequestViewModel.Header(name: $0.key, value: $0.value) } ?? []
+    requestHeaders = session.willOpen?.headers.map { NetworkInspectorRequestViewModel.Header(name: $0.name, value: $0.value) } ?? []
 
-    responseHeaders = session.opened?.headers
-      .sorted { $0.key.lowercased() < $1.key.lowercased() }
-      .map { NetworkInspectorRequestViewModel.Header(name: $0.key, value: $0.value) } ?? []
+    responseHeaders = session.opened?.headers.map { NetworkInspectorRequestViewModel.Header(name: $0.name, value: $0.value) } ?? []
 
     willOpen = session.willOpen
     opened = session.opened

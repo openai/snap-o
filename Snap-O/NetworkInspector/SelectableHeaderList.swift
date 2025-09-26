@@ -36,16 +36,26 @@ struct SelectableHeaderList: NSViewRepresentable {
     nsView textView: NSTextView,
     context: Context
   ) -> CGSize? {
-    guard let textStorage = textView.textStorage else { return .zero }
-    let width: CGFloat = switch proposal.width {
+    guard let textContainer = textView.textContainer,
+          let layoutManager = textView.layoutManager else {
+      return .zero
+    }
+
+    let widthForContainer: CGFloat = switch proposal.width {
     case 0: 300
     default: proposal.width ?? CGFloat.greatestFiniteMagnitude
     }
-    let boundingSize = NSSize(width: width, height: .greatestFiniteMagnitude)
-    let options: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
-    let rect = NSAttributedString(attributedString: textStorage)
-      .boundingRect(with: boundingSize, options: options)
-    return CGSize(width: ceil(rect.width), height: ceil(rect.height))
+
+
+    let boundingSize = NSSize(width: widthForContainer, height: .greatestFiniteMagnitude)
+
+    let oldSize = textContainer.size
+    textContainer.size = boundingSize
+    layoutManager.ensureLayout(for: textContainer)
+    let used = layoutManager.usedRect(for: textContainer)
+    textContainer.size = oldSize
+
+    return CGSize(width: ceil(used.width), height: ceil(used.height))
   }
 }
 
