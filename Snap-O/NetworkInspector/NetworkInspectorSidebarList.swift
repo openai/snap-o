@@ -41,9 +41,7 @@ struct NetworkInspectorSidebarList: View {
                 .bold()
                 .foregroundStyle(.secondary)
 
-              Text(statusLabel(for: item.status))
-                .font(.caption)
-                .foregroundStyle(statusColor(for: item.status))
+              statusView(for: item.status)
             }
           }
           .contentShape(Rectangle())
@@ -55,25 +53,22 @@ struct NetworkInspectorSidebarList: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
-  private func statusLabel(for status: NetworkInspectorRequestViewModel.Status) -> String {
+  @ViewBuilder
+  private func statusView(for status: NetworkInspectorRequestViewModel.Status) -> some View {
     switch status {
     case .pending:
-      return "Pending"
+      ProgressView()
+        .controlSize(.small)
+        .scaleEffect(0.75, anchor: .center)
+        .padding(.vertical, 2)
     case .success(let code):
-      return "\(code)"
+      Text("\(code)")
+        .font(.caption)
+        .foregroundStyle(Color.green)
     case .failure(let message):
-      return message?.isEmpty == false ? message! : "Failed"
-    }
-  }
-
-  private func statusColor(for status: NetworkInspectorRequestViewModel.Status) -> Color {
-    switch status {
-    case .pending:
-      return .secondary
-    case .success:
-      return .green
-    case .failure:
-      return .red
+      Text(message?.isEmpty == false ? message! : "Failed")
+        .font(.caption)
+        .foregroundStyle(Color.red)
     }
   }
 }
