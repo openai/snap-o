@@ -103,8 +103,10 @@ struct NetworkInspectorRequestDetailView: View {
 
   private func defaultExpansion(for section: NetworkInspectorStore.RequestDetailSection) -> Bool {
     switch section {
-    case .requestBody, .responseBody:
+    case .requestBody:
       return false
+    case .responseBody:
+      return true
     default:
       return true
     }

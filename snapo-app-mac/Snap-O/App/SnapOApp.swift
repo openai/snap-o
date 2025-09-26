@@ -34,7 +34,7 @@ struct SnapOApp: App {
       )
     }
 
-    Window("Network Inspector", id: NetworkInspectorWindowID.main) {
+    Window("Network Inspector (Alpha)", id: NetworkInspectorWindowID.main) {
       NetworkInspectorWindowRoot(services: services)
     }
     .defaultSize(width: 960, height: 520)

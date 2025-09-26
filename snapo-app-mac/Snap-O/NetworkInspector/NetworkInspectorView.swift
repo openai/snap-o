@@ -72,7 +72,7 @@ struct NetworkInspectorView: View {
         replacementServerCandidate: replacementServerCandidate,
         moveSelection: moveSelection
       )
-      .navigationTitle("Network Inspector")
+      .navigationTitle("Network Inspector (Alpha)")
     } detail: {
       if let detail = activeDetail {
         detailView(

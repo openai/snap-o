@@ -122,7 +122,7 @@ struct SnapOCommands: Commands {
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }
     CommandMenu("Tools") {
-      Button("Network Inspector") {
+      Button("Network Inspector (Alpha)") {
         openWindow(id: NetworkInspectorWindowID.main)
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
