@@ -225,31 +225,24 @@ private struct ExpandableText: View {
   let text: String
   let font: Font
   let maximumHeight: CGFloat
-  private let shouldShowButton: Bool
   @State private var isExpanded = false
+  @State private var fullHeight: CGFloat = .zero
 
-  init(text: String, font: Font, maximumHeight: CGFloat = 300) {
+  init(text: String, font: Font, maximumHeight: CGFloat = 100) {
     self.text = text
     self.font = font
     self.maximumHeight = maximumHeight
-    shouldShowButton = text.count > 400
+  }
+
+  private var needsExpansion: Bool {
+    fullHeight > maximumHeight + 1
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      if isExpanded {
-        Text(text)
-          .font(font)
-          .textSelection(.enabled)
-      } else {
-        Text(text)
-          .font(font)
-          .textSelection(.enabled)
-          .frame(maxHeight: maximumHeight, alignment: .top)
-          .clipped()
-      }
+      textView
 
-      if shouldShowButton {
+      if needsExpansion {
         Button(isExpanded ? "Show Less" : "Show More") {
           withAnimation(.easeInOut(duration: 0.2)) {
             isExpanded.toggle()
@@ -259,6 +252,57 @@ private struct ExpandableText: View {
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
       }
+    }
+    .overlay(HeightReader(text: text, font: font))
+    .onPreferenceChange(TextHeightPreferenceKey.self) { newValue in
+      if abs(fullHeight - newValue) > 0.5 {
+        fullHeight = newValue
+      } else if fullHeight == 0 {
+        fullHeight = newValue
+      }
+      if fullHeight <= maximumHeight + 1 {
+        isExpanded = false
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var textView: some View {
+    if !isExpanded && needsExpansion {
+      Text(text)
+        .font(font)
+        .textSelection(.enabled)
+        .frame(maxHeight: maximumHeight, alignment: .top)
+        .clipped()
+    } else {
+      Text(text)
+        .font(font)
+        .textSelection(.enabled)
+    }
+  }
+
+  private struct HeightReader: View {
+    let text: String
+    let font: Font
+
+    var body: some View {
+      Text(text)
+        .font(font)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(
+          GeometryReader { proxy in
+            Color.clear.preference(key: TextHeightPreferenceKey.self, value: proxy.size.height)
+          }
+        )
+        .opacity(0)
+        .allowsHitTesting(false)
+    }
+  }
+
+  private struct TextHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = .zero
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+      value = max(value, nextValue())
     }
   }
 }

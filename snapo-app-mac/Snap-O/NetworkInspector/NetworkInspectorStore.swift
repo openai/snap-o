@@ -1,9 +1,18 @@
 import AppKit
 import Combine
 import Foundation
+import SwiftUI
 
 @MainActor
 final class NetworkInspectorStore: ObservableObject {
+  enum RequestDetailSection: Hashable {
+    case requestHeaders
+    case requestBody
+    case responseHeaders
+    case responseBody
+    case stream
+  }
+
   @Published private(set) var servers: [NetworkInspectorServerViewModel] = []
   @Published private(set) var items: [NetworkInspectorListItemViewModel] = []
 
@@ -14,6 +23,7 @@ final class NetworkInspectorStore: ObservableObject {
   private var latestWebSockets: [NetworkInspectorWebSocket] = []
   private var requestLookup: [NetworkInspectorRequestID: NetworkInspectorRequestViewModel] = [:]
   private var webSocketLookup: [NetworkInspectorWebSocketID: NetworkInspectorWebSocketViewModel] = [:]
+  private var requestCollapsedSections: [NetworkInspectorRequestID: Set<RequestDetailSection>] = [:]
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -78,6 +88,32 @@ final class NetworkInspectorStore: ObservableObject {
       }
       return lhs.firstSeenAt < rhs.firstSeenAt
     }
+  }
+
+  private func isCollapsed(_ section: RequestDetailSection, for requestID: NetworkInspectorRequestID) -> Bool {
+    requestCollapsedSections[requestID]?.contains(section) ?? false
+  }
+
+  private func setSection(_ section: RequestDetailSection, for requestID: NetworkInspectorRequestID, collapsed: Bool) {
+    var sections = requestCollapsedSections[requestID] ?? Set<RequestDetailSection>()
+    if collapsed {
+      sections.insert(section)
+    } else {
+      sections.remove(section)
+    }
+    if sections.isEmpty {
+      requestCollapsedSections.removeValue(forKey: requestID)
+    } else {
+      requestCollapsedSections[requestID] = sections
+    }
+    objectWillChange.send()
+  }
+
+  func bindingForSection(_ section: RequestDetailSection, requestID: NetworkInspectorRequestID) -> Binding<Bool> {
+    Binding(
+      get: { !self.isCollapsed(section, for: requestID) },
+      set: { self.setSection(section, for: requestID, collapsed: !$0) }
+    )
   }
 
   func detail(for id: NetworkInspectorItemID) -> NetworkInspectorDetailViewModel? {
