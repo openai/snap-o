@@ -74,25 +74,7 @@ struct NetworkInspectorView: View {
       )
       .navigationTitle("Network Inspector (Alpha)")
     } detail: {
-      if let detail = activeDetail {
-        detailView(
-          for: detail
-        ) {
-          selectedItem = nil
-          activeDetail = nil
-          splitViewVisibility = .all
-        }
-      } else {
-        VStack(alignment: .center, spacing: 12) {
-          Text("Select a record")
-            .font(.title2)
-            .foregroundStyle(.secondary)
-          Text("Choose an entry to inspect its details.")
-            .font(.body)
-            .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      }
+      detailContent
     }
     .navigationSplitViewStyle(.balanced)
     .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
@@ -164,6 +146,61 @@ struct NetworkInspectorView: View {
     case .failure:
       .red
     }
+  }
+}
+
+private extension NetworkInspectorView {
+  @ViewBuilder
+  var detailContent: some View {
+    if let detail = activeDetail {
+      detailView(for: detail) {
+        selectedItem = nil
+        activeDetail = nil
+        splitViewVisibility = .all
+      }
+    } else if store.servers.isEmpty {
+      emptyStateView()
+    } else {
+      placeholderSelectionView
+    }
+  }
+
+  @ViewBuilder
+  private func emptyStateView() -> some View {
+    VStack(spacing: 16) {
+      Image(systemName: "antenna.radiowaves.left.and.right")
+        .font(.system(size: 48, weight: .regular))
+        .foregroundStyle(.secondary)
+
+      VStack(spacing: 8) {
+        Text("No compatible apps detected")
+          .font(.title3.weight(.semibold))
+
+        Text("To inspect network traffic, add a `debugImplementation` on a `com.openai.snapo:link…` library to your app.")
+          .font(.body)
+          .multilineTextAlignment(.center)
+          .foregroundStyle(.secondary)
+      }
+
+      Link(destination: URL(string: "https://github.com/openai/snap-o")!) {
+        Text("View the README")
+      }
+      .buttonStyle(.link)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  @ViewBuilder
+  private var placeholderSelectionView: some View {
+    VStack(spacing: 12) {
+      Text("Select a record")
+        .font(.title2)
+        .foregroundStyle(.secondary)
+      Text("Choose an entry to inspect its details.")
+        .font(.body)
+        .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }
 
