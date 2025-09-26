@@ -14,9 +14,6 @@ struct NetworkInspectorSidebar: View {
 
   var body: some View {
     VStack(spacing: 8) {
-      NetworkInspectorSidebarSearchField(text: $requestSearchText, onMoveSelection: moveSelection)
-        .padding(.horizontal, 12)
-
       NetworkInspectorSidebarServerControls(
         store: store,
         selectedServerID: $selectedServerID,
@@ -25,6 +22,9 @@ struct NetworkInspectorSidebar: View {
         replacementServerCandidate: replacementServerCandidate
       )
       .padding(.horizontal, 12)
+
+      NetworkInspectorSidebarSearchField(text: $requestSearchText, onMoveSelection: moveSelection)
+        .padding(.horizontal, 12)
 
       NetworkInspectorSidebarList(
         store: store,

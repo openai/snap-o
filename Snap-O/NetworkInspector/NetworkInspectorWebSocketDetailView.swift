@@ -41,7 +41,7 @@ struct NetworkInspectorWebSocketDetailView: View {
 
       HStack(spacing: 12) {
         statusBadge
-        Text(webSocket.socketIdentifier)
+        Text(webSocket.timingSummary)
           .font(.callout)
           .foregroundStyle(.secondary)
           .textSelection(.enabled)
@@ -100,16 +100,6 @@ struct NetworkInspectorWebSocketDetailView: View {
           .font(.callout)
           .foregroundStyle(.secondary)
       }
-
-      Text(webSocket.serverSummary)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
-
-      Text(webSocket.timingSummary)
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
     }
   }
 

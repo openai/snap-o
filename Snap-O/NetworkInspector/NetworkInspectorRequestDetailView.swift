@@ -43,7 +43,7 @@ struct NetworkInspectorRequestDetailView: View {
 
       HStack(spacing: 12) {
         statusBadge
-        Text(request.requestIdentifier)
+        Text(request.timingSummary)
           .font(.callout)
           .foregroundStyle(.secondary)
           .textSelection(.enabled)
@@ -55,16 +55,6 @@ struct NetworkInspectorRequestDetailView: View {
           .foregroundStyle(.red)
           .textSelection(.enabled)
       }
-
-      Text(request.serverSummary)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
-
-      Text(request.timingSummary)
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
     }
   }
 
