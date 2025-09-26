@@ -3,41 +3,63 @@ import SwiftUI
 struct NetworkInspectorBodySection: View {
   let title: String
   let payload: NetworkInspectorRequestViewModel.ResponseBody
+  @State private var isExpanded: Bool
   @State private var usePrettyPrinted: Bool
 
   init(title: String, responseBody: NetworkInspectorRequestViewModel.ResponseBody) {
     self.title = title
     payload = responseBody
+    _isExpanded = State(initialValue: false)
     _usePrettyPrinted = State(initialValue: responseBody.prettyPrintedText != nil)
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title)
-        .font(.headline)
+    VStack(alignment: .leading, spacing: 6) {
+      Button {
+        isExpanded.toggle()
+      } label: {
+        HStack(spacing: 8) {
+          Image(systemName: "chevron.right")
+            .rotationEffect(isExpanded ? .degrees(90) : .zero)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
 
-      if let metadata = metadataText {
-        Text(metadata)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+          HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(title)
+              .font(.headline)
+
+            if let metadata = metadataText {
+              Text(metadata)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+        .contentShape(Rectangle())
       }
+      .buttonStyle(.plain)
 
-      if payload.prettyPrintedText != nil {
-        Toggle("Pretty print JSON", isOn: $usePrettyPrinted)
-          .font(.caption)
-      } else if payload.isLikelyJSON {
-        Text("Unable to pretty print (invalid or truncated JSON)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+      if isExpanded {
+        VStack(alignment: .leading, spacing: 8) {
+          if payload.prettyPrintedText != nil {
+            Toggle("Pretty print JSON", isOn: $usePrettyPrinted)
+              .font(.caption)
+          } else if payload.isLikelyJSON {
+            Text("Unable to pretty print (invalid or truncated JSON)")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+
+          Text(displayText)
+            .font(.body.monospaced())
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .padding(.top, 8)
       }
-
-      Text(displayText)
-        .font(.body.monospaced())
-        .textSelection(.enabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
   }
 

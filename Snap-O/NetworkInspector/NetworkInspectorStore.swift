@@ -156,6 +156,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let timingSummary: String
   let requestHeaders: [Header]
   let responseHeaders: [Header]
+  let requestBody: ResponseBody?
   let primaryPathComponent: String
   let secondaryPath: String
   let firstSeenAt: Date
@@ -227,41 +228,36 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
     if let requestRecord = request.request {
       requestHeaders = requestRecord.headers.map { Header(name: $0.name, value: $0.value) }
+      let contentType = requestRecord.headers.first { $0.name.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
+      let encoding = requestRecord.bodyEncoding ?? contentType
+      if let bodyText = requestRecord.body ?? requestRecord.bodyPreview {
+        requestBody = Self.makeBodyPayload(text: bodyText,
+                                           isPreview: requestRecord.body == nil,
+                                           truncatedBytes: requestRecord.bodyTruncatedBytes,
+                                           totalBytes: requestRecord.bodySize,
+                                           encoding: encoding)
+      } else {
+        requestBody = nil
+      }
     } else {
       requestHeaders = []
+      requestBody = nil
     }
 
     if let responseRecord = request.response {
       responseHeaders = responseRecord.headers.map { Header(name: $0.name, value: $0.value) }
-    } else {
-      responseHeaders = []
-    }
-
-    if let responseRecord = request.response {
-      if let text = responseRecord.body ?? responseRecord.bodyPreview {
-        let capturedBytes = Int64(text.lengthOfBytes(using: .utf8))
+      if let bodyText = responseRecord.body ?? responseRecord.bodyPreview {
         let contentType = responseRecord.headers.first { $0.name.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
-        let prettyPrinted = ResponseBody.prettyPrintedJSON(from: text)
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let startsLikeJSON = trimmed.first.map { ["{", "[", "\""].contains(String($0)) } ?? false
-        let isLikelyJSON =
-          (contentType?.localizedCaseInsensitiveContains("json") ?? false) ||
-          prettyPrinted != nil ||
-          startsLikeJSON
-
-        responseBody = ResponseBody(
-          rawText: text,
-          prettyPrintedText: prettyPrinted,
-          isLikelyJSON: isLikelyJSON,
-          isPreview: responseRecord.body == nil,
-          truncatedBytes: responseRecord.bodyTruncatedBytes,
-          totalBytes: responseRecord.bodySize,
-          capturedBytes: capturedBytes
-        )
+        responseBody = Self.makeBodyPayload(text: bodyText,
+                                            isPreview: responseRecord.body == nil,
+                                            truncatedBytes: responseRecord.bodyTruncatedBytes,
+                                            totalBytes: responseRecord.bodySize,
+                                            encoding: contentType)
       } else {
         responseBody = nil
       }
     } else {
+      responseHeaders = []
       responseBody = nil
     }
   }
@@ -337,6 +333,31 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       formatter.unitsStyle = .abbreviated
       return formatter.string(from: duration) ?? String(format: "%.1f s", duration)
     }
+  }
+
+  private static func makeBodyPayload(text: String,
+                                      isPreview: Bool,
+                                      truncatedBytes: Int64?,
+                                      totalBytes: Int64?,
+                                      encoding: String?) -> ResponseBody {
+    let capturedBytes = Int64(clamping: text.utf8.count)
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let encodingMatchesJSON = encoding?.lowercased().contains("json") == true
+    let prefixSuggestsJSON = trimmed.first == "{" || trimmed.first == "["
+
+    var isLikelyJSON = encodingMatchesJSON || prefixSuggestsJSON
+    let prettyPrinted = ResponseBody.prettyPrintedJSON(from: text)
+    if prettyPrinted != nil {
+      isLikelyJSON = true
+    }
+
+    return ResponseBody(rawText: text,
+                        prettyPrintedText: prettyPrinted,
+                        isLikelyJSON: isLikelyJSON,
+                        isPreview: isPreview,
+                        truncatedBytes: truncatedBytes,
+                        totalBytes: totalBytes,
+                        capturedBytes: capturedBytes)
   }
 }
 

@@ -10,6 +10,9 @@ struct NetworkInspectorRequestDetailView: View {
         headerSummary
 
         NetworkInspectorHeadersSection(title: "Request Headers", headers: request.requestHeaders)
+        if let requestBody = request.requestBody {
+          NetworkInspectorBodySection(title: "Request Body", responseBody: requestBody)
+        }
         NetworkInspectorHeadersSection(title: "Response Headers", headers: request.responseHeaders)
 
         if let responseBody = request.responseBody {

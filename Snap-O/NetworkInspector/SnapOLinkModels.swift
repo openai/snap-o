@@ -381,6 +381,9 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
   let url: String
   let headers: [SnapONetHeader]
   let bodyPreview: String?
+  let body: String?
+  let bodyEncoding: String?
+  let bodyTruncatedBytes: Int64?
   let bodySize: Int64?
 
   init(
@@ -392,6 +395,9 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
     url: String,
     headers: [SnapONetHeader] = [],
     bodyPreview: String? = nil,
+    body: String? = nil,
+    bodyEncoding: String? = nil,
+    bodyTruncatedBytes: Int64? = nil,
     bodySize: Int64? = nil
   ) {
     self.schemaVersion = schemaVersion
@@ -402,6 +408,9 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
     self.url = url
     self.headers = headers
     self.bodyPreview = bodyPreview
+    self.body = body
+    self.bodyEncoding = bodyEncoding
+    self.bodyTruncatedBytes = bodyTruncatedBytes
     self.bodySize = bodySize
   }
 
@@ -416,6 +425,9 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
     url = try container.decode(String.self, forKey: .url)
     headers = try container.decodeIfPresent([SnapONetHeader].self, forKey: .headers) ?? []
     bodyPreview = try container.decodeIfPresent(String.self, forKey: .bodyPreview)
+    body = try container.decodeIfPresent(String.self, forKey: .body)
+    bodyEncoding = try container.decodeIfPresent(String.self, forKey: .bodyEncoding)
+    bodyTruncatedBytes = try container.decodeIfPresent(Int64.self, forKey: .bodyTruncatedBytes)
     bodySize = try container.decodeIfPresent(Int64.self, forKey: .bodySize)
   }
 
@@ -428,6 +440,9 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
     case url
     case headers
     case bodyPreview
+    case body
+    case bodyEncoding
+    case bodyTruncatedBytes
     case bodySize
   }
 }
