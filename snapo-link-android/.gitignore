@@ -1,0 +1,39 @@
+# IDE & project configuration
+*.iml
+.gradle/
+/local.properties
+
+# Android Studio project files to ignore
+/.idea/AndroidProjectSystem.xml
+/.idea/ChatHistory_schema_v2.xml
+/.idea/ChatHistory_schema_v*.xml
+/.idea/androidTestResultsUserPreferences.xml
+/.idea/appInsightsSettings.xml
+/.idea/assetWizardSettings.xml
+/.idea/caches
+/.idea/compiler.xml
+/.idea/deploymentTargetDropDown.xml
+/.idea/deploymentTargetSelector.xml
+/.idea/deviceManager.xml
+/.idea/develocity.xml
+/.idea/gradle.xml
+/.idea/kotlinc.xml
+/.idea/libraries
+/.idea/migrations.xml
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/navEditor.xml
+/.idea/other.xml
+/.idea/runConfigurations.xml
+/.idea/vcs.xml
+/.idea/workspace.xml
+.idea/copilot
+.idea/copilot.data.migration*
+
+# Build outputs
+/build
+/build-logic/build
+/captures
+.externalNativeBuild
+.cxx
+.kotlin/
