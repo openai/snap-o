@@ -217,7 +217,8 @@ actor NetworkInspectorService {
         lastEventAt: nil,
         deviceDisplayTitle: devices[deviceID]?.displayTitle ?? deviceID,
         isConnected: true,
-        appIcon: serverStates[serverID]?.server.appIcon
+        appIcon: serverStates[serverID]?.server.appIcon,
+        wallClockBase: serverStates[serverID]?.server.wallClockBase
       )
       if let existing = serverStates[serverID]?.server {
         server.hello = existing.hello
@@ -282,6 +283,7 @@ actor NetworkInspectorService {
   }
 
   private func handle(record: SnapONetRecord, from serverID: NetworkInspectorServer.ID) async {
+    let now = Date()
     guard serverStates[serverID] != nil else { return }
     var shouldBroadcastServers = false
     var shouldBroadcastRequests = false
@@ -291,6 +293,8 @@ actor NetworkInspectorService {
     case .hello(let hello):
       if var state = serverStates[serverID] {
         state.server.hello = hello
+        state.server.wallClockBase = now.addingTimeInterval(-TimeInterval(hello.serverStartWallMs) / 1000)
+        state.server.lastEventAt = now
         serverStates[serverID] = state
         shouldBroadcastServers = true
       }
@@ -325,7 +329,7 @@ actor NetworkInspectorService {
     }
 
     if var latestState = serverStates[serverID] {
-      latestState.server.lastEventAt = Date()
+      latestState.server.lastEventAt = now
       serverStates[serverID] = latestState
     }
 

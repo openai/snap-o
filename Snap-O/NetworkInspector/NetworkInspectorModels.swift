@@ -15,6 +15,7 @@ struct NetworkInspectorServer: Identifiable, Hashable, Sendable {
   var deviceDisplayTitle: String
   var isConnected: Bool
   var appIcon: SnapONetAppIconRecord?
+  var wallClockBase: Date?
 }
 
 struct NetworkInspectorEvent: Identifiable, Sendable {

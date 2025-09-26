@@ -98,8 +98,6 @@ final class NetworkInspectorStore: ObservableObject {
   }
 }
 
-import AppKit
-
 struct NetworkInspectorServerViewModel: Identifiable {
   let id: NetworkInspectorServer.ID
   let displayName: String
@@ -109,6 +107,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let deviceID: String
   let pid: Int?
   let appIcon: NSImage?
+  let wallClockBase: Date?
 
   init(server: NetworkInspectorServer) {
     id = server.id
@@ -123,6 +122,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
     } else {
       appIcon = nil
     }
+    wallClockBase = server.wallClockBase
     if let hello = server.hello {
       displayName = hello.packageName
       helloSummary = server.deviceDisplayTitle
@@ -190,13 +190,14 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     firstSeenAt = request.firstSeenAt
     lastUpdatedAt = request.lastUpdatedAt
 
-    let start = request.firstSeenAt.formatted(date: .omitted, time: .standard)
-    let last = request.lastUpdatedAt.formatted(date: .omitted, time: .standard)
-    if request.lastUpdatedAt == request.firstSeenAt {
-      timingSummary = "Started at \(start)"
-    } else {
-      timingSummary = "Updated at \(last) (started \(start))"
-    }
+    let startMillis = request.request?.tWallMs
+    let endMillis = request.failure?.tWallMs ?? request.response?.tWallMs
+    timingSummary = Self.makeTimingSummary(status: status,
+                                           startMillis: startMillis,
+                                           endMillis: endMillis,
+                                           fallbackStart: request.firstSeenAt,
+                                           fallbackEnd: request.lastUpdatedAt,
+                                           wallClockBase: server?.wallClockBase)
 
     let components = URLComponents(string: url)
     if let path = components?.path, !path.isEmpty {
@@ -289,6 +290,52 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       }
     }
   }
+
+  static func makeTimingSummary(status: Status,
+                                startMillis: Int64?,
+                                endMillis: Int64?,
+                                fallbackStart: Date,
+                                fallbackEnd: Date,
+                                wallClockBase: Date?) -> String {
+    let startDate = date(fromMillis: startMillis, base: wallClockBase) ?? fallbackStart
+    let endDate = date(fromMillis: endMillis, base: wallClockBase) ?? fallbackEnd
+
+    switch status {
+    case .pending:
+      let startString = startDate.formatted(date: .omitted, time: .standard)
+      return "Started at \(startString)"
+    case .success, .failure:
+      let durationSeconds: Double
+      if let start = startMillis, let end = endMillis, end > start {
+        durationSeconds = Double(end - start) / 1000
+      } else {
+        durationSeconds = max(endDate.timeIntervalSince(startDate), 0)
+      }
+      let durationString = formattedDuration(durationSeconds)
+      let startString = startDate.formatted(date: .omitted, time: .standard)
+      return "\(durationString) (started at \(startString))"
+    }
+  }
+
+  private static func date(fromMillis millis: Int64?, base: Date?) -> Date? {
+    guard let millis, let base else { return nil }
+    return base.addingTimeInterval(Double(millis) / 1000)
+  }
+
+  private static func formattedDuration(_ duration: Double) -> String {
+    if duration < 1 {
+      return String(format: "%.0f ms", duration * 1000)
+    } else if duration < 10 {
+      return String(format: "%.2f s", duration)
+    } else if duration < 60 {
+      return String(format: "%.1f s", duration)
+    } else {
+      let formatter = DateComponentsFormatter()
+      formatter.allowedUnits = [.minute, .second]
+      formatter.unitsStyle = .abbreviated
+      return formatter.string(from: duration) ?? String(format: "%.1f s", duration)
+    }
+  }
 }
 
 struct NetworkInspectorWebSocketViewModel: Identifiable {
@@ -377,13 +424,18 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
     firstSeenAt = session.firstSeenAt
     lastUpdatedAt = session.lastUpdatedAt
 
-    let start = session.firstSeenAt.formatted(date: .omitted, time: .standard)
-    let last = session.lastUpdatedAt.formatted(date: .omitted, time: .standard)
-    if session.lastUpdatedAt == session.firstSeenAt {
-      timingSummary = "Started at \(start)"
-    } else {
-      timingSummary = "Updated at \(last) (started \(start))"
-    }
+    let startMillis = session.willOpen?.tWallMs ?? session.opened?.tWallMs
+    let endMillis = session.failed?.tWallMs
+      ?? session.closed?.tWallMs
+      ?? session.closing?.tWallMs
+      ?? session.messages.last?.tWallMs
+
+    timingSummary = NetworkInspectorRequestViewModel.makeTimingSummary(status: status,
+                                                                       startMillis: startMillis,
+                                                                       endMillis: endMillis,
+                                                                       fallbackStart: session.firstSeenAt,
+                                                                       fallbackEnd: session.lastUpdatedAt,
+                                                                       wallClockBase: server?.wallClockBase)
 
     let components = URLComponents(string: urlString)
     if let path = components?.path, !path.isEmpty {
