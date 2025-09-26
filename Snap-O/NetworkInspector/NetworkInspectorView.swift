@@ -8,6 +8,7 @@ struct NetworkInspectorView: View {
   @State private var selectedServerID: NetworkInspectorServer.ID?
   @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
   @State private var isServerPickerPresented = false
+  @State private var activeDetail: NetworkInspectorDetailViewModel?
 
   private var serverScopedItems: [NetworkInspectorListItemViewModel] {
     store.items.filter { item in
@@ -73,12 +74,12 @@ struct NetworkInspectorView: View {
       )
       .navigationTitle("Network Inspector")
     } detail: {
-      if let selection = selectedItem,
-         let detail = store.detail(for: selection) {
+      if let detail = activeDetail {
         detailView(
           for: detail,
           onClose: {
           selectedItem = nil
+          activeDetail = nil
           splitViewVisibility = .all
         }
                    )
@@ -105,9 +106,11 @@ struct NetworkInspectorView: View {
     }
     .onChange(of: store.items.map(\.id)) { _, ids in
       reconcileSelection(allIDs: ids, filteredIDs: filteredItems.map(\.id))
+      refreshActiveDetail()
     }
     .onChange(of: filteredItems.map(\.id)) { _, filteredIDs in
       reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredIDs)
+      refreshActiveDetail()
     }
     .onChange(of: store.servers.map(\.id)) { _, ids in
       if ids.isEmpty {
@@ -134,6 +137,11 @@ struct NetworkInspectorView: View {
       if selectedItem == nil {
         reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredItems.map(\.id))
       }
+
+      refreshActiveDetail()
+    }
+    .onChange(of: selectedItem) { _, newValue in
+      updateActiveDetail(for: newValue)
     }
   }
 
@@ -202,5 +210,18 @@ private extension NetworkInspectorView {
     }
 
     selectedItem = filteredIDs.first
+  }
+
+  func updateActiveDetail(for selection: NetworkInspectorItemID?) {
+    guard let selection else {
+      activeDetail = nil
+      return
+    }
+
+    activeDetail = store.detail(for: selection)
+  }
+
+  func refreshActiveDetail() {
+    updateActiveDetail(for: selectedItem)
   }
 }
