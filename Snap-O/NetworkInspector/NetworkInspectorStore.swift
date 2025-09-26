@@ -156,12 +156,12 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let timingSummary: String
   let requestHeaders: [Header]
   let responseHeaders: [Header]
-  let requestBody: ResponseBody?
+  let requestBody: BodyPayload?
   let primaryPathComponent: String
   let secondaryPath: String
   let firstSeenAt: Date
   let lastUpdatedAt: Date
-  let responseBody: ResponseBody?
+  let responseBody: BodyPayload?
 
   init(request: NetworkInspectorRequest, server: NetworkInspectorServerViewModel?) {
     id = request.id
@@ -268,7 +268,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     let value: String
   }
 
-  struct ResponseBody: Hashable {
+  struct BodyPayload: Hashable {
     let rawText: String
     let prettyPrintedText: String?
     let isLikelyJSON: Bool
@@ -339,25 +339,25 @@ struct NetworkInspectorRequestViewModel: Identifiable {
                                       isPreview: Bool,
                                       truncatedBytes: Int64?,
                                       totalBytes: Int64?,
-                                      encoding: String?) -> ResponseBody {
+                                      encoding: String?) -> BodyPayload {
     let capturedBytes = Int64(clamping: text.utf8.count)
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let encodingMatchesJSON = encoding?.lowercased().contains("json") == true
     let prefixSuggestsJSON = trimmed.first == "{" || trimmed.first == "["
 
     var isLikelyJSON = encodingMatchesJSON || prefixSuggestsJSON
-    let prettyPrinted = ResponseBody.prettyPrintedJSON(from: text)
+    let prettyPrinted = BodyPayload.prettyPrintedJSON(from: text)
     if prettyPrinted != nil {
       isLikelyJSON = true
     }
 
-    return ResponseBody(rawText: text,
-                        prettyPrintedText: prettyPrinted,
-                        isLikelyJSON: isLikelyJSON,
-                        isPreview: isPreview,
-                        truncatedBytes: truncatedBytes,
-                        totalBytes: totalBytes,
-                        capturedBytes: capturedBytes)
+    return BodyPayload(rawText: text,
+                       prettyPrintedText: prettyPrinted,
+                       isLikelyJSON: isLikelyJSON,
+                       isPreview: isPreview,
+                       truncatedBytes: truncatedBytes,
+                       totalBytes: totalBytes,
+                       capturedBytes: capturedBytes)
   }
 }
 

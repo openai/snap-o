@@ -11,12 +11,12 @@ struct NetworkInspectorRequestDetailView: View {
 
         NetworkInspectorHeadersSection(title: "Request Headers", headers: request.requestHeaders)
         if let requestBody = request.requestBody {
-          NetworkInspectorBodySection(title: "Request Body", responseBody: requestBody)
+          NetworkInspectorBodySection(title: "Request Body", payload: requestBody)
         }
         NetworkInspectorHeadersSection(title: "Response Headers", headers: request.responseHeaders)
 
         if let responseBody = request.responseBody {
-          NetworkInspectorBodySection(title: "Response Body", responseBody: responseBody)
+          NetworkInspectorBodySection(title: "Response Body", payload: responseBody)
         }
       }
       .padding(24)

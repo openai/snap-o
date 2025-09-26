@@ -92,19 +92,16 @@ struct SnapOCommands: Commands {
       .disabled(captureController?.currentCapture?.media.url == nil)
       .keyboardShortcut("s")
     }
-    CommandGroup(replacing: .pasteboard) {
-      Button("Select All") {
-        NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: nil)
+    if let captureController {
+      CommandGroup(replacing: .pasteboard) {
+        Button("Copy") {
+          captureController.copyCurrentImage()
+        }
+        .keyboardShortcut("c")
+        .disabled(captureController.currentCapture?.media.isImage != true)
       }
-      .keyboardShortcut("a")
-
-      Button("Copy") {
-        captureController?.copyCurrentImage()
-      }
-      .keyboardShortcut("c")
-      .disabled(captureController?.currentCapture?.media.isImage != true)
+      CommandGroup(replacing: .undoRedo) {}
     }
-    CommandGroup(replacing: .undoRedo) {}
     CommandMenu("Device") {
       let hasAlternativeMedia = captureController?.hasAlternativeMedia() ?? false
 

@@ -2,15 +2,15 @@ import SwiftUI
 
 struct NetworkInspectorBodySection: View {
   let title: String
-  let payload: NetworkInspectorRequestViewModel.ResponseBody
+  let payload: NetworkInspectorRequestViewModel.BodyPayload
   @State private var isExpanded: Bool
   @State private var usePrettyPrinted: Bool
 
-  init(title: String, responseBody: NetworkInspectorRequestViewModel.ResponseBody) {
+  init(title: String, payload: NetworkInspectorRequestViewModel.BodyPayload) {
     self.title = title
-    payload = responseBody
+    self.payload = payload
     _isExpanded = State(initialValue: false)
-    _usePrettyPrinted = State(initialValue: responseBody.prettyPrintedText != nil)
+    _usePrettyPrinted = State(initialValue: payload.prettyPrintedText != nil)
   }
 
   var body: some View {
