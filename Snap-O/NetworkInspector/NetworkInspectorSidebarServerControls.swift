@@ -88,7 +88,7 @@ struct NetworkInspectorSidebarServerControls: View {
             .lineLimit(1)
 
           if let pid = server.pid {
-            Text("PID \(pid)")
+            Text("PID \(String(pid))")
               .font(.caption)
               .foregroundStyle(Color.white.opacity(0.85))
           }
