@@ -162,6 +162,9 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let firstSeenAt: Date
   let lastUpdatedAt: Date
   let responseBody: BodyPayload?
+  let streamEvents: [StreamEvent]
+  let streamClosed: StreamClosed?
+  let isStreamingResponse: Bool
 
   init(request: NetworkInspectorRequest, server: NetworkInspectorServerViewModel?) {
     id = request.id
@@ -213,7 +216,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       primaryPathComponent = parts.last.map(String.init) ?? path
       let remaining = parts.dropLast()
       if remaining.isEmpty {
-        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? "\n"
+        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
       } else {
         let base = "/" + remaining.joined(separator: "/")
         if let query = components?.percentEncodedQuery, !query.isEmpty {
@@ -224,7 +227,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       }
     } else {
       primaryPathComponent = url
-      secondaryPath = "\n"
+      secondaryPath = ""
     }
 
     if let requestRecord = request.request {
@@ -265,6 +268,16 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       responseHeaders = []
       responseBody = nil
     }
+
+    let events = request.streamEvents.sorted { lhs, rhs in
+      if lhs.sequence == rhs.sequence {
+        return lhs.tWallMs < rhs.tWallMs
+      }
+      return lhs.sequence < rhs.sequence
+    }
+    streamEvents = events.map { StreamEvent(record: $0, wallClockBase: server?.wallClockBase) }
+    streamClosed = request.streamClosed.map { StreamClosed(record: $0, wallClockBase: server?.wallClockBase) }
+    isStreamingResponse = !streamEvents.isEmpty || streamClosed != nil
   }
 
   struct Header: Identifiable, Hashable {
@@ -291,7 +304,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     }
 
     private static func formatJSONPreservingOrder(_ text: String) -> String {
-      var result = "\n"
+      var result = ""
       var indentLevel = 0
       var isInsideString = false
       var isEscaping = false
@@ -311,12 +324,12 @@ struct NetworkInspectorRequestViewModel: Identifiable {
         }
 
         switch character {
-        case "\":
+        case "\\":
           result.append(character)
           if isInsideString {
             isEscaping = true
           }
-        case "\n"":
+        case "\"":
           result.append(character)
           isInsideString.toggle()
         case "{", "[":
@@ -338,6 +351,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
         case ",":
           result.append(character)
           if !isInsideString {
+            trimTrailingWhitespace(&result)
             result.append("\n")
             appendIndent(indentLevel)
           }
@@ -347,9 +361,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
           } else {
             result.append(": ")
           }
-        case " ", "
-", "
-", "	":
+        case " ", "\n", "\r", "\t":
           if isInsideString {
             result.append(character)
           }
@@ -362,24 +374,54 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     }
 
     private static func trimTrailingWhitespace(_ buffer: inout String) {
-      while let last = buffer.last, last == " " || last == "	" {
+      while let last = buffer.last, last == " " || last == "\t" {
         buffer.removeLast()
       }
-      if buffer.last == "
-" {
-        buffer.removeLast()
-      }
-    }
-      if buffer.last == "
-" {
+      if buffer.last == "\n" {
         buffer.removeLast()
       }
     }
-      if buffer.last == "
-" {
-        buffer.removeLast()
-      }
+  }
+
+  struct StreamEvent: Identifiable, Hashable {
+    let id: Int64
+    let sequence: Int64
+    let timestamp: Date
+    let eventName: String?
+    let data: String?
+    let lastEventId: String?
+    let retryMillis: Int64?
+    let comment: String?
+    let raw: String
+
+    init(record: SnapONetResponseStreamEventRecord, wallClockBase: Date?) {
+      id = record.sequence
+      sequence = record.sequence
+      timestamp = NetworkInspectorRequestViewModel.date(fromMillis: record.tWallMs, base: wallClockBase)
+        ?? Date(timeIntervalSince1970: TimeInterval(record.tWallMs) / 1000)
+      eventName = record.event
+      data = record.data
+      lastEventId = record.lastEventId
+      retryMillis = record.retryMillis
+      comment = record.comment
+      raw = record.raw
     }
+  }
+
+  struct StreamClosed: Hashable {
+    let timestamp: Date
+    let reason: String
+    let message: String?
+    let totalEvents: Int64
+    let totalBytes: Int64
+
+    init(record: SnapONetResponseStreamClosedRecord, wallClockBase: Date?) {
+      timestamp = NetworkInspectorRequestViewModel.date(fromMillis: record.tWallMs, base: wallClockBase)
+        ?? Date(timeIntervalSince1970: TimeInterval(record.tWallMs) / 1000)
+      reason = record.reason
+      message = record.message
+      totalEvents = record.totalEvents
+      totalBytes = record.totalBytes
     }
   }
 
@@ -544,9 +586,9 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
 
     let startMillis = session.willOpen?.tWallMs ?? session.opened?.tWallMs
     let endMillis = session.failed?.tWallMs
-      ?? session.closed?.tWallMs
-      ?? session.closing?.tWallMs
-      ?? session.messages.last?.tWallMs
+    ?? session.closed?.tWallMs
+    ?? session.closing?.tWallMs
+    ?? session.messages.last?.tWallMs
 
     timingSummary = NetworkInspectorRequestViewModel.makeTimingSummary(
       status: status,
@@ -576,7 +618,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       if let query = components?.percentEncodedQuery, !query.isEmpty {
         secondaryPath = "?\(query)"
       } else {
-        secondaryPath = "\n"
+        secondaryPath = ""
       }
     }
 
@@ -610,6 +652,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       return scheme.uppercased()
     }
   }
+}
 
 struct NetworkInspectorListItemViewModel: Identifiable {
   enum Kind {
@@ -630,9 +673,9 @@ struct NetworkInspectorListItemViewModel: Identifiable {
   }
 
   var method: String {
-    switch kind {
+    return switch kind {
     case .request(let request):
-      request.method
+      request.isStreamingResponse ? "\(request.method) • SSE" : request.method
     case .webSocket(let webSocket):
       webSocket.method
     }

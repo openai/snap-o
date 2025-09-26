@@ -45,6 +45,8 @@ struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
   var request: SnapONetRequestWillBeSentRecord?
   var response: SnapONetResponseReceivedRecord?
   var failure: SnapONetRequestFailedRecord?
+  var streamEvents: [SnapONetResponseStreamEventRecord] = []
+  var streamClosed: SnapONetResponseStreamClosedRecord?
   let firstSeenAt: Date
   var lastUpdatedAt: Date
 
@@ -58,6 +60,8 @@ struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
     self.request = request
     response = nil
     failure = nil
+    streamEvents = []
+    streamClosed = nil
     firstSeenAt = timestamp
     lastUpdatedAt = timestamp
   }
@@ -72,6 +76,8 @@ struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
     request = nil
     response = nil
     failure = nil
+    streamEvents = []
+    streamClosed = nil
     firstSeenAt = timestamp
     lastUpdatedAt = timestamp
   }
@@ -197,6 +203,8 @@ enum SnapONetRecord: Sendable {
   case requestWillBeSent(SnapONetRequestWillBeSentRecord)
   case responseReceived(SnapONetResponseReceivedRecord)
   case requestFailed(SnapONetRequestFailedRecord)
+  case responseStreamEvent(SnapONetResponseStreamEventRecord)
+  case responseStreamClosed(SnapONetResponseStreamClosedRecord)
   case webSocketWillOpen(SnapONetWebSocketWillOpenRecord)
   case webSocketOpened(SnapONetWebSocketOpenedRecord)
   case webSocketMessageSent(SnapONetWebSocketMessageSentRecord)
@@ -520,6 +528,132 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     case bodyPreview
     case bodySize
     case timings
+  }
+}
+
+
+struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let sequence: Int64
+  let event: String?
+  let data: String?
+  let lastEventId: String?
+  let retryMillis: Int64?
+  let comment: String?
+  let raw: String
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    sequence: Int64,
+    event: String? = nil,
+    data: String? = nil,
+    lastEventId: String? = nil,
+    retryMillis: Int64? = nil,
+    comment: String? = nil,
+    raw: String
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.sequence = sequence
+    self.event = event
+    self.data = data
+    self.lastEventId = lastEventId
+    self.retryMillis = retryMillis
+    self.comment = comment
+    self.raw = raw
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    sequence = try container.decode(Int64.self, forKey: .sequence)
+    event = try container.decodeIfPresent(String.self, forKey: .event)
+    data = try container.decodeIfPresent(String.self, forKey: .data)
+    lastEventId = try container.decodeIfPresent(String.self, forKey: .lastEventId)
+    retryMillis = try container.decodeIfPresent(Int64.self, forKey: .retryMillis)
+    comment = try container.decodeIfPresent(String.self, forKey: .comment)
+    raw = try container.decode(String.self, forKey: .raw)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case sequence
+    case event
+    case data
+    case lastEventId
+    case retryMillis
+    case comment
+    case raw
+  }
+}
+
+struct SnapONetResponseStreamClosedRecord: SnapONetPerRequestRecord, Hashable {
+  let schemaVersion: String
+  let id: String
+  let tWallMs: Int64
+  let tMonoNs: Int64
+  let reason: String
+  let message: String?
+  let totalEvents: Int64
+  let totalBytes: Int64
+
+  init(
+    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    id: String,
+    tWallMs: Int64,
+    tMonoNs: Int64,
+    reason: String,
+    message: String? = nil,
+    totalEvents: Int64,
+    totalBytes: Int64
+  ) {
+    self.schemaVersion = schemaVersion
+    self.id = id
+    self.tWallMs = tWallMs
+    self.tMonoNs = tMonoNs
+    self.reason = reason
+    self.message = message
+    self.totalEvents = totalEvents
+    self.totalBytes = totalBytes
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    id = try container.decode(String.self, forKey: .id)
+    tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
+    tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
+    reason = try container.decode(String.self, forKey: .reason)
+    message = try container.decodeIfPresent(String.self, forKey: .message)
+    totalEvents = try container.decode(Int64.self, forKey: .totalEvents)
+    totalBytes = try container.decode(Int64.self, forKey: .totalBytes)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case id
+    case tWallMs
+    case tMonoNs
+    case reason
+    case message
+    case totalEvents
+    case totalBytes
   }
 }
 
@@ -1054,6 +1188,12 @@ enum SnapONetRecordDecoder {
     case "ResponseReceived":
       let record = try decoder.decode(SnapONetResponseReceivedRecord.self, from: data)
       return .responseReceived(record)
+    case "ResponseStreamEvent":
+      let record = try decoder.decode(SnapONetResponseStreamEventRecord.self, from: data)
+      return .responseStreamEvent(record)
+    case "ResponseStreamClosed":
+      let record = try decoder.decode(SnapONetResponseStreamClosedRecord.self, from: data)
+      return .responseStreamClosed(record)
     case "RequestFailed":
       let record = try decoder.decode(SnapONetRequestFailedRecord.self, from: data)
       return .requestFailed(record)

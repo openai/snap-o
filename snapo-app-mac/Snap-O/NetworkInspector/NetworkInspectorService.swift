@@ -307,6 +307,10 @@ actor NetworkInspectorService {
       shouldBroadcastRequests = updateRequest(for: serverID, with: responseRecord)
     case .requestFailed(let failureRecord):
       shouldBroadcastRequests = updateRequest(for: serverID, with: failureRecord)
+    case .responseStreamEvent(let eventRecord):
+      shouldBroadcastRequests = updateRequest(for: serverID, with: eventRecord)
+    case .responseStreamClosed(let closedRecord):
+      shouldBroadcastRequests = updateRequest(for: serverID, with: closedRecord)
     case .appIcon(let iconRecord):
       shouldBroadcastServers = updateAppIcon(for: serverID, with: iconRecord)
     case .webSocketWillOpen(let willOpenRecord):
@@ -514,6 +518,56 @@ actor NetworkInspectorService {
       requestStates[identifier] = updated
       return true
     }
+    return false
+  }
+
+  private func updateRequest(for serverID: SnapOLinkServerID, with record: SnapONetResponseStreamEventRecord) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorRequestID(serverID: serverID, requestID: record.id)
+    var updated = requestStates[identifier]
+
+    if updated == nil {
+      updated = NetworkInspectorRequest(serverID: serverID, requestID: record.id, timestamp: timestamp)
+      requestOrder.append(identifier)
+    }
+
+    if var request = updated {
+      if let existingIndex = request.streamEvents.firstIndex(where: { $0.sequence == record.sequence }) {
+        request.streamEvents[existingIndex] = record
+      } else {
+        request.streamEvents.append(record)
+        request.streamEvents.sort { lhs, rhs in
+          if lhs.sequence == rhs.sequence {
+            return lhs.tWallMs < rhs.tWallMs
+          }
+          return lhs.sequence < rhs.sequence
+        }
+      }
+      request.lastUpdatedAt = timestamp
+      requestStates[identifier] = request
+      return true
+    }
+
+    return false
+  }
+
+  private func updateRequest(for serverID: SnapOLinkServerID, with record: SnapONetResponseStreamClosedRecord) -> Bool {
+    let timestamp = Date()
+    let identifier = NetworkInspectorRequestID(serverID: serverID, requestID: record.id)
+    var updated = requestStates[identifier]
+
+    if updated == nil {
+      updated = NetworkInspectorRequest(serverID: serverID, requestID: record.id, timestamp: timestamp)
+      requestOrder.append(identifier)
+    }
+
+    if var request = updated {
+      request.streamClosed = record
+      request.lastUpdatedAt = timestamp
+      requestStates[identifier] = request
+      return true
+    }
+
     return false
   }
 
@@ -780,7 +834,14 @@ actor NetworkInspectorService {
 
   func clearCompletedEntries() {
     requestStates = requestStates.filter { _, request in
-      request.response == nil && request.failure == nil
+      if request.failure != nil { return false }
+      if request.streamClosed != nil {
+        return false
+      }
+      if !request.streamEvents.isEmpty {
+        return true
+      }
+      return request.response == nil
     }
     requestOrder = requestOrder.filter { requestStates[$0] != nil }
 
