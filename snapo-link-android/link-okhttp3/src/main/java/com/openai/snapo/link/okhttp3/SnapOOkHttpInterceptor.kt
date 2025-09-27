@@ -48,20 +48,34 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val requestId = UUID.randomUUID().toString()
-        val startWall = System.currentTimeMillis()
-        val startMono = SystemClock.elapsedRealtimeNanos()
-
-        val requestBodyCapture = request.captureBody(
-            maxBytes = textBodyMaxBytes,
-            previewBytes = responseBodyPreviewBytes,
+        val context = InterceptContext(
+            requestId = UUID.randomUUID().toString(),
+            startWall = System.currentTimeMillis(),
+            startMono = SystemClock.elapsedRealtimeNanos(),
         )
 
+        publishRequest(context, request)
+
+        return try {
+            val response = chain.proceed(request)
+            handleResponse(context, response)
+        } catch (t: Throwable) {
+            handleFailure(context, t)
+            throw t
+        }
+    }
+
+    override fun close() {
+        scope.cancel()
+    }
+
+    private fun publishRequest(context: InterceptContext, request: Request) {
+        val requestBodyCapture = request.captureBody(textBodyMaxBytes, responseBodyPreviewBytes)
         publish {
             RequestWillBeSent(
-                id = requestId,
-                tWallMs = startWall,
-                tMonoNs = startMono,
+                id = context.requestId,
+                tWallMs = context.startWall,
+                tMonoNs = context.startMono,
                 method = request.method,
                 url = request.url.toString(),
                 headers = request.headers.toHeaderList(),
@@ -72,82 +86,121 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 bodySize = request.body.safeContentLength(),
             )
         }
+    }
 
-        return try {
-            val response = chain.proceed(request)
-            val endWall = System.currentTimeMillis()
-            val endMono = SystemClock.elapsedRealtimeNanos()
-
-            val responseBody = response.body
-            if (responseBody.contentType().isEventStream()) {
-                val relay = ResponseStreamRelay(
-                    requestId = requestId,
-                    charset = responseBody.contentType().resolveCharset(),
-                )
-                val streamingBody = StreamingResponseBody(responseBody, relay)
-
-                publish {
-                    ResponseReceived(
-                        id = requestId,
-                        tWallMs = endWall,
-                        tMonoNs = endMono,
-                        code = response.code,
-                        headers = response.headers.toHeaderList(),
-                        bodyPreview = null,
-                        body = null,
-                        bodyTruncatedBytes = null,
-                        bodySize = responseBody.safeContentLength(),
-                        timings = Timings(totalMs = nanosToMillis(endMono - startMono)),
-                    )
-                }
-
-                response.newBuilder()
-                    .body(streamingBody)
-                    .build()
-            } else {
-                val bodySize = responseBody.safeContentLength()
-                val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
-                val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes)
-                val truncatedBytes = textBody?.truncatedBytes(bodySize)
-
-                publish {
-                    ResponseReceived(
-                        id = requestId,
-                        tWallMs = endWall,
-                        tMonoNs = endMono,
-                        code = response.code,
-                        headers = response.headers.toHeaderList(),
-                        bodyPreview = bodyPreview,
-                        body = textBody?.body,
-                        bodyTruncatedBytes = truncatedBytes,
-                        bodySize = bodySize,
-                        timings = Timings(totalMs = nanosToMillis(endMono - startMono)),
-                    )
-                }
-
-                response
-            }
-        } catch (t: Throwable) {
-            val failWall = System.currentTimeMillis()
-            val failMono = SystemClock.elapsedRealtimeNanos()
-
-            publish {
-                RequestFailed(
-                    id = requestId,
-                    tWallMs = failWall,
-                    tMonoNs = failMono,
-                    errorKind = t.javaClass.simpleName.ifEmpty { t.javaClass.name },
-                    message = t.message,
-                    timings = Timings(totalMs = nanosToMillis(failMono - startMono)),
-                )
-            }
-
-            throw t
+    private fun handleResponse(context: InterceptContext, response: Response): Response {
+        val endWall = System.currentTimeMillis()
+        val endMono = SystemClock.elapsedRealtimeNanos()
+        val responseBody = response.body
+        return if (responseBody == null) {
+            publishResponseEnvelope(
+                context = context,
+                response = response,
+                bodyPreview = null,
+                bodyText = null,
+                truncatedBytes = null,
+                bodySize = null,
+                endWall = endWall,
+                endMono = endMono,
+            )
+            response
+        } else if (responseBody.contentType().isEventStream()) {
+            handleStreamingResponse(context, response, responseBody, endWall, endMono)
+        } else {
+            publishStandardResponse(context, response, responseBody, endWall, endMono)
+            response
         }
     }
 
-    override fun close() {
-        scope.cancel()
+    private fun handleStreamingResponse(
+        context: InterceptContext,
+        response: Response,
+        body: ResponseBody,
+        endWall: Long,
+        endMono: Long,
+    ): Response {
+        publishResponseEnvelope(
+            context = context,
+            response = response,
+            bodyPreview = null,
+            bodyText = null,
+            truncatedBytes = null,
+            bodySize = body.safeContentLength(),
+            endWall = endWall,
+            endMono = endMono,
+        )
+
+        val relay = ResponseStreamRelay(
+            requestId = context.requestId,
+            charset = body.contentType().resolveCharset(),
+        )
+        val streamingBody = StreamingResponseBody(body, relay)
+        return response.newBuilder().body(streamingBody).build()
+    }
+
+    private fun publishStandardResponse(
+        context: InterceptContext,
+        response: Response,
+        body: ResponseBody,
+        endWall: Long,
+        endMono: Long,
+    ) {
+        val bodySize = body.safeContentLength()
+        val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
+        val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes)
+        val truncatedBytes = textBody?.truncatedBytes(bodySize)
+
+        publishResponseEnvelope(
+            context = context,
+            response = response,
+            bodyPreview = bodyPreview,
+            bodyText = textBody?.body,
+            truncatedBytes = truncatedBytes,
+            bodySize = bodySize,
+            endWall = endWall,
+            endMono = endMono,
+        )
+    }
+
+    private fun publishResponseEnvelope(
+        context: InterceptContext,
+        response: Response,
+        bodyPreview: String?,
+        bodyText: String?,
+        truncatedBytes: Long?,
+        bodySize: Long?,
+        endWall: Long,
+        endMono: Long,
+    ) {
+        publish {
+            ResponseReceived(
+                id = context.requestId,
+                tWallMs = endWall,
+                tMonoNs = endMono,
+                code = response.code,
+                headers = response.headers.toHeaderList(),
+                bodyPreview = bodyPreview,
+                body = bodyText,
+                bodyTruncatedBytes = truncatedBytes,
+                bodySize = bodySize,
+                timings = Timings(totalMs = nanosToMillis(endMono - context.startMono)),
+            )
+        }
+    }
+
+    private fun handleFailure(context: InterceptContext, error: Throwable) {
+        val failWall = System.currentTimeMillis()
+        val failMono = SystemClock.elapsedRealtimeNanos()
+        publish {
+            RequestFailed(
+                id = context.requestId,
+                tWallMs = failWall,
+                tMonoNs = failMono,
+                errorKind = error.javaClass.simpleName.ifEmpty { error.javaClass.name },
+                message = error.message,
+                timings = Timings(totalMs = nanosToMillis(failMono - context.startMono)),
+            )
+        }
     }
 
     private inline fun publish(crossinline builder: () -> SnapONetRecord) {
@@ -159,67 +212,6 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             } catch (_: Throwable) {
             }
         }
-    }
-
-    private fun Headers.toHeaderList(): List<Header> {
-        if (size == 0) return emptyList()
-        val result = ArrayList<Header>(size)
-        for (index in 0 until size) {
-            result += Header(name(index), value(index))
-        }
-        return result
-    }
-
-    private fun RequestBody?.safeContentLength(): Long? = this?.let {
-        try {
-            it.contentLength().takeIf { len -> len >= 0L }
-        } catch (_: IOException) {
-            null
-        }
-    }
-
-    private fun ResponseBody?.safeContentLength(): Long? = this?.let {
-        try {
-            it.contentLength().takeIf { len -> len >= 0L }
-        } catch (_: IOException) {
-            null
-        }
-    }
-
-    private fun Response.bodyPreview(maxBytes: Long): String? {
-        if (maxBytes <= 0L) return null
-        return try {
-            val limit = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong())
-            val peek: ResponseBody = peekBody(limit)
-            val bytes = peek.bytes()
-            val charset: Charset = peek.contentType().resolveCharset()
-            String(bytes, charset)
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun MediaType?.isTextLike(): Boolean {
-        if (this == null) return false
-        val typeLower = type.lowercase()
-        val subtypeLower = subtype.lowercase()
-        if (typeLower == "text") return true
-        if (subtypeLower.contains("json")) return true
-        if (subtypeLower.contains("xml")) return true
-        if (subtypeLower.contains("html")) return true
-        if (subtypeLower.contains("javascript")) return true
-        if (subtypeLower.contains("form")) return true
-        if (subtypeLower.contains("graphql")) return true
-        if (subtypeLower.contains("plain")) return true
-        if (subtypeLower.contains("csv")) return true
-        if (subtypeLower.contains("yaml")) return true
-        return false
-    }
-
-    private fun MediaType?.isEventStream(): Boolean {
-        if (this == null) return false
-        return type.equals("text", ignoreCase = true) &&
-            subtype.equals("event-stream", ignoreCase = true)
     }
 
     private inner class StreamingResponseBody(
@@ -248,10 +240,10 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
 
     private inner class ResponseStreamRelay(
         private val requestId: String,
-        private val charset: Charset,
+        charset: Charset,
     ) {
         private val closed = AtomicBoolean(false)
-        private val buffer = StringBuilder()
+        private val parser = SseBuffer(charset)
         private var nextSequence: Long = 0L
         private var totalBytes: Long = 0L
 
@@ -263,8 +255,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                         if (read > 0) {
                             val copy = Buffer()
                             sink.copyTo(copy, sink.size - read, read)
-                            val bytes = copy.readByteArray()
-                            handleBytes(bytes)
+                            handleBytes(copy.readByteArray())
                         } else if (read == -1L) {
                             onClosed(null)
                         }
@@ -286,22 +277,25 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         }
 
         private fun handleBytes(bytes: ByteArray) {
-            val events: List<ParsedSseEvent>
-            synchronized(this) {
+            val events = synchronized(this) {
                 totalBytes += bytes.size
-                buffer.append(normalizeNewlines(String(bytes, charset)))
-                events = extractEvents(flushTail = false)
+                parser.append(bytes).map { raw ->
+                    val sequence = ++nextSequence
+                    raw.toParsedSseEvent(sequence)
+                }
             }
             publishEvents(events)
         }
 
         fun onClosed(error: Throwable?) {
             if (!closed.compareAndSet(false, true)) return
-            val events: List<ParsedSseEvent>
-            synchronized(this) {
-                events = extractEvents(flushTail = true)
+            val tailEvents = synchronized(this) {
+                parser.drainRemaining().map { raw ->
+                    val sequence = ++nextSequence
+                    raw.toParsedSseEvent(sequence)
+                }
             }
-            publishEvents(events)
+            publishEvents(tailEvents)
 
             val nowWall = System.currentTimeMillis()
             val nowMono = SystemClock.elapsedRealtimeNanos()
@@ -338,122 +332,150 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 }
             }
         }
-
-        private fun extractEvents(flushTail: Boolean): List<ParsedSseEvent> {
-            if (buffer.isEmpty()) return emptyList()
-            val results = ArrayList<ParsedSseEvent>()
-            while (true) {
-                val boundary = buffer.indexOf("\n\n")
-                if (boundary < 0) {
-                    if (flushTail) {
-                        val raw = buffer.toString()
-                        buffer.setLength(0)
-                        if (raw.isNotEmpty()) {
-                            results += parsePending(raw)
-                        }
-                    }
-                    break
-                }
-
-                val raw = buffer.substring(0, boundary)
-                buffer.delete(0, boundary + 2)
-                results += parsePending(raw)
-            }
-            return results
-        }
-
-        private fun parsePending(raw: String): ParsedSseEvent {
-            val sequenceValue = ++nextSequence
-            val lines = if (raw.isEmpty()) emptyList() else raw.split('\n')
-            val comments = ArrayList<String>()
-            val dataBuilder = StringBuilder()
-            var eventName: String? = null
-            var lastEventId: String? = null
-            var retryMillis: Long? = null
-
-            for (line in lines) {
-                if (line.isEmpty()) continue
-                if (line.startsWith(":")) {
-                    val comment = line.substring(1).trimStart()
-                    if (comment.isNotEmpty()) {
-                        comments += comment
-                    }
-                    continue
-                }
-
-                val colonIndex = line.indexOf(':')
-                val field: String
-                val value: String
-                if (colonIndex < 0) {
-                    field = line
-                    value = ""
-                } else {
-                    field = line.substring(0, colonIndex)
-                    value = line.substring(colonIndex + 1).removePrefix(" ")
-                }
-
-                when (field) {
-                    "event" -> eventName = value
-                    "data" -> {
-                        if (dataBuilder.isNotEmpty()) dataBuilder.append('\n')
-                        dataBuilder.append(value)
-                    }
-                    "id" -> lastEventId = value
-                    "retry" -> retryMillis = value.toLongOrNull()
-                }
-            }
-
-            val data = when {
-                dataBuilder.isNotEmpty() -> dataBuilder.toString()
-                raw.isEmpty() -> ""
-                else -> null
-            }
-
-            val comment = if (comments.isEmpty()) null else comments.joinToString("\n")
-
-            return ParsedSseEvent(
-                sequence = sequenceValue,
-                raw = raw,
-                eventName = eventName,
-                data = data,
-                lastEventId = lastEventId,
-                retryMillis = retryMillis,
-                comment = comment,
-            )
-        }
-
-        private fun normalizeNewlines(input: String): String {
-            if (input.indexOf('\r') == -1) return input
-            return input.replace("\r\n", "\n").replace('\r', '\n')
-        }
     }
 
-    private data class ParsedSseEvent(
-        val sequence: Long,
-        val raw: String,
-        val eventName: String?,
-        val data: String?,
-        val lastEventId: String?,
-        val retryMillis: Long?,
-        val comment: String?,
+    private data class InterceptContext(
+        val requestId: String,
+        val startWall: Long,
+        val startMono: Long,
     )
+}
 
-    private data class TextBodyCapture(
-        val body: String,
-        val preview: String?,
-        val truncated: Boolean,
-        val capturedBytes: Long,
-        val originalBytes: Long,
+private class SseBuffer(private val charset: Charset) {
+    private val buffer = StringBuilder()
+
+    fun append(bytes: ByteArray): List<String> {
+        if (bytes.isEmpty()) return emptyList()
+        buffer.append(bytes.toNormalizedString(charset))
+        return drainInternal(flushTail = false)
+    }
+
+    fun drainRemaining(): List<String> = drainInternal(flushTail = true)
+
+    private fun drainInternal(flushTail: Boolean): List<String> {
+        if (buffer.isEmpty()) return emptyList()
+        val events = ArrayList<String>()
+        while (true) {
+            val boundary = buffer.indexOf("\n\n")
+            if (boundary < 0) {
+                if (flushTail && buffer.isNotEmpty()) {
+                    events += buffer.toString()
+                    buffer.setLength(0)
+                }
+                return events
+            }
+            events += buffer.substring(0, boundary)
+            buffer.delete(0, boundary + 2)
+        }
+    }
+}
+
+private data class ParsedSseEvent(
+    val sequence: Long,
+    val raw: String,
+    val eventName: String?,
+    val data: String?,
+    val lastEventId: String?,
+    val retryMillis: Long?,
+    val comment: String?,
+)
+
+private data class TextBodyCapture(
+    val body: String,
+    val preview: String?,
+    val truncated: Boolean,
+    val capturedBytes: Long,
+    val originalBytes: Long,
+)
+
+private data class RequestBodyCapture(
+    val body: String,
+    val preview: String?,
+    val encoding: String?,
+    val truncatedBytes: Long,
+)
+
+private fun Headers.toHeaderList(): List<Header> {
+    val headerCount = size
+    if (headerCount == 0) return emptyList()
+    return buildList(headerCount) {
+        for (index in 0 until headerCount) {
+            add(Header(name(index), value(index)))
+        }
+    }
+}
+
+private fun RequestBody?.safeContentLength(): Long? = this?.let {
+    try {
+        it.contentLength().takeIf { len -> len >= 0L }
+    } catch (_: IOException) {
+        null
+    }
+}
+
+private fun ResponseBody?.safeContentLength(): Long? = this?.let {
+    try {
+        it.contentLength().takeIf { len -> len >= 0L }
+    } catch (_: IOException) {
+        null
+    }
+}
+
+private fun Response.bodyPreview(maxBytes: Long): String? {
+    return if (maxBytes <= 0L) {
+        null
+    } else {
+        try {
+            val limit = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong())
+            val peek: ResponseBody = peekBody(limit)
+            val bytes = peek.bytes()
+            val charset: Charset = peek.contentType().resolveCharset()
+            String(bytes, charset)
+        } catch (_: IOException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+}
+
+private fun MediaType?.isTextLike(): Boolean {
+    val mediaType = this ?: return false
+    val typeLower = mediaType.type.lowercase()
+    if (typeLower == "text") return true
+    val subtypeLower = mediaType.subtype.lowercase()
+    val textualHints = listOf(
+        "json",
+        "xml",
+        "html",
+        "javascript",
+        "form",
+        "graphql",
+        "plain",
+        "csv",
+        "yaml",
     )
+    return textualHints.any(subtypeLower::contains)
+}
 
-    private fun Response.captureTextBody(maxBytes: Long, previewBytes: Long): TextBodyCapture? {
-        if (maxBytes <= 0L) return null
-        val responseBody = body ?: return null
-        val mediaType = responseBody.contentType()
-        if (!mediaType.isTextLike()) return null
+private fun MediaType?.isEventStream(): Boolean {
+    val mediaType = this ?: return false
+    return mediaType.type.equals("text", ignoreCase = true) &&
+        mediaType.subtype.equals("event-stream", ignoreCase = true)
+}
 
-        val maxBytesInt = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        return try {
+private fun Response.captureTextBody(
+    maxBytes: Long,
+    previewBytes: Long,
+): TextBodyCapture? {
+    val responseBody = body
+    val mediaType = responseBody?.contentType()
+    return when {
+        maxBytes <= 0L -> null
+        responseBody == null -> null
+        mediaType?.isTextLike() != true -> null
+        else -> try {
+            val maxBytesInt = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             val peek = peekBody(maxBytesInt.toLong() + 1L)
             val bytes = peek.bytes()
             val truncated = bytes.size > maxBytesInt
@@ -476,89 +498,148 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 capturedBytes = effective.size.toLong(),
                 originalBytes = bytes.size.toLong(),
             )
-        } catch (_: Throwable) {
+        } catch (_: IOException) {
+            null
+        } catch (_: RuntimeException) {
             null
         }
     }
+}
 
-    private data class RequestBodyCapture(
-        val body: String,
-        val preview: String?,
-        val encoding: String?,
-        val truncatedBytes: Long,
-    )
+private fun Request.captureBody(
+    maxBytes: Long,
+    previewBytes: Long,
+): RequestBodyCapture? {
+    if (maxBytes <= 0L) return null
+    val requestBody = body ?: return null
+    if (requestBody.isDuplex() || requestBody.isOneShot()) return null
 
-    private fun Request.captureBody(maxBytes: Long, previewBytes: Long): RequestBodyCapture? {
-        if (maxBytes <= 0L) return null
-        val requestBody = body ?: return null
-        if (requestBody.isDuplex()) return null
-        if (requestBody.isOneShot()) return null
+    return try {
+        val buffer = Buffer()
+        requestBody.writeTo(buffer)
+        val totalBytes = buffer.size
+        val limit = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong())
+        val truncated = totalBytes > limit
+        val capturedBytes = if (truncated) {
+            buffer.clone().readByteArray(limit)
+        } else {
+            buffer.readByteArray()
+        }
 
-        return try {
-            val buffer = Buffer()
-            requestBody.writeTo(buffer)
-            val totalBytes = buffer.size
-            val limit = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong())
-            val truncated = totalBytes > limit
-            val capturedBytes = if (truncated) {
-                buffer.clone().readByteArray(limit)
-            } else {
-                buffer.readByteArray()
-            }
+        val (bodyValue, encoding) = encodeCapturedBody(requestBody.contentType(), capturedBytes)
+        val truncatedBytes = if (truncated) totalBytes - capturedBytes.size else 0L
+        val preview = buildPreview(bodyValue, encoding, previewBytes)
 
-            val mediaType = requestBody.contentType()
-            val isText = mediaType.isTextLike()
-            val (bodyValue, encoding) = if (isText) {
-                val charset = mediaType.resolveCharset()
-                String(capturedBytes, charset) to null
-            } else {
-                Base64.encodeToString(capturedBytes, Base64.NO_WRAP) to "base64"
-            }
+        RequestBodyCapture(
+            body = bodyValue,
+            preview = preview,
+            encoding = encoding,
+            truncatedBytes = truncatedBytes,
+        )
+    } catch (_: IOException) {
+        null
+    } catch (_: RuntimeException) {
+        null
+    }
+}
 
-            val truncatedBytes = if (truncated) totalBytes - capturedBytes.size else 0L
-            val preview = if (encoding == null && previewBytes > 0L) {
-                val previewLimit = previewBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-                if (bodyValue.length <= previewLimit) {
-                    bodyValue
-                } else {
-                    bodyValue.substring(
-                        0,
-                        previewLimit
-                    )
+private fun encodeCapturedBody(mediaType: MediaType?, bytes: ByteArray): Pair<String, String?> {
+    return if (mediaType.isTextLike()) {
+        val charset = mediaType.resolveCharset()
+        String(bytes, charset) to null
+    } else {
+        Base64.encodeToString(bytes, Base64.NO_WRAP) to "base64"
+    }
+}
+
+private fun buildPreview(bodyValue: String, encoding: String?, previewBytes: Long): String? {
+    if (encoding != null || previewBytes <= 0L) return null
+    val limit = previewBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    if (limit <= 0) return null
+    return if (bodyValue.length <= limit) bodyValue else bodyValue.substring(0, limit)
+}
+
+private fun TextBodyCapture.truncatedBytes(totalBytes: Long?): Long? {
+    return when {
+        totalBytes != null -> max(totalBytes - capturedBytes, 0L)
+        truncated -> max(originalBytes - capturedBytes, 0L)
+        else -> null
+    }
+}
+
+private fun MediaType?.resolveCharset(): Charset {
+    return try {
+        this?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+    } catch (_: IllegalArgumentException) {
+        Charsets.UTF_8
+    }
+}
+
+private fun nanosToMillis(deltaNs: Long): Long? {
+    if (deltaNs <= 0L) return null
+    return TimeUnit.NANOSECONDS.toMillis(deltaNs)
+}
+
+private fun ByteArray.toNormalizedString(charset: Charset): String {
+    val raw = String(this, charset)
+    if (raw.indexOf('\r') == -1) return raw
+    return raw.replace("\r\n", "\n").replace('\r', '\n')
+}
+
+private fun String.toParsedSseEvent(sequence: Long): ParsedSseEvent {
+    var eventName: String? = null
+    var lastEventId: String? = null
+    var retryMillis: Long? = null
+    val comments = mutableListOf<String>()
+    val dataLines = mutableListOf<String>()
+
+    for (line in lineSequence()) {
+        when {
+            line.isEmpty() -> Unit
+            line.startsWith(":") -> {
+                val comment = line.substring(1).trimStart()
+                if (comment.isNotEmpty()) {
+                    comments += comment
                 }
-            } else {
-                null
             }
 
-            RequestBodyCapture(
-                body = bodyValue,
-                preview = preview,
-                encoding = encoding,
-                truncatedBytes = truncatedBytes,
-            )
-        } catch (_: Throwable) {
-            null
+            else -> {
+                val (field, value) = line.splitField()
+                when (field) {
+                    "event" -> eventName = value
+                    "data" -> dataLines += value
+                    "id" -> lastEventId = value
+                    "retry" -> retryMillis = value.toLongOrNull()
+                }
+            }
         }
     }
 
-    private fun TextBodyCapture.truncatedBytes(totalBytes: Long?): Long? {
-        return when {
-            totalBytes != null -> max(totalBytes - capturedBytes, 0L)
-            truncated -> max(originalBytes - capturedBytes, 0L)
-            else -> null
-        }
+    val data = when {
+        dataLines.isEmpty() && isEmpty() -> ""
+        dataLines.isEmpty() -> null
+        else -> dataLines.joinToString("\n")
     }
 
-    private fun MediaType?.resolveCharset(): Charset {
-        return try {
-            this?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
-        } catch (_: Throwable) {
-            Charsets.UTF_8
-        }
-    }
+    val comment = comments.takeIf { it.isNotEmpty() }?.joinToString("\n")
 
-    private fun nanosToMillis(deltaNs: Long): Long? {
-        if (deltaNs <= 0L) return null
-        return TimeUnit.NANOSECONDS.toMillis(deltaNs)
+    return ParsedSseEvent(
+        sequence = sequence,
+        raw = this,
+        eventName = eventName,
+        data = data,
+        lastEventId = lastEventId,
+        retryMillis = retryMillis,
+        comment = comment,
+    )
+}
+
+private fun String.splitField(): Pair<String, String> {
+    val colonIndex = indexOf(':')
+    if (colonIndex < 0) {
+        return this to ""
     }
+    val field = substring(0, colonIndex)
+    val value = substring(colonIndex + 1).removePrefix(" ")
+    return field to value
 }
