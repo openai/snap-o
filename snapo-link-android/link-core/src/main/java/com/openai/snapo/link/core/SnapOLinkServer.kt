@@ -155,7 +155,7 @@ class SnapOLinkServer(
                         )
                         writeHandshake(tmpWriter)
                         tmpWriter.write(
-                            Ndjson.encodeToString(ReplayComplete(schemaVersion = SCHEMA_VERSION)),
+                            Ndjson.encodeToString(ReplayComplete()),
                         )
                         tmpWriter.write("\n")
                         tmpWriter.flush()
@@ -629,7 +629,7 @@ class SnapOLinkServer(
 private const val TAG = "SnapOLink"
 private const val TARGET_ICON_SIZE = 96
 private const val ICON_PNG_QUALITY = 100
-private const val CLIENT_HELLO_TOKEN = "HelloSnapO/1"
+private const val CLIENT_HELLO_TOKEN = "HelloSnapO"
 private const val CLIENT_HELLO_TIMEOUT_MS = 1_000
 private const val CLIENT_HELLO_MAX_BYTES = 4 * 1024
 

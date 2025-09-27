@@ -16,6 +16,8 @@ struct SnapOLinkServer: Identifiable, Hashable, Sendable {
   let socketName: String
   let localPort: UInt16
   var hello: SnapONetHelloRecord?
+  var schemaVersion: Int?
+  var isSchemaNewerThanSupported: Bool
   var lastEventAt: Date?
   var deviceDisplayTitle: String
   var isConnected: Bool
@@ -157,7 +159,6 @@ struct SnapONetWebSocketMessage: Hashable, Sendable, Identifiable {
   }
 
   let id = UUID()
-  let schemaVersion: String
   let socketID: String
   let direction: Direction
   let opcode: String
@@ -169,7 +170,6 @@ struct SnapONetWebSocketMessage: Hashable, Sendable, Identifiable {
   let timestamp: Date
 
   init(sent record: SnapONetWebSocketMessageSentRecord) {
-    schemaVersion = record.schemaVersion
     socketID = record.id
     direction = .outgoing
     opcode = record.opcode
@@ -182,7 +182,6 @@ struct SnapONetWebSocketMessage: Hashable, Sendable, Identifiable {
   }
 
   init(received record: SnapONetWebSocketMessageReceivedRecord) {
-    schemaVersion = record.schemaVersion
     socketID = record.id
     direction = .incoming
     opcode = record.opcode
@@ -218,24 +217,22 @@ enum SnapONetRecord: Sendable {
 }
 
 struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
-  let schemaVersion: String
+  let schemaVersion: Int
   let packageName: String
   let processName: String
   let pid: Int
   let serverStartWallMs: Int64
   let serverStartMonoNs: Int64
   let mode: String
-  let capabilities: [String]
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
+    schemaVersion: Int = SnapONetRecordDecoder.supportedSchemaVersion,
     packageName: String,
     processName: String,
     pid: Int,
     serverStartWallMs: Int64,
     serverStartMonoNs: Int64,
-    mode: String,
-    capabilities: [String] = SnapONetRecordDecoder.defaultCapabilities
+    mode: String
   ) {
     self.schemaVersion = schemaVersion
     self.packageName = packageName
@@ -244,37 +241,31 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     self.serverStartWallMs = serverStartWallMs
     self.serverStartMonoNs = serverStartMonoNs
     self.mode = mode
-    self.capabilities = capabilities
   }
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
+    schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion)
+      ?? SnapONetRecordDecoder.supportedSchemaVersion
     packageName = try container.decode(String.self, forKey: .packageName)
     processName = try container.decode(String.self, forKey: .processName)
     pid = try container.decode(Int.self, forKey: .pid)
     serverStartWallMs = try container.decode(Int64.self, forKey: .serverStartWallMs)
     serverStartMonoNs = try container.decode(Int64.self, forKey: .serverStartMonoNs)
     mode = try container.decode(String.self, forKey: .mode)
-    capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities)
-      ?? SnapONetRecordDecoder.defaultCapabilities
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case packageName
     case processName
     case pid
     case serverStartWallMs
     case serverStartMonoNs
     case mode
-    case capabilities
   }
 }
 
 struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {
-  let schemaVersion: String
   let packageName: String
   let width: Int
   let height: Int
@@ -282,14 +273,12 @@ struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {
   let base64Data: String
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     packageName: String,
     width: Int,
     height: Int,
     format: String = "jpg",
     base64Data: String
   ) {
-    self.schemaVersion = schemaVersion
     self.packageName = packageName
     self.width = width
     self.height = height
@@ -299,8 +288,6 @@ struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     packageName = try container.decode(String.self, forKey: .packageName)
     width = try container.decode(Int.self, forKey: .width)
     height = try container.decode(Int.self, forKey: .height)
@@ -309,7 +296,6 @@ struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case packageName
     case width
     case height
@@ -319,36 +305,21 @@ struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {
 }
 
 struct SnapONetReplayCompleteRecord: Decodable, Hashable, Sendable {
-  let schemaVersion: String
+  init() {}
 
-  init(schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion) {
-    self.schemaVersion = schemaVersion
-  }
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case schemaVersion
-  }
+  init(from decoder: Decoder) throws {}
 }
 
 struct SnapONetLifecycleRecord: Decodable, Hashable, Sendable {
-  let schemaVersion: String
   let state: String
   let tWallMs: Int64
   let tMonoNs: Int64
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     state: String,
     tWallMs: Int64,
     tMonoNs: Int64
   ) {
-    self.schemaVersion = schemaVersion
     self.state = state
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -356,15 +327,12 @@ struct SnapONetLifecycleRecord: Decodable, Hashable, Sendable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     state = try container.decode(String.self, forKey: .state)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case state
     case tWallMs
     case tMonoNs
@@ -372,21 +340,18 @@ struct SnapONetLifecycleRecord: Decodable, Hashable, Sendable {
 }
 
 protocol SnapONetPerRequestRecord: Decodable, Sendable {
-  var schemaVersion: String { get }
   var id: String { get }
   var tWallMs: Int64 { get }
   var tMonoNs: Int64 { get }
 }
 
 protocol SnapONetPerWebSocketRecord: Decodable, Sendable {
-  var schemaVersion: String { get }
   var id: String { get }
   var tWallMs: Int64 { get }
   var tMonoNs: Int64 { get }
 }
 
 struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -400,7 +365,6 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
   let bodySize: Int64?
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -413,7 +377,6 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
     bodyTruncatedBytes: Int64? = nil,
     bodySize: Int64? = nil
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -429,8 +392,6 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -445,7 +406,6 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -461,7 +421,6 @@ struct SnapONetRequestWillBeSentRecord: SnapONetPerRequestRecord, Hashable {
 }
 
 struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -474,7 +433,6 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
   let timings: SnapONetTimings
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -486,7 +444,6 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
     bodySize: Int64? = nil,
     timings: SnapONetTimings = SnapONetTimings()
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -501,8 +458,6 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -517,7 +472,6 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -532,7 +486,6 @@ struct SnapONetResponseReceivedRecord: SnapONetPerRequestRecord, Hashable {
 }
 
 struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -545,7 +498,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
   let raw: String
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -557,7 +509,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
     comment: String? = nil,
     raw: String
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -572,8 +523,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -587,7 +536,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -602,7 +550,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
 }
 
 struct SnapONetResponseStreamClosedRecord: SnapONetPerRequestRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -612,7 +559,6 @@ struct SnapONetResponseStreamClosedRecord: SnapONetPerRequestRecord, Hashable {
   let totalBytes: Int64
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -621,7 +567,6 @@ struct SnapONetResponseStreamClosedRecord: SnapONetPerRequestRecord, Hashable {
     totalEvents: Int64,
     totalBytes: Int64
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -633,8 +578,6 @@ struct SnapONetResponseStreamClosedRecord: SnapONetPerRequestRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -645,7 +588,6 @@ struct SnapONetResponseStreamClosedRecord: SnapONetPerRequestRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -657,7 +599,6 @@ struct SnapONetResponseStreamClosedRecord: SnapONetPerRequestRecord, Hashable {
 }
 
 struct SnapONetRequestFailedRecord: SnapONetPerRequestRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -666,7 +607,6 @@ struct SnapONetRequestFailedRecord: SnapONetPerRequestRecord, Hashable {
   let timings: SnapONetTimings
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -674,7 +614,6 @@ struct SnapONetRequestFailedRecord: SnapONetPerRequestRecord, Hashable {
     message: String? = nil,
     timings: SnapONetTimings = SnapONetTimings()
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -685,8 +624,6 @@ struct SnapONetRequestFailedRecord: SnapONetPerRequestRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -697,7 +634,6 @@ struct SnapONetRequestFailedRecord: SnapONetPerRequestRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -739,7 +675,6 @@ struct SnapONetTimings: Decodable, Hashable, Sendable {
 }
 
 struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -747,14 +682,12 @@ struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
   let headers: [SnapONetHeader]
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
     url: String,
     headers: [SnapONetHeader] = []
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -764,8 +697,6 @@ struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -774,7 +705,6 @@ struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -784,7 +714,6 @@ struct SnapONetWebSocketWillOpenRecord: SnapONetPerWebSocketRecord, Hashable {
 }
 
 struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -792,14 +721,12 @@ struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
   let headers: [SnapONetHeader]
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
     code: Int,
     headers: [SnapONetHeader] = []
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -809,8 +736,6 @@ struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -819,7 +744,6 @@ struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -829,7 +753,6 @@ struct SnapONetWebSocketOpenedRecord: SnapONetPerWebSocketRecord, Hashable {
 }
 
 struct SnapONetWebSocketMessageSentRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -839,7 +762,6 @@ struct SnapONetWebSocketMessageSentRecord: SnapONetPerWebSocketRecord, Hashable 
   let enqueued: Bool
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -848,7 +770,6 @@ struct SnapONetWebSocketMessageSentRecord: SnapONetPerWebSocketRecord, Hashable 
     payloadSize: Int64? = nil,
     enqueued: Bool
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -860,8 +781,6 @@ struct SnapONetWebSocketMessageSentRecord: SnapONetPerWebSocketRecord, Hashable 
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -872,7 +791,6 @@ struct SnapONetWebSocketMessageSentRecord: SnapONetPerWebSocketRecord, Hashable 
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -884,7 +802,6 @@ struct SnapONetWebSocketMessageSentRecord: SnapONetPerWebSocketRecord, Hashable 
 }
 
 struct SnapONetWebSocketMessageReceivedRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -893,7 +810,6 @@ struct SnapONetWebSocketMessageReceivedRecord: SnapONetPerWebSocketRecord, Hasha
   let payloadSize: Int64?
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -901,7 +817,6 @@ struct SnapONetWebSocketMessageReceivedRecord: SnapONetPerWebSocketRecord, Hasha
     preview: String? = nil,
     payloadSize: Int64? = nil
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -912,8 +827,6 @@ struct SnapONetWebSocketMessageReceivedRecord: SnapONetPerWebSocketRecord, Hasha
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -923,7 +836,6 @@ struct SnapONetWebSocketMessageReceivedRecord: SnapONetPerWebSocketRecord, Hasha
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -934,7 +846,6 @@ struct SnapONetWebSocketMessageReceivedRecord: SnapONetPerWebSocketRecord, Hasha
 }
 
 struct SnapONetWebSocketClosingRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -942,14 +853,12 @@ struct SnapONetWebSocketClosingRecord: SnapONetPerWebSocketRecord, Hashable {
   let reason: String?
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
     code: Int,
     reason: String? = nil
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -959,8 +868,6 @@ struct SnapONetWebSocketClosingRecord: SnapONetPerWebSocketRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -969,7 +876,6 @@ struct SnapONetWebSocketClosingRecord: SnapONetPerWebSocketRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -979,7 +885,6 @@ struct SnapONetWebSocketClosingRecord: SnapONetPerWebSocketRecord, Hashable {
 }
 
 struct SnapONetWebSocketClosedRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -987,14 +892,12 @@ struct SnapONetWebSocketClosedRecord: SnapONetPerWebSocketRecord, Hashable {
   let reason: String?
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
     code: Int,
     reason: String? = nil
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -1004,8 +907,6 @@ struct SnapONetWebSocketClosedRecord: SnapONetPerWebSocketRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -1014,7 +915,6 @@ struct SnapONetWebSocketClosedRecord: SnapONetPerWebSocketRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -1024,7 +924,6 @@ struct SnapONetWebSocketClosedRecord: SnapONetPerWebSocketRecord, Hashable {
 }
 
 struct SnapONetWebSocketFailedRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -1032,14 +931,12 @@ struct SnapONetWebSocketFailedRecord: SnapONetPerWebSocketRecord, Hashable {
   let message: String?
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
     errorKind: String,
     message: String? = nil
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -1049,8 +946,6 @@ struct SnapONetWebSocketFailedRecord: SnapONetPerWebSocketRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -1059,7 +954,6 @@ struct SnapONetWebSocketFailedRecord: SnapONetPerWebSocketRecord, Hashable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -1069,7 +963,6 @@ struct SnapONetWebSocketFailedRecord: SnapONetPerWebSocketRecord, Hashable {
 }
 
 struct SnapONetWebSocketCloseRequestedRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
@@ -1079,7 +972,6 @@ struct SnapONetWebSocketCloseRequestedRecord: SnapONetPerWebSocketRecord, Hashab
   let accepted: Bool
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64,
@@ -1088,7 +980,6 @@ struct SnapONetWebSocketCloseRequestedRecord: SnapONetPerWebSocketRecord, Hashab
     initiated: String = "client",
     accepted: Bool
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -1100,8 +991,6 @@ struct SnapONetWebSocketCloseRequestedRecord: SnapONetPerWebSocketRecord, Hashab
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
@@ -1112,7 +1001,6 @@ struct SnapONetWebSocketCloseRequestedRecord: SnapONetPerWebSocketRecord, Hashab
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -1124,18 +1012,15 @@ struct SnapONetWebSocketCloseRequestedRecord: SnapONetPerWebSocketRecord, Hashab
 }
 
 struct SnapONetWebSocketCancelledRecord: SnapONetPerWebSocketRecord, Hashable {
-  let schemaVersion: String
   let id: String
   let tWallMs: Int64
   let tMonoNs: Int64
 
   init(
-    schemaVersion: String = SnapONetRecordDecoder.defaultSchemaVersion,
     id: String,
     tWallMs: Int64,
     tMonoNs: Int64
   ) {
-    self.schemaVersion = schemaVersion
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
@@ -1143,15 +1028,12 @@ struct SnapONetWebSocketCancelledRecord: SnapONetPerWebSocketRecord, Hashable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-      ?? SnapONetRecordDecoder.defaultSchemaVersion
     id = try container.decode(String.self, forKey: .id)
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
   }
 
   private enum CodingKeys: String, CodingKey {
-    case schemaVersion
     case id
     case tWallMs
     case tMonoNs
@@ -1159,8 +1041,7 @@ struct SnapONetWebSocketCancelledRecord: SnapONetPerWebSocketRecord, Hashable {
 }
 
 enum SnapONetRecordDecoder {
-  static let defaultSchemaVersion = "1.0"
-  static let defaultCapabilities = ["network", "websocket"]
+  static let supportedSchemaVersion = 1
   private struct Discriminator: Decodable {
     let type: String
   }

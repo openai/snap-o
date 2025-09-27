@@ -2,16 +2,13 @@
 
 package com.openai.snapo.link.core
 
-import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** All records emitted over the wire are one-per-line NDJSON objects. */
 @Serializable
-sealed interface SnapONetRecord {
-    val schemaVersion: String
-}
+sealed interface SnapONetRecord
 
 @Serializable
 data class Header(
@@ -28,28 +25,24 @@ sealed interface TimedRecord {
 @Serializable
 @SerialName("Hello")
 data class Hello(
-    override val schemaVersion: String = SCHEMA_VERSION,
+    val schemaVersion: Int = SCHEMA_VERSION,
     val packageName: String,
     val processName: String,
     val pid: Int,
     val serverStartWallMs: Long,
     val serverStartMonoNs: Long,
-    val mode: String, // "safe" or "unredacted" (placeholder for your pref)
-    val capabilities: List<String> = listOf("network", "websocket", "app-icon"),
+    val mode: String,
 ) : SnapONetRecord
 
 /** Marker after snapshot dump completes. */
 @Serializable
 @SerialName("ReplayComplete")
-data class ReplayComplete(
-    override val schemaVersion: String = SCHEMA_VERSION,
-) : SnapONetRecord
+class ReplayComplete : SnapONetRecord
 
 /** Optional icon metadata to help the desktop show the app branding. */
 @Serializable
 @SerialName("AppIcon")
 data class AppIcon(
-    override val schemaVersion: String = SCHEMA_VERSION,
     val packageName: String,
     val width: Int,
     val height: Int,
@@ -66,16 +59,13 @@ sealed interface PerRequestRecord : SnapONetRecord, TimedRecord {
 @Serializable
 @SerialName("RequestWillBeSent")
 data class RequestWillBeSent(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
     val method: String,
     val url: String,
-    @EncodeDefault
     val headers: List<Header> = emptyList(),
-    val bodyPreview: String? = null, // already-truncated/redacted text, if provided by the source
+    val bodyPreview: String? = null,
     val body: String? = null,
     val bodyEncoding: String? = null,
     val bodyTruncatedBytes: Long? = null,
@@ -86,17 +76,14 @@ data class RequestWillBeSent(
 @Serializable
 @SerialName("ResponseReceived")
 data class ResponseReceived(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
     val code: Int,
-    @EncodeDefault
     val headers: List<Header> = emptyList(),
     val bodyPreview: String? = null,
     val body: String? = null,
-    val bodyTruncatedBytes: Long? = null, // number of bytes omitted from [body]; null when unknown
+    val bodyTruncatedBytes: Long? = null,
     val bodySize: Long? = null,
     val timings: Timings = Timings(),
 ) : PerRequestRecord
@@ -105,14 +92,11 @@ data class ResponseReceived(
 @Serializable
 @SerialName("RequestFailed")
 data class RequestFailed(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
     val errorKind: String,
     val message: String? = null,
-    @EncodeDefault
     val timings: Timings = Timings(),
 ) : PerRequestRecord
 
@@ -120,8 +104,6 @@ data class RequestFailed(
 @Serializable
 @SerialName("ResponseStreamEvent")
 data class ResponseStreamEvent(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -138,8 +120,6 @@ data class ResponseStreamEvent(
 @Serializable
 @SerialName("ResponseStreamClosed")
 data class ResponseStreamClosed(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -156,34 +136,26 @@ sealed interface PerWebSocketRecord : SnapONetRecord, TimedRecord {
 @Serializable
 @SerialName("WebSocketWillOpen")
 data class WebSocketWillOpen(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
     val url: String,
-    @EncodeDefault
     val headers: List<Header> = emptyList(),
 ) : PerWebSocketRecord
 
 @Serializable
 @SerialName("WebSocketOpened")
 data class WebSocketOpened(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
     val code: Int,
-    @EncodeDefault
     val headers: List<Header> = emptyList(),
 ) : PerWebSocketRecord
 
 @Serializable
 @SerialName("WebSocketMessageSent")
 data class WebSocketMessageSent(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -196,8 +168,6 @@ data class WebSocketMessageSent(
 @Serializable
 @SerialName("WebSocketMessageReceived")
 data class WebSocketMessageReceived(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -209,8 +179,6 @@ data class WebSocketMessageReceived(
 @Serializable
 @SerialName("WebSocketClosing")
 data class WebSocketClosing(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -221,8 +189,6 @@ data class WebSocketClosing(
 @Serializable
 @SerialName("WebSocketClosed")
 data class WebSocketClosed(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -233,8 +199,6 @@ data class WebSocketClosed(
 @Serializable
 @SerialName("WebSocketFailed")
 data class WebSocketFailed(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -245,8 +209,6 @@ data class WebSocketFailed(
 @Serializable
 @SerialName("WebSocketCloseRequested")
 data class WebSocketCloseRequested(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -259,8 +221,6 @@ data class WebSocketCloseRequested(
 @Serializable
 @SerialName("WebSocketCancelled")
 data class WebSocketCancelled(
-    @EncodeDefault
-    override val schemaVersion: String = SCHEMA_VERSION,
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
@@ -278,4 +238,4 @@ data class Timings(
     val totalMs: Long? = null,
 )
 
-internal const val SCHEMA_VERSION: String = "1.0"
+internal const val SCHEMA_VERSION: Int = 1

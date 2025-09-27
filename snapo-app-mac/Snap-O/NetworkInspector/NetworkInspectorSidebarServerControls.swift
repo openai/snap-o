@@ -15,6 +15,10 @@ struct NetworkInspectorSidebarServerControls: View {
       if let candidate = replacementServerCandidate {
         replacementServerButton(for: candidate)
       }
+
+      if let server = selectedServer, server.isSchemaNewerThanSupported {
+        schemaCompatibilityNotice(for: server)
+      }
     }
   }
 
@@ -110,6 +114,30 @@ struct NetworkInspectorSidebarServerControls: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+  }
+
+  private func schemaCompatibilityNotice(for server: NetworkInspectorServerViewModel) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      let versionText = server.schemaVersion.map(String.init) ?? "unknown"
+      Label {
+        Text("App reports schema v\(versionText)")
+      } icon: {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .foregroundStyle(Color.orange)
+      }
+      .font(.callout)
+
+      Text("This Android build may be newer than the Network Inspector understands. Data could be missing or displayed incorrectly.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .fill(Color.orange.opacity(0.1))
+    )
   }
 
   private func serversPopoverRow(for server: NetworkInspectorServerViewModel) -> some View {

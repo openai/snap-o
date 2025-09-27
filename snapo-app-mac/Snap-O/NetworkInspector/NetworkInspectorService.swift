@@ -26,6 +26,7 @@ actor NetworkInspectorService {
   private var webSocketOrder: [NetworkInspectorWebSocketID] = []
   private var webSocketContinuations: [UUID: AsyncStream<[NetworkInspectorWebSocket]>.Continuation] = [:]
   private var retainedServerIDs: Set<SnapOLinkServerID> = []
+  private static let supportedSchemaVersion = SnapONetRecordDecoder.supportedSchemaVersion
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -214,6 +215,8 @@ actor NetworkInspectorService {
         socketName: socketName,
         localPort: handle.port,
         hello: nil,
+        schemaVersion: serverStates[serverID]?.server.schemaVersion,
+        isSchemaNewerThanSupported: serverStates[serverID]?.server.isSchemaNewerThanSupported ?? false,
         lastEventAt: nil,
         deviceDisplayTitle: devices[deviceID]?.displayTitle ?? deviceID,
         isConnected: true,
@@ -296,6 +299,8 @@ actor NetworkInspectorService {
     case .hello(let hello):
       if var state = serverStates[serverID] {
         state.server.hello = hello
+        state.server.schemaVersion = hello.schemaVersion
+        state.server.isSchemaNewerThanSupported = Self.schemaVersionIsNewerThanSupported(hello.schemaVersion)
         state.server.wallClockBase = now.addingTimeInterval(-TimeInterval(hello.serverStartWallMs) / 1000)
         state.server.lastEventAt = now
         serverStates[serverID] = state
@@ -860,5 +865,11 @@ actor NetworkInspectorService {
     if session.closed != nil { return true }
     if session.closing != nil { return true }
     return false
+  }
+}
+
+private extension NetworkInspectorService {
+  static func schemaVersionIsNewerThanSupported(_ version: Int) -> Bool {
+    version > supportedSchemaVersion
   }
 }

@@ -172,6 +172,8 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let pid: Int?
   let appIcon: NSImage?
   let wallClockBase: Date?
+  let schemaVersion: Int?
+  let isSchemaNewerThanSupported: Bool
 
   init(server: SnapOLinkServer) {
     id = server.id
@@ -194,6 +196,8 @@ struct NetworkInspectorServerViewModel: Identifiable {
       displayName = server.socketName
       helloSummary = server.deviceDisplayTitle
     }
+    schemaVersion = server.schemaVersion
+    isSchemaNewerThanSupported = server.isSchemaNewerThanSupported
   }
 }
 
