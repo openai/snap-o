@@ -90,6 +90,10 @@ fun Greeting(onNetworkRequestClick: () -> Unit, modifier: Modifier = Modifier) {
                             method = "GET",
                             url = "https://example.com",
                             headers = listOf(Header("User-Agent", "SnapO Demo")),
+                            body = null,
+                            bodyEncoding = null,
+                            bodyTruncatedBytes = null,
+                            bodySize = null,
                         )
                     )
                     isSent = true

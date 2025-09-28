@@ -256,6 +256,7 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
   }
 
   private enum CodingKeys: String, CodingKey {
+    case schemaVersion
     case packageName
     case processName
     case pid

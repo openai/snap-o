@@ -1,11 +1,9 @@
 package com.openai.snapo.link.okhttp3
 
 import android.os.SystemClock
-import android.util.Base64
-import com.openai.snapo.link.core.Header
+import android.util.Base64.NO_WRAP
+import android.util.Base64.encodeToString
 import com.openai.snapo.link.core.RequestFailed
-import com.openai.snapo.link.core.RequestWillBeSent
-import com.openai.snapo.link.core.ResponseReceived
 import com.openai.snapo.link.core.ResponseStreamClosed
 import com.openai.snapo.link.core.ResponseStreamEvent
 import com.openai.snapo.link.core.SnapOLink
@@ -16,11 +14,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.MediaType
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.Buffer
@@ -39,21 +35,21 @@ import kotlin.math.max
 
 /** OkHttp interceptor that mirrors traffic to the active SnapO link if present. */
 class SnapOOkHttpInterceptor @JvmOverloads constructor(
-    private val responseBodyPreviewBytes: Long = DefaultBodyPreviewBytes,
-    private val textBodyMaxBytes: Long = DefaultTextBodyMaxBytes,
+    private val responseBodyPreviewBytes: Int = DefaultBodyPreviewBytes,
+    private val textBodyMaxBytes: Int = DefaultTextBodyMaxBytes,
     dispatcher: CoroutineDispatcher = DefaultDispatcher,
 ) : Interceptor, Closeable {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
         val context = InterceptContext(
             requestId = UUID.randomUUID().toString(),
             startWall = System.currentTimeMillis(),
             startMono = SystemClock.elapsedRealtimeNanos(),
         )
 
+        val request = chain.request()
         publishRequest(context, request)
 
         return try {
@@ -70,20 +66,28 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
     }
 
     private fun publishRequest(context: InterceptContext, request: Request) {
-        val requestBodyCapture = request.captureBody(textBodyMaxBytes, responseBodyPreviewBytes)
+        val requestBody = request.captureBody(textBodyMaxBytes)
         publish {
-            RequestWillBeSent(
-                id = context.requestId,
-                tWallMs = context.startWall,
-                tMonoNs = context.startMono,
-                method = request.method,
-                url = request.url.toString(),
-                headers = request.headers.toHeaderList(),
-                bodyPreview = requestBodyCapture?.preview,
-                body = requestBodyCapture?.body,
-                bodyEncoding = requestBodyCapture?.encoding,
-                bodyTruncatedBytes = requestBodyCapture?.truncatedBytes,
-                bodySize = request.body.safeContentLength(),
+            var encoding: String? = null
+            val encodedBody: String? = when {
+                requestBody == null -> null
+
+                requestBody.contentType.isTextLike() -> {
+                    val charset = requestBody.contentType.resolveCharset()
+                    String(requestBody.body, charset)
+                }
+
+                else -> {
+                    encoding = "base64"
+                    encodeToString(requestBody.body, NO_WRAP)
+                }
+            }
+            OkhttpEventFactory.createRequestWillBeSent(
+                context,
+                request,
+                body = encodedBody,
+                bodyEncoding = encoding,
+                truncatedBytes = requestBody?.truncatedBytes,
             )
         }
     }
@@ -92,22 +96,10 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val endWall = System.currentTimeMillis()
         val endMono = SystemClock.elapsedRealtimeNanos()
         val responseBody = response.body
-        return if (responseBody == null) {
-            publishResponseEnvelope(
-                context = context,
-                response = response,
-                bodyPreview = null,
-                bodyText = null,
-                truncatedBytes = null,
-                bodySize = null,
-                endWall = endWall,
-                endMono = endMono,
-            )
-            response
-        } else if (responseBody.contentType().isEventStream()) {
-            handleStreamingResponse(context, response, responseBody, endWall, endMono)
+        return if (responseBody.contentType().isEventStream()) {
+            handleStreamingResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
         } else {
-            publishStandardResponse(context, response, responseBody, endWall, endMono)
+            publishStandardResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
             response
         }
     }
@@ -119,16 +111,18 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endWall: Long,
         endMono: Long,
     ): Response {
-        publishResponseEnvelope(
-            context = context,
-            response = response,
-            bodyPreview = null,
-            bodyText = null,
-            truncatedBytes = null,
-            bodySize = body.safeContentLength(),
-            endWall = endWall,
-            endMono = endMono,
-        )
+        publish {
+            OkhttpEventFactory.createResponseReceived(
+                context = context,
+                response = response,
+                endWall = endWall,
+                endMono = endMono,
+                bodyPreview = null,
+                bodyText = null,
+                truncatedBytes = null,
+                bodySize = body.safeContentLength(),
+            )
+        }
 
         val relay = ResponseStreamRelay(
             requestId = context.requestId,
@@ -147,43 +141,19 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
     ) {
         val bodySize = body.safeContentLength()
         val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
-        val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes)
+        val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes.toLong())
         val truncatedBytes = textBody?.truncatedBytes(bodySize)
 
-        publishResponseEnvelope(
-            context = context,
-            response = response,
-            bodyPreview = bodyPreview,
-            bodyText = textBody?.body,
-            truncatedBytes = truncatedBytes,
-            bodySize = bodySize,
-            endWall = endWall,
-            endMono = endMono,
-        )
-    }
-
-    private fun publishResponseEnvelope(
-        context: InterceptContext,
-        response: Response,
-        bodyPreview: String?,
-        bodyText: String?,
-        truncatedBytes: Long?,
-        bodySize: Long?,
-        endWall: Long,
-        endMono: Long,
-    ) {
         publish {
-            ResponseReceived(
-                id = context.requestId,
-                tWallMs = endWall,
-                tMonoNs = endMono,
-                code = response.code,
-                headers = response.headers.toHeaderList(),
+            OkhttpEventFactory.createResponseReceived(
+                context = context,
+                response = response,
+                endWall = endWall,
+                endMono = endMono,
                 bodyPreview = bodyPreview,
-                body = bodyText,
-                bodyTruncatedBytes = truncatedBytes,
+                bodyText = textBody?.body,
+                truncatedBytes = truncatedBytes,
                 bodySize = bodySize,
-                timings = Timings(totalMs = nanosToMillis(endMono - context.startMono)),
             )
         }
     }
@@ -333,13 +303,13 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             }
         }
     }
-
-    private data class InterceptContext(
-        val requestId: String,
-        val startWall: Long,
-        val startMono: Long,
-    )
 }
+
+internal data class InterceptContext(
+    val requestId: String,
+    val startWall: Long,
+    val startMono: Long,
+)
 
 private class SseBuffer(private val charset: Charset) {
     private val buffer = StringBuilder()
@@ -388,30 +358,11 @@ private data class TextBodyCapture(
     val originalBytes: Long,
 )
 
-private data class RequestBodyCapture(
-    val body: String,
-    val preview: String?,
-    val encoding: String?,
+internal data class RequestBodyCapture(
+    val contentType: MediaType?,
+    val body: ByteArray,
     val truncatedBytes: Long,
 )
-
-private fun Headers.toHeaderList(): List<Header> {
-    val headerCount = size
-    if (headerCount == 0) return emptyList()
-    return buildList(headerCount) {
-        for (index in 0 until headerCount) {
-            add(Header(name(index), value(index)))
-        }
-    }
-}
-
-private fun RequestBody?.safeContentLength(): Long? = this?.let {
-    try {
-        it.contentLength().takeIf { len -> len >= 0L }
-    } catch (_: IOException) {
-        null
-    }
-}
 
 private fun ResponseBody?.safeContentLength(): Long? = this?.let {
     try {
@@ -464,28 +415,21 @@ private fun MediaType?.isEventStream(): Boolean {
         mediaType.subtype.equals("event-stream", ignoreCase = true)
 }
 
-private fun Response.captureTextBody(
-    maxBytes: Long,
-    previewBytes: Long,
-): TextBodyCapture? {
+private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBodyCapture? {
     val responseBody = body
-    val mediaType = responseBody?.contentType()
+    val mediaType = responseBody.contentType()
     return when {
         maxBytes <= 0L -> null
-        responseBody == null -> null
         mediaType?.isTextLike() != true -> null
         else -> try {
-            val maxBytesInt = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            val peek = peekBody(maxBytesInt.toLong() + 1L)
+            val peek = peekBody(maxBytes.toLong() + 1L)
             val bytes = peek.bytes()
-            val truncated = bytes.size > maxBytesInt
-            val effective = if (truncated) bytes.copyOf(maxBytesInt) else bytes
+            val truncated = bytes.size > maxBytes
+            val effective = if (truncated) bytes.copyOf(maxBytes) else bytes
             val charset = mediaType.resolveCharset()
             val text = String(effective, charset)
             val previewLimit = previewBytes
-                .coerceAtMost(effective.size.toLong())
-                .coerceAtMost(Int.MAX_VALUE.toLong())
-                .toInt()
+                .coerceAtMost(effective.size)
             val preview = if (previewLimit > 0) {
                 String(effective, 0, previewLimit, charset)
             } else {
@@ -506,11 +450,8 @@ private fun Response.captureTextBody(
     }
 }
 
-private fun Request.captureBody(
-    maxBytes: Long,
-    previewBytes: Long,
-): RequestBodyCapture? {
-    if (maxBytes <= 0L) return null
+private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
+    if (maxBytes <= 0) return null
     val requestBody = body ?: return null
     if (requestBody.isDuplex() || requestBody.isOneShot()) return null
 
@@ -518,22 +459,13 @@ private fun Request.captureBody(
         val buffer = Buffer()
         requestBody.writeTo(buffer)
         val totalBytes = buffer.size
-        val limit = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong())
-        val truncated = totalBytes > limit
-        val capturedBytes = if (truncated) {
-            buffer.clone().readByteArray(limit)
-        } else {
-            buffer.readByteArray()
-        }
-
-        val (bodyValue, encoding) = encodeCapturedBody(requestBody.contentType(), capturedBytes)
-        val truncatedBytes = if (truncated) totalBytes - capturedBytes.size else 0L
-        val preview = buildPreview(bodyValue, encoding, previewBytes)
+        val capturedBytesCount = totalBytes.coerceAtMost(maxBytes.toLong()).toInt()
+        val body = buffer.readByteArray(capturedBytesCount.toLong())
+        val truncatedBytes = (totalBytes - body.size.toLong()).coerceAtLeast(0L)
 
         RequestBodyCapture(
-            body = bodyValue,
-            preview = preview,
-            encoding = encoding,
+            contentType = requestBody.contentType(),
+            body = body,
             truncatedBytes = truncatedBytes,
         )
     } catch (_: IOException) {
@@ -541,22 +473,6 @@ private fun Request.captureBody(
     } catch (_: RuntimeException) {
         null
     }
-}
-
-private fun encodeCapturedBody(mediaType: MediaType?, bytes: ByteArray): Pair<String, String?> {
-    return if (mediaType.isTextLike()) {
-        val charset = mediaType.resolveCharset()
-        String(bytes, charset) to null
-    } else {
-        Base64.encodeToString(bytes, Base64.NO_WRAP) to "base64"
-    }
-}
-
-private fun buildPreview(bodyValue: String, encoding: String?, previewBytes: Long): String? {
-    if (encoding != null || previewBytes <= 0L) return null
-    val limit = previewBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-    if (limit <= 0) return null
-    return if (bodyValue.length <= limit) bodyValue else bodyValue.substring(0, limit)
 }
 
 private fun TextBodyCapture.truncatedBytes(totalBytes: Long?): Long? {
@@ -575,7 +491,7 @@ private fun MediaType?.resolveCharset(): Charset {
     }
 }
 
-private fun nanosToMillis(deltaNs: Long): Long? {
+internal fun nanosToMillis(deltaNs: Long): Long? {
     if (deltaNs <= 0L) return null
     return TimeUnit.NANOSECONDS.toMillis(deltaNs)
 }

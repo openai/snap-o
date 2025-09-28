@@ -296,11 +296,14 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       requestHeaders = requestRecord.headers.map { Header(name: $0.name, value: $0.value) }
       let contentType = requestRecord.headers.first { $0.name.caseInsensitiveCompare("Content-Type") == .orderedSame }?.value
       let encoding = requestRecord.bodyEncoding ?? contentType
-      if let bodyText = requestRecord.body ?? requestRecord.bodyPreview {
+      let bodyText = requestRecord.body ?? requestRecord.bodyPreview
+      if let bodyText {
+        let truncatedBytes = requestRecord.bodyTruncatedBytes
+        let isPreview = (requestRecord.body == nil) || (truncatedBytes ?? 0) > 0
         requestBody = Self.makeBodyPayload(
           text: bodyText,
-          isPreview: requestRecord.body == nil,
-          truncatedBytes: requestRecord.bodyTruncatedBytes,
+          isPreview: isPreview,
+          truncatedBytes: truncatedBytes,
           totalBytes: requestRecord.bodySize,
           encoding: encoding
         )

@@ -65,11 +65,10 @@ data class RequestWillBeSent(
     val method: String,
     val url: String,
     val headers: List<Header> = emptyList(),
-    val bodyPreview: String? = null,
-    val body: String? = null,
-    val bodyEncoding: String? = null,
-    val bodyTruncatedBytes: Long? = null,
-    val bodySize: Long? = null,
+    val body: String?,
+    val bodyEncoding: String?,
+    val bodyTruncatedBytes: Long?,
+    val bodySize: Long?,
 ) : PerRequestRecord
 
 /** Response line + headers + timing breakdown + body preview/full text (when available). */
