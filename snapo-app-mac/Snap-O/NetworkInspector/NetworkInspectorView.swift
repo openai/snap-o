@@ -8,7 +8,6 @@ struct NetworkInspectorView: View {
   @State private var selectedServerID: SnapOLinkServerID?
   @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
   @State private var isServerPickerPresented = false
-  @State private var activeDetail: NetworkInspectorDetailViewModel?
 
   private var serverScopedItems: [NetworkInspectorListItemViewModel] {
     store.items.filter { item in
@@ -87,11 +86,9 @@ struct NetworkInspectorView: View {
     }
     .onChange(of: store.items.map(\.id)) { _, ids in
       reconcileSelection(allIDs: ids, filteredIDs: filteredItems.map(\.id))
-      refreshActiveDetail()
     }
     .onChange(of: filteredItems.map(\.id)) { _, filteredIDs in
       reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredIDs)
-      refreshActiveDetail()
     }
     .onChange(of: store.servers.map(\.id)) { _, ids in
       if ids.isEmpty {
@@ -119,10 +116,6 @@ struct NetworkInspectorView: View {
         reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredItems.map(\.id))
       }
 
-      refreshActiveDetail()
-    }
-    .onChange(of: selectedItem) { _, newValue in
-      updateActiveDetail(for: newValue)
     }
   }
 
@@ -152,10 +145,10 @@ struct NetworkInspectorView: View {
 private extension NetworkInspectorView {
   @ViewBuilder
   var detailContent: some View {
-    if let detail = activeDetail {
+    if let selection = selectedItem,
+       let detail = store.detail(for: selection) {
       detailView(for: detail) {
         selectedItem = nil
-        activeDetail = nil
         splitViewVisibility = .all
       }
     } else if store.servers.isEmpty {
@@ -249,16 +242,4 @@ private extension NetworkInspectorView {
     selectedItem = filteredIDs.first
   }
 
-  func updateActiveDetail(for selection: NetworkInspectorItemID?) {
-    guard let selection else {
-      activeDetail = nil
-      return
-    }
-
-    activeDetail = store.detail(for: selection)
-  }
-
-  func refreshActiveDetail() {
-    updateActiveDetail(for: selectedItem)
-  }
 }
