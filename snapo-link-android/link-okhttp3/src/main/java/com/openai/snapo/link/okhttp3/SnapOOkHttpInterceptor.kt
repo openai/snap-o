@@ -140,11 +140,10 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endMono: Long,
     ) {
         val bodySize = body.safeContentLength()
-        val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
-        val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes.toLong())
-        val truncatedBytes = textBody?.truncatedBytes(bodySize)
-
         publish {
+            val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
+            val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes.toLong())
+            val truncatedBytes = textBody?.truncatedBytes(bodySize)
             OkhttpEventFactory.createResponseReceived(
                 context = context,
                 response = response,
