@@ -213,7 +213,8 @@ private struct MessageCardView: View {
           prettyText: prettyPrintedPreview,
           isLikelyJSON: isLikelyJSON,
           usePrettyPrinted: $usePrettyPrinted,
-          showsToggle: false
+          showsToggle: false,
+          isExpandable: !usePrettyPrinted
         )
       } else if isLikelyJSON {
         Text("Unable to pretty print (invalid or truncated JSON)")
@@ -248,7 +249,7 @@ private struct MessageCardView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
-      Text(message.timestamp.formatted(date: .omitted, time: .standard))
+      Text(message.timestamp.inspectorTimeString)
         .font(.caption)
         .foregroundStyle(.secondary)
       Text(message.opcode)

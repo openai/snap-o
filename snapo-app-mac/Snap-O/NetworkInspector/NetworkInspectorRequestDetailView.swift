@@ -191,7 +191,7 @@ private struct StreamEventsSection: View {
 
         if let closed {
           VStack(alignment: .leading, spacing: 4) {
-            Text("Stream closed (\(closed.reason)) at \(closed.timestamp.formatted(date: .omitted, time: .standard))")
+            Text("Stream closed (\(closed.reason)) at \(closed.timestamp.inspectorTimeString)")
               .font(.callout)
               .foregroundStyle(.secondary)
               .textSelection(.enabled)
@@ -285,7 +285,7 @@ private struct StreamEventCard: View {
       Text("#\(event.sequence)")
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
-      Text(event.timestamp.formatted(date: .omitted, time: .standard))
+      Text(event.timestamp.inspectorTimeString)
         .font(.caption)
         .foregroundStyle(.secondary)
       if let name = event.eventName, !name.isEmpty {

@@ -570,7 +570,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
     switch status {
     case .pending:
-      let startString = startDate.formatted(date: .omitted, time: .standard)
+      let startString = startDate.inspectorTimeString
       return "Started at \(startString)"
     case .success, .failure:
       let durationSeconds: Double = if let start = startMillis, let end = endMillis, end > start {
@@ -579,7 +579,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
         max(endDate.timeIntervalSince(startDate), 0)
       }
       let durationString = formattedDuration(durationSeconds)
-      let startString = startDate.formatted(date: .omitted, time: .standard)
+      let startString = startDate.inspectorTimeString
       return "\(durationString) (started at \(startString))"
     }
   }

@@ -236,15 +236,27 @@ struct NetworkInspectorSidebarServerControls: View {
         }
       }
       .overlay(alignment: .bottomTrailing) {
-        if !isConnected {
-          Image(systemName: "link.slash")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.secondary)
-            .padding(4)
-            .background(Circle().fill(Color.secondary.opacity(0.2)))
-            .offset(x: 4, y: 4)
-        }
+        statusIndicator(isConnected: isConnected)
       }
       .frame(width: 32, height: 32)
   }
+}
+
+private func statusIndicator(isConnected: Bool) -> some View {
+  let background = Color(nsColor: .windowBackgroundColor)
+  let tint = isConnected ? Color.green : Color.primary.opacity(0.85)
+
+  return Circle()
+    .fill(background)
+    .overlay(
+      Circle()
+        .fill(tint)
+        .frame(width: 8, height: 8)
+    )
+    .frame(width: 12, height: 12)
+    .overlay(
+      Circle()
+        .stroke(Color.black.opacity(0.12), lineWidth: 0.5)
+    )
+    .offset(x: 4, y: 4)
 }
