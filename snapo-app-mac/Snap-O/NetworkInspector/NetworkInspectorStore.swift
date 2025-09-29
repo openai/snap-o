@@ -359,6 +359,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     let truncatedBytes: Int64?
     let totalBytes: Int64?
     let capturedBytes: Int64
+    let encoding: String?
 
     static func prettyPrintedJSON(from text: String) -> String? {
       guard let data = text.data(using: .utf8) else { return nil }
@@ -628,7 +629,8 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       isPreview: isPreview,
       truncatedBytes: truncatedBytes,
       totalBytes: totalBytes,
-      capturedBytes: capturedBytes
+      capturedBytes: capturedBytes,
+      encoding: encoding
     )
   }
 }

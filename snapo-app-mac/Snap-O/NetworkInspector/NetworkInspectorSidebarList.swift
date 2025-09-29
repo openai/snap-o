@@ -45,6 +45,17 @@ struct NetworkInspectorSidebarList: View {
             }
           }
           .contentShape(Rectangle())
+          .contextMenu {
+            if case .request(let request) = item.kind {
+              Button("Copy URL") {
+                NetworkInspectorCopyExporter.copyURL(request.url)
+              }
+
+              Button("Copy as cURL") {
+                NetworkInspectorCopyExporter.copyCurl(for: request)
+              }
+            }
+          }
           .tag(item.id)
         }
       }
