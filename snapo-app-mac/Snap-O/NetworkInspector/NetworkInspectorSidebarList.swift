@@ -4,6 +4,7 @@ struct NetworkInspectorSidebarList: View {
   @ObservedObject var store: NetworkInspectorStore
   let serverScopedItems: [NetworkInspectorListItemViewModel]
   let filteredItems: [NetworkInspectorListItemViewModel]
+  let selectedServer: NetworkInspectorServerViewModel?
   @Binding var selectedItem: NetworkInspectorItemID?
 
   var body: some View {
@@ -12,7 +13,7 @@ struct NetworkInspectorSidebarList: View {
         Text("No activity yet")
           .foregroundStyle(.secondary)
       } else if serverScopedItems.isEmpty {
-        Text("No activity for this app yet")
+        Text(statusPlaceholder)
           .foregroundStyle(.secondary)
       } else if filteredItems.isEmpty {
         Text("No matches")
@@ -118,5 +119,14 @@ struct NetworkInspectorSidebarList: View {
         }
       }
     }
+  }
+}
+
+private extension NetworkInspectorSidebarList {
+  var statusPlaceholder: String {
+    if selectedServer?.hasHello == true {
+      return "No activity for this app yet"
+    }
+    return "Waiting for connection…"
   }
 }

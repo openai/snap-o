@@ -270,7 +270,7 @@ actor NetworkInspectorService {
 
     let separator = Character(UnicodeScalar(0))
     let components = output.split(separator: separator, omittingEmptySubsequences: true)
-    let fallback = output.split(whereSeparator: { $0.isNewline }).first
+    let fallback = output.split { $0.isNewline }.first
     var candidate = components.first.map(String.init)
       ?? fallback.map(String.init)
 
@@ -291,7 +291,7 @@ actor NetworkInspectorService {
     let prefix = "snapo_server_"
     guard socketName.hasPrefix(prefix) else { return nil }
     let suffix = socketName.dropFirst(prefix.count)
-    guard !suffix.isEmpty, suffix.allSatisfy({ $0.isNumber }) else { return nil }
+    guard !suffix.isEmpty, suffix.allSatisfy(\.isNumber) else { return nil }
     return Int(suffix)
   }
 

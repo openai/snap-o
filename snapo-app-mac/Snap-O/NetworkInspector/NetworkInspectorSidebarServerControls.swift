@@ -176,22 +176,24 @@ struct NetworkInspectorSidebarServerControls: View {
       title: server.displayName,
       subtitle: server.deviceDisplayTitle,
       appIcon: server.appIcon,
-      isConnected: server.isConnected
+      isConnected: server.isConnected,
+      hasHello: server.hasHello
     )
   }
 
   private func placeholderRowContent(title: String, subtitle: String) -> some View {
-    serverRow(title: title, subtitle: subtitle, appIcon: nil, isConnected: true)
+    serverRow(title: title, subtitle: subtitle, appIcon: nil, isConnected: true, hasHello: true)
   }
 
   private func serverRow(
     title: String,
     subtitle: String,
     appIcon: NSImage?,
-    isConnected: Bool
+    isConnected: Bool,
+    hasHello: Bool
   ) -> some View {
     HStack(spacing: 12) {
-      appIconView(appIcon: appIcon, isConnected: isConnected)
+      appIconView(appIcon: appIcon, isConnected: isConnected, hasHello: hasHello)
 
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
@@ -211,7 +213,7 @@ struct NetworkInspectorSidebarServerControls: View {
     .opacity(isConnected ? 1 : 0.75)
   }
 
-  private func appIconView(appIcon: NSImage?, isConnected: Bool) -> some View {
+  private func appIconView(appIcon: NSImage?, isConnected: Bool, hasHello: Bool) -> some View {
     RoundedRectangle(cornerRadius: 8)
       .fill(Color.clear)
       .overlay {
@@ -236,15 +238,21 @@ struct NetworkInspectorSidebarServerControls: View {
         }
       }
       .overlay(alignment: .bottomTrailing) {
-        statusIndicator(isConnected: isConnected)
+        statusIndicator(isConnected: isConnected, hasHello: hasHello)
       }
       .frame(width: 32, height: 32)
   }
 }
 
-private func statusIndicator(isConnected: Bool) -> some View {
+private func statusIndicator(isConnected: Bool, hasHello: Bool) -> some View {
   let background = Color(nsColor: .windowBackgroundColor)
-  let tint = isConnected ? Color.green : Color.primary.opacity(0.8)
+  let tint: Color = if !hasHello {
+    .orange
+  } else if isConnected {
+    .green
+  } else {
+    Color.primary.opacity(0.8)
+  }
 
   return ZStack {
     Circle()

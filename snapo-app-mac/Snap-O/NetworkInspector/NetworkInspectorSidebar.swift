@@ -43,6 +43,7 @@ struct NetworkInspectorSidebar: View {
         store: store,
         serverScopedItems: serverScopedItems,
         filteredItems: filteredItems,
+        selectedServer: selectedServer,
         selectedItem: $selectedItem
       )
     }

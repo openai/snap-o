@@ -24,6 +24,9 @@ struct SnapOLinkServer: Identifiable, Hashable, Sendable {
   var appIcon: SnapONetAppIconRecord?
   var wallClockBase: Date?
   var packageNameHint: String?
+  var hasHello: Bool {
+    hello != nil
+  }
 }
 
 struct SnapOLinkEvent: Identifiable, Sendable {
