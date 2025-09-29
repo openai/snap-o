@@ -203,6 +203,7 @@ private struct StreamEventCard: View {
   private let prettyPrintedData: String?
   private let isLikelyJSON: Bool
   @State private var usePrettyPrinted: Bool
+  private var showsPrettyToggle: Bool { prettyPrintedData != nil }
 
   init(event: NetworkInspectorRequestViewModel.StreamEvent) {
     self.event = event
@@ -224,23 +225,14 @@ private struct StreamEventCard: View {
     InspectorCard {
       header
 
-      if let dataText {
-        InspectorPayloadView(
-          rawText: dataText,
-          prettyText: prettyPrintedData,
-          isLikelyJSON: isLikelyJSON,
-          usePrettyPrinted: $usePrettyPrinted,
-          showsToggle: prettyPrintedData != nil
-        )
-      } else {
-        InspectorPayloadView(
-          rawText: event.raw,
-          prettyText: nil,
-          isLikelyJSON: false,
-          usePrettyPrinted: $usePrettyPrinted,
-          showsToggle: false
-        )
-      }
+      InspectorPayloadView(
+        rawText: dataText ?? event.raw,
+        prettyText: prettyPrintedData,
+        isLikelyJSON: isLikelyJSON,
+        usePrettyPrinted: $usePrettyPrinted,
+        showsToggle: false,
+        isExpandable: !usePrettyPrinted
+      )
 
       metadata
     }
@@ -260,7 +252,7 @@ private struct StreamEventCard: View {
           .foregroundStyle(.primary)
       }
       Spacer()
-      if prettyPrintedData != nil {
+      if showsPrettyToggle {
         Toggle("Pretty print", isOn: $usePrettyPrinted)
           .font(.caption)
           .toggleStyle(.checkbox)
