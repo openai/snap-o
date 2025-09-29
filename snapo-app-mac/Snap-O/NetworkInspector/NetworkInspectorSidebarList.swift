@@ -41,7 +41,7 @@ struct NetworkInspectorSidebarList: View {
                 .bold()
                 .foregroundStyle(.secondary)
 
-              statusView(for: item.status)
+              statusView(for: item)
             }
           }
           .contentShape(Rectangle())
@@ -65,21 +65,58 @@ struct NetworkInspectorSidebarList: View {
   }
 
   @ViewBuilder
-  private func statusView(for status: NetworkInspectorRequestViewModel.Status) -> some View {
-    switch status {
-    case .pending:
-      ProgressView()
-        .controlSize(.small)
-        .scaleEffect(0.75, anchor: .center)
+  private func statusView(for item: NetworkInspectorListItemViewModel) -> some View {
+    if item.showsActiveIndicator {
+      Circle()
+        .fill(Color.green)
+        .frame(width: 8, height: 8)
         .padding(.vertical, 2)
-    case .success(let code):
-      Text("\(code)")
-        .font(.caption)
-        .foregroundStyle(Color.green)
-    case .failure(let message):
-      Text(message?.isEmpty == false ? message ?? "Failed" : "Failed")
-        .font(.caption)
-        .foregroundStyle(Color.red)
+    } else {
+      switch item.kind {
+      case .request(let request):
+        switch request.status {
+        case .pending:
+          ProgressView()
+            .controlSize(.small)
+            .scaleEffect(0.75, anchor: .center)
+            .padding(.vertical, 2)
+        case .success(let code):
+          Text("\(code)")
+            .font(.caption)
+            .foregroundStyle(Color.green)
+        case .failure(let message):
+          Text(message?.isEmpty == false ? message ?? "Failed" : "Failed")
+            .font(.caption)
+            .foregroundStyle(Color.red)
+        }
+      case .webSocket(let webSocket):
+        if let failure = webSocket.failed {
+          Text(failure.message?.isEmpty == false ? failure.message ?? "Failed" : "Failed")
+            .font(.caption)
+            .foregroundStyle(Color.red)
+        } else if webSocket.cancelled != nil {
+          Text("Cancelled")
+            .font(.caption)
+            .foregroundStyle(Color.red)
+      } else if let closed = webSocket.closed {
+        Text("\(closed.code)")
+          .font(.caption)
+          .foregroundStyle(Color.green)
+      } else if let closing = webSocket.closing {
+        Text("\(closing.code)")
+          .font(.caption)
+          .foregroundStyle(Color.green)
+      } else if let opened = webSocket.opened {
+        Text("\(opened.code)")
+          .font(.caption)
+            .foregroundStyle(Color.green)
+        } else {
+          ProgressView()
+            .controlSize(.small)
+            .scaleEffect(0.75, anchor: .center)
+            .padding(.vertical, 2)
+        }
+      }
     }
   }
 }

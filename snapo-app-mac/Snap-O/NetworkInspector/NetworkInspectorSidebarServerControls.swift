@@ -244,19 +244,20 @@ struct NetworkInspectorSidebarServerControls: View {
 
 private func statusIndicator(isConnected: Bool) -> some View {
   let background = Color(nsColor: .windowBackgroundColor)
-  let tint = isConnected ? Color.green : Color.primary.opacity(0.85)
+  let tint = isConnected ? Color.green : Color.primary.opacity(0.8)
 
-  return Circle()
-    .fill(background)
-    .overlay(
-      Circle()
-        .fill(tint)
-        .frame(width: 8, height: 8)
-    )
-    .frame(width: 12, height: 12)
-    .overlay(
-      Circle()
-        .stroke(Color.black.opacity(0.12), lineWidth: 0.5)
-    )
-    .offset(x: 4, y: 4)
+  return ZStack {
+    Circle()
+      .fill(background)
+      .frame(width: 12, height: 12)
+
+    Circle()
+      .stroke(Color.black.opacity(0.1), lineWidth: 0.5)
+      .frame(width: 12, height: 12)
+
+    Circle()
+      .fill(tint)
+      .frame(width: 7, height: 7)
+  }
+  .offset(x: 4, y: 4)
 }

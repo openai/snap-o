@@ -679,6 +679,10 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
   let firstSeenAt: Date
   let lastUpdatedAt: Date
 
+  var isActive: Bool {
+    failed == nil && cancelled == nil && closed == nil
+  }
+
   init(session: NetworkInspectorWebSocket, server: NetworkInspectorServerViewModel?) {
     id = session.id
     serverID = session.serverID
@@ -821,6 +825,15 @@ struct NetworkInspectorListItemViewModel: Identifiable {
       request.status
     case .webSocket(let webSocket):
       webSocket.status
+    }
+  }
+
+  var showsActiveIndicator: Bool {
+    switch kind {
+    case .request(let request):
+      return request.isStreamingResponse && request.streamClosed == nil
+    case .webSocket(let webSocket):
+      return webSocket.isActive
     }
   }
 
