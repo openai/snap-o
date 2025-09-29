@@ -107,11 +107,6 @@ data class ResponseStreamEvent(
     override val tWallMs: Long,
     override val tMonoNs: Long,
     val sequence: Long,
-    val event: String? = null,
-    val data: String? = null,
-    val lastEventId: String? = null,
-    val retryMillis: Long? = null,
-    val comment: String? = null,
     val raw: String,
 ) : PerRequestRecord
 

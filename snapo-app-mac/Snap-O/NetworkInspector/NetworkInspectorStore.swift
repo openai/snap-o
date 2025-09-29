@@ -457,19 +457,88 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     let lastEventId: String?
     let retryMillis: Int64?
     let comment: String?
+    let raw: String
 
     init(record: SnapONetResponseStreamEventRecord, wallClockBase: Date?) {
       id = record.sequence
       sequence = record.sequence
       timestamp = NetworkInspectorRequestViewModel.date(fromMillis: record.tWallMs, base: wallClockBase)
         ?? Date(timeIntervalSince1970: TimeInterval(record.tWallMs) / 1000)
-      eventName = record.event
-      data = record.data
-      lastEventId = record.lastEventId
-      retryMillis = record.retryMillis
-      comment = record.comment
+      raw = record.raw
+      let parsed = StreamEvent.parse(raw: record.raw)
+      eventName = parsed.eventName
+      data = parsed.data
+      lastEventId = parsed.lastEventId
+      retryMillis = parsed.retryMillis
+      comment = parsed.comment
+    }
+
+    private struct ParsedFields {
+      let eventName: String?
+      let data: String?
+      let lastEventId: String?
+      let retryMillis: Int64?
+      let comment: String?
+    }
+
+    private static func parse(raw: String) -> ParsedFields {
+      var eventName: String?
+      var lastEventId: String?
+      var retryMillis: Int64?
+      var comments: [String] = []
+      var dataLines: [String] = []
+
+      let lines = raw.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+      for line in lines {
+        if line.isEmpty { continue }
+        if line.hasPrefix(":") {
+          let comment = line.dropFirst().trimmingCharacters(in: .whitespaces)
+          if !comment.isEmpty { comments.append(comment) }
+          continue
+        }
+
+        let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        let field = String(parts.first ?? "")
+        var value = parts.count > 1 ? String(parts[1]) : ""
+        if value.hasPrefix(" ") {
+          value.removeFirst()
+        }
+
+        switch field {
+        case "event":
+          eventName = value
+        case "data":
+          dataLines.append(value)
+        case "id":
+          lastEventId = value
+        case "retry":
+          if let parsed = Int64(value) {
+            retryMillis = parsed
+          }
+        default:
+          continue
+        }
+      }
+
+      let data: String?
+      if dataLines.isEmpty {
+        data = raw.isEmpty ? "" : nil
+      } else {
+        data = dataLines.joined(separator: "\n")
+      }
+
+      let commentText = comments.isEmpty ? nil : comments.joined(separator: "\n")
+
+      return ParsedFields(
+        eventName: eventName,
+        data: data,
+        lastEventId: lastEventId,
+        retryMillis: retryMillis,
+        comment: commentText
+      )
     }
   }
+
 
   struct StreamClosed: Hashable {
     let timestamp: Date

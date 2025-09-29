@@ -132,11 +132,6 @@ private class ResponseStreamRelay(
                     tWallMs = nowWall,
                     tMonoNs = nowMono,
                     sequence = event.sequence,
-                    event = event.eventName,
-                    data = event.data,
-                    lastEventId = event.lastEventId,
-                    retryMillis = event.retryMillis,
-                    comment = event.comment,
                     raw = event.raw,
                 )
             }
@@ -176,70 +171,12 @@ private class SseBuffer(private val charset: Charset) {
 private data class ParsedSseEvent(
     val sequence: Long,
     val raw: String,
-    val eventName: String?,
-    val data: String?,
-    val lastEventId: String?,
-    val retryMillis: Long?,
-    val comment: String?,
 )
 
-private fun String.toParsedSseEvent(sequence: Long): ParsedSseEvent {
-    var eventName: String? = null
-    var lastEventId: String? = null
-    var retryMillis: Long? = null
-    val comments = mutableListOf<String>()
-    val dataLines = mutableListOf<String>()
-
-    for (line in lineSequence()) {
-        when {
-            line.isEmpty() -> Unit
-            line.startsWith(":") -> {
-                val comment = line.substring(1).trimStart()
-                if (comment.isNotEmpty()) {
-                    comments += comment
-                }
-            }
-
-            else -> {
-                val (field, value) = line.splitField()
-                when (field) {
-                    "event" -> eventName = value
-                    "data" -> dataLines += value
-                    "id" -> lastEventId = value
-                    "retry" -> retryMillis = value.toLongOrNull()
-                }
-            }
-        }
-    }
-
-    val data = when {
-        dataLines.isEmpty() && isEmpty() -> ""
-        dataLines.isEmpty() -> null
-        else -> dataLines.joinToString("\n")
-    }
-
-    val comment = comments.takeIf { it.isNotEmpty() }?.joinToString("\n")
-
-    return ParsedSseEvent(
-        sequence = sequence,
-        raw = this,
-        eventName = eventName,
-        data = data,
-        lastEventId = lastEventId,
-        retryMillis = retryMillis,
-        comment = comment,
-    )
-}
-
-private fun String.splitField(): Pair<String, String> {
-    val colonIndex = indexOf(':')
-    if (colonIndex < 0) {
-        return this to ""
-    }
-    val field = substring(0, colonIndex)
-    val value = substring(colonIndex + 1).removePrefix(" ")
-    return field to value
-}
+private fun String.toParsedSseEvent(sequence: Long): ParsedSseEvent = ParsedSseEvent(
+    sequence = sequence,
+    raw = this,
+)
 
 private fun ByteArray.toNormalizedString(charset: Charset): String {
     val raw = String(this, charset)

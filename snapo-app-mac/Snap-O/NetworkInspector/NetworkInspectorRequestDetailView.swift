@@ -199,6 +199,7 @@ private struct StreamEventsSection: View {
 
 private struct StreamEventCard: View {
   let event: NetworkInspectorRequestViewModel.StreamEvent
+  private let dataText: String?
   private let prettyPrintedData: String?
   private let isLikelyJSON: Bool
   @State private var usePrettyPrinted: Bool
@@ -207,11 +208,13 @@ private struct StreamEventCard: View {
     self.event = event
     _usePrettyPrinted = State(initialValue: false)
     if let data = event.data, !data.isEmpty {
+      dataText = data
       let trimmed = data.trimmingCharacters(in: .whitespacesAndNewlines)
       let pretty = NetworkInspectorRequestViewModel.BodyPayload.prettyPrintedJSON(from: data)
       prettyPrintedData = pretty
       isLikelyJSON = pretty != nil || trimmed.first == "{" || trimmed.first == "["
     } else {
+      dataText = nil
       prettyPrintedData = nil
       isLikelyJSON = false
     }
@@ -221,18 +224,22 @@ private struct StreamEventCard: View {
     InspectorCard {
       header
 
-      if let dataText = event.data, !dataText.isEmpty {
+      if let dataText {
         InspectorPayloadView(
           rawText: dataText,
           prettyText: prettyPrintedData,
           isLikelyJSON: isLikelyJSON,
           usePrettyPrinted: $usePrettyPrinted,
+          showsToggle: prettyPrintedData != nil
+        )
+      } else {
+        InspectorPayloadView(
+          rawText: event.raw,
+          prettyText: nil,
+          isLikelyJSON: false,
+          usePrettyPrinted: $usePrettyPrinted,
           showsToggle: false
         )
-      } else if isLikelyJSON {
-        Text("Unable to pretty print (invalid or truncated JSON)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
       }
 
       metadata

@@ -491,11 +491,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
   let tWallMs: Int64
   let tMonoNs: Int64
   let sequence: Int64
-  let event: String?
-  let data: String?
-  let lastEventId: String?
-  let retryMillis: Int64?
-  let comment: String?
   let raw: String
 
   init(
@@ -503,22 +498,12 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
     tWallMs: Int64,
     tMonoNs: Int64,
     sequence: Int64,
-    event: String? = nil,
-    data: String? = nil,
-    lastEventId: String? = nil,
-    retryMillis: Int64? = nil,
-    comment: String? = nil,
     raw: String
   ) {
     self.id = id
     self.tWallMs = tWallMs
     self.tMonoNs = tMonoNs
     self.sequence = sequence
-    self.event = event
-    self.data = data
-    self.lastEventId = lastEventId
-    self.retryMillis = retryMillis
-    self.comment = comment
     self.raw = raw
   }
 
@@ -528,11 +513,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
     tWallMs = try container.decode(Int64.self, forKey: .tWallMs)
     tMonoNs = try container.decode(Int64.self, forKey: .tMonoNs)
     sequence = try container.decode(Int64.self, forKey: .sequence)
-    event = try container.decodeIfPresent(String.self, forKey: .event)
-    data = try container.decodeIfPresent(String.self, forKey: .data)
-    lastEventId = try container.decodeIfPresent(String.self, forKey: .lastEventId)
-    retryMillis = try container.decodeIfPresent(Int64.self, forKey: .retryMillis)
-    comment = try container.decodeIfPresent(String.self, forKey: .comment)
     raw = try container.decode(String.self, forKey: .raw)
   }
 
@@ -541,11 +521,6 @@ struct SnapONetResponseStreamEventRecord: SnapONetPerRequestRecord, Hashable {
     case tWallMs
     case tMonoNs
     case sequence
-    case event
-    case data
-    case lastEventId
-    case retryMillis
-    case comment
     case raw
   }
 }
