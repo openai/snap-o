@@ -4,13 +4,18 @@ import Foundation
 struct NetworkInspectorWebSocketDetailView: View {
   let webSocket: NetworkInspectorWebSocketViewModel
   let onClose: () -> Void
+  @State private var requestHeadersExpanded = false
 
   var body: some View {
     ScrollView(.vertical) {
       VStack(alignment: .leading, spacing: 16) {
         headerSummary
 
-        NetworkInspectorHeadersSection(title: "Request Headers", headers: webSocket.requestHeaders)
+        NetworkInspectorHeadersSection(
+          title: "Request Headers",
+          headers: webSocket.requestHeaders,
+          isExpanded: $requestHeadersExpanded
+        )
         NetworkInspectorHeadersSection(title: "Response Headers", headers: webSocket.responseHeaders)
 
         messagesSection

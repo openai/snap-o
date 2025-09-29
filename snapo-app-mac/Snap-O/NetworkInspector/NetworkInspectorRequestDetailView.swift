@@ -27,6 +27,10 @@ struct NetworkInspectorRequestDetailView: View {
           )
         }
 
+        if case .pending = request.status {
+          waitingForResponseView
+        }
+
         if !request.responseHeaders.isEmpty {
           NetworkInspectorHeadersSection(
             title: "Response Headers",
@@ -103,12 +107,24 @@ struct NetworkInspectorRequestDetailView: View {
 
   private func defaultExpansion(for section: NetworkInspectorStore.RequestDetailSection) -> Bool {
     switch section {
+    case .requestHeaders:
+      return false
     case .requestBody:
       return false
     case .responseBody:
       return true
     default:
       return true
+    }
+  }
+
+  private var waitingForResponseView: some View {
+    HStack(spacing: 8) {
+      ProgressView()
+        .controlSize(.small)
+      Text("Waiting for response…")
+        .font(.callout)
+        .foregroundStyle(.secondary)
     }
   }
 
