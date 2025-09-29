@@ -2,7 +2,6 @@ package com.openai.snapo.link.core
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -14,6 +13,7 @@ import android.os.Process
 import android.util.Base64
 import android.util.Log
 import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -248,10 +248,10 @@ class SnapOLinkServer(
         }
 
         while (approxBytes > config.maxBufferedBytes && eventBuffer.isNotEmpty()) {
-            if (!evictFirstEligible(null)) break
+            if (!evictFirstEligible()) break
         }
         while (eventBuffer.size > config.maxBufferedEvents && eventBuffer.isNotEmpty()) {
-            if (!evictFirstEligible(null)) break
+            if (!evictFirstEligible()) break
         }
     }
 
@@ -285,38 +285,27 @@ class SnapOLinkServer(
         return (record as? TimedRecord)?.tWallMs ?: Long.MAX_VALUE
     }
 
-    private fun evictFirstEligible(cutoff: Long?): Boolean {
+    private fun evictFirstEligible(): Boolean {
         val iterator = eventBuffer.iterator()
-        while (iterator.hasNext()) {
+        var evicted = false
+
+        while (iterator.hasNext() && !evicted) {
             val record = iterator.next()
-            if (!isOlderThanCutoff(record, cutoff)) continue
 
-            when (record) {
-                is RequestWillBeSent -> {
-                    if (!evictRequestTerminal(record, cutoff)) continue
-                    removeRecord(iterator, record)
-                    return true
-                }
+            val shouldRemove = when (record) {
+                is RequestWillBeSent -> evictRequestTerminal(record)
+                is WebSocketWillOpen -> evictWebSocketConversation(record)
+                is WebSocketOpened -> evictWebSocketConversation(record)
+                else -> true
+            }
 
-                is WebSocketWillOpen -> {
-                    if (!evictWebSocketConversation(record, cutoff)) continue
-                    removeRecord(iterator, record)
-                    return true
-                }
-
-                is WebSocketOpened -> {
-                    if (!evictWebSocketConversation(record, cutoff)) continue
-                    removeRecord(iterator, record)
-                    return true
-                }
-
-                else -> {
-                    removeRecord(iterator, record)
-                    return true
-                }
+            if (shouldRemove) {
+                removeRecord(iterator, record)
+                evicted = true
             }
         }
-        return false
+
+        return evicted
     }
 
     private fun updateWebSocketStateOnAdd(record: SnapONetRecord) {
@@ -355,8 +344,10 @@ class SnapOLinkServer(
         }
     }
 
-    private fun evictRequestTerminal(head: RequestWillBeSent, cutoff: Long?): Boolean {
+    private fun evictRequestTerminal(head: RequestWillBeSent): Boolean {
         val iterator = eventBuffer.iterator()
+        var removed = false
+
         while (iterator.hasNext()) {
             val candidate = iterator.next()
             if (candidate === head) continue
@@ -368,30 +359,25 @@ class SnapOLinkServer(
             }
             if (!isTerminal) continue
 
-            if (cutoff != null && candidate is TimedRecord && candidate.tWallMs >= cutoff) {
-                return false
-            }
-
             iterator.remove()
             subtractApproxBytes(candidate)
             updateWebSocketStateOnRemove(candidate)
             updateStreamStateOnRemove(candidate)
             removeAdditionalRequestRecords(head.id)
-            return true
+            removed = true
+            break
         }
-        return false
+
+        return removed
     }
 
-    private fun evictWebSocketConversation(head: PerWebSocketRecord, cutoff: Long?): Boolean {
+    private fun evictWebSocketConversation(head: PerWebSocketRecord): Boolean {
         if (openWebSockets.contains(head.id)) {
             return false
         }
 
-        if (!allWebSocketEventsOlderThanCutoff(head, cutoff)) {
-            return false
-        }
-
         val iterator = eventBuffer.iterator()
+        var removedAny = false
         while (iterator.hasNext()) {
             val candidate = iterator.next()
             if (candidate === head) continue
@@ -400,9 +386,10 @@ class SnapOLinkServer(
                 subtractApproxBytes(candidate)
                 updateWebSocketStateOnRemove(candidate)
                 updateStreamStateOnRemove(candidate)
+                removedAny = true
             }
         }
-        return true
+        return removedAny
     }
 
     private fun evictExpiredRecords(cutoff: Long) {
@@ -412,11 +399,10 @@ class SnapOLinkServer(
         val responseStreamEvents = mutableMapOf<String, MutableList<ResponseStreamEvent>>()
         val webSocketStarts = mutableMapOf<String, MutableList<PerWebSocketRecord>>()
         val webSocketTerminals = mutableMapOf<String, PerWebSocketRecord>()
-        val toRemove: MutableSet<SnapONetRecord> =
-            Collections.newSetFromMap(IdentityHashMap<SnapONetRecord, Boolean>())
+        val toRemove: MutableSet<SnapONetRecord> = Collections.newSetFromMap(IdentityHashMap())
 
         for (record in eventBuffer) {
-            if (!isOlderThanCutoff(record, cutoff)) continue
+            if (eventTime(record) >= cutoff) continue
             when (record) {
                 is RequestWillBeSent -> requestStarts[record.id] = record
                 is ResponseReceived -> if (!activeResponseStreams.contains(record.id)) {
@@ -471,27 +457,6 @@ class SnapOLinkServer(
             updateWebSocketStateOnRemove(record)
             updateStreamStateOnRemove(record)
         }
-    }
-
-    private fun allWebSocketEventsOlderThanCutoff(
-        head: PerWebSocketRecord,
-        cutoff: Long?,
-    ): Boolean {
-        cutoff ?: return true
-        for (candidate in eventBuffer) {
-            if (candidate === head) continue
-            if (candidate is PerWebSocketRecord && candidate.id == head.id) {
-                if (candidate.tWallMs >= cutoff) {
-                    return false
-                }
-            }
-        }
-        return true
-    }
-
-    private fun isOlderThanCutoff(record: SnapONetRecord, cutoff: Long?): Boolean {
-        cutoff ?: return true
-        return eventTime(record) < cutoff
     }
 
     private fun removeRecord(
@@ -592,35 +557,35 @@ class SnapOLinkServer(
     }
 
     private fun loadAppIconEvent(): AppIcon? {
-        val pm: PackageManager = app.packageManager
-        val drawable: Drawable = try {
-            pm.getApplicationIcon(app.applicationInfo)
+        val drawable = try {
+            app.packageManager.getApplicationIcon(app.applicationInfo)
         } catch (_: Throwable) {
-            return null
-        }
+            null
+        } ?: return null
 
-        val bitmap = drawableToBitmap(drawable) ?: return null
-        val scaled = if (bitmap.width == TargetIconSize && bitmap.height == TargetIconSize) {
-            bitmap
-        } else {
-            Bitmap.createScaledBitmap(bitmap, TargetIconSize, TargetIconSize, true)
-        }
+        return drawableToBitmap(drawable)?.let { bitmap ->
+            val scaled = if (bitmap.width == TargetIconSize && bitmap.height == TargetIconSize) {
+                bitmap
+            } else {
+                bitmap.scale(TargetIconSize, TargetIconSize)
+            }
 
-        val pngData = ByteArrayOutputStream().use { out ->
-            scaled.compress(Bitmap.CompressFormat.PNG, IconPngQuality, out)
-            out.toByteArray()
-        }
-        if (scaled !== bitmap && !scaled.isRecycled) {
-            scaled.recycle()
-        }
-        val encoded = Base64.encodeToString(pngData, Base64.NO_WRAP)
+            val pngData = ByteArrayOutputStream().use { out ->
+                scaled.compress(Bitmap.CompressFormat.PNG, IconPngQuality, out)
+                out.toByteArray()
+            }
+            if (scaled !== bitmap && !scaled.isRecycled) {
+                scaled.recycle()
+            }
+            val encoded = Base64.encodeToString(pngData, Base64.NO_WRAP)
 
-        return AppIcon(
-            packageName = app.packageName,
-            width = TargetIconSize,
-            height = TargetIconSize,
-            base64Data = encoded,
-        )
+            AppIcon(
+                packageName = app.packageName,
+                width = TargetIconSize,
+                height = TargetIconSize,
+                base64Data = encoded,
+            )
+        }
     }
 
     private fun writeHandshake(writer: BufferedWriter) {

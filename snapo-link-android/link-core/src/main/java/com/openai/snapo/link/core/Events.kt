@@ -25,7 +25,7 @@ sealed interface TimedRecord {
 @Serializable
 @SerialName("Hello")
 data class Hello(
-    val schemaVersion: Int = SCHEMA_VERSION,
+    val schemaVersion: Int = SchemaVersion,
     val packageName: String,
     val processName: String,
     val pid: Int,
@@ -232,4 +232,4 @@ data class Timings(
     val totalMs: Long? = null,
 )
 
-internal const val SCHEMA_VERSION: Int = 1
+internal const val SchemaVersion: Int = 1

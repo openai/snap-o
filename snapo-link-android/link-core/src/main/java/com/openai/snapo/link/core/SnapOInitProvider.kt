@@ -1,6 +1,8 @@
 package com.openai.snapo.link.core
 
+import android.app.ActivityManager
 import android.app.Application
+import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
@@ -9,6 +11,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.Process
+import androidx.core.content.ContentProviderCompat
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -28,23 +31,19 @@ import kotlin.time.Duration.Companion.milliseconds
 class SnapOInitProvider : ContentProvider() {
 
     override fun onCreate(): Boolean {
-        val ctx = context ?: return false
-
+        val ctx = ContentProviderCompat.requireContext(this)
         val meta = try {
             val pm = ctx.packageManager
             val provider = javaClass.name
-            val cn = android.content.ComponentName(ctx.packageName, provider)
+            val cn = ComponentName(ctx.packageName, provider)
             pm.getProviderInfo(cn, PackageManager.GET_META_DATA).metaData
         } catch (_: Throwable) {
             null
         }
 
-        val autoInit = meta?.getBoolean("snapo.auto_init", true) ?: true
-        if (!autoInit) return false
-
-        // Optionally restrict to main process
-        val mainOnly = meta?.getBoolean("snapo.main_process_only", true) ?: true
-        if (mainOnly && !isMainProcess(ctx)) return false
+        if (!shouldInitProvider(meta)) {
+            return false
+        }
 
         val bufferMs = readLong(meta, "snapo.buffer_window_ms", 300_000L)
         val maxEvents = readInt(meta, "snapo.max_events", 10_000)
@@ -61,7 +60,6 @@ class SnapOInitProvider : ContentProvider() {
             allowRelease = allowRelease,
         )
 
-        // Start the server and expose it through SnapOLink
         SnapOLinkServer.start(
             ctx.applicationContext as Application,
             config = config
@@ -69,9 +67,21 @@ class SnapOInitProvider : ContentProvider() {
         return true
     }
 
+    private fun shouldInitProvider(meta: Bundle?): Boolean {
+        val context = ContentProviderCompat.requireContext(this)
+
+        val autoInit = meta?.getBoolean("snapo.auto_init", true) ?: true
+        if (!autoInit) {
+            return false
+        }
+
+        val mainOnly = meta?.getBoolean("snapo.main_process_only", true) ?: true
+        return !mainOnly || isMainProcess(context)
+    }
+
     private fun isMainProcess(ctx: Context): Boolean {
         return try {
-            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val pid = Process.myPid()
             val proc = am.runningAppProcesses?.firstOrNull { it.pid == pid }
             proc?.processName == ctx.packageName
