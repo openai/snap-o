@@ -1,5 +1,5 @@
-import SwiftUI
 import Foundation
+import SwiftUI
 
 struct NetworkInspectorRequestDetailView: View {
   @ObservedObject var store: NetworkInspectorStore
@@ -107,14 +107,12 @@ struct NetworkInspectorRequestDetailView: View {
 
   private func defaultExpansion(for section: NetworkInspectorStore.RequestDetailSection) -> Bool {
     switch section {
-    case .requestHeaders:
-      return false
     case .requestBody:
-      return false
+      false
     case .responseBody:
-      return true
+      true
     default:
-      return true
+      true
     }
   }
 
@@ -132,7 +130,7 @@ struct NetworkInspectorRequestDetailView: View {
     let label: String
     let color: Color
 
-    if request.isStreamingResponse && request.streamClosed == nil {
+    if request.isStreamingResponse, request.streamClosed == nil {
       label = "Streaming"
       color = .blue
     } else {
@@ -306,8 +304,7 @@ private struct StreamEventCard: View {
     }
   }
 
-  @ViewBuilder
-  private var metadata: some View {
+  @ViewBuilder private var metadata: some View {
     if let comment = event.comment, !comment.isEmpty {
       Text("Comment: \(comment)")
         .font(.footnote)

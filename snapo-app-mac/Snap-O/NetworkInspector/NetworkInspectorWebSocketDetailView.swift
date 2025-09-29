@@ -1,5 +1,5 @@
-import SwiftUI
 import Foundation
+import SwiftUI
 
 struct NetworkInspectorWebSocketDetailView: View {
   let webSocket: NetworkInspectorWebSocketViewModel

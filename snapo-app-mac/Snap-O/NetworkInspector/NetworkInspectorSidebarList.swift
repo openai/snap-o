@@ -119,5 +119,4 @@ struct NetworkInspectorSidebarList: View {
       }
     }
   }
-
 }

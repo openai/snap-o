@@ -134,7 +134,7 @@ enum NetworkInspectorCopyExporter {
       case 0x27:
         result.append("\\'")
       default:
-        if byte >= 0x20 && byte <= 0x7E {
+        if byte >= 0x20, byte <= 0x7E {
           let scalar = Unicode.Scalar(byte)
           result.append(Character(scalar))
         } else {

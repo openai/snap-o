@@ -8,7 +8,7 @@ final class SnapOLinkServerConnection {
   private let onClose: @Sendable (Error?) -> Void
   private var buffer = Data()
   private var isStopped = false
-  
+
   init(
     port: UInt16,
     queueLabel: String,

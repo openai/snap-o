@@ -4,16 +4,16 @@ import SwiftUI
 enum NetworkInspectorStatusPresentation {
   static func color(for code: Int) -> Color {
     switch code {
-    case 200..<300:
-      return .green
-    case 400..<600:
-      return .red
-    case 300..<400:
-      return .orange
-    case 100..<200:
-      return .secondary
+    case 200 ..< 300:
+      .green
+    case 400 ..< 600:
+      .red
+    case 300 ..< 400:
+      .orange
+    case 100 ..< 200:
+      .secondary
     default:
-      return .secondary
+      .secondary
     }
   }
 
@@ -25,15 +25,14 @@ enum NetworkInspectorStatusPresentation {
     let raw = HTTPURLResponse.localizedString(forStatusCode: code)
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    let descriptor: String
-    if trimmed.isEmpty || trimmed == "unknown" {
-      descriptor = "Done"
+    let descriptor: String = if trimmed.isEmpty || trimmed == "unknown" {
+      "Done"
     } else if trimmed.lowercased() == "ok" {
-      descriptor = "OK"
+      "OK"
     } else if trimmed.lowercased() == "no error" {
-      descriptor = "OK"
+      "OK"
     } else {
-      descriptor = trimmed.capitalized
+      trimmed.capitalized
     }
 
     return "\(code) \(descriptor)"

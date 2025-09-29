@@ -115,7 +115,6 @@ struct NetworkInspectorView: View {
       if selectedItem == nil {
         reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredItems.map(\.id))
       }
-
     }
   }
 
@@ -143,8 +142,7 @@ struct NetworkInspectorView: View {
 }
 
 private extension NetworkInspectorView {
-  @ViewBuilder
-  var detailContent: some View {
+  @ViewBuilder var detailContent: some View {
     if let selection = selectedItem,
        let detail = store.detail(for: selection) {
       detailView(for: detail) {
@@ -169,22 +167,23 @@ private extension NetworkInspectorView {
         Text("No compatible apps detected")
           .font(.title3.weight(.semibold))
 
-        Text("To inspect network traffic, add a `debugImplementation` on a `com.openai.snapo:link…` library to your app.")
+        Text("Apps must include the `com.openai.snapo` dependencies to appear here.")
           .font(.body)
           .multilineTextAlignment(.center)
           .foregroundStyle(.secondary)
       }
 
-      Link(destination: URL(string: "https://github.com/openai/snap-o")!) {
-        Text("View the README")
+      if let documentationURL = URL(string: "https://openai.github.io/snap-o/link") {
+        Link(destination: documentationURL) {
+          Text("Learn about Snap-O Link")
+        }
+        .buttonStyle(.link)
       }
-      .buttonStyle(.link)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
-  @ViewBuilder
-  private var placeholderSelectionView: some View {
+  @ViewBuilder private var placeholderSelectionView: some View {
     VStack(spacing: 12) {
       Text("Select a record")
         .font(.title2)
@@ -241,5 +240,4 @@ private extension NetworkInspectorView {
 
     selectedItem = filteredIDs.first
   }
-
 }

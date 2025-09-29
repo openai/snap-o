@@ -521,11 +521,10 @@ struct NetworkInspectorRequestViewModel: Identifiable {
         }
       }
 
-      let data: String?
-      if dataLines.isEmpty {
-        data = raw.isEmpty ? "" : nil
+      let data: String? = if dataLines.isEmpty {
+        raw.isEmpty ? "" : nil
       } else {
-        data = dataLines.joined(separator: "\n")
+        dataLines.joined(separator: "\n")
       }
 
       let commentText = comments.isEmpty ? nil : comments.joined(separator: "\n")
@@ -539,7 +538,6 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       )
     }
   }
-
 
   struct StreamClosed: Hashable {
     let timestamp: Date
@@ -831,9 +829,9 @@ struct NetworkInspectorListItemViewModel: Identifiable {
   var showsActiveIndicator: Bool {
     switch kind {
     case .request(let request):
-      return request.isStreamingResponse && request.streamClosed == nil
+      request.isStreamingResponse && request.streamClosed == nil
     case .webSocket(let webSocket):
-      return webSocket.isActive
+      webSocket.isActive
     }
   }
 
