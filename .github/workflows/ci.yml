@@ -5,10 +5,14 @@ on:
     branches:
       - main
       - master
+    paths:
+      - 'snapo-app-mac/**'
   pull_request:
     branches:
       - main
       - master
+    paths:
+      - 'snapo-app-mac/**'
 
 jobs:
   build:
@@ -21,6 +25,7 @@ jobs:
         with:
           xcode-version: '16'
       - name: Build Snap-O
+        working-directory: snapo-app-mac
         run: |
           set -o pipefail
           xcodebuild -project Snap-O.xcodeproj \
@@ -40,6 +45,7 @@ jobs:
         with:
           fetch-depth: 1
       - name: SwiftLint
+        working-directory: snapo-app-mac
         run: swiftlint --reporter github-actions-logging --strict
 
   swiftformat:
@@ -51,6 +57,8 @@ jobs:
         with:
           fetch-depth: 1
       - name: SwiftFormat version
+        working-directory: snapo-app-mac
         run: swiftformat --version
       - name: Run SwiftFormat (lint mode)
+        working-directory: snapo-app-mac
         run: swiftformat . --lint --config .swiftformat --reporter github-actions-log
