@@ -9,8 +9,15 @@ plugins {
 
 group = providers.gradleProperty("GROUP").orNull ?: error("Missing GROUP property")
 
-providers.gradleProperty("VERSION_NAME")
+val resolvedVersion = providers.gradleProperty("VERSION_NAME")
     .orElse(providers.gradleProperty("VERSION"))
     .orElse(providers.gradleProperty("version"))
     .orElse("0.0.1-SNAPSHOT")
-    .map { resolved -> version = resolved }
+    .get()
+
+version = resolvedVersion
+
+subprojects {
+    group = rootProject.group
+    version = rootProject.version
+}
