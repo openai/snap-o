@@ -87,10 +87,11 @@ class SnapOLinkServer(
         if (server != null) return
 
         // Bind in ABSTRACT namespace; collisions are unlikely thanks to PID in the name.
-        server = LocalServerSocket(
+        val server = LocalServerSocket(
             LocalSocketAddress(socketName, LocalSocketAddress.Namespace.ABSTRACT).name
         )
-        writerJob = scope.launch(Dispatchers.IO) { acceptLoop(server!!) }
+        this.server = server
+        writerJob = scope.launch(Dispatchers.IO) { acceptLoop(server) }
         SnapOLink.attach(this)
         scope.launch { emitAppIconIfAvailable() }
     }
@@ -164,9 +165,8 @@ class SnapOLinkServer(
                 }
 
                 // Attach as the active client
-                connectedSink =
-                    BufferedWriter(OutputStreamWriter(sock.outputStream, StandardCharsets.UTF_8))
-                val sink = connectedSink!!
+                val sink = BufferedWriter(OutputStreamWriter(sock.outputStream, StandardCharsets.UTF_8))
+                connectedSink = sink
 
                 // 1) Hello
                 writeHandshake(sink)
@@ -423,15 +423,19 @@ class SnapOLinkServer(
                     responseReceives[record.id] = record
                     requestTerminals[record.id] = record
                 }
+
                 is RequestFailed -> requestTerminals[record.id] = record
                 is ResponseStreamClosed -> requestTerminals[record.id] = record
                 is ResponseStreamEvent -> if (!activeResponseStreams.contains(record.id)) {
                     responseStreamEvents.getOrPut(record.id) { mutableListOf() }.add(record)
                 }
+
                 is WebSocketWillOpen ->
                     webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
+
                 is WebSocketOpened ->
                     webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
+
                 is WebSocketClosed -> webSocketTerminals[record.id] = record
                 is WebSocketFailed -> webSocketTerminals[record.id] = record
                 is WebSocketCancelled -> webSocketTerminals[record.id] = record
@@ -449,10 +453,11 @@ class SnapOLinkServer(
 
         for ((id, headList) in webSocketStarts) {
             val terminal = webSocketTerminals[id] ?: continue
-            if (openWebSockets.contains(id)) continue
-            toRemove.add(terminal)
-            headList.forEach { toRemove.add(it) }
-            collectWebSocketRecordsForRemoval(id, toRemove)
+            if (!openWebSockets.contains(id)) {
+                toRemove.add(terminal)
+                headList.forEach { toRemove.add(it) }
+                collectWebSocketRecordsForRemoval(id, toRemove)
+            }
         }
 
         if (toRemove.isEmpty()) return
@@ -508,14 +513,12 @@ class SnapOLinkServer(
                     iterator.remove()
                     subtractApproxBytes(record)
                     updateStreamStateOnRemove(record)
-                    continue
                 }
 
                 is ResponseStreamEvent -> if (record.id == requestId) {
                     iterator.remove()
                     subtractApproxBytes(record)
                     updateStreamStateOnRemove(record)
-                    continue
                 }
 
                 else -> Unit
@@ -554,7 +557,7 @@ class SnapOLinkServer(
     private fun performClientHandshake(socket: LocalSocket): ClientHandshakeResult {
         return try {
             val outcome = readClientHello(socket)
-            if (outcome == CLIENT_HELLO_TOKEN) {
+            if (outcome == ClientHelloToken) {
                 ClientHandshakeResult.Accepted
             } else {
                 ClientHandshakeResult.Rejected("unexpected handshake token")
@@ -567,11 +570,11 @@ class SnapOLinkServer(
     }
 
     private fun readClientHello(socket: LocalSocket): String? {
-        socket.soTimeout = CLIENT_HELLO_TIMEOUT_MS
+        socket.soTimeout = ClientHelloTimeoutMs
         val input = socket.inputStream
         val buffer = ByteArrayOutputStream()
-        return try {
-            while (buffer.size() <= CLIENT_HELLO_MAX_BYTES) {
+        try {
+            while (buffer.size() <= ClientHelloMaxBytes) {
                 val value = input.read()
                 if (value == -1) {
                     throw IOException("client handshake closed without data")
@@ -582,7 +585,7 @@ class SnapOLinkServer(
                 }
                 buffer.write(value)
             }
-            throw IOException("client handshake exceeded $CLIENT_HELLO_MAX_BYTES bytes")
+            throw IOException("client handshake exceeded $ClientHelloMaxBytes bytes")
         } finally {
             socket.soTimeout = 0
         }
@@ -597,14 +600,14 @@ class SnapOLinkServer(
         }
 
         val bitmap = drawableToBitmap(drawable) ?: return null
-        val scaled = if (bitmap.width == TARGET_ICON_SIZE && bitmap.height == TARGET_ICON_SIZE) {
+        val scaled = if (bitmap.width == TargetIconSize && bitmap.height == TargetIconSize) {
             bitmap
         } else {
-            Bitmap.createScaledBitmap(bitmap, TARGET_ICON_SIZE, TARGET_ICON_SIZE, true)
+            Bitmap.createScaledBitmap(bitmap, TargetIconSize, TargetIconSize, true)
         }
 
         val pngData = ByteArrayOutputStream().use { out ->
-            scaled.compress(Bitmap.CompressFormat.PNG, ICON_PNG_QUALITY, out)
+            scaled.compress(Bitmap.CompressFormat.PNG, IconPngQuality, out)
             out.toByteArray()
         }
         if (scaled !== bitmap && !scaled.isRecycled) {
@@ -614,8 +617,8 @@ class SnapOLinkServer(
 
         return AppIcon(
             packageName = app.packageName,
-            width = TARGET_ICON_SIZE,
-            height = TARGET_ICON_SIZE,
+            width = TargetIconSize,
+            height = TargetIconSize,
             base64Data = encoded,
         )
     }
@@ -651,8 +654,8 @@ class SnapOLinkServer(
     }
 
     private fun renderDrawable(drawable: Drawable): Bitmap {
-        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: TARGET_ICON_SIZE
-        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: TARGET_ICON_SIZE
+        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: TargetIconSize
+        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: TargetIconSize
         val bitmap = createBitmap(width, height)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
@@ -672,11 +675,11 @@ class SnapOLinkServer(
 }
 
 private const val TAG = "SnapOLink"
-private const val TARGET_ICON_SIZE = 96
-private const val ICON_PNG_QUALITY = 100
-private const val CLIENT_HELLO_TOKEN = "HelloSnapO"
-private const val CLIENT_HELLO_TIMEOUT_MS = 1_000
-private const val CLIENT_HELLO_MAX_BYTES = 4 * 1024
+private const val TargetIconSize = 96
+private const val IconPngQuality = 100
+private const val ClientHelloToken = "HelloSnapO"
+private const val ClientHelloTimeoutMs = 1_000
+private const val ClientHelloMaxBytes = 4 * 1024
 
 private sealed interface ClientHandshakeResult {
     object Accepted : ClientHandshakeResult

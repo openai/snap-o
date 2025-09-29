@@ -221,12 +221,10 @@ private fun Response.bodyPreview(maxBytes: Int): String? {
     }
 }
 
-private fun MediaType?.isTextLike(): Boolean {
-    val mediaType = this ?: return false
-    val typeLower = mediaType.type.lowercase()
-    if (typeLower == "text") return true
-    val subtypeLower = mediaType.subtype.lowercase()
-    val textualHints = listOf(
+private fun MediaType?.isTextLike(): Boolean = when {
+    this == null -> false
+    type.lowercase() == "text" -> true
+    else -> listOf(
         "json",
         "xml",
         "html",
@@ -236,8 +234,7 @@ private fun MediaType?.isTextLike(): Boolean {
         "plain",
         "csv",
         "yaml",
-    )
-    return textualHints.any(subtypeLower::contains)
+    ).any(subtype.lowercase()::contains)
 }
 
 private fun MediaType?.isEventStream(): Boolean {
@@ -282,10 +279,8 @@ private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBody
 }
 
 private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
-    if (maxBytes <= 0) return null
-    val requestBody = body ?: return null
-    if (requestBody.isDuplex() || requestBody.isOneShot()) return null
-
+    val requestBody = body
+    if (maxBytes <= 0 || requestBody == null || requestBody.isDuplex() || requestBody.isOneShot()) return null
     return try {
         val buffer = Buffer()
         requestBody.writeTo(buffer)
