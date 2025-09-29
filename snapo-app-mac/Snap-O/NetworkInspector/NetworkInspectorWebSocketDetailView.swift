@@ -194,8 +194,13 @@ private struct MessageCardView: View {
 
     _usePrettyPrinted = State(initialValue: false)
 
-    directionSymbolName = message.direction == .outgoing ? "tray" : "paperplane"
-    directionColor = message.direction == .outgoing ? .blue : .green
+    if message.direction == .outgoing {
+      directionSymbolName = "paperplane"
+      directionColor = .blue
+    } else {
+      directionSymbolName = "tray"
+      directionColor = .green
+    }
   }
 
   var body: some View {
