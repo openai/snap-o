@@ -1,0 +1,271 @@
+import AppKit
+import SwiftUI
+
+struct NetworkInspectorSidebarServerControls: View {
+  @ObservedObject var store: NetworkInspectorStore
+  @Binding var selectedServerID: SnapOLinkServerID?
+  @Binding var isServerPickerPresented: Bool
+  let selectedServer: NetworkInspectorServerViewModel?
+  let replacementServerCandidate: NetworkInspectorServerViewModel?
+
+  var body: some View {
+    VStack(spacing: 8) {
+      serverPicker
+
+      if let candidate = replacementServerCandidate {
+        replacementServerButton(for: candidate)
+      }
+
+      if let server = selectedServer, server.isSchemaNewerThanSupported {
+        schemaCompatibilityNotice(for: server)
+      }
+    }
+  }
+
+  private var serverPicker: some View {
+    Group {
+      if store.servers.isEmpty {
+        HStack {
+          Text("No Apps Found")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+          Spacer()
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+      } else {
+        Button {
+          isServerPickerPresented.toggle()
+        } label: {
+          HStack(spacing: 12) {
+            if let server = selectedServer {
+              serverRowContent(for: server)
+            } else {
+              placeholderRowContent(title: "Select an App", subtitle: "")
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.down")
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(.secondary)
+          }
+          .padding(.vertical, 10)
+          .padding(.horizontal, 12)
+          .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+          .background(
+            RoundedRectangle(cornerRadius: 8)
+              .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+          )
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $isServerPickerPresented, arrowEdge: .bottom) {
+          VStack(alignment: .leading, spacing: 0) {
+            serversPopover
+          }
+          .padding(8)
+        }
+      }
+    }
+  }
+
+  private func replacementServerButton(for server: NetworkInspectorServerViewModel) -> some View {
+    Button {
+      selectedServerID = server.id
+      isServerPickerPresented = false
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: "arrow.triangle.2.circlepath")
+          .font(.headline.weight(.semibold))
+          .foregroundStyle(Color.white)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text("New process available")
+            .font(.headline)
+            .foregroundStyle(Color.white)
+            .lineLimit(1)
+
+          if let pid = server.pid {
+            Text("PID \(String(pid))")
+              .font(.caption)
+              .foregroundStyle(Color.white.opacity(0.85))
+          }
+        }
+
+        Spacer()
+
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(Color.white.opacity(0.9))
+      }
+      .padding(.vertical, 12)
+      .padding(.horizontal, 16)
+      .frame(maxWidth: .infinity, minHeight: 56)
+      .background(
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(Color.orange)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func schemaCompatibilityNotice(for server: NetworkInspectorServerViewModel) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      let versionText = server.schemaVersion.map(String.init) ?? "unknown"
+      Label {
+        Text("App reports schema v\(versionText)")
+      } icon: {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .foregroundStyle(Color.orange)
+      }
+      .font(.callout)
+
+      Text("This Android build may be newer than the Network Inspector understands. Data could be missing or displayed incorrectly.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .fill(Color.orange.opacity(0.1))
+    )
+  }
+
+  private func serversPopoverRow(for server: NetworkInspectorServerViewModel) -> some View {
+    serverRowContent(for: server)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.vertical, 8)
+      .padding(.horizontal, 12)
+      .background(
+        (selectedServerID == server.id ? Color.accentColor.opacity(0.12) : Color.clear)
+          .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+      )
+      .contentShape(Rectangle())
+  }
+
+  private var serversPopover: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(store.servers) { server in
+        Button {
+          selectedServerID = server.id
+          isServerPickerPresented = false
+        } label: {
+          serversPopoverRow(for: server)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+      }
+    }
+    .padding(.vertical, 8)
+    .frame(minWidth: 280)
+  }
+
+  @ViewBuilder
+  private func serverRowContent(for server: NetworkInspectorServerViewModel) -> some View {
+    serverRow(
+      title: server.displayName,
+      subtitle: server.deviceDisplayTitle,
+      appIcon: server.appIcon,
+      isConnected: server.isConnected,
+      hasHello: server.hasHello
+    )
+  }
+
+  private func placeholderRowContent(title: String, subtitle: String) -> some View {
+    serverRow(title: title, subtitle: subtitle, appIcon: nil, isConnected: true, hasHello: true)
+  }
+
+  private func serverRow(
+    title: String,
+    subtitle: String,
+    appIcon: NSImage?,
+    isConnected: Bool,
+    hasHello: Bool
+  ) -> some View {
+    HStack(spacing: 12) {
+      appIconView(appIcon: appIcon, isConnected: isConnected, hasHello: hasHello)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.headline)
+          .foregroundStyle(.primary)
+          .lineLimit(1)
+          .fixedSize(horizontal: false, vertical: true)
+        if !subtitle.isEmpty {
+          Text(subtitle)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+    }
+    .opacity(isConnected ? 1 : 0.75)
+  }
+
+  private func appIconView(appIcon: NSImage?, isConnected: Bool, hasHello: Bool) -> some View {
+    RoundedRectangle(cornerRadius: 8)
+      .fill(Color.clear)
+      .overlay {
+        if let icon = appIcon {
+          Image(nsImage: icon)
+            .resizable()
+            .scaledToFill()
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .saturation(isConnected ? 1 : 0)
+            .opacity(isConnected ? 1 : 0.65)
+        } else {
+          RoundedRectangle(cornerRadius: 8)
+            .fill(isConnected ? Color.secondary.opacity(0.12) : Color.secondary.opacity(0.05))
+            .overlay(
+              Image(systemName: "app.fill")
+                .font(.subheadline)
+                .foregroundStyle(isConnected ? Color.secondary : Color.secondary.opacity(0.35))
+                .saturation(isConnected ? 1 : 0)
+            )
+            .saturation(isConnected ? 1 : 0)
+            .opacity(isConnected ? 1 : 0.6)
+        }
+      }
+      .overlay(alignment: .bottomTrailing) {
+        statusIndicator(isConnected: isConnected, hasHello: hasHello)
+      }
+      .frame(width: 32, height: 32)
+  }
+}
+
+private func statusIndicator(isConnected: Bool, hasHello: Bool) -> some View {
+  let background = Color(nsColor: .windowBackgroundColor)
+  let tint: Color = if !hasHello {
+    .orange
+  } else if isConnected {
+    .green
+  } else {
+    Color.primary.opacity(0.8)
+  }
+
+  return ZStack {
+    Circle()
+      .fill(background)
+      .frame(width: 12, height: 12)
+
+    Circle()
+      .stroke(Color.black.opacity(0.1), lineWidth: 0.5)
+      .frame(width: 12, height: 12)
+
+    Circle()
+      .fill(tint)
+      .frame(width: 7, height: 7)
+  }
+  .offset(x: 4, y: 4)
+}
