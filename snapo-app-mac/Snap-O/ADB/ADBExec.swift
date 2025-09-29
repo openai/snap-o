@@ -272,7 +272,7 @@ struct ADBExec: Sendable {
     }
   }
 
-  private func runShellString(deviceID: String, command: String) async throws -> String {
+  func runShellString(deviceID: String, command: String) async throws -> String {
     let data = try await runShellData(deviceID: deviceID, command: command)
     guard let output = String(data: data, encoding: .utf8) else {
       throw ADBError.parseFailure("non-utf8 output from adb")

@@ -221,7 +221,8 @@ actor NetworkInspectorService {
         deviceDisplayTitle: devices[deviceID]?.displayTitle ?? deviceID,
         isConnected: true,
         appIcon: serverStates[serverID]?.server.appIcon,
-        wallClockBase: serverStates[serverID]?.server.wallClockBase
+        wallClockBase: serverStates[serverID]?.server.wallClockBase,
+        packageNameHint: serverStates[serverID]?.server.packageNameHint
       )
       if let existing = serverStates[serverID]?.server {
         server.hello = existing.hello
@@ -240,6 +241,9 @@ actor NetworkInspectorService {
       serverStates[serverID] = ServerState(server: server, forwardHandle: handle, connection: connection)
       broadcastServers()
       connection.start()
+      if server.hello == nil {
+        await populatePackageNameHint(for: serverID, deviceID: deviceID, socketName: socketName)
+      }
     } catch {
       SnapOLog.network.error(
         """
@@ -249,6 +253,46 @@ actor NetworkInspectorService {
       )
       deviceSockets[deviceID]?.remove(socketName)
     }
+  }
+
+  private func populatePackageNameHint(
+    for serverID: SnapOLinkServerID,
+    deviceID: String,
+    socketName: String
+  ) async {
+    guard let pid = Self.pid(fromSocketName: socketName) else { return }
+    let exec = await adbService.exec()
+    let command = "cat /proc/\(pid)/cmdline 2>/dev/null"
+
+    guard let output = try? await exec.runShellString(deviceID: deviceID, command: command) else {
+      return
+    }
+
+    let separator = Character(UnicodeScalar(0))
+    let components = output.split(separator: separator, omittingEmptySubsequences: true)
+    let fallback = output.split(whereSeparator: { $0.isNewline }).first
+    var candidate = components.first.map(String.init)
+      ?? fallback.map(String.init)
+
+    candidate = candidate?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+
+    guard let name = candidate, !name.isEmpty else { return }
+
+    if var state = serverStates[serverID] {
+      if state.server.packageNameHint != name {
+        state.server.packageNameHint = name
+        serverStates[serverID] = state
+        broadcastServers()
+      }
+    }
+  }
+
+  private static func pid(fromSocketName socketName: String) -> Int? {
+    let prefix = "snapo_server_"
+    guard socketName.hasPrefix(prefix) else { return nil }
+    let suffix = socketName.dropFirst(prefix.count)
+    guard !suffix.isEmpty, suffix.allSatisfy({ $0.isNumber }) else { return nil }
+    return Int(suffix)
   }
 
   private func stopServerConnection(deviceID: String, socketName: String) async {

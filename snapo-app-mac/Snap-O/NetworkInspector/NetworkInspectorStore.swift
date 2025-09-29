@@ -192,6 +192,9 @@ struct NetworkInspectorServerViewModel: Identifiable {
     if let hello = server.hello {
       displayName = hello.packageName
       helloSummary = server.deviceDisplayTitle
+    } else if let hint = server.packageNameHint, !hint.isEmpty {
+      displayName = hint
+      helloSummary = server.deviceDisplayTitle
     } else {
       displayName = server.socketName
       helloSummary = server.deviceDisplayTitle
