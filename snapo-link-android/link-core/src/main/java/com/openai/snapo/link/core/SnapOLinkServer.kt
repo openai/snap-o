@@ -409,6 +409,7 @@ class SnapOLinkServer(
         val requestStarts = mutableMapOf<String, RequestWillBeSent>()
         val requestTerminals = mutableMapOf<String, SnapONetRecord>()
         val responseReceives = mutableMapOf<String, ResponseReceived>()
+        val responseStreamEvents = mutableMapOf<String, MutableList<ResponseStreamEvent>>()
         val webSocketStarts = mutableMapOf<String, MutableList<PerWebSocketRecord>>()
         val webSocketTerminals = mutableMapOf<String, PerWebSocketRecord>()
         val toRemove: MutableSet<SnapONetRecord> =
@@ -424,6 +425,9 @@ class SnapOLinkServer(
                 }
                 is RequestFailed -> requestTerminals[record.id] = record
                 is ResponseStreamClosed -> requestTerminals[record.id] = record
+                is ResponseStreamEvent -> if (!activeResponseStreams.contains(record.id)) {
+                    responseStreamEvents.getOrPut(record.id) { mutableListOf() }.add(record)
+                }
                 is WebSocketWillOpen ->
                     webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
                 is WebSocketOpened ->
@@ -440,6 +444,7 @@ class SnapOLinkServer(
             toRemove.add(head)
             toRemove.add(terminal)
             responseReceives[id]?.let { toRemove.add(it) }
+            responseStreamEvents[id]?.forEach { toRemove.add(it) }
         }
 
         for ((id, headList) in webSocketStarts) {
@@ -447,6 +452,7 @@ class SnapOLinkServer(
             if (openWebSockets.contains(id)) continue
             toRemove.add(terminal)
             headList.forEach { toRemove.add(it) }
+            collectWebSocketRecordsForRemoval(id, toRemove)
         }
 
         if (toRemove.isEmpty()) return
@@ -513,6 +519,17 @@ class SnapOLinkServer(
                 }
 
                 else -> Unit
+            }
+        }
+    }
+
+    private fun collectWebSocketRecordsForRemoval(
+        socketId: String,
+        target: MutableSet<SnapONetRecord>,
+    ) {
+        for (record in eventBuffer) {
+            if (record is PerWebSocketRecord && record.id == socketId) {
+                target.add(record)
             }
         }
     }
