@@ -60,6 +60,7 @@ class SnapOLinkServer(
 
     // --- buffering ---
     private val bufferLock = Mutex()
+    private val writerLock = Mutex()
     private val eventBuffer: MutableList<SnapONetRecord> = ArrayList()
     private var approxBytes: Long = 0L
     private val openWebSockets: MutableSet<String> = mutableSetOf()
@@ -168,15 +169,17 @@ class SnapOLinkServer(
                 val sink = BufferedWriter(OutputStreamWriter(sock.outputStream, StandardCharsets.UTF_8))
                 connectedSink = sink
 
-                // 1) Hello
-                writeHandshake(sink)
+                writerLock.withLock {
+                    // 1) Hello
+                    writeHandshake(sink)
 
-                // 2) Snapshot (buffer copy under lock to avoid holding it while writing)
-                val snapshot: List<SnapONetRecord> = bufferLock.withLock { ArrayList(eventBuffer) }
-                for (rec in snapshot) writeLine(sink, rec)
+                    // 2) Snapshot (buffer copy under lock to avoid holding it while writing)
+                    val snapshot: List<SnapONetRecord> = bufferLock.withLock { ArrayList(eventBuffer) }
+                    for (rec in snapshot) writeLine(sink, rec)
 
-                // 3) ReplayComplete marker
-                writeLine(sink, ReplayComplete())
+                    // 3) ReplayComplete marker
+                    writeLine(sink, ReplayComplete())
+                }
 
                 // 4) Live tail: just keep the sink around; publish() will write as events arrive.
                 // Block here reading from the client to detect disconnect; ignore any input.
@@ -230,9 +233,11 @@ class SnapOLinkServer(
         }
     }
 
-    private fun streamLineIfConnected(record: SnapONetRecord) {
-        val writer = connectedSink ?: return
-        writeLine(writer, record)
+    private suspend fun streamLineIfConnected(record: SnapONetRecord) {
+        writerLock.withLock {
+            val writer = connectedSink ?: return
+            writeLine(writer, record)
+        }
     }
 
     /** Append and evict by window/size/count caps. */
@@ -510,7 +515,7 @@ class SnapOLinkServer(
         return Ndjson.encodeToString(SnapONetRecord.serializer(), record).length
     }
 
-    private fun emitAppIconIfAvailable() {
+    private suspend fun emitAppIconIfAvailable() {
         try {
             val iconEvent = loadAppIconEvent() ?: return
             latestAppIcon = iconEvent
@@ -606,9 +611,11 @@ class SnapOLinkServer(
         }
     }
 
-    private fun streamAppIcon(icon: AppIcon) {
-        val writer = connectedSink ?: return
-        writeLine(writer, icon)
+    private suspend fun streamAppIcon(icon: AppIcon) {
+        writerLock.withLock {
+            val writer = connectedSink ?: return
+            writeLine(writer, icon)
+        }
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap? {
