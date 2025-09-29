@@ -4,8 +4,6 @@ import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
 import com.openai.snapo.link.core.RequestFailed
-import com.openai.snapo.link.core.ResponseStreamClosed
-import com.openai.snapo.link.core.ResponseStreamEvent
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.link.core.SnapONetRecord
 import com.openai.snapo.link.core.Timings
@@ -20,17 +18,11 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.Buffer
-import okio.BufferedSource
-import okio.ForwardingSource
-import okio.Source
-import okio.buffer
 import java.io.Closeable
 import java.io.IOException
 import java.nio.charset.Charset
-import java.util.ArrayList
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 /** OkHttp interceptor that mirrors traffic to the active SnapO link if present. */
@@ -123,12 +115,12 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 bodySize = body.safeContentLength(),
             )
         }
-
-        val relay = ResponseStreamRelay(
+        val streamingBody = StreamingResponseRelayBody(
+            delegate = body,
             requestId = context.requestId,
             charset = body.contentType().resolveCharset(),
+            onRecord = { publish(it) },
         )
-        val streamingBody = StreamingResponseBody(body, relay)
         return response.newBuilder().body(streamingBody).build()
     }
 
@@ -142,7 +134,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val bodySize = body.safeContentLength()
         publish {
             val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
-            val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes.toLong())
+            val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes)
             val truncatedBytes = textBody?.truncatedBytes(bodySize)
             OkhttpEventFactory.createResponseReceived(
                 context = context,
@@ -182,171 +174,12 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             }
         }
     }
-
-    private inner class StreamingResponseBody(
-        private val delegate: ResponseBody,
-        private val relay: ResponseStreamRelay,
-    ) : ResponseBody() {
-
-        private val bufferedSource: BufferedSource by lazy {
-            relay.wrapSource(delegate.source()).buffer()
-        }
-
-        override fun contentType(): MediaType? = delegate.contentType()
-
-        override fun contentLength(): Long = delegate.contentLength()
-
-        override fun source(): BufferedSource = bufferedSource
-
-        override fun close() {
-            try {
-                bufferedSource.close()
-            } finally {
-                relay.onClosed(null)
-            }
-        }
-    }
-
-    private inner class ResponseStreamRelay(
-        private val requestId: String,
-        charset: Charset,
-    ) {
-        private val closed = AtomicBoolean(false)
-        private val parser = SseBuffer(charset)
-        private var nextSequence: Long = 0L
-        private var totalBytes: Long = 0L
-
-        fun wrapSource(upstream: Source): Source {
-            return object : ForwardingSource(upstream) {
-                override fun read(sink: Buffer, byteCount: Long): Long {
-                    return try {
-                        val read = super.read(sink, byteCount)
-                        if (read > 0) {
-                            val copy = Buffer()
-                            sink.copyTo(copy, sink.size - read, read)
-                            handleBytes(copy.readByteArray())
-                        } else if (read == -1L) {
-                            onClosed(null)
-                        }
-                        read
-                    } catch (t: Throwable) {
-                        onClosed(t)
-                        throw t
-                    }
-                }
-
-                override fun close() {
-                    try {
-                        super.close()
-                    } finally {
-                        onClosed(null)
-                    }
-                }
-            }
-        }
-
-        private fun handleBytes(bytes: ByteArray) {
-            val events = synchronized(this) {
-                totalBytes += bytes.size
-                parser.append(bytes).map { raw ->
-                    val sequence = ++nextSequence
-                    raw.toParsedSseEvent(sequence)
-                }
-            }
-            publishEvents(events)
-        }
-
-        fun onClosed(error: Throwable?) {
-            if (!closed.compareAndSet(false, true)) return
-            val tailEvents = synchronized(this) {
-                parser.drainRemaining().map { raw ->
-                    val sequence = ++nextSequence
-                    raw.toParsedSseEvent(sequence)
-                }
-            }
-            publishEvents(tailEvents)
-
-            val nowWall = System.currentTimeMillis()
-            val nowMono = SystemClock.elapsedRealtimeNanos()
-            publish {
-                ResponseStreamClosed(
-                    id = requestId,
-                    tWallMs = nowWall,
-                    tMonoNs = nowMono,
-                    reason = if (error == null) "completed" else "error",
-                    message = error?.message ?: error?.javaClass?.simpleName,
-                    totalEvents = nextSequence,
-                    totalBytes = totalBytes,
-                )
-            }
-        }
-
-        private fun publishEvents(events: List<ParsedSseEvent>) {
-            for (event in events) {
-                val nowWall = System.currentTimeMillis()
-                val nowMono = SystemClock.elapsedRealtimeNanos()
-                publish {
-                    ResponseStreamEvent(
-                        id = requestId,
-                        tWallMs = nowWall,
-                        tMonoNs = nowMono,
-                        sequence = event.sequence,
-                        event = event.eventName,
-                        data = event.data,
-                        lastEventId = event.lastEventId,
-                        retryMillis = event.retryMillis,
-                        comment = event.comment,
-                        raw = event.raw,
-                    )
-                }
-            }
-        }
-    }
 }
 
 internal data class InterceptContext(
     val requestId: String,
     val startWall: Long,
     val startMono: Long,
-)
-
-private class SseBuffer(private val charset: Charset) {
-    private val buffer = StringBuilder()
-
-    fun append(bytes: ByteArray): List<String> {
-        if (bytes.isEmpty()) return emptyList()
-        buffer.append(bytes.toNormalizedString(charset))
-        return drainInternal(flushTail = false)
-    }
-
-    fun drainRemaining(): List<String> = drainInternal(flushTail = true)
-
-    private fun drainInternal(flushTail: Boolean): List<String> {
-        if (buffer.isEmpty()) return emptyList()
-        val events = ArrayList<String>()
-        while (true) {
-            val boundary = buffer.indexOf("\n\n")
-            if (boundary < 0) {
-                if (flushTail && buffer.isNotEmpty()) {
-                    events += buffer.toString()
-                    buffer.setLength(0)
-                }
-                return events
-            }
-            events += buffer.substring(0, boundary)
-            buffer.delete(0, boundary + 2)
-        }
-    }
-}
-
-private data class ParsedSseEvent(
-    val sequence: Long,
-    val raw: String,
-    val eventName: String?,
-    val data: String?,
-    val lastEventId: String?,
-    val retryMillis: Long?,
-    val comment: String?,
 )
 
 private data class TextBodyCapture(
@@ -371,13 +204,12 @@ private fun ResponseBody?.safeContentLength(): Long? = this?.let {
     }
 }
 
-private fun Response.bodyPreview(maxBytes: Long): String? {
+private fun Response.bodyPreview(maxBytes: Int): String? {
     return if (maxBytes <= 0L) {
         null
     } else {
         try {
-            val limit = maxBytes.coerceAtMost(Int.MAX_VALUE.toLong())
-            val peek: ResponseBody = peekBody(limit)
+            val peek: ResponseBody = peekBody(maxBytes.toLong())
             val bytes = peek.bytes()
             val charset: Charset = peek.contentType().resolveCharset()
             String(bytes, charset)
@@ -493,68 +325,4 @@ private fun MediaType?.resolveCharset(): Charset {
 internal fun nanosToMillis(deltaNs: Long): Long? {
     if (deltaNs <= 0L) return null
     return TimeUnit.NANOSECONDS.toMillis(deltaNs)
-}
-
-private fun ByteArray.toNormalizedString(charset: Charset): String {
-    val raw = String(this, charset)
-    if (raw.indexOf('\r') == -1) return raw
-    return raw.replace("\r\n", "\n").replace('\r', '\n')
-}
-
-private fun String.toParsedSseEvent(sequence: Long): ParsedSseEvent {
-    var eventName: String? = null
-    var lastEventId: String? = null
-    var retryMillis: Long? = null
-    val comments = mutableListOf<String>()
-    val dataLines = mutableListOf<String>()
-
-    for (line in lineSequence()) {
-        when {
-            line.isEmpty() -> Unit
-            line.startsWith(":") -> {
-                val comment = line.substring(1).trimStart()
-                if (comment.isNotEmpty()) {
-                    comments += comment
-                }
-            }
-
-            else -> {
-                val (field, value) = line.splitField()
-                when (field) {
-                    "event" -> eventName = value
-                    "data" -> dataLines += value
-                    "id" -> lastEventId = value
-                    "retry" -> retryMillis = value.toLongOrNull()
-                }
-            }
-        }
-    }
-
-    val data = when {
-        dataLines.isEmpty() && isEmpty() -> ""
-        dataLines.isEmpty() -> null
-        else -> dataLines.joinToString("\n")
-    }
-
-    val comment = comments.takeIf { it.isNotEmpty() }?.joinToString("\n")
-
-    return ParsedSseEvent(
-        sequence = sequence,
-        raw = this,
-        eventName = eventName,
-        data = data,
-        lastEventId = lastEventId,
-        retryMillis = retryMillis,
-        comment = comment,
-    )
-}
-
-private fun String.splitField(): Pair<String, String> {
-    val colonIndex = indexOf(':')
-    if (colonIndex < 0) {
-        return this to ""
-    }
-    val field = substring(0, colonIndex)
-    val value = substring(colonIndex + 1).removePrefix(" ")
-    return field to value
 }
