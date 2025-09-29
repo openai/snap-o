@@ -1,0 +1,8 @@
+jdk:
+  - openjdk17
+
+before_install:
+  - cd snapo-link-android && yes | sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+install:
+  - cd snapo-link-android && ./gradlew publishReleasePublicationToMavenLocal
