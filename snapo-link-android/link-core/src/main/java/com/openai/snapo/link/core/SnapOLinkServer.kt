@@ -376,6 +376,7 @@ class SnapOLinkServer(
             subtractApproxBytes(candidate)
             updateWebSocketStateOnRemove(candidate)
             updateStreamStateOnRemove(candidate)
+            removeAdditionalRequestRecords(head.id)
             return true
         }
         return false
@@ -407,6 +408,7 @@ class SnapOLinkServer(
     private fun evictExpiredRecords(cutoff: Long) {
         val requestStarts = mutableMapOf<String, RequestWillBeSent>()
         val requestTerminals = mutableMapOf<String, SnapONetRecord>()
+        val responseReceives = mutableMapOf<String, ResponseReceived>()
         val webSocketStarts = mutableMapOf<String, MutableList<PerWebSocketRecord>>()
         val webSocketTerminals = mutableMapOf<String, PerWebSocketRecord>()
         val toRemove: MutableSet<SnapONetRecord> =
@@ -417,6 +419,7 @@ class SnapOLinkServer(
             when (record) {
                 is RequestWillBeSent -> requestStarts[record.id] = record
                 is ResponseReceived -> if (!activeResponseStreams.contains(record.id)) {
+                    responseReceives[record.id] = record
                     requestTerminals[record.id] = record
                 }
                 is RequestFailed -> requestTerminals[record.id] = record
@@ -436,6 +439,7 @@ class SnapOLinkServer(
             val terminal = requestTerminals[id] ?: continue
             toRemove.add(head)
             toRemove.add(terminal)
+            responseReceives[id]?.let { toRemove.add(it) }
         }
 
         for ((id, headList) in webSocketStarts) {
@@ -487,6 +491,30 @@ class SnapOLinkServer(
         subtractApproxBytes(record)
         updateWebSocketStateOnRemove(record)
         updateStreamStateOnRemove(record)
+    }
+
+    private fun removeAdditionalRequestRecords(requestId: String) {
+        val iterator = eventBuffer.iterator()
+        while (iterator.hasNext()) {
+            val record = iterator.next()
+            when (record) {
+                is ResponseReceived -> if (record.id == requestId) {
+                    iterator.remove()
+                    subtractApproxBytes(record)
+                    updateStreamStateOnRemove(record)
+                    continue
+                }
+
+                is ResponseStreamEvent -> if (record.id == requestId) {
+                    iterator.remove()
+                    subtractApproxBytes(record)
+                    updateStreamStateOnRemove(record)
+                    continue
+                }
+
+                else -> Unit
+            }
+        }
     }
 
     private fun subtractApproxBytes(record: SnapONetRecord) {

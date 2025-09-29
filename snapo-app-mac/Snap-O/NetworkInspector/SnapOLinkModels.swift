@@ -85,6 +85,30 @@ struct NetworkInspectorRequest: Identifiable, Hashable, Sendable {
   }
 }
 
+extension NetworkInspectorRequest {
+  var isLikelyStreamingResponse: Bool {
+    if !streamEvents.isEmpty { return true }
+    if hasEventStreamHeader(in: response?.headers) { return true }
+    if hasEventStreamHeader(in: request?.headers) { return true }
+    return false
+  }
+}
+
+private func hasEventStreamHeader(in headers: [SnapONetHeader]?) -> Bool {
+  guard let headers, !headers.isEmpty else { return false }
+  for header in headers {
+    if header.name.caseInsensitiveCompare("Content-Type") == .orderedSame,
+       header.value.localizedCaseInsensitiveContains("text/event-stream") {
+      return true
+    }
+    if header.name.caseInsensitiveCompare("Accept") == .orderedSame,
+       header.value.localizedCaseInsensitiveContains("text/event-stream") {
+      return true
+    }
+  }
+  return false
+}
+
 enum NetworkInspectorItemID: Hashable, Sendable {
   case request(NetworkInspectorRequestID)
   case webSocket(NetworkInspectorWebSocketID)

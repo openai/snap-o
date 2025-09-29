@@ -846,6 +846,9 @@ actor NetworkInspectorService {
       if !request.streamEvents.isEmpty {
         return true
       }
+      if request.isLikelyStreamingResponse {
+        return true
+      }
       return request.response == nil
     }
     requestOrder = requestOrder.filter { requestStates[$0] != nil }
