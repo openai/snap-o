@@ -143,6 +143,7 @@ private struct StreamEventsSection: View {
   let events: [NetworkInspectorRequestViewModel.StreamEvent]
   let closed: NetworkInspectorRequestViewModel.StreamClosed?
   @Binding var isExpanded: Bool
+  @State private var expandedEventIDs: Set<Int64> = []
 
   init(
     events: [NetworkInspectorRequestViewModel.StreamEvent],
@@ -164,7 +165,10 @@ private struct StreamEventsSection: View {
         } else {
           LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(events) { event in
-              StreamEventCard(event: event)
+              StreamEventCard(
+                event: event,
+                isExpanded: binding(for: event.id)
+              )
             }
           }
         }
@@ -194,20 +198,38 @@ private struct StreamEventsSection: View {
       Text("Server-Sent Events")
         .font(.headline)
     }
+    .onChange(of: events.map(\.id)) { _, ids in
+      let allowed = Set(ids)
+      expandedEventIDs = expandedEventIDs.intersection(allowed)
+    }
+  }
+
+  private func binding(for eventID: Int64) -> Binding<Bool> {
+    Binding(
+      get: { expandedEventIDs.contains(eventID) },
+      set: { isExpanded in
+        if isExpanded {
+          expandedEventIDs.insert(eventID)
+        } else {
+          expandedEventIDs.remove(eventID)
+        }
+      }
+    )
   }
 }
 
 private struct StreamEventCard: View {
   let event: NetworkInspectorRequestViewModel.StreamEvent
+  @Binding var isExpanded: Bool
   private let dataText: String?
   private let prettyPrintedData: String?
   private let isLikelyJSON: Bool
-  @State private var usePrettyPrinted: Bool
+  @State private var usePrettyPrinted: Bool = false
   private var showsPrettyToggle: Bool { prettyPrintedData != nil }
 
-  init(event: NetworkInspectorRequestViewModel.StreamEvent) {
+  init(event: NetworkInspectorRequestViewModel.StreamEvent, isExpanded: Binding<Bool>) {
     self.event = event
-    _usePrettyPrinted = State(initialValue: false)
+    _isExpanded = isExpanded
     if let data = event.data, !data.isEmpty {
       dataText = data
       let trimmed = data.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -231,7 +253,11 @@ private struct StreamEventCard: View {
         isLikelyJSON: isLikelyJSON,
         usePrettyPrinted: $usePrettyPrinted,
         showsToggle: false,
-        isExpandable: !usePrettyPrinted
+        isExpandable: !usePrettyPrinted,
+        expandedBinding: Binding(
+          get: { isExpanded || usePrettyPrinted },
+          set: { newValue in isExpanded = newValue }
+        )
       )
 
       metadata

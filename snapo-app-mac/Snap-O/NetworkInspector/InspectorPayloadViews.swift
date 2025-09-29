@@ -25,13 +25,20 @@ struct InspectorExpandableText: View {
   let text: String
   let font: Font
   let maximumHeight: CGFloat
-  @State private var isExpanded = false
+  private let externalIsExpanded: Binding<Bool>?
+  @State private var internalIsExpanded = false
   @State private var fullHeight: CGFloat = .zero
 
-  init(text: String, font: Font, maximumHeight: CGFloat = 100) {
+  init(text: String, font: Font, maximumHeight: CGFloat = 100, isExpanded: Binding<Bool>? = nil) {
     self.text = text
     self.font = font
     self.maximumHeight = maximumHeight
+    externalIsExpanded = isExpanded
+    _internalIsExpanded = State(initialValue: isExpanded?.wrappedValue ?? false)
+  }
+
+  private var isExpandedBinding: Binding<Bool> {
+    externalIsExpanded ?? $internalIsExpanded
   }
 
   private var needsExpansion: Bool {
@@ -43,9 +50,9 @@ struct InspectorExpandableText: View {
       textView()
 
       if needsExpansion {
-        Button(isExpanded ? "Show Less" : "Show More") {
+        Button(isExpandedBinding.wrappedValue ? "Show Less" : "Show More") {
           withAnimation(.easeInOut(duration: 0.2)) {
-            isExpanded.toggle()
+            isExpandedBinding.wrappedValue.toggle()
           }
         }
         .font(.caption)
@@ -60,14 +67,16 @@ struct InspectorExpandableText: View {
         fullHeight = adjusted
       }
       if fullHeight <= maximumHeight + 1 {
-        isExpanded = false
+        if !needsExpansion {
+          isExpandedBinding.wrappedValue = false
+        }
       }
     }
   }
 
   @ViewBuilder
   private func textView() -> some View {
-    if !isExpanded, needsExpansion {
+    if !isExpandedBinding.wrappedValue, needsExpansion {
       Text(text)
         .font(font)
         .textSelection(.enabled)
@@ -126,6 +135,7 @@ struct InspectorPayloadView: View {
   let maximumHeight: CGFloat
   let showsToggle: Bool
   let isExpandable: Bool
+  private let expandedBinding: Binding<Bool>?
   @Binding private var usePrettyPrinted: Bool
 
   init(
@@ -135,7 +145,8 @@ struct InspectorPayloadView: View {
     usePrettyPrinted: Binding<Bool>,
     maximumHeight: CGFloat = 100,
     showsToggle: Bool = true,
-    isExpandable: Bool = true
+    isExpandable: Bool = true,
+    expandedBinding: Binding<Bool>? = nil
   ) {
     self.rawText = rawText
     self.prettyText = prettyText
@@ -143,6 +154,7 @@ struct InspectorPayloadView: View {
     self.maximumHeight = maximumHeight
     self.showsToggle = showsToggle
     self.isExpandable = isExpandable
+    self.expandedBinding = expandedBinding
     _usePrettyPrinted = usePrettyPrinted
   }
 
@@ -162,7 +174,8 @@ struct InspectorPayloadView: View {
         InspectorExpandableText(
           text: displayText,
           font: .callout.monospaced(),
-          maximumHeight: maximumHeight
+          maximumHeight: maximumHeight,
+          isExpanded: expandedBinding
         )
       } else {
         Text(displayText)
