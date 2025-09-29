@@ -80,7 +80,7 @@ struct NetworkInspectorRequestDetailView: View {
         .accessibilityLabel("Close request detail")
       }
 
-      HStack(spacing: 12) {
+      HStack(alignment: .firstTextBaseline, spacing: 12) {
         statusBadge
         Text(request.timingSummary)
           .font(.callout)
@@ -141,10 +141,14 @@ struct NetworkInspectorRequestDetailView: View {
         label = "Pending"
         color = .secondary
       case .success(let code):
-        label = "Success (\(code))"
-        color = .green
-      case .failure:
-        label = "Failed"
+        label = NetworkInspectorStatusPresentation.displayName(for: code)
+        color = NetworkInspectorStatusPresentation.color(for: code)
+      case .failure(let message):
+        if let message, !message.isEmpty {
+          label = message
+        } else {
+          label = "Failed"
+        }
         color = .red
       }
     }

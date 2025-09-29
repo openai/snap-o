@@ -74,21 +74,21 @@ struct NetworkInspectorSidebarList: View {
     } else {
       switch item.kind {
       case .request(let request):
-      switch request.status {
-      case .pending:
-        ProgressView()
-          .controlSize(.small)
-          .scaleEffect(0.75, anchor: .center)
-          .padding(.vertical, 2)
-      case .success(let code):
-        Text("\(code)")
-          .font(.caption)
-          .foregroundStyle(color(forHTTPStatus: code))
-      case .failure(let message):
-        Text(message?.isEmpty == false ? message ?? "Failed" : "Failed")
-          .font(.caption)
-          .foregroundStyle(Color.red)
-      }
+        switch request.status {
+        case .pending:
+          ProgressView()
+            .controlSize(.small)
+            .scaleEffect(0.75, anchor: .center)
+            .padding(.vertical, 2)
+        case .success(let code):
+          Text("\(code)")
+            .font(.caption)
+            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: code))
+        case .failure(let message):
+          Text(message?.isEmpty == false ? message ?? "Failed" : "Failed")
+            .font(.caption)
+            .foregroundStyle(Color.red)
+        }
       case .webSocket(let webSocket):
         if let failure = webSocket.failed {
           Text(failure.message?.isEmpty == false ? failure.message ?? "Failed" : "Failed")
@@ -101,15 +101,15 @@ struct NetworkInspectorSidebarList: View {
         } else if let closed = webSocket.closed {
           Text("\(closed.code)")
             .font(.caption)
-            .foregroundStyle(color(forHTTPStatus: closed.code))
+            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: closed.code))
         } else if let closing = webSocket.closing {
           Text("\(closing.code)")
             .font(.caption)
-            .foregroundStyle(color(forHTTPStatus: closing.code))
+            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: closing.code))
         } else if let opened = webSocket.opened {
           Text("\(opened.code)")
             .font(.caption)
-            .foregroundStyle(color(forHTTPStatus: opened.code))
+            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: opened.code))
         } else {
           ProgressView()
             .controlSize(.small)
@@ -120,18 +120,4 @@ struct NetworkInspectorSidebarList: View {
     }
   }
 
-  private func color(forHTTPStatus code: Int) -> Color {
-    switch code {
-    case 200..<300:
-      return .green
-    case 400..<600:
-      return .red
-    case 300..<400:
-      return .orange
-    case 100..<200:
-      return .secondary
-    default:
-      return .secondary
-    }
-  }
 }

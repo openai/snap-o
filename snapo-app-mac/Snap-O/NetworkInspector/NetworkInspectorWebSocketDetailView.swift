@@ -118,24 +118,28 @@ struct NetworkInspectorWebSocketDetailView: View {
     let color: Color
 
     if let closed = webSocket.closed {
-      label = "Closed (\(closed.code))"
-      color = .green
+      label = NetworkInspectorStatusPresentation.displayName(for: closed.code)
+      color = NetworkInspectorStatusPresentation.color(for: closed.code)
     } else if let closing = webSocket.closing {
-      label = "Closing (\(closing.code))"
-      color = .green
+      label = NetworkInspectorStatusPresentation.displayName(for: closing.code)
+      color = NetworkInspectorStatusPresentation.color(for: closing.code)
     } else if let opened = webSocket.opened {
-      label = "Open (\(opened.code))"
-      color = .green
+      label = NetworkInspectorStatusPresentation.displayName(for: opened.code)
+      color = NetworkInspectorStatusPresentation.color(for: opened.code)
     } else {
       switch webSocket.status {
       case .pending:
         label = "Pending"
         color = .secondary
       case .success(let code):
-        label = "Code \(code)"
-        color = .green
-      case .failure:
-        label = "Failed"
+        label = NetworkInspectorStatusPresentation.displayName(for: code)
+        color = NetworkInspectorStatusPresentation.color(for: code)
+      case .failure(let message):
+        if let message, !message.isEmpty {
+          label = message
+        } else {
+          label = "Failed"
+        }
         color = .red
       }
     }
