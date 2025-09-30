@@ -81,6 +81,10 @@ Running these tools launches Snap-O (or brings it to the foreground) and immedia
 
 There is currently no support for choosing a specific device/emulator when starting Snap-O in this way.
 
+## Network Inspector (Alpha)
+
+Curious about mirroring app traffic into the macOS client? Check the [Network Inspector (Alpha) guide](docs/network-inspector.md) for setup steps, dependency coordinates, and configuration tips.
+
 ## Why not Compose Multiplatform?
 
 Snap-O uses AVKit because it gives a polished video player on macOS and keeps the download small. VLC-based playback felt clunky and the viewing experience suffered. When Compose Multiplatform lets us use a native player with the same quality, we'll revisit the design.
