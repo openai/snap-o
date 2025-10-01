@@ -216,7 +216,7 @@ private struct StreamEventsSection: View {
       Spacer()
 
       if !events.isEmpty {
-        Button(didCopyAll ? "Copied" : "Copy All") {
+        Button {
           NetworkInspectorCopyExporter.copyStreamEventsRaw(events)
 
           copyResetWorkItem?.cancel()
@@ -227,6 +227,11 @@ private struct StreamEventsSection: View {
           }
           copyResetWorkItem = workItem
           DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: workItem)
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: didCopyAll ? "checkmark" : "doc.on.doc")
+            Text(didCopyAll ? "Copied" : "Copy All")
+          }
         }
         .buttonStyle(.borderless)
         .font(.caption)
