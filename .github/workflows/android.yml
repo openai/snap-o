@@ -7,14 +7,14 @@ on:
       - master
     paths:
       - 'snapo-link-android/**'
-      - '.github/workflows/android-libraries.yml'
+      - '.github/workflows/android.yml'
   pull_request:
     branches:
       - main
       - master
     paths:
       - 'snapo-link-android/**'
-      - '.github/workflows/android-libraries.yml'
+      - '.github/workflows/android.yml'
 
 jobs:
   build:
