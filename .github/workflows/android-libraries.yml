@@ -27,12 +27,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 36
-          build-tools: 36.0.0
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1
       - name: Prepare local.properties
         working-directory: snapo-link-android
         run: |
