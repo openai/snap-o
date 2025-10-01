@@ -11,6 +11,11 @@ enum NetworkInspectorCopyExporter {
     setPasteboard(string: command)
   }
 
+  static func copyStreamEventsRaw(_ events: [NetworkInspectorRequestViewModel.StreamEvent]) {
+    let payload = makeStreamEventsPayload(from: events)
+    setPasteboard(string: payload)
+  }
+
   private static func setPasteboard(string: String) {
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
@@ -40,6 +45,14 @@ enum NetworkInspectorCopyExporter {
 
     let warningLines = warnings.map { "# \($0)" }
     return (warningLines + [command]).joined(separator: "\n")
+  }
+
+  private static func makeStreamEventsPayload(from events: [NetworkInspectorRequestViewModel.StreamEvent]) -> String {
+    events.map { event in
+      let normalized = event.raw
+        .replacingOccurrences(of: #"\n+$"#, with: "", options: .regularExpression)
+      return normalized + "\n\n"
+    }.joined()
   }
 
   private static func makeBodyArgument(for request: NetworkInspectorRequestViewModel) -> (argument: String, warnings: [String])? {

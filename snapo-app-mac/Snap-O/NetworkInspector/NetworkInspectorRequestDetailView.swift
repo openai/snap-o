@@ -160,6 +160,8 @@ private struct StreamEventsSection: View {
   let closed: NetworkInspectorRequestViewModel.StreamClosed?
   @Binding var isExpanded: Bool
   @State private var expandedEventIDs: Set<Int64> = []
+  @State private var didCopyAll = false
+  @State private var copyResetWorkItem: DispatchWorkItem?
 
   init(
     events: [NetworkInspectorRequestViewModel.StreamEvent],
@@ -172,51 +174,102 @@ private struct StreamEventsSection: View {
   }
 
   var body: some View {
-    DisclosureGroup(isExpanded: $isExpanded) {
-      VStack(alignment: .leading, spacing: 10) {
-        if events.isEmpty {
-          Text("Awaiting events…")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        } else {
-          LazyVStack(alignment: .leading, spacing: 8) {
-            ForEach(events) { event in
-              StreamEventCard(
-                event: event,
-                isExpanded: binding(for: event.id)
-              )
-            }
-          }
-        }
+    VStack(alignment: .leading, spacing: 6) {
+      header
 
-        if let closed {
-          VStack(alignment: .leading, spacing: 4) {
-            Text("Stream closed (\(closed.reason)) at \(closed.timestamp.inspectorTimeString)")
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .textSelection(.enabled)
-            if let message = closed.message, !message.isEmpty {
-              Text("Message: \(message)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-            }
-            Text("Total events: \(closed.totalEvents) • Total bytes: \(closed.totalBytes)")
-              .font(.footnote)
-              .foregroundStyle(.secondary)
-              .textSelection(.enabled)
-          }
-          .padding(.top, 4)
-        }
+      if isExpanded {
+        content
+          .padding(.top, 6)
       }
-      .padding(.top, 6)
-    } label: {
-      Text("Server-Sent Events")
-        .font(.headline)
     }
     .onChange(of: events.map(\.id)) { _, ids in
       let allowed = Set(ids)
       expandedEventIDs = expandedEventIDs.intersection(allowed)
+      if ids.isEmpty {
+        didCopyAll = false
+        copyResetWorkItem?.cancel()
+      }
+    }
+    .onDisappear {
+      copyResetWorkItem?.cancel()
+      didCopyAll = false
+    }
+  }
+
+  private var header: some View {
+    HStack(spacing: 8) {
+      Button {
+        isExpanded.toggle()
+      } label: {
+        HStack(spacing: 8) {
+          Image(systemName: "chevron.right")
+            .rotationEffect(isExpanded ? .degrees(90) : .zero)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+          Text("Server-Sent Events")
+            .font(.headline)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+
+      Spacer()
+
+      if !events.isEmpty {
+        Button(didCopyAll ? "Copied" : "Copy All") {
+          NetworkInspectorCopyExporter.copyStreamEventsRaw(events)
+
+          copyResetWorkItem?.cancel()
+          didCopyAll = true
+
+          let workItem = DispatchWorkItem {
+            didCopyAll = false
+          }
+          copyResetWorkItem = workItem
+          DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: workItem)
+        }
+        .buttonStyle(.borderless)
+        .font(.caption)
+      }
+    }
+  }
+
+  private var content: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if events.isEmpty {
+        Text("Awaiting events…")
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+      } else {
+        LazyVStack(alignment: .leading, spacing: 8) {
+          ForEach(events) { event in
+            StreamEventCard(
+              event: event,
+              isExpanded: binding(for: event.id)
+            )
+          }
+        }
+      }
+
+      if let closed {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Stream closed (\(closed.reason)) at \(closed.timestamp.inspectorTimeString)")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+          if let message = closed.message, !message.isEmpty {
+            Text("Message: \(message)")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+          Text("Total events: \(closed.totalEvents) • Total bytes: \(closed.totalBytes)")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        }
+        .padding(.top, 4)
+      }
     }
   }
 

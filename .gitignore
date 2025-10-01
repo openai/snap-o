@@ -1,3 +1,6 @@
+# working files
+.modulecache/
+
 # macOS system files
 .DS_Store
 .AppleDouble
