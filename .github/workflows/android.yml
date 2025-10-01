@@ -1,4 +1,4 @@
-name: Android Libraries
+name: Android
 
 on:
   push:
@@ -40,4 +40,4 @@ jobs:
         run: chmod +x gradlew
       - name: Build Android libraries
         working-directory: snapo-link-android
-        run: ./gradlew --no-daemon :link-core:build :link-okhttp3:build :link-okhttp3-noop:build
+        run: ./gradlew --no-daemon build
