@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct NetworkInspectorSidebarServerControls: View {
-  @ObservedObject var store: NetworkInspectorStore
+  let servers: [NetworkInspectorServerViewModel]
   @Binding var selectedServerID: SnapOLinkServerID?
   @Binding var isServerPickerPresented: Bool
   let selectedServer: NetworkInspectorServerViewModel?
@@ -24,7 +24,7 @@ struct NetworkInspectorSidebarServerControls: View {
 
   private var serverPicker: some View {
     Group {
-      if store.servers.isEmpty {
+      if servers.isEmpty {
         HStack {
           Text("No Apps Found")
             .font(.callout)
@@ -154,7 +154,7 @@ struct NetworkInspectorSidebarServerControls: View {
 
   private var serversPopover: some View {
     VStack(alignment: .leading, spacing: 0) {
-      ForEach(store.servers) { server in
+      ForEach(servers) { server in
         Button {
           selectedServerID = server.id
           isServerPickerPresented = false

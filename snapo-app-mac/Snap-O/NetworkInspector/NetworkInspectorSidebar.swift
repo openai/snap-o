@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NetworkInspectorSidebar: View {
-  @ObservedObject var store: NetworkInspectorStore
+  @ObservedObject var requestStore: NetworkInspectorRequestStore
   @Binding var selectedItem: NetworkInspectorItemID?
   @Binding var requestSearchText: String
   @Binding var selectedServerID: SnapOLinkServerID?
@@ -15,7 +15,7 @@ struct NetworkInspectorSidebar: View {
   var body: some View {
     VStack(spacing: 8) {
       NetworkInspectorSidebarServerControls(
-        store: store,
+        servers: requestStore.servers,
         selectedServerID: $selectedServerID,
         isServerPickerPresented: $isServerPickerPresented,
         selectedServer: selectedServer,
@@ -28,7 +28,7 @@ struct NetworkInspectorSidebar: View {
           .frame(maxWidth: .infinity)
 
         Button {
-          store.clearCompleted()
+          requestStore.clearCompleted()
         } label: {
           Image(systemName: "trash")
             .font(.system(size: 13, weight: .semibold))
@@ -40,7 +40,7 @@ struct NetworkInspectorSidebar: View {
       .padding(.horizontal, 12)
 
       NetworkInspectorSidebarList(
-        store: store,
+        requestStore: requestStore,
         serverScopedItems: serverScopedItems,
         filteredItems: filteredItems,
         selectedServer: selectedServer,
@@ -53,6 +53,6 @@ struct NetworkInspectorSidebar: View {
 
 private extension NetworkInspectorSidebar {
   var hasClearableItems: Bool {
-    store.items.contains { !$0.isPending }
+    requestStore.items.contains { !$0.isPending }
   }
 }

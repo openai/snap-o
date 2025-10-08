@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NetworkInspectorSidebarList: View {
-  @ObservedObject var store: NetworkInspectorStore
+  @ObservedObject var requestStore: NetworkInspectorRequestStore
   let serverScopedItems: [NetworkInspectorListItemViewModel]
   let filteredItems: [NetworkInspectorListItemViewModel]
   let selectedServer: NetworkInspectorServerViewModel?
@@ -9,7 +9,7 @@ struct NetworkInspectorSidebarList: View {
 
   var body: some View {
     List(selection: $selectedItem) {
-      if store.items.isEmpty {
+      if requestStore.items.isEmpty {
         Text("No activity yet")
           .foregroundStyle(.secondary)
       } else if serverScopedItems.isEmpty {

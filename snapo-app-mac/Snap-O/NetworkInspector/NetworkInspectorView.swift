@@ -2,15 +2,21 @@ import Foundation
 import SwiftUI
 
 struct NetworkInspectorView: View {
-  @ObservedObject var store: NetworkInspectorStore
+  @ObservedObject private var store: NetworkInspectorStore
+  @StateObject private var requestStore: NetworkInspectorRequestStore
   @State private var selectedItem: NetworkInspectorItemID?
   @State private var requestSearchText = ""
   @State private var selectedServerID: SnapOLinkServerID?
   @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
   @State private var isServerPickerPresented = false
 
+  init(store: NetworkInspectorStore) {
+    _store = ObservedObject(wrappedValue: store)
+    _requestStore = StateObject(wrappedValue: NetworkInspectorRequestStore(store: store))
+  }
+
   private var serverScopedItems: [NetworkInspectorListItemViewModel] {
-    store.items.filter { item in
+    requestStore.items.filter { item in
       guard let selectedServerID else { return true }
       return item.serverID == selectedServerID
     }
@@ -28,15 +34,15 @@ struct NetworkInspectorView: View {
   }
 
   private var selectedServer: NetworkInspectorServerViewModel? {
-    guard let selectedServerID else { return store.servers.first }
-    return store.servers.first { $0.id == selectedServerID } ?? store.servers.first
+    guard let selectedServerID else { return requestStore.servers.first }
+    return requestStore.servers.first { $0.id == selectedServerID } ?? requestStore.servers.first
   }
 
   private var replacementServerCandidate: NetworkInspectorServerViewModel? {
     guard let current = selectedServer,
           current.isConnected == false else { return nil }
 
-    return store.servers.first { candidate in
+    return requestStore.servers.first { candidate in
       candidate.isConnected &&
         candidate.id != current.id &&
         candidate.displayName == current.displayName &&
@@ -60,7 +66,7 @@ struct NetworkInspectorView: View {
   var body: some View {
     NavigationSplitView(columnVisibility: $splitViewVisibility) {
       NetworkInspectorSidebar(
-        store: store,
+        requestStore: requestStore,
         selectedItem: $selectedItem,
         requestSearchText: $requestSearchText,
         selectedServerID: $selectedServerID,
@@ -79,18 +85,18 @@ struct NetworkInspectorView: View {
     .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
     .onChange(of: selectedServerID) { _, newValue in
       if let id = newValue {
-        store.setRetainedServerIDs(Set([id]))
+        requestStore.setRetainedServerIDs(Set([id]))
       } else {
-        store.setRetainedServerIDs(Set<SnapOLinkServerID>())
+        requestStore.setRetainedServerIDs(Set<SnapOLinkServerID>())
       }
     }
-    .onChange(of: store.items.map(\.id)) { _, ids in
+    .onChange(of: requestStore.items.map(\.id)) { _, ids in
       reconcileSelection(allIDs: ids, filteredIDs: filteredItems.map(\.id))
     }
     .onChange(of: filteredItems.map(\.id)) { _, filteredIDs in
-      reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredIDs)
+      reconcileSelection(allIDs: requestStore.items.map(\.id), filteredIDs: filteredIDs)
     }
-    .onChange(of: store.servers.map(\.id)) { _, ids in
+    .onChange(of: requestStore.servers.map(\.id)) { _, ids in
       if ids.isEmpty {
         selectedServerID = nil
         isServerPickerPresented = false
@@ -103,17 +109,17 @@ struct NetworkInspectorView: View {
     }
     .onAppear {
       if selectedServerID == nil {
-        selectedServerID = store.servers.first?.id
+        selectedServerID = requestStore.servers.first?.id
       }
 
       if let id = selectedServerID {
-        store.setRetainedServerIDs(Set([id]))
+        requestStore.setRetainedServerIDs(Set([id]))
       } else {
-        store.setRetainedServerIDs(Set<SnapOLinkServerID>())
+        requestStore.setRetainedServerIDs(Set<SnapOLinkServerID>())
       }
 
       if selectedItem == nil {
-        reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredItems.map(\.id))
+        reconcileSelection(allIDs: requestStore.items.map(\.id), filteredIDs: filteredItems.map(\.id))
       }
     }
   }
@@ -149,7 +155,7 @@ private extension NetworkInspectorView {
         selectedItem = nil
         splitViewVisibility = .all
       }
-    } else if store.servers.isEmpty {
+    } else if requestStore.servers.isEmpty {
       emptyStateView()
     } else {
       placeholderSelectionView
