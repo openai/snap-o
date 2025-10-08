@@ -136,6 +136,7 @@ struct InspectorPayloadView: View {
   let showsToggle: Bool
   let isExpandable: Bool
   private let expandedBinding: Binding<Bool>?
+  private let jsonOutlineRoot: JSONOutlineNode?
   @Binding private var usePrettyPrinted: Bool
 
   init(
@@ -155,6 +156,11 @@ struct InspectorPayloadView: View {
     self.showsToggle = showsToggle
     self.isExpandable = isExpandable
     self.expandedBinding = expandedBinding
+    if let prettyText {
+      jsonOutlineRoot = JSONOutlineNode.makeTree(from: prettyText)
+    } else {
+      jsonOutlineRoot = nil
+    }
     _usePrettyPrinted = usePrettyPrinted
   }
 
@@ -170,21 +176,28 @@ struct InspectorPayloadView: View {
           .foregroundStyle(.secondary)
       }
 
-      if isExpandable {
-        InspectorExpandableText(
-          text: displayText,
-          font: .callout.monospaced(),
-          maximumHeight: maximumHeight,
-          isExpanded: expandedBinding
-        )
-      } else {
-        Text(displayText)
-          .font(.callout.monospaced())
-          .textSelection(.enabled)
-          .frame(maxWidth: .infinity, alignment: .leading)
-      }
+      payloadContent()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  @ViewBuilder
+  private func payloadContent() -> some View {
+    if usePrettyPrinted, let root = jsonOutlineRoot {
+      JSONOutlineView(root: root)
+    } else if isExpandable {
+      InspectorExpandableText(
+        text: displayText,
+        font: .callout.monospaced(),
+        maximumHeight: maximumHeight,
+        isExpanded: expandedBinding
+      )
+    } else {
+      Text(displayText)
+        .font(.callout.monospaced())
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
   }
 
   private var displayText: String {
