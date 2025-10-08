@@ -43,6 +43,7 @@ private struct JSONOutlineNodeView: View {
   let node: JSONOutlineNode
   let isRoot: Bool
   @State private var isExpanded: Bool
+  @State private var isStringExpanded: Bool = false
 
   init(node: JSONOutlineNode, isRoot: Bool) {
     self.node = node
@@ -58,7 +59,7 @@ private struct JSONOutlineNodeView: View {
       case let .array(children):
         compositeView(children: children, openSymbol: "[", closeSymbol: "]")
       case let .string(value):
-        valueLabel(content: Text("\"\(value)\"").foregroundColor(.red))
+        stringValueView(value: value)
       case let .number(value):
         valueLabel(content: Text(value).foregroundColor(.blue))
       case let .bool(value):
@@ -152,6 +153,42 @@ private struct JSONOutlineNodeView: View {
     }
     return Text(openSymbol)
   }
+
+  private func stringValueView(value: String) -> some View {
+    let lines = value.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+    let isCollapsible = lines.count > stringLineLimit
+    let displayValue: String
+
+    if isCollapsible && !isStringExpanded {
+      let limitedLines = lines.prefix(stringLineLimit)
+      let joined = limitedLines.joined(separator: "\n")
+      displayValue = "\(joined)\n…"
+    } else {
+      displayValue = value
+    }
+
+    let valueText = Text("\"\(displayValue)\"").foregroundColor(.red)
+
+    return VStack(alignment: .leading, spacing: 4) {
+      valueLabel(content: valueText)
+      if isCollapsible {
+        HStack(alignment: .top, spacing: 4) {
+          trianglePlaceholder
+          Button(isStringExpanded ? "See less" : "See more") {
+            withAnimation {
+              isStringExpanded.toggle()
+            }
+          }
+          .buttonStyle(.plain)
+          .foregroundColor(.blue)
+          .font(.footnote)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+    }
+  }
+
+  private var stringLineLimit: Int { 20 }
 
   private var keyLabel: Text? {
     guard let key = node.key else { return nil }
