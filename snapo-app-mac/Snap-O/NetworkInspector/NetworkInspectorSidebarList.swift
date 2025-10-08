@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct NetworkInspectorSidebarList: View {
-  @ObservedObject var requestStore: NetworkInspectorRequestStore
+  let store: NetworkInspectorStore
+  let items: [NetworkInspectorListItemViewModel]
   let serverScopedItems: [NetworkInspectorListItemViewModel]
   let filteredItems: [NetworkInspectorListItemViewModel]
   let selectedServer: NetworkInspectorServerViewModel?
@@ -9,7 +10,7 @@ struct NetworkInspectorSidebarList: View {
 
   var body: some View {
     List(selection: $selectedItem) {
-      if requestStore.items.isEmpty {
+      if items.isEmpty {
         Text("No activity yet")
           .foregroundStyle(.secondary)
       } else if serverScopedItems.isEmpty {
@@ -53,7 +54,9 @@ struct NetworkInspectorSidebarList: View {
               }
 
               Button("Copy as cURL") {
-                NetworkInspectorCopyExporter.copyCurl(for: request)
+                if let model = store.requestViewModel(for: request.id) {
+                  NetworkInspectorCopyExporter.copyCurl(for: model)
+                }
               }
             }
           }
@@ -91,31 +94,21 @@ struct NetworkInspectorSidebarList: View {
             .foregroundStyle(Color.red)
         }
       case .webSocket(let webSocket):
-        if let failure = webSocket.failed {
-          Text(failure.message?.isEmpty == false ? failure.message ?? "Failed" : "Failed")
-            .font(.caption)
-            .foregroundStyle(Color.red)
-        } else if webSocket.cancelled != nil {
-          Text("Cancelled")
-            .font(.caption)
-            .foregroundStyle(Color.red)
-        } else if let closed = webSocket.closed {
-          Text("\(closed.code)")
-            .font(.caption)
-            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: closed.code))
-        } else if let closing = webSocket.closing {
-          Text("\(closing.code)")
-            .font(.caption)
-            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: closing.code))
-        } else if let opened = webSocket.opened {
-          Text("\(opened.code)")
-            .font(.caption)
-            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: opened.code))
-        } else {
+        switch webSocket.status {
+        case .pending:
           ProgressView()
             .controlSize(.small)
             .scaleEffect(0.75, anchor: .center)
             .padding(.vertical, 2)
+        case .success(let code):
+          Text("\(code)")
+            .font(.caption)
+            .foregroundStyle(NetworkInspectorStatusPresentation.color(for: code))
+        case .failure(let message):
+          let label = message?.isEmpty == false ? message ?? "Failed" : "Failed"
+          Text(label)
+            .font(.caption)
+            .foregroundStyle(Color.red)
         }
       }
     }

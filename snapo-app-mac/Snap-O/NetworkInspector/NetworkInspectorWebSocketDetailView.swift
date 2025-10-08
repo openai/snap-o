@@ -1,30 +1,48 @@
+import Combine
 import Foundation
 import SwiftUI
 
 struct NetworkInspectorWebSocketDetailView: View {
-  let webSocket: NetworkInspectorWebSocketViewModel
+  @StateObject private var viewModel: NetworkInspectorWebSocketDetailViewModel
   let onClose: () -> Void
   @State private var requestHeadersExpanded = false
 
+  init(store: NetworkInspectorStore, webSocketID: NetworkInspectorWebSocketID, onClose: @escaping () -> Void) {
+    _viewModel = StateObject(wrappedValue: NetworkInspectorWebSocketDetailViewModel(store: store, webSocketID: webSocketID))
+    self.onClose = onClose
+  }
+
   var body: some View {
-    ScrollView(.vertical) {
-      VStack(alignment: .leading, spacing: 16) {
-        headerSummary
+    Group {
+      if let webSocket = viewModel.webSocket {
+        ScrollView(.vertical) {
+          VStack(alignment: .leading, spacing: 16) {
+            headerSummary(webSocket)
 
-        NetworkInspectorHeadersSection(
-          title: "Request Headers",
-          headers: webSocket.requestHeaders,
-          isExpanded: $requestHeadersExpanded
-        )
-        NetworkInspectorHeadersSection(title: "Response Headers", headers: webSocket.responseHeaders)
+            NetworkInspectorHeadersSection(
+              title: "Request Headers",
+              headers: webSocket.requestHeaders,
+              isExpanded: $requestHeadersExpanded
+            )
+            NetworkInspectorHeadersSection(title: "Response Headers", headers: webSocket.responseHeaders)
 
-        messagesSection
+            messagesSection(webSocket)
+          }
+          .padding(24)
+        }
+      } else {
+        VStack(spacing: 12) {
+          ProgressView()
+          Text("Loading web socket details…")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      .padding(24)
     }
   }
 
-  private var headerSummary: some View {
+  private func headerSummary(_ webSocket: NetworkInspectorWebSocketViewModel) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .top, spacing: 12) {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -46,7 +64,7 @@ struct NetworkInspectorWebSocketDetailView: View {
       }
 
       HStack(spacing: 12) {
-        statusBadge
+        statusBadge(webSocket)
         Text(webSocket.timingSummary)
           .font(.callout)
           .foregroundStyle(.secondary)
@@ -113,7 +131,7 @@ struct NetworkInspectorWebSocketDetailView: View {
     }
   }
 
-  private var statusBadge: some View {
+  private func statusBadge(_ webSocket: NetworkInspectorWebSocketViewModel) -> some View {
     let label: String
     let color: Color
 
@@ -153,7 +171,7 @@ struct NetworkInspectorWebSocketDetailView: View {
       .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
   }
 
-  private var messagesSection: some View {
+  private func messagesSection(_ webSocket: NetworkInspectorWebSocketViewModel) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Messages")
         .font(.headline)
@@ -271,6 +289,28 @@ private struct MessageCardView: View {
     } catch {
       return nil
     }
+  }
+}
+
+@MainActor
+final class NetworkInspectorWebSocketDetailViewModel: ObservableObject {
+  @Published private(set) var webSocket: NetworkInspectorWebSocketViewModel?
+
+  private let store: NetworkInspectorStore
+  private let webSocketID: NetworkInspectorWebSocketID
+  private var cancellable: AnyCancellable?
+
+  init(store: NetworkInspectorStore, webSocketID: NetworkInspectorWebSocketID) {
+    self.store = store
+    self.webSocketID = webSocketID
+    webSocket = store.webSocketViewModel(for: webSocketID)
+
+    cancellable = store.$items
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        guard let self else { return }
+        self.webSocket = store.webSocketViewModel(for: self.webSocketID)
+      }
   }
 }
 
