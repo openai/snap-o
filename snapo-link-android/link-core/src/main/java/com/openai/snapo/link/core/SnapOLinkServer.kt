@@ -35,9 +35,10 @@ import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * App-side server that accepts arbitrary SnapONetRecord events,
- * buffers the last [config.bufferWindowMs], and streams them to a single desktop client.
+ * buffers the last [SnapONetConfig.bufferWindow], and streams them to a single desktop client.
  *
- * Transport: ABSTRACT local UNIX domain socket → adb forward tcp:PORT localabstract:snapo_server_$pid
+ * Transport:
+ * ABSTRACT local UNIX domain socket → adb forward tcp:PORT localabstract:snapo_server_$pid
  */
 class SnapOLinkServer(
     private val app: Application,
@@ -223,7 +224,7 @@ class SnapOLinkServer(
             writer.write(Ndjson.encodeToString(SnapONetRecord.serializer(), record))
             writer.write("\n")
             writer.flush()
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
             // connection likely dropped; accept loop will tidy up
             try {
                 writer.close()
@@ -398,56 +399,108 @@ class SnapOLinkServer(
     }
 
     private fun evictExpiredRecords(cutoff: Long) {
-        val requestStarts = mutableMapOf<String, RequestWillBeSent>()
-        val requestTerminals = mutableMapOf<String, SnapONetRecord>()
-        val responseReceives = mutableMapOf<String, ResponseReceived>()
-        val responseStreamEvents = mutableMapOf<String, MutableList<ResponseStreamEvent>>()
-        val webSocketStarts = mutableMapOf<String, MutableList<PerWebSocketRecord>>()
-        val webSocketTerminals = mutableMapOf<String, PerWebSocketRecord>()
+        data class RequestPruneState(
+            var start: RequestWillBeSent? = null,
+            var terminal: SnapONetRecord? = null,
+            val oldEvents: MutableList<ResponseStreamEvent> = mutableListOf(),
+            val oldRecords: MutableList<SnapONetRecord> = mutableListOf(),
+            var hasRecentRecords: Boolean = false,
+        )
+
+        data class WebSocketPruneState(
+            val startRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
+            var terminal: PerWebSocketRecord? = null,
+            val oldRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
+            var hasRecentRecords: Boolean = false,
+        )
+
+        val requestStates = mutableMapOf<String, RequestPruneState>()
+        val webSocketStates = mutableMapOf<String, WebSocketPruneState>()
         val toRemove: MutableSet<SnapONetRecord> = Collections.newSetFromMap(IdentityHashMap())
 
+        fun requestState(id: String): RequestPruneState =
+            requestStates.getOrPut(id) { RequestPruneState() }
+
+        fun webSocketState(id: String): WebSocketPruneState =
+            webSocketStates.getOrPut(id) { WebSocketPruneState() }
+
         for (record in eventBuffer) {
-            if (eventTime(record) >= cutoff) continue
-            when (record) {
-                is RequestWillBeSent -> requestStarts[record.id] = record
-                is ResponseReceived -> if (!activeResponseStreams.contains(record.id)) {
-                    responseReceives[record.id] = record
-                    requestTerminals[record.id] = record
+            val time = eventTime(record)
+            when {
+                record is PerRequestRecord -> {
+                    val state = requestState(record.id)
+                    if (time >= cutoff) {
+                        state.hasRecentRecords = true
+                    } else {
+                        when (record) {
+                            is RequestWillBeSent -> state.start = record
+                            is ResponseStreamEvent -> state.oldEvents.add(record)
+                            is ResponseReceived -> {
+                                if (!activeResponseStreams.contains(record.id)) {
+                                    state.terminal = record
+                                }
+                                state.oldRecords.add(record)
+                            }
+
+                            is RequestFailed -> {
+                                state.terminal = record
+                                state.oldRecords.add(record)
+                            }
+
+                            is ResponseStreamClosed -> {
+                                state.terminal = record
+                                state.oldRecords.add(record)
+                            }
+                        }
+                    }
                 }
 
-                is RequestFailed -> requestTerminals[record.id] = record
-                is ResponseStreamClosed -> requestTerminals[record.id] = record
-                is ResponseStreamEvent -> if (!activeResponseStreams.contains(record.id)) {
-                    responseStreamEvents.getOrPut(record.id) { mutableListOf() }.add(record)
+                record is PerWebSocketRecord -> {
+                    val state = webSocketState(record.id)
+                    if (time >= cutoff) {
+                        state.hasRecentRecords = true
+                    } else {
+                        when (record) {
+                            is WebSocketWillOpen,
+                            is WebSocketOpened -> state.startRecords.add(record)
+
+                            is WebSocketClosed,
+                            is WebSocketFailed,
+                            is WebSocketCancelled -> {
+                                state.terminal = record
+                                state.oldRecords.add(record)
+                            }
+
+                            else -> state.oldRecords.add(record)
+                        }
+                    }
                 }
 
-                is WebSocketWillOpen ->
-                    webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
-
-                is WebSocketOpened ->
-                    webSocketStarts.getOrPut(record.id) { mutableListOf() }.add(record)
-
-                is WebSocketClosed -> webSocketTerminals[record.id] = record
-                is WebSocketFailed -> webSocketTerminals[record.id] = record
-                is WebSocketCancelled -> webSocketTerminals[record.id] = record
-                else -> toRemove.add(record)
+                time < cutoff -> {
+                    toRemove.add(record)
+                }
             }
         }
 
-        for ((id, head) in requestStarts) {
-            val terminal = requestTerminals[id] ?: continue
-            toRemove.add(head)
-            toRemove.add(terminal)
-            responseReceives[id]?.let { toRemove.add(it) }
-            responseStreamEvents[id]?.forEach { toRemove.add(it) }
+        for ((id, state) in requestStates) {
+            if (state.oldEvents.isNotEmpty()) {
+                state.oldEvents.forEach { toRemove.add(it) }
+            }
+
+            val hasRecent = state.hasRecentRecords || activeResponseStreams.contains(id)
+            if (!hasRecent && state.terminal != null) {
+                state.start?.let { toRemove.add(it) }
+                state.oldRecords.forEach { toRemove.add(it) }
+            }
         }
 
-        for ((id, headList) in webSocketStarts) {
-            val terminal = webSocketTerminals[id] ?: continue
-            if (!openWebSockets.contains(id)) {
-                toRemove.add(terminal)
-                headList.forEach { toRemove.add(it) }
-                collectWebSocketRecordsForRemoval(id, toRemove)
+        for ((id, state) in webSocketStates) {
+            val isOpen = openWebSockets.contains(id)
+            if (state.hasRecentRecords || isOpen) {
+                state.oldRecords.forEach { toRemove.add(it) }
+            } else if (state.terminal != null) {
+                state.startRecords.forEach { toRemove.add(it) }
+                state.oldRecords.forEach { toRemove.add(it) }
             }
         }
 
@@ -492,17 +545,6 @@ class SnapOLinkServer(
                 }
 
                 else -> Unit
-            }
-        }
-    }
-
-    private fun collectWebSocketRecordsForRemoval(
-        socketId: String,
-        target: MutableSet<SnapONetRecord>,
-    ) {
-        for (record in eventBuffer) {
-            if (record is PerWebSocketRecord && record.id == socketId) {
-                target.add(record)
             }
         }
     }
