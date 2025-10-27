@@ -214,7 +214,7 @@ private struct MessageCardView: View {
       isLikelyJSON = false
     }
 
-    _usePrettyPrinted = State(initialValue: false)
+    _usePrettyPrinted = State(initialValue: prettyPrintedPreview != nil)
 
     if message.direction == .outgoing {
       directionSymbolName = "paperplane"
