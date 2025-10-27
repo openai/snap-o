@@ -10,7 +10,7 @@ struct NetworkInspectorBodySection: View {
     self.title = title
     self.payload = payload
     _isExpanded = isExpanded
-    _usePrettyPrinted = State(initialValue: false)
+    _usePrettyPrinted = State(initialValue: payload.prettyPrintedText != nil)
   }
 
   var body: some View {

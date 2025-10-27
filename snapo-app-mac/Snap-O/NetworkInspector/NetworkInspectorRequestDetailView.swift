@@ -318,7 +318,7 @@ private struct StreamEventCard: View {
   private let dataText: String?
   private let prettyPrintedData: String?
   private let isLikelyJSON: Bool
-  @State private var usePrettyPrinted: Bool = false
+  @State private var usePrettyPrinted: Bool
   private var showsPrettyToggle: Bool { prettyPrintedData != nil }
 
   init(event: NetworkInspectorRequestViewModel.StreamEvent, isExpanded: Binding<Bool>) {
@@ -335,6 +335,7 @@ private struct StreamEventCard: View {
       prettyPrintedData = nil
       isLikelyJSON = false
     }
+    _usePrettyPrinted = State(initialValue: prettyPrintedData != nil)
   }
 
   var body: some View {
