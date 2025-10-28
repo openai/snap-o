@@ -337,13 +337,11 @@ private extension JSONOutlineNode {
 
   func collectStringNodeIDs(includeSelf: Bool) -> Set<String> {
     switch value {
+    case .string where includeSelf:
+      Set([id])
     case .string:
-      includeSelf ? Set([id]) : Set<String>()
-    case .object(let children):
-      children.reduce(into: Set<String>()) { result, child in
-        result.formUnion(child.collectStringNodeIDs(includeSelf: true))
-      }
-    case .array(let children):
+      Set<String>()
+    case .object(let children), .array(let children):
       children.reduce(into: Set<String>()) { result, child in
         result.formUnion(child.collectStringNodeIDs(includeSelf: true))
       }
