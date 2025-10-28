@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct JSONOutlineNode: Identifiable {
   enum Value {
@@ -74,15 +74,15 @@ private struct JSONOutlineNodeView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       switch node.value {
-      case let .object(children):
+      case .object(let children):
         compositeView(children: children, openSymbol: "{", closeSymbol: "}")
-      case let .array(children):
+      case .array(let children):
         compositeView(children: children, openSymbol: "[", closeSymbol: "]")
-      case let .string(value):
+      case .string(let value):
         stringValueView(value: value)
-      case let .number(value):
+      case .number(let value):
         valueLabel(content: Text(value).foregroundColor(.blue))
-      case let .bool(value):
+      case .bool(let value):
         valueLabel(content: Text(value ? "true" : "false").foregroundColor(.blue))
       case .null:
         valueLabel(content: Text("null").foregroundColor(.secondary))
@@ -184,7 +184,7 @@ private struct JSONOutlineNodeView: View {
     let isCollapsible = lines.count > stringLineLimit
     let displayValue: String
 
-    if isCollapsible && !isStringExpanded {
+    if isCollapsible, !isStringExpanded {
       let limitedLines = lines.prefix(stringLineLimit)
       let joined = limitedLines.joined(separator: "\n")
       displayValue = "\(joined)\n…"
@@ -251,8 +251,7 @@ private struct JSONOutlineNodeView: View {
     expandedStrings.contains(node.id)
   }
 
-  @ViewBuilder
-  private var nodeContextMenu: some View {
+  @ViewBuilder private var nodeContextMenu: some View {
     if let valueText = node.copyValueText(prettyPrinted: true) {
       Button("Copy Value") {
         copyToPasteboard(valueText)
@@ -308,24 +307,24 @@ private struct JSONOutlineNodeView: View {
 private extension JSONOutlineNode {
   var isExpandable: Bool {
     switch value {
-    case let .object(children):
-      return !children.isEmpty
-    case let .array(children):
-      return !children.isEmpty
+    case .object(let children):
+      !children.isEmpty
+    case .array(let children):
+      !children.isEmpty
     default:
-      return false
+      false
     }
   }
 
   func collectExpandableIDs(includeSelf: Bool) -> Set<String> {
     switch value {
-    case let .object(children):
+    case .object(let children):
       var ids: Set<String> = includeSelf && isExpandable ? Set([id]) : Set<String>()
       for child in children {
         ids.formUnion(child.collectExpandableIDs(includeSelf: true))
       }
       return ids
-    case let .array(children):
+    case .array(let children):
       var ids: Set<String> = includeSelf && isExpandable ? Set([id]) : Set<String>()
       for child in children {
         ids.formUnion(child.collectExpandableIDs(includeSelf: true))
@@ -339,17 +338,17 @@ private extension JSONOutlineNode {
   func collectStringNodeIDs(includeSelf: Bool) -> Set<String> {
     switch value {
     case .string:
-      return includeSelf ? Set([id]) : Set<String>()
-    case let .object(children):
-      return children.reduce(into: Set<String>()) { result, child in
+      includeSelf ? Set([id]) : Set<String>()
+    case .object(let children):
+      children.reduce(into: Set<String>()) { result, child in
         result.formUnion(child.collectStringNodeIDs(includeSelf: true))
       }
-    case let .array(children):
-      return children.reduce(into: Set<String>()) { result, child in
+    case .array(let children):
+      children.reduce(into: Set<String>()) { result, child in
         result.formUnion(child.collectStringNodeIDs(includeSelf: true))
       }
     default:
-      return Set<String>()
+      Set<String>()
     }
   }
 
@@ -370,11 +369,11 @@ private extension JSONOutlineNode {
         return fragment
       }
       return string
-    case let .string(string):
+    case .string(let string):
       return string
-    case let .number(number):
+    case .number(let number):
       return number
-    case let .bool(bool):
+    case .bool(let bool):
       return bool ? "true" : "false"
     case .null:
       return "null"
@@ -390,19 +389,19 @@ private extension JSONOutlineNode {
 
   private func rawInlineValueDescription() -> String {
     switch value {
-    case let .object(children):
+    case .object(let children):
       guard !children.isEmpty else { return "{ }" }
       let inner = children.map { $0.rawInlineKeyValueDescription() }.joined(separator: ", ")
       return "{ \(inner) }"
-    case let .array(children):
+    case .array(let children):
       guard !children.isEmpty else { return "[ ]" }
       let inner = children.map { $0.rawInlineValueDescription() }.joined(separator: ", ")
       return "[ \(inner) ]"
-    case let .string(string):
+    case .string(let string):
       return "\"\(string.jsonEscapedSnippet())\""
-    case let .number(number):
+    case .number(let number):
       return number
-    case let .bool(value):
+    case .bool(let value):
       return value ? "true" : "false"
     case .null:
       return "null"
@@ -410,7 +409,7 @@ private extension JSONOutlineNode {
   }
 
   private func rawInlineKeyValueDescription() -> String {
-    guard let key = key else {
+    guard let key else {
       return rawInlineValueDescription()
     }
     let keyDisplay = key.hasPrefix("[") ? key : "\"\(key)\""
@@ -419,23 +418,23 @@ private extension JSONOutlineNode {
 
   private func jsonFragmentText() -> String? {
     switch value {
-    case let .object(children):
+    case .object(let children):
       let fragments = children.compactMap { child -> String? in
         guard let key = child.key else { return nil }
         guard let valueFragment = child.jsonFragmentText() else { return nil }
         return "\"\(key.jsonEscapedForJSON())\":\(valueFragment)"
       }
       return "{\(fragments.joined(separator: ","))}"
-    case let .array(children):
+    case .array(let children):
       let fragments = children.map { child -> String in
         child.jsonFragmentText() ?? "null"
       }
       return "[\(fragments.joined(separator: ","))]"
-    case let .string(string):
+    case .string(let string):
       return "\"\(string.jsonEscapedForJSON())\""
-    case let .number(number):
+    case .number(let number):
       return number
-    case let .bool(bool):
+    case .bool(let bool):
       return bool ? "true" : "false"
     case .null:
       return "null"
@@ -445,7 +444,7 @@ private extension JSONOutlineNode {
 
 private extension String {
   func jsonEscapedSnippet() -> String {
-    var snippet = self.replacingOccurrences(of: "\"", with: "\\\"")
+    var snippet = replacingOccurrences(of: "\"", with: "\\\"")
     snippet = snippet.replacingOccurrences(of: "\n", with: "\\n")
     snippet = snippet.replacingOccurrences(of: "\t", with: "\\t")
     return snippet
@@ -463,7 +462,7 @@ private extension String {
       case 0x0A: result.append("\\n")
       case 0x0D: result.append("\\r")
       case 0x09: result.append("\\t")
-      case 0x00...0x1F:
+      case 0x00 ... 0x1F:
         result.append(String(format: "\\u%04X", scalar.value))
       default:
         result.append(String(scalar))
@@ -487,7 +486,7 @@ private struct JSONParser {
 
   init(text: String) {
     self.text = text
-    self.index = text.startIndex
+    index = text.startIndex
   }
 
   mutating func parseRoot() throws -> JSONOutlineNode {
@@ -508,7 +507,7 @@ private struct JSONParser {
     case "\"":
       let string = try parseStringLiteral()
       return JSONOutlineNode(key: key, path: path, value: .string(string))
-    case "-", "0"..."9":
+    case "-", "0" ... "9":
       let number = try parseNumberLiteral()
       return JSONOutlineNode(key: key, path: path, value: .number(number))
     case "t":
@@ -540,11 +539,10 @@ private struct JSONParser {
       skipWhitespace()
       try expect(":")
       skipWhitespace()
-      let childPath: String
-      if path == "$" {
-        childPath = "$.\(childKey)"
+      let childPath = if path == "$" {
+        "$.\(childKey)"
       } else {
-        childPath = "\(path).\(childKey)"
+        "\(path).\(childKey)"
       }
       let child = try parseValue(withKey: childKey, path: childPath)
       children.append(child)
@@ -572,11 +570,10 @@ private struct JSONParser {
     while true {
       skipWhitespace()
       let childKey = "[\(indexCounter)]"
-      let childPath: String
-      if path == "$" {
-        childPath = "$\(childKey)"
+      let childPath = if path == "$" {
+        "$\(childKey)"
       } else {
-        childPath = "\(path)\(childKey)"
+        "\(path)\(childKey)"
       }
       let child = try parseValue(withKey: childKey, path: childPath)
       children.append(child)
@@ -632,11 +629,11 @@ private struct JSONParser {
     let hex = try readHexDigits(count: 4)
     guard let value = UInt32(hex, radix: 16) else { throw ParserError.invalidUnicodeEscape }
 
-    if (0xD800...0xDBFF).contains(value) {
-      guard match("\\") && match("u") else { throw ParserError.invalidUnicodeEscape }
+    if (0xD800 ... 0xDBFF).contains(value) {
+      guard match("\\"), match("u") else { throw ParserError.invalidUnicodeEscape }
       let lowHex = try readHexDigits(count: 4)
       guard let lowValue = UInt32(lowHex, radix: 16),
-            (0xDC00...0xDFFF).contains(lowValue) else {
+            (0xDC00 ... 0xDFFF).contains(lowValue) else {
         throw ParserError.invalidUnicodeEscape
       }
       let combined = 0x10000 + ((value - 0xD800) << 10) + (lowValue - 0xDC00)
@@ -644,7 +641,7 @@ private struct JSONParser {
       return scalar
     }
 
-    if (0xDC00...0xDFFF).contains(value) {
+    if (0xDC00 ... 0xDFFF).contains(value) {
       throw ParserError.invalidUnicodeEscape
     }
 
@@ -654,7 +651,7 @@ private struct JSONParser {
 
   private mutating func readHexDigits(count: Int) throws -> String {
     var result = ""
-    for _ in 0..<count {
+    for _ in 0 ..< count {
       guard let character = advance(), character.isHexDigit else { throw ParserError.invalidUnicodeEscape }
       result.append(character)
     }
@@ -664,7 +661,7 @@ private struct JSONParser {
   private mutating func parseNumberLiteral() throws -> String {
     let start = index
 
-    if match("-") { }
+    if match("-") {}
 
     if match("0") {
       if let next = peek(), next.isWholeNumber {
@@ -685,7 +682,7 @@ private struct JSONParser {
       try parseDigits(required: true)
     }
 
-    return String(text[start..<index])
+    return String(text[start ..< index])
   }
 
   private mutating func parseDigits(required: Bool) throws {
@@ -694,7 +691,7 @@ private struct JSONParser {
       _ = advance()
       hasDigit = true
     }
-    if required && !hasDigit {
+    if required, !hasDigit {
       throw ParserError.invalidNumber
     }
   }

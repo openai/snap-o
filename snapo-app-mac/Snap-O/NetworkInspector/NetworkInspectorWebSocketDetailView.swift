@@ -311,13 +311,13 @@ final class NetworkInspectorWebSocketDetailViewModel: ObservableObject {
       .sink { [weak self] _ in
         guard let self else { return }
         guard let latest = store.webSocketViewModel(for: self.webSocketID) else {
-          self.webSocket = nil
+          webSocket = nil
           return
         }
-        if let current = self.webSocket, current.lastUpdatedAt == latest.lastUpdatedAt {
+        if let current = webSocket, current.lastUpdatedAt == latest.lastUpdatedAt {
           return
         }
-        self.webSocket = latest
+        webSocket = latest
       }
   }
 }
