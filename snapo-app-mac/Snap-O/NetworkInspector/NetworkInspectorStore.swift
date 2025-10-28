@@ -23,9 +23,8 @@ final class NetworkInspectorStore: ObservableObject {
   private var latestWebSockets: [NetworkInspectorWebSocket] = []
   private var requestLookup: [NetworkInspectorRequestID: NetworkInspectorRequest] = [:]
   private var webSocketLookup: [NetworkInspectorWebSocketID: NetworkInspectorWebSocket] = [:]
-  private var requestSectionStates: [NetworkInspectorRequestID: [RequestDetailSection: Bool]] = [:]
+  private var requestUIStates: [NetworkInspectorRequestID: RequestUIState] = [:]
   private var requestSubjects: [NetworkInspectorRequestID: CurrentValueSubject<NetworkInspectorRequestViewModel?, Never>] = [:]
-  private var bodyPrettyStates: [NetworkInspectorRequestID: [RequestDetailSection: Bool]] = [:]
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -95,9 +94,7 @@ final class NetworkInspectorStore: ObservableObject {
     }
 
     let validRequestIDs = Set(requestSummaries.map(\.id))
-    requestSectionStates = requestSectionStates.filter { validRequestIDs.contains($0.key) }
-    bodyPrettyStates = bodyPrettyStates.filter { validRequestIDs.contains($0.key) }
-
+    requestUIStates = requestUIStates.filter { validRequestIDs.contains($0.key) }
     notifyRequestObservers(previousRequests: previousRequestLookup)
   }
 
@@ -106,10 +103,10 @@ final class NetworkInspectorStore: ObservableObject {
     for requestID: NetworkInspectorRequestID,
     defaultExpanded: Bool
   ) -> Bool {
-    if let explicit = requestSectionStates[requestID]?[section] {
-      return explicit
+    guard let state = requestUIStates[requestID] else {
+      return !defaultExpanded
     }
-    return defaultExpanded ? false : true
+    return state.collapsedSections.contains(section)
   }
 
   private func setSection(
@@ -118,21 +115,20 @@ final class NetworkInspectorStore: ObservableObject {
     collapsed: Bool,
     defaultExpanded: Bool
   ) {
-    let current = requestSectionStates[requestID]?[section] ?? (defaultExpanded ? false : true)
-    guard current != collapsed else { return }
+    var state = requestUIStates[requestID] ?? RequestUIState()
+    let defaultCollapsed = !defaultExpanded
+    let currentlyCollapsed = state.collapsedSections.contains(section)
 
+    guard currentlyCollapsed != collapsed else { return }
+
+    if collapsed == defaultCollapsed {
+      state.collapsedSections.remove(section)
+    } else {
+      state.collapsedSections.insert(section)
+    }
+
+    requestUIStates[requestID] = state
     objectWillChange.send()
-    var states = requestSectionStates[requestID] ?? [:]
-    if collapsed == (defaultExpanded ? false : true) {
-      states.removeValue(forKey: section)
-    } else {
-      states[section] = collapsed
-    }
-    if states.isEmpty {
-      requestSectionStates.removeValue(forKey: requestID)
-    } else {
-      requestSectionStates[requestID] = states
-    }
   }
 
   func bindingForSection(
@@ -143,6 +139,29 @@ final class NetworkInspectorStore: ObservableObject {
     Binding(
       get: { !self.isCollapsed(section, for: requestID, defaultExpanded: defaultExpanded) },
       set: { self.setSection(section, for: requestID, collapsed: !$0, defaultExpanded: defaultExpanded) }
+    )
+  }
+
+  func bindingForPrettyPrinted(
+    _ section: RequestDetailSection,
+    requestID: NetworkInspectorRequestID,
+    defaultValue: Bool
+  ) -> Binding<Bool> {
+    Binding(
+      get: {
+        let state = self.requestUIStates[requestID]
+        return state?.prettyPrintedSections.contains(section) ?? defaultValue
+      },
+      set: { newValue in
+        var state = self.requestUIStates[requestID] ?? RequestUIState()
+        if newValue == defaultValue {
+          state.prettyPrintedSections.remove(section)
+        } else {
+          state.prettyPrintedSections.insert(section)
+        }
+        self.requestUIStates[requestID] = state
+        self.objectWillChange.send()
+      }
     )
   }
 
@@ -183,32 +202,6 @@ final class NetworkInspectorStore: ObservableObject {
     let subject = CurrentValueSubject<NetworkInspectorRequestViewModel?, Never>(initial)
     requestSubjects[id] = subject
     return subject.eraseToAnyPublisher()
-  }
-
-  func bindingForPrettyPrinted(
-    _ section: RequestDetailSection,
-    requestID: NetworkInspectorRequestID,
-    defaultValue: Bool
-  ) -> Binding<Bool> {
-    Binding(
-      get: {
-        self.bodyPrettyStates[requestID]?[section] ?? defaultValue
-      },
-      set: { newValue in
-        var states = self.bodyPrettyStates[requestID] ?? [:]
-        if newValue == defaultValue {
-          states.removeValue(forKey: section)
-        } else {
-          states[section] = newValue
-        }
-        if states.isEmpty {
-          self.bodyPrettyStates.removeValue(forKey: requestID)
-        } else {
-          self.bodyPrettyStates[requestID] = states
-        }
-        self.objectWillChange.send()
-      }
-    )
   }
 
   func webSocketViewModel(for id: NetworkInspectorWebSocketID) -> NetworkInspectorWebSocketViewModel? {
@@ -1098,6 +1091,13 @@ struct NetworkInspectorListItemViewModel: Identifiable {
 enum NetworkInspectorDetailViewModel {
   case request(NetworkInspectorRequestID)
   case webSocket(NetworkInspectorWebSocketID)
+}
+
+private extension NetworkInspectorStore {
+  struct RequestUIState {
+    var collapsedSections: Set<RequestDetailSection> = []
+    var prettyPrintedSections: Set<RequestDetailSection> = []
+  }
 }
 
 private extension NetworkInspectorStore {
