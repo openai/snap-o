@@ -309,7 +309,14 @@ final class NetworkInspectorWebSocketDetailViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink { [weak self] _ in
         guard let self else { return }
-        self.webSocket = store.webSocketViewModel(for: self.webSocketID)
+        guard let latest = store.webSocketViewModel(for: self.webSocketID) else {
+          self.webSocket = nil
+          return
+        }
+        if let current = self.webSocket, current.lastUpdatedAt == latest.lastUpdatedAt {
+          return
+        }
+        self.webSocket = latest
       }
   }
 }

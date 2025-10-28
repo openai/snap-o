@@ -419,7 +419,14 @@ final class NetworkInspectorRequestDetailViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink { [weak self] _ in
         guard let self else { return }
-        self.request = store.requestViewModel(for: self.requestID)
+        guard let latest = store.requestViewModel(for: self.requestID) else {
+          self.request = nil
+          return
+        }
+        if let current = self.request, current.lastUpdatedAt == latest.lastUpdatedAt {
+          return
+        }
+        self.request = latest
       }
   }
 
