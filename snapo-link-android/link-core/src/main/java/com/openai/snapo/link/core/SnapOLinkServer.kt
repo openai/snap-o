@@ -2,6 +2,8 @@ package com.openai.snapo.link.core
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -210,8 +212,8 @@ class SnapOLinkServer(
 
                 if (deferredBodies.isNotEmpty()) {
                     deferredBodies.forEachIndexed { index, response ->
-                        val stagger = RESPONSE_BODY_STAGGER_MS * index
-                        scheduleResponseBody(response, RESPONSE_BODY_DELAY_MS + stagger)
+                        val stagger = ResponseBodyStaggerMillis * index
+                        scheduleResponseBody(response, ResponseBodyDelayMillis + stagger)
                     }
                 }
 
@@ -291,7 +293,7 @@ class SnapOLinkServer(
                 }
                 return
             }
-            delay(LOW_PRIORITY_RETRY_DELAY_MS)
+            delay(LowPriorityRetryDelayMillis)
         }
     }
 
@@ -611,7 +613,7 @@ class SnapOLinkServer(
     private fun hasRecentHighPriorityEmission(): Boolean {
         val last = lastHighPriorityEmissionMs
         if (last == 0L) return false
-        return SystemClock.elapsedRealtime() - last < HIGH_PRIORITY_IDLE_THRESHOLD_MS
+        return SystemClock.elapsedRealtime() - last < HighPriorityIdleThresholdMillis
     }
 
     private fun SnapONetRecord.isHighPriorityRecord(): Boolean = when (this) {
@@ -630,7 +632,7 @@ class SnapOLinkServer(
 
     private fun scheduleResponseBody(
         record: ResponseReceived,
-        initialDelayMs: Long = RESPONSE_BODY_DELAY_MS,
+        initialDelayMs: Long = ResponseBodyDelayMillis,
     ) {
         scope.launch(Dispatchers.IO) {
             try {
@@ -639,10 +641,10 @@ class SnapOLinkServer(
                 }
                 val deferStart = SystemClock.elapsedRealtime()
                 while (hasRecentHighPriorityEmission() && connectedSink != null) {
-                    if (SystemClock.elapsedRealtime() - deferStart >= MAX_BODY_DEFER_MS) {
+                    if (SystemClock.elapsedRealtime() - deferStart >= MaxBodyDeferMillis) {
                         break
                     }
-                    delay(LOW_PRIORITY_RETRY_DELAY_MS)
+                    delay(LowPriorityRetryDelayMillis)
                 }
                 streamLowPriority(record)
             } catch (t: CancellationException) {
@@ -661,12 +663,9 @@ class SnapOLinkServer(
     }
 
     private suspend fun emitAppIconIfAvailable() {
-        try {
-            val iconEvent = loadAppIconEvent() ?: return
-            latestAppIcon = iconEvent
-            streamAppIcon(iconEvent)
-        } catch (_: Throwable) {
-        }
+        val iconEvent = loadAppIconEvent() ?: return
+        latestAppIcon = iconEvent
+        streamAppIcon(iconEvent)
     }
 
     private fun performClientHandshake(socket: LocalSocket): ClientHandshakeResult {
@@ -709,32 +708,40 @@ class SnapOLinkServer(
     private fun loadAppIconEvent(): AppIcon? {
         val drawable = try {
             app.packageManager.getApplicationIcon(app.applicationInfo)
-        } catch (_: Throwable) {
+        } catch (_: PackageManager.NameNotFoundException) {
+            return null
+        } catch (_: Resources.NotFoundException) {
+            return null
+        } catch (_: SecurityException) {
+            return null
+        }
+
+        return try {
+            drawableToBitmap(drawable)?.let { bitmap ->
+                val scaled = if (bitmap.width == TargetIconSize && bitmap.height == TargetIconSize) {
+                    bitmap
+                } else {
+                    bitmap.scale(TargetIconSize, TargetIconSize)
+                }
+
+                val pngData = ByteArrayOutputStream().use { out ->
+                    scaled.compress(Bitmap.CompressFormat.PNG, IconPngQuality, out)
+                    out.toByteArray()
+                }
+                if (scaled !== bitmap && !scaled.isRecycled) {
+                    scaled.recycle()
+                }
+                val encoded = Base64.encodeToString(pngData, Base64.NO_WRAP)
+
+                AppIcon(
+                    packageName = app.packageName,
+                    width = TargetIconSize,
+                    height = TargetIconSize,
+                    base64Data = encoded,
+                )
+            }
+        } catch (_: IllegalArgumentException) {
             null
-        } ?: return null
-
-        return drawableToBitmap(drawable)?.let { bitmap ->
-            val scaled = if (bitmap.width == TargetIconSize && bitmap.height == TargetIconSize) {
-                bitmap
-            } else {
-                bitmap.scale(TargetIconSize, TargetIconSize)
-            }
-
-            val pngData = ByteArrayOutputStream().use { out ->
-                scaled.compress(Bitmap.CompressFormat.PNG, IconPngQuality, out)
-                out.toByteArray()
-            }
-            if (scaled !== bitmap && !scaled.isRecycled) {
-                scaled.recycle()
-            }
-            val encoded = Base64.encodeToString(pngData, Base64.NO_WRAP)
-
-            AppIcon(
-                packageName = app.packageName,
-                width = TargetIconSize,
-                height = TargetIconSize,
-                base64Data = encoded,
-            )
         }
     }
 
@@ -797,11 +804,11 @@ private const val IconPngQuality = 100
 private const val ClientHelloToken = "HelloSnapO"
 private const val ClientHelloTimeoutMs = 1_000
 private const val ClientHelloMaxBytes = 4 * 1024
-private const val RESPONSE_BODY_DELAY_MS = 200L
-private const val RESPONSE_BODY_STAGGER_MS = 25L
-private const val HIGH_PRIORITY_IDLE_THRESHOLD_MS = 150L
-private const val LOW_PRIORITY_RETRY_DELAY_MS = 50L
-private const val MAX_BODY_DEFER_MS = 2_000L
+private const val ResponseBodyDelayMillis = 200L
+private const val ResponseBodyStaggerMillis = 25L
+private const val HighPriorityIdleThresholdMillis = 150L
+private const val LowPriorityRetryDelayMillis = 50L
+private const val MaxBodyDeferMillis = 2_000L
 
 private sealed interface ClientHandshakeResult {
     object Accepted : ClientHandshakeResult
