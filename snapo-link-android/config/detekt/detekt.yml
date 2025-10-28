@@ -23,6 +23,7 @@ complexity:
     ignoreDefaultParameters: true
   TooManyFunctions:
     ignoreAnnotatedFunctions: ['Preview']
+    ignorePrivate: true
 
 formatting:
   active: true
