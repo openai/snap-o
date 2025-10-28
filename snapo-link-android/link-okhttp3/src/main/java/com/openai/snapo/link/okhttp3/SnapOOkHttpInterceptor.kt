@@ -250,10 +250,15 @@ private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBody
         maxBytes <= 0L -> null
         mediaType?.isTextLike() != true -> null
         else -> try {
-            val peek = peekBody(maxBytes.toLong() + 1L)
+            val contentLength = responseBody.contentLength()
+            val effectiveMax = when {
+                contentLength in 0 until ABSOLUTE_TEXT_BODY_MAX_BYTES -> max(maxBytes, contentLength.toInt())
+                else -> maxBytes
+            }
+            val peek = peekBody(effectiveMax.toLong() + 1L)
             val bytes = peek.bytes()
-            val truncated = bytes.size > maxBytes
-            val effective = if (truncated) bytes.copyOf(maxBytes) else bytes
+            val truncated = bytes.size > effectiveMax
+            val effective = if (truncated) bytes.copyOf(effectiveMax) else bytes
             val charset = mediaType.resolveCharset()
             val text = String(effective, charset)
             val previewLimit = previewBytes
@@ -321,3 +326,5 @@ internal fun nanosToMillis(deltaNs: Long): Long? {
     if (deltaNs <= 0L) return null
     return TimeUnit.NANOSECONDS.toMillis(deltaNs)
 }
+
+private const val ABSOLUTE_TEXT_BODY_MAX_BYTES: Long = 8L * 1024L * 1024L
