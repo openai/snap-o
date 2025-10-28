@@ -20,8 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.tryLock
 import kotlinx.coroutines.sync.withLock
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
@@ -34,6 +36,7 @@ import java.util.ArrayList
 import java.util.Collections
 import java.util.IdentityHashMap
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.coroutineContext
 
 /**
  * App-side server that accepts arbitrary SnapONetRecord events,
@@ -270,6 +273,26 @@ class SnapOLinkServer(
         writerLock.withLock {
             val writer = connectedSink ?: return
             writeLine(writer, record)
+        }
+    }
+
+    private suspend fun streamLowPriority(record: SnapONetRecord) {
+        while (coroutineContext.isActive) {
+            if (connectedSink == null) return
+            if (writerLock.tryLock()) {
+                val writer = connectedSink
+                if (writer == null) {
+                    writerLock.unlock()
+                    return
+                }
+                try {
+                    writeLine(writer, record)
+                } finally {
+                    writerLock.unlock()
+                }
+                return
+            }
+            delay(LOW_PRIORITY_RETRY_DELAY_MS)
         }
     }
 
@@ -622,7 +645,7 @@ class SnapOLinkServer(
                     }
                     delay(LOW_PRIORITY_RETRY_DELAY_MS)
                 }
-                streamLineIfConnected(record)
+                streamLowPriority(record)
             } catch (t: CancellationException) {
                 throw t
             } catch (_: Throwable) {

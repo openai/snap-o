@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct JSONOutlineNode: Identifiable {
   enum Value {
@@ -22,33 +23,44 @@ struct JSONOutlineNode: Identifiable {
 
 struct JSONOutlineView: View {
   let root: JSONOutlineNode
+  @State private var expandedNodes: Set<UUID>
+  @State private var expandedStrings: Set<UUID>
 
   init(root: JSONOutlineNode) {
     self.root = root
+    _expandedNodes = State(initialValue: Set([root.id]))
+    _expandedStrings = State(initialValue: Set<UUID>())
   }
 
   init?(text: String) {
     guard let node = JSONOutlineNode.makeTree(from: text) else { return nil }
-    root = node
+    self.init(root: node)
   }
 
   var body: some View {
-    JSONOutlineNodeView(node: root, isRoot: true)
-      .font(.callout.monospaced())
-      .frame(maxWidth: .infinity, alignment: .leading)
+    JSONOutlineNodeView(
+      node: root,
+      expandedNodes: $expandedNodes,
+      expandedStrings: $expandedStrings
+    )
+    .font(.callout.monospaced())
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
 private struct JSONOutlineNodeView: View {
   let node: JSONOutlineNode
-  let isRoot: Bool
-  @State private var isExpanded: Bool
-  @State private var isStringExpanded: Bool = false
+  @Binding var expandedNodes: Set<UUID>
+  @Binding var expandedStrings: Set<UUID>
 
-  init(node: JSONOutlineNode, isRoot: Bool) {
+  init(
+    node: JSONOutlineNode,
+    expandedNodes: Binding<Set<UUID>>,
+    expandedStrings: Binding<Set<UUID>>
+  ) {
     self.node = node
-    self.isRoot = isRoot
-    _isExpanded = State(initialValue: isRoot)
+    _expandedNodes = expandedNodes
+    _expandedStrings = expandedStrings
   }
 
   var body: some View {
@@ -69,6 +81,7 @@ private struct JSONOutlineNodeView: View {
       }
     }
     .textSelection(.enabled)
+    .contextMenu { nodeContextMenu }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
@@ -78,7 +91,7 @@ private struct JSONOutlineNodeView: View {
       collapsedLabel()
     } else {
       VStack(alignment: .leading, spacing: 4) {
-        Button(action: { isExpanded.toggle() }) {
+        Button(action: toggleExpanded) {
           HStack(alignment: .top, spacing: 4) {
             triangleIndicator
             (isExpanded ? expandedHeader(openSymbol: openSymbol) : collapsedHeader())
@@ -89,8 +102,12 @@ private struct JSONOutlineNodeView: View {
 
         if isExpanded {
           ForEach(children) { child in
-            JSONOutlineNodeView(node: child, isRoot: false)
-              .padding(.leading, 12)
+            JSONOutlineNodeView(
+              node: child,
+              expandedNodes: $expandedNodes,
+              expandedStrings: $expandedStrings
+            )
+            .padding(.leading, 12)
           }
           closingLine(closeSymbol: closeSymbol)
         }
@@ -118,7 +135,7 @@ private struct JSONOutlineNodeView: View {
     .contentShape(Rectangle())
     .onTapGesture {
       if node.isExpandable {
-        isExpanded.toggle()
+        toggleExpanded()
       }
     }
   }
@@ -176,7 +193,7 @@ private struct JSONOutlineNodeView: View {
           trianglePlaceholder
           Button(isStringExpanded ? "See less" : "See more") {
             withAnimation {
-              isStringExpanded.toggle()
+              toggleStringExpanded()
             }
           }
           .buttonStyle(.plain)
@@ -217,6 +234,67 @@ private struct JSONOutlineNodeView: View {
       .frame(width: 10, alignment: .leading)
     }
   }
+
+  private var isExpanded: Bool {
+    expandedNodes.contains(node.id)
+  }
+
+  private var isStringExpanded: Bool {
+    expandedStrings.contains(node.id)
+  }
+
+  @ViewBuilder
+  private var nodeContextMenu: some View {
+    if let valueText = node.copyValueText(prettyPrinted: true) {
+      Button("Copy Value") {
+        copyToPasteboard(valueText)
+      }
+    }
+
+    if node.isExpandable {
+      if node.copyValueText(prettyPrinted: true) != nil {
+        Divider()
+      }
+      Button("Expand All") {
+        expandAll()
+      }
+      Button("Collapse Children") {
+        collapseChildren()
+      }
+    }
+  }
+
+  private func copyToPasteboard(_ text: String) {
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(text, forType: .string)
+  }
+
+  private func toggleExpanded() {
+    guard node.isExpandable else { return }
+    if isExpanded {
+      expandedNodes.remove(node.id)
+    } else {
+      expandedNodes.insert(node.id)
+    }
+  }
+
+  private func toggleStringExpanded() {
+    if isStringExpanded {
+      expandedStrings.remove(node.id)
+    } else {
+      expandedStrings.insert(node.id)
+    }
+  }
+
+  private func expandAll() {
+    expandedNodes.formUnion(node.collectExpandableIDs(includeSelf: true))
+  }
+
+  private func collapseChildren() {
+    expandedNodes.subtract(node.collectExpandableIDs(includeSelf: false))
+    expandedStrings.subtract(node.collectStringNodeIDs(includeSelf: false))
+  }
 }
 
 private extension JSONOutlineNode {
@@ -228,6 +306,70 @@ private extension JSONOutlineNode {
       return !children.isEmpty
     default:
       return false
+    }
+  }
+
+  func collectExpandableIDs(includeSelf: Bool) -> Set<UUID> {
+    switch value {
+    case let .object(children):
+      var ids: Set<UUID> = includeSelf && isExpandable ? [id] : []
+      for child in children {
+        ids.formUnion(child.collectExpandableIDs(includeSelf: true))
+      }
+      return ids
+    case let .array(children):
+      var ids: Set<UUID> = includeSelf && isExpandable ? [id] : []
+      for child in children {
+        ids.formUnion(child.collectExpandableIDs(includeSelf: true))
+      }
+      return ids
+    default:
+      return []
+    }
+  }
+
+  func collectStringNodeIDs(includeSelf: Bool) -> Set<UUID> {
+    switch value {
+    case .string:
+      return includeSelf ? [id] : []
+    case let .object(children):
+      return children.reduce(into: Set<UUID>()) { result, child in
+        result.formUnion(child.collectStringNodeIDs(includeSelf: true))
+      }
+    case let .array(children):
+      return children.reduce(into: Set<UUID>()) { result, child in
+        result.formUnion(child.collectStringNodeIDs(includeSelf: true))
+      }
+    default:
+      return []
+    }
+  }
+
+  func copyValueText(prettyPrinted: Bool) -> String? {
+    switch value {
+    case .object, .array:
+      guard let fragment = jsonFragmentText() else { return nil }
+      guard prettyPrinted else { return fragment }
+      guard
+        let data = fragment.data(using: .utf8),
+        let json = try? JSONSerialization.jsonObject(with: data),
+        let pretty = try? JSONSerialization.data(
+          withJSONObject: json,
+          options: [.prettyPrinted]
+        ),
+        let string = String(data: pretty, encoding: .utf8)
+      else {
+        return fragment
+      }
+      return string
+    case let .string(string):
+      return string
+    case let .number(number):
+      return number
+    case let .bool(bool):
+      return bool ? "true" : "false"
+    case .null:
+      return "null"
     }
   }
 
@@ -266,6 +408,31 @@ private extension JSONOutlineNode {
     let keyDisplay = key.hasPrefix("[") ? key : "\"\(key)\""
     return "\(keyDisplay): \(rawInlineValueDescription())"
   }
+
+  private func jsonFragmentText() -> String? {
+    switch value {
+    case let .object(children):
+      let fragments = children.compactMap { child -> String? in
+        guard let key = child.key else { return nil }
+        guard let valueFragment = child.jsonFragmentText() else { return nil }
+        return "\"\(key.jsonEscapedForJSON())\":\(valueFragment)"
+      }
+      return "{\(fragments.joined(separator: ","))}"
+    case let .array(children):
+      let fragments = children.map { child -> String in
+        child.jsonFragmentText() ?? "null"
+      }
+      return "[\(fragments.joined(separator: ","))]"
+    case let .string(string):
+      return "\"\(string.jsonEscapedForJSON())\""
+    case let .number(number):
+      return number
+    case let .bool(bool):
+      return bool ? "true" : "false"
+    case .null:
+      return "null"
+    }
+  }
 }
 
 private extension String {
@@ -274,6 +441,27 @@ private extension String {
     snippet = snippet.replacingOccurrences(of: "\n", with: "\\n")
     snippet = snippet.replacingOccurrences(of: "\t", with: "\\t")
     return snippet
+  }
+
+  func jsonEscapedForJSON() -> String {
+    var result = ""
+    result.reserveCapacity(count)
+    for scalar in unicodeScalars {
+      switch scalar.value {
+      case 0x22: result.append("\\\"")
+      case 0x5C: result.append("\\\\")
+      case 0x08: result.append("\\b")
+      case 0x0C: result.append("\\f")
+      case 0x0A: result.append("\\n")
+      case 0x0D: result.append("\\r")
+      case 0x09: result.append("\\t")
+      case 0x00...0x1F:
+        result.append(String(format: "\\u%04X", scalar.value))
+      default:
+        result.append(String(scalar))
+      }
+    }
+    return result
   }
 }
 
@@ -424,7 +612,6 @@ private struct JSONParser {
     guard let value = UInt32(hex, radix: 16) else { throw ParserError.invalidUnicodeEscape }
 
     if (0xD800...0xDBFF).contains(value) {
-      // High surrogate; expect a low surrogate next
       guard match("\\") && match("u") else { throw ParserError.invalidUnicodeEscape }
       let lowHex = try readHexDigits(count: 4)
       guard let lowValue = UInt32(lowHex, radix: 16),
@@ -437,7 +624,6 @@ private struct JSONParser {
     }
 
     if (0xDC00...0xDFFF).contains(value) {
-      // Unexpected low surrogate
       throw ParserError.invalidUnicodeEscape
     }
 
