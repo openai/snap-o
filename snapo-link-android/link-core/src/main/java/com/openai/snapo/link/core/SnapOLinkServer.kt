@@ -135,36 +135,45 @@ class SnapOLinkServer(
 
     private suspend fun acceptLoop(server: LocalServerSocket) {
         while (isActiveSafe()) {
-            val socket = try {
-                server.accept()
-            } catch (_: CancellationException) {
-                break
-            } catch (_: Throwable) {
-                continue
-            }
+            val socket = acceptSocketOrNull(server) ?: continue
+            handleAcceptedSocket(socket)
+        }
+    }
 
-            try {
-                if (!processHandshake(socket)) {
-                    continue
-                }
-                if (refuseAdditionalClientIfNeeded(socket)) {
-                    continue
-                }
+    private suspend fun acceptSocketOrNull(server: LocalServerSocket): LocalSocket? =
+        try {
+            server.accept()
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            null
+        }
 
+    private suspend fun handleAcceptedSocket(socket: LocalSocket) {
+        val proceed = try {
+            processHandshake(socket) && !refuseAdditionalClientIfNeeded(socket)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            false
+        }
+
+        try {
+            if (proceed) {
                 val sink = attachClient(socket)
                 val deferredBodies = replayBufferedHistory(sink)
                 scheduleDeferredBodies(deferredBodies)
                 tailClient(socket)
-            } catch (_: CancellationException) {
-                break
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            // swallow and continue accept loop
+        } finally {
+            cleanupActiveConnection()
+            try {
+                socket.close()
             } catch (_: Throwable) {
-                // swallow and continue accept loop
-            } finally {
-                cleanupActiveConnection()
-                try {
-                    socket.close()
-                } catch (_: Throwable) {
-                }
             }
         }
     }
