@@ -360,7 +360,8 @@ private struct StreamEventCard: View {
         expandedBinding: Binding(
           get: { isExpanded || usePrettyPrinted },
           set: { newValue in isExpanded = newValue }
-        )
+        ),
+        prettyInitiallyExpanded: false
       )
 
       metadata

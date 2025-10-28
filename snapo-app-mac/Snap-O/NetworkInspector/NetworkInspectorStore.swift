@@ -127,7 +127,11 @@ final class NetworkInspectorStore: ObservableObject {
       state.collapsedSections.insert(section)
     }
 
-    requestUIStates[requestID] = state
+    if state.collapsedSections.isEmpty && state.prettyPrintedSections.isEmpty {
+      requestUIStates.removeValue(forKey: requestID)
+    } else {
+      requestUIStates[requestID] = state
+    }
     objectWillChange.send()
   }
 
@@ -159,7 +163,11 @@ final class NetworkInspectorStore: ObservableObject {
         } else {
           state.prettyPrintedSections.insert(section)
         }
-        self.requestUIStates[requestID] = state
+        if state.collapsedSections.isEmpty && state.prettyPrintedSections.isEmpty {
+          self.requestUIStates.removeValue(forKey: requestID)
+        } else {
+          self.requestUIStates[requestID] = state
+        }
         self.objectWillChange.send()
       }
     )

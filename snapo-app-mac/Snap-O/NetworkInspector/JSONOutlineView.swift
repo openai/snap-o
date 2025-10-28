@@ -34,15 +34,15 @@ struct JSONOutlineView: View {
   @State private var expandedNodes: Set<String>
   @State private var expandedStrings: Set<String>
 
-  init(root: JSONOutlineNode) {
+  init(root: JSONOutlineNode, initiallyExpanded: Bool = true) {
     self.root = root
-    _expandedNodes = State(initialValue: Set([root.id]))
+    _expandedNodes = State(initialValue: initiallyExpanded ? Set([root.id]) : Set<String>())
     _expandedStrings = State(initialValue: Set<String>())
   }
 
-  init?(text: String) {
+  init?(text: String, initiallyExpanded: Bool = true) {
     guard let node = JSONOutlineNode.makeTree(from: text) else { return nil }
-    self.init(root: node)
+    self.init(root: node, initiallyExpanded: initiallyExpanded)
   }
 
   var body: some View {

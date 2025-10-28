@@ -236,7 +236,8 @@ private struct MessageCardView: View {
           isLikelyJSON: isLikelyJSON,
           usePrettyPrinted: $usePrettyPrinted,
           showsToggle: false,
-          isExpandable: !usePrettyPrinted
+          isExpandable: !usePrettyPrinted,
+          prettyInitiallyExpanded: false
         )
       } else if isLikelyJSON {
         Text("Unable to pretty print (invalid or truncated JSON)")

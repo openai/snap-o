@@ -137,6 +137,7 @@ struct InspectorPayloadView: View {
   let isExpandable: Bool
   private let expandedBinding: Binding<Bool>?
   private let jsonOutlineRoot: JSONOutlineNode?
+  private let prettyInitiallyExpanded: Bool
   @Binding private var usePrettyPrinted: Bool
 
   init(
@@ -147,7 +148,8 @@ struct InspectorPayloadView: View {
     maximumHeight: CGFloat = 100,
     showsToggle: Bool = true,
     isExpandable: Bool = true,
-    expandedBinding: Binding<Bool>? = nil
+    expandedBinding: Binding<Bool>? = nil,
+    prettyInitiallyExpanded: Bool = true
   ) {
     self.rawText = rawText
     self.prettyText = prettyText
@@ -156,6 +158,7 @@ struct InspectorPayloadView: View {
     self.showsToggle = showsToggle
     self.isExpandable = isExpandable
     self.expandedBinding = expandedBinding
+    self.prettyInitiallyExpanded = prettyInitiallyExpanded
     if let prettyText {
       jsonOutlineRoot = JSONOutlineNode.makeTree(from: prettyText)
     } else {
@@ -184,7 +187,7 @@ struct InspectorPayloadView: View {
   @ViewBuilder
   private func payloadContent() -> some View {
     if usePrettyPrinted, let root = jsonOutlineRoot {
-      JSONOutlineView(root: root)
+      JSONOutlineView(root: root, initiallyExpanded: prettyInitiallyExpanded)
     } else if isExpandable {
       InspectorExpandableText(
         text: displayText,
