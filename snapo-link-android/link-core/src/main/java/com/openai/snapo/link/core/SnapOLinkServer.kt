@@ -722,8 +722,8 @@ class SnapOLinkServer(
             }
         } catch (_: SocketTimeoutException) {
             ClientHandshakeResult.Rejected("handshake timeout")
-        } catch (t: Throwable) {
-            ClientHandshakeResult.Rejected(t.localizedMessage ?: "handshake failure")
+        } catch (ioe: IOException) {
+            ClientHandshakeResult.Rejected(ioe.localizedMessage ?: "handshake failure")
         }
     }
 
