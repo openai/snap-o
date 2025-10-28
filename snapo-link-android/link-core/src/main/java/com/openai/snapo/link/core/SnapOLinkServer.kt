@@ -149,95 +149,121 @@ class SnapOLinkServer(
 
     private suspend fun acceptLoop(server: LocalServerSocket) {
         while (isActiveSafe()) {
-            try {
-                val sock: LocalSocket = server.accept()
-                when (val handshakeResult = performClientHandshake(sock)) {
-                    is ClientHandshakeResult.Accepted -> Unit
-                    is ClientHandshakeResult.Rejected -> {
-                        Log.w(
-                            TAG,
-                            "Rejected client connection for ${handshakeResult.reason}"
-                        )
-                        try {
-                            sock.close()
-                        } catch (_: Throwable) {
-                        }
-                        continue
-                    }
-                }
+            val socket = try {
+                server.accept()
+            } catch (_: CancellationException) {
+                break
+            } catch (_: Throwable) {
+                continue
+            }
 
-                if (config.singleClientOnly && connectedSink != null) {
-                    // Politely refuse additional clients.
-                    sock.use { s ->
-                        val tmpWriter = BufferedWriter(
-                            OutputStreamWriter(
-                                s.outputStream,
-                                StandardCharsets.UTF_8
-                            )
-                        )
-                        writeHandshake(tmpWriter)
-                        tmpWriter.write(
-                            Ndjson.encodeToString(ReplayComplete()),
-                        )
-                        tmpWriter.write("\n")
-                        tmpWriter.flush()
-                    }
+            try {
+                if (!processHandshake(socket)) {
+                    continue
+                }
+                if (refuseAdditionalClientIfNeeded(socket)) {
                     continue
                 }
 
-                // Attach as the active client
-                val sink = BufferedWriter(OutputStreamWriter(sock.outputStream, StandardCharsets.UTF_8))
-                connectedSink = sink
-
-                val deferredBodies = mutableListOf<ResponseReceived>()
-
-                writerLock.withLock {
-                    // 1) Hello
-                    writeHandshake(sink)
-
-                    // 2) Snapshot (buffer copy under lock to avoid holding it while writing)
-                    val snapshot: List<SnapONetRecord> = bufferLock.withLock { ArrayList(eventBuffer) }
-                    for (rec in snapshot) {
-                        if (rec is ResponseReceived && rec.hasBodyPayload()) {
-                            writeLine(sink, rec.withoutBodyPayload())
-                            deferredBodies.add(rec)
-                        } else {
-                            writeLine(sink, rec)
-                        }
-                    }
-
-                    // 3) ReplayComplete marker
-                    writeLine(sink, ReplayComplete())
-                }
-
-                if (deferredBodies.isNotEmpty()) {
-                    deferredBodies.forEachIndexed { index, response ->
-                        val stagger = ResponseBodyStaggerMillis * index
-                        scheduleResponseBody(response, ResponseBodyDelayMillis + stagger)
-                    }
-                }
-
-                // 4) Live tail: just keep the sink around; publish() will write as events arrive.
-                // Block here reading from the client to detect disconnect; ignore any input.
-                val src = sock.inputStream
-                val buf = ByteArray(1024)
-                while (true) {
-                    val n = src.read(buf)
-                    if (n < 0) break
-                    // ignore incoming data for v1
-                }
+                val sink = attachClient(socket)
+                val deferredBodies = replayBufferedHistory(sink)
+                scheduleDeferredBodies(deferredBodies)
+                tailClient(socket)
             } catch (_: CancellationException) {
                 break
             } catch (_: Throwable) {
                 // swallow and continue accept loop
             } finally {
+                cleanupActiveConnection()
                 try {
-                    connectedSink?.close()
+                    socket.close()
                 } catch (_: Throwable) {
                 }
-                connectedSink = null
             }
         }
+    }
+
+    private fun processHandshake(socket: LocalSocket): Boolean {
+        return when (val handshakeResult = performClientHandshake(socket)) {
+            is ClientHandshakeResult.Accepted -> true
+            is ClientHandshakeResult.Rejected -> {
+                Log.w(TAG, "Rejected client connection for ${handshakeResult.reason}")
+                try {
+                    socket.close()
+                } catch (_: Throwable) {
+                }
+                false
+            }
+        }
+    }
+
+    private fun refuseAdditionalClientIfNeeded(socket: LocalSocket): Boolean {
+        if (!config.singleClientOnly || connectedSink == null) {
+            return false
+        }
+
+        socket.use { s ->
+            val tmpWriter = BufferedWriter(
+                OutputStreamWriter(
+                    s.outputStream,
+                    StandardCharsets.UTF_8
+                )
+            )
+            writeHandshake(tmpWriter)
+            tmpWriter.write(Ndjson.encodeToString(ReplayComplete()))
+            tmpWriter.write("\n")
+            tmpWriter.flush()
+        }
+        return true
+    }
+
+    private fun attachClient(socket: LocalSocket): BufferedWriter {
+        val sink = BufferedWriter(OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8))
+        connectedSink = sink
+        return sink
+    }
+
+    private suspend fun replayBufferedHistory(sink: BufferedWriter): List<ResponseReceived> {
+        val deferredBodies = mutableListOf<ResponseReceived>()
+        writerLock.withLock {
+            writeHandshake(sink)
+            val snapshot: List<SnapONetRecord> = bufferLock.withLock { ArrayList(eventBuffer) }
+            for (rec in snapshot) {
+                if (rec is ResponseReceived && rec.hasBodyPayload()) {
+                    writeLine(sink, rec.withoutBodyPayload())
+                    deferredBodies.add(rec)
+                } else {
+                    writeLine(sink, rec)
+                }
+            }
+            writeLine(sink, ReplayComplete())
+        }
+        return deferredBodies
+    }
+
+    private fun scheduleDeferredBodies(deferredBodies: List<ResponseReceived>) {
+        deferredBodies.forEachIndexed { index, response ->
+            val stagger = ResponseBodyStaggerMillis * index
+            scheduleResponseBody(response, ResponseBodyDelayMillis + stagger)
+        }
+    }
+
+    private fun tailClient(socket: LocalSocket) {
+        // Block here reading from the client to detect disconnect; ignore any input.
+        val src = socket.inputStream
+        val buf = ByteArray(1024)
+        while (true) {
+            val n = src.read(buf)
+            if (n < 0) break
+        }
+    }
+
+    private fun cleanupActiveConnection() {
+        try {
+            connectedSink?.close()
+        } catch (_: Throwable) {
+        }
+        connectedSink = null
     }
 
     private fun appProcessName(): String {
@@ -454,122 +480,140 @@ class SnapOLinkServer(
         return removedAny
     }
 
+    private data class RequestPruneState(
+        var start: RequestWillBeSent? = null,
+        var terminal: SnapONetRecord? = null,
+        val oldEvents: MutableList<ResponseStreamEvent> = mutableListOf(),
+        val oldRecords: MutableList<SnapONetRecord> = mutableListOf(),
+        var hasRecentRecords: Boolean = false,
+    )
+
+    private data class WebSocketPruneState(
+        val startRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
+        var terminal: PerWebSocketRecord? = null,
+        val oldRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
+        var hasRecentRecords: Boolean = false,
+    )
+
+    private data class ExpiredRecordPruneState(
+        val requestStates: MutableMap<String, RequestPruneState> = mutableMapOf(),
+        val webSocketStates: MutableMap<String, WebSocketPruneState> = mutableMapOf(),
+        val toRemove: MutableSet<SnapONetRecord> = Collections.newSetFromMap(IdentityHashMap()),
+    )
+
     private fun evictExpiredRecords(cutoff: Long) {
-        data class RequestPruneState(
-            var start: RequestWillBeSent? = null,
-            var terminal: SnapONetRecord? = null,
-            val oldEvents: MutableList<ResponseStreamEvent> = mutableListOf(),
-            val oldRecords: MutableList<SnapONetRecord> = mutableListOf(),
-            var hasRecentRecords: Boolean = false,
-        )
+        val state = buildExpiredRecordPruneState(cutoff)
+        markRequestRemovals(state)
+        markWebSocketRemovals(state)
+        removeMarkedRecords(state.toRemove)
+    }
 
-        data class WebSocketPruneState(
-            val startRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
-            var terminal: PerWebSocketRecord? = null,
-            val oldRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
-            var hasRecentRecords: Boolean = false,
-        )
-
-        val requestStates = mutableMapOf<String, RequestPruneState>()
-        val webSocketStates = mutableMapOf<String, WebSocketPruneState>()
-        val toRemove: MutableSet<SnapONetRecord> = Collections.newSetFromMap(IdentityHashMap())
-
-        fun requestState(id: String): RequestPruneState =
-            requestStates.getOrPut(id) { RequestPruneState() }
-
-        fun webSocketState(id: String): WebSocketPruneState =
-            webSocketStates.getOrPut(id) { WebSocketPruneState() }
-
+    private fun buildExpiredRecordPruneState(cutoff: Long): ExpiredRecordPruneState {
+        val state = ExpiredRecordPruneState()
         for (record in eventBuffer) {
             val time = eventTime(record)
             when {
-                record is PerRequestRecord -> {
-                    val state = requestState(record.id)
-                    if (time >= cutoff) {
-                        state.hasRecentRecords = true
-                    } else {
-                        when (record) {
-                            is RequestWillBeSent -> state.start = record
-                            is ResponseStreamEvent -> state.oldEvents.add(record)
-                            is ResponseReceived -> {
-                                if (!activeResponseStreams.contains(record.id)) {
-                                    state.terminal = record
-                                }
-                                state.oldRecords.add(record)
-                            }
-
-                            is RequestFailed -> {
-                                state.terminal = record
-                                state.oldRecords.add(record)
-                            }
-
-                            is ResponseStreamClosed -> {
-                                state.terminal = record
-                                state.oldRecords.add(record)
-                            }
-                        }
-                    }
-                }
-
-                record is PerWebSocketRecord -> {
-                    val state = webSocketState(record.id)
-                    if (time >= cutoff) {
-                        state.hasRecentRecords = true
-                    } else {
-                        when (record) {
-                            is WebSocketWillOpen,
-                            is WebSocketOpened -> state.startRecords.add(record)
-
-                            is WebSocketClosed,
-                            is WebSocketFailed,
-                            is WebSocketCancelled -> {
-                                state.terminal = record
-                                state.oldRecords.add(record)
-                            }
-
-                            else -> state.oldRecords.add(record)
-                        }
-                    }
-                }
-
-                time < cutoff -> {
-                    toRemove.add(record)
-                }
+                record is PerRequestRecord -> collectRequestExpiryState(record, time, cutoff, state)
+                record is PerWebSocketRecord -> collectWebSocketExpiryState(record, time, cutoff, state)
+                time < cutoff -> state.toRemove.add(record)
             }
         }
+        return state
+    }
 
-        for ((id, state) in requestStates) {
-            if (state.oldEvents.isNotEmpty()) {
-                state.oldEvents.forEach { toRemove.add(it) }
-            }
-
-            val hasRecent = state.hasRecentRecords || activeResponseStreams.contains(id)
-            if (!hasRecent && state.terminal != null) {
-                state.start?.let { toRemove.add(it) }
-                state.oldRecords.forEach { toRemove.add(it) }
-            }
+    private fun collectRequestExpiryState(
+        record: PerRequestRecord,
+        time: Long,
+        cutoff: Long,
+        state: ExpiredRecordPruneState,
+    ) {
+        val requestState = state.requestStates.getOrPut(record.id) { RequestPruneState() }
+        if (time >= cutoff) {
+            requestState.hasRecentRecords = true
+            return
         }
 
-        for ((id, state) in webSocketStates) {
+        when (record) {
+            is RequestWillBeSent -> requestState.start = record
+            is ResponseStreamEvent -> requestState.oldEvents.add(record)
+            is ResponseReceived -> {
+                if (!activeResponseStreams.contains(record.id)) {
+                    requestState.terminal = record
+                }
+                requestState.oldRecords.add(record)
+            }
+
+            is RequestFailed -> {
+                requestState.terminal = record
+                requestState.oldRecords.add(record)
+            }
+
+            is ResponseStreamClosed -> {
+                requestState.terminal = record
+                requestState.oldRecords.add(record)
+            }
+        }
+    }
+
+    private fun collectWebSocketExpiryState(
+        record: PerWebSocketRecord,
+        time: Long,
+        cutoff: Long,
+        state: ExpiredRecordPruneState,
+    ) {
+        val webSocketState = state.webSocketStates.getOrPut(record.id) { WebSocketPruneState() }
+        if (time >= cutoff) {
+            webSocketState.hasRecentRecords = true
+            return
+        }
+
+        when (record) {
+            is WebSocketWillOpen,
+            is WebSocketOpened -> webSocketState.startRecords.add(record)
+
+            is WebSocketClosed,
+            is WebSocketFailed,
+            is WebSocketCancelled -> {
+                webSocketState.terminal = record
+                webSocketState.oldRecords.add(record)
+            }
+
+            else -> webSocketState.oldRecords.add(record)
+        }
+    }
+
+    private fun markRequestRemovals(state: ExpiredRecordPruneState) {
+        for ((id, requestState) in state.requestStates) {
+            if (requestState.oldEvents.isNotEmpty()) {
+                requestState.oldEvents.forEach(state.toRemove::add)
+            }
+            val hasRecent = requestState.hasRecentRecords || activeResponseStreams.contains(id)
+            if (!hasRecent && requestState.terminal != null) {
+                requestState.start?.let(state.toRemove::add)
+                requestState.oldRecords.forEach(state.toRemove::add)
+            }
+        }
+    }
+
+    private fun markWebSocketRemovals(state: ExpiredRecordPruneState) {
+        for ((id, webSocketState) in state.webSocketStates) {
             val isOpen = openWebSockets.contains(id)
-            if (state.hasRecentRecords || isOpen) {
-                state.oldRecords.forEach { toRemove.add(it) }
-            } else if (state.terminal != null) {
-                state.startRecords.forEach { toRemove.add(it) }
-                state.oldRecords.forEach { toRemove.add(it) }
+            if (webSocketState.hasRecentRecords || isOpen) {
+                webSocketState.oldRecords.forEach(state.toRemove::add)
+            } else if (webSocketState.terminal != null) {
+                webSocketState.startRecords.forEach(state.toRemove::add)
+                webSocketState.oldRecords.forEach(state.toRemove::add)
             }
         }
+    }
 
-        if (toRemove.isEmpty()) return
-
+    private fun removeMarkedRecords(records: MutableSet<SnapONetRecord>) {
+        if (records.isEmpty()) return
         val iterator = eventBuffer.iterator()
         while (iterator.hasNext()) {
             val record = iterator.next()
-            if (!toRemove.contains(record)) continue
-            iterator.remove()
-            subtractApproxBytes(record)
-            updateWebSocketStateOnRemove(record)
-            updateStreamStateOnRemove(record)
+            if (!records.contains(record)) continue
+            removeRecord(iterator, record)
         }
     }
 
