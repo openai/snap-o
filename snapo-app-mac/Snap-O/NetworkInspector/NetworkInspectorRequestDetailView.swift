@@ -34,7 +34,11 @@ struct NetworkInspectorRequestDetailView: View {
               NetworkInspectorBodySection(
                 title: "Request Body",
                 payload: requestBody,
-                isExpanded: sectionBinding(for: .requestBody)
+                isExpanded: sectionBinding(for: .requestBody),
+                isPrettyPrinted: viewModel.bindingForPrettyPrinted(
+                  .requestBody,
+                  defaultPretty: requestBody.prettyPrintedText != nil
+                )
               )
             }
 
@@ -62,7 +66,11 @@ struct NetworkInspectorRequestDetailView: View {
               NetworkInspectorBodySection(
                 title: "Response Body",
                 payload: responseBody,
-                isExpanded: sectionBinding(for: .responseBody)
+                isExpanded: sectionBinding(for: .responseBody),
+                isPrettyPrinted: viewModel.bindingForPrettyPrinted(
+                  .responseBody,
+                  defaultPretty: responseBody.prettyPrintedText != nil
+                )
               )
             }
           }
@@ -416,18 +424,10 @@ final class NetworkInspectorRequestDetailViewModel: ObservableObject {
     self.requestID = requestID
     request = store.requestViewModel(for: requestID)
 
-    cancellable = store.$items
+    cancellable = store.requestPublisher(for: requestID)
       .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        guard let self else { return }
-        guard let latest = store.requestViewModel(for: self.requestID) else {
-          self.request = nil
-          return
-        }
-        if let current = self.request, current.lastUpdatedAt == latest.lastUpdatedAt {
-          return
-        }
-        self.request = latest
+      .sink { [weak self] latest in
+        self?.request = latest
       }
   }
 
@@ -439,6 +439,17 @@ final class NetworkInspectorRequestDetailViewModel: ObservableObject {
       section,
       requestID: requestID,
       defaultExpanded: defaultExpanded
+    )
+  }
+
+  func bindingForPrettyPrinted(
+    _ section: NetworkInspectorStore.RequestDetailSection,
+    defaultPretty: Bool
+  ) -> Binding<Bool> {
+    store.bindingForPrettyPrinted(
+      section,
+      requestID: requestID,
+      defaultValue: defaultPretty
     )
   }
 }

@@ -11,7 +11,8 @@ struct JSONOutlineNode: Identifiable {
     case null
   }
 
-  let id = UUID()
+  let id: String
+  let path: String
   let key: String?
   let value: Value
 
@@ -19,17 +20,24 @@ struct JSONOutlineNode: Identifiable {
     var parser = JSONParser(text: text)
     return try? parser.parseRoot()
   }
+
+  init(key: String?, path: String, value: Value) {
+    self.key = key
+    self.path = path
+    id = path
+    self.value = value
+  }
 }
 
 struct JSONOutlineView: View {
   let root: JSONOutlineNode
-  @State private var expandedNodes: Set<UUID>
-  @State private var expandedStrings: Set<UUID>
+  @State private var expandedNodes: Set<String>
+  @State private var expandedStrings: Set<String>
 
   init(root: JSONOutlineNode) {
     self.root = root
     _expandedNodes = State(initialValue: Set([root.id]))
-    _expandedStrings = State(initialValue: Set<UUID>())
+    _expandedStrings = State(initialValue: Set<String>())
   }
 
   init?(text: String) {
@@ -50,13 +58,13 @@ struct JSONOutlineView: View {
 
 private struct JSONOutlineNodeView: View {
   let node: JSONOutlineNode
-  @Binding var expandedNodes: Set<UUID>
-  @Binding var expandedStrings: Set<UUID>
+  @Binding var expandedNodes: Set<String>
+  @Binding var expandedStrings: Set<String>
 
   init(
     node: JSONOutlineNode,
-    expandedNodes: Binding<Set<UUID>>,
-    expandedStrings: Binding<Set<UUID>>
+    expandedNodes: Binding<Set<String>>,
+    expandedStrings: Binding<Set<String>>
   ) {
     self.node = node
     _expandedNodes = expandedNodes
@@ -309,39 +317,39 @@ private extension JSONOutlineNode {
     }
   }
 
-  func collectExpandableIDs(includeSelf: Bool) -> Set<UUID> {
+  func collectExpandableIDs(includeSelf: Bool) -> Set<String> {
     switch value {
     case let .object(children):
-      var ids: Set<UUID> = includeSelf && isExpandable ? [id] : []
+      var ids: Set<String> = includeSelf && isExpandable ? Set([id]) : Set<String>()
       for child in children {
         ids.formUnion(child.collectExpandableIDs(includeSelf: true))
       }
       return ids
     case let .array(children):
-      var ids: Set<UUID> = includeSelf && isExpandable ? [id] : []
+      var ids: Set<String> = includeSelf && isExpandable ? Set([id]) : Set<String>()
       for child in children {
         ids.formUnion(child.collectExpandableIDs(includeSelf: true))
       }
       return ids
     default:
-      return []
+      return Set<String>()
     }
   }
 
-  func collectStringNodeIDs(includeSelf: Bool) -> Set<UUID> {
+  func collectStringNodeIDs(includeSelf: Bool) -> Set<String> {
     switch value {
     case .string:
-      return includeSelf ? [id] : []
+      return includeSelf ? Set([id]) : Set<String>()
     case let .object(children):
-      return children.reduce(into: Set<UUID>()) { result, child in
+      return children.reduce(into: Set<String>()) { result, child in
         result.formUnion(child.collectStringNodeIDs(includeSelf: true))
       }
     case let .array(children):
-      return children.reduce(into: Set<UUID>()) { result, child in
+      return children.reduce(into: Set<String>()) { result, child in
         result.formUnion(child.collectStringNodeIDs(includeSelf: true))
       }
     default:
-      return []
+      return Set<String>()
     }
   }
 
@@ -484,46 +492,46 @@ private struct JSONParser {
 
   mutating func parseRoot() throws -> JSONOutlineNode {
     skipWhitespace()
-    let node = try parseValue(withKey: nil)
+    let node = try parseValue(withKey: nil, path: "$")
     skipWhitespace()
     guard isAtEnd else { throw ParserError.trailingCharacters }
     return node
   }
 
-  private mutating func parseValue(withKey key: String?) throws -> JSONOutlineNode {
+  private mutating func parseValue(withKey key: String?, path: String) throws -> JSONOutlineNode {
     guard let character = peek() else { throw ParserError.unexpectedEndOfInput }
     switch character {
     case "{":
-      return try parseObject(withKey: key)
+      return try parseObject(withKey: key, path: path)
     case "[":
-      return try parseArray(withKey: key)
+      return try parseArray(withKey: key, path: path)
     case "\"":
       let string = try parseStringLiteral()
-      return JSONOutlineNode(key: key, value: .string(string))
+      return JSONOutlineNode(key: key, path: path, value: .string(string))
     case "-", "0"..."9":
       let number = try parseNumberLiteral()
-      return JSONOutlineNode(key: key, value: .number(number))
+      return JSONOutlineNode(key: key, path: path, value: .number(number))
     case "t":
       try expectLiteral("true")
-      return JSONOutlineNode(key: key, value: .bool(true))
+      return JSONOutlineNode(key: key, path: path, value: .bool(true))
     case "f":
       try expectLiteral("false")
-      return JSONOutlineNode(key: key, value: .bool(false))
+      return JSONOutlineNode(key: key, path: path, value: .bool(false))
     case "n":
       try expectLiteral("null")
-      return JSONOutlineNode(key: key, value: .null)
+      return JSONOutlineNode(key: key, path: path, value: .null)
     default:
       throw ParserError.invalidCharacter(character)
     }
   }
 
-  private mutating func parseObject(withKey key: String?) throws -> JSONOutlineNode {
+  private mutating func parseObject(withKey key: String?, path: String) throws -> JSONOutlineNode {
     try expect("{")
     skipWhitespace()
     var children: [JSONOutlineNode] = []
 
     if match("}") {
-      return JSONOutlineNode(key: key, value: .object(children))
+      return JSONOutlineNode(key: key, path: path, value: .object(children))
     }
 
     while true {
@@ -532,7 +540,13 @@ private struct JSONParser {
       skipWhitespace()
       try expect(":")
       skipWhitespace()
-      let child = try parseValue(withKey: childKey)
+      let childPath: String
+      if path == "$" {
+        childPath = "$.\(childKey)"
+      } else {
+        childPath = "\(path).\(childKey)"
+      }
+      let child = try parseValue(withKey: childKey, path: childPath)
       children.append(child)
       skipWhitespace()
       if match("}") {
@@ -542,22 +556,29 @@ private struct JSONParser {
       skipWhitespace()
     }
 
-    return JSONOutlineNode(key: key, value: .object(children))
+    return JSONOutlineNode(key: key, path: path, value: .object(children))
   }
 
-  private mutating func parseArray(withKey key: String?) throws -> JSONOutlineNode {
+  private mutating func parseArray(withKey key: String?, path: String) throws -> JSONOutlineNode {
     try expect("[")
     skipWhitespace()
     var children: [JSONOutlineNode] = []
 
     if match("]") {
-      return JSONOutlineNode(key: key, value: .array(children))
+      return JSONOutlineNode(key: key, path: path, value: .array(children))
     }
 
     var indexCounter = 0
     while true {
       skipWhitespace()
-      let child = try parseValue(withKey: "[\(indexCounter)]")
+      let childKey = "[\(indexCounter)]"
+      let childPath: String
+      if path == "$" {
+        childPath = "$\(childKey)"
+      } else {
+        childPath = "\(path)\(childKey)"
+      }
+      let child = try parseValue(withKey: childKey, path: childPath)
       children.append(child)
       indexCounter += 1
       skipWhitespace()
@@ -568,7 +589,7 @@ private struct JSONParser {
       skipWhitespace()
     }
 
-    return JSONOutlineNode(key: key, value: .array(children))
+    return JSONOutlineNode(key: key, path: path, value: .array(children))
   }
 
   private mutating func parseStringLiteral() throws -> String {

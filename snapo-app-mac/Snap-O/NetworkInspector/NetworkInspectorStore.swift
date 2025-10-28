@@ -24,6 +24,8 @@ final class NetworkInspectorStore: ObservableObject {
   private var requestLookup: [NetworkInspectorRequestID: NetworkInspectorRequest] = [:]
   private var webSocketLookup: [NetworkInspectorWebSocketID: NetworkInspectorWebSocket] = [:]
   private var requestSectionStates: [NetworkInspectorRequestID: [RequestDetailSection: Bool]] = [:]
+  private var requestSubjects: [NetworkInspectorRequestID: CurrentValueSubject<NetworkInspectorRequestViewModel?, Never>] = [:]
+  private var bodyPrettyStates: [NetworkInspectorRequestID: [RequestDetailSection: Bool]] = [:]
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -66,6 +68,8 @@ final class NetworkInspectorStore: ObservableObject {
   }
 
   private func rebuildViewModels() {
+    let previousRequestLookup = requestLookup
+
     requestLookup = Dictionary(uniqueKeysWithValues: latestRequests.map { ($0.id, $0) })
     webSocketLookup = Dictionary(uniqueKeysWithValues: latestWebSockets.map { ($0.id, $0) })
 
@@ -92,6 +96,9 @@ final class NetworkInspectorStore: ObservableObject {
 
     let validRequestIDs = Set(requestSummaries.map(\.id))
     requestSectionStates = requestSectionStates.filter { validRequestIDs.contains($0.key) }
+    bodyPrettyStates = bodyPrettyStates.filter { validRequestIDs.contains($0.key) }
+
+    notifyRequestObservers(previousRequests: previousRequestLookup)
   }
 
   private func isCollapsed(
@@ -166,6 +173,42 @@ final class NetworkInspectorStore: ObservableObject {
     guard let request = requestLookup[id] else { return nil }
     let server = serverLookup[request.serverID]
     return NetworkInspectorRequestViewModel(request: request, server: server)
+  }
+
+  func requestPublisher(for id: NetworkInspectorRequestID) -> AnyPublisher<NetworkInspectorRequestViewModel?, Never> {
+    if let subject = requestSubjects[id] {
+      return subject.eraseToAnyPublisher()
+    }
+    let initial = requestViewModel(for: id)
+    let subject = CurrentValueSubject<NetworkInspectorRequestViewModel?, Never>(initial)
+    requestSubjects[id] = subject
+    return subject.eraseToAnyPublisher()
+  }
+
+  func bindingForPrettyPrinted(
+    _ section: RequestDetailSection,
+    requestID: NetworkInspectorRequestID,
+    defaultValue: Bool
+  ) -> Binding<Bool> {
+    Binding(
+      get: {
+        self.bodyPrettyStates[requestID]?[section] ?? defaultValue
+      },
+      set: { newValue in
+        var states = self.bodyPrettyStates[requestID] ?? [:]
+        if newValue == defaultValue {
+          states.removeValue(forKey: section)
+        } else {
+          states[section] = newValue
+        }
+        if states.isEmpty {
+          self.bodyPrettyStates.removeValue(forKey: requestID)
+        } else {
+          self.bodyPrettyStates[requestID] = states
+        }
+        self.objectWillChange.send()
+      }
+    )
   }
 
   func webSocketViewModel(for id: NetworkInspectorWebSocketID) -> NetworkInspectorWebSocketViewModel? {
@@ -1055,4 +1098,36 @@ struct NetworkInspectorListItemViewModel: Identifiable {
 enum NetworkInspectorDetailViewModel {
   case request(NetworkInspectorRequestID)
   case webSocket(NetworkInspectorWebSocketID)
+}
+
+private extension NetworkInspectorStore {
+  func notifyRequestObservers(
+    previousRequests: [NetworkInspectorRequestID: NetworkInspectorRequest]
+  ) {
+    guard !requestSubjects.isEmpty else { return }
+
+    var subjectsToRemove: [NetworkInspectorRequestID] = []
+
+    for (id, subject) in requestSubjects {
+      guard let current = requestLookup[id] else {
+        subject.send(nil)
+        subjectsToRemove.append(id)
+        continue
+      }
+
+      let previous = previousRequests[id]
+      let shouldPublish = previous == nil || previous?.lastUpdatedAt != current.lastUpdatedAt
+
+      if shouldPublish {
+        let server = serverLookup[current.serverID]
+        subject.send(NetworkInspectorRequestViewModel(request: current, server: server))
+      }
+    }
+
+    if !subjectsToRemove.isEmpty {
+      for id in subjectsToRemove {
+        requestSubjects.removeValue(forKey: id)
+      }
+    }
+  }
 }
