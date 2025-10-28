@@ -135,27 +135,24 @@ internal class EventBuffer(
     }
 
     private fun evictRequestTerminal(head: RequestWillBeSent): Boolean {
-        val iterator = records.iterator()
-        var removed = false
-        while (iterator.hasNext()) {
-            val candidate = iterator.next()
-            if (candidate === head) continue
-            val isTerminal = when (candidate) {
+        return records.indexOfFirst { candidate ->
+            candidate !== head && when (candidate) {
                 is ResponseReceived -> candidate.id == head.id && !activeResponseStreams.contains(head.id)
                 is RequestFailed -> candidate.id == head.id
                 is ResponseStreamClosed -> candidate.id == head.id
                 else -> false
             }
-            if (!isTerminal) continue
-            iterator.remove()
-            subtractApproxBytes(candidate)
-            updateWebSocketStateOnRemove(candidate)
-            updateStreamStateOnRemove(candidate)
-            removeAdditionalRequestRecords(head.id)
-            removed = true
-            break
         }
-        return removed
+            .takeIf { it >= 0 }
+            ?.let { index ->
+                val candidate = records.removeAt(index)
+                subtractApproxBytes(candidate)
+                updateWebSocketStateOnRemove(candidate)
+                updateStreamStateOnRemove(candidate)
+                removeAdditionalRequestRecords(head.id)
+                true
+            }
+            ?: false
     }
 
     private fun evictWebSocketConversation(head: PerWebSocketRecord): Boolean {
