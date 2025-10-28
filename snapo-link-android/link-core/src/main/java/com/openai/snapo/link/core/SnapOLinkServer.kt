@@ -2,21 +2,12 @@ package com.openai.snapo.link.core
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
-import android.content.res.Resources
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.os.Process
 import android.os.SystemClock
-import android.util.Base64
 import android.util.Log
-import androidx.core.graphics.createBitmap
-import androidx.core.graphics.scale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,6 +69,7 @@ class SnapOLinkServer(
 
     @Volatile
     private var latestAppIcon: AppIcon? = null
+    private val appIconProvider = AppIconProvider(app)
 
     private val serverStartWallMs = System.currentTimeMillis()
     private val serverStartMonoNs = android.os.SystemClock.elapsedRealtimeNanos()
@@ -707,7 +699,7 @@ class SnapOLinkServer(
     }
 
     private suspend fun emitAppIconIfAvailable() {
-        val iconEvent = loadAppIconEvent() ?: return
+        val iconEvent = appIconProvider.loadAppIcon() ?: return
         latestAppIcon = iconEvent
         streamAppIcon(iconEvent)
     }
@@ -749,46 +741,6 @@ class SnapOLinkServer(
         }
     }
 
-    private fun loadAppIconEvent(): AppIcon? {
-        val drawable = try {
-            app.packageManager.getApplicationIcon(app.applicationInfo)
-        } catch (_: PackageManager.NameNotFoundException) {
-            return null
-        } catch (_: Resources.NotFoundException) {
-            return null
-        } catch (_: SecurityException) {
-            return null
-        }
-
-        return try {
-            drawableToBitmap(drawable)?.let { bitmap ->
-                val scaled = if (bitmap.width == TargetIconSize && bitmap.height == TargetIconSize) {
-                    bitmap
-                } else {
-                    bitmap.scale(TargetIconSize, TargetIconSize)
-                }
-
-                val pngData = ByteArrayOutputStream().use { out ->
-                    scaled.compress(Bitmap.CompressFormat.PNG, IconPngQuality, out)
-                    out.toByteArray()
-                }
-                if (scaled !== bitmap && !scaled.isRecycled) {
-                    scaled.recycle()
-                }
-                val encoded = Base64.encodeToString(pngData, Base64.NO_WRAP)
-
-                AppIcon(
-                    packageName = app.packageName,
-                    width = TargetIconSize,
-                    height = TargetIconSize,
-                    base64Data = encoded,
-                )
-            }
-        } catch (_: IllegalArgumentException) {
-            null
-        }
-    }
-
     private fun writeHandshake(writer: BufferedWriter) {
         writeLine(
             writer,
@@ -814,23 +766,6 @@ class SnapOLinkServer(
         }
     }
 
-    private fun drawableToBitmap(drawable: Drawable): Bitmap? {
-        if (drawable is BitmapDrawable) {
-            return drawable.bitmap
-        }
-        return renderDrawable(drawable)
-    }
-
-    private fun renderDrawable(drawable: Drawable): Bitmap {
-        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: TargetIconSize
-        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: TargetIconSize
-        val bitmap = createBitmap(width, height)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
-        drawable.draw(canvas)
-        return bitmap
-    }
-
     companion object {
         fun start(
             application: Application,
@@ -843,8 +778,6 @@ class SnapOLinkServer(
 }
 
 private const val TAG = "SnapOLink"
-private const val TargetIconSize = 96
-private const val IconPngQuality = 100
 private const val ClientHelloToken = "HelloSnapO"
 private const val ClientHelloTimeoutMs = 1_000
 private const val ClientHelloMaxBytes = 4 * 1024
