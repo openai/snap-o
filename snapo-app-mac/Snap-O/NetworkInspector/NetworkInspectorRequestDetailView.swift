@@ -356,6 +356,7 @@ private struct StreamEventCard: View {
         isLikelyJSON: isLikelyJSON,
         usePrettyPrinted: $usePrettyPrinted,
         showsToggle: false,
+        showsCopyButton: false,
         isExpandable: !usePrettyPrinted,
         expandedBinding: Binding(
           get: { isExpanded || usePrettyPrinted },
@@ -387,6 +388,18 @@ private struct StreamEventCard: View {
           .font(.caption)
           .toggleStyle(.checkbox)
       }
+      if let copyText {
+        Button {
+          NetworkInspectorCopyExporter.copyText(copyText)
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "doc.on.doc")
+            Text("Copy")
+          }
+        }
+        .buttonStyle(.plain)
+        .font(.caption)
+      }
     }
   }
 
@@ -409,6 +422,16 @@ private struct StreamEventCard: View {
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
     }
+  }
+
+  private var copyText: String? {
+    if usePrettyPrinted, let prettyPrintedData, !prettyPrintedData.isEmpty {
+      return prettyPrintedData
+    }
+    if let dataText, !dataText.isEmpty {
+      return dataText
+    }
+    return event.raw.isEmpty ? nil : event.raw
   }
 }
 
