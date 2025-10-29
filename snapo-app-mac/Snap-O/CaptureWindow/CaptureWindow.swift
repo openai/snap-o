@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct CaptureWindow: View {
-  @Environment(\.openWindow) private var openWindow
+  @Environment(\.openWindow)
+  private var openWindow
+
   @StateObject private var controller = CaptureWindowController()
   @StateObject private var settings = AppSettings.shared
   @State private var hasRestoredNetworkInspector = false
