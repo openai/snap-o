@@ -31,8 +31,6 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 
-private const val TAG = "SnapOLinkDemo"
-
 class MainActivity : ComponentActivity() {
 
     private val client: OkHttpClient by lazy {
