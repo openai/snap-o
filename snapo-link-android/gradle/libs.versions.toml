@@ -11,6 +11,7 @@ lifecycleRuntimeKtx = "2.9.4"
 activityCompose = "1.11.0"
 composeBom = "2025.10.01"
 okhttpBom = "5.1.0"
+ktor = "3.3.1"
 detekt = "1.23.8"
 
 [libraries]
@@ -30,6 +31,9 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 okhttp3-bom = { group = "com.squareup.okhttp3", name = "okhttp-bom", version.ref = "okhttpBom" }
 okhttp3-coroutines = { group = "com.squareup.okhttp3", name = "okhttp-coroutines" }
 okhttp3-okhttp = { group = "com.squareup.okhttp3", name = "okhttp" }
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", version.ref = "ktor" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
