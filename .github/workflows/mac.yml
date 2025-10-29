@@ -7,12 +7,14 @@ on:
       - master
     paths:
       - 'snapo-app-mac/**'
+      - 'VERSION'
   pull_request:
     branches:
       - main
       - master
     paths:
       - 'snapo-app-mac/**'
+      - 'VERSION'
 
 jobs:
   build:
