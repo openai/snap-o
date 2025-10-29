@@ -1100,7 +1100,7 @@ enum NetworkInspectorDetailViewModel {
 private extension NetworkInspectorStore {
   struct RequestUIState {
     var collapsedSections: Set<RequestDetailSection> = [.requestHeaders, .requestBody]
-    var prettyPrintedSections: Set<RequestDetailSection> = []
+      var prettyPrintedSections: Set<RequestDetailSection> = [.requestBody, .responseBody]
   }
 }
 
