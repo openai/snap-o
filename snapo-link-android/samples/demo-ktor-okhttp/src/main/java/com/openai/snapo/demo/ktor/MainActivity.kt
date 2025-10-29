@@ -1,7 +1,6 @@
 package com.openai.snapo.demo.ktor
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -72,14 +71,15 @@ class MainActivity : ComponentActivity() {
                                 httpClient.webSocket(urlString = "wss://echo.websocket.org") {
                                     send("Hello from Snap-O!")
                                     for (frame in incoming) {
-                                        if (frame !is Frame.Text) continue
-                                        close(
-                                            CloseReason(
-                                                CloseReason.Codes.NORMAL,
-                                                "Closing after echo",
+                                        if (frame is Frame.Text) {
+                                            close(
+                                                CloseReason(
+                                                    CloseReason.Codes.NORMAL,
+                                                    "Closing after echo",
+                                                )
                                             )
-                                        )
-                                        break
+                                            break
+                                        }
                                     }
                                 }
                             }

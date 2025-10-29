@@ -9,6 +9,9 @@ style:
     active: false
   ReturnCount:
     active: false
+  UnusedPrivateMember:
+    ignoreAnnotated:
+      - 'Preview'
 
 naming:
   FunctionNaming:

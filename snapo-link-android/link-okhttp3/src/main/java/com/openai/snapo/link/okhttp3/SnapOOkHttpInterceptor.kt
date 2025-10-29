@@ -44,13 +44,12 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val request = chain.request()
         publishRequest(context, request)
 
-        return try {
+        return runCatching {
             val response = chain.proceed(request)
             handleResponse(context, response)
-        } catch (t: Throwable) {
-            handleFailure(context, t)
-            throw t
-        }
+        }.onFailure { error ->
+            handleFailure(context, error)
+        }.getOrThrow()
     }
 
     override fun close() {
@@ -252,7 +251,7 @@ private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBody
         else -> try {
             val contentLength = responseBody.contentLength()
             val effectiveMax = when {
-                contentLength in 0 until ABSOLUTE_TEXT_BODY_MAX_BYTES -> max(maxBytes, contentLength.toInt())
+                contentLength in 0 until AbsoluteBodyTextMaxBytes -> max(maxBytes, contentLength.toInt())
                 else -> maxBytes
             }
             val peek = peekBody(effectiveMax.toLong() + 1L)
@@ -284,8 +283,9 @@ private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBody
 }
 
 private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
-    val requestBody = body
-    if (maxBytes <= 0 || requestBody == null || requestBody.isDuplex() || requestBody.isOneShot()) return null
+    if (maxBytes <= 0) return null
+    val requestBody = body ?: return null
+    if (requestBody.isDuplex() || requestBody.isOneShot()) return null
     return try {
         val buffer = Buffer()
         requestBody.writeTo(buffer)
@@ -327,4 +327,4 @@ internal fun nanosToMillis(deltaNs: Long): Long? {
     return TimeUnit.NANOSECONDS.toMillis(deltaNs)
 }
 
-private const val ABSOLUTE_TEXT_BODY_MAX_BYTES: Long = 8L * 1024L * 1024L
+private const val AbsoluteBodyTextMaxBytes: Long = 8L * 1024L * 1024L

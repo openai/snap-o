@@ -1,7 +1,6 @@
 package com.openai.snapo.demo
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -26,9 +25,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import okhttp3.coroutines.executeAsync
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okhttp3.coroutines.executeAsync
 import okio.ByteString
 
 class MainActivity : ComponentActivity() {
@@ -124,7 +123,7 @@ fun Greeting(
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+private fun GreetingPreview() {
     SnapOLinkTheme {
         Greeting(
             onNetworkRequestClick = {},
