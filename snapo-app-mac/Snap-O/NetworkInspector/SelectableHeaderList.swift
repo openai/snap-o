@@ -73,6 +73,69 @@ private final class HeaderTextView: NSTextView {
     pboard.declareTypes([.string], owner: nil)
     return pboard.setString(normalized, forType: .string)
   }
+
+  override func mouseDown(with event: NSEvent) {
+    var characterIndex: Int?
+    if event.clickCount >= 3,
+       let layoutManager,
+       let textContainer {
+      let pointInView = convert(event.locationInWindow, from: nil)
+      let containerPoint = NSPoint(
+        x: pointInView.x - textContainerInset.width,
+        y: pointInView.y - textContainerInset.height
+      )
+      let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+      characterIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+    }
+
+    super.mouseDown(with: event)
+
+    guard event.clickCount >= 3, let characterIndex else { return }
+    adjustTripleClickSelection(at: characterIndex)
+  }
+
+  private func adjustTripleClickSelection(at characterIndex: Int) {
+    let nsString = string as NSString
+    let lineRange = nsString.lineRange(for: NSRange(location: characterIndex, length: 0))
+    guard lineRange.length > 0 else { return }
+
+    var selectionRange = lineRange
+
+    // Exclude trailing newline from the range if present.
+    var lineEnd = lineRange.location + lineRange.length
+    if lineEnd > lineRange.location, nsString.character(at: lineEnd - 1) == 0x0A {
+      lineEnd -= 1
+    }
+
+    // Handle continuation lines that begin with a tab.
+    if lineRange.length > 0, nsString.character(at: lineRange.location) == 0x09 {
+      let valueStart = lineRange.location + 1
+      let valueLength = max(lineEnd - valueStart, 0)
+      if valueLength > 0 {
+        selectionRange = NSRange(location: valueStart, length: valueLength)
+        setSelectedRange(selectionRange)
+      }
+      return
+    }
+
+    let tabRange = nsString.range(of: "\t", options: [], range: lineRange)
+    guard tabRange.location != NSNotFound else { return }
+
+    if characterIndex > tabRange.location {
+      let valueStart = tabRange.location + 1
+      let valueLength = max(lineEnd - valueStart, 0)
+      if valueLength > 0 {
+        selectionRange = NSRange(location: valueStart, length: valueLength)
+        setSelectedRange(selectionRange)
+      }
+    } else {
+      let nameLength = max(tabRange.location - lineRange.location, 0)
+      if nameLength > 0 {
+        selectionRange = NSRange(location: lineRange.location, length: nameLength)
+        setSelectedRange(selectionRange)
+      }
+    }
+  }
 }
 
 private func normalizeCopiedText(_ text: String) -> String {

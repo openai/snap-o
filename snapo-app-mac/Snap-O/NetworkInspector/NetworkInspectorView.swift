@@ -2,12 +2,16 @@ import Foundation
 import SwiftUI
 
 struct NetworkInspectorView: View {
-  @ObservedObject var store: NetworkInspectorStore
+  @ObservedObject private var store: NetworkInspectorStore
   @State private var selectedItem: NetworkInspectorItemID?
   @State private var requestSearchText = ""
   @State private var selectedServerID: SnapOLinkServerID?
   @State private var splitViewVisibility: NavigationSplitViewVisibility = .all
   @State private var isServerPickerPresented = false
+
+  init(store: NetworkInspectorStore) {
+    _store = ObservedObject(wrappedValue: store)
+  }
 
   private var serverScopedItems: [NetworkInspectorListItemViewModel] {
     store.items.filter { item in
@@ -118,7 +122,7 @@ struct NetworkInspectorView: View {
     }
   }
 
-  private func statusLabel(for status: NetworkInspectorRequestViewModel.Status) -> String {
+  private func statusLabel(for status: NetworkInspectorRequestStatus) -> String {
     switch status {
     case .pending:
       "Pending"
@@ -129,7 +133,7 @@ struct NetworkInspectorView: View {
     }
   }
 
-  private func statusColor(for status: NetworkInspectorRequestViewModel.Status) -> Color {
+  private func statusColor(for status: NetworkInspectorRequestStatus) -> Color {
     switch status {
     case .pending:
       .secondary
@@ -203,12 +207,12 @@ private extension NetworkInspectorView {
     onClose: @escaping () -> Void
   ) -> some View {
     switch detail {
-    case .request(let request):
-      NetworkInspectorRequestDetailView(store: store, request: request, onClose: onClose)
-        .id(request.id)
-    case .webSocket(let webSocket):
-      NetworkInspectorWebSocketDetailView(webSocket: webSocket, onClose: onClose)
-        .id(webSocket.id)
+    case .request(let requestID):
+      NetworkInspectorRequestDetailView(store: store, requestID: requestID, onClose: onClose)
+        .id(requestID)
+    case .webSocket(let webSocketID):
+      NetworkInspectorWebSocketDetailView(store: store, webSocketID: webSocketID, onClose: onClose)
+        .id(webSocketID)
     }
   }
 

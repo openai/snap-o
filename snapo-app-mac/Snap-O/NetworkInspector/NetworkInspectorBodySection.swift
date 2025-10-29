@@ -4,13 +4,18 @@ struct NetworkInspectorBodySection: View {
   let title: String
   let payload: NetworkInspectorRequestViewModel.BodyPayload
   @Binding private var isExpanded: Bool
-  @State private var usePrettyPrinted: Bool
+  @Binding private var usePrettyPrinted: Bool
 
-  init(title: String, payload: NetworkInspectorRequestViewModel.BodyPayload, isExpanded: Binding<Bool>) {
+  init(
+    title: String,
+    payload: NetworkInspectorRequestViewModel.BodyPayload,
+    isExpanded: Binding<Bool>,
+    isPrettyPrinted: Binding<Bool>
+  ) {
     self.title = title
     self.payload = payload
     _isExpanded = isExpanded
-    _usePrettyPrinted = State(initialValue: false)
+    _usePrettyPrinted = isPrettyPrinted
   }
 
   var body: some View {

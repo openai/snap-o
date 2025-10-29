@@ -15,7 +15,7 @@ struct NetworkInspectorSidebar: View {
   var body: some View {
     VStack(spacing: 8) {
       NetworkInspectorSidebarServerControls(
-        store: store,
+        servers: store.servers,
         selectedServerID: $selectedServerID,
         isServerPickerPresented: $isServerPickerPresented,
         selectedServer: selectedServer,
@@ -41,6 +41,7 @@ struct NetworkInspectorSidebar: View {
 
       NetworkInspectorSidebarList(
         store: store,
+        items: store.items,
         serverScopedItems: serverScopedItems,
         filteredItems: filteredItems,
         selectedServer: selectedServer,

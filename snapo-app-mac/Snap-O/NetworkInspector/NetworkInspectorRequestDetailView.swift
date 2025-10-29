@@ -1,65 +1,94 @@
+import Combine
 import Foundation
 import SwiftUI
 
 struct NetworkInspectorRequestDetailView: View {
-  @ObservedObject var store: NetworkInspectorStore
-  let request: NetworkInspectorRequestViewModel
+  @StateObject private var viewModel: NetworkInspectorRequestDetailViewModel
   let onClose: () -> Void
 
+  init(
+    store: NetworkInspectorStore,
+    requestID: NetworkInspectorRequestID,
+    onClose: @escaping () -> Void
+  ) {
+    _viewModel = StateObject(wrappedValue: NetworkInspectorRequestDetailViewModel(store: store, requestID: requestID))
+    self.onClose = onClose
+  }
+
   var body: some View {
-    ScrollView(.vertical) {
-      VStack(alignment: .leading, spacing: 16) {
-        headerSummary
+    Group {
+      if let request = viewModel.request {
+        ScrollView(.vertical) {
+          VStack(alignment: .leading, spacing: 16) {
+            headerSummary(for: request)
 
-        if !request.requestHeaders.isEmpty {
-          NetworkInspectorHeadersSection(
-            title: "Request Headers",
-            headers: request.requestHeaders,
-            isExpanded: sectionBinding(for: .requestHeaders)
-          )
-        }
+            if !request.requestHeaders.isEmpty {
+              NetworkInspectorHeadersSection(
+                title: "Request Headers",
+                headers: request.requestHeaders,
+                isExpanded: sectionBinding(for: .requestHeaders)
+              )
+            }
 
-        if let requestBody = request.requestBody {
-          NetworkInspectorBodySection(
-            title: "Request Body",
-            payload: requestBody,
-            isExpanded: sectionBinding(for: .requestBody)
-          )
-        }
+            if let requestBody = request.requestBody {
+              NetworkInspectorBodySection(
+                title: "Request Body",
+                payload: requestBody,
+                isExpanded: sectionBinding(for: .requestBody),
+                isPrettyPrinted: viewModel.bindingForPrettyPrinted(
+                  .requestBody,
+                  defaultPretty: requestBody.prettyPrintedText != nil
+                )
+              )
+            }
 
-        if case .pending = request.status {
-          waitingForResponseView
-        }
+            if case .pending = request.status {
+              waitingForResponseView
+            }
 
-        if !request.responseHeaders.isEmpty {
-          NetworkInspectorHeadersSection(
-            title: "Response Headers",
-            headers: request.responseHeaders,
-            isExpanded: sectionBinding(for: .responseHeaders)
-          )
-        }
+            if !request.responseHeaders.isEmpty {
+              NetworkInspectorHeadersSection(
+                title: "Response Headers",
+                headers: request.responseHeaders,
+                isExpanded: sectionBinding(for: .responseHeaders)
+              )
+            }
 
-        if request.isStreamingResponse {
-          StreamEventsSection(
-            events: request.streamEvents,
-            closed: request.streamClosed,
-            isExpanded: sectionBinding(for: .stream)
-          )
-        }
+            if request.isStreamingResponse {
+              StreamEventsSection(
+                events: request.streamEvents,
+                closed: request.streamClosed,
+                isExpanded: sectionBinding(for: .stream)
+              )
+            }
 
-        if let responseBody = request.responseBody {
-          NetworkInspectorBodySection(
-            title: "Response Body",
-            payload: responseBody,
-            isExpanded: sectionBinding(for: .responseBody)
-          )
+            if let responseBody = request.responseBody {
+              NetworkInspectorBodySection(
+                title: "Response Body",
+                payload: responseBody,
+                isExpanded: sectionBinding(for: .responseBody),
+                isPrettyPrinted: viewModel.bindingForPrettyPrinted(
+                  .responseBody,
+                  defaultPretty: responseBody.prettyPrintedText != nil
+                )
+              )
+            }
+          }
+          .padding(24)
         }
+      } else {
+        VStack(spacing: 12) {
+          ProgressView()
+          Text("Loading request details…")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      .padding(24)
     }
   }
 
-  private var headerSummary: some View {
+  private func headerSummary(for request: NetworkInspectorRequestViewModel) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .top, spacing: 12) {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -81,7 +110,7 @@ struct NetworkInspectorRequestDetailView: View {
       }
 
       HStack(alignment: .firstTextBaseline, spacing: 12) {
-        statusBadge
+        statusBadge(for: request)
         Text(request.timingSummary)
           .font(.callout)
           .foregroundStyle(.secondary)
@@ -98,9 +127,8 @@ struct NetworkInspectorRequestDetailView: View {
   }
 
   private func sectionBinding(for section: NetworkInspectorStore.RequestDetailSection) -> Binding<Bool> {
-    store.bindingForSection(
+    viewModel.bindingForSection(
       section,
-      requestID: request.id,
       defaultExpanded: defaultExpansion(for: section)
     )
   }
@@ -124,7 +152,7 @@ struct NetworkInspectorRequestDetailView: View {
     }
   }
 
-  private var statusBadge: some View {
+  private func statusBadge(for request: NetworkInspectorRequestViewModel) -> some View {
     let label: String
     let color: Color
 
@@ -298,7 +326,7 @@ private struct StreamEventCard: View {
   private let dataText: String?
   private let prettyPrintedData: String?
   private let isLikelyJSON: Bool
-  @State private var usePrettyPrinted: Bool = false
+  @State private var usePrettyPrinted: Bool
   private var showsPrettyToggle: Bool { prettyPrintedData != nil }
 
   init(event: NetworkInspectorRequestViewModel.StreamEvent, isExpanded: Binding<Bool>) {
@@ -315,6 +343,7 @@ private struct StreamEventCard: View {
       prettyPrintedData = nil
       isLikelyJSON = false
     }
+    _usePrettyPrinted = State(initialValue: prettyPrintedData != nil)
   }
 
   var body: some View {
@@ -331,7 +360,8 @@ private struct StreamEventCard: View {
         expandedBinding: Binding(
           get: { isExpanded || usePrettyPrinted },
           set: { newValue in isExpanded = newValue }
-        )
+        ),
+        prettyInitiallyExpanded: false
       )
 
       metadata
@@ -379,5 +409,48 @@ private struct StreamEventCard: View {
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
     }
+  }
+}
+
+@MainActor
+final class NetworkInspectorRequestDetailViewModel: ObservableObject {
+  @Published private(set) var request: NetworkInspectorRequestViewModel?
+
+  private let store: NetworkInspectorStore
+  private let requestID: NetworkInspectorRequestID
+  private var cancellable: AnyCancellable?
+
+  init(store: NetworkInspectorStore, requestID: NetworkInspectorRequestID) {
+    self.store = store
+    self.requestID = requestID
+    request = store.requestViewModel(for: requestID)
+
+    cancellable = store.requestPublisher(for: requestID)
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] latest in
+        self?.request = latest
+      }
+  }
+
+  func bindingForSection(
+    _ section: NetworkInspectorStore.RequestDetailSection,
+    defaultExpanded: Bool
+  ) -> Binding<Bool> {
+    store.bindingForSection(
+      section,
+      requestID: requestID,
+      defaultExpanded: defaultExpanded
+    )
+  }
+
+  func bindingForPrettyPrinted(
+    _ section: NetworkInspectorStore.RequestDetailSection,
+    defaultPretty: Bool
+  ) -> Binding<Bool> {
+    store.bindingForPrettyPrinted(
+      section,
+      requestID: requestID,
+      defaultValue: defaultPretty
+    )
   }
 }

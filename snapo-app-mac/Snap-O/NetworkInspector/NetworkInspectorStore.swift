@@ -21,9 +21,10 @@ final class NetworkInspectorStore: ObservableObject {
   private var serverLookup: [SnapOLinkServerID: NetworkInspectorServerViewModel] = [:]
   private var latestRequests: [NetworkInspectorRequest] = []
   private var latestWebSockets: [NetworkInspectorWebSocket] = []
-  private var requestLookup: [NetworkInspectorRequestID: NetworkInspectorRequestViewModel] = [:]
-  private var webSocketLookup: [NetworkInspectorWebSocketID: NetworkInspectorWebSocketViewModel] = [:]
-  private var requestSectionStates: [NetworkInspectorRequestID: [RequestDetailSection: Bool]] = [:]
+  private var requestLookup: [NetworkInspectorRequestID: NetworkInspectorRequest] = [:]
+  private var webSocketLookup: [NetworkInspectorWebSocketID: NetworkInspectorWebSocket] = [:]
+  private var requestUIStates: [NetworkInspectorRequestID: RequestUIState] = [:]
+  private var requestSubjects: [NetworkInspectorRequestID: CurrentValueSubject<NetworkInspectorRequestViewModel?, Never>] = [:]
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -66,21 +67,24 @@ final class NetworkInspectorStore: ObservableObject {
   }
 
   private func rebuildViewModels() {
-    let requestViewModels = latestRequests.map { request in
-      let server = serverLookup[request.serverID]
-      return NetworkInspectorRequestViewModel(request: request, server: server)
-    }
-    requestLookup = Dictionary(uniqueKeysWithValues: requestViewModels.map { ($0.id, $0) })
+    let previousRequestLookup = requestLookup
 
-    let webSocketViewModels = latestWebSockets.map { session in
-      let server = serverLookup[session.serverID]
-      return NetworkInspectorWebSocketViewModel(session: session, server: server)
+    requestLookup = Dictionary(uniqueKeysWithValues: latestRequests.map { ($0.id, $0) })
+    webSocketLookup = Dictionary(uniqueKeysWithValues: latestWebSockets.map { ($0.id, $0) })
+
+    let requestSummaries = latestRequests.map { request in
+      let server = serverLookup[request.serverID]
+      return NetworkInspectorRequestSummary(request: request, server: server)
     }
-    webSocketLookup = Dictionary(uniqueKeysWithValues: webSocketViewModels.map { ($0.id, $0) })
+
+    let webSocketSummaries = latestWebSockets.map { session in
+      let server = serverLookup[session.serverID]
+      return NetworkInspectorWebSocketSummary(session: session, server: server)
+    }
 
     let combined: [NetworkInspectorListItemViewModel] =
-      requestViewModels.map { NetworkInspectorListItemViewModel(kind: .request($0), firstSeenAt: $0.firstSeenAt) } +
-      webSocketViewModels.map { NetworkInspectorListItemViewModel(kind: .webSocket($0), firstSeenAt: $0.firstSeenAt) }
+      requestSummaries.map { NetworkInspectorListItemViewModel(kind: .request($0), firstSeenAt: $0.firstSeenAt) } +
+      webSocketSummaries.map { NetworkInspectorListItemViewModel(kind: .webSocket($0), firstSeenAt: $0.firstSeenAt) }
 
     items = combined.sorted { lhs, rhs in
       if lhs.firstSeenAt == rhs.firstSeenAt {
@@ -89,8 +93,9 @@ final class NetworkInspectorStore: ObservableObject {
       return lhs.firstSeenAt < rhs.firstSeenAt
     }
 
-    let validRequestIDs = Set(requestViewModels.map(\.id))
-    requestSectionStates = requestSectionStates.filter { validRequestIDs.contains($0.key) }
+    let validRequestIDs = Set(requestSummaries.map(\.id))
+    requestUIStates = requestUIStates.filter { validRequestIDs.contains($0.key) }
+    notifyRequestObservers(previousRequests: previousRequestLookup)
   }
 
   private func isCollapsed(
@@ -98,10 +103,10 @@ final class NetworkInspectorStore: ObservableObject {
     for requestID: NetworkInspectorRequestID,
     defaultExpanded: Bool
   ) -> Bool {
-    if let explicit = requestSectionStates[requestID]?[section] {
-      return explicit
+    guard let state = requestUIStates[requestID] else {
+      return !defaultExpanded
     }
-    return defaultExpanded ? false : true
+    return state.collapsedSections.contains(section)
   }
 
   private func setSection(
@@ -110,21 +115,24 @@ final class NetworkInspectorStore: ObservableObject {
     collapsed: Bool,
     defaultExpanded: Bool
   ) {
-    let current = requestSectionStates[requestID]?[section] ?? (defaultExpanded ? false : true)
-    guard current != collapsed else { return }
+    var state = requestUIStates[requestID] ?? RequestUIState()
+    let defaultCollapsed = !defaultExpanded
+    let currentlyCollapsed = state.collapsedSections.contains(section)
 
+    guard currentlyCollapsed != collapsed else { return }
+
+    if collapsed == defaultCollapsed {
+      state.collapsedSections.remove(section)
+    } else {
+      state.collapsedSections.insert(section)
+    }
+
+    if state.collapsedSections.isEmpty, state.prettyPrintedSections.isEmpty {
+      requestUIStates.removeValue(forKey: requestID)
+    } else {
+      requestUIStates[requestID] = state
+    }
     objectWillChange.send()
-    var states = requestSectionStates[requestID] ?? [:]
-    if collapsed == (defaultExpanded ? false : true) {
-      states.removeValue(forKey: section)
-    } else {
-      states[section] = collapsed
-    }
-    if states.isEmpty {
-      requestSectionStates.removeValue(forKey: requestID)
-    } else {
-      requestSectionStates[requestID] = states
-    }
   }
 
   func bindingForSection(
@@ -138,14 +146,41 @@ final class NetworkInspectorStore: ObservableObject {
     )
   }
 
+  func bindingForPrettyPrinted(
+    _ section: RequestDetailSection,
+    requestID: NetworkInspectorRequestID,
+    defaultValue: Bool
+  ) -> Binding<Bool> {
+    Binding(
+      get: {
+        let state = self.requestUIStates[requestID]
+        return state?.prettyPrintedSections.contains(section) ?? defaultValue
+      },
+      set: { newValue in
+        var state = self.requestUIStates[requestID] ?? RequestUIState()
+        if newValue == defaultValue {
+          state.prettyPrintedSections.remove(section)
+        } else {
+          state.prettyPrintedSections.insert(section)
+        }
+        if state.collapsedSections.isEmpty, state.prettyPrintedSections.isEmpty {
+          self.requestUIStates.removeValue(forKey: requestID)
+        } else {
+          self.requestUIStates[requestID] = state
+        }
+        self.objectWillChange.send()
+      }
+    )
+  }
+
   func detail(for id: NetworkInspectorItemID) -> NetworkInspectorDetailViewModel? {
     switch id {
     case .request(let requestID):
-      guard let viewModel = requestLookup[requestID] else { return nil }
-      return .request(viewModel)
+      guard requestLookup[requestID] != nil else { return nil }
+      return .request(requestID)
     case .webSocket(let socketID):
-      guard let viewModel = webSocketLookup[socketID] else { return nil }
-      return .webSocket(viewModel)
+      guard webSocketLookup[socketID] != nil else { return nil }
+      return .webSocket(socketID)
     }
   }
 
@@ -159,6 +194,28 @@ final class NetworkInspectorStore: ObservableObject {
     Task {
       await service.clearCompletedEntries()
     }
+  }
+
+  func requestViewModel(for id: NetworkInspectorRequestID) -> NetworkInspectorRequestViewModel? {
+    guard let request = requestLookup[id] else { return nil }
+    let server = serverLookup[request.serverID]
+    return NetworkInspectorRequestViewModel(request: request, server: server)
+  }
+
+  func requestPublisher(for id: NetworkInspectorRequestID) -> AnyPublisher<NetworkInspectorRequestViewModel?, Never> {
+    if let subject = requestSubjects[id] {
+      return subject.eraseToAnyPublisher()
+    }
+    let initial = requestViewModel(for: id)
+    let subject = CurrentValueSubject<NetworkInspectorRequestViewModel?, Never>(initial)
+    requestSubjects[id] = subject
+    return subject.eraseToAnyPublisher()
+  }
+
+  func webSocketViewModel(for id: NetworkInspectorWebSocketID) -> NetworkInspectorWebSocketViewModel? {
+    guard let session = webSocketLookup[id] else { return nil }
+    let server = serverLookup[session.serverID]
+    return NetworkInspectorWebSocketViewModel(session: session, server: server)
   }
 }
 
@@ -795,10 +852,165 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
   }
 }
 
+enum NetworkInspectorRequestStatus: Equatable {
+  case pending
+  case success(code: Int)
+  case failure(message: String?)
+}
+
+struct NetworkInspectorRequestSummary: Identifiable {
+  let id: NetworkInspectorRequestID
+  let serverID: SnapOLinkServerID
+  let method: String
+  let url: String
+  let primaryPathComponent: String
+  let secondaryPath: String
+  let status: NetworkInspectorRequestStatus
+  let isStreamingResponse: Bool
+  let hasClosedStream: Bool
+  let firstSeenAt: Date
+  let lastUpdatedAt: Date
+
+  init(request: NetworkInspectorRequest, server _: NetworkInspectorServerViewModel?) {
+    id = request.id
+    serverID = request.serverID
+
+    if let record = request.request {
+      method = record.method
+      url = record.url
+    } else {
+      method = "?"
+      url = "Request \(request.requestID)"
+    }
+
+    if let failure = request.failure {
+      status = .failure(message: failure.message)
+    } else if let response = request.response {
+      status = .success(code: response.code)
+    } else {
+      status = .pending
+    }
+
+    let components = URLComponents(string: url)
+    if let path = components?.path, !path.isEmpty {
+      let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+      primaryPathComponent = parts.last.map(String.init) ?? path
+      let remaining = parts.dropLast()
+      if remaining.isEmpty {
+        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+      } else {
+        let base = "/" + remaining.joined(separator: "/")
+        if let query = components?.percentEncodedQuery, !query.isEmpty {
+          secondaryPath = base + "?" + query
+        } else {
+          secondaryPath = base
+        }
+      }
+    } else {
+      primaryPathComponent = url
+      secondaryPath = ""
+    }
+
+    let events = request.streamEvents.sorted { lhs, rhs in
+      if lhs.sequence == rhs.sequence {
+        return lhs.tWallMs < rhs.tWallMs
+      }
+      return lhs.sequence < rhs.sequence
+    }
+    isStreamingResponse = !events.isEmpty || request.streamClosed != nil
+    hasClosedStream = request.streamClosed != nil
+
+    firstSeenAt = request.firstSeenAt
+    lastUpdatedAt = request.lastUpdatedAt
+  }
+}
+
+struct NetworkInspectorWebSocketSummary: Identifiable {
+  let id: NetworkInspectorWebSocketID
+  let serverID: SnapOLinkServerID
+  let method: String
+  let url: String
+  let primaryPathComponent: String
+  let secondaryPath: String
+  let status: NetworkInspectorRequestStatus
+  let showsActiveIndicator: Bool
+  let firstSeenAt: Date
+  let lastUpdatedAt: Date
+
+  init(session: NetworkInspectorWebSocket, server _: NetworkInspectorServerViewModel?) {
+    id = session.id
+    serverID = session.serverID
+
+    let urlString = session.willOpen?.url ?? "websocket://\(session.socketID)"
+    url = urlString
+
+    let scheme = URLComponents(string: urlString)?.scheme
+    method = Self.methodBadge(fromScheme: scheme)
+
+    if let failure = session.failed {
+      status = .failure(message: failure.message)
+    } else if session.cancelled != nil {
+      status = .failure(message: "Cancelled")
+    } else if let closed = session.closed {
+      status = .success(code: closed.code)
+    } else if let closing = session.closing {
+      status = .success(code: closing.code)
+    } else if let opened = session.opened {
+      status = .success(code: opened.code)
+    } else {
+      status = .pending
+    }
+
+    let components = URLComponents(string: urlString)
+    if let path = components?.path, !path.isEmpty {
+      let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+      primaryPathComponent = parts.last.map(String.init) ?? path
+      let remaining = parts.dropLast()
+      if remaining.isEmpty {
+        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+      } else {
+        let base = "/" + remaining.joined(separator: "/")
+        if let query = components?.percentEncodedQuery, !query.isEmpty {
+          secondaryPath = base + "?" + query
+        } else {
+          secondaryPath = base
+        }
+      }
+    } else {
+      primaryPathComponent = components?.host ?? session.socketID
+      if let query = components?.percentEncodedQuery, !query.isEmpty {
+        secondaryPath = "?\(query)"
+      } else {
+        secondaryPath = ""
+      }
+    }
+
+    showsActiveIndicator = session.cancelled == nil && session.failed == nil && session.closed == nil
+    firstSeenAt = session.firstSeenAt
+    lastUpdatedAt = session.lastUpdatedAt
+  }
+
+  private static func methodBadge(fromScheme scheme: String?) -> String {
+    guard let scheme, !scheme.isEmpty else { return "WS" }
+    switch scheme.lowercased() {
+    case "http":
+      return "WS"
+    case "https":
+      return "WSS"
+    case "ws":
+      return "WS"
+    case "wss":
+      return "WSS"
+    default:
+      return scheme.uppercased()
+    }
+  }
+}
+
 struct NetworkInspectorListItemViewModel: Identifiable {
   enum Kind {
-    case request(NetworkInspectorRequestViewModel)
-    case webSocket(NetworkInspectorWebSocketViewModel)
+    case request(NetworkInspectorRequestSummary)
+    case webSocket(NetworkInspectorWebSocketSummary)
   }
 
   let kind: Kind
@@ -816,13 +1028,13 @@ struct NetworkInspectorListItemViewModel: Identifiable {
   var method: String {
     switch kind {
     case .request(let request):
-      request.isStreamingResponse ? "\(request.method) SSE" : request.method
+      request.isStreamingResponse && !request.hasClosedStream ? "\(request.method) SSE" : request.method
     case .webSocket(let webSocket):
       webSocket.method
     }
   }
 
-  var status: NetworkInspectorRequestViewModel.Status {
+  var status: NetworkInspectorRequestStatus {
     switch kind {
     case .request(let request):
       request.status
@@ -834,9 +1046,9 @@ struct NetworkInspectorListItemViewModel: Identifiable {
   var showsActiveIndicator: Bool {
     switch kind {
     case .request(let request):
-      request.isStreamingResponse && request.streamClosed == nil
+      request.isStreamingResponse && !request.hasClosedStream
     case .webSocket(let webSocket):
-      webSocket.isActive
+      webSocket.showsActiveIndicator
     }
   }
 
@@ -885,6 +1097,45 @@ struct NetworkInspectorListItemViewModel: Identifiable {
 }
 
 enum NetworkInspectorDetailViewModel {
-  case request(NetworkInspectorRequestViewModel)
-  case webSocket(NetworkInspectorWebSocketViewModel)
+  case request(NetworkInspectorRequestID)
+  case webSocket(NetworkInspectorWebSocketID)
+}
+
+private extension NetworkInspectorStore {
+  struct RequestUIState {
+    var collapsedSections: Set<RequestDetailSection> = []
+    var prettyPrintedSections: Set<RequestDetailSection> = []
+  }
+}
+
+private extension NetworkInspectorStore {
+  func notifyRequestObservers(
+    previousRequests: [NetworkInspectorRequestID: NetworkInspectorRequest]
+  ) {
+    guard !requestSubjects.isEmpty else { return }
+
+    var subjectsToRemove: [NetworkInspectorRequestID] = []
+
+    for (id, subject) in requestSubjects {
+      guard let current = requestLookup[id] else {
+        subject.send(nil)
+        subjectsToRemove.append(id)
+        continue
+      }
+
+      let previous = previousRequests[id]
+      let shouldPublish = previous == nil || previous?.lastUpdatedAt != current.lastUpdatedAt
+
+      if shouldPublish {
+        let server = serverLookup[current.serverID]
+        subject.send(NetworkInspectorRequestViewModel(request: current, server: server))
+      }
+    }
+
+    if !subjectsToRemove.isEmpty {
+      for id in subjectsToRemove {
+        requestSubjects.removeValue(forKey: id)
+      }
+    }
+  }
 }
