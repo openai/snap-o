@@ -25,7 +25,9 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
 
             buildTypes {
                 maybeCreate("release").apply {
+                    // Keep release builds lightweight for samples without extra optimization steps.
                     isMinifyEnabled = false
+                    isShrinkResources = false
                 }
             }
 

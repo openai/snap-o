@@ -9,11 +9,32 @@ plugins {
 
 group = providers.gradleProperty("GROUP").orNull ?: error("Missing GROUP property")
 
-val resolvedVersion = providers.gradleProperty("VERSION_NAME")
-    .orElse(providers.gradleProperty("VERSION"))
-    .orElse(providers.gradleProperty("version"))
-    .orElse("0.0.1-SNAPSHOT")
-    .get()
+val versionFile = rootDir.resolve(
+    providers.gradleProperty("VERSION_FILE").orNull
+        ?: error("Missing VERSION_FILE property"),
+)
+require(versionFile.exists()) {
+    "Missing VERSION file at ${versionFile.absolutePath}"
+}
+
+fun parseVersion(contents: String): String {
+    val entries = contents.lineSequence()
+        .map { it.trim() }
+        .filter { line ->
+            line.isNotEmpty() &&
+                    !line.startsWith("#") &&
+                    line.contains('=')
+        }
+        .map { line ->
+            val (key, value) = line.split("=", limit = 2)
+                .map(String::trim)
+            key to value
+        }
+        .toMap()
+    return entries["VERSION"] ?: error("VERSION entry not found in VERSION file")
+}
+
+val resolvedVersion = parseVersion(versionFile.readText())
 
 version = resolvedVersion
 
