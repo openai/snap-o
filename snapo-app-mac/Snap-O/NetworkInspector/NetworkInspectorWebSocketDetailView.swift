@@ -236,6 +236,7 @@ private struct MessageCardView: View {
           isLikelyJSON: isLikelyJSON,
           usePrettyPrinted: $usePrettyPrinted,
           showsToggle: false,
+          showsCopyButton: false,
           isExpandable: !usePrettyPrinted,
           prettyInitiallyExpanded: false
         )
@@ -248,16 +249,33 @@ private struct MessageCardView: View {
   }
 
   private var header: some View {
-    HStack(spacing: 4) {
+    HStack(spacing: 8) {
       Image(systemName: directionSymbolName)
         .font(.caption.weight(.semibold))
         .symbolRenderingMode(.hierarchical)
         .foregroundStyle(directionColor)
+
       if let size = message.payloadSize {
         Text("\(formatBytes(size))")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
+
+      if let enqueued = message.enqueued {
+        Text(enqueued ? "Enqueued" : "Immediate")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      Text(message.timestamp.inspectorTimeString)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+      Text(message.opcode)
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+
+      Spacer()
 
       if prettyPrintedPreview != nil {
         Toggle("Pretty print", isOn: $usePrettyPrinted)
@@ -265,19 +283,18 @@ private struct MessageCardView: View {
           .toggleStyle(.checkbox)
       }
 
-      Spacer()
-
-      if let enqueued = message.enqueued {
-        Text(enqueued ? "Enqueued" : "Immediate")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      Text(message.timestamp.inspectorTimeString)
+      if let copyText {
+        Button {
+          NetworkInspectorCopyExporter.copyText(copyText)
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "doc.on.doc")
+            Text("Copy")
+          }
+        }
+        .buttonStyle(.plain)
         .font(.caption)
-        .foregroundStyle(.secondary)
-      Text(message.opcode)
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
+      }
     }
   }
 
@@ -290,6 +307,14 @@ private struct MessageCardView: View {
     } catch {
       return nil
     }
+  }
+
+  private var copyText: String? {
+    if usePrettyPrinted, let prettyPrintedPreview, !prettyPrintedPreview.isEmpty {
+      return prettyPrintedPreview
+    }
+    guard let preview = message.preview, !preview.isEmpty else { return nil }
+    return preview
   }
 }
 

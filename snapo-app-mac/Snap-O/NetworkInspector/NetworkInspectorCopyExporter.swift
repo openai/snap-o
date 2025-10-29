@@ -11,6 +11,10 @@ enum NetworkInspectorCopyExporter {
     setPasteboard(string: command)
   }
 
+  static func copyText(_ text: String) {
+    setPasteboard(string: text)
+  }
+
   static func copyStreamEventsRaw(_ events: [NetworkInspectorRequestViewModel.StreamEvent]) {
     let payload = makeStreamEventsPayload(from: events)
     setPasteboard(string: payload)

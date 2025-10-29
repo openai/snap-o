@@ -31,25 +31,32 @@ struct JSONOutlineNode: Identifiable {
 
 struct JSONOutlineView: View {
   let root: JSONOutlineNode
+  private let trailingControls: AnyView?
   @State private var expandedNodes: Set<String>
   @State private var expandedStrings: Set<String>
 
-  init(root: JSONOutlineNode, initiallyExpanded: Bool = true) {
+  init(
+    root: JSONOutlineNode,
+    initiallyExpanded: Bool = true,
+    trailingControls: AnyView? = nil
+  ) {
     self.root = root
+    self.trailingControls = trailingControls
     _expandedNodes = State(initialValue: initiallyExpanded ? Set([root.id]) : Set<String>())
     _expandedStrings = State(initialValue: Set<String>())
   }
 
   init?(text: String, initiallyExpanded: Bool = true) {
     guard let node = JSONOutlineNode.makeTree(from: text) else { return nil }
-    self.init(root: node, initiallyExpanded: initiallyExpanded)
+    self.init(root: node, initiallyExpanded: initiallyExpanded, trailingControls: nil)
   }
 
   var body: some View {
     JSONOutlineNodeView(
       node: root,
       expandedNodes: $expandedNodes,
-      expandedStrings: $expandedStrings
+      expandedStrings: $expandedStrings,
+      trailingControls: trailingControls
     )
     .font(.callout.monospaced())
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,15 +67,18 @@ private struct JSONOutlineNodeView: View {
   let node: JSONOutlineNode
   @Binding var expandedNodes: Set<String>
   @Binding var expandedStrings: Set<String>
+  private let trailingControls: AnyView?
 
   init(
     node: JSONOutlineNode,
     expandedNodes: Binding<Set<String>>,
-    expandedStrings: Binding<Set<String>>
+    expandedStrings: Binding<Set<String>>,
+    trailingControls: AnyView? = nil
   ) {
     self.node = node
     _expandedNodes = expandedNodes
     _expandedStrings = expandedStrings
+    self.trailingControls = trailingControls
   }
 
   var body: some View {
@@ -96,24 +106,23 @@ private struct JSONOutlineNodeView: View {
   @ViewBuilder
   private func compositeView(children: [JSONOutlineNode], openSymbol: String, closeSymbol: String) -> some View {
     if children.isEmpty {
-      collapsedLabel()
+      row {
+        HStack(alignment: .top, spacing: 4) {
+          triangleIndicator
+          collapsedHeader()
+        }
+      }
     } else {
       VStack(alignment: .leading, spacing: 4) {
-        Button(action: toggleExpanded) {
-          HStack(alignment: .top, spacing: 4) {
-            triangleIndicator
-            (isExpanded ? expandedHeader(openSymbol: openSymbol) : collapsedHeader())
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
+        headerRow(openSymbol: openSymbol)
 
         if isExpanded {
           ForEach(children) { child in
             JSONOutlineNodeView(
               node: child,
               expandedNodes: $expandedNodes,
-              expandedStrings: $expandedStrings
+              expandedStrings: $expandedStrings,
+              trailingControls: nil
             )
             .padding(.leading, 12)
           }
@@ -135,16 +144,16 @@ private struct JSONOutlineNodeView: View {
 
   private func collapsedLabel() -> some View {
     let text = collapsedHeader()
-    return HStack(alignment: .top, spacing: 4) {
-      triangleIndicator
-      text
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .contentShape(Rectangle())
-    .onTapGesture {
-      if node.isExpandable {
-        toggleExpanded()
+    return row {
+      Button(action: toggleExpanded) {
+        HStack(alignment: .top, spacing: 4) {
+          triangleIndicator
+          text
+            .lineLimit(1)
+            .truncationMode(.tail)
+        }
       }
+      .buttonStyle(.plain)
     }
   }
 
@@ -177,6 +186,39 @@ private struct JSONOutlineNodeView: View {
       return keyText + Text(openSymbol)
     }
     return Text(openSymbol)
+  }
+
+  private func headerRow(openSymbol: String) -> some View {
+    row {
+      Button(action: toggleExpanded) {
+        HStack(alignment: .top, spacing: 4) {
+          triangleIndicator
+          headerText(openSymbol: openSymbol)
+            .lineLimit(1)
+            .truncationMode(.tail)
+        }
+      }
+      .buttonStyle(.plain)
+    }
+  }
+
+  private func headerText(openSymbol: String) -> Text {
+    isExpanded ? expandedHeader(openSymbol: openSymbol) : collapsedHeader()
+  }
+
+  @ViewBuilder
+  private func row(@ViewBuilder content: () -> some View) -> some View {
+    HStack(alignment: .top, spacing: 4) {
+      content()
+        .layoutPriority(1)
+
+      if let trailingControls {
+        Spacer(minLength: 8)
+        trailingControls
+          .fixedSize()
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private func stringValueView(value: String) -> some View {

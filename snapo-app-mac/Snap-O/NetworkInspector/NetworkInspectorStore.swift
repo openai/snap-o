@@ -115,23 +115,19 @@ final class NetworkInspectorStore: ObservableObject {
     collapsed: Bool,
     defaultExpanded: Bool
   ) {
+    ensureUIStateExists(for: requestID)
     var state = requestUIStates[requestID] ?? RequestUIState()
-    let defaultCollapsed = !defaultExpanded
     let currentlyCollapsed = state.collapsedSections.contains(section)
 
     guard currentlyCollapsed != collapsed else { return }
 
-    if collapsed == defaultCollapsed {
-      state.collapsedSections.remove(section)
-    } else {
+    if collapsed {
       state.collapsedSections.insert(section)
+    } else {
+      state.collapsedSections.remove(section)
     }
 
-    if state.collapsedSections.isEmpty, state.prettyPrintedSections.isEmpty {
-      requestUIStates.removeValue(forKey: requestID)
-    } else {
-      requestUIStates[requestID] = state
-    }
+    requestUIStates[requestID] = state
     objectWillChange.send()
   }
 
@@ -140,7 +136,8 @@ final class NetworkInspectorStore: ObservableObject {
     requestID: NetworkInspectorRequestID,
     defaultExpanded: Bool = true
   ) -> Binding<Bool> {
-    Binding(
+    ensureUIStateExists(for: requestID)
+    return Binding(
       get: { !self.isCollapsed(section, for: requestID, defaultExpanded: defaultExpanded) },
       set: { self.setSection(section, for: requestID, collapsed: !$0, defaultExpanded: defaultExpanded) }
     )
@@ -151,7 +148,8 @@ final class NetworkInspectorStore: ObservableObject {
     requestID: NetworkInspectorRequestID,
     defaultValue: Bool
   ) -> Binding<Bool> {
-    Binding(
+    ensureUIStateExists(for: requestID)
+    return Binding(
       get: {
         let state = self.requestUIStates[requestID]
         return state?.prettyPrintedSections.contains(section) ?? defaultValue
@@ -163,11 +161,7 @@ final class NetworkInspectorStore: ObservableObject {
         } else {
           state.prettyPrintedSections.insert(section)
         }
-        if state.collapsedSections.isEmpty, state.prettyPrintedSections.isEmpty {
-          self.requestUIStates.removeValue(forKey: requestID)
-        } else {
-          self.requestUIStates[requestID] = state
-        }
+        self.requestUIStates[requestID] = state
         self.objectWillChange.send()
       }
     )
@@ -1103,12 +1097,26 @@ enum NetworkInspectorDetailViewModel {
 
 private extension NetworkInspectorStore {
   struct RequestUIState {
-    var collapsedSections: Set<RequestDetailSection> = []
-    var prettyPrintedSections: Set<RequestDetailSection> = []
+    var collapsedSections: Set<RequestDetailSection>
+    var prettyPrintedSections: Set<RequestDetailSection>
+
+    init(
+      collapsedSections: Set<RequestDetailSection> = [.requestHeaders, .requestBody],
+      prettyPrintedSections: Set<RequestDetailSection> = [.requestBody, .responseBody]
+    ) {
+      self.collapsedSections = collapsedSections
+      self.prettyPrintedSections = prettyPrintedSections
+    }
   }
 }
 
 private extension NetworkInspectorStore {
+  func ensureUIStateExists(for requestID: NetworkInspectorRequestID) {
+    if requestUIStates[requestID] == nil {
+      requestUIStates[requestID] = RequestUIState()
+    }
+  }
+
   func notifyRequestObservers(
     previousRequests: [NetworkInspectorRequestID: NetworkInspectorRequest]
   ) {

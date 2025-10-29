@@ -134,11 +134,14 @@ struct InspectorPayloadView: View {
   let isLikelyJSON: Bool
   let maximumHeight: CGFloat
   let showsToggle: Bool
+  let showsCopyButton: Bool
   let isExpandable: Bool
+  let embedControlsInJSON: Bool
   private let expandedBinding: Binding<Bool>?
   private let jsonOutlineRoot: JSONOutlineNode?
   private let prettyInitiallyExpanded: Bool
   @Binding private var usePrettyPrinted: Bool
+  @State private var localPrettyPrinted: Bool
 
   init(
     rawText: String,
@@ -147,7 +150,9 @@ struct InspectorPayloadView: View {
     usePrettyPrinted: Binding<Bool>,
     maximumHeight: CGFloat = 100,
     showsToggle: Bool = true,
+    showsCopyButton: Bool = true,
     isExpandable: Bool = true,
+    embedControlsInJSON: Bool = false,
     expandedBinding: Binding<Bool>? = nil,
     prettyInitiallyExpanded: Bool = true
   ) {
@@ -156,7 +161,9 @@ struct InspectorPayloadView: View {
     self.isLikelyJSON = isLikelyJSON
     self.maximumHeight = maximumHeight
     self.showsToggle = showsToggle
+    self.showsCopyButton = showsCopyButton
     self.isExpandable = isExpandable
+    self.embedControlsInJSON = embedControlsInJSON
     self.expandedBinding = expandedBinding
     self.prettyInitiallyExpanded = prettyInitiallyExpanded
     if let prettyText {
@@ -165,15 +172,16 @@ struct InspectorPayloadView: View {
       jsonOutlineRoot = nil
     }
     _usePrettyPrinted = usePrettyPrinted
+    _localPrettyPrinted = State(initialValue: usePrettyPrinted.wrappedValue)
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      if showsToggle, prettyText != nil {
-        Toggle("Pretty print", isOn: $usePrettyPrinted)
-          .font(.caption)
-          .toggleStyle(.checkbox)
-      } else if prettyText == nil, isLikelyJSON {
+      if !shouldEmbedControlsInJSON {
+        controlsView(includeSpacer: true)
+      }
+
+      if prettyText == nil, isLikelyJSON, !hasToggle {
         Text("Unable to pretty print (invalid or truncated JSON)")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -182,12 +190,30 @@ struct InspectorPayloadView: View {
       payloadContent()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+    .onChange(of: usePrettyPrinted) { newValue in
+      if newValue != localPrettyPrinted {
+        localPrettyPrinted = newValue
+      }
+    }
+    .onChange(of: localPrettyPrinted) { newValue in
+      if newValue != usePrettyPrinted {
+        usePrettyPrinted = newValue
+      }
+    }
   }
 
   @ViewBuilder
   private func payloadContent() -> some View {
-    if usePrettyPrinted, let root = jsonOutlineRoot {
-      JSONOutlineView(root: root, initiallyExpanded: prettyInitiallyExpanded)
+    if localPrettyPrinted, let root = jsonOutlineRoot {
+      if shouldEmbedControlsInJSON {
+        JSONOutlineView(
+          root: root,
+          initiallyExpanded: prettyInitiallyExpanded,
+          trailingControls: AnyView(controlsView(includeSpacer: false))
+        )
+      } else {
+        JSONOutlineView(root: root, initiallyExpanded: prettyInitiallyExpanded)
+      }
     } else if isExpandable {
       InspectorExpandableText(
         text: displayText,
@@ -204,9 +230,58 @@ struct InspectorPayloadView: View {
   }
 
   private var displayText: String {
-    if usePrettyPrinted, let pretty = prettyText {
+    if localPrettyPrinted, let pretty = prettyText {
       return pretty
     }
     return rawText
+  }
+
+  private var hasToggle: Bool {
+    showsToggle && prettyText != nil
+  }
+
+  private var shouldEmbedControlsInJSON: Bool {
+    embedControlsInJSON && localPrettyPrinted && jsonOutlineRoot != nil && (hasToggle || (showsCopyButton && !displayText.isEmpty))
+  }
+
+  @ViewBuilder
+  private func controlsView(includeSpacer: Bool) -> some View {
+    let shouldShowCopy = showsCopyButton && !displayText.isEmpty
+    Group {
+      if hasToggle || shouldShowCopy {
+        HStack(spacing: 8) {
+          if includeSpacer {
+            Spacer()
+          }
+
+          if hasToggle {
+            Toggle(
+              "Pretty print",
+              isOn: Binding(
+                get: { localPrettyPrinted },
+                set: { localPrettyPrinted = $0 }
+              )
+            )
+            .font(.caption)
+            .toggleStyle(.checkbox)
+          }
+
+          if shouldShowCopy {
+            Button {
+              NetworkInspectorCopyExporter.copyText(displayText)
+            } label: {
+              HStack(spacing: 4) {
+                Image(systemName: "doc.on.doc")
+                Text("Copy")
+              }
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+          }
+        }
+      } else {
+        EmptyView()
+      }
+    }
   }
 }

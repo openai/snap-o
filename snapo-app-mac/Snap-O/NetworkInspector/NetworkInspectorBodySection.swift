@@ -51,7 +51,8 @@ struct NetworkInspectorBodySection: View {
             prettyText: payload.prettyPrintedText,
             isLikelyJSON: payload.isLikelyJSON,
             usePrettyPrinted: $usePrettyPrinted,
-            isExpandable: false
+            isExpandable: false,
+            embedControlsInJSON: true
           )
         }
         .padding(.top, 8)
