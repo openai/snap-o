@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct CaptureWindow: View {
+  @Environment(\.openWindow)
+  private var openWindow
+
   @StateObject private var controller = CaptureWindowController()
   @StateObject private var settings = AppSettings.shared
+  @State private var hasRestoredNetworkInspector = false
 
   var body: some View {
     ZStack {
@@ -27,6 +31,13 @@ struct CaptureWindow: View {
       }
     }
     .task { await controller.start() }
+    .onAppear {
+      guard !hasRestoredNetworkInspector else { return }
+      hasRestoredNetworkInspector = true
+      if settings.shouldReopenNetworkInspector {
+        openWindow(id: NetworkInspectorWindowID.main)
+      }
+    }
     .onDisappear { controller.tearDown() }
     .focusedSceneObject(controller)
     .navigationTitle(controller.navigationTitle)

@@ -43,6 +43,7 @@ struct SnapOApp: App {
 
 private struct NetworkInspectorWindowRoot: View {
   @StateObject private var store: NetworkInspectorStore
+  @ObservedObject private var settings = AppSettings.shared
 
   init(services: AppServices) {
     _store = StateObject(wrappedValue: NetworkInspectorStore(service: NetworkInspectorService(
@@ -53,5 +54,12 @@ private struct NetworkInspectorWindowRoot: View {
 
   var body: some View {
     NetworkInspectorView(store: store)
+      .onAppear {
+        settings.shouldReopenNetworkInspector = true
+      }
+      .onDisappear {
+        guard settings.isAppTerminating != true else { return }
+        settings.shouldReopenNetworkInspector = false
+      }
   }
 }

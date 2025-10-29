@@ -1,27 +1,23 @@
 import Combine
 import Foundation
+import SwiftUI
 
 @MainActor
 final class AppSettings: ObservableObject {
   static let shared = AppSettings()
 
-  @Published var showTouchesDuringCapture: Bool {
-    didSet {
-      UserDefaults.standard.set(showTouchesDuringCapture, forKey: Self.showTouchesKey)
-    }
-  }
+  @AppStorage("showTouchesDuringCapture")
+  var showTouchesDuringCapture: Bool = true
 
-  @Published var recordAsBugReport: Bool {
-    didSet {
-      UserDefaults.standard.set(recordAsBugReport, forKey: Self.bugReportKey)
-    }
-  }
+  @AppStorage("recordAsBugReport")
+  var recordAsBugReport: Bool = false
 
-  private static let showTouchesKey = "showTouchesDuringCapture"
-  private static let bugReportKey = "recordAsBugReport"
+  @AppStorage("reopenNetworkInspector")
+  var shouldReopenNetworkInspector: Bool = false
+
+  @Published var isAppTerminating: Bool
 
   init() {
-    showTouchesDuringCapture = UserDefaults.standard.object(forKey: Self.showTouchesKey) as? Bool ?? true
-    recordAsBugReport = UserDefaults.standard.object(forKey: Self.bugReportKey) as? Bool ?? false
+    isAppTerminating = false
   }
 }

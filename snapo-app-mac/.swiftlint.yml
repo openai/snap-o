@@ -21,7 +21,7 @@ opt_in_rules:
   - multiline_parameters_brackets
   - attributes
   - explicit_init
-  - redundant_optional_initialization
+  - implicit_optional_initialization
   - redundant_type_annotation
   - closure_end_indentation
 
