@@ -121,17 +121,13 @@ final class NetworkInspectorStore: ObservableObject {
 
     guard currentlyCollapsed != collapsed else { return }
 
-    if collapsed == defaultCollapsed {
-      state.collapsedSections.remove(section)
-    } else {
+    if collapsed {
       state.collapsedSections.insert(section)
+    } else {
+      state.collapsedSections.remove(section)
     }
 
-    if state.collapsedSections.isEmpty, state.prettyPrintedSections.isEmpty {
-      requestUIStates.removeValue(forKey: requestID)
-    } else {
-      requestUIStates[requestID] = state
-    }
+    requestUIStates[requestID] = state
     objectWillChange.send()
   }
 
@@ -1103,7 +1099,7 @@ enum NetworkInspectorDetailViewModel {
 
 private extension NetworkInspectorStore {
   struct RequestUIState {
-    var collapsedSections: Set<RequestDetailSection> = []
+    var collapsedSections: Set<RequestDetailSection> = [.requestHeaders, .requestBody]
     var prettyPrintedSections: Set<RequestDetailSection> = []
   }
 }

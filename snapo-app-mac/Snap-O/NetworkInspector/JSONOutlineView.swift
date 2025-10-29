@@ -152,7 +152,6 @@ private struct JSONOutlineNodeView: View {
             .lineLimit(1)
             .truncationMode(.tail)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .buttonStyle(.plain)
     }
@@ -198,7 +197,6 @@ private struct JSONOutlineNodeView: View {
             .lineLimit(1)
             .truncationMode(.tail)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .buttonStyle(.plain)
     }
@@ -212,7 +210,6 @@ private struct JSONOutlineNodeView: View {
   private func row(@ViewBuilder content: () -> some View) -> some View {
     HStack(alignment: .top, spacing: 4) {
       content()
-        .frame(maxWidth: .infinity, alignment: .leading)
         .layoutPriority(1)
 
       if let trailingControls {
