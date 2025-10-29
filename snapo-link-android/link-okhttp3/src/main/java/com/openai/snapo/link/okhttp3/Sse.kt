@@ -60,7 +60,7 @@ private class ResponseStreamRelay(
     fun wrapSource(upstream: Source): Source {
         return object : ForwardingSource(upstream) {
             override fun read(sink: Buffer, byteCount: Long): Long {
-                return try {
+                return runCatching {
                     val read = super.read(sink, byteCount)
                     if (read > 0) {
                         val copy = Buffer()
@@ -70,10 +70,9 @@ private class ResponseStreamRelay(
                         onClosed(null)
                     }
                     read
-                } catch (t: Throwable) {
-                    onClosed(t)
-                    throw t
-                }
+                }.onFailure { error ->
+                    onClosed(error)
+                }.getOrThrow()
             }
 
             override fun close() {

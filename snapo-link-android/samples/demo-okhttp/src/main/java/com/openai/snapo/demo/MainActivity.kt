@@ -18,19 +18,31 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.openai.snapo.demo.ui.theme.SnapOLinkTheme
 import com.openai.snapo.link.okhttp3.SnapOOkHttpInterceptor
+import com.openai.snapo.link.okhttp3.withSnapOInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okhttp3.coroutines.executeAsync
+import okio.ByteString
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val client = OkHttpClient.Builder()
+
+    private val client: OkHttpClient by lazy {
+        OkHttpClient.Builder()
             .addInterceptor(SnapOOkHttpInterceptor())
             .build()
+    }
+    private val webSocketFactory = client.withSnapOInterceptor()
+
+    private var activeWebSocket: WebSocket? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             SnapOLinkTheme {
@@ -52,16 +64,50 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         },
+                        onWebSocketDemoClick = { startWebSocketDemo() },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
             }
         }
     }
+
+    override fun onDestroy() {
+        activeWebSocket?.close(1000, "Activity destroyed")
+        super.onDestroy()
+    }
+
+    private fun startWebSocketDemo() {
+        val request = Request.Builder()
+            .url("wss://echo.websocket.org")
+            .build()
+
+        activeWebSocket?.cancel()
+        activeWebSocket = webSocketFactory.newWebSocket(
+            request,
+            object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    webSocket.send("Hello from Snap-O demo!")
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    webSocket.close(1000, "Closing after echo")
+                }
+
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                    webSocket.close(1000, "Closing after echo")
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun Greeting(onNetworkRequestClick: () -> Unit, modifier: Modifier = Modifier) {
+fun Greeting(
+    onNetworkRequestClick: () -> Unit,
+    onWebSocketDemoClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier.padding(16.dp),
@@ -69,13 +115,19 @@ fun Greeting(onNetworkRequestClick: () -> Unit, modifier: Modifier = Modifier) {
         Button(onClick = onNetworkRequestClick) {
             Text("Network Request")
         }
+        Button(onClick = onWebSocketDemoClick) {
+            Text("WebSocket Echo")
+        }
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+private fun GreetingPreview() {
     SnapOLinkTheme {
-        Greeting(onNetworkRequestClick = {})
+        Greeting(
+            onNetworkRequestClick = {},
+            onWebSocketDemoClick = {},
+        )
     }
 }
