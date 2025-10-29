@@ -48,7 +48,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
     private val textPreviewChars: Int = DefaultTextPreviewChars,
     private val binaryPreviewBytes: Int = DefaultBinaryPreviewBytes,
     dispatcher: CoroutineDispatcher = DefaultDispatcher,
-) : WebSocket.Factory, Closeable {
+) : WebSocket.Factory {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
@@ -70,10 +70,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
         val interceptingListener = InterceptingListener(webSocketId, listener)
         val realWebSocket = delegate.newWebSocket(request, interceptingListener)
         return InterceptedWebSocket(webSocketId, realWebSocket)
-    }
-
-    override fun close() {
-        scope.cancel()
+            .also { interceptingListener.interceptedWebSocket = it }
     }
 
     private inline fun publish(crossinline builder: () -> SnapONetRecord) {
@@ -186,6 +183,8 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
         private val downstream: WebSocketListener,
     ) : WebSocketListener() {
 
+        var interceptedWebSocket: WebSocket? = null
+
         override fun onOpen(webSocket: WebSocket, response: Response) {
             val nowWall = System.currentTimeMillis()
             val nowMono = SystemClock.elapsedRealtimeNanos()
@@ -198,7 +197,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
                     headers = response.headers.toHeaderList(),
                 )
             }
-            downstream.onOpen(webSocket, response)
+            downstream.onOpen(interceptedWebSocket ?: webSocket, response)
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -216,7 +215,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
                     payloadSize = payloadSize,
                 )
             }
-            downstream.onMessage(webSocket, text)
+            downstream.onMessage(interceptedWebSocket ?: webSocket, text)
         }
 
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
@@ -233,7 +232,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
                     payloadSize = bytes.size.toLong(),
                 )
             }
-            downstream.onMessage(webSocket, bytes)
+            downstream.onMessage(interceptedWebSocket ?: webSocket, bytes)
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -248,7 +247,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
                     reason = reason.ifEmpty { null },
                 )
             }
-            downstream.onClosing(webSocket, code, reason)
+            downstream.onClosing(interceptedWebSocket ?: webSocket, code, reason)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -263,7 +262,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
                     reason = reason.ifEmpty { null },
                 )
             }
-            downstream.onClosed(webSocket, code, reason)
+            downstream.onClosed(interceptedWebSocket ?: webSocket, code, reason)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -278,7 +277,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
                     message = t.message,
                 )
             }
-            downstream.onFailure(webSocket, t, response)
+            downstream.onFailure(interceptedWebSocket ?: webSocket, t, response)
         }
     }
 
