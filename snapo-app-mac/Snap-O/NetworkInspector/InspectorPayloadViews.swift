@@ -190,14 +190,14 @@ struct InspectorPayloadView: View {
       payloadContent()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .onChange(of: usePrettyPrinted) { newValue in
-      if newValue != localPrettyPrinted {
-        localPrettyPrinted = newValue
+    .onChange(of: usePrettyPrinted) {
+      if usePrettyPrinted != localPrettyPrinted {
+        localPrettyPrinted = usePrettyPrinted
       }
     }
-    .onChange(of: localPrettyPrinted) { newValue in
-      if newValue != usePrettyPrinted {
-        usePrettyPrinted = newValue
+    .onChange(of: localPrettyPrinted) {
+      if localPrettyPrinted != usePrettyPrinted {
+        usePrettyPrinted = localPrettyPrinted
       }
     }
   }
