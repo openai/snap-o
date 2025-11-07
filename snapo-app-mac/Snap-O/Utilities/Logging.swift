@@ -10,4 +10,5 @@ enum SnapOLog {
   static let storage = Logger(subsystem: subsystem, category: "storage")
   static let perf = Logger(subsystem: subsystem, category: "perf")
   static let network = Logger(subsystem: subsystem, category: "network")
+  static let logLion = Logger(subsystem: subsystem, category: "loglion")
 }

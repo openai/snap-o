@@ -38,6 +38,11 @@ struct SnapOApp: App {
       NetworkInspectorWindowRoot(services: services)
     }
     .defaultSize(width: 960, height: 520)
+
+    Window("Logcat Viewer (alpha)", id: LogLionWindowID.main) {
+      LogLionWindowRoot(services: services)
+    }
+    .defaultSize(width: 1000, height: 600)
   }
 }
 
