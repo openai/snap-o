@@ -546,8 +546,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       var dataLines: [String] = []
 
       let lines = raw.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-      for line in lines {
-        if line.isEmpty { continue }
+      for line in lines where !line.isEmpty {
         if line.hasPrefix(":") {
           let comment = line.dropFirst().trimmingCharacters(in: .whitespaces)
           if !comment.isEmpty { comments.append(comment) }

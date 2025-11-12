@@ -126,6 +126,11 @@ struct SnapOCommands: Commands {
         openWindow(id: NetworkInspectorWindowID.main)
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
+
+      Button("Logcat Viewer (alpha)") {
+        openWindow(id: LogCatWindowID.main)
+      }
+      .keyboardShortcut("l", modifiers: [.command, .option])
       Divider()
       Button("Set ADB path…") {
         Task { await adbService.promptForPath() }
