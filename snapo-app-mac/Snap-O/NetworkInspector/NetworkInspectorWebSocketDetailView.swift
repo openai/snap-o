@@ -54,7 +54,9 @@ struct NetworkInspectorWebSocketDetailView: View {
             .textSelection(.enabled)
         }
         Spacer()
-        Button(action: onClose) {
+        Button {
+          onClose()
+        } label: {
           Image(systemName: "xmark")
             .font(.title2)
             .symbolRenderingMode(.hierarchical)

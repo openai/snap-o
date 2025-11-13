@@ -145,7 +145,9 @@ private struct JSONOutlineNodeView: View {
   private func collapsedLabel() -> some View {
     let text = collapsedHeader()
     return row {
-      Button(action: toggleExpanded) {
+      Button {
+        toggleExpanded()
+      } label: {
         HStack(alignment: .top, spacing: 4) {
           triangleIndicator
           text
@@ -190,7 +192,9 @@ private struct JSONOutlineNodeView: View {
 
   private func headerRow(openSymbol: String) -> some View {
     row {
-      Button(action: toggleExpanded) {
+      Button {
+        toggleExpanded()
+      } label: {
         HStack(alignment: .top, spacing: 4) {
           triangleIndicator
           headerText(openSymbol: openSymbol)
