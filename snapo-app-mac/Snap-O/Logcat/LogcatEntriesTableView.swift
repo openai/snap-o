@@ -164,7 +164,7 @@ extension LogcatEntriesTableView {
       }
 
       let identifier = column.cellIdentifier
-      let cellView: NSTableCellView = if let reusable = tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView {
+      let cellView: LogcatTableCellView = if let reusable = tableView.makeView(withIdentifier: identifier, owner: nil) as? LogcatTableCellView {
         reusable
       } else {
         makeCellView(for: column, identifier: identifier)
@@ -237,8 +237,8 @@ extension LogcatEntriesTableView {
       return (true, insertedRange)
     }
 
-    private func makeCellView(for column: Column, identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
-      let cell = NSTableCellView()
+    private func makeCellView(for column: Column, identifier: NSUserInterfaceItemIdentifier) -> LogcatTableCellView {
+      let cell = LogcatTableCellView()
       cell.identifier = identifier
 
       let textField = NSTextField(labelWithString: "")
@@ -256,12 +256,18 @@ extension LogcatEntriesTableView {
       cell.textField = textField
       cell.addSubview(textField)
 
-      NSLayoutConstraint.activate([
-        textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: column.leadingPadding),
-        textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -column.trailingPadding),
-        textField.topAnchor.constraint(equalTo: cell.topAnchor, constant: Column.verticalInset),
-        textField.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -Column.verticalInset)
-      ])
+      let leading = textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: column.leadingPadding)
+      let trailing = textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -column.trailingPadding)
+      let top = textField.topAnchor.constraint(equalTo: cell.topAnchor, constant: Column.verticalInset)
+      let bottom = textField.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -Column.verticalInset)
+      let center = textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+
+      NSLayoutConstraint.activate([leading, trailing])
+      cell.topConstraint = top
+      cell.bottomConstraint = bottom
+      cell.centerConstraint = center
+      let singleLine = column.usesSingleLineMode(softWrap: isSoftWrapEnabled)
+      cell.updateVerticalAlignment(singleLine: singleLine)
 
       return cell
     }
@@ -279,6 +285,11 @@ extension LogcatEntriesTableView {
       textField.lineBreakMode = column.lineBreakMode(softWrap: isSoftWrapEnabled)
       textField.maximumNumberOfLines = column.maximumNumberOfLines(softWrap: isSoftWrapEnabled)
       textField.usesSingleLineMode = column.usesSingleLineMode(softWrap: isSoftWrapEnabled)
+
+      if let cell = cell as? LogcatTableCellView {
+        let singleLineMode = column.usesSingleLineMode(softWrap: isSoftWrapEnabled)
+        cell.updateVerticalAlignment(singleLine: singleLineMode)
+      }
 
       let highlights = renderedEntry.highlights(for: column.filterField)
       let baseText = column.text(for: entry)
@@ -785,6 +796,24 @@ private func nsColor(for level: LogcatLevel) -> NSColor {
     NSColor.systemPurple
   case .unknown:
     NSColor.labelColor
+  }
+}
+
+private final class LogcatTableCellView: NSTableCellView {
+  var centerConstraint: NSLayoutConstraint?
+  var topConstraint: NSLayoutConstraint?
+  var bottomConstraint: NSLayoutConstraint?
+
+  func updateVerticalAlignment(singleLine: Bool) {
+    if singleLine {
+      centerConstraint?.isActive = true
+      topConstraint?.isActive = false
+      bottomConstraint?.isActive = false
+    } else {
+      centerConstraint?.isActive = false
+      topConstraint?.isActive = true
+      bottomConstraint?.isActive = true
+    }
   }
 }
 
