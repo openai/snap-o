@@ -340,7 +340,8 @@ final class LogcatStore {
   @discardableResult
   private func createTab(activate: Bool) -> LogcatTab {
     tabCounter += 1
-    let title = "Tab \(tabCounter)"
+    let suffix = tabCounter == 1 ? "" : " \(tabCounter)"
+    let title = "All Logs\(suffix)"
     let tab = LogcatTab(title: title)
     tab.isPinnedToBottom = true
     configureTabForPersistence(tab)

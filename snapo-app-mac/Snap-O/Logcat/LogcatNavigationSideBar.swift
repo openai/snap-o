@@ -30,17 +30,15 @@ struct LogcatNavigationSideBar: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
 
-      Section("Tools") {
+      Section {
         LogcatCrashesRow()
           .tag(LogcatSidebarSelection.crashes)
-      }
-      .textCase(nil)
 
-      Section("Logcat Tabs") {
         ForEach(store.tabs) { tab in
           LogcatTabRow(tab: tab, isSelected: selection.wrappedValue == .tab(tab.id))
             .tag(LogcatSidebarSelection.tab(tab.id))
         }
+
         Button {
           store.addTab()
         } label: {
@@ -105,13 +103,6 @@ private struct LogcatTabRow: View {
           .font(.callout.weight(.medium))
           .foregroundStyle(.primary)
       }
-
-      Spacer()
-
-      if !tab.isPaused {
-        Image(systemName: "dot.radiowaves.left.and.right")
-          .accessibilityLabel("Live")
-      }
     }
     .padding(.vertical, 6)
     .padding(.horizontal, 6)
@@ -131,7 +122,7 @@ private struct LogcatTabRow: View {
       Button(role: .destructive) {
         store.removeTab(tab)
       } label: {
-        Label("Delete Tab", systemImage: "trash")
+        Label("Delete", systemImage: "trash")
       }
       .disabled(store.tabs.count <= 1)
     }
