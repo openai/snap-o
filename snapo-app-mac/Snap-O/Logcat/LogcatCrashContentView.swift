@@ -1,3 +1,4 @@
+import AppKit
 import Observation
 import OSLog
 import SwiftUI
@@ -7,7 +8,6 @@ struct LogcatCrashContentView: View {
   private var store: LogcatStore
   @AppStorage("LogcatCrashRepoPath")
   private var crashRepoPath: String = ""
-  @State private var isEditingRepoPath = false
   @State private var repoWarning: String?
 
   private var selection: Binding<LogcatCrashRecord.ID?> {
@@ -18,19 +18,20 @@ struct LogcatCrashContentView: View {
   }
 
   var body: some View {
-    HStack(spacing: 0) {
-      crashList
-        .frame(width: 300)
-      Divider()
-      crashDetail
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 0) {
+        crashList
+          .frame(width: 300)
+        Divider()
+        crashDetail
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 
   @ViewBuilder private var crashList: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      repoRootControl
-      Divider()
+    VStack(alignment: .leading, spacing: 0) {
       if store.crashes.isEmpty {
         LogcatPlaceholderView(
           icon: "bolt.slash",
@@ -50,53 +51,59 @@ struct LogcatCrashContentView: View {
   }
 
   @ViewBuilder private var crashDetail: some View {
-    if let crash = store.selectedCrash {
-      LogcatCrashDetailPane(
-        crash: crash,
-        repoRoot: normalizedCrashRepoPath(crashRepoPath),
-        isEditingRepoRoot: isEditingRepoPath,
-        openRepoEditor: showRepoEditor
-      )
-    } else if store.crashes.isEmpty {
-      LogcatPlaceholderView(
-        icon: "bolt.slash",
-        title: "No Crash Selected",
-        message: "Select a crash on the left to inspect its details."
-      )
-    } else {
-      LogcatPlaceholderView(
-        icon: "bolt",
-        title: "Select a Crash",
-        message: "Choose a crash from the list to see its stack trace."
-      )
+    VStack(alignment: .trailing, spacing: 0) {
+      if let crash = store.selectedCrash {
+        LogcatCrashDetailPane(
+          crash: crash,
+          repoRoot: normalizedCrashRepoPath(crashRepoPath),
+          openRepoEditor: showRepoEditor
+        )
+      } else if store.crashes.isEmpty {
+        LogcatPlaceholderView(
+          icon: "bolt.slash",
+          title: "No Crash Selected",
+          message: "Select a crash on the left to inspect its details."
+        )
+      } else {
+        LogcatPlaceholderView(
+          icon: "bolt",
+          title: "Select a Crash",
+          message: "Choose a crash from the list to see its stack trace."
+        )
+      }
+      Divider()
+      repoRootControl
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
   }
 
   private var repoRootControl: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      HStack {
-        Text("RepoRoot (for deep links):")
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .firstTextBaseline) {
+        Text("Root path for file links:")
           .font(.caption)
           .foregroundStyle(.secondary)
         Button {
           showRepoEditor()
         } label: {
           Text(crashRepoPath.isEmpty ? "Set path" : crashRepoPath)
+            .truncationMode(.middle)
+            .lineLimit(1)
+            .font(.callout)
             .foregroundStyle(Color.accentColor)
             .underline()
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $isEditingRepoPath) {
-          RepoRootEditorPopover(
-            initialPath: crashRepoPath,
-            onCancel: { isEditingRepoPath = false },
-            onSubmit: applyRepoRootDraft,
-            onClear: clearRepoRoot
-          )
-          .padding(16)
-          .frame(width: 360)
+        if !crashRepoPath.isEmpty {
+          Button(role: .destructive) {
+            clearRepoRoot()
+          } label: {
+            Text("Clear")
+              .font(.caption)
+          }
+          .buttonStyle(.plain)
         }
-        Spacer()
       }
       if let warning = repoWarning {
         Text(warning)
@@ -104,12 +111,14 @@ struct LogcatCrashContentView: View {
           .foregroundStyle(.orange)
       }
     }
-    .padding(.horizontal, 10)
+    .padding(.bottom, 2)
   }
 
   private func showRepoEditor() {
     repoWarning = nil
-    isEditingRepoPath = true
+    let panel = makeRepoPickerPanel()
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    applyRepoRootDraft(url.path)
   }
 
   private func applyRepoRootDraft(_ draft: String) {
@@ -119,13 +128,38 @@ struct LogcatCrashContentView: View {
     }
     crashRepoPath = normalizedCrashRepoPath(draft)
     repoWarning = nil
-    isEditingRepoPath = false
   }
 
   private func clearRepoRoot() {
     crashRepoPath = ""
     repoWarning = nil
-    isEditingRepoPath = false
+  }
+
+  private func makeRepoPickerPanel() -> NSOpenPanel {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = false
+    panel.prompt = "Select"
+    panel.message = "Choose the repository root used for crash links."
+    if let startURL = repoPickerStartingURL() {
+      panel.directoryURL = startURL
+    }
+    return panel
+  }
+
+  private func repoPickerStartingURL() -> URL? {
+    let normalized = normalizedCrashRepoPath(crashRepoPath)
+    guard !normalized.isEmpty else {
+      return FileManager.default.homeDirectoryForCurrentUser
+    }
+    var isDir: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: normalized, isDirectory: &isDir),
+          isDir.boolValue else {
+      return FileManager.default.homeDirectoryForCurrentUser
+    }
+    return URL(fileURLWithPath: normalized, isDirectory: true)
   }
 
   private func validateRepoPath(_ path: String) -> String? {
@@ -156,55 +190,6 @@ struct LogcatCrashContentView: View {
     if path == "/" || path == "/Users" { return true }
     let components = URL(fileURLWithPath: path).pathComponents
     return components.count <= 3 && components.prefix(2) == ["/", "Users"]
-  }
-}
-
-private struct RepoRootEditorPopover: View {
-  let initialPath: String
-  let onCancel: () -> Void
-  let onSubmit: (String) -> Void
-  let onClear: () -> Void
-  @State private var draft: String
-
-  init(
-    initialPath: String,
-    onCancel: @escaping () -> Void,
-    onSubmit: @escaping (String) -> Void,
-    onClear: @escaping () -> Void
-  ) {
-    self.initialPath = initialPath
-    self.onCancel = onCancel
-    self.onSubmit = onSubmit
-    self.onClear = onClear
-    _draft = State(initialValue: initialPath)
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Crash Repo Root")
-        .font(.headline)
-      TextField("/Users/me/code/app", text: $draft)
-        .textFieldStyle(.roundedBorder)
-        .submitLabel(.done)
-        .onSubmit {
-          onSubmit(draft)
-        }
-      HStack {
-        Button("Clear", role: .destructive) {
-          onClear()
-        }
-        Spacer()
-        Button("Cancel") {
-          onCancel()
-        }
-        Button("Done") {
-          onSubmit(draft)
-        }
-      }
-    }
-    .onAppear {
-      draft = initialPath
-    }
   }
 }
 
@@ -252,7 +237,6 @@ private struct LogcatCrashListRow: View {
 private struct LogcatCrashDetailPane: View {
   let crash: LogcatCrashRecord
   let repoRoot: String
-  let isEditingRepoRoot: Bool
   let openRepoEditor: () -> Void
   @State private var fileResolver = CrashFileResolver()
   @State private var pendingRepoRoot: String?
@@ -267,7 +251,9 @@ private struct LogcatCrashDetailPane: View {
           crashMessages
         }
       }
-      .padding(16)
+      .padding(.top, 10)
+      .padding(.bottom, 16)
+      .padding(.horizontal, 16)
       .textSelection(.enabled)
       .onAppear {
         pendingRepoRoot = repoRoot
@@ -276,11 +262,6 @@ private struct LogcatCrashDetailPane: View {
       .onChange(of: repoRoot) { _, newRepoRoot in
         pendingRepoRoot = newRepoRoot
         applyPendingRepoRootIfPossible()
-      }
-      .onChange(of: isEditingRepoRoot) { _, newValue in
-        if !newValue {
-          applyPendingRepoRootIfPossible()
-        }
       }
     }
   }
@@ -382,7 +363,6 @@ private struct LogcatCrashDetailPane: View {
   }
 
   private func applyPendingRepoRootIfPossible() {
-    guard !isEditingRepoRoot else { return }
     let target = pendingRepoRoot ?? repoRoot
     pendingRepoRoot = target
     fileResolver.updateRoot(target)
