@@ -280,9 +280,14 @@ struct LogcatTabContentView: View {
       } else {
         LogcatEntriesTableView(
           tab: tab,
-          onScrollInteraction: {
+          onScrollInteraction: { interaction in
             DispatchQueue.main.async {
-              tab.unpinOnScroll()
+              switch interaction {
+              case .pinToBottom:
+                tab.isPinnedToBottom = true
+              case .unpinFromBottom:
+                tab.unpinOnScroll()
+              }
             }
           },
           onCreateFilter: { action, field, value in
