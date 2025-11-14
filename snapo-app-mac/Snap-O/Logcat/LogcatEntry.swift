@@ -1,6 +1,6 @@
 import Foundation
 
-enum LogCatLevel: String, CaseIterable {
+enum LogcatLevel: String, CaseIterable {
   case verbose = "V"
   case debug = "D"
   case info = "I"
@@ -11,7 +11,7 @@ enum LogCatLevel: String, CaseIterable {
   case unknown = "?"
 
   init(symbol: String) {
-    self = LogCatLevel(rawValue: symbol) ?? .unknown
+    self = LogcatLevel(rawValue: symbol) ?? .unknown
   }
 
   var description: String {
@@ -28,7 +28,7 @@ enum LogCatLevel: String, CaseIterable {
   }
 }
 
-struct LogCatHighlight: Identifiable, Equatable {
+struct LogcatHighlight: Identifiable, Equatable {
   enum Style: Equatable {
     case emphasis
     case warning
@@ -40,21 +40,21 @@ struct LogCatHighlight: Identifiable, Equatable {
   var note: String?
 }
 
-struct LogCatEntry: Identifiable, Equatable {
+struct LogcatEntry: Identifiable, Equatable {
   let id = UUID()
   var timestampString: String
   var timestamp: Date?
   var pid: Int?
   var tid: Int?
-  var level: LogCatLevel
+  var level: LogcatLevel
   var tag: String
   var message: String
   var raw: String
-  var highlights: [LogCatHighlight] = []
+  var highlights: [LogcatHighlight] = []
 }
 
-extension LogCatEntry {
-  func value(for field: LogCatFilterField) -> String? {
+extension LogcatEntry {
+  func value(for field: LogcatFilterField) -> String? {
     switch field {
     case .timestamp:
       timestampString
@@ -74,6 +74,6 @@ extension LogCatEntry {
   }
 }
 
-extension LogCatEntry: Sendable {}
+extension LogcatEntry: Sendable {}
 
-extension LogCatHighlight: Sendable {}
+extension LogcatHighlight: Sendable {}

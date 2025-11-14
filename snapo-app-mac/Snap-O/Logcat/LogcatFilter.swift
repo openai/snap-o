@@ -3,7 +3,7 @@ import Foundation
 import Observation
 import SwiftUI
 
-enum LogCatFilterAction: String, CaseIterable, Identifiable {
+enum LogcatFilterAction: String, CaseIterable, Identifiable {
   case include
   case exclude
   case none
@@ -22,7 +22,7 @@ enum LogCatFilterAction: String, CaseIterable, Identifiable {
   }
 }
 
-enum LogCatFilterField: String, CaseIterable, Identifiable {
+enum LogcatFilterField: String, CaseIterable, Identifiable {
   case timestamp
   case pid
   case tid
@@ -46,16 +46,16 @@ enum LogCatFilterField: String, CaseIterable, Identifiable {
   }
 }
 
-struct LogCatFilterCondition: Identifiable, Equatable {
+struct LogcatFilterCondition: Identifiable, Equatable {
   struct Clause: Identifiable, Equatable {
     let id = UUID()
-    var field: LogCatFilterField
+    var field: LogcatFilterField
     var pattern: String
     var isInverted: Bool
     var isCaseSensitive: Bool
 
     init(
-      field: LogCatFilterField,
+      field: LogcatFilterField,
       pattern: String,
       isInverted: Bool = false,
       isCaseSensitive: Bool = false
@@ -75,24 +75,24 @@ struct LogCatFilterCondition: Identifiable, Equatable {
     Clause(field: .level, pattern: "", isInverted: false)
   ]
 
-  init(clauses: [Clause] = LogCatFilterCondition.defaultClauses) {
-    self.clauses = clauses.isEmpty ? LogCatFilterCondition.defaultClauses : clauses
+  init(clauses: [Clause] = LogcatFilterCondition.defaultClauses) {
+    self.clauses = clauses.isEmpty ? LogcatFilterCondition.defaultClauses : clauses
   }
 }
 
-struct LogCatFilterMatchResult {
+struct LogcatFilterMatchResult {
   var isMatch: Bool
-  var fieldRanges: [LogCatFilterField: [NSRange]]
+  var fieldRanges: [LogcatFilterField: [NSRange]]
 
-  static let noMatch = LogCatFilterMatchResult(isMatch: false, fieldRanges: [:])
+  static let noMatch = LogcatFilterMatchResult(isMatch: false, fieldRanges: [:])
 }
 
 @MainActor
 @Observable
-final class LogCatFilter: Identifiable {
+final class LogcatFilter: Identifiable {
   struct AutoKey: Equatable {
-    let action: LogCatFilterAction
-    let field: LogCatFilterField
+    let action: LogcatFilterAction
+    let field: LogcatFilterField
   }
 
   let id = UUID()
@@ -111,7 +111,7 @@ final class LogCatFilter: Identifiable {
     }
   }
 
-  var action: LogCatFilterAction {
+  var action: LogcatFilterAction {
     didSet {
       guard action != oldValue else { return }
       notifyChange()
@@ -129,7 +129,7 @@ final class LogCatFilter: Identifiable {
     didSet { notifyChange() }
   }
 
-  var condition: LogCatFilterCondition {
+  var condition: LogcatFilterCondition {
     didSet {
       guard condition != oldValue else { return }
       notifyChange()
@@ -141,10 +141,10 @@ final class LogCatFilter: Identifiable {
   init(
     name: String,
     isEnabled: Bool = true,
-    action: LogCatFilterAction = .include,
+    action: LogcatFilterAction = .include,
     isHighlightEnabled: Bool = false,
     color: Color = .accentColor,
-    condition: LogCatFilterCondition = LogCatFilterCondition(),
+    condition: LogcatFilterCondition = LogcatFilterCondition(),
     autoKey: AutoKey? = nil
   ) {
     self.name = name
@@ -156,7 +156,7 @@ final class LogCatFilter: Identifiable {
     self.autoKey = autoKey
   }
 
-  func evaluate(entry: LogCatEntry) -> LogCatFilterMatchResult {
+  func evaluate(entry: LogcatEntry) -> LogcatFilterMatchResult {
     guard isEnabled else { return .noMatch }
 
     return evaluate(condition: condition, on: entry)
@@ -166,10 +166,10 @@ final class LogCatFilter: Identifiable {
     onChange?()
   }
 
-  private nonisolated func evaluate(condition: LogCatFilterCondition, on entry: LogCatEntry) -> LogCatFilterMatchResult {
+  private nonisolated func evaluate(condition: LogcatFilterCondition, on entry: LogcatEntry) -> LogcatFilterMatchResult {
     var didProcessClause = false
     var didFindMatch = false
-    var fieldHighlights: [LogCatFilterField: [NSRange]] = [:]
+    var fieldHighlights: [LogcatFilterField: [NSRange]] = [:]
 
     for clause in condition.clauses {
       guard !clause.pattern.isEmpty else { continue }
@@ -196,7 +196,7 @@ final class LogCatFilter: Identifiable {
       guard !clause.isInverted else { continue }
 
       if clause.field == .raw {
-        for candidateField in LogCatFilterField.allCases where candidateField != .raw {
+        for candidateField in LogcatFilterField.allCases where candidateField != .raw {
           guard let candidateValue = entry.value(for: candidateField) else { continue }
           let candidateNSString = candidateValue as NSString
           let candidateRange = NSRange(location: 0, length: candidateNSString.length)
@@ -211,10 +211,10 @@ final class LogCatFilter: Identifiable {
     }
 
     guard didProcessClause else {
-      return LogCatFilterMatchResult(isMatch: true, fieldRanges: [:])
+      return LogcatFilterMatchResult(isMatch: true, fieldRanges: [:])
     }
 
-    return LogCatFilterMatchResult(isMatch: didFindMatch, fieldRanges: fieldHighlights)
+    return LogcatFilterMatchResult(isMatch: didFindMatch, fieldRanges: fieldHighlights)
   }
 
   var accentNSColor: NSColor {
@@ -222,10 +222,10 @@ final class LogCatFilter: Identifiable {
   }
 }
 
-extension LogCatFilterAction: Sendable {}
-extension LogCatFilterField: Sendable {}
-extension LogCatFilterCondition: Sendable {}
-extension LogCatFilterCondition.Clause: Sendable {}
+extension LogcatFilterAction: Sendable {}
+extension LogcatFilterField: Sendable {}
+extension LogcatFilterCondition: Sendable {}
+extension LogcatFilterCondition.Clause: Sendable {}
 
-extension LogCatFilterAction: Codable {}
-extension LogCatFilterField: Codable {}
+extension LogcatFilterAction: Codable {}
+extension LogcatFilterField: Codable {}

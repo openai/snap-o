@@ -1,30 +1,30 @@
 import AppKit
 import Foundation
 
-struct LogCatRenderedEntry: Identifiable, Equatable {
+struct LogcatRenderedEntry: Identifiable, Equatable {
   struct Highlight {
     let range: NSRange
     let color: NSColor
   }
 
   let id: UUID
-  let entry: LogCatEntry
+  let entry: LogcatEntry
   let rowHighlightColor: NSColor?
-  let fieldHighlights: [LogCatFilterField: [Highlight]]
+  let fieldHighlights: [LogcatFilterField: [Highlight]]
 
-  init(entry: LogCatEntry, rowHighlightColor: NSColor?, fieldHighlights: [LogCatFilterField: [Highlight]]) {
+  init(entry: LogcatEntry, rowHighlightColor: NSColor?, fieldHighlights: [LogcatFilterField: [Highlight]]) {
     id = entry.id
     self.entry = entry
     self.rowHighlightColor = rowHighlightColor
     self.fieldHighlights = fieldHighlights
   }
 
-  func highlights(for field: LogCatFilterField?) -> [Highlight] {
+  func highlights(for field: LogcatFilterField?) -> [Highlight] {
     guard let field else { return [] }
     return fieldHighlights[field] ?? []
   }
 
-  static func == (lhs: LogCatRenderedEntry, rhs: LogCatRenderedEntry) -> Bool {
+  static func == (lhs: LogcatRenderedEntry, rhs: LogcatRenderedEntry) -> Bool {
     lhs.id == rhs.id
   }
 }

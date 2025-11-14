@@ -3,23 +3,23 @@ import Observation
 import OSLog
 import SwiftUI
 
-struct LogCatDetailView: View {
-  @Environment(LogCatStore.self)
-  private var store: LogCatStore
+struct LogcatDetailView: View {
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
 
   var body: some View {
     content
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .navigationTitle(store.isCrashPaneActive ? "Crashes" : (store.activeTab?.title ?? "LogCat"))
+      .navigationTitle(store.isCrashPaneActive ? "Crashes" : (store.activeTab?.title ?? "Logcat"))
   }
 
   @ViewBuilder private var content: some View {
     if store.isCrashPaneActive {
-      LogCatCrashContentView()
+      LogcatCrashContentView()
     } else if let tab = store.activeTab {
-      LogCatTabContentView(tab: tab)
+      LogcatTabContentView(tab: tab)
     } else {
-      LogCatPlaceholderView(
+      LogcatPlaceholderView(
         icon: "rectangle.stack",
         title: "Pick a Tab",
         message: "Choose a tab in the sidebar or create a new one to start streaming logs."
@@ -28,15 +28,15 @@ struct LogCatDetailView: View {
   }
 }
 
-private struct LogCatCrashContentView: View {
-  @Environment(LogCatStore.self)
-  private var store: LogCatStore
-  @AppStorage("LogCatCrashRepoPath")
+private struct LogcatCrashContentView: View {
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
+  @AppStorage("LogcatCrashRepoPath")
   private var crashRepoPath: String = ""
   @State private var isEditingRepoPath = false
   @State private var repoWarning: String?
 
-  private var selection: Binding<LogCatCrashRecord.ID?> {
+  private var selection: Binding<LogcatCrashRecord.ID?> {
     Binding(
       get: { store.selectedCrashID },
       set: { store.selectCrash(id: $0) }
@@ -58,7 +58,7 @@ private struct LogCatCrashContentView: View {
       repoRootControl
       Divider()
       if store.crashes.isEmpty {
-        LogCatPlaceholderView(
+        LogcatPlaceholderView(
           icon: "bolt.slash",
           title: "No Crashes",
           message: "When the crash buffer emits entries they will appear here."
@@ -66,7 +66,7 @@ private struct LogCatCrashContentView: View {
       } else {
         List(selection: selection) {
           ForEach(store.crashes) { crash in
-            LogCatCrashListRow(crash: crash)
+            LogcatCrashListRow(crash: crash)
               .tag(crash.id)
           }
         }
@@ -77,20 +77,20 @@ private struct LogCatCrashContentView: View {
 
   @ViewBuilder private var crashDetail: some View {
     if let crash = store.selectedCrash {
-      LogCatCrashDetailPane(
+      LogcatCrashDetailPane(
         crash: crash,
         repoRoot: normalizedCrashRepoPath(crashRepoPath),
         isEditingRepoRoot: isEditingRepoPath,
         openRepoEditor: showRepoEditor
       )
     } else if store.crashes.isEmpty {
-      LogCatPlaceholderView(
+      LogcatPlaceholderView(
         icon: "bolt.slash",
         title: "No Crash Selected",
         message: "Select a crash on the left to inspect its details."
       )
     } else {
-      LogCatPlaceholderView(
+      LogcatPlaceholderView(
         icon: "bolt",
         title: "Select a Crash",
         message: "Choose a crash from the list to see its stack trace."
@@ -234,8 +234,8 @@ private struct RepoRootEditorPopover: View {
   }
 }
 
-private struct LogCatCrashListRow: View {
-  let crash: LogCatCrashRecord
+private struct LogcatCrashListRow: View {
+  let crash: LogcatCrashRecord
   private static let relativeFormatter: RelativeDateTimeFormatter = {
     let formatter = RelativeDateTimeFormatter()
     formatter.unitsStyle = .full
@@ -275,8 +275,8 @@ private struct LogCatCrashListRow: View {
   }
 }
 
-private struct LogCatCrashDetailPane: View {
-  let crash: LogCatCrashRecord
+private struct LogcatCrashDetailPane: View {
+  let crash: LogcatCrashRecord
   let repoRoot: String
   let isEditingRepoRoot: Bool
   let openRepoEditor: () -> Void
@@ -370,7 +370,7 @@ private struct LogCatCrashDetailPane: View {
       let trimmed = line.trimmingCharacters(in: .whitespaces)
       let indent = trimmed.hasPrefix("at ") ? "\t" : ""
       let nsRange = NSRange(location: 0, length: line.utf16.count)
-      if let match = LogCatCrashDetailPane.fileRegex.firstMatch(in: line, options: [], range: nsRange),
+      if let match = LogcatCrashDetailPane.fileRegex.firstMatch(in: line, options: [], range: nsRange),
          let fileRange = Range(match.range(at: 1), in: line),
          let lineRange = Range(match.range(at: 2), in: line) {
         let prefix = indent + String(line[..<fileRange.lowerBound])
@@ -591,11 +591,11 @@ private func normalizedCrashRepoPath(_ path: String) -> String {
   return URL(fileURLWithPath: expanded).standardizedFileURL.path
 }
 
-private struct LogCatTabContentView: View {
-  @Bindable var tab: LogCatTab
-  @State private var activeFilterID: LogCatFilter.ID?
-  @Environment(LogCatStore.self)
-  private var store: LogCatStore
+private struct LogcatTabContentView: View {
+  @Bindable var tab: LogcatTab
+  @State private var activeFilterID: LogcatFilter.ID?
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
 
   var body: some View {
     VStack(spacing: 0) {
@@ -744,7 +744,7 @@ private struct LogCatTabContentView: View {
             ScrollView(.vertical, showsIndicators: true) {
               ForEach(Array(column.enumerated()), id: \.element.id) { rowIndex, filter in
                 VStack(spacing: 4) {
-                  LogCatFilterChip(
+                  LogcatFilterChip(
                     filter: filter,
                     isPopoverPresented: Binding(
                       get: { activeFilterID == filter.id },
@@ -768,7 +768,7 @@ private struct LogCatTabContentView: View {
                     }
                   ), attachmentAnchor: .rect(.bounds), arrowEdge: .trailing) {
                     ScrollView(.vertical, showsIndicators: true) {
-                      LogCatFilterEditorView(
+                      LogcatFilterEditorView(
                         filter: filter,
                         onChange: {
                           filter.autoKey = nil
@@ -870,7 +870,7 @@ private struct LogCatTabContentView: View {
     .buttonStyle(.plain)
   }
 
-  private func defaultStageName(for index: Int, column: [LogCatFilter]) -> String {
+  private func defaultStageName(for index: Int, column: [LogcatFilter]) -> String {
     if column.count == 1, let filter = column.first {
       return filter.name
     }
@@ -880,19 +880,19 @@ private struct LogCatTabContentView: View {
   @ViewBuilder private var content: some View {
     ZStack(alignment: .top) {
       if !tab.hasEntries {
-        LogCatPlaceholderView(
+        LogcatPlaceholderView(
           icon: "waveform.path.ecg",
           title: "Waiting for logs…",
-          message: "LogCat is streaming entries into \(tab.title). They will appear here shortly."
+          message: "Logcat is streaming entries into \(tab.title). They will appear here shortly."
         )
       } else if tab.renderedEntries.isEmpty {
-        LogCatPlaceholderView(
+        LogcatPlaceholderView(
           icon: "line.3.horizontal.decrease.circle",
           title: "No matches",
           message: "Current filters hide all entries. Adjust or disable filters to see more logs."
         )
       } else {
-        LogCatEntriesTableView(
+        LogcatEntriesTableView(
           tab: tab,
           onScrollInteraction: {
             DispatchQueue.main.async {
@@ -925,7 +925,7 @@ private struct LogCatTabContentView: View {
   }
 }
 
-private struct LogCatPlaceholderView: View {
+private struct LogcatPlaceholderView: View {
   let icon: String
   let title: String
   let message: String
@@ -947,8 +947,8 @@ private struct LogCatPlaceholderView: View {
   }
 }
 
-private struct LogCatFilterChip: View {
-  @Bindable var filter: LogCatFilter
+private struct LogcatFilterChip: View {
+  @Bindable var filter: LogcatFilter
   @Binding var isPopoverPresented: Bool
   var onToggle: (Bool) -> Void
   var onDelete: () -> Void
@@ -1018,7 +1018,7 @@ private struct LogCatFilterChip: View {
   }
 }
 
-private extension LogCatFilterChip {
+private extension LogcatFilterChip {
   var filterSummaryText: String {
     let base = filter.action.displayName
     return filter.isHighlightEnabled ? "\(base) • Highlight" : base
@@ -1122,7 +1122,7 @@ private struct CollapsedQuickFilterCard: View {
 
 private struct CollapsedFilterCard: View {
   let title: String
-  let filter: LogCatFilter
+  let filter: LogcatFilter
   var onToggle: () -> Void
 
   var body: some View {
@@ -1154,8 +1154,8 @@ private struct CollapsedFilterCard: View {
 
 private struct CollapsedStageCard: View {
   let title: String
-  let filters: [LogCatFilter]
-  var onToggle: (LogCatFilter) -> Void
+  let filters: [LogcatFilter]
+  var onToggle: (LogcatFilter) -> Void
 
   @State private var hideWorkItem: DispatchWorkItem?
   @State private var isExpanded: Bool = false
@@ -1224,7 +1224,7 @@ private struct CollapsedStageCard: View {
 }
 
 private struct CollapsedStageFilterRow: View {
-  @Bindable var filter: LogCatFilter
+  @Bindable var filter: LogcatFilter
   var onToggle: () -> Void
 
   var body: some View {
@@ -1271,8 +1271,8 @@ private struct AndConnector: View {
   }
 }
 
-private struct LogCatFilterEditorView: View {
-  @Bindable var filter: LogCatFilter
+private struct LogcatFilterEditorView: View {
+  @Bindable var filter: LogcatFilter
   var onChange: () -> Void
   var onDelete: () -> Void
 
@@ -1309,7 +1309,7 @@ private struct LogCatFilterEditorView: View {
             onChange()
           }
         )) {
-          ForEach(LogCatFilterAction.allCases) { action in
+          ForEach(LogcatFilterAction.allCases) { action in
             Text(action.displayName).tag(action)
           }
         }
@@ -1336,7 +1336,7 @@ private struct LogCatFilterEditorView: View {
         Text("Conditions")
           .font(.subheadline.weight(.semibold))
 
-        LogCatFilterConditionEditor(
+        LogcatFilterConditionEditor(
           condition: $filter.condition,
           onChange: onChange
         )
@@ -1351,12 +1351,12 @@ private struct LogCatFilterEditorView: View {
   }
 }
 
-private let logCatLevelOptions: [LogCatLevel] = [
+private let logCatLevelOptions: [LogcatLevel] = [
   .verbose, .debug, .info, .warn, .error, .fatal, .assert
 ]
 
-private struct LogCatFilterConditionEditor: View {
-  @Binding var condition: LogCatFilterCondition
+private struct LogcatFilterConditionEditor: View {
+  @Binding var condition: LogcatFilterCondition
   var onChange: () -> Void
 
   var body: some View {
@@ -1364,7 +1364,7 @@ private struct LogCatFilterConditionEditor: View {
       ForEach(Array(condition.clauses.enumerated()), id: \.element.id) { index, _ in
         HStack(alignment: .center, spacing: 8) {
           Menu {
-            ForEach(LogCatFilterField.allCases) { field in
+            ForEach(LogcatFilterField.allCases) { field in
               Button {
                 condition.clauses[index].field = field
                 onChange()
@@ -1404,7 +1404,7 @@ private struct LogCatFilterConditionEditor: View {
             Button {
               condition.clauses.remove(at: index)
               if condition.clauses.isEmpty {
-                condition.clauses = [LogCatFilterCondition.Clause(field: .message, pattern: "")]
+                condition.clauses = [LogcatFilterCondition.Clause(field: .message, pattern: "")]
               }
               onChange()
             } label: {
@@ -1417,7 +1417,7 @@ private struct LogCatFilterConditionEditor: View {
       }
 
       Button {
-        condition.clauses.append(LogCatFilterCondition.Clause(field: nextSuggestedField(), pattern: ""))
+        condition.clauses.append(LogcatFilterCondition.Clause(field: nextSuggestedField(), pattern: ""))
         onChange()
       } label: {
         Image(systemName: "plus")
@@ -1438,7 +1438,7 @@ private struct LogCatFilterConditionEditor: View {
   @ViewBuilder
   private func conditionInput(for index: Int) -> some View {
     if condition.clauses[index].field == .level {
-      LogCatLevelSelector(selection: levelSelectionBinding(for: index))
+      LogcatLevelSelector(selection: levelSelectionBinding(for: index))
         .frame(minWidth: 260)
     } else {
       TextField(
@@ -1469,7 +1469,7 @@ private struct LogCatFilterConditionEditor: View {
     }
   }
 
-  private func levelSelectionBinding(for index: Int) -> Binding<Set<LogCatLevel>> {
+  private func levelSelectionBinding(for index: Int) -> Binding<Set<LogcatLevel>> {
     Binding(
       get: { decodeLevels(from: condition.clauses[index]) },
       set: { newSelection in
@@ -1479,38 +1479,38 @@ private struct LogCatFilterConditionEditor: View {
     )
   }
 
-  private func decodeLevels(from clause: LogCatFilterCondition.Clause) -> Set<LogCatLevel> {
+  private func decodeLevels(from clause: LogcatFilterCondition.Clause) -> Set<LogcatLevel> {
     guard clause.field == .level else { return [] }
     let uppercasePattern = clause.pattern.uppercased()
     guard !uppercasePattern.isEmpty else { return [] }
     return Set(logCatLevelOptions.filter { uppercasePattern.contains($0.rawValue) })
   }
 
-  private func regexPattern(for selection: Set<LogCatLevel>) -> String {
+  private func regexPattern(for selection: Set<LogcatLevel>) -> String {
     guard !selection.isEmpty else { return "" }
     let symbols = selection.map(\.rawValue).sorted()
     let body = symbols.joined(separator: "|")
     return "^(\(body))$"
   }
 
-  private func nextSuggestedField() -> LogCatFilterField {
-    let priorityOrder: [LogCatFilterField] = [.message, .tag, .level, .timestamp]
+  private func nextSuggestedField() -> LogcatFilterField {
+    let priorityOrder: [LogcatFilterField] = [.message, .tag, .level, .timestamp]
     let usedFields = Set(condition.clauses.map(\.field))
     return priorityOrder.first { !usedFields.contains($0) } ?? .message
   }
 }
 
-private struct LogCatLevelSelector: View {
-  @Binding var selection: Set<LogCatLevel>
+private struct LogcatLevelSelector: View {
+  @Binding var selection: Set<LogcatLevel>
 
   var body: some View {
-    LogCatLevelSegmentedControl(selection: $selection)
+    LogcatLevelSegmentedControl(selection: $selection)
       .frame(height: 30)
   }
 }
 
-private struct LogCatLevelSegmentedControl: NSViewRepresentable {
-  @Binding var selection: Set<LogCatLevel>
+private struct LogcatLevelSegmentedControl: NSViewRepresentable {
+  @Binding var selection: Set<LogcatLevel>
 
   func makeCoordinator() -> Coordinator {
     Coordinator(selection: $selection)
@@ -1538,15 +1538,15 @@ private struct LogCatLevelSegmentedControl: NSViewRepresentable {
 
   @MainActor
   final class Coordinator: NSObject {
-    var selection: Binding<Set<LogCatLevel>>
+    var selection: Binding<Set<LogcatLevel>>
 
-    init(selection: Binding<Set<LogCatLevel>>) {
+    init(selection: Binding<Set<LogcatLevel>>) {
       self.selection = selection
     }
 
     @objc
     func valueChanged(_ sender: NSSegmentedControl) {
-      var updated: Set<LogCatLevel> = []
+      var updated: Set<LogcatLevel> = []
       for (index, level) in logCatLevelOptions.enumerated()
         where sender.isSelected(forSegment: index) {
         updated.insert(level)

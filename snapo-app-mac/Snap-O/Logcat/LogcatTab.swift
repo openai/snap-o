@@ -5,7 +5,7 @@ import SwiftUI
 
 @MainActor
 @Observable
-final class LogCatTab: Identifiable {
+final class LogcatTab: Identifiable {
   let id = UUID()
 
   var title: String {
@@ -42,7 +42,7 @@ final class LogCatTab: Identifiable {
   }
 
   private(set) var unreadCount: Int = 0
-  var filterColumns: [[LogCatFilter]] = [] {
+  var filterColumns: [[LogcatFilter]] = [] {
     didSet { handleFiltersDidChange(oldValue: oldValue) }
   }
 
@@ -61,10 +61,10 @@ final class LogCatTab: Identifiable {
     }
   }
 
-  private(set) var renderedEntries: [LogCatRenderedEntry] = []
+  private(set) var renderedEntries: [LogcatRenderedEntry] = []
 
   private let capacity: Int
-  let processor: LogCatTabProcessor
+  let processor: LogcatTabProcessor
   var isActive = false
   private var filterCounter = 0
   var onConfigurationChange: (() -> Void)?
@@ -88,8 +88,8 @@ final class LogCatTab: Identifiable {
   init(title: String, capacity: Int = 20000) {
     self.title = title
     self.capacity = capacity
-    let initialConfiguration = LogCatTabProcessor.Configuration(filters: [], quickFilter: nil)
-    processor = LogCatTabProcessor(capacity: capacity, initialConfiguration: initialConfiguration)
+    let initialConfiguration = LogcatTabProcessor.Configuration(filters: [], quickFilter: nil)
+    processor = LogcatTabProcessor(capacity: capacity, initialConfiguration: initialConfiguration)
     sendToProcessor { processor in
       await processor.setDeliverUpdate { [weak self] update in
         guard let self else { return }
@@ -102,7 +102,7 @@ final class LogCatTab: Identifiable {
     }
   }
 
-  func append(_ entry: LogCatEntry) {
+  func append(_ entry: LogcatEntry) {
     guard !isPaused else { return }
     sendToProcessor { await $0.enqueue(entry) }
   }
@@ -132,7 +132,7 @@ final class LogCatTab: Identifiable {
   }
 
   @discardableResult
-  func addFilterColumn(after columnIndex: Int? = nil) -> LogCatFilter {
+  func addFilterColumn(after columnIndex: Int? = nil) -> LogcatFilter {
     let insertionIndex = columnIndex.map { min($0 + 1, filterColumns.count) } ?? filterColumns.count
     shiftColumnNamesForInsertion(at: insertionIndex)
     let filter = makeFilter(isEnabled: true)
@@ -142,12 +142,12 @@ final class LogCatTab: Identifiable {
   }
 
   @discardableResult
-  func addFilterColumn() -> LogCatFilter {
+  func addFilterColumn() -> LogcatFilter {
     addFilterColumn(after: filterColumns.count - 1)
   }
 
   @discardableResult
-  func addFilter(toColumn columnIndex: Int) -> LogCatFilter {
+  func addFilter(toColumn columnIndex: Int) -> LogcatFilter {
     let filter = makeFilter(isEnabled: true)
     guard filterColumns.indices.contains(columnIndex) else {
       filterColumns.append([filter])
@@ -159,7 +159,7 @@ final class LogCatTab: Identifiable {
     return filter
   }
 
-  func removeFilter(_ filter: LogCatFilter) {
+  func removeFilter(_ filter: LogcatFilter) {
     for index in filterColumns.indices {
       if let removalIndex = filterColumns[index].firstIndex(where: { $0.id == filter.id }) {
         filterColumns[index].remove(at: removalIndex)
@@ -184,15 +184,15 @@ final class LogCatTab: Identifiable {
 
   @discardableResult
   func applyAutomaticFilter(
-    action: LogCatFilterAction,
-    field: LogCatFilterField,
+    action: LogcatFilterAction,
+    field: LogcatFilterField,
     matchValue: String,
     targetColumn: Int? = nil
-  ) -> LogCatFilter {
+  ) -> LogcatFilter {
     let escaped = NSRegularExpression.escapedPattern(for: matchValue)
     let pattern = "^\(escaped)$"
-    let clause = LogCatFilterCondition.Clause(field: field, pattern: pattern)
-    let key = LogCatFilter.AutoKey(action: action, field: field)
+    let clause = LogcatFilterCondition.Clause(field: field, pattern: pattern)
+    let key = LogcatFilter.AutoKey(action: action, field: field)
 
     if let existing = allFilters.first(where: { $0.autoKey == key }) {
       if !existing.condition.clauses
@@ -219,13 +219,13 @@ final class LogCatTab: Identifiable {
       defaultColor = .accentColor.opacity(0.6)
     }
 
-    let filter = LogCatFilter(
+    let filter = LogcatFilter(
       name: defaultName,
       isEnabled: true,
       action: action,
       isHighlightEnabled: false,
       color: defaultColor,
-      condition: LogCatFilterCondition(clauses: [clause]),
+      condition: LogcatFilterCondition(clauses: [clause]),
       autoKey: key
     )
     if let columnIndex = targetColumn, filterColumns.indices.contains(columnIndex) {
@@ -251,7 +251,7 @@ final class LogCatTab: Identifiable {
     columnNames[index] = trimmed
   }
 
-  private func handleFiltersDidChange(oldValue: [[LogCatFilter]]) {
+  private func handleFiltersDidChange(oldValue: [[LogcatFilter]]) {
     updateFilterObservers(previous: oldValue.flatMap(\.self))
     if !filterColumns.isEmpty, !quickFilterText.isEmpty {
       Task { @MainActor [weak self] in
@@ -264,7 +264,7 @@ final class LogCatTab: Identifiable {
     notifyConfigurationChange()
   }
 
-  private func updateFilterObservers(previous: [LogCatFilter]) {
+  private func updateFilterObservers(previous: [LogcatFilter]) {
     for filter in previous {
       filter.onChange = nil
     }
@@ -282,36 +282,36 @@ final class LogCatTab: Identifiable {
     sendToProcessor { await $0.refreshConfiguration(configuration) }
   }
 
-  private func makeProcessorConfiguration() -> LogCatTabProcessor.Configuration {
+  private func makeProcessorConfiguration() -> LogcatTabProcessor.Configuration {
     let activeColumns = filterColumns
       .map { column in
         column
           .filter(\.isEnabled)
-          .map(LogCatFilterSnapshot.init(filter:))
+          .map(LogcatFilterSnapshot.init(filter:))
       }
       .filter { !$0.isEmpty }
 
     let trimmed = quickFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
-    let quickFilter = trimmed.isEmpty ? nil : LogCatTabProcessor.QuickFilter(pattern: NSRegularExpression.escapedPattern(for: trimmed))
+    let quickFilter = trimmed.isEmpty ? nil : LogcatTabProcessor.QuickFilter(pattern: NSRegularExpression.escapedPattern(for: trimmed))
 
-    return LogCatTabProcessor.Configuration(filters: activeColumns, quickFilter: quickFilter)
+    return LogcatTabProcessor.Configuration(filters: activeColumns, quickFilter: quickFilter)
   }
 
-  private func sendToProcessor(_ work: @escaping (LogCatTabProcessor) async -> Void) {
+  private func sendToProcessor(_ work: @escaping (LogcatTabProcessor) async -> Void) {
     let processor = processor
     Task(priority: .userInitiated) {
       await work(processor)
     }
   }
 
-  private func handleProcessorUpdate(_ update: LogCatTabProcessor.Update) async {
+  private func handleProcessorUpdate(_ update: LogcatTabProcessor.Update) async {
     switch update {
     case .tabUpdate(let tabUpdate):
       applyTabUpdate(tabUpdate)
     }
   }
 
-  private func applyTabUpdate(_ update: LogCatTabUpdate) {
+  private func applyTabUpdate(_ update: LogcatTabUpdate) {
     hasEntries = update.entryCount > 0
     renderedEntries = makeRenderedEntries(from: update.renderedEntries)
 
@@ -330,7 +330,7 @@ final class LogCatTab: Identifiable {
     applyErrors(from: update.errors)
   }
 
-  private func applyErrors(from errors: [LogCatTabError]) {
+  private func applyErrors(from errors: [LogcatTabError]) {
     guard let first = errors.first else {
       clearError()
       return
@@ -351,17 +351,17 @@ final class LogCatTab: Identifiable {
     }
   }
 
-  private func makeRenderedEntries(from processed: [LogCatRenderedSnapshot]) -> [LogCatRenderedEntry] {
+  private func makeRenderedEntries(from processed: [LogcatRenderedSnapshot]) -> [LogcatRenderedEntry] {
     processed.map { item in
       let rowHighlightColor = item.rowHighlightColor?.makeNSColor()
-      var fieldHighlights: [LogCatFilterField: [LogCatRenderedEntry.Highlight]] = [:]
+      var fieldHighlights: [LogcatFilterField: [LogcatRenderedEntry.Highlight]] = [:]
       for (field, highlights) in item.fieldHighlights {
         let segments = highlights.map { highlight in
-          LogCatRenderedEntry.Highlight(range: highlight.range.nsRange, color: highlight.color.makeNSColor())
+          LogcatRenderedEntry.Highlight(range: highlight.range.nsRange, color: highlight.color.makeNSColor())
         }
         fieldHighlights[field] = segments
       }
-      return LogCatRenderedEntry(
+      return LogcatRenderedEntry(
         entry: item.entry,
         rowHighlightColor: rowHighlightColor,
         fieldHighlights: fieldHighlights
@@ -369,24 +369,24 @@ final class LogCatTab: Identifiable {
     }
   }
 
-  private var allFilters: [LogCatFilter] {
+  private var allFilters: [LogcatFilter] {
     filterColumns.flatMap(\.self)
   }
 
   private func makeFilter(
     name: String? = nil,
-    action: LogCatFilterAction = .include,
+    action: LogcatFilterAction = .include,
     color: Color? = nil,
-    condition: LogCatFilterCondition? = nil,
-    autoKey: LogCatFilter.AutoKey? = nil,
+    condition: LogcatFilterCondition? = nil,
+    autoKey: LogcatFilter.AutoKey? = nil,
     isEnabled: Bool = false
-  ) -> LogCatFilter {
+  ) -> LogcatFilter {
     filterCounter += 1
     let resolvedName = name ?? "Filter \(filterCounter)"
     let paletteIndex = (filterCounter - 1) % Self.palette.count
     let resolvedColor: Color = color ?? Self.palette[paletteIndex]
-    let resolvedCondition = condition ?? LogCatFilterCondition()
-    return LogCatFilter(
+    let resolvedCondition = condition ?? LogcatFilterCondition()
+    return LogcatFilter(
       name: resolvedName,
       isEnabled: isEnabled,
       action: action,

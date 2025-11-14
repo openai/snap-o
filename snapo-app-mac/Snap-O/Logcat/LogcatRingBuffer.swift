@@ -2,8 +2,8 @@ import Foundation
 
 /// Fixed-size FIFO buffer that overwrites the oldest entries once capacity is reached.
 /// Backed by a circular array so drops do not require O(n) copies.
-struct LogCatRingBuffer {
-  private var storage: [LogCatEntry?]
+struct LogcatRingBuffer {
+  private var storage: [LogcatEntry?]
   private var head = 0
   private var tail = 0
   private var entryCount = 0
@@ -16,10 +16,10 @@ struct LogCatRingBuffer {
   }
 
   @discardableResult
-  mutating func append(_ entry: LogCatEntry) -> LogCatEntry? {
+  mutating func append(_ entry: LogcatEntry) -> LogcatEntry? {
     guard capacity > 0 else { return nil }
 
-    var dropped: LogCatEntry?
+    var dropped: LogcatEntry?
     if entryCount == capacity {
       dropped = storage[tail]
     }
@@ -49,9 +49,9 @@ struct LogCatRingBuffer {
     droppedEntriesCount = 0
   }
 
-  var all: [LogCatEntry] {
+  var all: [LogcatEntry] {
     guard capacity > 0, entryCount > 0 else { return [] }
-    var result: [LogCatEntry] = []
+    var result: [LogcatEntry] = []
     result.reserveCapacity(entryCount)
     for index in 0 ..< entryCount {
       let storageIndex = (head + index) % capacity
@@ -72,4 +72,4 @@ struct LogCatRingBuffer {
   }
 }
 
-extension LogCatRingBuffer: Sendable {}
+extension LogcatRingBuffer: Sendable {}

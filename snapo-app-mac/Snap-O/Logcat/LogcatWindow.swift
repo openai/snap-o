@@ -1,5 +1,5 @@
 import Foundation
 
-enum LogCatWindowID {
+enum LogcatWindowID {
   static let main = "logCatMain"
 }

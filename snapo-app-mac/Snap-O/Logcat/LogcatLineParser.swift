@@ -1,10 +1,10 @@
 import Foundation
 
-enum LogCatParserError: Error {
+enum LogcatParserError: Error {
   case malformedLine(String)
 }
 
-enum LogCatLineParser {
+enum LogcatLineParser {
   private static let threadtimePattern =
     #"^\s*(?<month>\d{2})-(?<day>\d{2})\s+(?<time>\d{2}:\d{2}:\d{2}\.\d{3})\s+"#
       + #"(?<pid>\d+)\s+(?<tid>\d+)\s+(?<level>[A-Z])\s+(?<tag>.+?):\s+(?<message>.*)$"#
@@ -18,10 +18,10 @@ enum LogCatLineParser {
     }
   }()
 
-  static func parseThreadtime(_ line: String, calendar: Calendar = .current) -> LogCatEntry {
+  static func parseThreadtime(_ line: String, calendar: Calendar = .current) -> LogcatEntry {
     let nsrange = NSRange(location: 0, length: line.count)
     guard let match = threadtimeRegex.firstMatch(in: line, options: [], range: nsrange) else {
-      return LogCatEntry(
+      return LogcatEntry(
         timestampString: "",
         timestamp: nil,
         pid: nil,
@@ -51,9 +51,9 @@ enum LogCatLineParser {
     let timestampString = "\(month)-\(day) \(time)"
     let timestamp = makeTimestamp(month: month, day: day, time: time, calendar: calendar)
 
-    let level = LogCatLevel(symbol: levelSymbol)
+    let level = LogcatLevel(symbol: levelSymbol)
 
-    return LogCatEntry(
+    return LogcatEntry(
       timestampString: timestampString,
       timestamp: timestamp,
       pid: pid,

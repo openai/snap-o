@@ -118,7 +118,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut("i", modifiers: [.command, .option])
 
       Button("Logcat Viewer (alpha)") {
-        openWindow(id: LogCatWindowID.main)
+        openWindow(id: LogcatWindowID.main)
       }
       .keyboardShortcut("l", modifiers: [.command, .option])
       Divider()

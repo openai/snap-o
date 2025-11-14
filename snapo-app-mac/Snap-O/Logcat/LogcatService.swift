@@ -1,11 +1,11 @@
 import Foundation
 import OSLog
 
-actor LogCatService {
+actor LogcatService {
   private struct DeviceState {
     var streamTask: Task<Void, Never>?
-    var continuations: [UUID: AsyncStream<LogCatEvent>.Continuation] = [:]
-    var events: [LogCatEvent] = []
+    var continuations: [UUID: AsyncStream<LogcatEvent>.Continuation] = [:]
+    var events: [LogcatEvent] = []
     var reconnectAttempt: Int = 0
   }
 
@@ -30,7 +30,7 @@ actor LogCatService {
     deviceStreamTask?.cancel()
     for (deviceID, state) in deviceStates {
       state.streamTask?.cancel()
-      logger.debug("Deinitializing LogCatService cancelled stream for \(deviceID, privacy: .public)")
+      logger.debug("Deinitializing LogcatService cancelled stream for \(deviceID, privacy: .public)")
     }
   }
 
@@ -52,7 +52,7 @@ actor LogCatService {
 
   /// Creates an `AsyncStream` that replays cached events and streams live updates for the device.
   /// The consumer drives iteration while the actor produces events.
-  func eventsStream(for deviceID: String) -> AsyncStream<LogCatEvent> {
+  func eventsStream(for deviceID: String) -> AsyncStream<LogcatEvent> {
     let subscriberID = UUID()
 
     return AsyncStream { continuation in
@@ -151,7 +151,7 @@ actor LogCatService {
   private func registerContinuation(
     id: UUID,
     deviceID: String,
-    continuation: AsyncStream<LogCatEvent>.Continuation
+    continuation: AsyncStream<LogcatEvent>.Continuation
   ) async {
     ensureDeviceState(for: deviceID)
     guard var state = deviceStates[deviceID] else { return }
@@ -230,7 +230,7 @@ actor LogCatService {
 
             guard !lineData.isEmpty else { continue }
             if let line = String(data: lineData, encoding: .utf8) {
-              let entry = LogCatLineParser.parseThreadtime(line)
+              let entry = LogcatLineParser.parseThreadtime(line)
               await recordEntry(entry, for: deviceID)
             }
           }
@@ -245,7 +245,7 @@ actor LogCatService {
         if Task.isCancelled { break }
         lastErrorReason = error.localizedDescription
         logger.error(
-          "LogCat ADB stream error for \(deviceID, privacy: .public): \(lastErrorReason ?? "unknown", privacy: .public)"
+          "Logcat ADB stream error for \(deviceID, privacy: .public): \(lastErrorReason ?? "unknown", privacy: .public)"
         )
         await recordDisconnect(for: deviceID, reason: lastErrorReason)
       }
@@ -260,7 +260,7 @@ actor LogCatService {
   }
 
   /// Wraps a parsed log entry as an event and enqueues it for subscribers.
-  private func recordEntry(_ entry: LogCatEntry, for deviceID: String) async {
+  private func recordEntry(_ entry: LogcatEntry, for deviceID: String) async {
     appendEvent(.entry(entry), to: deviceID)
   }
 
@@ -298,7 +298,7 @@ actor LogCatService {
   }
 
   /// Appends an event to the device's buffer (trimming to capacity) and broadcasts it to subscribers.
-  private func appendEvent(_ event: LogCatEvent, to deviceID: String) {
+  private func appendEvent(_ event: LogcatEvent, to deviceID: String) {
     guard var state = deviceStates[deviceID] else { return }
 
     state.events.append(event)
