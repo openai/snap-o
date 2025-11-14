@@ -26,8 +26,8 @@ final class CaptureWindowController: ObservableObject {
   private var deviceStreamTask: Task<Void, Never>?
   private var livePreviewManager: LivePreviewManager?
   private var pendingPreferredDeviceID: String?
-  private var preloadConsumptionTask: Task<Void, Never>?
-  private var hasAttemptedPreloadConsumption = false
+  private var isPreloadConsumptionActive = false
+  private var hasAttemptedInitialPreload = false
   private var snapshotCancellable: AnyCancellable?
 
   init(
@@ -116,8 +116,6 @@ final class CaptureWindowController: ObservableObject {
 
   func captureScreenshots() async {
     guard canCaptureNow else { return }
-
-    mode = .preparingScreenshot
     isProcessing = true
     lastError = nil
     if pendingPreferredDeviceID == nil {
@@ -129,16 +127,14 @@ final class CaptureWindowController: ObservableObject {
       shouldSort: false
     )
 
-    if let media = await consumePreloadedMedia() {
-      applyPreloadedMedia(media)
-      mode = .displaying(mediaDisplayMode)
-      isProcessing = false
-      return
+    let screenshotMode = PreparingScreenshotMode(
+      captureService: captureService
+    ) { [weak self] media, error in
+      guard let self else { return }
+      self.applyCaptureResults(newMedia: media, encounteredError: error)
     }
-
-    let (newMedia, encounteredError) = await captureService.captureScreenshots()
-
-    applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
+    mode = .preparingScreenshot(screenshotMode)
+    screenshotMode.start()
   }
 
   func startRecording() async {
@@ -244,9 +240,14 @@ final class CaptureWindowController: ObservableObject {
     isLivePreviewActive = false
     isStoppingLivePreview = false
     pendingPreferredDeviceID = nil
-    preloadConsumptionTask?.cancel()
-    preloadConsumptionTask = nil
-    hasAttemptedPreloadConsumption = false
+    if case .preparingScreenshot(let screenshotMode) = mode {
+      screenshotMode.cancel()
+    }
+    if case .checkingPreload(let preloadMode) = mode {
+      preloadMode.cancel()
+    }
+    isPreloadConsumptionActive = false
+    hasAttemptedInitialPreload = false
     mediaDisplayMode.tearDown()
     mode = .idle
   }
@@ -291,28 +292,6 @@ final class CaptureWindowController: ObservableObject {
     }
 
     return (newMedia, encounteredError)
-  }
-
-  private func consumePreloadedMedia() async -> [CaptureMedia]? {
-    let shouldLog = !hasAttemptedPreloadConsumption
-    if shouldLog {
-      Perf.step(.appFirstSnapshot, "Starting initial preview load")
-      Perf.step(.appFirstSnapshot, "consume preloaded screenshot")
-      hasAttemptedPreloadConsumption = true
-    }
-
-    let preloaded = await captureService.consumeAllPreloadedScreenshots()
-    guard !preloaded.isEmpty else {
-      if shouldLog {
-        Perf.step(.appFirstSnapshot, "Preload missing; refreshing preview")
-      }
-      return nil
-    }
-
-    if shouldLog {
-      Perf.step(.appFirstSnapshot, "Using preloaded screenshot")
-    }
-    return preloaded
   }
 
   private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
@@ -370,23 +349,28 @@ final class CaptureWindowController: ObservableObject {
   }
 
   private func startPreloadConsumptionIfNeeded() {
-    guard preloadConsumptionTask == nil else { return }
+    guard !isPreloadConsumptionActive else { return }
+    guard !hasAttemptedInitialPreload else { return }
     guard mediaList.isEmpty else { return }
-    mode = .checkingPreload
-    preloadConsumptionTask = Task.detached(priority: .userInitiated) { [weak self] in
+    isPreloadConsumptionActive = true
+    hasAttemptedInitialPreload = true
+    let preloadMode = CheckPreloadMode(
+      captureService: captureService
+    ) { [weak self] outcome in
       guard let self else { return }
-      if let preloaded = await consumePreloadedMedia() {
-        await MainActor.run {
-          self.applyPreloadedMedia(preloaded)
-          self.isProcessing = false
-          self.preloadConsumptionTask = nil
+      self.isPreloadConsumptionActive = false
+      switch outcome {
+      case .found(let media):
+        self.applyPreloadedMedia(media)
+        self.isProcessing = false
+      case .missing:
+        Task { [weak self] in
+          await self?.captureScreenshots()
         }
-      } else {
-        await MainActor.run { self.mode = .preparingScreenshot }
-        await captureScreenshots()
-        await MainActor.run { self.preloadConsumptionTask = nil }
       }
     }
+    mode = .checkingPreload(preloadMode)
+    preloadMode.start()
   }
 
   private func handleLivePreviewMediaUpdate(_ media: [CaptureMedia]) {

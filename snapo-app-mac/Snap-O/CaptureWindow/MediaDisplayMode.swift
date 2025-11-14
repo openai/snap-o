@@ -1,15 +1,6 @@
 import Foundation
 import Observation
 
-@MainActor
-enum CaptureWindowMode {
-  case idle
-  case checkingPreload
-  case preparingScreenshot
-  case displaying(MediaDisplayMode)
-  case error(message: String)
-}
-
 @Observable
 @MainActor
 final class MediaDisplayMode {
