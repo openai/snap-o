@@ -7,7 +7,8 @@ final class LivePreviewManager {
     case unknownDevice
   }
 
-  private let services: AppServices
+  private let captureService: CaptureService
+  private let adbService: ADBService
   private let mediaDidChange: @MainActor ([CaptureMedia]) -> Void
   private let pointerInjector: LivePreviewPointerInjector
 
@@ -18,12 +19,14 @@ final class LivePreviewManager {
   private var lastDisplayInfo: [String: DisplayInfo] = [:]
 
   init(
-    services: AppServices,
+    captureService: CaptureService,
+    adbService: ADBService,
     mediaDidChange: @escaping @MainActor ([CaptureMedia]) -> Void
   ) {
-    self.services = services
+    self.captureService = captureService
+    self.adbService = adbService
     self.mediaDidChange = mediaDidChange
-    pointerInjector = LivePreviewPointerInjector(adb: services.adbService)
+    pointerInjector = LivePreviewPointerInjector(adb: adbService)
   }
 
   func start(with devices: [Device]) async {
@@ -49,7 +52,7 @@ final class LivePreviewManager {
       }
     }
 
-    let session = try await services.captureService.startLivePreview(for: deviceID)
+    let session = try await captureService.startLivePreview(for: deviceID)
     let renderer = LivePreviewRenderer(
       session: session,
       deviceID: deviceID
@@ -80,7 +83,7 @@ final class LivePreviewManager {
   }
 
   func stopRenderer(_ renderer: LivePreviewRenderer) async {
-    _ = await services.captureService.stopLivePreview(session: renderer.session)
+    _ = await captureService.stopLivePreview(session: renderer.session)
   }
 
   func stop() {
@@ -162,13 +165,13 @@ final class LivePreviewManager {
   private func fetchDisplayInfos(for devices: [Device]) async -> [String: DisplayInfo] {
     guard !devices.isEmpty else { return [:] }
 
-    let appServices = services
+    let adbService = adbService
 
     return await withTaskGroup(of: (String, DisplayInfo)?.self, returning: [String: DisplayInfo].self) { group in
       for device in devices {
         group.addTask {
           do {
-            let exec = await appServices.adbService.exec()
+            let exec = await adbService.exec()
             async let densityTask = try? await exec.displayDensity(deviceID: device.id)
             let sizeString = try await exec.displaySize(deviceID: device.id)
             guard let size = parseDisplaySize(sizeString) else { return nil }

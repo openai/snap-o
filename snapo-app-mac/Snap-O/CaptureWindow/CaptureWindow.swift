@@ -7,7 +7,23 @@ struct CaptureWindow: View {
   @Environment(AppSettings.self)
   private var settings
 
-  @StateObject private var controller = CaptureWindowController()
+  @StateObject private var controller: CaptureWindowController
+
+  init(
+    captureService: CaptureService,
+    deviceTracker: DeviceTracker,
+    fileStore: FileStore,
+    adbService: ADBService
+  ) {
+    _controller = StateObject(
+      wrappedValue: CaptureWindowController(
+        captureService: captureService,
+        deviceTracker: deviceTracker,
+        fileStore: fileStore,
+        adbService: adbService
+      )
+    )
+  }
 
   var body: some View {
     ZStack {
@@ -16,6 +32,7 @@ struct CaptureWindow: View {
       if controller.currentCapture != nil {
         CaptureSnapshotView(
           controller: controller.snapshotController,
+          fileStore: controller.fileStore,
           livePreviewHost: controller
         )
       } else if controller.isDeviceListInitialized {

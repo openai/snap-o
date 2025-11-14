@@ -5,7 +5,10 @@ import SwiftUI
 
 @MainActor
 final class CaptureWindowController: ObservableObject {
-  private let services: AppServices
+  private let captureService: CaptureService
+  private let deviceTracker: DeviceTracker
+  private let adbService: ADBService
+  let fileStore: FileStore
 
   let snapshotController = CaptureSnapshotController()
 
@@ -25,15 +28,23 @@ final class CaptureWindowController: ObservableObject {
   private var hasAttemptedPreloadConsumption = false
   private var snapshotCancellable: AnyCancellable?
 
-  init(services: AppServices = .shared) {
-    self.services = services
+  init(
+    captureService: CaptureService,
+    deviceTracker: DeviceTracker,
+    fileStore: FileStore,
+    adbService: ADBService
+  ) {
+    self.captureService = captureService
+    self.deviceTracker = deviceTracker
+    self.fileStore = fileStore
+    self.adbService = adbService
     snapshotCancellable = snapshotController.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
   }
 
   func start() async {
     deviceStreamTask?.cancel()
-    let tracker = services.deviceTracker
+    let tracker = deviceTracker
     isDeviceListInitialized = tracker.latestDevices.isEmpty ? false : true
 
     deviceStreamTask = Task { [weak self] in
@@ -119,7 +130,6 @@ final class CaptureWindowController: ObservableObject {
       return
     }
 
-    let captureService = services.captureService
     let (newMedia, encounteredError) = await captureService.captureScreenshots()
 
     applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
@@ -137,7 +147,6 @@ final class CaptureWindowController: ObservableObject {
       shouldSort: false
     )
 
-    let captureService = services.captureService
     let (sessions, encounteredError) = await captureService.startRecordings(for: devices)
 
     if let error = encounteredError {
@@ -163,7 +172,6 @@ final class CaptureWindowController: ObservableObject {
     isProcessing = true
     lastError = nil
 
-    let captureService = services.captureService
     let (newMedia, encounteredError) = await captureService.stopRecordings(
       for: devices,
       sessions: recordingSessions
@@ -189,7 +197,10 @@ final class CaptureWindowController: ObservableObject {
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices.first?.id
     pendingPreferredDeviceID = preferredDeviceID
 
-    let manager = LivePreviewManager(services: services) { [weak self] media in
+    let manager = LivePreviewManager(
+      captureService: captureService,
+      adbService: adbService
+    ) { [weak self] media in
       guard let self else { return }
       handleLivePreviewMediaUpdate(media)
     }
@@ -276,8 +287,6 @@ final class CaptureWindowController: ObservableObject {
   }
 
   private func consumePreloadedMedia() async -> [CaptureMedia]? {
-    let captureService = services.captureService
-
     let shouldLog = !hasAttemptedPreloadConsumption
     if shouldLog {
       Perf.step(.appFirstSnapshot, "Starting initial preview load")
@@ -336,7 +345,7 @@ final class CaptureWindowController: ObservableObject {
     }
     Task.detached(priority: .utility) { [weak self] in
       guard let self else { return }
-      await services.captureService.preloadScreenshots()
+      await captureService.preloadScreenshots()
     }
     if !devices.isEmpty {
       startPreloadConsumptionIfNeeded()
