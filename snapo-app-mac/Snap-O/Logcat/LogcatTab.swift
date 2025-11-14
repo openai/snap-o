@@ -17,6 +17,7 @@ final class LogcatTab: Identifiable {
       notifyConfigurationChange()
     }
   }
+
   private let defaultTitle: String
   private var hasAutoFilterName = false
   private var isApplyingAutoFilterTitle = false
