@@ -133,6 +133,11 @@ private struct LogcatTabRow: View {
       }
     }
     .contextMenu {
+      Button {
+        beginEditing()
+      } label: {
+        Label("Rename", systemImage: "pencil")
+      }
       Button(role: .destructive) {
         store.removeTab(tab)
       } label: {
