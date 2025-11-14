@@ -56,7 +56,7 @@ struct LogcatTabContentView: View {
   }
 
   private var filtersBar: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    HStack(alignment: tab.isFilterCollapsed ? .center : .top, spacing: 6) {
       if !tab.filterColumns.isEmpty {
         Button {
           withAnimation(.easeInOut) {
@@ -64,22 +64,13 @@ struct LogcatTabContentView: View {
             activeFilterID = nil
           }
         } label: {
-          HStack(spacing: 8) {
-            Label(
-              tab.isFilterCollapsed ? "Expand" : "Collapse",
-              systemImage: tab.isFilterCollapsed ? "chevron.up" : "chevron.down"
-            )
+          Image(systemName: tab.isFilterCollapsed ? "chevron.right" : "chevron.down")
             .labelStyle(.iconOnly)
-            .frame(width: 20, height: 20)
-            Text("Filters")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-            Spacer()
-          }
+            .padding(8)
         }
-        .padding(.top, 8)
+        .controlSize(.large)
         .buttonStyle(.borderless)
-        .controlSize(.small)
+        .padding(.top, tab.isFilterCollapsed ? 0 : 10)
         .help(tab.isFilterCollapsed ? "Expand filters" : "Collapse filters")
       }
 
@@ -104,7 +95,7 @@ struct LogcatTabContentView: View {
         }
       } else if tab.isFilterCollapsed {
         collapsedFiltersSummary
-          .padding(.bottom, 8)
+          .padding(.vertical, 8)
       } else {
         filtersEditView
           .padding(.vertical, 8)
