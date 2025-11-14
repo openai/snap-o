@@ -18,18 +18,20 @@ struct LogcatCrashContentView: View {
   }
 
   var body: some View {
-    HStack(spacing: 0) {
-      crashList
-        .frame(width: 300)
-      Divider()
-      crashDetail
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 0) {
+        crashList
+          .frame(width: 300)
+        Divider()
+        crashDetail
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 
   @ViewBuilder private var crashList: some View {
     VStack(alignment: .leading, spacing: 0) {
-      repoRootControl
       if store.crashes.isEmpty {
         LogcatPlaceholderView(
           icon: "bolt.slash",
@@ -49,31 +51,37 @@ struct LogcatCrashContentView: View {
   }
 
   @ViewBuilder private var crashDetail: some View {
-    if let crash = store.selectedCrash {
-      LogcatCrashDetailPane(
-        crash: crash,
-        repoRoot: normalizedCrashRepoPath(crashRepoPath),
-        openRepoEditor: showRepoEditor
-      )
-    } else if store.crashes.isEmpty {
-      LogcatPlaceholderView(
-        icon: "bolt.slash",
-        title: "No Crash Selected",
-        message: "Select a crash on the left to inspect its details."
-      )
-    } else {
-      LogcatPlaceholderView(
-        icon: "bolt",
-        title: "Select a Crash",
-        message: "Choose a crash from the list to see its stack trace."
-      )
+    VStack(alignment: .trailing, spacing: 0) {
+      if let crash = store.selectedCrash {
+        LogcatCrashDetailPane(
+          crash: crash,
+          repoRoot: normalizedCrashRepoPath(crashRepoPath),
+          openRepoEditor: showRepoEditor
+        )
+      } else if store.crashes.isEmpty {
+        LogcatPlaceholderView(
+          icon: "bolt.slash",
+          title: "No Crash Selected",
+          message: "Select a crash on the left to inspect its details."
+        )
+      } else {
+        LogcatPlaceholderView(
+          icon: "bolt",
+          title: "Select a Crash",
+          message: "Choose a crash from the list to see its stack trace."
+        )
+      }
+      Divider()
+      repoRootControl
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
   }
 
   private var repoRootControl: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .firstTextBaseline) {
-        Text(crashRepoPath.isEmpty ? "Root path (for links):" : "Root path:")
+        Text("Root path for file links:")
           .font(.caption)
           .foregroundStyle(.secondary)
         Button {
@@ -88,7 +96,6 @@ struct LogcatCrashContentView: View {
         }
         .buttonStyle(.plain)
         if !crashRepoPath.isEmpty {
-          Spacer()
           Button(role: .destructive) {
             clearRepoRoot()
           } label: {
@@ -104,8 +111,7 @@ struct LogcatCrashContentView: View {
           .foregroundStyle(.orange)
       }
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 8)
+    .padding(.bottom, 2)
   }
 
   private func showRepoEditor() {
@@ -245,7 +251,9 @@ private struct LogcatCrashDetailPane: View {
           crashMessages
         }
       }
-      .padding(16)
+      .padding(.top, 10)
+      .padding(.bottom, 16)
+      .padding(.horizontal, 16)
       .textSelection(.enabled)
       .onAppear {
         pendingRepoRoot = repoRoot
