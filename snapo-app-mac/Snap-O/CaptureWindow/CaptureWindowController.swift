@@ -11,6 +11,7 @@ final class CaptureWindowController: ObservableObject {
   let fileStore: FileStore
 
   let snapshotController = CaptureSnapshotController()
+  let mediaDisplayMode: MediaDisplayMode
 
   @Published private(set) var isDeviceListInitialized: Bool = false
   @Published private(set) var isProcessing: Bool = false
@@ -18,6 +19,7 @@ final class CaptureWindowController: ObservableObject {
   @Published private(set) var isLivePreviewActive: Bool = false
   @Published private(set) var isStoppingLivePreview: Bool = false
   @Published private(set) var lastError: String?
+  @Published private(set) var mode: CaptureWindowMode
 
   private var knownDevices: [Device] = []
   private var recordingSessions: [String: RecordingSession] = [:]
@@ -38,6 +40,8 @@ final class CaptureWindowController: ObservableObject {
     self.deviceTracker = deviceTracker
     self.fileStore = fileStore
     self.adbService = adbService
+    self.mediaDisplayMode = MediaDisplayMode(snapshotController: snapshotController)
+    self.mode = .idle
     snapshotCancellable = snapshotController.objectWillChange
       .sink { [weak self] _ in self?.objectWillChange.send() }
   }
@@ -84,14 +88,14 @@ final class CaptureWindowController: ObservableObject {
   var canStartRecordingNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
   var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
 
-  var mediaList: [CaptureMedia] { snapshotController.mediaList }
-  var selectedMediaID: CaptureMedia.ID? { snapshotController.selectedMediaID }
-  var currentCaptureViewID: UUID? { snapshotController.currentCaptureViewID }
-  var shouldShowPreviewHint: Bool { snapshotController.shouldShowPreviewHint }
-  var overlayMediaList: [CaptureMedia] { snapshotController.overlayMediaList }
-  var lastViewedDeviceID: String? { snapshotController.lastViewedDeviceID }
+  var mediaList: [CaptureMedia] { mediaDisplayMode.mediaList }
+  var selectedMediaID: CaptureMedia.ID? { mediaDisplayMode.selectedMediaID }
+  var currentCaptureViewID: UUID? { mediaDisplayMode.currentCaptureViewID }
+  var shouldShowPreviewHint: Bool { mediaDisplayMode.shouldShowPreviewHint }
+  var overlayMediaList: [CaptureMedia] { mediaDisplayMode.overlayMediaList }
+  var lastViewedDeviceID: String? { mediaDisplayMode.lastViewedDeviceID }
 
-  var currentCapture: CaptureMedia? { snapshotController.currentCapture }
+  var currentCapture: CaptureMedia? { mediaDisplayMode.currentCapture }
 
   var navigationTitle: String {
     currentCapture?.device.displayTitle ?? "Snap-O"
@@ -101,11 +105,11 @@ final class CaptureWindowController: ObservableObject {
     currentCapture?.device.displayTitle
   }
 
-  var captureProgressText: String? { snapshotController.captureProgressText }
+  var captureProgressText: String? { mediaDisplayMode.captureProgressText }
 
   var displayInfoForSizing: DisplayInfo? {
     if isRecording {
-      return snapshotController.lastPreviewDisplayInfo ?? currentCapture?.media.common.display
+      return mediaDisplayMode.lastPreviewDisplayInfo ?? currentCapture?.media.common.display
     }
     return currentCapture?.media.common.display
   }
@@ -113,12 +117,13 @@ final class CaptureWindowController: ObservableObject {
   func captureScreenshots() async {
     guard canCaptureNow else { return }
 
+    mode = .preparingScreenshot
     isProcessing = true
     lastError = nil
     if pendingPreferredDeviceID == nil {
       pendingPreferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
     }
-    snapshotController.updateMediaList(
+    mediaDisplayMode.updateMediaList(
       [],
       preserveDeviceID: nil,
       shouldSort: false
@@ -126,6 +131,7 @@ final class CaptureWindowController: ObservableObject {
 
     if let media = await consumePreloadedMedia() {
       applyPreloadedMedia(media)
+      mode = .displaying(mediaDisplayMode)
       isProcessing = false
       return
     }
@@ -141,7 +147,7 @@ final class CaptureWindowController: ObservableObject {
     isProcessing = true
     lastError = nil
     pendingPreferredDeviceID = currentCapture?.device.id
-    snapshotController.updateMediaList(
+    mediaDisplayMode.updateMediaList(
       [],
       preserveDeviceID: nil,
       shouldSort: false
@@ -218,7 +224,7 @@ final class CaptureWindowController: ObservableObject {
     livePreviewManager = nil
     isLivePreviewActive = false
     pendingPreferredDeviceID = preferredDeviceID
-    if let preferredDeviceID { snapshotController.updateLastViewedDeviceID(preferredDeviceID) }
+    if let preferredDeviceID { mediaDisplayMode.updateLastViewedDeviceID(preferredDeviceID) }
     isStoppingLivePreview = false
     if !hasDevices {
       isProcessing = false
@@ -241,7 +247,8 @@ final class CaptureWindowController: ObservableObject {
     preloadConsumptionTask?.cancel()
     preloadConsumptionTask = nil
     hasAttemptedPreloadConsumption = false
-    snapshotController.tearDown()
+    mediaDisplayMode.tearDown()
+    mode = .idle
   }
 
   func copyCurrentImage() {
@@ -309,11 +316,12 @@ final class CaptureWindowController: ObservableObject {
   }
 
   private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
-    snapshotController.updateMediaList(
+    mediaDisplayMode.updateMediaList(
       mediaList,
       preserveDeviceID: mediaList.first?.device.id,
       shouldSort: false
     )
+    mode = .displaying(mediaDisplayMode)
   }
 
   private func applyCaptureResults(
@@ -322,16 +330,22 @@ final class CaptureWindowController: ObservableObject {
   ) {
     if let error = encounteredError {
       lastError = error.localizedDescription
+      if mediaDisplayMode.mediaList.isEmpty {
+        mode = .error(message: error.localizedDescription)
+      }
     }
 
     if !newMedia.isEmpty {
       let targetDeviceID = pendingPreferredDeviceID ?? currentCapture?.device.id
         ?? lastViewedDeviceID
-      snapshotController.updateMediaList(
+      mediaDisplayMode.updateMediaList(
         newMedia,
         preserveDeviceID: targetDeviceID,
         shouldSort: true
       )
+      mode = .displaying(mediaDisplayMode)
+    } else if mediaDisplayMode.mediaList.isEmpty {
+      mode = .idle
     }
 
     isProcessing = false
@@ -341,7 +355,7 @@ final class CaptureWindowController: ObservableObject {
   private func handleDeviceUpdate(_ devices: [Device]) {
     knownDevices = devices
     if mediaList.isEmpty {
-      snapshotController.clearSelection()
+      mediaDisplayMode.clearSelection()
     }
     Task.detached(priority: .utility) { [weak self] in
       guard let self else { return }
@@ -358,6 +372,7 @@ final class CaptureWindowController: ObservableObject {
   private func startPreloadConsumptionIfNeeded() {
     guard preloadConsumptionTask == nil else { return }
     guard mediaList.isEmpty else { return }
+    mode = .checkingPreload
     preloadConsumptionTask = Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
       if let preloaded = await consumePreloadedMedia() {
@@ -367,6 +382,7 @@ final class CaptureWindowController: ObservableObject {
           self.preloadConsumptionTask = nil
         }
       } else {
+        await MainActor.run { self.mode = .preparingScreenshot }
         await captureScreenshots()
         await MainActor.run { self.preloadConsumptionTask = nil }
       }
@@ -383,7 +399,7 @@ final class CaptureWindowController: ObservableObject {
       nil
     }
 
-    snapshotController.updateMediaList(
+    mediaDisplayMode.updateMediaList(
       media,
       preserveDeviceID: preferredDeviceID,
       shouldSort: false
@@ -413,11 +429,11 @@ final class CaptureWindowController: ObservableObject {
   }
 
   func setPreviewHintHovering(_ isHovering: Bool) {
-    snapshotController.setPreviewHintHovering(isHovering)
+    mediaDisplayMode.setPreviewHintHovering(isHovering)
   }
 
   func setProgressHovering(_ isHovering: Bool) {
-    snapshotController.setProgressHovering(isHovering)
+    mediaDisplayMode.setProgressHovering(isHovering)
   }
 }
 
