@@ -1,3 +1,4 @@
+import Sparkle
 import SwiftUI
 
 @main
@@ -6,6 +7,11 @@ struct SnapOApp: App {
   var appDelegate
 
   private let services: AppServices
+  private let updaterController = SPUStandardUpdaterController(
+    startingUpdater: true,
+    updaterDelegate: nil,
+    userDriverDelegate: nil
+  )
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
@@ -26,7 +32,8 @@ struct SnapOApp: App {
     .windowToolbarStyle(.unified)
     .commands {
       SnapOCommands(
-        adbService: services.adbService
+        adbService: services.adbService,
+        updaterController: updaterController
       )
     }
 

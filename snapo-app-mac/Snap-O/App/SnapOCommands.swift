@@ -7,19 +7,8 @@ struct SnapOCommands: Commands {
   private var openWindow
   @FocusedObject var captureController: CaptureWindowController?
 
-  private let adbService: ADBService
-
-  private let updaterController: SPUStandardUpdaterController
-
-  init(adbService: ADBService) {
-    self.adbService = adbService
-    // Initialize Sparkle updater controller; starts checks automatically
-    updaterController = SPUStandardUpdaterController(
-      startingUpdater: true,
-      updaterDelegate: nil,
-      userDriverDelegate: nil
-    )
-  }
+  let adbService: ADBService
+  let updaterController: SPUStandardUpdaterController
 
   var body: some Commands {
     CommandGroup(after: .appInfo) {
