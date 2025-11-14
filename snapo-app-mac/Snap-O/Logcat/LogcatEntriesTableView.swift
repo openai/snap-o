@@ -648,7 +648,7 @@ private extension LogcatEntriesTableView {
     var trailingPadding: CGFloat {
       switch self {
       case .message:
-        12
+        0
       default:
         6
       }
