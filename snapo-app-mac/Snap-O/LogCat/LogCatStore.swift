@@ -1,6 +1,6 @@
-import Observation
 @preconcurrency import Dispatch
 import Foundation
+import Observation
 
 actor LogCatStreamRouter {
   private var processors: [LogCatTabProcessor] = []
@@ -206,7 +206,7 @@ final class LogCatStore {
       for await devices in stream {
         if Task.isCancelled { break }
         guard let self else { return }
-        await self.handleDeviceUpdate(devices)
+        handleDeviceUpdate(devices)
       }
     }
   }

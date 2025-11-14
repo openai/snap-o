@@ -22,17 +22,17 @@ final class RecordingMode {
     onResult: @escaping @MainActor (Result) -> Void
   ) {
     self.captureService = captureService
-    self.initialDevices = devices
+    initialDevices = devices
     self.onResult = onResult
   }
 
   func start() {
     startTask = Task { [weak self] in
       guard let self else { return }
-      let (sessions, encounteredError) = await self.captureService.startRecordings(for: self.initialDevices)
+      let (sessions, encounteredError) = await captureService.startRecordings(for: initialDevices)
       if let error = encounteredError {
-        self.hasCompleted = true
-        self.onResult(.failed(error))
+        hasCompleted = true
+        onResult(.failed(error))
       } else {
         self.sessions = sessions
       }

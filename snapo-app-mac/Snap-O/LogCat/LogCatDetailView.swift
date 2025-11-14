@@ -4,7 +4,8 @@ import OSLog
 import SwiftUI
 
 struct LogCatDetailView: View {
-  @Environment(LogCatStore.self) private var store: LogCatStore
+  @Environment(LogCatStore.self)
+  private var store: LogCatStore
 
   var body: some View {
     content
@@ -28,7 +29,8 @@ struct LogCatDetailView: View {
 }
 
 private struct LogCatCrashContentView: View {
-  @Environment(LogCatStore.self) private var store: LogCatStore
+  @Environment(LogCatStore.self)
+  private var store: LogCatStore
   @AppStorage("LogCatCrashRepoPath")
   private var crashRepoPath: String = ""
   @State private var isEditingRepoPath = false
@@ -592,7 +594,8 @@ private func normalizedCrashRepoPath(_ path: String) -> String {
 private struct LogCatTabContentView: View {
   @Bindable var tab: LogCatTab
   @State private var activeFilterID: LogCatFilter.ID?
-  @Environment(LogCatStore.self) private var store: LogCatStore
+  @Environment(LogCatStore.self)
+  private var store: LogCatStore
 
   var body: some View {
     VStack(spacing: 0) {

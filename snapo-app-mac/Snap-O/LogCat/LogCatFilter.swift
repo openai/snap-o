@@ -137,8 +137,7 @@ final class LogCatFilter: Identifiable {
   }
 
   var autoKey: AutoKey?
-  @ObservationIgnored
-  var onChange: (() -> Void)?
+  @ObservationIgnored var onChange: (() -> Void)?
   init(
     name: String,
     isEnabled: Bool = true,

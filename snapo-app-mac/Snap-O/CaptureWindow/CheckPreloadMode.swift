@@ -24,10 +24,10 @@ final class CheckPreloadMode {
   func start() {
     task = Task { [weak self] in
       guard let self else { return }
-      if let media = await self.loadPreloadedScreenshots() {
-        self.completion(.found(media))
+      if let media = await loadPreloadedScreenshots() {
+        completion(.found(media))
       } else {
-        self.completion(.missing)
+        completion(.missing)
       }
     }
   }

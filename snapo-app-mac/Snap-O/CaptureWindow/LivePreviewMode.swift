@@ -35,13 +35,13 @@ final class LivePreviewMode {
       adbService: adbService
     ) { [weak self] media in
       guard let self else { return }
-      let preferredDeviceID = self.preferredDeviceIDProvider()
-      self.mediaDisplayMode.updateMediaList(
+      let preferredDeviceID = preferredDeviceIDProvider()
+      mediaDisplayMode.updateMediaList(
         media,
         preserveDeviceID: preferredDeviceID,
         shouldSort: false
       )
-      self.onMediaApplied()
+      onMediaApplied()
     }
     self.manager?.stop()
     self.manager = manager

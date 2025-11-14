@@ -19,13 +19,12 @@ final class PreparingScreenshotMode {
   func start() {
     task = Task { [weak self] in
       guard let self else { return }
-      let (media, error) = await self.captureService.captureScreenshots()
-      self.completion(media, error)
+      let (media, error) = await captureService.captureScreenshots()
+      completion(media, error)
     }
   }
 
   func cancel() {
     task?.cancel()
   }
-
 }

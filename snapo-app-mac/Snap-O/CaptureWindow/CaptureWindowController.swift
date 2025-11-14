@@ -35,8 +35,8 @@ final class CaptureWindowController {
     self.deviceTracker = deviceTracker
     self.fileStore = fileStore
     self.adbService = adbService
-    self.mediaDisplayMode = MediaDisplayMode(snapshotController: snapshotController)
-    self.mode = .idle
+    mediaDisplayMode = MediaDisplayMode(snapshotController: snapshotController)
+    mode = .idle
   }
 
   func start() async {
@@ -141,7 +141,7 @@ final class CaptureWindowController {
       captureService: captureService
     ) { [weak self] media, error in
       guard let self else { return }
-      self.applyCaptureResults(newMedia: media, encounteredError: error)
+      applyCaptureResults(newMedia: media, encounteredError: error)
     }
     mode = .preparingScreenshot(screenshotMode)
     screenshotMode.start()
@@ -163,17 +163,17 @@ final class CaptureWindowController {
       devices: devices
     ) { [weak self] result in
       guard let self else { return }
-      self.isProcessing = false
+      isProcessing = false
       switch result {
       case .failed(let error):
-        self.lastError = error.localizedDescription
-        self.mode = .idle
+        lastError = error.localizedDescription
+        mode = .idle
       case .completed(let media, let error):
         if error == nil, media.isEmpty {
-          self.mode = .idle
+          mode = .idle
           Task { await self.captureScreenshots() }
         } else {
-          self.applyCaptureResults(newMedia: media, encounteredError: error)
+          applyCaptureResults(newMedia: media, encounteredError: error)
         }
       }
     }
@@ -210,19 +210,19 @@ final class CaptureWindowController {
       mediaDisplayMode: mediaDisplayMode,
       preferredDeviceIDProvider: { [weak self] in
         guard let self else { return nil }
-        if let pending = self.pendingPreferredDeviceID {
+        if let pending = pendingPreferredDeviceID {
           return pending
         }
-        if let currentID = self.selectedMediaID,
-           let current = self.mediaList.first(where: { $0.id == currentID }) {
+        if let currentID = selectedMediaID,
+           let current = mediaList.first(where: { $0.id == currentID }) {
           return current.device.id
         }
         return nil
       },
       onMediaApplied: { [weak self] in
         guard let self else { return }
-        self.isProcessing = false
-        self.pendingPreferredDeviceID = nil
+        isProcessing = false
+        pendingPreferredDeviceID = nil
       },
       errorHandler: { [weak self] error in
         self?.lastError = error.localizedDescription
@@ -367,7 +367,7 @@ final class CaptureWindowController {
     }
     Task { @MainActor [weak self] in
       guard let self else { return }
-      if case .livePreview(let livePreviewMode) = self.mode {
+      if case .livePreview(let livePreviewMode) = mode {
         await livePreviewMode.updateDevices(devices)
       }
     }
@@ -383,11 +383,11 @@ final class CaptureWindowController {
       captureService: captureService
     ) { [weak self] outcome in
       guard let self else { return }
-      self.isPreloadConsumptionActive = false
+      isPreloadConsumptionActive = false
       switch outcome {
       case .found(let media):
-        self.applyPreloadedMedia(media)
-        self.isProcessing = false
+        applyPreloadedMedia(media)
+        isProcessing = false
       case .missing:
         Task { [weak self] in
           await self?.captureScreenshots()

@@ -271,8 +271,8 @@ final class LogCatTab: Identifiable {
     for filter in allFilters {
       filter.onChange = { [weak self] in
         guard let self else { return }
-        self.refreshProcessorConfiguration()
-        self.notifyConfigurationChange()
+        refreshProcessorConfiguration()
+        notifyConfigurationChange()
       }
     }
   }
