@@ -21,11 +21,10 @@ struct LogcatTabContentView: View {
   private var toolbar: some View {
     HStack(spacing: 20) {
       Spacer()
-
       Text("\(tab.renderedEntries.count) entries")
         .font(.caption2)
         .foregroundStyle(.secondary)
-
+      
       Button {
         tab.isPinnedToBottom = true
       } label: {
@@ -33,7 +32,7 @@ struct LogcatTabContentView: View {
       }
       .buttonStyle(.borderless)
       .help("Jump to bottom")
-
+      
       Toggle(isOn: Binding(
         get: { tab.isSoftWrapEnabled },
         set: { tab.isSoftWrapEnabled = $0 }
@@ -43,7 +42,7 @@ struct LogcatTabContentView: View {
       .toggleStyle(.button)
       .buttonStyle(.borderless)
       .help("Toggle soft wrapping for the message column")
-
+      
       Button {
         tab.clearLogs()
       } label: {

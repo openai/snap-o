@@ -19,5 +19,6 @@ struct LogcatPlaceholderView: View {
         .frame(maxWidth: 320)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(.background)
   }
 }
