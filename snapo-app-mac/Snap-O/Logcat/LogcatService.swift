@@ -1,4 +1,3 @@
-import DequeModule
 import Foundation
 import OSLog
 
@@ -6,7 +5,7 @@ actor LogcatService {
   private final class DeviceState: @unchecked Sendable {
     var streamTask: Task<Void, Never>?
     var continuations: [UUID: AsyncStream<LogcatEvent>.Continuation] = [:]
-    var events: Deque<LogcatEvent> = []
+    var events: [LogcatEvent] = []
     var reconnectAttempt: Int = 0
   }
 
@@ -203,7 +202,12 @@ actor LogcatService {
         defer { socket.close() }
 
         try socket.sendTransport(to: deviceID)
-        try socket.sendShell("logcat -T 2000")
+        let tailLimit = Self.maxRetainedEvents
+        if tailLimit > 0 {
+          try socket.sendShell("logcat -T \(tailLimit)")
+        } else {
+          try socket.sendShell("logcat")
+        }
 
         await recordConnect(for: deviceID)
         lastErrorReason = nil
