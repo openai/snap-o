@@ -2,22 +2,25 @@ import Combine
 import Sparkle
 import SwiftUI
 
-final class CheckForUpdatesViewModel: ObservableObject {
-  @Published var canCheckForUpdates = false
+@Observable
+final class CheckForUpdatesViewModel {
+  @ObservationIgnored private var bag = Set<AnyCancellable>()
+  var canCheckForUpdates = false
 
   init(updater: SPUUpdater) {
     updater.publisher(for: \.canCheckForUpdates)
       .receive(on: DispatchQueue.main)
-      .assign(to: &$canCheckForUpdates)
+      .assign(to: \.canCheckForUpdates, on: self)
+      .store(in: &bag)
   }
 }
 
 struct CheckForUpdatesView: View {
-  @StateObject private var viewModel: CheckForUpdatesViewModel
+  @State private var viewModel: CheckForUpdatesViewModel
   private let updater: SPUUpdater
 
   init(updater: SPUUpdater) {
-    _viewModel = StateObject(wrappedValue: CheckForUpdatesViewModel(updater: updater))
+    _viewModel = State(wrappedValue: CheckForUpdatesViewModel(updater: updater))
     self.updater = updater
   }
 
