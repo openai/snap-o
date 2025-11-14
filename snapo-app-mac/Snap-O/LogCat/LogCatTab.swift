@@ -1,22 +1,23 @@
 import AppKit
-import Combine
 import Foundation
+import Observation
 import SwiftUI
 
 @MainActor
-final class LogCatTab: ObservableObject, Identifiable {
+@Observable
+final class LogCatTab: Identifiable {
   let id = UUID()
 
-  @Published var title: String {
+  var title: String {
     didSet {
       guard title != oldValue else { return }
       notifyConfigurationChange()
     }
   }
 
-  @Published private(set) var hasEntries = false
-  @Published private(set) var lastError: String?
-  @Published var isPaused = false {
+  private(set) var hasEntries = false
+  private(set) var lastError: String?
+  var isPaused = false {
     didSet {
       guard isPaused != oldValue else { return }
       let value = isPaused
@@ -25,34 +26,34 @@ final class LogCatTab: ObservableObject, Identifiable {
     }
   }
 
-  @Published var isSoftWrapEnabled = false {
+  var isSoftWrapEnabled = false {
     didSet {
       guard isSoftWrapEnabled != oldValue else { return }
       notifyConfigurationChange()
     }
   }
 
-  @Published var isPinnedToBottom = true
-  @Published var isFilterCollapsed = true {
+  var isPinnedToBottom = true
+  var isFilterCollapsed = true {
     didSet {
       guard isFilterCollapsed != oldValue else { return }
       notifyConfigurationChange()
     }
   }
 
-  @Published private(set) var unreadCount: Int = 0
-  @Published var filterColumns: [[LogCatFilter]] = [] {
+  private(set) var unreadCount: Int = 0
+  var filterColumns: [[LogCatFilter]] = [] {
     didSet { handleFiltersDidChange(oldValue: oldValue) }
   }
 
-  @Published private(set) var columnNames: [Int: String] = [:] {
+  private(set) var columnNames: [Int: String] = [:] {
     didSet {
       guard columnNames != oldValue else { return }
       notifyConfigurationChange()
     }
   }
 
-  @Published var quickFilterText: String = "" {
+  var quickFilterText: String = "" {
     didSet {
       guard quickFilterText != oldValue else { return }
       refreshProcessorConfiguration()
@@ -60,13 +61,12 @@ final class LogCatTab: ObservableObject, Identifiable {
     }
   }
 
-  @Published private(set) var renderedEntries: [LogCatRenderedEntry] = []
+  private(set) var renderedEntries: [LogCatRenderedEntry] = []
 
   private let capacity: Int
   let processor: LogCatTabProcessor
   var isActive = false
   private var filterCounter = 0
-  private var filterCancellables: [UUID: AnyCancellable] = [:]
   var onConfigurationChange: (() -> Void)?
   private static let palette: [Color] = [
     Color(red: 1.00, green: 0.42, blue: 0.42),
@@ -252,7 +252,7 @@ final class LogCatTab: ObservableObject, Identifiable {
   }
 
   private func handleFiltersDidChange(oldValue: [[LogCatFilter]]) {
-    updateFilterSubscriptions(previous: oldValue.flatMap(\.self))
+    updateFilterObservers(previous: oldValue.flatMap(\.self))
     if !filterColumns.isEmpty, !quickFilterText.isEmpty {
       Task { @MainActor [weak self] in
         guard let self else { return }
@@ -264,24 +264,16 @@ final class LogCatTab: ObservableObject, Identifiable {
     notifyConfigurationChange()
   }
 
-  private func updateFilterSubscriptions(previous: [LogCatFilter]) {
-    let previousIDs = Set(previous.map(\.id))
-    let currentIDs = Set(allFilters.map(\.id))
-
-    for id in previousIDs.subtracting(currentIDs) {
-      filterCancellables[id]?.cancel()
-      filterCancellables.removeValue(forKey: id)
+  private func updateFilterObservers(previous: [LogCatFilter]) {
+    for filter in previous {
+      filter.onChange = nil
     }
-
-    for filter in allFilters where filterCancellables[filter.id] == nil {
-      let cancellable = filter.objectWillChange
-        .sink { [weak self] _ in
-          Task { @MainActor [weak self] in
-            self?.refreshProcessorConfiguration()
-            self?.notifyConfigurationChange()
-          }
-        }
-      filterCancellables[filter.id] = cancellable
+    for filter in allFilters {
+      filter.onChange = { [weak self] in
+        guard let self else { return }
+        self.refreshProcessorConfiguration()
+        self.notifyConfigurationChange()
+      }
     }
   }
 

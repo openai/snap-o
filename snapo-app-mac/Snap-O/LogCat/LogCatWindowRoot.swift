@@ -2,11 +2,11 @@ import SwiftUI
 
 @MainActor
 struct LogCatWindowRoot: View {
-  @StateObject private var store: LogCatStore
+  @State private var store: LogCatStore
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
-    _store = StateObject(
-      wrappedValue: LogCatStore(
+    _store = State(
+      initialValue: LogCatStore(
         adbService: adbService,
         deviceTracker: deviceTracker
       )
@@ -19,7 +19,7 @@ struct LogCatWindowRoot: View {
     } detail: {
       LogCatDetailView()
     }
-    .environmentObject(store)
+    .environment(store)
     .onAppear {
       store.start()
     }

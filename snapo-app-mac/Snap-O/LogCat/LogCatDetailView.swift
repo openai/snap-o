@@ -1,9 +1,10 @@
 import AppKit
+import Observation
 import OSLog
 import SwiftUI
 
 struct LogCatDetailView: View {
-  @EnvironmentObject private var store: LogCatStore
+  @Environment(LogCatStore.self) private var store: LogCatStore
 
   var body: some View {
     content
@@ -27,7 +28,7 @@ struct LogCatDetailView: View {
 }
 
 private struct LogCatCrashContentView: View {
-  @EnvironmentObject private var store: LogCatStore
+  @Environment(LogCatStore.self) private var store: LogCatStore
   @AppStorage("LogCatCrashRepoPath")
   private var crashRepoPath: String = ""
   @State private var isEditingRepoPath = false
@@ -277,7 +278,7 @@ private struct LogCatCrashDetailPane: View {
   let repoRoot: String
   let isEditingRepoRoot: Bool
   let openRepoEditor: () -> Void
-  @StateObject private var fileResolver = CrashFileResolver()
+  @State private var fileResolver = CrashFileResolver()
   @State private var pendingRepoRoot: String?
 
   var body: some View {
@@ -494,9 +495,10 @@ private struct LogCatCrashDetailPane: View {
 }
 
 @MainActor
-final class CrashFileResolver: ObservableObject {
-  @Published private(set) var isIndexing = false
-  @Published private var index: [String: [String]] = [:]
+@Observable
+final class CrashFileResolver {
+  private(set) var isIndexing = false
+  private var index: [String: [String]] = [:]
   private var currentRoot: String = ""
   private var buildTask: Task<Void, Never>?
   private nonisolated static let log = Logger(subsystem: "com.openai.snap-o", category: "CrashFileResolver")
@@ -588,9 +590,9 @@ private func normalizedCrashRepoPath(_ path: String) -> String {
 }
 
 private struct LogCatTabContentView: View {
-  @ObservedObject var tab: LogCatTab
+  @Bindable var tab: LogCatTab
   @State private var activeFilterID: LogCatFilter.ID?
-  @EnvironmentObject private var store: LogCatStore
+  @Environment(LogCatStore.self) private var store: LogCatStore
 
   var body: some View {
     VStack(spacing: 0) {
@@ -943,7 +945,7 @@ private struct LogCatPlaceholderView: View {
 }
 
 private struct LogCatFilterChip: View {
-  @ObservedObject var filter: LogCatFilter
+  @Bindable var filter: LogCatFilter
   @Binding var isPopoverPresented: Bool
   var onToggle: (Bool) -> Void
   var onDelete: () -> Void
@@ -1219,7 +1221,7 @@ private struct CollapsedStageCard: View {
 }
 
 private struct CollapsedStageFilterRow: View {
-  @ObservedObject var filter: LogCatFilter
+  @Bindable var filter: LogCatFilter
   var onToggle: () -> Void
 
   var body: some View {
@@ -1267,7 +1269,7 @@ private struct AndConnector: View {
 }
 
 private struct LogCatFilterEditorView: View {
-  @ObservedObject var filter: LogCatFilter
+  @Bindable var filter: LogCatFilter
   var onChange: () -> Void
   var onDelete: () -> Void
 

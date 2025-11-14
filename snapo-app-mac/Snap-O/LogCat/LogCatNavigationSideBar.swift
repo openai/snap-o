@@ -1,7 +1,8 @@
+import Observation
 import SwiftUI
 
 struct LogCatNavigationSideBar: View {
-  @EnvironmentObject private var store: LogCatStore
+  @Environment(LogCatStore.self) private var store: LogCatStore
 
   private var selection: Binding<LogCatSidebarSelection?> {
     Binding(
@@ -20,11 +21,11 @@ struct LogCatNavigationSideBar: View {
 
   var body: some View {
     List(selection: selection) {
-      LogCatDevicePickerView(store: store)
+      LogCatDevicePickerView()
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
 
-      LogCatSidebarActionsView(store: store)
+      LogCatSidebarActionsView()
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
 
@@ -38,7 +39,6 @@ struct LogCatNavigationSideBar: View {
       Section("Logcat Tabs") {
         ForEach(store.tabs) { tab in
           LogCatTabRow(tab: tab)
-            .environmentObject(store)
             .tag(LogCatSidebarSelection.tab(tab.id))
             .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
         }
@@ -84,8 +84,8 @@ private struct LogCatCrashesRow: View {
 }
 
 private struct LogCatTabRow: View {
-  @ObservedObject var tab: LogCatTab
-  @EnvironmentObject private var store: LogCatStore
+  @Bindable var tab: LogCatTab
+  @Environment(LogCatStore.self) private var store: LogCatStore
 
   @State private var isPopoverPresented = false
 
@@ -172,7 +172,7 @@ private struct LogCatTabRow: View {
 }
 
 private struct LogCatDevicePickerView: View {
-  @ObservedObject var store: LogCatStore
+  @Environment(LogCatStore.self) private var store: LogCatStore
 
   private var selection: Binding<String?> {
     Binding(
@@ -225,7 +225,7 @@ private struct LogCatDevicePickerView: View {
 }
 
 private struct LogCatSidebarActionsView: View {
-  @ObservedObject var store: LogCatStore
+  @Environment(LogCatStore.self) private var store: LogCatStore
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
