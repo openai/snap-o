@@ -259,7 +259,7 @@ extension LogcatEntriesTableView {
       cell.textField = textField
       cell.addSubview(textField)
 
-      let leading = textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: column.leadingPadding)
+      let leading = textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 0)
       let trailing = textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -column.trailingPadding)
       let top = textField.topAnchor.constraint(equalTo: cell.topAnchor, constant: Column.verticalInset)
       let bottom = textField.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -Column.verticalInset)
@@ -514,7 +514,6 @@ extension LogcatEntriesTableView {
       tableColumn.width = column.defaultWidth
       tableColumn.isEditable = false
       tableColumn.resizingMask = column.resizingMask
-      tableColumn.headerCell.alignment = column.headerAlignment
       return tableColumn
     }
 
@@ -645,24 +644,6 @@ private extension LogcatEntriesTableView {
       }
     }
 
-    var headerAlignment: NSTextAlignment {
-      switch self {
-      case .level, .pid, .tid:
-        .center
-      default:
-        .left
-      }
-    }
-
-    var leadingPadding: CGFloat {
-      switch self {
-      case .timestamp, .tag, .message:
-        8
-      default:
-        6
-      }
-    }
-
     var trailingPadding: CGFloat {
       switch self {
       case .message:
@@ -701,7 +682,7 @@ private extension LogcatEntriesTableView {
     }
 
     var horizontalPadding: CGFloat {
-      leadingPadding + trailingPadding
+      trailingPadding
     }
 
     func textColor(for entry: LogcatEntry) -> NSColor {
