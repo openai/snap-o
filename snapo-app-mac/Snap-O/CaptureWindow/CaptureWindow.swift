@@ -1,20 +1,51 @@
+import Observation
 import SwiftUI
+
+private struct CaptureControllerKey: FocusedValueKey {
+  typealias Value = CaptureWindowController
+}
+
+extension FocusedValues {
+  var captureController: CaptureWindowController? {
+    get { self[CaptureControllerKey.self] }
+    set { self[CaptureControllerKey.self] = newValue }
+  }
+}
 
 struct CaptureWindow: View {
   @Environment(\.openWindow)
   private var openWindow
 
-  @StateObject private var controller = CaptureWindowController()
-  @StateObject private var settings = AppSettings.shared
-  @State private var hasRestoredNetworkInspector = false
+  @Environment(AppSettings.self)
+  private var settings
+
+  @State private var controller: CaptureWindowController
+
+  init(
+    captureService: CaptureService,
+    deviceTracker: DeviceTracker,
+    fileStore: FileStore,
+    adbService: ADBService
+  ) {
+    _controller = State(
+      initialValue: CaptureWindowController(
+        captureService: captureService,
+        deviceTracker: deviceTracker,
+        fileStore: fileStore,
+        adbService: adbService
+      )
+    )
+  }
 
   var body: some View {
+    @Bindable var controller = controller
     ZStack {
       Color.black.ignoresSafeArea()
 
       if controller.currentCapture != nil {
         CaptureSnapshotView(
           controller: controller.snapshotController,
+          fileStore: controller.fileStore,
           livePreviewHost: controller
         )
       } else if controller.isDeviceListInitialized {
@@ -32,14 +63,14 @@ struct CaptureWindow: View {
     }
     .task { await controller.start() }
     .onAppear {
-      guard !hasRestoredNetworkInspector else { return }
-      hasRestoredNetworkInspector = true
+      guard !settings.hasRestoredNetworkInspector else { return }
+      settings.hasRestoredNetworkInspector = true
       if settings.shouldReopenNetworkInspector {
         openWindow(id: NetworkInspectorWindowID.main)
       }
     }
     .onDisappear { controller.tearDown() }
-    .focusedSceneObject(controller)
+    .focusedSceneValue(\.captureController, controller)
     .navigationTitle(controller.navigationTitle)
     .background(
       WindowSizingController(displayInfo: controller.displayInfoForSizing)
@@ -52,7 +83,7 @@ struct CaptureWindow: View {
       .frame(width: 0, height: 0)
     )
     .toolbar {
-      CaptureToolbar(controller: controller, settings: settings)
+      CaptureToolbar(controller: controller)
 
       if let progress = controller.captureProgressText {
         ToolbarItem(placement: .status) {

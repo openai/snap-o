@@ -1,0 +1,30 @@
+import Foundation
+import Observation
+
+@Observable
+@MainActor
+final class PreparingScreenshotMode {
+  @ObservationIgnored private var task: Task<Void, Never>?
+  private let captureService: CaptureService
+  private let completion: @MainActor ([CaptureMedia], Error?) -> Void
+
+  init(
+    captureService: CaptureService,
+    completion: @escaping @MainActor ([CaptureMedia], Error?) -> Void
+  ) {
+    self.captureService = captureService
+    self.completion = completion
+  }
+
+  func start() {
+    task = Task { [weak self] in
+      guard let self else { return }
+      let (media, error) = await captureService.captureScreenshots()
+      completion(media, error)
+    }
+  }
+
+  func cancel() {
+    task?.cancel()
+  }
+}

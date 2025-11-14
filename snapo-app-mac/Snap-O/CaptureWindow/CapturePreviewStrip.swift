@@ -6,6 +6,7 @@ struct CapturePreviewStrip: View {
   let captures: [CaptureMedia]
   let selectedID: CaptureMedia.ID?
   let onSelect: (CaptureMedia.ID) -> Void
+  let fileStore: FileStore
 
   var body: some View {
     HStack(spacing: 16) {
@@ -46,7 +47,7 @@ private struct CapturePreviewThumbnail: View {
   var dragItemProvider: () -> NSItemProvider
 
   private let height: CGFloat = 80
-  @StateObject private var imageLoader = ImageLoader()
+  @State private var imageLoader = ImageLoader()
   @State private var isHovered = false
 
   var body: some View {
@@ -122,7 +123,6 @@ private extension CapturePreviewStrip {
     guard let kind = capture.media.saveKind, let url = capture.media.url else { return nil }
 
     do {
-      let fileStore = AppServices.shared.fileStore
       let fileURL = fileStore.makeDragDestination(
         capturedAt: capture.media.capturedAt,
         kind: kind

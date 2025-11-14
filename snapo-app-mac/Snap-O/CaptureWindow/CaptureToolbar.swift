@@ -1,8 +1,10 @@
+import Observation
 import SwiftUI
 
 struct CaptureToolbar: ToolbarContent {
-  @ObservedObject var controller: CaptureWindowController
-  @ObservedObject var settings: AppSettings
+  @Bindable var controller: CaptureWindowController
+  @Environment(AppSettings.self)
+  private var settings
 
   var body: some ToolbarContent {
     if controller.isRecording {
@@ -15,7 +17,6 @@ struct CaptureToolbar: ToolbarContent {
       }
     } else {
       IdleToolbarControls(
-        settings: settings,
         screenshot: { Task { await controller.captureScreenshots() } },
         canCaptureNow: controller.canCaptureNow,
         startRecording: { Task { await controller.startRecording() } },
@@ -74,13 +75,14 @@ struct CaptureToolbar: ToolbarContent {
 }
 
 struct IdleToolbarControls: ToolbarContent {
-  @ObservedObject var settings: AppSettings
   let screenshot: @MainActor () -> Void
   let canCaptureNow: Bool
   let startRecording: @MainActor () -> Void
   let canStartRecordingNow: Bool
   let startLivePreview: @MainActor () -> Void
   let canStartLivePreviewNow: Bool
+  @Environment(AppSettings.self)
+  private var settings
 
   var body: some ToolbarContent {
     ToolbarItemGroup(placement: .primaryAction) {

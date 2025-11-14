@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CaptureMediaView<Host: LivePreviewHosting>: View {
+  let fileStore: FileStore
   let livePreviewHost: Host
   let capture: CaptureMedia
 
@@ -32,7 +33,6 @@ struct CaptureMediaView<Host: LivePreviewHosting>: View {
     guard let kind = capture.media.saveKind, let url = capture.media.url else { return nil }
 
     do {
-      let fileStore = AppServices.shared.fileStore
       let fileURL = fileStore.makeDragDestination(
         capturedAt: capture.media.capturedAt,
         kind: kind

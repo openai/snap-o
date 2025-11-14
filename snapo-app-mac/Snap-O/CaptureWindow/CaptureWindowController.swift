@@ -1,39 +1,47 @@
 import AppKit
-import Combine
 import Foundation
+import Observation
 import SwiftUI
 
+@Observable
 @MainActor
-final class CaptureWindowController: ObservableObject {
-  private let services: AppServices
+final class CaptureWindowController {
+  @ObservationIgnored private let captureService: CaptureService
+  @ObservationIgnored private let deviceTracker: DeviceTracker
+  @ObservationIgnored private let adbService: ADBService
+  let fileStore: FileStore
 
   let snapshotController = CaptureSnapshotController()
+  let mediaDisplayMode: MediaDisplayMode
 
-  @Published private(set) var isDeviceListInitialized: Bool = false
-  @Published private(set) var isProcessing: Bool = false
-  @Published private(set) var isRecording: Bool = false
-  @Published private(set) var isLivePreviewActive: Bool = false
-  @Published private(set) var isStoppingLivePreview: Bool = false
-  @Published private(set) var lastError: String?
+  private(set) var isDeviceListInitialized: Bool = false
+  private(set) var isProcessing: Bool = false
+  private(set) var lastError: String?
+  private(set) var mode: CaptureWindowMode
 
   private var knownDevices: [Device] = []
-  private var recordingSessions: [String: RecordingSession] = [:]
-  private var deviceStreamTask: Task<Void, Never>?
-  private var livePreviewManager: LivePreviewManager?
+  @ObservationIgnored private var deviceStreamTask: Task<Void, Never>?
   private var pendingPreferredDeviceID: String?
-  private var preloadConsumptionTask: Task<Void, Never>?
-  private var hasAttemptedPreloadConsumption = false
-  private var snapshotCancellable: AnyCancellable?
+  @ObservationIgnored private var isPreloadConsumptionActive = false
+  @ObservationIgnored private var hasAttemptedInitialPreload = false
 
-  init(services: AppServices = .shared) {
-    self.services = services
-    snapshotCancellable = snapshotController.objectWillChange
-      .sink { [weak self] _ in self?.objectWillChange.send() }
+  init(
+    captureService: CaptureService,
+    deviceTracker: DeviceTracker,
+    fileStore: FileStore,
+    adbService: ADBService
+  ) {
+    self.captureService = captureService
+    self.deviceTracker = deviceTracker
+    self.fileStore = fileStore
+    self.adbService = adbService
+    mediaDisplayMode = MediaDisplayMode(snapshotController: snapshotController)
+    mode = .idle
   }
 
   func start() async {
     deviceStreamTask?.cancel()
-    let tracker = services.deviceTracker
+    let tracker = deviceTracker
     isDeviceListInitialized = tracker.latestDevices.isEmpty ? false : true
 
     deviceStreamTask = Task { [weak self] in
@@ -69,18 +77,35 @@ final class CaptureWindowController: ObservableObject {
 
   var hasDevices: Bool { !knownDevices.isEmpty }
 
+  var isRecording: Bool {
+    if case .recording = mode { return true }
+    return false
+  }
+
+  var isLivePreviewActive: Bool {
+    if case .livePreview = mode { return true }
+    return false
+  }
+
+  var isStoppingLivePreview: Bool {
+    if case .livePreview(let livePreviewMode) = mode {
+      return livePreviewMode.isStopping
+    }
+    return false
+  }
+
   var canCaptureNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
   var canStartRecordingNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
   var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
 
-  var mediaList: [CaptureMedia] { snapshotController.mediaList }
-  var selectedMediaID: CaptureMedia.ID? { snapshotController.selectedMediaID }
-  var currentCaptureViewID: UUID? { snapshotController.currentCaptureViewID }
-  var shouldShowPreviewHint: Bool { snapshotController.shouldShowPreviewHint }
-  var overlayMediaList: [CaptureMedia] { snapshotController.overlayMediaList }
-  var lastViewedDeviceID: String? { snapshotController.lastViewedDeviceID }
+  var mediaList: [CaptureMedia] { mediaDisplayMode.mediaList }
+  var selectedMediaID: CaptureMedia.ID? { mediaDisplayMode.selectedMediaID }
+  var currentCaptureViewID: UUID? { mediaDisplayMode.currentCaptureViewID }
+  var shouldShowPreviewHint: Bool { mediaDisplayMode.shouldShowPreviewHint }
+  var overlayMediaList: [CaptureMedia] { mediaDisplayMode.overlayMediaList }
+  var lastViewedDeviceID: String? { mediaDisplayMode.lastViewedDeviceID }
 
-  var currentCapture: CaptureMedia? { snapshotController.currentCapture }
+  var currentCapture: CaptureMedia? { mediaDisplayMode.currentCapture }
 
   var navigationTitle: String {
     currentCapture?.device.displayTitle ?? "Snap-O"
@@ -90,39 +115,36 @@ final class CaptureWindowController: ObservableObject {
     currentCapture?.device.displayTitle
   }
 
-  var captureProgressText: String? { snapshotController.captureProgressText }
+  var captureProgressText: String? { mediaDisplayMode.captureProgressText }
 
   var displayInfoForSizing: DisplayInfo? {
     if isRecording {
-      return snapshotController.lastPreviewDisplayInfo ?? currentCapture?.media.common.display
+      return mediaDisplayMode.lastPreviewDisplayInfo ?? currentCapture?.media.common.display
     }
     return currentCapture?.media.common.display
   }
 
   func captureScreenshots() async {
     guard canCaptureNow else { return }
-
     isProcessing = true
     lastError = nil
     if pendingPreferredDeviceID == nil {
       pendingPreferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
     }
-    snapshotController.updateMediaList(
+    mediaDisplayMode.updateMediaList(
       [],
       preserveDeviceID: nil,
       shouldSort: false
     )
 
-    if let media = await consumePreloadedMedia() {
-      applyPreloadedMedia(media)
-      isProcessing = false
-      return
+    let screenshotMode = PreparingScreenshotMode(
+      captureService: captureService
+    ) { [weak self] media, error in
+      guard let self else { return }
+      applyCaptureResults(newMedia: media, encounteredError: error)
     }
-
-    let captureService = services.captureService
-    let (newMedia, encounteredError) = await captureService.captureScreenshots()
-
-    applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
+    mode = .preparingScreenshot(screenshotMode)
+    screenshotMode.start()
   }
 
   func startRecording() async {
@@ -131,55 +153,48 @@ final class CaptureWindowController: ObservableObject {
     isProcessing = true
     lastError = nil
     pendingPreferredDeviceID = currentCapture?.device.id
-    snapshotController.updateMediaList(
+    mediaDisplayMode.updateMediaList(
       [],
       preserveDeviceID: nil,
       shouldSort: false
     )
-
-    let captureService = services.captureService
-    let (sessions, encounteredError) = await captureService.startRecordings(for: devices)
-
-    if let error = encounteredError {
-      lastError = error.localizedDescription
+    let recordingMode = RecordingMode(
+      captureService: captureService,
+      devices: devices
+    ) { [weak self] result in
+      guard let self else { return }
       isProcessing = false
-      return
+      switch result {
+      case .failed(let error):
+        lastError = error.localizedDescription
+        mode = .idle
+      case .completed(let media, let error):
+        if error == nil, media.isEmpty {
+          mode = .idle
+          Task { await self.captureScreenshots() }
+        } else {
+          applyCaptureResults(newMedia: media, encounteredError: error)
+        }
+      }
     }
-
-    recordingSessions = sessions
-    isRecording = true
+    mode = .recording(recordingMode)
+    recordingMode.start()
     isProcessing = false
   }
 
   func stopRecording() async {
     guard isRecording else { return }
+    guard case .recording(let recordingMode) = mode else { return }
     let devices = knownDevices
     guard !devices.isEmpty else {
-      recordingSessions.removeAll()
-      isRecording = false
+      mode = .idle
       return
     }
 
     isProcessing = true
     lastError = nil
 
-    let captureService = services.captureService
-    let (newMedia, encounteredError) = await captureService.stopRecordings(
-      for: devices,
-      sessions: recordingSessions
-    )
-
-    if encounteredError == nil, newMedia.isEmpty {
-      recordingSessions.removeAll()
-      isRecording = false
-      isProcessing = false
-      await captureScreenshots()
-      return
-    }
-
-    applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
-    recordingSessions.removeAll()
-    isRecording = false
+    await recordingMode.finish(using: devices)
   }
 
   func startLivePreview() async {
@@ -189,32 +204,50 @@ final class CaptureWindowController: ObservableObject {
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices.first?.id
     pendingPreferredDeviceID = preferredDeviceID
 
-    let manager = LivePreviewManager(services: services) { [weak self] media in
-      guard let self else { return }
-      handleLivePreviewMediaUpdate(media)
-    }
-    livePreviewManager?.stop()
-    livePreviewManager = manager
-    isLivePreviewActive = true
-    await manager.start(with: knownDevices)
+    let livePreviewMode = LivePreviewMode(
+      captureService: captureService,
+      adbService: adbService,
+      mediaDisplayMode: mediaDisplayMode,
+      preferredDeviceIDProvider: { [weak self] in
+        guard let self else { return nil }
+        if let pending = pendingPreferredDeviceID {
+          return pending
+        }
+        if let currentID = selectedMediaID,
+           let current = mediaList.first(where: { $0.id == currentID }) {
+          return current.device.id
+        }
+        return nil
+      },
+      onMediaApplied: { [weak self] in
+        guard let self else { return }
+        isProcessing = false
+        pendingPreferredDeviceID = nil
+      },
+      errorHandler: { [weak self] error in
+        self?.lastError = error.localizedDescription
+      }
+    )
+    mode = .livePreview(livePreviewMode)
+    await livePreviewMode.start(with: knownDevices)
+    isProcessing = false
   }
 
   func stopLivePreview() async {
-    guard isLivePreviewActive, !isStoppingLivePreview else { return }
-    isStoppingLivePreview = true
+    guard case .livePreview(let livePreviewMode) = mode else { return }
+    guard !livePreviewMode.isStopping else { return }
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
-    livePreviewManager?.stop()
-    livePreviewManager = nil
-    isLivePreviewActive = false
+    livePreviewMode.stop()
     pendingPreferredDeviceID = preferredDeviceID
-    if let preferredDeviceID { snapshotController.updateLastViewedDeviceID(preferredDeviceID) }
-    isStoppingLivePreview = false
+    if let preferredDeviceID { mediaDisplayMode.updateLastViewedDeviceID(preferredDeviceID) }
     if !hasDevices {
       isProcessing = false
       pendingPreferredDeviceID = nil
+      mode = .idle
       return
     }
     if isProcessing { isProcessing = false }
+    mode = .idle
     await captureScreenshots()
   }
 
@@ -222,15 +255,23 @@ final class CaptureWindowController: ObservableObject {
     deviceStreamTask?.cancel()
     deviceStreamTask = nil
 
-    livePreviewManager?.stop()
-    livePreviewManager = nil
-    isLivePreviewActive = false
-    isStoppingLivePreview = false
+    if case .livePreview(let livePreviewMode) = mode {
+      livePreviewMode.stop()
+    }
     pendingPreferredDeviceID = nil
-    preloadConsumptionTask?.cancel()
-    preloadConsumptionTask = nil
-    hasAttemptedPreloadConsumption = false
-    snapshotController.tearDown()
+    if case .preparingScreenshot(let screenshotMode) = mode {
+      screenshotMode.cancel()
+    }
+    if case .checkingPreload(let preloadMode) = mode {
+      preloadMode.cancel()
+    }
+    if case .recording(let recordingMode) = mode {
+      recordingMode.cancel()
+    }
+    isPreloadConsumptionActive = false
+    hasAttemptedInitialPreload = false
+    mediaDisplayMode.tearDown()
+    mode = .idle
   }
 
   func copyCurrentImage() {
@@ -275,36 +316,13 @@ final class CaptureWindowController: ObservableObject {
     return (newMedia, encounteredError)
   }
 
-  private func consumePreloadedMedia() async -> [CaptureMedia]? {
-    let captureService = services.captureService
-
-    let shouldLog = !hasAttemptedPreloadConsumption
-    if shouldLog {
-      Perf.step(.appFirstSnapshot, "Starting initial preview load")
-      Perf.step(.appFirstSnapshot, "consume preloaded screenshot")
-      hasAttemptedPreloadConsumption = true
-    }
-
-    let preloaded = await captureService.consumeAllPreloadedScreenshots()
-    guard !preloaded.isEmpty else {
-      if shouldLog {
-        Perf.step(.appFirstSnapshot, "Preload missing; refreshing preview")
-      }
-      return nil
-    }
-
-    if shouldLog {
-      Perf.step(.appFirstSnapshot, "Using preloaded screenshot")
-    }
-    return preloaded
-  }
-
   private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
-    snapshotController.updateMediaList(
+    mediaDisplayMode.updateMediaList(
       mediaList,
       preserveDeviceID: mediaList.first?.device.id,
       shouldSort: false
     )
+    mode = .displaying(mediaDisplayMode)
   }
 
   private func applyCaptureResults(
@@ -313,16 +331,22 @@ final class CaptureWindowController: ObservableObject {
   ) {
     if let error = encounteredError {
       lastError = error.localizedDescription
+      if mediaDisplayMode.mediaList.isEmpty {
+        mode = .error(message: error.localizedDescription)
+      }
     }
 
     if !newMedia.isEmpty {
       let targetDeviceID = pendingPreferredDeviceID ?? currentCapture?.device.id
         ?? lastViewedDeviceID
-      snapshotController.updateMediaList(
+      mediaDisplayMode.updateMediaList(
         newMedia,
         preserveDeviceID: targetDeviceID,
         shouldSort: true
       )
+      mode = .displaying(mediaDisplayMode)
+    } else if mediaDisplayMode.mediaList.isEmpty {
+      mode = .idle
     }
 
     isProcessing = false
@@ -332,62 +356,52 @@ final class CaptureWindowController: ObservableObject {
   private func handleDeviceUpdate(_ devices: [Device]) {
     knownDevices = devices
     if mediaList.isEmpty {
-      snapshotController.clearSelection()
+      mediaDisplayMode.clearSelection()
     }
     Task.detached(priority: .utility) { [weak self] in
       guard let self else { return }
-      await services.captureService.preloadScreenshots()
+      await captureService.preloadScreenshots()
     }
     if !devices.isEmpty {
       startPreloadConsumptionIfNeeded()
     }
     Task { @MainActor [weak self] in
-      await self?.livePreviewManager?.updateDevices(devices)
-    }
-  }
-
-  private func startPreloadConsumptionIfNeeded() {
-    guard preloadConsumptionTask == nil else { return }
-    guard mediaList.isEmpty else { return }
-    preloadConsumptionTask = Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
-      if let preloaded = await consumePreloadedMedia() {
-        await MainActor.run {
-          self.applyPreloadedMedia(preloaded)
-          self.isProcessing = false
-          self.preloadConsumptionTask = nil
-        }
-      } else {
-        await captureScreenshots()
-        await MainActor.run { self.preloadConsumptionTask = nil }
+      if case .livePreview(let livePreviewMode) = mode {
+        await livePreviewMode.updateDevices(devices)
       }
     }
   }
 
-  private func handleLivePreviewMediaUpdate(_ media: [CaptureMedia]) {
-    let preferredDeviceID: String? = if let pendingPreferredDeviceID {
-      pendingPreferredDeviceID
-    } else if let currentID = selectedMediaID,
-              let current = mediaList.first(where: { $0.id == currentID }) {
-      current.device.id
-    } else {
-      nil
+  private func startPreloadConsumptionIfNeeded() {
+    guard !isPreloadConsumptionActive else { return }
+    guard !hasAttemptedInitialPreload else { return }
+    guard mediaList.isEmpty else { return }
+    isPreloadConsumptionActive = true
+    hasAttemptedInitialPreload = true
+    let preloadMode = CheckPreloadMode(
+      captureService: captureService
+    ) { [weak self] outcome in
+      guard let self else { return }
+      isPreloadConsumptionActive = false
+      switch outcome {
+      case .found(let media):
+        applyPreloadedMedia(media)
+        isProcessing = false
+      case .missing:
+        Task { [weak self] in
+          await self?.captureScreenshots()
+        }
+      }
     }
-
-    snapshotController.updateMediaList(
-      media,
-      preserveDeviceID: preferredDeviceID,
-      shouldSort: false
-    )
-
-    isProcessing = false
-    pendingPreferredDeviceID = nil
+    mode = .checkingPreload(preloadMode)
+    preloadMode.start()
   }
 
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
-    guard let livePreviewManager else { return nil }
+    guard case .livePreview(let livePreviewMode) = mode else { return nil }
     do {
-      return try await livePreviewManager.makeRenderer(for: deviceID)
+      return try await livePreviewMode.makeRenderer(for: deviceID)
     } catch {
       lastError = error.localizedDescription
       return nil
@@ -395,8 +409,8 @@ final class CaptureWindowController: ObservableObject {
   }
 
   func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async {
-    if let livePreviewManager {
-      await livePreviewManager.stopRenderer(renderer)
+    if case .livePreview(let livePreviewMode) = mode {
+      await livePreviewMode.stopRenderer(renderer)
     } else {
       renderer.session.cancel()
       _ = await renderer.session.waitUntilStop()
@@ -404,11 +418,11 @@ final class CaptureWindowController: ObservableObject {
   }
 
   func setPreviewHintHovering(_ isHovering: Bool) {
-    snapshotController.setPreviewHintHovering(isHovering)
+    mediaDisplayMode.setPreviewHintHovering(isHovering)
   }
 
   func setProgressHovering(_ isHovering: Bool) {
-    snapshotController.setProgressHovering(isHovering)
+    mediaDisplayMode.setProgressHovering(isHovering)
   }
 }
 

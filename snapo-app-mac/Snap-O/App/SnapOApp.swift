@@ -1,3 +1,4 @@
+import Sparkle
 import SwiftUI
 
 @main
@@ -5,42 +6,78 @@ struct SnapOApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self)
   var appDelegate
 
-  private let services: AppServices
-  private let settings: AppSettings
+  private let adbService: ADBService
+  private let deviceTracker: DeviceTracker
+  private let fileStore: FileStore
+  private let captureService: CaptureService
+  private let settings = AppSettings.shared
+  private let updaterController = SPUStandardUpdaterController(
+    startingUpdater: true,
+    updaterDelegate: nil,
+    userDriverDelegate: nil
+  )
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
 
-    let services = AppServices.shared
-    self.services = services
-
-    settings = AppSettings.shared
+    adbService = ADBService()
+    let deviceTracker = DeviceTracker(adbService: adbService)
+    self.deviceTracker = deviceTracker
+    fileStore = FileStore()
+    let captureService = CaptureService(
+      adb: adbService,
+      fileStore: fileStore,
+      deviceTracker: deviceTracker
+    )
+    self.captureService = captureService
 
     Task.detached(priority: .userInitiated) {
-      await services.start()
+      Perf.step(.appFirstSnapshot, "services start")
+      deviceTracker.startTracking()
+
+      Task {
+        Perf.step(.appFirstSnapshot, "start preload task")
+        let stream = deviceTracker.deviceStream()
+        Perf.step(.appFirstSnapshot, "query device stream")
+        for await devices in stream where !devices.isEmpty {
+          await captureService.preloadScreenshots()
+          break
+        }
+      }
     }
   }
 
   var body: some Scene {
     WindowGroup {
-      CaptureWindow()
+      CaptureWindow(
+        captureService: captureService,
+        deviceTracker: deviceTracker,
+        fileStore: fileStore,
+        adbService: adbService
+      )
     }
+    .environment(settings)
     .defaultSize(width: 480, height: 480)
     .windowToolbarStyle(.unified)
     .commands {
       SnapOCommands(
         settings: settings,
-        adbService: services.adbService
+        adbService: adbService,
+        updaterController: updaterController
       )
     }
 
     Window("Network Inspector (Alpha)", id: NetworkInspectorWindowID.main) {
-      NetworkInspectorWindowRoot(services: services)
+      NetworkInspectorWindowRoot(
+        adbService: adbService,
+        deviceTracker: deviceTracker
+      )
     }
+    .environment(settings)
     .defaultSize(width: 960, height: 520)
 
     Window("Logcat Viewer (alpha)", id: LogCatWindowID.main) {
-      LogCatWindowRoot(services: services)
+      LogCatWindowRoot(adbService: adbService, deviceTracker: deviceTracker)
     }
     .defaultSize(width: 1000, height: 600)
   }
@@ -48,13 +85,21 @@ struct SnapOApp: App {
 
 private struct NetworkInspectorWindowRoot: View {
   @StateObject private var store: NetworkInspectorStore
-  @ObservedObject private var settings = AppSettings.shared
+  @Environment(AppSettings.self)
+  private var settings
 
-  init(services: AppServices) {
-    _store = StateObject(wrappedValue: NetworkInspectorStore(service: NetworkInspectorService(
-      adbService: services.adbService,
-      deviceTracker: services.deviceTracker
-    )))
+  init(
+    adbService: ADBService,
+    deviceTracker: DeviceTracker
+  ) {
+    _store = StateObject(
+      wrappedValue: NetworkInspectorStore(
+        service: NetworkInspectorService(
+          adbService: adbService,
+          deviceTracker: deviceTracker
+        )
+      )
+    )
   }
 
   var body: some View {

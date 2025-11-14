@@ -1,6 +1,6 @@
 import AppKit
-import Combine
 import Foundation
+import Observation
 import SwiftUI
 
 enum LogCatFilterAction: String, CaseIterable, Identifiable {
@@ -88,7 +88,8 @@ struct LogCatFilterMatchResult {
 }
 
 @MainActor
-final class LogCatFilter: ObservableObject, Identifiable {
+@Observable
+final class LogCatFilter: Identifiable {
   struct AutoKey: Equatable {
     let action: LogCatFilterAction
     let field: LogCatFilterField
@@ -96,13 +97,47 @@ final class LogCatFilter: ObservableObject, Identifiable {
 
   let id = UUID()
 
-  @Published var name: String
-  @Published var isEnabled: Bool
-  @Published var action: LogCatFilterAction
-  @Published var isHighlightEnabled: Bool
-  @Published var color: Color
-  @Published var condition: LogCatFilterCondition
+  var name: String {
+    didSet {
+      guard name != oldValue else { return }
+      notifyChange()
+    }
+  }
+
+  var isEnabled: Bool {
+    didSet {
+      guard isEnabled != oldValue else { return }
+      notifyChange()
+    }
+  }
+
+  var action: LogCatFilterAction {
+    didSet {
+      guard action != oldValue else { return }
+      notifyChange()
+    }
+  }
+
+  var isHighlightEnabled: Bool {
+    didSet {
+      guard isHighlightEnabled != oldValue else { return }
+      notifyChange()
+    }
+  }
+
+  var color: Color {
+    didSet { notifyChange() }
+  }
+
+  var condition: LogCatFilterCondition {
+    didSet {
+      guard condition != oldValue else { return }
+      notifyChange()
+    }
+  }
+
   var autoKey: AutoKey?
+  @ObservationIgnored var onChange: (() -> Void)?
   init(
     name: String,
     isEnabled: Bool = true,
@@ -125,6 +160,10 @@ final class LogCatFilter: ObservableObject, Identifiable {
     guard isEnabled else { return .noMatch }
 
     return evaluate(condition: condition, on: entry)
+  }
+
+  private func notifyChange() {
+    onChange?()
   }
 
   private nonisolated func evaluate(condition: LogCatFilterCondition, on entry: LogCatEntry) -> LogCatFilterMatchResult {

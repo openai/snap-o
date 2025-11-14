@@ -5,23 +5,12 @@ import SwiftUI
 struct SnapOCommands: Commands {
   @Environment(\.openWindow)
   private var openWindow
-  @FocusedObject var captureController: CaptureWindowController?
+  @FocusedValue(\.captureController)
+  var captureController: CaptureWindowController?
 
-  @ObservedObject var settings: AppSettings
-  private let adbService: ADBService
-
-  private let updaterController: SPUStandardUpdaterController
-
-  init(settings: AppSettings, adbService: ADBService) {
-    self.settings = settings
-    self.adbService = adbService
-    // Initialize Sparkle updater controller; starts checks automatically
-    updaterController = SPUStandardUpdaterController(
-      startingUpdater: true,
-      updaterDelegate: nil,
-      userDriverDelegate: nil
-    )
-  }
+  let settings: AppSettings
+  let adbService: ADBService
+  let updaterController: SPUStandardUpdaterController
 
   var body: some Commands {
     CommandGroup(after: .appInfo) {
@@ -118,6 +107,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut("]")
       .disabled(!hasAlternativeMedia)
       Divider()
+      @Bindable var settings = settings
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }

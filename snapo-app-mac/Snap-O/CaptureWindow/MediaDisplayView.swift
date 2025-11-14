@@ -5,7 +5,7 @@ struct ImageCaptureView: View {
   let url: URL
   var makeTempDragFile: () -> URL?
 
-  @StateObject private var loader = ImageLoader()
+  @State private var loader = ImageLoader()
 
   var body: some View {
     if let nsImage = loader.image(url: url) {
@@ -61,7 +61,7 @@ private func markPerfMilestones() {
 }
 
 @MainActor
-final class ImageLoader: ObservableObject {
+final class ImageLoader {
   private var image: NSImage?
   private var url: URL?
 

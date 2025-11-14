@@ -1,6 +1,6 @@
-import Combine
 @preconcurrency import Dispatch
 import Foundation
+import Observation
 
 actor LogCatStreamRouter {
   private var processors: [LogCatTabProcessor] = []
@@ -109,18 +109,19 @@ struct LogCatCrashRecord: Identifiable, Equatable {
 }
 
 @MainActor
-final class LogCatStore: ObservableObject {
+@Observable
+final class LogCatStore {
   enum StreamingState: Equatable {
     case noDevice
     case paused
     case streaming
   }
 
-  @Published private(set) var tabs: [LogCatTab] = [] {
+  var tabs: [LogCatTab] = [] {
     didSet { updateStreamingState() }
   }
 
-  @Published var activeTabID: UUID? {
+  var activeTabID: UUID? {
     didSet {
       if activeTabID != nil, isCrashPaneActive {
         isCrashPaneActive = false
@@ -139,7 +140,7 @@ final class LogCatStore: ObservableObject {
     }
   }
 
-  @Published var isCrashPaneActive = false {
+  var isCrashPaneActive = false {
     didSet {
       guard isCrashPaneActive != oldValue else { return }
       if isCrashPaneActive {
@@ -150,20 +151,21 @@ final class LogCatStore: ObservableObject {
     }
   }
 
-  @Published private(set) var crashes: [LogCatCrashRecord] = []
-  @Published var selectedCrashID: LogCatCrashRecord.ID?
-  @Published private(set) var activeDeviceID: String? {
+  private(set) var crashes: [LogCatCrashRecord] = []
+  var selectedCrashID: LogCatCrashRecord.ID?
+  private(set) var activeDeviceID: String? {
     didSet { updateStreamingState() }
   }
 
-  @Published private(set) var devices: [Device] = []
-  @Published private(set) var streamingState: StreamingState = .noDevice
+  private(set) var devices: [Device] = []
+  private(set) var streamingState: StreamingState = .noDevice
 
-  private let deviceStore: DeviceStore
   private let logService: LogCatService
   private let adbService: ADBService
+  private let deviceTracker: DeviceTracker
   private let logger = SnapOLog.logCat
-  private var devicesCancellable: AnyCancellable?
+  private var deviceStreamTask: Task<Void, Never>?
+  private var hasStartedDeviceUpdates = false
   private struct StreamHandle {
     let id: UUID
     let task: Task<Void, Never>
@@ -182,31 +184,36 @@ final class LogCatStore: ObservableObject {
   private var isRestoringTabsFromPreferences = false
 
   /// Constructs the store on the main actor and wires device change observation.
-  init(services: AppServices, deviceStore: DeviceStore) {
-    self.deviceStore = deviceStore
-    adbService = services.adbService
+  init(adbService: ADBService, deviceTracker: DeviceTracker) {
+    self.adbService = adbService
+    self.deviceTracker = deviceTracker
     logService = LogCatService(
-      adbService: services.adbService,
-      deviceTracker: services.deviceTracker
+      adbService: adbService,
+      deviceTracker: deviceTracker
     )
-    devices = deviceStore.devices
-
-    devicesCancellable = deviceStore.$devices
-      .sink { [weak self] devices in
-        Task { @MainActor [weak self] in
-          self?.handleDeviceUpdate(devices)
-        }
-      }
+    devices = deviceTracker.latestDevices
 
     restoreTabsFromPreferences()
   }
 
-  deinit {
-    crashLoadTask?.cancel()
+  private func startDeviceUpdatesIfNeeded() {
+    guard !hasStartedDeviceUpdates else { return }
+    hasStartedDeviceUpdates = true
+    deviceStreamTask?.cancel()
+    let tracker = deviceTracker
+    deviceStreamTask = Task(priority: .utility) { [weak self] in
+      let stream = tracker.deviceStream()
+      for await devices in stream {
+        if Task.isCancelled { break }
+        guard let self else { return }
+        handleDeviceUpdate(devices)
+      }
+    }
   }
 
   /// Kicks off device tracking, opens default tabs, and starts log streaming for the active device.
   func start() {
+    startDeviceUpdatesIfNeeded()
     let alreadyStarted = isStarted
     logger.debug("start() invoked. alreadyStarted=\(alreadyStarted, privacy: .public)")
     if !isStarted {
@@ -220,7 +227,7 @@ final class LogCatStore: ObservableObject {
       }
 
       if activeDeviceID == nil {
-        activeDeviceID = deviceStore.devices.first?.id
+        activeDeviceID = devices.first?.id
       }
 
       if tabs.isEmpty {

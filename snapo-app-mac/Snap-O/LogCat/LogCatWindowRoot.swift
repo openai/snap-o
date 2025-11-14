@@ -2,17 +2,15 @@ import SwiftUI
 
 @MainActor
 struct LogCatWindowRoot: View {
-  @StateObject private var store: LogCatStore
-  @StateObject private var deviceStore: DeviceStore
-  @State private var deviceTask: Task<Void, Never>?
+  @State private var store: LogCatStore
 
-  init(services: AppServices) {
-    let deviceStore = DeviceStore(tracker: services.deviceTracker)
-    _deviceStore = StateObject(wrappedValue: deviceStore)
-    _store = StateObject(wrappedValue: LogCatStore(
-      services: services,
-      deviceStore: deviceStore
-    ))
+  init(adbService: ADBService, deviceTracker: DeviceTracker) {
+    _store = State(
+      initialValue: LogCatStore(
+        adbService: adbService,
+        deviceTracker: deviceTracker
+      )
+    )
   }
 
   var body: some View {
@@ -21,18 +19,11 @@ struct LogCatWindowRoot: View {
     } detail: {
       LogCatDetailView()
     }
-    .environmentObject(store)
+    .environment(store)
     .onAppear {
-      if deviceTask == nil {
-        deviceTask = Task {
-          await deviceStore.start()
-        }
-      }
       store.start()
     }
     .onDisappear {
-      deviceTask?.cancel()
-      deviceTask = nil
       store.stop()
     }
   }
