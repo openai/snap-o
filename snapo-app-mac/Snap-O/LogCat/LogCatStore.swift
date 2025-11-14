@@ -159,11 +159,10 @@ final class LogCatStore: ObservableObject {
   @Published private(set) var devices: [Device] = []
   @Published private(set) var streamingState: StreamingState = .noDevice
 
-  private let deviceStore: DeviceStore
   private let logService: LogCatService
   private let adbService: ADBService
   private let logger = SnapOLog.logCat
-  private var devicesCancellable: AnyCancellable?
+  private var deviceStreamTask: Task<Void, Never>?
   private struct StreamHandle {
     let id: UUID
     let task: Task<Void, Never>
@@ -182,27 +181,33 @@ final class LogCatStore: ObservableObject {
   private var isRestoringTabsFromPreferences = false
 
   /// Constructs the store on the main actor and wires device change observation.
-  init(services: AppServices, deviceStore: DeviceStore) {
-    self.deviceStore = deviceStore
-    adbService = services.adbService
+  init(adbService: ADBService, deviceTracker: DeviceTracker) {
+    self.adbService = adbService
     logService = LogCatService(
-      adbService: services.adbService,
-      deviceTracker: services.deviceTracker
+      adbService: adbService,
+      deviceTracker: deviceTracker
     )
-    devices = deviceStore.devices
-
-    devicesCancellable = deviceStore.$devices
-      .sink { [weak self] devices in
-        Task { @MainActor [weak self] in
-          self?.handleDeviceUpdate(devices)
-        }
-      }
+    devices = deviceTracker.latestDevices
+    startDeviceUpdates(deviceTracker: deviceTracker)
 
     restoreTabsFromPreferences()
   }
 
   deinit {
     crashLoadTask?.cancel()
+    deviceStreamTask?.cancel()
+  }
+
+  private func startDeviceUpdates(deviceTracker: DeviceTracker) {
+    deviceStreamTask?.cancel()
+    deviceStreamTask = Task(priority: .utility) { [weak self] in
+      let stream = deviceTracker.deviceStream()
+      for await devices in stream {
+        if Task.isCancelled { break }
+        guard let self else { return }
+        self.handleDeviceUpdate(devices)
+      }
+    }
   }
 
   /// Kicks off device tracking, opens default tabs, and starts log streaming for the active device.
@@ -220,7 +225,7 @@ final class LogCatStore: ObservableObject {
       }
 
       if activeDeviceID == nil {
-        activeDeviceID = deviceStore.devices.first?.id
+        activeDeviceID = devices.first?.id
       }
 
       if tabs.isEmpty {
