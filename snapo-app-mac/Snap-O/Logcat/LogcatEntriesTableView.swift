@@ -164,7 +164,10 @@ extension LogcatEntriesTableView {
       }
 
       let identifier = column.cellIdentifier
-      let cellView: LogcatTableCellView = if let reusable = tableView.makeView(withIdentifier: identifier, owner: nil) as? LogcatTableCellView {
+      let cellView: LogcatTableCellView = if let reusable = tableView.makeView(
+        withIdentifier: identifier,
+        owner: nil
+      ) as? LogcatTableCellView {
         reusable
       } else {
         makeCellView(for: column, identifier: identifier)

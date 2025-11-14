@@ -39,7 +39,7 @@ struct LogcatNavigationSideBar: View {
 
       Section("Logcat Tabs") {
         ForEach(store.tabs) { tab in
-          LogcatTabRow(tab: tab)
+          LogcatTabRow(tab: tab, isSelected: selection.wrappedValue == .tab(tab.id))
             .tag(LogcatSidebarSelection.tab(tab.id))
             .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
         }
@@ -89,8 +89,10 @@ private struct LogcatTabRow: View {
   @State private var titleDraft: String = ""
   @FocusState private var isTitleFieldFocused: Bool
 
+  var isSelected: Bool
+
   var body: some View {
-    HStack(spacing: 8) {
+    let content = HStack(spacing: 8) {
       if isEditing {
         TextField("Tab Name", text: $titleDraft)
           .textFieldStyle(.plain)
@@ -113,12 +115,18 @@ private struct LogcatTabRow: View {
     .padding(.vertical, 6)
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
-    .onTapGesture(count: 2) {
-      guard !isEditing else { return }
-      beginEditing()
+
+    Group {
+      if isSelected, !isEditing {
+        content.onTapGesture(count: 2) {
+          beginEditing()
+        }
+      } else {
+        content
+      }
     }
-    .onChange(of: isTitleFieldFocused) { newValue in
-      if !newValue, isEditing {
+    .onChange(of: isTitleFieldFocused) {
+      if !isTitleFieldFocused, isEditing {
         commitTitle()
       }
     }
