@@ -20,5 +20,7 @@ final class AppSettings {
     didSet { UserDefaults.standard.set(shouldReopenNetworkInspector, forKey: "reopenNetworkInspector") }
   }
 
+  var hasRestoredNetworkInspector: Bool = false
+
   var isAppTerminating: Bool = false
 }

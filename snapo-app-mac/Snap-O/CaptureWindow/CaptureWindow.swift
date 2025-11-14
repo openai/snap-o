@@ -5,7 +5,6 @@ struct CaptureWindow: View {
   private var openWindow
 
   @StateObject private var controller = CaptureWindowController()
-  @State private var hasRestoredNetworkInspector = false
 
   var body: some View {
     ZStack {
@@ -31,8 +30,8 @@ struct CaptureWindow: View {
     }
     .task { await controller.start() }
     .onAppear {
-      guard !hasRestoredNetworkInspector else { return }
-      hasRestoredNetworkInspector = true
+      guard !AppSettings.shared.hasRestoredNetworkInspector else { return }
+      AppSettings.shared.hasRestoredNetworkInspector = true
       if AppSettings.shared.shouldReopenNetworkInspector {
         openWindow(id: NetworkInspectorWindowID.main)
       }
