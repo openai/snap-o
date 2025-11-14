@@ -1,12 +1,12 @@
 import SwiftUI
 
 @MainActor
-struct LogCatWindowRoot: View {
-  @State private var store: LogCatStore
+struct LogcatWindowRoot: View {
+  @State private var store: LogcatStore
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     _store = State(
-      initialValue: LogCatStore(
+      initialValue: LogcatStore(
         adbService: adbService,
         deviceTracker: deviceTracker
       )
@@ -15,9 +15,9 @@ struct LogCatWindowRoot: View {
 
   var body: some View {
     NavigationSplitView {
-      LogCatNavigationSideBar()
+      LogcatNavigationSideBar()
     } detail: {
-      LogCatDetailView()
+      LogcatDetailView()
     }
     .environment(store)
     .onAppear {

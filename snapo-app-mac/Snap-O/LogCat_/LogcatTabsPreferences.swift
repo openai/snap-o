@@ -1,15 +1,15 @@
 import Foundation
 import SwiftUI
 
-struct LogCatTabsPreferences: Codable {
-  var tabs: [LogCatTabPreferences]
+struct LogcatTabsPreferences: Codable {
+  var tabs: [LogcatTabPreferences]
   var activeTabIndex: Int?
 }
 
-extension LogCatTabsPreferences {
+extension LogcatTabsPreferences {
   @MainActor
-  init(tabs: [LogCatTab], activeTabID: UUID?) {
-    self.tabs = tabs.map(LogCatTabPreferences.init(tab:))
+  init(tabs: [LogcatTab], activeTabID: UUID?) {
+    self.tabs = tabs.map(LogcatTabPreferences.init(tab:))
     if let activeID = activeTabID,
        let index = tabs.firstIndex(where: { $0.id == activeID }) {
       activeTabIndex = index
@@ -19,7 +19,7 @@ extension LogCatTabsPreferences {
   }
 
   @MainActor
-  func makeTabs() -> ([LogCatTab], Int?) {
+  func makeTabs() -> ([LogcatTab], Int?) {
     let restoredTabs = tabs.map { $0.makeTab() }
     let resolvedIndex: Int? = if let index = activeTabIndex,
                                  restoredTabs.indices.contains(index) {
@@ -31,19 +31,19 @@ extension LogCatTabsPreferences {
   }
 }
 
-struct LogCatTabPreferences: Codable {
+struct LogcatTabPreferences: Codable {
   var title: String
   var isPaused: Bool
   var isSoftWrapEnabled: Bool
   var isFilterCollapsed: Bool
   var quickFilterText: String
   var columnNames: [Int: String]
-  var filterColumns: [[LogCatFilterPreferences]]
+  var filterColumns: [[LogcatFilterPreferences]]
 }
 
-extension LogCatTabPreferences {
+extension LogcatTabPreferences {
   @MainActor
-  init(tab: LogCatTab) {
+  init(tab: LogcatTab) {
     title = tab.title
     isPaused = tab.isPaused
     isSoftWrapEnabled = tab.isSoftWrapEnabled
@@ -51,13 +51,13 @@ extension LogCatTabPreferences {
     quickFilterText = tab.quickFilterText
     columnNames = tab.columnNames
     filterColumns = tab.filterColumns.map { column in
-      column.map(LogCatFilterPreferences.init(filter:))
+      column.map(LogcatFilterPreferences.init(filter:))
     }
   }
 
   @MainActor
-  func makeTab() -> LogCatTab {
-    let tab = LogCatTab(title: title)
+  func makeTab() -> LogcatTab {
+    let tab = LogcatTab(title: title)
     tab.isPaused = isPaused
     tab.isSoftWrapEnabled = isSoftWrapEnabled
     tab.isFilterCollapsed = isFilterCollapsed
@@ -70,37 +70,37 @@ extension LogCatTabPreferences {
   }
 }
 
-struct LogCatFilterPreferences: Codable {
+struct LogcatFilterPreferences: Codable {
   var name: String
   var isEnabled: Bool
-  var action: LogCatFilterAction
+  var action: LogcatFilterAction
   var isHighlightEnabled: Bool
-  var color: LogCatColor
-  var clauses: [LogCatFilterClausePreferences]
-  var autoKey: LogCatFilterAutoKeyPreferences?
+  var color: LogcatColor
+  var clauses: [LogcatFilterClausePreferences]
+  var autoKey: LogcatFilterAutoKeyPreferences?
 }
 
-extension LogCatFilterPreferences {
+extension LogcatFilterPreferences {
   @MainActor
-  init(filter: LogCatFilter) {
+  init(filter: LogcatFilter) {
     name = filter.name
     isEnabled = filter.isEnabled
     action = filter.action
     isHighlightEnabled = filter.isHighlightEnabled
-    color = LogCatColor(nsColor: filter.accentNSColor)
-    clauses = filter.condition.clauses.map(LogCatFilterClausePreferences.init(clause:))
+    color = LogcatColor(nsColor: filter.accentNSColor)
+    clauses = filter.condition.clauses.map(LogcatFilterClausePreferences.init(clause:))
     if let autoKey = filter.autoKey {
-      self.autoKey = LogCatFilterAutoKeyPreferences(autoKey: autoKey)
+      self.autoKey = LogcatFilterAutoKeyPreferences(autoKey: autoKey)
     } else {
       autoKey = nil
     }
   }
 
   @MainActor
-  func makeFilter() -> LogCatFilter {
-    let condition = LogCatFilterCondition(clauses: clauses.map { $0.makeClause() })
+  func makeFilter() -> LogcatFilter {
+    let condition = LogcatFilterCondition(clauses: clauses.map { $0.makeClause() })
     let resolvedColor = Color(nsColor: color.makeNSColor())
-    return LogCatFilter(
+    return LogcatFilter(
       name: name,
       isEnabled: isEnabled,
       action: action,
@@ -112,23 +112,23 @@ extension LogCatFilterPreferences {
   }
 }
 
-struct LogCatFilterClausePreferences: Codable {
-  var field: LogCatFilterField
+struct LogcatFilterClausePreferences: Codable {
+  var field: LogcatFilterField
   var pattern: String
   var isInverted: Bool
   var isCaseSensitive: Bool
 }
 
-extension LogCatFilterClausePreferences {
-  init(clause: LogCatFilterCondition.Clause) {
+extension LogcatFilterClausePreferences {
+  init(clause: LogcatFilterCondition.Clause) {
     field = clause.field
     pattern = clause.pattern
     isInverted = clause.isInverted
     isCaseSensitive = clause.isCaseSensitive
   }
 
-  func makeClause() -> LogCatFilterCondition.Clause {
-    LogCatFilterCondition.Clause(
+  func makeClause() -> LogcatFilterCondition.Clause {
+    LogcatFilterCondition.Clause(
       field: field,
       pattern: pattern,
       isInverted: isInverted,
@@ -137,18 +137,18 @@ extension LogCatFilterClausePreferences {
   }
 }
 
-struct LogCatFilterAutoKeyPreferences: Codable {
-  var action: LogCatFilterAction
-  var field: LogCatFilterField
+struct LogcatFilterAutoKeyPreferences: Codable {
+  var action: LogcatFilterAction
+  var field: LogcatFilterField
 }
 
-extension LogCatFilterAutoKeyPreferences {
-  init(autoKey: LogCatFilter.AutoKey) {
+extension LogcatFilterAutoKeyPreferences {
+  init(autoKey: LogcatFilter.AutoKey) {
     action = autoKey.action
     field = autoKey.field
   }
 
-  func makeAutoKey() -> LogCatFilter.AutoKey {
-    LogCatFilter.AutoKey(action: action, field: field)
+  func makeAutoKey() -> LogcatFilter.AutoKey {
+    LogcatFilter.AutoKey(action: action, field: field)
   }
 }

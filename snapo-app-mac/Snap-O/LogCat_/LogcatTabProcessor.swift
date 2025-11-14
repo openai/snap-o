@@ -1,11 +1,11 @@
 import Foundation
 
-actor LogCatTabProcessor {
-  typealias QuickFilter = LogCatQuickFilterSnapshot
-  typealias Configuration = LogCatFilterConfigurationSnapshot
+actor LogcatTabProcessor {
+  typealias QuickFilter = LogcatQuickFilterSnapshot
+  typealias Configuration = LogcatFilterConfigurationSnapshot
 
   enum Update: Sendable {
-    case tabUpdate(LogCatTabUpdate)
+    case tabUpdate(LogcatTabUpdate)
   }
 
   private let capacity: Int
@@ -13,17 +13,17 @@ actor LogCatTabProcessor {
   private let logger = SnapOLog.logCat
   private var deliverUpdate: (@Sendable (Update) async -> Void)?
 
-  private var buffer: LogCatRingBuffer
-  private var pendingEntries: [LogCatEntry] = []
+  private var buffer: LogcatRingBuffer
+  private var pendingEntries: [LogcatEntry] = []
   private var configuration: Configuration
   private var quickFilterRegex: NSRegularExpression?
-  private var regexCache: [LogCatRegexCacheKey: NSRegularExpression] = [:]
+  private var regexCache: [LogcatRegexCacheKey: NSRegularExpression] = [:]
   private var isProcessing = false
   private var needsFullRecompute = false
-  private var pendingUpdate: LogCatTabUpdate?
+  private var pendingUpdate: LogcatTabUpdate?
   private var flushTask: Task<Void, Never>?
   private var isPaused = false
-  private var renderedSnapshots: [LogCatRenderedSnapshot] = []
+  private var renderedSnapshots: [LogcatRenderedSnapshot] = []
 
   init(
     capacity: Int,
@@ -31,7 +31,7 @@ actor LogCatTabProcessor {
   ) {
     self.capacity = capacity
     configuration = initialConfiguration
-    buffer = LogCatRingBuffer(capacity: capacity)
+    buffer = LogcatRingBuffer(capacity: capacity)
     quickFilterRegex = configuration.quickFilter.flatMap { try? NSRegularExpression(pattern: $0.pattern, options: []) }
   }
 
@@ -39,7 +39,7 @@ actor LogCatTabProcessor {
     deliverUpdate = handler
   }
 
-  func enqueue(_ entry: LogCatEntry) {
+  func enqueue(_ entry: LogcatEntry) {
     guard !isPaused else { return }
     pendingEntries.append(entry)
     scheduleProcessing()
@@ -87,7 +87,7 @@ actor LogCatTabProcessor {
       let didReset = needsFullRecompute
       needsFullRecompute = false
 
-      var droppedEntries: [LogCatEntry] = []
+      var droppedEntries: [LogcatEntry] = []
       droppedEntries.reserveCapacity(entries.count)
       for entry in entries {
         if let dropped = buffer.append(entry) {
@@ -108,7 +108,7 @@ actor LogCatTabProcessor {
         if !droppedIDs.isEmpty {
           let problematicSnapshot = renderedSnapshots.first { droppedIDs.contains($0.entry.id) }
           if problematicSnapshot != nil {
-            logger.error("LogCatTabProcessor detected dropped snapshot mismatch, scheduling full recompute.")
+            logger.error("LogcatTabProcessor detected dropped snapshot mismatch, scheduling full recompute.")
             needsFullRecompute = true
             continue
           }
@@ -139,18 +139,18 @@ actor LogCatTabProcessor {
 
       let rendered = renderedSnapshots
       let entryCount = buffer.currentCount
-      let metrics = LogCatTabMetrics(
+      let metrics = LogcatTabMetrics(
         unreadDelta: renderedDelta,
         droppedEntries: dropped
       )
-      var errors: [LogCatTabError] = []
+      var errors: [LogcatTabError] = []
       if dropped > 100 {
         errors.append(.backlogDropped(droppedCount: dropped))
       }
       if entries.count > 10 {
         errors.append(.slowProcessing(count: entries.count))
       }
-      let update = LogCatTabUpdate(
+      let update = LogcatTabUpdate(
         entryCount: entryCount,
         renderedEntries: rendered,
         metrics: metrics,
@@ -163,10 +163,10 @@ actor LogCatTabProcessor {
     }
   }
 
-  private func render(entries: [LogCatEntry]) -> [LogCatRenderedSnapshot] {
+  private func render(entries: [LogcatEntry]) -> [LogcatRenderedSnapshot] {
     guard !entries.isEmpty else { return [] }
 
-    let quickFilteredEntries: [LogCatEntry] = if let quickFilterRegex {
+    let quickFilteredEntries: [LogcatEntry] = if let quickFilterRegex {
       entries.filter { entry in
         let nsString = entry.raw as NSString
         let range = NSRange(location: 0, length: nsString.length)
@@ -180,17 +180,17 @@ actor LogCatTabProcessor {
 
     let columns = configuration.filters.filter { !$0.isEmpty }
     guard !columns.isEmpty else {
-      return quickFilteredEntries.map { LogCatRenderedSnapshot(entry: $0) }
+      return quickFilteredEntries.map { LogcatRenderedSnapshot(entry: $0) }
     }
 
-    var processed: [LogCatRenderedSnapshot] = []
+    var processed: [LogcatRenderedSnapshot] = []
     processed.reserveCapacity(quickFilteredEntries.count)
 
     for entry in quickFilteredEntries {
       var isExcluded = false
       var columnFailure = false
-      var rowColor: LogCatColor?
-      var fieldHighlights: [LogCatFilterField: [LogCatColorHighlight]] = [:]
+      var rowColor: LogcatColor?
+      var fieldHighlights: [LogcatFilterField: [LogcatColorHighlight]] = [:]
 
       columnLoop: for column in columns {
         let includeFilters = column.filter { $0.action == .include }
@@ -222,7 +222,7 @@ actor LogCatTabProcessor {
 
             let highlightColor = baseColor.withAlpha(0.35)
             for (field, ranges) in result.fieldRanges where field != .raw {
-              let highlights = ranges.map { LogCatColorHighlight(range: $0, color: highlightColor) }
+              let highlights = ranges.map { LogcatColorHighlight(range: $0, color: highlightColor) }
               fieldHighlights[field, default: []].append(contentsOf: highlights)
             }
           }
@@ -237,7 +237,7 @@ actor LogCatTabProcessor {
       guard !isExcluded, !columnFailure else { continue }
 
       processed.append(
-        LogCatRenderedSnapshot(
+        LogcatRenderedSnapshot(
           entry: entry,
           rowHighlightColor: rowColor,
           fieldHighlights: fieldHighlights

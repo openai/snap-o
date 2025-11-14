@@ -2,40 +2,40 @@
 import Foundation
 import Observation
 
-actor LogCatStreamRouter {
-  private var processors: [LogCatTabProcessor] = []
+actor LogcatStreamRouter {
+  private var processors: [LogcatTabProcessor] = []
 
-  func updateProcessors(_ processors: [LogCatTabProcessor]) {
+  func updateProcessors(_ processors: [LogcatTabProcessor]) {
     self.processors = processors
   }
 
-  func deliver(_ entry: LogCatEntry) async {
+  func deliver(_ entry: LogcatEntry) async {
     for processor in processors {
       await processor.enqueue(entry)
     }
   }
 }
 
-enum LogCatSidebarSelection: Hashable {
+enum LogcatSidebarSelection: Hashable {
   case tab(UUID)
   case crashes
 }
 
-struct LogCatCrashRecord: Identifiable, Equatable {
+struct LogcatCrashRecord: Identifiable, Equatable {
   let id: String
   let timestampString: String
   let timestamp: Date?
-  private(set) var entries: [LogCatEntry]
+  private(set) var entries: [LogcatEntry]
 
   init(
     timestampString: String,
     timestamp: Date?,
-    entries: [LogCatEntry]
+    entries: [LogcatEntry]
   ) {
     self.timestampString = timestampString
     self.timestamp = timestamp
     self.entries = entries
-    id = LogCatCrashRecord.makeIdentifier(timestampString: timestampString, entries: entries)
+    id = LogcatCrashRecord.makeIdentifier(timestampString: timestampString, entries: entries)
   }
 
   var messages: [String] {
@@ -82,7 +82,7 @@ struct LogCatCrashRecord: Identifiable, Equatable {
     errorTitle ?? title
   }
 
-  func matches(entry: LogCatEntry, tolerance: TimeInterval = 0.005) -> Bool {
+  func matches(entry: LogcatEntry, tolerance: TimeInterval = 0.005) -> Bool {
     if let recordDate = timestamp,
        let entryDate = entry.timestamp {
       return abs(recordDate.timeIntervalSince(entryDate)) <= tolerance
@@ -90,11 +90,11 @@ struct LogCatCrashRecord: Identifiable, Equatable {
     return timestampString == entry.timestampString
   }
 
-  mutating func append(_ entry: LogCatEntry) {
+  mutating func append(_ entry: LogcatEntry) {
     entries.append(entry)
   }
 
-  private static func makeIdentifier(timestampString: String, entries: [LogCatEntry]) -> String {
+  private static func makeIdentifier(timestampString: String, entries: [LogcatEntry]) -> String {
     let title = entries.first?.message.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let key = title.isEmpty ? UUID().uuidString : title
     return "\(timestampString)|\(key)"
@@ -110,14 +110,14 @@ struct LogCatCrashRecord: Identifiable, Equatable {
 
 @MainActor
 @Observable
-final class LogCatStore {
+final class LogcatStore {
   enum StreamingState: Equatable {
     case noDevice
     case paused
     case streaming
   }
 
-  var tabs: [LogCatTab] = [] {
+  var tabs: [LogcatTab] = [] {
     didSet { updateStreamingState() }
   }
 
@@ -151,8 +151,8 @@ final class LogCatStore {
     }
   }
 
-  private(set) var crashes: [LogCatCrashRecord] = []
-  var selectedCrashID: LogCatCrashRecord.ID?
+  private(set) var crashes: [LogcatCrashRecord] = []
+  var selectedCrashID: LogcatCrashRecord.ID?
   private(set) var activeDeviceID: String? {
     didSet { updateStreamingState() }
   }
@@ -160,7 +160,7 @@ final class LogCatStore {
   private(set) var devices: [Device] = []
   private(set) var streamingState: StreamingState = .noDevice
 
-  private let logService: LogCatService
+  private let logService: LogcatService
   private let adbService: ADBService
   private let deviceTracker: DeviceTracker
   private let logger = SnapOLog.logCat
@@ -171,14 +171,14 @@ final class LogCatStore {
     let task: Task<Void, Never>
   }
 
-  private static let tabsPreferencesKey = "LogCatTabsPreferences"
+  private static let tabsPreferencesKey = "LogcatTabsPreferences"
   private var streamHandle: StreamHandle? {
     didSet { updateStreamingState() }
   }
 
   private var tabCounter = 0
   private var isStarted = false
-  private var streamRouter: LogCatStreamRouter?
+  private var streamRouter: LogcatStreamRouter?
   private var crashLoadTask: Task<Void, Never>?
   private var tabsPersistenceWorkItem: DispatchWorkItem?
   private var isRestoringTabsFromPreferences = false
@@ -187,7 +187,7 @@ final class LogCatStore {
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
     self.deviceTracker = deviceTracker
-    logService = LogCatService(
+    logService = LogcatService(
       adbService: adbService,
       deviceTracker: deviceTracker
     )
@@ -263,7 +263,7 @@ final class LogCatStore {
   }
 
   /// Removes the provided tab, reassigning the active tab when necessary.
-  func removeTab(_ tab: LogCatTab) {
+  func removeTab(_ tab: LogcatTab) {
     guard tabs.count > 1 else { return }
     guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
     let removingActive = tab.id == activeTabID
@@ -293,7 +293,7 @@ final class LogCatStore {
     }
   }
 
-  func handleSidebarSelection(_ selection: LogCatSidebarSelection?) {
+  func handleSidebarSelection(_ selection: LogcatSidebarSelection?) {
     Task { @MainActor [weak self] in
       guard let self else { return }
       switch selection {
@@ -313,7 +313,7 @@ final class LogCatStore {
     }
   }
 
-  func selectCrash(id: LogCatCrashRecord.ID?) {
+  func selectCrash(id: LogcatCrashRecord.ID?) {
     guard selectedCrashID != id else { return }
     Task { @MainActor [weak self] in
       guard let self, selectedCrashID != id else { return }
@@ -321,12 +321,12 @@ final class LogCatStore {
     }
   }
 
-  var activeTab: LogCatTab? {
+  var activeTab: LogcatTab? {
     guard let id = activeTabID else { return nil }
     return tabs.first { $0.id == id }
   }
 
-  var selectedCrash: LogCatCrashRecord? {
+  var selectedCrash: LogcatCrashRecord? {
     guard let id = selectedCrashID else { return nil }
     return crashes.first { $0.id == id }
   }
@@ -338,10 +338,10 @@ final class LogCatStore {
 
   /// Creates a new tab model, optionally activates it, and returns the instance.
   @discardableResult
-  private func createTab(activate: Bool) -> LogCatTab {
+  private func createTab(activate: Bool) -> LogcatTab {
     tabCounter += 1
     let title = "Tab \(tabCounter)"
-    let tab = LogCatTab(title: title)
+    let tab = LogcatTab(title: title)
     tab.isPinnedToBottom = true
     configureTabForPersistence(tab)
     tabs.append(tab)
@@ -390,7 +390,7 @@ final class LogCatStore {
 
   // MARK: - Persistence
 
-  private func configureTabForPersistence(_ tab: LogCatTab) {
+  private func configureTabForPersistence(_ tab: LogcatTab) {
     tab.onConfigurationChange = { [weak self] in
       self?.scheduleTabsPersistence()
     }
@@ -406,7 +406,7 @@ final class LogCatStore {
     defer { isRestoringTabsFromPreferences = false }
 
     do {
-      let snapshot = try JSONDecoder().decode(LogCatTabsPreferences.self, from: data)
+      let snapshot = try JSONDecoder().decode(LogcatTabsPreferences.self, from: data)
       let (restoredTabs, activeIndex) = snapshot.makeTabs()
       guard !restoredTabs.isEmpty else { return }
       restoredTabs.forEach { configureTabForPersistence($0) }
@@ -420,7 +420,7 @@ final class LogCatStore {
         activeTabID = restoredTabs.first?.id
       }
     } catch {
-      logger.error("Failed to restore LogCat tabs: \(error.localizedDescription, privacy: .public)")
+      logger.error("Failed to restore Logcat tabs: \(error.localizedDescription, privacy: .public)")
     }
   }
 
@@ -436,12 +436,12 @@ final class LogCatStore {
 
   private func persistTabsToPreferences() {
     guard !isRestoringTabsFromPreferences else { return }
-    let snapshot = LogCatTabsPreferences(tabs: tabs, activeTabID: activeTabID)
+    let snapshot = LogcatTabsPreferences(tabs: tabs, activeTabID: activeTabID)
     do {
       let data = try JSONEncoder().encode(snapshot)
       UserDefaults.standard.set(data, forKey: Self.tabsPreferencesKey)
     } catch {
-      logger.error("Failed to persist LogCat tabs: \(error.localizedDescription, privacy: .public)")
+      logger.error("Failed to persist Logcat tabs: \(error.localizedDescription, privacy: .public)")
     }
   }
 
@@ -461,7 +461,7 @@ final class LogCatStore {
     selectedCrashID = nil
   }
 
-  private func currentProcessors() -> [LogCatTabProcessor] {
+  private func currentProcessors() -> [LogcatTabProcessor] {
     tabs.map(\.processor)
   }
 
@@ -506,7 +506,7 @@ final class LogCatStore {
     let handleID = UUID()
     print("start stream: \(handleID): \(deviceID)")
     let logService = logService
-    let router = LogCatStreamRouter()
+    let router = LogcatStreamRouter()
     streamRouter = router
     let initialProcessors = currentProcessors()
     let task = Task.detached(priority: .userInitiated) { [weak self, logService, router] in
@@ -616,7 +616,7 @@ final class LogCatStore {
 
   /// Responds to service-generated stream status events, updating tab errors and diagnostics.
   @MainActor
-  private func handleStreamEvent(_ event: LogCatStreamEvent, handleID: UUID, deviceID: String) {
+  private func handleStreamEvent(_ event: LogcatStreamEvent, handleID: UUID, deviceID: String) {
     guard let handle = streamHandle,
           handle.id == handleID else {
       return
@@ -662,7 +662,7 @@ final class LogCatStore {
         let exec = await adbService.exec()
         let output = try await exec.runShellString(deviceID: deviceID, command: "logcat -b crash -v threadtime -d")
         let records = await Task.detached(priority: .userInitiated) {
-          LogCatStore.buildCrashRecords(from: output)
+          LogcatStore.buildCrashRecords(from: output)
         }.value
 
         crashes = records
@@ -679,9 +679,9 @@ final class LogCatStore {
     }
   }
 
-  private nonisolated static func buildCrashRecords(from output: String) -> [LogCatCrashRecord] {
-    var records: [LogCatCrashRecord] = []
-    var currentRecord: LogCatCrashRecord?
+  private nonisolated static func buildCrashRecords(from output: String) -> [LogcatCrashRecord] {
+    var records: [LogcatCrashRecord] = []
+    var currentRecord: LogcatCrashRecord?
 
     func commit() {
       if let record = currentRecord {
@@ -692,7 +692,7 @@ final class LogCatStore {
 
     output.enumerateLines { line, _ in
       guard !line.isEmpty else { return }
-      let entry = LogCatLineParser.parseThreadtime(line)
+      let entry = LogcatLineParser.parseThreadtime(line)
 
       if entry.timestampString.isEmpty {
         if var record = currentRecord {
@@ -710,7 +710,7 @@ final class LogCatStore {
       }
 
       commit()
-      currentRecord = LogCatCrashRecord(
+      currentRecord = LogcatCrashRecord(
         timestampString: entry.timestampString,
         timestamp: entry.timestamp,
         entries: [entry]

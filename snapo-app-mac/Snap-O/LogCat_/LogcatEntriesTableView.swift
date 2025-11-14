@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 @MainActor
-struct LogCatEntriesTableView: NSViewRepresentable {
-  let tab: LogCatTab
+struct LogcatEntriesTableView: NSViewRepresentable {
+  let tab: LogcatTab
   var onScrollInteraction: () -> Void
-  var onCreateFilter: (LogCatFilterAction, LogCatFilterField, String) -> Void
+  var onCreateFilter: (LogcatFilterAction, LogcatFilterField, String) -> Void
 
   func makeCoordinator() -> Coordinator {
     Coordinator()
@@ -18,7 +18,7 @@ struct LogCatEntriesTableView: NSViewRepresentable {
     scrollView.autohidesScrollers = true
     scrollView.drawsBackground = false
 
-    let tableView = LogCatTableView()
+    let tableView = LogcatTableView()
     tableView.headerView = NSTableHeaderView()
     tableView.gridStyleMask = []
     tableView.selectionHighlightStyle = .none
@@ -50,21 +50,21 @@ struct LogCatEntriesTableView: NSViewRepresentable {
 
 // MARK: - Coordinator
 
-extension LogCatEntriesTableView {
+extension LogcatEntriesTableView {
   @MainActor
   final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    fileprivate weak var tableView: LogCatTableView?
+    fileprivate weak var tableView: LogcatTableView?
     private weak var scrollView: NSScrollView?
-    private var renderedEntries: [LogCatRenderedEntry] = []
+    private var renderedEntries: [LogcatRenderedEntry] = []
     private var lastEntryID: UUID?
     private var isSoftWrapEnabled = false
     private var isPinnedToBottom = true
     private var isProgrammaticScroll = false
     private var onScrollInteraction: (() -> Void)?
     private var hiddenColumns: Set<Column> = []
-    var onCreateFilter: ((LogCatFilterAction, LogCatFilterField, String) -> Void)?
+    var onCreateFilter: ((LogcatFilterAction, LogcatFilterField, String) -> Void)?
 
-    fileprivate func configure(tableView: LogCatTableView, scrollView: NSScrollView) {
+    fileprivate func configure(tableView: LogcatTableView, scrollView: NSScrollView) {
       self.tableView = tableView
       self.scrollView = scrollView
 
@@ -75,7 +75,7 @@ extension LogCatEntriesTableView {
         return contextMenu(forRow: row, columnIndex: column)
       }
 
-      let headerView = LogCatTableHeaderView()
+      let headerView = LogcatTableHeaderView()
       headerView.menuProvider = { [weak self] columnIndex in
         guard let self else { return nil }
         return columnVisibilityMenu(for: columnIndex)
@@ -106,7 +106,7 @@ extension LogCatEntriesTableView {
 
     func update(
       tableView: NSTableView?,
-      renderedEntries: [LogCatRenderedEntry],
+      renderedEntries: [LogcatRenderedEntry],
       softWrap: Bool,
       pinnedToBottom: Bool,
       onScrollInteraction: @escaping () -> Void
@@ -194,8 +194,8 @@ extension LogCatEntriesTableView {
     }
 
     private func applyIncrementalUpdate(
-      from oldEntries: [LogCatRenderedEntry],
-      to newEntries: [LogCatRenderedEntry],
+      from oldEntries: [LogcatRenderedEntry],
+      to newEntries: [LogcatRenderedEntry],
       tableView: NSTableView
     ) -> (didUpdate: Bool, insertedRange: Range<Int>?) {
       let oldCount = oldEntries.count
@@ -293,9 +293,9 @@ extension LogCatEntriesTableView {
 
     private func makeAttributedString(
       for column: Column,
-      entry: LogCatEntry,
+      entry: LogcatEntry,
       text: String,
-      highlights: [LogCatRenderedEntry.Highlight]
+      highlights: [LogcatRenderedEntry.Highlight]
     ) -> NSAttributedString {
       let baseColor = column.textColor(for: entry)
       let attributes: [NSAttributedString.Key: Any] = [
@@ -317,13 +317,13 @@ extension LogCatEntriesTableView {
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-      let identifier = NSUserInterfaceItemIdentifier("LogCatRowView")
-      let rowView: LogCatRowView
+      let identifier = NSUserInterfaceItemIdentifier("LogcatRowView")
+      let rowView: LogcatRowView
 
-      if let reusable = tableView.makeView(withIdentifier: identifier, owner: nil) as? LogCatRowView {
+      if let reusable = tableView.makeView(withIdentifier: identifier, owner: nil) as? LogcatRowView {
         rowView = reusable
       } else {
-        rowView = LogCatRowView()
+        rowView = LogcatRowView()
         rowView.identifier = identifier
       }
 
@@ -337,7 +337,7 @@ extension LogCatEntriesTableView {
     }
 
     func tableView(_ tableView: NSTableView, didAdd rowView: NSTableRowView, forRow row: Int) {
-      guard let rowView = rowView as? LogCatRowView else { return }
+      guard let rowView = rowView as? LogcatRowView else { return }
       if row >= 0, row < renderedEntries.count {
         rowView.highlightColor = renderedEntries[row].rowHighlightColor
       } else {
@@ -561,7 +561,7 @@ extension LogCatEntriesTableView {
 
 // MARK: - Column definitions
 
-private extension LogCatEntriesTableView {
+private extension LogcatEntriesTableView {
   enum Column: String, CaseIterable {
     case timestamp
     case pid
@@ -690,7 +690,7 @@ private extension LogCatEntriesTableView {
       leadingPadding + trailingPadding
     }
 
-    func textColor(for entry: LogCatEntry) -> NSColor {
+    func textColor(for entry: LogcatEntry) -> NSColor {
       switch self {
       case .message:
         nsColor(for: entry.level)
@@ -730,7 +730,7 @@ private extension LogCatEntriesTableView {
       }
     }
 
-    func text(for entry: LogCatEntry) -> String {
+    func text(for entry: LogcatEntry) -> String {
       switch self {
       case .timestamp:
         entry.timestampString
@@ -752,7 +752,7 @@ private extension LogCatEntriesTableView {
       tableView.tableColumns.first { $0.identifier == identifier }
     }
 
-    var filterField: LogCatFilterField? {
+    var filterField: LogcatFilterField? {
       switch self {
       case .timestamp:
         .timestamp
@@ -771,7 +771,7 @@ private extension LogCatEntriesTableView {
   }
 }
 
-private func nsColor(for level: LogCatLevel) -> NSColor {
+private func nsColor(for level: LogcatLevel) -> NSColor {
   switch level {
   case .fatal, .error:
     NSColor.systemRed
@@ -788,7 +788,7 @@ private func nsColor(for level: LogCatLevel) -> NSColor {
   }
 }
 
-private final class LogCatRowView: NSTableRowView {
+private final class LogcatRowView: NSTableRowView {
   var highlightColor: NSColor? {
     didSet { needsDisplay = true }
   }
@@ -811,7 +811,7 @@ private final class LogCatRowView: NSTableRowView {
   }
 }
 
-private final class LogCatTableView: NSTableView {
+private final class LogcatTableView: NSTableView {
   var menuProvider: ((Int, Int) -> NSMenu?)?
 
   override func menu(for event: NSEvent) -> NSMenu? {
@@ -828,7 +828,7 @@ private final class LogCatTableView: NSTableView {
   }
 }
 
-private final class LogCatTableHeaderView: NSTableHeaderView {
+private final class LogcatTableHeaderView: NSTableHeaderView {
   var menuProvider: ((Int) -> NSMenu?)?
 
   override func menu(for event: NSEvent) -> NSMenu? {
@@ -842,11 +842,11 @@ private final class LogCatTableHeaderView: NSTableHeaderView {
 }
 
 private final class FilterMenuContext: NSObject {
-  let action: LogCatFilterAction
-  let field: LogCatFilterField
+  let action: LogcatFilterAction
+  let field: LogcatFilterField
   let value: String
 
-  init(action: LogCatFilterAction, field: LogCatFilterField, value: String) {
+  init(action: LogcatFilterAction, field: LogcatFilterField, value: String) {
     self.action = action
     self.field = field
     self.value = value

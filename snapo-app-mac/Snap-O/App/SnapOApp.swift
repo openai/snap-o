@@ -76,8 +76,8 @@ struct SnapOApp: App {
     .environment(settings)
     .defaultSize(width: 960, height: 520)
 
-    Window("Logcat Viewer (alpha)", id: LogCatWindowID.main) {
-      LogCatWindowRoot(adbService: adbService, deviceTracker: deviceTracker)
+    Window("Logcat Viewer (alpha)", id: LogcatWindowID.main) {
+      LogcatWindowRoot(adbService: adbService, deviceTracker: deviceTracker)
     }
     .defaultSize(width: 1000, height: 600)
   }

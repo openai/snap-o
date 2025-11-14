@@ -1,11 +1,11 @@
 import Observation
 import SwiftUI
 
-struct LogCatNavigationSideBar: View {
-  @Environment(LogCatStore.self)
-  private var store: LogCatStore
+struct LogcatNavigationSideBar: View {
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
 
-  private var selection: Binding<LogCatSidebarSelection?> {
+  private var selection: Binding<LogcatSidebarSelection?> {
     Binding(
       get: {
         if store.isCrashPaneActive {
@@ -22,25 +22,25 @@ struct LogCatNavigationSideBar: View {
 
   var body: some View {
     List(selection: selection) {
-      LogCatDevicePickerView()
+      LogcatDevicePickerView()
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
 
-      LogCatSidebarActionsView()
+      LogcatSidebarActionsView()
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
 
       Section("Tools") {
-        LogCatCrashesRow()
-          .tag(LogCatSidebarSelection.crashes)
+        LogcatCrashesRow()
+          .tag(LogcatSidebarSelection.crashes)
           .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
       }
       .textCase(nil)
 
       Section("Logcat Tabs") {
         ForEach(store.tabs) { tab in
-          LogCatTabRow(tab: tab)
-            .tag(LogCatSidebarSelection.tab(tab.id))
+          LogcatTabRow(tab: tab)
+            .tag(LogcatSidebarSelection.tab(tab.id))
             .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
         }
         Button {
@@ -54,12 +54,12 @@ struct LogCatNavigationSideBar: View {
         }
         .buttonStyle(.plain)
         .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
-        .help("Add a new LogCat tab")
+        .help("Add a new Logcat tab")
       }
       .textCase(nil)
     }
     .listStyle(.sidebar)
-    .navigationTitle("LogCat")
+    .navigationTitle("Logcat")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
         Button {
@@ -67,13 +67,13 @@ struct LogCatNavigationSideBar: View {
         } label: {
           Label("New Tab", systemImage: "plus")
         }
-        .help("Add a new LogCat tab")
+        .help("Add a new Logcat tab")
       }
     }
   }
 }
 
-private struct LogCatCrashesRow: View {
+private struct LogcatCrashesRow: View {
   var body: some View {
     Text("Crashes")
       .font(.callout.weight(.medium))
@@ -84,10 +84,10 @@ private struct LogCatCrashesRow: View {
   }
 }
 
-private struct LogCatTabRow: View {
-  @Bindable var tab: LogCatTab
-  @Environment(LogCatStore.self)
-  private var store: LogCatStore
+private struct LogcatTabRow: View {
+  @Bindable var tab: LogcatTab
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
 
   @State private var isPopoverPresented = false
 
@@ -173,9 +173,9 @@ private struct LogCatTabRow: View {
   }
 }
 
-private struct LogCatDevicePickerView: View {
-  @Environment(LogCatStore.self)
-  private var store: LogCatStore
+private struct LogcatDevicePickerView: View {
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
 
   private var selection: Binding<String?> {
     Binding(
@@ -227,9 +227,9 @@ private struct LogCatDevicePickerView: View {
   }
 }
 
-private struct LogCatSidebarActionsView: View {
-  @Environment(LogCatStore.self)
-  private var store: LogCatStore
+private struct LogcatSidebarActionsView: View {
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {

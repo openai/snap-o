@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - Core Value Types
 
-struct LogCatRange: Sendable, Hashable {
+struct LogcatRange: Sendable, Hashable {
   var location: Int
   var length: Int
 
@@ -21,7 +21,7 @@ struct LogCatRange: Sendable, Hashable {
   }
 }
 
-struct LogCatColor: Sendable, Equatable {
+struct LogcatColor: Sendable, Equatable {
   var red: Double
   var green: Double
   var blue: Double
@@ -34,14 +34,14 @@ struct LogCatColor: Sendable, Equatable {
     self.alpha = alpha
   }
 
-  func withAlpha(_ value: Double) -> LogCatColor {
-    LogCatColor(red: red, green: green, blue: blue, alpha: value)
+  func withAlpha(_ value: Double) -> LogcatColor {
+    LogcatColor(red: red, green: green, blue: blue, alpha: value)
   }
 
-  func blended(with other: LogCatColor, fraction: Double) -> LogCatColor {
+  func blended(with other: LogcatColor, fraction: Double) -> LogcatColor {
     guard (0 ... 1).contains(fraction) else { return self }
     let inverse = 1 - fraction
-    return LogCatColor(
+    return LogcatColor(
       red: red * inverse + other.red * fraction,
       green: green * inverse + other.green * fraction,
       blue: blue * inverse + other.blue * fraction,
@@ -64,75 +64,75 @@ struct LogCatColor: Sendable, Equatable {
   }
 }
 
-extension LogCatColor: Codable {}
+extension LogcatColor: Codable {}
 
-struct LogCatColorHighlight: Sendable, Equatable {
-  let range: LogCatRange
-  let color: LogCatColor
+struct LogcatColorHighlight: Sendable, Equatable {
+  let range: LogcatRange
+  let color: LogcatColor
 }
 
 // MARK: - Filter Snapshots
 
-struct LogCatQuickFilterSnapshot: Sendable, Equatable {
+struct LogcatQuickFilterSnapshot: Sendable, Equatable {
   var pattern: String
 }
 
-struct LogCatFilterClauseSnapshot: Sendable, Equatable {
-  let field: LogCatFilterField
+struct LogcatFilterClauseSnapshot: Sendable, Equatable {
+  let field: LogcatFilterField
   let pattern: String
   let isInverted: Bool
   let isCaseSensitive: Bool
 }
 
-struct LogCatFilterConditionSnapshot: Sendable, Equatable {
-  let clauses: [LogCatFilterClauseSnapshot]
+struct LogcatFilterConditionSnapshot: Sendable, Equatable {
+  let clauses: [LogcatFilterClauseSnapshot]
 }
 
-struct LogCatFilterMatchSnapshot: Sendable, Equatable {
+struct LogcatFilterMatchSnapshot: Sendable, Equatable {
   let isMatch: Bool
-  let fieldRanges: [LogCatFilterField: [LogCatRange]]
+  let fieldRanges: [LogcatFilterField: [LogcatRange]]
 
-  static let noMatch = LogCatFilterMatchSnapshot(isMatch: false, fieldRanges: [:])
+  static let noMatch = LogcatFilterMatchSnapshot(isMatch: false, fieldRanges: [:])
 }
 
-struct LogCatFilterSnapshot: Sendable, Equatable {
+struct LogcatFilterSnapshot: Sendable, Equatable {
   let id: UUID
-  let action: LogCatFilterAction
+  let action: LogcatFilterAction
   let isHighlightEnabled: Bool
-  let color: LogCatColor
-  let conditions: [LogCatFilterConditionSnapshot]
+  let color: LogcatColor
+  let conditions: [LogcatFilterConditionSnapshot]
 }
 
-struct LogCatFilterConfigurationSnapshot: Sendable, Equatable {
-  var filters: [[LogCatFilterSnapshot]]
-  var quickFilter: LogCatQuickFilterSnapshot?
+struct LogcatFilterConfigurationSnapshot: Sendable, Equatable {
+  var filters: [[LogcatFilterSnapshot]]
+  var quickFilter: LogcatQuickFilterSnapshot?
 
   init(
-    filters: [[LogCatFilterSnapshot]] = [],
-    quickFilter: LogCatQuickFilterSnapshot? = nil
+    filters: [[LogcatFilterSnapshot]] = [],
+    quickFilter: LogcatQuickFilterSnapshot? = nil
   ) {
     self.filters = filters
     self.quickFilter = quickFilter
   }
 }
 
-struct LogCatRegexCacheKey: Hashable {
+struct LogcatRegexCacheKey: Hashable {
   let pattern: String
   let isCaseSensitive: Bool
 }
 
 // MARK: - Rendered Payloads
 
-struct LogCatRenderedSnapshot: Sendable, Identifiable, Equatable {
+struct LogcatRenderedSnapshot: Sendable, Identifiable, Equatable {
   let id: UUID
-  let entry: LogCatEntry
-  let rowHighlightColor: LogCatColor?
-  let fieldHighlights: [LogCatFilterField: [LogCatColorHighlight]]
+  let entry: LogcatEntry
+  let rowHighlightColor: LogcatColor?
+  let fieldHighlights: [LogcatFilterField: [LogcatColorHighlight]]
 
   init(
-    entry: LogCatEntry,
-    rowHighlightColor: LogCatColor? = nil,
-    fieldHighlights: [LogCatFilterField: [LogCatColorHighlight]] = [:]
+    entry: LogcatEntry,
+    rowHighlightColor: LogcatColor? = nil,
+    fieldHighlights: [LogcatFilterField: [LogcatColorHighlight]] = [:]
   ) {
     id = entry.id
     self.entry = entry
@@ -141,7 +141,7 @@ struct LogCatRenderedSnapshot: Sendable, Identifiable, Equatable {
   }
 }
 
-struct LogCatTabMetrics: Sendable, Equatable {
+struct LogcatTabMetrics: Sendable, Equatable {
   var unreadDelta: Int
   var droppedEntries: Int
 
@@ -153,10 +153,10 @@ struct LogCatTabMetrics: Sendable, Equatable {
     self.droppedEntries = droppedEntries
   }
 
-  static let empty = LogCatTabMetrics()
+  static let empty = LogcatTabMetrics()
 }
 
-enum LogCatTabError: Sendable, Equatable {
+enum LogcatTabError: Sendable, Equatable {
   case streamWarning(message: String)
   case regexFailure(pattern: String, message: String?)
   case backlogDropped(droppedCount: Int)
@@ -164,19 +164,19 @@ enum LogCatTabError: Sendable, Equatable {
   case stateInconsistency(message: String)
 }
 
-struct LogCatTabUpdate: Sendable, Equatable {
+struct LogcatTabUpdate: Sendable, Equatable {
   var entryCount: Int
-  var renderedEntries: [LogCatRenderedSnapshot]
-  var metrics: LogCatTabMetrics
-  var errors: [LogCatTabError]
+  var renderedEntries: [LogcatRenderedSnapshot]
+  var metrics: LogcatTabMetrics
+  var errors: [LogcatTabError]
   var didReset: Bool
   var isPinnedToBottomHint: Bool?
 
   init(
     entryCount: Int = 0,
-    renderedEntries: [LogCatRenderedSnapshot] = [],
-    metrics: LogCatTabMetrics = .empty,
-    errors: [LogCatTabError] = [],
+    renderedEntries: [LogcatRenderedSnapshot] = [],
+    metrics: LogcatTabMetrics = .empty,
+    errors: [LogcatTabError] = [],
     didReset: Bool = false,
     isPinnedToBottomHint: Bool? = nil
   ) {
@@ -191,7 +191,7 @@ struct LogCatTabUpdate: Sendable, Equatable {
 
 // MARK: - Stream Events
 
-enum LogCatStreamEvent: Sendable, Equatable {
+enum LogcatStreamEvent: Sendable, Equatable {
   case connected
   case disconnected(reason: String?)
   case reconnecting(attempt: Int, reason: String?)
@@ -199,20 +199,20 @@ enum LogCatStreamEvent: Sendable, Equatable {
   case stopped
 }
 
-enum LogCatEvent: Sendable, Equatable {
-  case entry(LogCatEntry)
-  case stream(LogCatStreamEvent)
+enum LogcatEvent: Sendable, Equatable {
+  case entry(LogcatEntry)
+  case stream(LogcatStreamEvent)
 }
 
 // MARK: - Builders
 
 @MainActor
-extension LogCatFilterSnapshot {
-  init(filter: LogCatFilter) {
+extension LogcatFilterSnapshot {
+  init(filter: LogcatFilter) {
     let conditionSnapshots = [
-      LogCatFilterConditionSnapshot(
+      LogcatFilterConditionSnapshot(
         clauses: filter.condition.clauses.map { clause in
-          LogCatFilterClauseSnapshot(
+          LogcatFilterClauseSnapshot(
             field: clause.field,
             pattern: clause.pattern,
             isInverted: clause.isInverted,
@@ -226,29 +226,29 @@ extension LogCatFilterSnapshot {
       id: filter.id,
       action: filter.action,
       isHighlightEnabled: filter.isHighlightEnabled,
-      color: LogCatColor(nsColor: filter.accentNSColor),
+      color: LogcatColor(nsColor: filter.accentNSColor),
       conditions: conditionSnapshots
     )
   }
 }
 
-extension LogCatFilterSnapshot {
+extension LogcatFilterSnapshot {
   func evaluate(
-    entry: LogCatEntry,
-    regexCache: inout [LogCatRegexCacheKey: NSRegularExpression]
-  ) -> LogCatFilterMatchSnapshot {
+    entry: LogcatEntry,
+    regexCache: inout [LogcatRegexCacheKey: NSRegularExpression]
+  ) -> LogcatFilterMatchSnapshot {
     guard let condition = conditions.first else { return .noMatch }
     return evaluate(condition: condition, entry: entry, regexCache: &regexCache)
   }
 
   private func evaluate(
-    condition: LogCatFilterConditionSnapshot,
-    entry: LogCatEntry,
-    regexCache: inout [LogCatRegexCacheKey: NSRegularExpression]
-  ) -> LogCatFilterMatchSnapshot {
+    condition: LogcatFilterConditionSnapshot,
+    entry: LogcatEntry,
+    regexCache: inout [LogcatRegexCacheKey: NSRegularExpression]
+  ) -> LogcatFilterMatchSnapshot {
     var didProcessClause = false
     var didFindMatch = false
-    var fieldHighlights: [LogCatFilterField: [LogCatRange]] = [:]
+    var fieldHighlights: [LogcatFilterField: [LogcatRange]] = [:]
 
     for clause in condition.clauses {
       guard !clause.pattern.isEmpty,
@@ -276,35 +276,35 @@ extension LogCatFilterSnapshot {
       guard !clause.isInverted else { continue }
 
       if clause.field == .raw {
-        for candidateField in LogCatFilterField.allCases where candidateField != .raw {
+        for candidateField in LogcatFilterField.allCases where candidateField != .raw {
           guard let candidateValue = entry.value(for: candidateField) else { continue }
           let candidateNSString = candidateValue as NSString
           let candidateRange = NSRange(location: 0, length: candidateNSString.length)
           let candidateMatches = regex.matches(in: candidateValue, options: [], range: candidateRange)
           if !candidateMatches.isEmpty {
-            let ranges = candidateMatches.map { LogCatRange(nsRange: $0.range) }
+            let ranges = candidateMatches.map { LogcatRange(nsRange: $0.range) }
             fieldHighlights[candidateField, default: []].append(contentsOf: ranges)
           }
         }
       } else {
-        let ranges = matches.map { LogCatRange(nsRange: $0.range) }
+        let ranges = matches.map { LogcatRange(nsRange: $0.range) }
         fieldHighlights[clause.field, default: []].append(contentsOf: ranges)
       }
     }
 
     guard didProcessClause else {
-      return LogCatFilterMatchSnapshot(isMatch: true, fieldRanges: [:])
+      return LogcatFilterMatchSnapshot(isMatch: true, fieldRanges: [:])
     }
 
-    return LogCatFilterMatchSnapshot(isMatch: didFindMatch, fieldRanges: fieldHighlights)
+    return LogcatFilterMatchSnapshot(isMatch: didFindMatch, fieldRanges: fieldHighlights)
   }
 
   private func cachedRegex(
     for pattern: String,
     isCaseSensitive: Bool,
-    cache: inout [LogCatRegexCacheKey: NSRegularExpression]
+    cache: inout [LogcatRegexCacheKey: NSRegularExpression]
   ) -> NSRegularExpression? {
-    let key = LogCatRegexCacheKey(pattern: pattern, isCaseSensitive: isCaseSensitive)
+    let key = LogcatRegexCacheKey(pattern: pattern, isCaseSensitive: isCaseSensitive)
     if let existing = cache[key] {
       return existing
     }
