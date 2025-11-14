@@ -59,7 +59,7 @@ final class LivePreviewMode {
     do {
       return try await manager.makeRenderer(for: deviceID)
     } catch {
-      await errorHandler(error)
+      errorHandler(error)
       throw error
     }
   }

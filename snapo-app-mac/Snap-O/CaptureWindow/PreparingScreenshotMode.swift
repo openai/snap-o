@@ -4,7 +4,7 @@ import Observation
 @Observable
 @MainActor
 final class PreparingScreenshotMode {
-  private var task: Task<Void, Never>?
+  @ObservationIgnored private var task: Task<Void, Never>?
   private let captureService: CaptureService
   private let completion: @MainActor ([CaptureMedia], Error?) -> Void
 
@@ -20,7 +20,7 @@ final class PreparingScreenshotMode {
     task = Task { [weak self] in
       guard let self else { return }
       let (media, error) = await self.captureService.captureScreenshots()
-      await self.completion(media, error)
+      self.completion(media, error)
     }
   }
 
@@ -28,7 +28,4 @@ final class PreparingScreenshotMode {
     task?.cancel()
   }
 
-  deinit {
-    cancel()
-  }
 }

@@ -6,6 +6,7 @@ For automated contributors:
 - Follow the existing style. Defer to the repo configs:
   - SwiftLint: `.swiftlint.yml`
   - SwiftFormat: `.swiftformat`
+- Never add a `deinit`; rely on SwiftUI/Observation lifecycle instead.
 - Never run `git` commands; leave version control to the user.
 - Do not modify these config files without explicit approval. If a change is needed,
   propose it with a short rationale in a separate PR (or commit) so it’s easy to review

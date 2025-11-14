@@ -12,7 +12,7 @@ final class RecordingMode {
   private let captureService: CaptureService
   private let initialDevices: [Device]
   private let onResult: @MainActor (Result) -> Void
-  private var startTask: Task<Void, Never>?
+  @ObservationIgnored private var startTask: Task<Void, Never>?
   private var sessions: [String: RecordingSession]?
   private var hasCompleted = false
 
@@ -32,7 +32,7 @@ final class RecordingMode {
       let (sessions, encounteredError) = await self.captureService.startRecordings(for: self.initialDevices)
       if let error = encounteredError {
         self.hasCompleted = true
-        await self.onResult(.failed(error))
+        self.onResult(.failed(error))
       } else {
         self.sessions = sessions
       }
@@ -45,14 +45,10 @@ final class RecordingMode {
     guard let sessions else { return }
     hasCompleted = true
     let (media, encounteredError) = await captureService.stopRecordings(for: devices, sessions: sessions)
-    await onResult(.completed(media: media, error: encounteredError))
+    onResult(.completed(media: media, error: encounteredError))
   }
 
   func cancel() {
     startTask?.cancel()
-  }
-
-  deinit {
-    cancel()
   }
 }

@@ -9,7 +9,7 @@ final class CheckPreloadMode {
     case missing
   }
 
-  private var task: Task<Void, Never>?
+  @ObservationIgnored private var task: Task<Void, Never>?
   private let captureService: CaptureService
   private let completion: @MainActor (Outcome) -> Void
 
@@ -25,19 +25,15 @@ final class CheckPreloadMode {
     task = Task { [weak self] in
       guard let self else { return }
       if let media = await self.loadPreloadedScreenshots() {
-        await self.completion(.found(media))
+        self.completion(.found(media))
       } else {
-        await self.completion(.missing)
+        self.completion(.missing)
       }
     }
   }
 
   func cancel() {
     task?.cancel()
-  }
-
-  deinit {
-    cancel()
   }
 
   private func loadPreloadedScreenshots() async -> [CaptureMedia]? {
