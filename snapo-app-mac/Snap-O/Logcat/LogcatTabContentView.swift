@@ -764,13 +764,8 @@ private struct LogcatFilterConditionEditor: View {
           } label: {
             Text(condition.clauses[index].field.displayName)
               .font(.caption.weight(.semibold))
-              .frame(width: 110, alignment: .leading)
               .padding(.horizontal, 10)
               .padding(.vertical, 6)
-              .background(
-                Capsule()
-                  .fill(Color.secondary.opacity(0.15))
-              )
           }
           .menuStyle(.borderlessButton)
 
@@ -824,7 +819,6 @@ private struct LogcatFilterConditionEditor: View {
   private func conditionInput(for index: Int) -> some View {
     if condition.clauses[index].field == .level {
       LogcatLevelSelector(selection: levelSelectionBinding(for: index))
-        .frame(minWidth: 260)
     } else {
       TextField(
         "Regular Expression",
@@ -837,7 +831,6 @@ private struct LogcatFilterConditionEditor: View {
         )
       )
       .textFieldStyle(.roundedBorder)
-      .frame(minWidth: 260)
       .overlay(alignment: .trailing) {
         Button {
           condition.clauses[index].isCaseSensitive.toggle()
