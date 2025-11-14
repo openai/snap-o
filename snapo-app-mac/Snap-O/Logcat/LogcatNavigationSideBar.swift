@@ -30,19 +30,15 @@ struct LogcatNavigationSideBar: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
 
-      Section("Tools") {
+      Section {
         LogcatCrashesRow()
           .tag(LogcatSidebarSelection.crashes)
-          .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
-      }
-      .textCase(nil)
 
-      Section("Logcat Tabs") {
         ForEach(store.tabs) { tab in
-          LogcatTabRow(tab: tab)
+          LogcatTabRow(tab: tab, isSelected: selection.wrappedValue == .tab(tab.id))
             .tag(LogcatSidebarSelection.tab(tab.id))
-            .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
         }
+
         Button {
           store.addTab()
         } label: {
@@ -51,9 +47,9 @@ struct LogcatNavigationSideBar: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
+            .padding(.horizontal, 6)
         }
         .buttonStyle(.plain)
-        .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
         .help("Add a new Logcat tab")
       }
       .textCase(nil)
@@ -80,7 +76,7 @@ private struct LogcatCrashesRow: View {
       .foregroundStyle(.primary)
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.vertical, 6)
-      .padding(.horizontal, 10)
+      .padding(.horizontal, 6)
   }
 }
 
@@ -88,88 +84,69 @@ private struct LogcatTabRow: View {
   @Bindable var tab: LogcatTab
   @Environment(LogcatStore.self)
   private var store: LogcatStore
+  @State private var isEditing = false
+  @State private var titleDraft: String = ""
+  @FocusState private var isTitleFieldFocused: Bool
 
-  @State private var isPopoverPresented = false
+  var isSelected: Bool
 
   var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: tab.isPaused ? "pause.circle.fill" : "play.circle.fill")
-        .foregroundStyle(.secondary)
-      VStack(alignment: .leading, spacing: 2) {
-        HStack(spacing: 6) {
-          Text(tab.title)
-            .foregroundStyle(.primary)
-          if tab.unreadCount > 0 {
-            Circle()
-              .fill(Color.accentColor)
-              .frame(width: 6, height: 6)
-            if let badge = formattedUnread(tab.unreadCount) {
-              Text(badge)
-                .font(.caption2)
-                .foregroundStyle(Color.accentColor)
-            }
-          }
-        }
-      }
-      Spacer()
-      Button {
-        tab.isPaused.toggle()
-      } label: {
-        Image(systemName: tab.isPaused ? "play.circle" : "pause.circle")
-      }
-      .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-      .help(tab.isPaused ? "Resume this tab" : "Pause this tab")
-      Button {
-        isPopoverPresented = true
-      } label: {
-        Image(systemName: "square.and.pencil")
-      }
-      .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-      .help("edit name")
-      if store.tabs.count > 1 {
-        Button {
-          store.removeTab(tab)
-        } label: {
-          Image(systemName: "trash")
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help("delete tab")
+    let content = HStack(spacing: 8) {
+      if isEditing {
+        TextField("Tab Name", text: $titleDraft)
+          .textFieldStyle(.plain)
+          .font(.callout.weight(.medium))
+          .focused($isTitleFieldFocused)
+          .onSubmit { commitTitle() }
+      } else {
+        Text(tab.title)
+          .font(.callout.weight(.medium))
+          .foregroundStyle(.primary)
       }
     }
-    .padding(.vertical, 4)
-    .popover(isPresented: $isPopoverPresented) {
-      VStack(alignment: .leading) {
-        Text("Name")
-        TextField("Title", text: Binding(
-          get: { tab.title },
-          set: { tab.title = $0 }
-        ))
-        .textFieldStyle(.roundedBorder)
-        Button {
-          isPopoverPresented = false
-        } label: {
-          Text("Done")
+    .padding(.vertical, 6)
+    .padding(.horizontal, 6)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
+
+    Group {
+      if isSelected, !isEditing {
+        content.onTapGesture(count: 2) {
+          beginEditing()
         }
+      } else {
+        content
       }
-      .padding(16)
-      .frame(width: 200)
+    }
+    .contextMenu {
+      Button(role: .destructive) {
+        store.removeTab(tab)
+      } label: {
+        Label("Delete", systemImage: "trash")
+      }
+    }
+    .onChange(of: isTitleFieldFocused) {
+      if !isTitleFieldFocused, isEditing {
+        commitTitle()
+      }
     }
   }
 
-  private func formattedUnread(_ count: Int) -> String? {
-    switch count {
-    case 0 ..< 10:
-      nil
-    case 10 ..< 50:
-      "\(count / 10 * 10)+"
-    case 60 ..< 100:
-      "50+"
-    default:
-      "100+"
+  private func beginEditing() {
+    titleDraft = tab.title
+    isEditing = true
+    isTitleFieldFocused = true
+  }
+
+  private func commitTitle() {
+    let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      titleDraft = tab.title
+    } else if trimmed != tab.title {
+      tab.title = trimmed
     }
+    isTitleFieldFocused = false
+    isEditing = false
   }
 }
 
@@ -186,10 +163,6 @@ private struct LogcatDevicePickerView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Device")
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-
       if store.devices.isEmpty {
         HStack(spacing: 8) {
           Image(systemName: "rectangle.and.hand.point.up.left.fill")
@@ -216,14 +189,18 @@ private struct LogcatDevicePickerView: View {
             }
           }
         } label: {
-          HStack(spacing: 12) {
-            Text(store.activeDevice?.displayTitle ?? "Select a device")
-          }
+          Text(store.activeDevice?.displayTitle ?? "Select a device")
         }
         .pickerStyle(.menu)
         .labelsHidden()
       }
     }
+  }
+
+  private func statusIndicator(text: String, color: Color) -> some View {
+    Circle()
+      .fill(color)
+      .frame(width: 8, height: 8)
   }
 }
 

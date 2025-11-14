@@ -648,7 +648,6 @@ private struct LogcatTabContentView: View {
       .buttonStyle(.bordered)
       .controlSize(.small)
       .help("Close this tab")
-      .disabled(store.tabs.count <= 1)
 
       Button {
         tab.clearLogs()
@@ -673,30 +672,30 @@ private struct LogcatTabContentView: View {
 
   private var filtersBar: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Button {
-        withAnimation(.easeInOut) {
-          tab.isFilterCollapsed.toggle()
-          activeFilterID = nil
-        }
-      } label: {
-        HStack(spacing: 8) {
-          if !tab.filterColumns.isEmpty {
+      if !tab.filterColumns.isEmpty {
+        Button {
+          withAnimation(.easeInOut) {
+            tab.isFilterCollapsed.toggle()
+            activeFilterID = nil
+          }
+        } label: {
+          HStack(spacing: 8) {
             Label(
               tab.isFilterCollapsed ? "Expand" : "Collapse",
               systemImage: tab.isFilterCollapsed ? "chevron.up" : "chevron.down"
             )
             .labelStyle(.iconOnly)
             .frame(width: 20, height: 20)
+            Text("Filters")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Spacer()
           }
-          Text("Filters")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          Spacer()
         }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .help(tab.isFilterCollapsed ? "Expand filters" : "Collapse filters")
       }
-      .buttonStyle(.borderless)
-      .controlSize(.small)
-      .help(tab.isFilterCollapsed ? "Expand filters" : "Collapse filters")
 
       if tab.filterColumns.isEmpty {
         HStack(spacing: 12) {
