@@ -1142,10 +1142,44 @@ private struct QuickFilterTile: View {
   @Binding var text: String
 
   var body: some View {
-    TextField("Quick filter (regex or text)", text: $text)
-      .textFieldStyle(.roundedBorder)
-      .frame(minWidth: 200)
-      .disableAutocorrection(true)
+    QuickFilterSearchField(text: $text)
+      .frame(minWidth: 250)
+  }
+}
+
+private struct QuickFilterSearchField: NSViewRepresentable {
+  @Binding var text: String
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(text: $text)
+  }
+
+  func makeNSView(context: Context) -> NSSearchField {
+    let searchField = NSSearchField(string: text)
+    searchField.placeholderString = "Quick filter (regex or text)"
+    searchField.sendsSearchStringImmediately = true
+    searchField.sendsWholeSearchString = true
+    searchField.delegate = context.coordinator
+    return searchField
+  }
+
+  func updateNSView(_ nsView: NSSearchField, context: Context) {
+    if nsView.stringValue != text {
+      nsView.stringValue = text
+    }
+  }
+
+  final class Coordinator: NSObject, NSSearchFieldDelegate {
+    var text: Binding<String>
+
+    init(text: Binding<String>) {
+      self.text = text
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSSearchField else { return }
+      text.wrappedValue = field.stringValue
+    }
   }
 }
 
