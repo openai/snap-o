@@ -7,13 +7,11 @@ struct SnapOCommands: Commands {
   private var openWindow
   @FocusedObject var captureController: CaptureWindowController?
 
-  @ObservedObject var settings: AppSettings
   private let adbService: ADBService
 
   private let updaterController: SPUStandardUpdaterController
 
-  init(settings: AppSettings, adbService: ADBService) {
-    self.settings = settings
+  init(adbService: ADBService) {
     self.adbService = adbService
     // Initialize Sparkle updater controller; starts checks automatically
     updaterController = SPUStandardUpdaterController(
@@ -118,6 +116,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut("]")
       .disabled(!hasAlternativeMedia)
       Divider()
+      @Bindable var settings = AppSettings.shared
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }

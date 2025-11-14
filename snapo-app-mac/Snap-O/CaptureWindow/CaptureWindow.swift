@@ -5,7 +5,6 @@ struct CaptureWindow: View {
   private var openWindow
 
   @StateObject private var controller = CaptureWindowController()
-  @StateObject private var settings = AppSettings.shared
   @State private var hasRestoredNetworkInspector = false
 
   var body: some View {
@@ -34,7 +33,7 @@ struct CaptureWindow: View {
     .onAppear {
       guard !hasRestoredNetworkInspector else { return }
       hasRestoredNetworkInspector = true
-      if settings.shouldReopenNetworkInspector {
+      if AppSettings.shared.shouldReopenNetworkInspector {
         openWindow(id: NetworkInspectorWindowID.main)
       }
     }
@@ -52,7 +51,7 @@ struct CaptureWindow: View {
       .frame(width: 0, height: 0)
     )
     .toolbar {
-      CaptureToolbar(controller: controller, settings: settings)
+      CaptureToolbar(controller: controller)
 
       if let progress = controller.captureProgressText {
         ToolbarItem(placement: .status) {

@@ -6,15 +6,12 @@ struct SnapOApp: App {
   var appDelegate
 
   private let services: AppServices
-  private let settings: AppSettings
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
 
     let services = AppServices.shared
     self.services = services
-
-    settings = AppSettings.shared
 
     Task.detached(priority: .userInitiated) {
       await services.start()
@@ -29,7 +26,6 @@ struct SnapOApp: App {
     .windowToolbarStyle(.unified)
     .commands {
       SnapOCommands(
-        settings: settings,
         adbService: services.adbService
       )
     }
@@ -48,7 +44,6 @@ struct SnapOApp: App {
 
 private struct NetworkInspectorWindowRoot: View {
   @StateObject private var store: NetworkInspectorStore
-  @ObservedObject private var settings = AppSettings.shared
 
   init(services: AppServices) {
     _store = StateObject(wrappedValue: NetworkInspectorStore(service: NetworkInspectorService(
@@ -60,11 +55,11 @@ private struct NetworkInspectorWindowRoot: View {
   var body: some View {
     NetworkInspectorView(store: store)
       .onAppear {
-        settings.shouldReopenNetworkInspector = true
+        AppSettings.shared.shouldReopenNetworkInspector = true
       }
       .onDisappear {
-        guard settings.isAppTerminating != true else { return }
-        settings.shouldReopenNetworkInspector = false
+        guard AppSettings.shared.isAppTerminating != true else { return }
+        AppSettings.shared.shouldReopenNetworkInspector = false
       }
   }
 }

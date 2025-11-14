@@ -2,7 +2,6 @@ import SwiftUI
 
 struct CaptureToolbar: ToolbarContent {
   @ObservedObject var controller: CaptureWindowController
-  @ObservedObject var settings: AppSettings
 
   var body: some ToolbarContent {
     if controller.isRecording {
@@ -15,7 +14,6 @@ struct CaptureToolbar: ToolbarContent {
       }
     } else {
       IdleToolbarControls(
-        settings: settings,
         screenshot: { Task { await controller.captureScreenshots() } },
         canCaptureNow: controller.canCaptureNow,
         startRecording: { Task { await controller.startRecording() } },
@@ -28,7 +26,7 @@ struct CaptureToolbar: ToolbarContent {
 
   @ViewBuilder
   private func recordingControls() -> some View {
-    let bugReportEnabled = settings.recordAsBugReport
+    let bugReportEnabled = AppSettings.shared.recordAsBugReport
 
     if controller.isProcessing {
       ProgressView()
@@ -74,7 +72,6 @@ struct CaptureToolbar: ToolbarContent {
 }
 
 struct IdleToolbarControls: ToolbarContent {
-  @ObservedObject var settings: AppSettings
   let screenshot: @MainActor () -> Void
   let canCaptureNow: Bool
   let startRecording: @MainActor () -> Void
@@ -93,10 +90,10 @@ struct IdleToolbarControls: ToolbarContent {
       .help("New Screenshot (⌘R)")
       .disabled(!canCaptureNow)
 
-      if settings.recordAsBugReport {
+      if AppSettings.shared.recordAsBugReport {
         Menu {
           Button("Disable Bug Report Mode") {
-            settings.recordAsBugReport = false
+            AppSettings.shared.recordAsBugReport = false
           }
         } label: {
           Label("Record", systemImage: "ant.circle")
