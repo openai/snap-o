@@ -7,6 +7,7 @@ struct SnapOApp: App {
   var appDelegate
 
   private let services: AppServices
+  private let settings = AppSettings.shared
   private let updaterController = SPUStandardUpdaterController(
     startingUpdater: true,
     updaterDelegate: nil,
@@ -28,10 +29,12 @@ struct SnapOApp: App {
     WindowGroup {
       CaptureWindow()
     }
+    .environment(settings)
     .defaultSize(width: 480, height: 480)
     .windowToolbarStyle(.unified)
     .commands {
       SnapOCommands(
+        settings: settings,
         adbService: services.adbService,
         updaterController: updaterController
       )
@@ -40,6 +43,7 @@ struct SnapOApp: App {
     Window("Network Inspector (Alpha)", id: NetworkInspectorWindowID.main) {
       NetworkInspectorWindowRoot(services: services)
     }
+    .environment(settings)
     .defaultSize(width: 960, height: 520)
 
     Window("Logcat Viewer (alpha)", id: LogCatWindowID.main) {
@@ -51,6 +55,8 @@ struct SnapOApp: App {
 
 private struct NetworkInspectorWindowRoot: View {
   @StateObject private var store: NetworkInspectorStore
+  @Environment(AppSettings.self)
+  private var settings
 
   init(services: AppServices) {
     _store = StateObject(wrappedValue: NetworkInspectorStore(service: NetworkInspectorService(
@@ -62,11 +68,11 @@ private struct NetworkInspectorWindowRoot: View {
   var body: some View {
     NetworkInspectorView(store: store)
       .onAppear {
-        AppSettings.shared.shouldReopenNetworkInspector = true
+        settings.shouldReopenNetworkInspector = true
       }
       .onDisappear {
-        guard AppSettings.shared.isAppTerminating != true else { return }
-        AppSettings.shared.shouldReopenNetworkInspector = false
+        guard settings.isAppTerminating != true else { return }
+        settings.shouldReopenNetworkInspector = false
       }
   }
 }

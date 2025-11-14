@@ -7,6 +7,7 @@ struct SnapOCommands: Commands {
   private var openWindow
   @FocusedObject var captureController: CaptureWindowController?
 
+  let settings: AppSettings
   let adbService: ADBService
   let updaterController: SPUStandardUpdaterController
 
@@ -105,7 +106,7 @@ struct SnapOCommands: Commands {
       .keyboardShortcut("]")
       .disabled(!hasAlternativeMedia)
       Divider()
-      @Bindable var settings = AppSettings.shared
+      @Bindable var settings = settings
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }

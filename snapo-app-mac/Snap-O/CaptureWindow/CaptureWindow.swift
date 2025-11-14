@@ -4,6 +4,9 @@ struct CaptureWindow: View {
   @Environment(\.openWindow)
   private var openWindow
 
+  @Environment(AppSettings.self)
+  private var settings
+
   @StateObject private var controller = CaptureWindowController()
 
   var body: some View {
@@ -30,9 +33,9 @@ struct CaptureWindow: View {
     }
     .task { await controller.start() }
     .onAppear {
-      guard !AppSettings.shared.hasRestoredNetworkInspector else { return }
-      AppSettings.shared.hasRestoredNetworkInspector = true
-      if AppSettings.shared.shouldReopenNetworkInspector {
+      guard !settings.hasRestoredNetworkInspector else { return }
+      settings.hasRestoredNetworkInspector = true
+      if settings.shouldReopenNetworkInspector {
         openWindow(id: NetworkInspectorWindowID.main)
       }
     }
