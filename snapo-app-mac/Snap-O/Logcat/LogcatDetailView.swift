@@ -603,6 +603,79 @@ private func normalizedCrashRepoPath(_ path: String) -> String {
   return URL(fileURLWithPath: expanded).standardizedFileURL.path
 }
 
+private struct AdaptiveSideBySideLayout: Layout {
+  func sizeThatFits(
+    proposal: ProposedViewSize,
+    subviews: Subviews,
+    cache: inout ()
+  ) -> CGSize {
+    guard subviews.count == 2 else { return .zero }
+
+    let a = subviews[0].sizeThatFits(.unspecified)
+    let b = subviews[1].sizeThatFits(.unspecified)
+
+    let available = proposal.width ?? .infinity
+
+    // Horizontal fits
+    if a.width + b.width <= available {
+      return CGSize(
+        width: available,
+        height: max(a.height, b.height)
+      )
+    }
+
+    // Vertical layout
+    return CGSize(
+      width: available,
+      height: a.height + b.height
+    )
+  }
+
+  func placeSubviews(
+    in bounds: CGRect,
+    proposal: ProposedViewSize,
+    subviews: Subviews,
+    cache: inout ()
+  ) {
+    guard subviews.count == 2 else { return }
+
+    let aSize = subviews[0].sizeThatFits(.unspecified)
+    let bSize = subviews[1].sizeThatFits(.unspecified)
+
+    let available = bounds.width
+
+    // --- Horizontal layout ---
+    if aSize.width + bSize.width <= available {
+      // Top-left for A (unchanged)
+      subviews[0].place(
+        at: bounds.origin,
+        proposal: ProposedViewSize(width: aSize.width, height: aSize.height)
+      )
+
+      // Bottom-align B
+      let rowHeight = max(aSize.height, bSize.height)
+      let bY = bounds.minY + (rowHeight - bSize.height)
+
+      subviews[1].place(
+        at: CGPoint(x: bounds.maxX - bSize.width, y: bY),
+        proposal: ProposedViewSize(width: bSize.width, height: bSize.height)
+      )
+      return
+    }
+
+    // --- Vertical fallback (unchanged) ---
+    subviews[0].place(
+      at: bounds.origin,
+      proposal: ProposedViewSize(width: available, height: aSize.height)
+    )
+
+    subviews[1].place(
+      at: CGPoint(x: bounds.maxX - bSize.width, y: bounds.minY + aSize.height),
+      proposal: ProposedViewSize(width: bSize.width, height: bSize.height)
+    )
+  }
+}
+
 private struct LogcatTabContentView: View {
   @Bindable var tab: LogcatTab
   @State private var activeFilterID: LogcatFilter.ID?
@@ -611,10 +684,10 @@ private struct LogcatTabContentView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      toolbar
-      Divider()
-      filtersBar
-      Divider()
+      AdaptiveSideBySideLayout {
+        filtersBar
+        toolbar
+      }
       content
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -622,6 +695,14 @@ private struct LogcatTabContentView: View {
 
   private var toolbar: some View {
     HStack(spacing: 12) {
+      Spacer()
+
+      HStack(spacing: 8) {
+        Text("\(tab.renderedEntries.count) entries")
+      }
+      .font(.caption2)
+      .foregroundStyle(.secondary)
+
       Toggle(isOn: Binding(
         get: { tab.isSoftWrapEnabled },
         set: { tab.isSoftWrapEnabled = $0 }
@@ -645,19 +726,11 @@ private struct LogcatTabContentView: View {
       Button {
         tab.clearLogs()
       } label: {
-        Image(systemName: "arrow.counterclockwise")
+        Image(systemName: "trash")
       }
       .buttonStyle(.bordered)
       .controlSize(.small)
       .help("Clear all logs in this tab")
-
-      Spacer()
-
-      HStack(spacing: 8) {
-        Text("\(tab.renderedEntries.count) entries")
-      }
-      .font(.caption2)
-      .foregroundStyle(.secondary)
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
