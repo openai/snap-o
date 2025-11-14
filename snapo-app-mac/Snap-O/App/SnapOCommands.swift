@@ -5,7 +5,7 @@ import SwiftUI
 struct SnapOCommands: Commands {
   @Environment(\.openWindow)
   private var openWindow
-  @FocusedObject var captureController: CaptureWindowController?
+  @FocusedValue(\.captureController) var captureController: CaptureWindowController?
 
   let settings: AppSettings
   let adbService: ADBService

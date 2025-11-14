@@ -1,29 +1,29 @@
 import AppKit
-import Combine
 import Foundation
+import Observation
 import SwiftUI
 
+@Observable
 @MainActor
-final class CaptureWindowController: ObservableObject {
-  private let captureService: CaptureService
-  private let deviceTracker: DeviceTracker
-  private let adbService: ADBService
+final class CaptureWindowController {
+  @ObservationIgnored private let captureService: CaptureService
+  @ObservationIgnored private let deviceTracker: DeviceTracker
+  @ObservationIgnored private let adbService: ADBService
   let fileStore: FileStore
 
   let snapshotController = CaptureSnapshotController()
   let mediaDisplayMode: MediaDisplayMode
 
-  @Published private(set) var isDeviceListInitialized: Bool = false
-  @Published private(set) var isProcessing: Bool = false
-  @Published private(set) var lastError: String?
-  @Published private(set) var mode: CaptureWindowMode
+  private(set) var isDeviceListInitialized: Bool = false
+  private(set) var isProcessing: Bool = false
+  private(set) var lastError: String?
+  private(set) var mode: CaptureWindowMode
 
   private var knownDevices: [Device] = []
-  private var deviceStreamTask: Task<Void, Never>?
+  @ObservationIgnored private var deviceStreamTask: Task<Void, Never>?
   private var pendingPreferredDeviceID: String?
-  private var isPreloadConsumptionActive = false
-  private var hasAttemptedInitialPreload = false
-  private var snapshotCancellable: AnyCancellable?
+  @ObservationIgnored private var isPreloadConsumptionActive = false
+  @ObservationIgnored private var hasAttemptedInitialPreload = false
 
   init(
     captureService: CaptureService,
@@ -37,8 +37,6 @@ final class CaptureWindowController: ObservableObject {
     self.adbService = adbService
     self.mediaDisplayMode = MediaDisplayMode(snapshotController: snapshotController)
     self.mode = .idle
-    snapshotCancellable = snapshotController.objectWillChange
-      .sink { [weak self] _ in self?.objectWillChange.send() }
   }
 
   func start() async {

@@ -1,4 +1,16 @@
+import Observation
 import SwiftUI
+
+private struct CaptureControllerKey: FocusedValueKey {
+  typealias Value = CaptureWindowController
+}
+
+extension FocusedValues {
+  var captureController: CaptureWindowController? {
+    get { self[CaptureControllerKey.self] }
+    set { self[CaptureControllerKey.self] = newValue }
+  }
+}
 
 struct CaptureWindow: View {
   @Environment(\.openWindow)
@@ -7,7 +19,7 @@ struct CaptureWindow: View {
   @Environment(AppSettings.self)
   private var settings
 
-  @StateObject private var controller: CaptureWindowController
+  @State private var controller: CaptureWindowController
 
   init(
     captureService: CaptureService,
@@ -15,8 +27,8 @@ struct CaptureWindow: View {
     fileStore: FileStore,
     adbService: ADBService
   ) {
-    _controller = StateObject(
-      wrappedValue: CaptureWindowController(
+    _controller = State(
+      initialValue: CaptureWindowController(
         captureService: captureService,
         deviceTracker: deviceTracker,
         fileStore: fileStore,
@@ -26,6 +38,7 @@ struct CaptureWindow: View {
   }
 
   var body: some View {
+    @Bindable var controller = controller
     ZStack {
       Color.black.ignoresSafeArea()
 
@@ -57,7 +70,7 @@ struct CaptureWindow: View {
       }
     }
     .onDisappear { controller.tearDown() }
-    .focusedSceneObject(controller)
+    .focusedSceneValue(\.captureController, controller)
     .navigationTitle(controller.navigationTitle)
     .background(
       WindowSizingController(displayInfo: controller.displayInfoForSizing)

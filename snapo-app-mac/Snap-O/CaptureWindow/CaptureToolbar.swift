@@ -1,7 +1,8 @@
+import Observation
 import SwiftUI
 
 struct CaptureToolbar: ToolbarContent {
-  @ObservedObject var controller: CaptureWindowController
+  @Bindable var controller: CaptureWindowController
   @Environment(AppSettings.self)
   private var settings
 

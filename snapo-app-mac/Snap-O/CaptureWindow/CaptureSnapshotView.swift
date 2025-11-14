@@ -1,7 +1,8 @@
+import Observation
 import SwiftUI
 
 struct CaptureSnapshotView<Host: LivePreviewHosting>: View {
-  @ObservedObject var controller: CaptureSnapshotController
+  @Bindable var controller: CaptureSnapshotController
   let fileStore: FileStore
   let livePreviewHost: Host
 

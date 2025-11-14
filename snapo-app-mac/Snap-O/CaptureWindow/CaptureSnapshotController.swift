@@ -1,16 +1,18 @@
 import Foundation
+import Observation
 import SwiftUI
 
+@Observable
 @MainActor
-final class CaptureSnapshotController: ObservableObject {
-  @Published private(set) var mediaList: [CaptureMedia] = []
-  @Published private(set) var selectedMediaID: CaptureMedia.ID?
-  @Published private(set) var currentCaptureViewID: UUID?
-  @Published private(set) var shouldShowPreviewHint: Bool = false
-  @Published private(set) var overlayMediaList: [CaptureMedia] = []
+final class CaptureSnapshotController {
+  private(set) var mediaList: [CaptureMedia] = []
+  private(set) var selectedMediaID: CaptureMedia.ID?
+  private(set) var currentCaptureViewID: UUID?
+  private(set) var shouldShowPreviewHint: Bool = false
+  private(set) var overlayMediaList: [CaptureMedia] = []
 
-  private var previewHintTask: Task<Void, Never>?
-  private var isPreviewHintHovered = false
+  @ObservationIgnored private var previewHintTask: Task<Void, Never>?
+  @ObservationIgnored private var isPreviewHintHovered = false
   private var currentCaptureSnapshot: CaptureMedia?
   private var currentCaptureSource: CaptureMedia?
 
