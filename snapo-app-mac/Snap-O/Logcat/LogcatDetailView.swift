@@ -14,10 +14,6 @@ struct LogcatDetailView: View {
       .toolbar {
         if let tab = store.activeTab, !store.isCrashPaneActive {
           ToolbarItemGroup(placement: .primaryAction) {
-            Text("\(tab.renderedEntries.count) entries")
-              .font(.caption2)
-              .foregroundStyle(.secondary)
-
             Button {
               tab.isPaused.toggle()
             } label: {

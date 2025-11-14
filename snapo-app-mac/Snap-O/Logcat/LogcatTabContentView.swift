@@ -22,6 +22,10 @@ struct LogcatTabContentView: View {
     HStack(spacing: 20) {
       Spacer()
 
+      Text("\(tab.renderedEntries.count) entries")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+
       Button {
         tab.isPinnedToBottom = true
       } label: {
