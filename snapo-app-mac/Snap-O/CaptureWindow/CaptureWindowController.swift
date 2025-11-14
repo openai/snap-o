@@ -23,7 +23,6 @@ final class CaptureWindowController: ObservableObject {
 
   private var knownDevices: [Device] = []
   private var deviceStreamTask: Task<Void, Never>?
-  private var livePreviewManager: LivePreviewManager?
   private var pendingPreferredDeviceID: String?
   private var isPreloadConsumptionActive = false
   private var hasAttemptedInitialPreload = false
@@ -196,25 +195,43 @@ final class CaptureWindowController: ObservableObject {
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices.first?.id
     pendingPreferredDeviceID = preferredDeviceID
 
-    let manager = LivePreviewManager(
+    let livePreviewMode = LivePreviewMode(
       captureService: captureService,
-      adbService: adbService
-    ) { [weak self] media in
-      guard let self else { return }
-      handleLivePreviewMediaUpdate(media)
-    }
-    livePreviewManager?.stop()
-    livePreviewManager = manager
+      adbService: adbService,
+      mediaDisplayMode: mediaDisplayMode,
+      preferredDeviceIDProvider: { [weak self] in
+        guard let self else { return nil }
+        if let pending = self.pendingPreferredDeviceID {
+          return pending
+        }
+        if let currentID = self.selectedMediaID,
+           let current = self.mediaList.first(where: { $0.id == currentID }) {
+          return current.device.id
+        }
+        return nil
+      },
+      onMediaApplied: { [weak self] in
+        guard let self else { return }
+        self.isProcessing = false
+        self.pendingPreferredDeviceID = nil
+      },
+      errorHandler: { [weak self] error in
+        self?.lastError = error.localizedDescription
+      }
+    )
+    mode = .livePreview(livePreviewMode)
     isLivePreviewActive = true
-    await manager.start(with: knownDevices)
+    await livePreviewMode.start(with: knownDevices)
+    isProcessing = false
   }
 
   func stopLivePreview() async {
     guard isLivePreviewActive, !isStoppingLivePreview else { return }
     isStoppingLivePreview = true
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
-    livePreviewManager?.stop()
-    livePreviewManager = nil
+    if case .livePreview(let livePreviewMode) = mode {
+      livePreviewMode.stop()
+    }
     isLivePreviewActive = false
     pendingPreferredDeviceID = preferredDeviceID
     if let preferredDeviceID { mediaDisplayMode.updateLastViewedDeviceID(preferredDeviceID) }
@@ -222,9 +239,11 @@ final class CaptureWindowController: ObservableObject {
     if !hasDevices {
       isProcessing = false
       pendingPreferredDeviceID = nil
+      mode = .idle
       return
     }
     if isProcessing { isProcessing = false }
+    mode = .idle
     await captureScreenshots()
   }
 
@@ -232,8 +251,9 @@ final class CaptureWindowController: ObservableObject {
     deviceStreamTask?.cancel()
     deviceStreamTask = nil
 
-    livePreviewManager?.stop()
-    livePreviewManager = nil
+    if case .livePreview(let livePreviewMode) = mode {
+      livePreviewMode.stop()
+    }
     isLivePreviewActive = false
     isStoppingLivePreview = false
     pendingPreferredDeviceID = nil
@@ -344,7 +364,10 @@ final class CaptureWindowController: ObservableObject {
       startPreloadConsumptionIfNeeded()
     }
     Task { @MainActor [weak self] in
-      await self?.livePreviewManager?.updateDevices(devices)
+      guard let self else { return }
+      if case .livePreview(let livePreviewMode) = self.mode {
+        await livePreviewMode.updateDevices(devices)
+      }
     }
   }
 
@@ -373,30 +396,10 @@ final class CaptureWindowController: ObservableObject {
     preloadMode.start()
   }
 
-  private func handleLivePreviewMediaUpdate(_ media: [CaptureMedia]) {
-    let preferredDeviceID: String? = if let pendingPreferredDeviceID {
-      pendingPreferredDeviceID
-    } else if let currentID = selectedMediaID,
-              let current = mediaList.first(where: { $0.id == currentID }) {
-      current.device.id
-    } else {
-      nil
-    }
-
-    mediaDisplayMode.updateMediaList(
-      media,
-      preserveDeviceID: preferredDeviceID,
-      shouldSort: false
-    )
-
-    isProcessing = false
-    pendingPreferredDeviceID = nil
-  }
-
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
-    guard let livePreviewManager else { return nil }
+    guard case .livePreview(let livePreviewMode) = mode else { return nil }
     do {
-      return try await livePreviewManager.makeRenderer(for: deviceID)
+      return try await livePreviewMode.makeRenderer(for: deviceID)
     } catch {
       lastError = error.localizedDescription
       return nil
@@ -404,8 +407,8 @@ final class CaptureWindowController: ObservableObject {
   }
 
   func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async {
-    if let livePreviewManager {
-      await livePreviewManager.stopRenderer(renderer)
+    if case .livePreview(let livePreviewMode) = mode {
+      await livePreviewMode.stopRenderer(renderer)
     } else {
       renderer.session.cancel()
       _ = await renderer.session.waitUntilStop()
