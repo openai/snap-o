@@ -1,3 +1,4 @@
+import AppKit
 import Observation
 import SwiftUI
 
@@ -21,6 +22,15 @@ struct LogcatNavigationSideBar: View {
   }
 
   var body: some View {
+    VStack(spacing: 0) {
+      sidebarList
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      bottomBar
+    }
+    .navigationTitle("Logcat")
+  }
+
+  private var sidebarList: some View {
     List(selection: selection) {
       LogcatDevicePickerView()
         .listRowSeparator(.hidden)
@@ -38,34 +48,38 @@ struct LogcatNavigationSideBar: View {
           LogcatTabRow(tab: tab, isSelected: selection.wrappedValue == .tab(tab.id))
             .tag(LogcatSidebarSelection.tab(tab.id))
         }
-
-        Button {
-          store.addTab()
-        } label: {
-          Text("+ New tab")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-        }
-        .buttonStyle(.plain)
-        .help("Add a new Logcat tab")
       }
       .textCase(nil)
     }
     .listStyle(.sidebar)
-    .navigationTitle("Logcat")
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Button {
-          store.addTab()
-        } label: {
-          Label("New Tab", systemImage: "plus")
-        }
-        .help("Add a new Logcat tab")
+  }
+
+  private var bottomBar: some View {
+    let canRemoveTab = store.activeTab != nil && !store.isCrashPaneActive
+
+    return HStack {
+      Button {
+        store.addTab()
+      } label: {
+        Image(systemName: "plus")
       }
+      .help("Add a new Logcat tab")
+
+      Spacer()
+
+      Button(role: .destructive) {
+        if let tab = store.activeTab {
+          store.removeTab(tab)
+        }
+      } label: {
+        Image(systemName: "trash")
+      }
+      .disabled(!canRemoveTab)
+      .help("Delete the selected tab")
     }
+    .buttonStyle(.borderless)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 6)
   }
 }
 

@@ -11,6 +11,18 @@ struct LogcatDetailView: View {
     content
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .navigationTitle(store.isCrashPaneActive ? "Crashes" : (store.activeTab?.title ?? "Logcat"))
+      .toolbar {
+        if let tab = store.activeTab, !store.isCrashPaneActive {
+          ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+              tab.isPaused.toggle()
+            } label: {
+              Label(tab.isPaused ? "Resume" : "Pause", systemImage: tab.isPaused ? "play.fill" : "pause.fill")
+            }
+            .help(tab.isPaused ? "Resume streaming logs into this tab" : "Pause log streaming for this tab")
+          }
+        }
+      }
   }
 
   @ViewBuilder private var content: some View {
@@ -610,15 +622,6 @@ private struct LogcatTabContentView: View {
 
   private var toolbar: some View {
     HStack(spacing: 12) {
-      Button {
-        tab.isPaused.toggle()
-      } label: {
-        Label(tab.isPaused ? "Resume" : "Pause", systemImage: tab.isPaused ? "play.fill" : "pause.fill")
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-      .help(tab.isPaused ? "Resume streaming logs into this tab" : "Pause log streaming for this tab")
-
       Toggle(isOn: Binding(
         get: { tab.isSoftWrapEnabled },
         set: { tab.isSoftWrapEnabled = $0 }
@@ -638,16 +641,6 @@ private struct LogcatTabContentView: View {
       .toggleStyle(.button)
       .controlSize(.small)
       .help("Automatically scroll to the latest log entries")
-
-      Button {
-        activeFilterID = nil
-        store.removeTab(tab)
-      } label: {
-        Image(systemName: "trash")
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-      .help("Close this tab")
 
       Button {
         tab.clearLogs()
