@@ -46,7 +46,7 @@ private struct CapturePreviewThumbnail: View {
   var dragItemProvider: () -> NSItemProvider
 
   private let height: CGFloat = 80
-  @StateObject private var imageLoader = ImageLoader()
+  @State private var imageLoader = ImageLoader()
   @State private var isHovered = false
 
   var body: some View {
