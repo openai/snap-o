@@ -209,21 +209,14 @@ private struct LogcatSidebarActionsView: View {
   private var store: LogcatStore
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Status")
-        .font(.caption)
-        .foregroundColor(.secondary)
-      HStack {
-        if store.streamingState == .noDevice {
-          statusIndicator(text: "No Device", color: .red)
-        } else if store.streamingState == .paused {
-          statusIndicator(text: "Paused", color: .secondary)
-        } else if store.streamingState == .streaming {
-          statusIndicator(text: "Streaming", color: .green)
-        } else {
-          statusIndicator(text: "Unknown", color: .purple)
-        }
-      }
+    if store.streamingState == .noDevice {
+      statusIndicator(text: "No Device", color: .red)
+    } else if store.streamingState == .paused {
+      statusIndicator(text: "Paused", color: .secondary)
+    } else if store.streamingState == .streaming {
+      statusIndicator(text: "Streaming", color: .green)
+    } else {
+      statusIndicator(text: "Unknown", color: .purple)
     }
   }
 
@@ -236,5 +229,6 @@ private struct LogcatSidebarActionsView: View {
         .font(.footnote)
         .foregroundColor(.secondary)
     }
+    .padding(.horizontal, 6)
   }
 }
