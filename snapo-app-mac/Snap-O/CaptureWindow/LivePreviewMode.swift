@@ -11,6 +11,7 @@ final class LivePreviewMode {
   private let onMediaApplied: @MainActor () -> Void
   private let errorHandler: @MainActor (Error) -> Void
   private var manager: LivePreviewManager?
+  private(set) var isStopping: Bool = false
 
   init(
     captureService: CaptureService,
@@ -68,6 +69,7 @@ final class LivePreviewMode {
   }
 
   func stop() {
+    isStopping = true
     manager?.stop()
     manager = nil
   }

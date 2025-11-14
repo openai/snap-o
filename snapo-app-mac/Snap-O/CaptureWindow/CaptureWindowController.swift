@@ -15,9 +15,6 @@ final class CaptureWindowController: ObservableObject {
 
   @Published private(set) var isDeviceListInitialized: Bool = false
   @Published private(set) var isProcessing: Bool = false
-  @Published private(set) var isRecording: Bool = false
-  @Published private(set) var isLivePreviewActive: Bool = false
-  @Published private(set) var isStoppingLivePreview: Bool = false
   @Published private(set) var lastError: String?
   @Published private(set) var mode: CaptureWindowMode
 
@@ -81,6 +78,23 @@ final class CaptureWindowController: ObservableObject {
   }
 
   var hasDevices: Bool { !knownDevices.isEmpty }
+
+  var isRecording: Bool {
+    if case .recording = mode { return true }
+    return false
+  }
+
+  var isLivePreviewActive: Bool {
+    if case .livePreview = mode { return true }
+    return false
+  }
+
+  var isStoppingLivePreview: Bool {
+    if case .livePreview(let livePreviewMode) = mode {
+      return livePreviewMode.isStopping
+    }
+    return false
+  }
 
   var canCaptureNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
   var canStartRecordingNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
@@ -151,7 +165,6 @@ final class CaptureWindowController: ObservableObject {
       devices: devices
     ) { [weak self] result in
       guard let self else { return }
-      self.isRecording = false
       self.isProcessing = false
       switch result {
       case .failed(let error):
@@ -167,7 +180,6 @@ final class CaptureWindowController: ObservableObject {
       }
     }
     mode = .recording(recordingMode)
-    isRecording = true
     recordingMode.start()
     isProcessing = false
   }
@@ -177,7 +189,6 @@ final class CaptureWindowController: ObservableObject {
     guard case .recording(let recordingMode) = mode else { return }
     let devices = knownDevices
     guard !devices.isEmpty else {
-      isRecording = false
       mode = .idle
       return
     }
@@ -220,22 +231,17 @@ final class CaptureWindowController: ObservableObject {
       }
     )
     mode = .livePreview(livePreviewMode)
-    isLivePreviewActive = true
     await livePreviewMode.start(with: knownDevices)
     isProcessing = false
   }
 
   func stopLivePreview() async {
-    guard isLivePreviewActive, !isStoppingLivePreview else { return }
-    isStoppingLivePreview = true
+    guard case .livePreview(let livePreviewMode) = mode else { return }
+    guard !livePreviewMode.isStopping else { return }
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
-    if case .livePreview(let livePreviewMode) = mode {
-      livePreviewMode.stop()
-    }
-    isLivePreviewActive = false
+    livePreviewMode.stop()
     pendingPreferredDeviceID = preferredDeviceID
     if let preferredDeviceID { mediaDisplayMode.updateLastViewedDeviceID(preferredDeviceID) }
-    isStoppingLivePreview = false
     if !hasDevices {
       isProcessing = false
       pendingPreferredDeviceID = nil
@@ -254,8 +260,6 @@ final class CaptureWindowController: ObservableObject {
     if case .livePreview(let livePreviewMode) = mode {
       livePreviewMode.stop()
     }
-    isLivePreviewActive = false
-    isStoppingLivePreview = false
     pendingPreferredDeviceID = nil
     if case .preparingScreenshot(let screenshotMode) = mode {
       screenshotMode.cancel()
