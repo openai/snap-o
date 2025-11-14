@@ -14,6 +14,10 @@ struct LogcatDetailView: View {
       .toolbar {
         if let tab = store.activeTab, !store.isCrashPaneActive {
           ToolbarItemGroup(placement: .primaryAction) {
+            Text("\(tab.renderedEntries.count) entries")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+
             Button {
               tab.isPaused.toggle()
             } label: {
@@ -694,42 +698,33 @@ private struct LogcatTabContentView: View {
   }
 
   private var toolbar: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: 20) {
       Spacer()
 
-      HStack(spacing: 8) {
-        Text("\(tab.renderedEntries.count) entries")
+      Button {
+        tab.isPinnedToBottom = true
+      } label: {
+        Image(systemName: "arrow.down.to.line")
       }
-      .font(.caption2)
-      .foregroundStyle(.secondary)
+      .buttonStyle(.borderless)
+      .help("Jump to bottom")
 
       Toggle(isOn: Binding(
         get: { tab.isSoftWrapEnabled },
         set: { tab.isSoftWrapEnabled = $0 }
       )) {
-        Label("Soft Wrap", systemImage: "text.alignleft")
+        Image(systemName: "return")
       }
       .toggleStyle(.button)
-      .controlSize(.small)
+      .buttonStyle(.borderless)
       .help("Toggle soft wrapping for the message column")
-
-      Toggle(isOn: Binding(
-        get: { tab.isPinnedToBottom },
-        set: { tab.isPinnedToBottom = $0 }
-      )) {
-        Label("Pin to Bottom", systemImage: tab.isPinnedToBottom ? "pin.fill" : "pin")
-      }
-      .toggleStyle(.button)
-      .controlSize(.small)
-      .help("Automatically scroll to the latest log entries")
 
       Button {
         tab.clearLogs()
       } label: {
         Image(systemName: "trash")
       }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
+      .buttonStyle(.borderless)
       .help("Clear all logs in this tab")
     }
     .padding(.horizontal, 12)
