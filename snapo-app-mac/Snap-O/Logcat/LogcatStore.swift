@@ -264,13 +264,13 @@ final class LogcatStore {
 
   /// Removes the provided tab, reassigning the active tab when necessary.
   func removeTab(_ tab: LogcatTab) {
-    guard tabs.count > 1 else { return }
     guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
     let removingActive = tab.id == activeTabID
     tabs.remove(at: index)
 
     if tabs.isEmpty {
       activeTabID = nil
+      createTab(activate: true)
       return
     }
 

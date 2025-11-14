@@ -648,7 +648,6 @@ private struct LogcatTabContentView: View {
       .buttonStyle(.bordered)
       .controlSize(.small)
       .help("Close this tab")
-      .disabled(store.tabs.count <= 1)
 
       Button {
         tab.clearLogs()

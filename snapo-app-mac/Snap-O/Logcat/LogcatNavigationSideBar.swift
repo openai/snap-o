@@ -124,7 +124,6 @@ private struct LogcatTabRow: View {
       } label: {
         Label("Delete", systemImage: "trash")
       }
-      .disabled(store.tabs.count <= 1)
     }
     .onChange(of: isTitleFieldFocused) {
       if !isTitleFieldFocused, isEditing {
