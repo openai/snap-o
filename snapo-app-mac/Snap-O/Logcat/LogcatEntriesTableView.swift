@@ -19,6 +19,7 @@ struct LogcatEntriesTableView: NSViewRepresentable {
     scrollView.drawsBackground = false
 
     let tableView = LogcatTableView()
+    tableView.style = .fullWidth
     tableView.headerView = NSTableHeaderView()
     tableView.gridStyleMask = []
     tableView.selectionHighlightStyle = .none
@@ -660,13 +661,13 @@ private extension LogcatEntriesTableView {
     var font: NSFont {
       switch self {
       case .timestamp:
-        NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
       case .pid, .tid:
         NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
       case .level:
         NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
       case .tag:
-        NSFont.systemFont(ofSize: 12, weight: .medium)
+        NSFont.systemFont(ofSize: 11, weight: .medium)
       case .message:
         Self.messageFont
       }
