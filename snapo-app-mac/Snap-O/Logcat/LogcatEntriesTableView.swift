@@ -4,7 +4,7 @@ import SwiftUI
 @MainActor
 struct LogcatEntriesTableView: NSViewRepresentable {
   let tab: LogcatTab
-  var onScrollInteraction: () -> Void
+  var onScrollInteraction: (ScrollInteraction) -> Void
   var onCreateFilter: (LogcatFilterAction, LogcatFilterField, String) -> Void
 
   func makeCoordinator() -> Coordinator {
@@ -52,6 +52,11 @@ struct LogcatEntriesTableView: NSViewRepresentable {
 // MARK: - Coordinator
 
 extension LogcatEntriesTableView {
+  enum ScrollInteraction {
+    case pinToBottom
+    case unpinFromBottom
+  }
+
   @MainActor
   final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     fileprivate weak var tableView: LogcatTableView?
@@ -61,7 +66,7 @@ extension LogcatEntriesTableView {
     private var isSoftWrapEnabled = false
     private var isPinnedToBottom = true
     private var isProgrammaticScroll = false
-    private var onScrollInteraction: (() -> Void)?
+    private var onScrollInteraction: ((ScrollInteraction) -> Void)?
     private var hiddenColumns: Set<Column> = []
     var onCreateFilter: ((LogcatFilterAction, LogcatFilterField, String) -> Void)?
 
@@ -110,7 +115,7 @@ extension LogcatEntriesTableView {
       renderedEntries: [LogcatRenderedEntry],
       softWrap: Bool,
       pinnedToBottom: Bool,
-      onScrollInteraction: @escaping () -> Void
+      onScrollInteraction: @escaping (ScrollInteraction) -> Void
     ) {
       guard let tableView else { return }
 
@@ -544,17 +549,20 @@ extension LogcatEntriesTableView {
 
     private func handleScrollInteraction() {
       guard !isProgrammaticScroll,
-            isPinnedToBottom,
             renderedEntries.isEmpty == false else {
         return
       }
 
-      guard !isViewAtBottom() else {
-        return
+      let atBottom = isViewAtBottom()
+      if isPinnedToBottom {
+        guard !atBottom else { return }
+        isPinnedToBottom = false
+        onScrollInteraction?(.unpinFromBottom)
+      } else {
+        guard atBottom else { return }
+        isPinnedToBottom = true
+        onScrollInteraction?(.pinToBottom)
       }
-
-      isPinnedToBottom = false
-      onScrollInteraction?()
     }
 
     @objc
