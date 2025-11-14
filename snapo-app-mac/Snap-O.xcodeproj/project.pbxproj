@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		327F47032EC76E050029F68A /* DequeModule in Frameworks */ = {isa = PBXBuildFile; productRef = 327F47022EC76E050029F68A /* DequeModule */; };
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
 /* End PBXBuildFile section */
@@ -46,6 +47,7 @@
 			files = (
 				32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */,
 				32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */,
+				327F47032EC76E050029F68A /* DequeModule in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -108,6 +110,7 @@
 			name = "Snap-O";
 			packageProductDependencies = (
 				32C837092E6A5AD10003BDFA /* Sparkle */,
+				327F47022EC76E050029F68A /* DequeModule */,
 			);
 			productName = "Snap-O";
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
@@ -139,6 +142,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */,
+				327F47012EC76E050029F68A /* XCRemoteSwiftPackageReference "swift-collections" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3234F4522E2EC5030057AE77 /* Products */;
@@ -380,6 +384,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		327F47012EC76E050029F68A /* XCRemoteSwiftPackageReference "swift-collections" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-collections.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
 		32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -391,6 +403,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		327F47022EC76E050029F68A /* DequeModule */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 327F47012EC76E050029F68A /* XCRemoteSwiftPackageReference "swift-collections" */;
+			productName = DequeModule;
+		};
 		32C837092E6A5AD10003BDFA /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */;
