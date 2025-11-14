@@ -22,7 +22,6 @@ final class CaptureWindowController: ObservableObject {
   @Published private(set) var mode: CaptureWindowMode
 
   private var knownDevices: [Device] = []
-  private var recordingSessions: [String: RecordingSession] = [:]
   private var deviceStreamTask: Task<Void, Never>?
   private var livePreviewManager: LivePreviewManager?
   private var pendingPreferredDeviceID: String?
@@ -148,48 +147,46 @@ final class CaptureWindowController: ObservableObject {
       preserveDeviceID: nil,
       shouldSort: false
     )
-
-    let (sessions, encounteredError) = await captureService.startRecordings(for: devices)
-
-    if let error = encounteredError {
-      lastError = error.localizedDescription
-      isProcessing = false
-      return
+    let recordingMode = RecordingMode(
+      captureService: captureService,
+      devices: devices
+    ) { [weak self] result in
+      guard let self else { return }
+      self.isRecording = false
+      self.isProcessing = false
+      switch result {
+      case .failed(let error):
+        self.lastError = error.localizedDescription
+        self.mode = .idle
+      case .completed(let media, let error):
+        if error == nil, media.isEmpty {
+          self.mode = .idle
+          Task { await self.captureScreenshots() }
+        } else {
+          self.applyCaptureResults(newMedia: media, encounteredError: error)
+        }
+      }
     }
-
-    recordingSessions = sessions
+    mode = .recording(recordingMode)
     isRecording = true
+    recordingMode.start()
     isProcessing = false
   }
 
   func stopRecording() async {
     guard isRecording else { return }
+    guard case .recording(let recordingMode) = mode else { return }
     let devices = knownDevices
     guard !devices.isEmpty else {
-      recordingSessions.removeAll()
       isRecording = false
+      mode = .idle
       return
     }
 
     isProcessing = true
     lastError = nil
 
-    let (newMedia, encounteredError) = await captureService.stopRecordings(
-      for: devices,
-      sessions: recordingSessions
-    )
-
-    if encounteredError == nil, newMedia.isEmpty {
-      recordingSessions.removeAll()
-      isRecording = false
-      isProcessing = false
-      await captureScreenshots()
-      return
-    }
-
-    applyCaptureResults(newMedia: newMedia, encounteredError: encounteredError)
-    recordingSessions.removeAll()
-    isRecording = false
+    await recordingMode.finish(using: devices)
   }
 
   func startLivePreview() async {
@@ -245,6 +242,9 @@ final class CaptureWindowController: ObservableObject {
     }
     if case .checkingPreload(let preloadMode) = mode {
       preloadMode.cancel()
+    }
+    if case .recording(let recordingMode) = mode {
+      recordingMode.cancel()
     }
     isPreloadConsumptionActive = false
     hasAttemptedInitialPreload = false

@@ -5,6 +5,7 @@ enum CaptureWindowMode {
   case idle
   case checkingPreload(CheckPreloadMode)
   case preparingScreenshot(PreparingScreenshotMode)
+  case recording(RecordingMode)
   case displaying(MediaDisplayMode)
   case error(message: String)
 }
