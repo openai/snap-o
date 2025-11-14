@@ -114,6 +114,7 @@ struct LogcatCrashContentView: View {
     .padding(.bottom, 2)
   }
 
+  @MainActor
   private func showRepoEditor() {
     repoWarning = nil
     let panel = makeRepoPickerPanel()
@@ -135,6 +136,7 @@ struct LogcatCrashContentView: View {
     repoWarning = nil
   }
 
+  @MainActor
   private func makeRepoPickerPanel() -> NSOpenPanel {
     let panel = NSOpenPanel()
     panel.canChooseFiles = false
