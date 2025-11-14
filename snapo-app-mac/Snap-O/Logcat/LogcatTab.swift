@@ -261,7 +261,22 @@ final class LogcatTab: Identifiable {
     }
     pruneColumnNames()
     refreshProcessorConfiguration()
+    maybeAutoNameTabForFilters(previousFiltersEmpty: oldValue.isEmpty)
     notifyConfigurationChange()
+  }
+
+  private var isUsingDefaultTitle: Bool {
+    guard title.hasPrefix("All Logs") else { return false }
+    let suffix = title.dropFirst("All Logs".count)
+    guard !suffix.isEmpty else { return true }
+    guard suffix.first == " " else { return false }
+    let numberPart = suffix.dropFirst()
+    return !numberPart.isEmpty && numberPart.allSatisfy(\.isNumber)
+  }
+
+  private func maybeAutoNameTabForFilters(previousFiltersEmpty: Bool) {
+    guard isUsingDefaultTitle, previousFiltersEmpty, !filterColumns.isEmpty else { return }
+    title = "Filtered Logs"
   }
 
   private func updateFilterObservers(previous: [LogcatFilter]) {
