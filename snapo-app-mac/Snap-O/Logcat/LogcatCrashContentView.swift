@@ -28,9 +28,8 @@ struct LogcatCrashContentView: View {
   }
 
   @ViewBuilder private var crashList: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 0) {
       repoRootControl
-      Divider()
       if store.crashes.isEmpty {
         LogcatPlaceholderView(
           icon: "bolt.slash",
@@ -73,9 +72,9 @@ struct LogcatCrashContentView: View {
   }
 
   private var repoRootControl: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      HStack {
-        Text("RepoRoot (for deep links):")
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .firstTextBaseline) {
+        Text("Root code path (for deep links):")
           .font(.caption)
           .foregroundStyle(.secondary)
         Button {
@@ -96,7 +95,6 @@ struct LogcatCrashContentView: View {
           .padding(16)
           .frame(width: 360)
         }
-        Spacer()
       }
       if let warning = repoWarning {
         Text(warning)
@@ -105,6 +103,7 @@ struct LogcatCrashContentView: View {
       }
     }
     .padding(.horizontal, 10)
+    .padding(.vertical, 8)
   }
 
   private func showRepoEditor() {
