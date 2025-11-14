@@ -33,7 +33,6 @@ struct LogcatNavigationSideBar: View {
       Section("Tools") {
         LogcatCrashesRow()
           .tag(LogcatSidebarSelection.crashes)
-          .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
       }
       .textCase(nil)
 
@@ -41,7 +40,6 @@ struct LogcatNavigationSideBar: View {
         ForEach(store.tabs) { tab in
           LogcatTabRow(tab: tab, isSelected: selection.wrappedValue == .tab(tab.id))
             .tag(LogcatSidebarSelection.tab(tab.id))
-            .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
         }
         Button {
           store.addTab()
@@ -51,9 +49,9 @@ struct LogcatNavigationSideBar: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
+            .padding(.horizontal, 6)
         }
         .buttonStyle(.plain)
-        .listRowInsets(.init(top: 6, leading: 12, bottom: 6, trailing: 12))
         .help("Add a new Logcat tab")
       }
       .textCase(nil)
@@ -80,11 +78,14 @@ private struct LogcatCrashesRow: View {
       .foregroundStyle(.primary)
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.vertical, 6)
+      .padding(.horizontal, 6)
   }
 }
 
 private struct LogcatTabRow: View {
   @Bindable var tab: LogcatTab
+  @Environment(LogcatStore.self)
+  private var store: LogcatStore
   @State private var isEditing = false
   @State private var titleDraft: String = ""
   @FocusState private var isTitleFieldFocused: Bool
@@ -113,6 +114,7 @@ private struct LogcatTabRow: View {
       }
     }
     .padding(.vertical, 6)
+    .padding(.horizontal, 6)
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
 
@@ -124,6 +126,14 @@ private struct LogcatTabRow: View {
       } else {
         content
       }
+    }
+    .contextMenu {
+      Button(role: .destructive) {
+        store.removeTab(tab)
+      } label: {
+        Label("Delete Tab", systemImage: "trash")
+      }
+      .disabled(store.tabs.count <= 1)
     }
     .onChange(of: isTitleFieldFocused) {
       if !isTitleFieldFocused, isEditing {
@@ -163,10 +173,6 @@ private struct LogcatDevicePickerView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Device")
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-
       if store.devices.isEmpty {
         HStack(spacing: 8) {
           Image(systemName: "rectangle.and.hand.point.up.left.fill")
@@ -193,14 +199,18 @@ private struct LogcatDevicePickerView: View {
             }
           }
         } label: {
-          HStack(spacing: 12) {
-            Text(store.activeDevice?.displayTitle ?? "Select a device")
-          }
+          Text(store.activeDevice?.displayTitle ?? "Select a device")
         }
         .pickerStyle(.menu)
         .labelsHidden()
       }
     }
+  }
+
+  private func statusIndicator(text: String, color: Color) -> some View {
+    Circle()
+      .fill(color)
+      .frame(width: 8, height: 8)
   }
 }
 
