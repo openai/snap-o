@@ -203,7 +203,7 @@ actor LogcatService {
         defer { socket.close() }
 
         try socket.sendTransport(to: deviceID)
-        try socket.sendShell("logcat")
+        try socket.sendShell("logcat -T 2000")
 
         await recordConnect(for: deviceID)
         lastErrorReason = nil
