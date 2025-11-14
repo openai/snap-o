@@ -1,11 +1,12 @@
+import DequeModule
 import Foundation
 import OSLog
 
 actor LogcatService {
-  private struct DeviceState {
+  private final class DeviceState: @unchecked Sendable {
     var streamTask: Task<Void, Never>?
     var continuations: [UUID: AsyncStream<LogcatEvent>.Continuation] = [:]
-    var events: [LogcatEvent] = []
+    var events: Deque<LogcatEvent> = []
     var reconnectAttempt: Int = 0
   }
 
@@ -68,18 +69,16 @@ actor LogcatService {
 
   /// Removes any buffered events for the device without stopping an active stream.
   func clearHistory(for deviceID: String) {
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
     state.events.removeAll(keepingCapacity: false)
-    deviceStates[deviceID] = state
   }
 
   /// Cancels the logcat loop for the device and emits terminal status events describing the stop.
   func stopStreaming(for deviceID: String, reason: String? = nil) async {
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
     let wasRunning = state.streamTask != nil
     state.streamTask?.cancel()
     state.streamTask = nil
-    deviceStates[deviceID] = state
 
     if let reason {
       appendEvent(.stream(.disconnected(reason: reason)), to: deviceID)
@@ -136,7 +135,7 @@ actor LogcatService {
     }
 
     ensureDeviceState(for: deviceID)
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
     guard state.streamTask == nil else { return }
 
     logger.debug("Starting logcat stream for \(deviceID, privacy: .public)")
@@ -144,7 +143,6 @@ actor LogcatService {
     state.streamTask = Task.detached(priority: .userInitiated) { [weak self] in
       await self?.runStream(for: deviceID)
     }
-    deviceStates[deviceID] = state
   }
 
   /// Adds a subscriber, replays cached events, wires termination cleanup, and ensures streaming is active.
@@ -154,10 +152,9 @@ actor LogcatService {
     continuation: AsyncStream<LogcatEvent>.Continuation
   ) async {
     ensureDeviceState(for: deviceID)
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
     state.continuations[id] = continuation
     let history = state.events
-    deviceStates[deviceID] = state
 
     continuation.onTermination = { [weak self] _ in
       Task { await self?.removeContinuation(id: id, deviceID: deviceID) }
@@ -172,10 +169,9 @@ actor LogcatService {
 
   /// Drops the subscriber continuation when its stream terminates.
   private func removeContinuation(id: UUID, deviceID: String) async {
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
     state.continuations.removeValue(forKey: id)
     let shouldStop = state.continuations.isEmpty
-    deviceStates[deviceID] = state
 
     if shouldStop {
       await stopStreaming(for: deviceID)
@@ -207,7 +203,7 @@ actor LogcatService {
         defer { socket.close() }
 
         try socket.sendTransport(to: deviceID)
-        try socket.sendShell("logcat -T 1")
+        try socket.sendShell("logcat")
 
         await recordConnect(for: deviceID)
         lastErrorReason = nil
@@ -254,9 +250,8 @@ actor LogcatService {
 
   /// Resets bookkeeping once the detached stream exits.
   private func streamTaskDidFinish(for deviceID: String) async {
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
     state.streamTask = nil
-    deviceStates[deviceID] = state
   }
 
   /// Wraps a parsed log entry as an event and enqueues it for subscribers.
@@ -277,10 +272,9 @@ actor LogcatService {
 
   /// Increments the reconnect attempt counter, emits a status event, and returns the attempt number.
   private func recordReconnectAttempt(for deviceID: String, reason: String?) async -> Int {
-    guard var state = deviceStates[deviceID] else { return 1 }
+    guard let state = deviceStates[deviceID] else { return 1 }
     state.reconnectAttempt += 1
     let attempt = state.reconnectAttempt
-    deviceStates[deviceID] = state
     appendEvent(.stream(.reconnecting(attempt: attempt, reason: reason)), to: deviceID)
     return attempt
   }
@@ -292,14 +286,13 @@ actor LogcatService {
 
   /// Clears the reconnect attempt counter after a successful connection.
   private func resetReconnectAttempt(for deviceID: String) {
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
     state.reconnectAttempt = 0
-    deviceStates[deviceID] = state
   }
 
   /// Appends an event to the device's buffer (trimming to capacity) and broadcasts it to subscribers.
   private func appendEvent(_ event: LogcatEvent, to deviceID: String) {
-    guard var state = deviceStates[deviceID] else { return }
+    guard let state = deviceStates[deviceID] else { return }
 
     state.events.append(event)
     if state.events.count > Self.maxRetainedEvents {
@@ -308,7 +301,6 @@ actor LogcatService {
     }
 
     let continuations = Array(state.continuations.values)
-    deviceStates[deviceID] = state
 
     for continuation in continuations {
       continuation.yield(event)
