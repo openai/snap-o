@@ -753,6 +753,7 @@ private struct LogcatTabContentView: View {
             Spacer()
           }
         }
+        .padding(.top, 8)
         .buttonStyle(.borderless)
         .controlSize(.small)
         .help(tab.isFilterCollapsed ? "Expand filters" : "Collapse filters")
@@ -760,28 +761,32 @@ private struct LogcatTabContentView: View {
 
       if tab.filterColumns.isEmpty {
         HStack(spacing: 12) {
-          FilterAddPlaceholder(title: "Add Filter", orientation: .horizontal) {
+          QuickFilterTile(text: Binding(
+            get: { tab.quickFilterText },
+            set: { tab.quickFilterText = $0 }
+          ))
+
+          Button {
             let newFilter = tab.addFilterColumn()
             newFilter.isEnabled = true
             tab.requestFilterRefresh()
             activeFilterID = newFilter.id
             tab.isFilterCollapsed = false
+          } label: {
+            Label("Add filter", systemImage: "plus")
           }
-          QuickFilterTile(text: Binding(
-            get: { tab.quickFilterText },
-            set: { tab.quickFilterText = $0 }
-          ))
+          .buttonStyle(.borderless)
+          .padding(.vertical, 8)
         }
-        .frame(height: FilterLayout.cardHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
       } else if tab.isFilterCollapsed {
         collapsedFiltersSummary
+          .padding(.bottom, 8)
       } else {
         filtersEditView
+          .padding(.vertical, 8)
       }
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 10)
+    .padding(.horizontal, 8)
   }
 
   private var filtersEditView: some View {
@@ -1137,23 +1142,10 @@ private struct QuickFilterTile: View {
   @Binding var text: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 3) {
-      Text("Quick Filter")
-        .font(.caption.weight(.semibold))
-      Text("Filter In full message")
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-      TextField("Regex or text", text: $text)
-        .textFieldStyle(.roundedBorder)
-        .disableAutocorrection(true)
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 12)
-    .frame(width: FilterLayout.cardWidth, height: FilterLayout.cardHeight, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .fill(Color.secondary.opacity(0.1))
-    )
+    TextField("Quick filter (regex or text)", text: $text)
+      .textFieldStyle(.roundedBorder)
+      .frame(minWidth: 200)
+      .disableAutocorrection(true)
   }
 }
 
