@@ -285,6 +285,7 @@ extension LogcatEntriesTableView {
       let entry = renderedEntry.entry
 
       textField.font = column.font
+      textField.textColor = column.textColor(for: entry)
       textField.alignment = column.alignment
       textField.lineBreakMode = column.lineBreakMode(softWrap: isSoftWrapEnabled)
       textField.maximumNumberOfLines = column.maximumNumberOfLines(softWrap: isSoftWrapEnabled)
@@ -648,7 +649,7 @@ private extension LogcatEntriesTableView {
     var trailingPadding: CGFloat {
       switch self {
       case .message:
-        12
+        0
       default:
         6
       }

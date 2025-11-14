@@ -11,9 +11,16 @@ final class LogcatTab: Identifiable {
   var title: String {
     didSet {
       guard title != oldValue else { return }
+      if !isApplyingAutoFilterTitle {
+        hasAutoFilterName = false
+      }
       notifyConfigurationChange()
     }
   }
+
+  private let defaultTitle: String
+  private var hasAutoFilterName = false
+  private var isApplyingAutoFilterTitle = false
 
   private(set) var hasEntries = false
   private(set) var lastError: String?
@@ -87,6 +94,7 @@ final class LogcatTab: Identifiable {
 
   init(title: String, capacity: Int = 20000) {
     self.title = title
+    defaultTitle = title
     self.capacity = capacity
     let initialConfiguration = LogcatTabProcessor.Configuration(filters: [], quickFilter: nil)
     processor = LogcatTabProcessor(capacity: capacity, initialConfiguration: initialConfiguration)
@@ -262,6 +270,7 @@ final class LogcatTab: Identifiable {
     pruneColumnNames()
     refreshProcessorConfiguration()
     maybeAutoNameTabForFilters(previousFiltersEmpty: oldValue.isEmpty)
+    maybeRestoreDefaultTitleAfterClearingFilters(previousFiltersEmpty: oldValue.isEmpty)
     notifyConfigurationChange()
   }
 
@@ -276,7 +285,18 @@ final class LogcatTab: Identifiable {
 
   private func maybeAutoNameTabForFilters(previousFiltersEmpty: Bool) {
     guard isUsingDefaultTitle, previousFiltersEmpty, !filterColumns.isEmpty else { return }
+    isApplyingAutoFilterTitle = true
     title = "Filtered Logs"
+    hasAutoFilterName = true
+    isApplyingAutoFilterTitle = false
+  }
+
+  private func maybeRestoreDefaultTitleAfterClearingFilters(previousFiltersEmpty: Bool) {
+    guard !previousFiltersEmpty, filterColumns.isEmpty, hasAutoFilterName else { return }
+    isApplyingAutoFilterTitle = true
+    title = defaultTitle
+    hasAutoFilterName = false
+    isApplyingAutoFilterTitle = false
   }
 
   private func updateFilterObservers(previous: [LogcatFilter]) {
