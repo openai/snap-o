@@ -177,9 +177,9 @@ private extension NetworkInspectorView {
           .foregroundStyle(.secondary)
       }
 
-      if let documentationURL = URL(string: "https://openai.github.io/snap-o/link") {
+      if let documentationURL = URL(string: "https://github.com/openai/snap-o/blob/main/docs/network-inspector.md") {
         Link(destination: documentationURL) {
-          Text("Learn about Snap-O Link")
+          Text("Read the developer guide")
         }
         .buttonStyle(.link)
       }
