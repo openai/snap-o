@@ -413,9 +413,7 @@ private struct FilterAddPlaceholder: View {
       action()
     } label: {
       HStack(spacing: 6) {
-        Text(title)
         Image(systemName: "plus")
-        Spacer()
       }
       .font(.caption2)
       .padding(10)
@@ -423,7 +421,7 @@ private struct FilterAddPlaceholder: View {
       .foregroundStyle(.secondary)
       .background(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .stroke(.secondary, style: StrokeStyle(lineWidth: 1, dash: [5]))
+          .stroke(.placeholder, style: StrokeStyle(lineWidth: 1, dash: [5]))
           .padding(1)
       )
       .contentShape(Rectangle())
@@ -624,7 +622,7 @@ private struct CollapsedStageFilterRow: View {
 private struct OrConnector: View {
   var body: some View {
     Text("OR")
-      .font(.caption.weight(.semibold))
+      .font(.caption)
       .foregroundStyle(.secondary)
   }
 }
@@ -632,7 +630,7 @@ private struct OrConnector: View {
 private struct AndConnector: View {
   var body: some View {
     Text("AND")
-      .font(.caption.weight(.semibold))
+      .font(.caption)
       .foregroundStyle(.secondary)
   }
 }
