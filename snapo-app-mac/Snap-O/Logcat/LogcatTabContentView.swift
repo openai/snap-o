@@ -452,6 +452,7 @@ private struct QuickFilterSearchField: NSViewRepresentable {
     searchField.sendsSearchStringImmediately = true
     searchField.sendsWholeSearchString = true
     searchField.delegate = context.coordinator
+    searchField.bezelStyle = .roundedBezel
     return searchField
   }
 
