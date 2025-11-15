@@ -25,7 +25,9 @@ dependencies {
 
 This release dependency lets your code be the same in debug and release builds, but the Snap-O server and interceptors will not run.
 
-## 2. Wire the OkHttp interceptor
+## 2. Using OkHttp directly
+
+See [samples/demo-okhttp](https://github.com/openai/snap-o/blob/b406e928499648a50b8141f0864206c20a5f10c3/snapo-link-android/samples/demo-okhttp/src/main/java/com/openai/snapo/demo/MainActivity.kt#L35).
 
 Attach the interceptor while you build your `OkHttpClient`. Doing this once at client construction covers the whole app:
 
@@ -37,17 +39,65 @@ val client = OkHttpClient.Builder()
 
 The interceptor mirrors each request, response, and failure whenever a Snap-O link is active. In release variants (where the noop artifact is used) this call becomes a pass-through.
 
-## 3. Capture WebSocket activity (optional)
+### Optional: WebSockets
 
 With OkHttp, you can capture WebSocket activity by wrapping your `webSocketFactory` via `.withSnapOInterceptor`.
 
 For example:
 
 ```kotlin
-val client = OkHttpClient.Builder()....build()
-engine {
-    preconfigured = client
-    webSocketFactory = client.withSnapOInterceptor()
+// OkHttpClient implements WebSocket.Factory. Use [WebSocket.Factory.withSnapOInterceptor].
+val webSocketFactory = client.withSnapOInterceptor()
+```
+
+## 3. Using Ktor
+
+See [samples/demo-ktor-okhttp](https://github.com/openai/snap-o/blob/b406e928499648a50b8141f0864206c20a5f10c3/snapo-link-android/samples/demo-ktor-okhttp/src/main/java/com/openai/snapo/demo/ktor/MainActivity.kt#L37).
+
+Attach the interceptor while you build your `OkHttpClient`. Doing this once at client construction covers the whole app:
+
+```kotlin
+HttpClient(OkHttp) {
+    engine {
+        addInterceptor(SnapOOkHttpInterceptor())
+    }
+}
+```
+
+or preconfiguring an OkHttpClient:
+
+```
+val okHttpClient = OkHttpClient.Builder()
+    .addInterceptor(SnapOOkHttpInterceptor())
+    .build()
+
+HttpClient(OkHttp) {
+    engine {
+        preconfigured = okHttpClient
+    }
+}
+```
+
+The interceptor mirrors each request, response, and failure whenever a Snap-O link is active. In release variants (where the noop artifact is used) this call becomes a pass-through.
+
+### Optional: WebSockets
+
+With Ktor, you can capture WebSocket activity by wrapping the preconfigured OkHttpClient with `.withSnapOInterceptor`.
+
+For example:
+
+```kotlin
+val okHttpClient = OkHttpClient.Builder()
+    .addInterceptor(SnapOOkHttpInterceptor())
+    .build()
+
+HttpClient(OkHttp) {
+    engine {
+        preconfigured = okHttpClient
+        // OkHttpClient implements WebSocket.Factory. Use [WebSocket.Factory.withSnapOInterceptor].
+        webSocketFactory = client.withSnapOInterceptor()
+    }
+    install(WebSockets)
 }
 ```
 
