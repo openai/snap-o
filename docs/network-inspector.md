@@ -27,7 +27,7 @@ This release dependency lets your code be the same in debug and release builds, 
 
 ## 2. Using OkHttp directly
 
-See [samples/demo-okhttp](https://github.com/openai/snap-o/blob/main/snapo-link-android/samples/demo-okhttp/src/main/java/com/openai/snapo/demo/MainActivity.kt#L35).
+See [samples/demo-okhttp](https://github.com/openai/snap-o/blob/b406e928499648a50b8141f0864206c20a5f10c3/snapo-link-android/samples/demo-okhttp/src/main/java/com/openai/snapo/demo/MainActivity.kt#L35).
 
 Attach the interceptor while you build your `OkHttpClient`. Doing this once at client construction covers the whole app:
 
