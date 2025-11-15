@@ -308,8 +308,7 @@ private struct LogcatFilterChip: View {
   @Binding var isPopoverPresented: Bool
   var onToggle: (Bool) -> Void
   var onDelete: () -> Void
-
-  @State private var isHovering = false
+  @State private var isEnableButtonHovered = false
 
   var body: some View {
     HStack(spacing: 8) {
@@ -331,28 +330,20 @@ private struct LogcatFilterChip: View {
         .contentShape(Rectangle()) // ensures full tap area
       }
       .buttonStyle(.plain)
-
-      // Controls only visible on hover
-      if isHovering {
-        Toggle("", isOn: Binding(
-          get: { filter.isEnabled },
-          set: { newValue in
-            filter.isEnabled = newValue
-            onToggle(newValue)
-          }
-        ))
-        .toggleStyle(ColorizedSwitchToggleStyle(color: filter.color))
-        .labelsHidden()
-
+      if !filter.isEnabled {
         Button {
-          onDelete()
+          filter.isEnabled = true
+          onToggle(true)
         } label: {
-          Image(systemName: "trash")
-            .font(.caption)
+          Image(systemName: isEnableButtonHovered ? "eye" : "eye.slash")
+            .controlSize(.small)
+            .foregroundStyle(isEnableButtonHovered ? .primary : .secondary)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help("Remove filter")
+        .help("Enable filter")
+        .onHover { hovering in
+          isEnableButtonHovered = hovering
+        }
       }
     }
     .padding(.horizontal, 10)
@@ -367,11 +358,22 @@ private struct LogcatFilterChip: View {
         .stroke(filter.color.opacity(0.6), lineWidth: 1)
         .padding(1)
     )
-    .onHover { hovering in
-      withAnimation(.easeOut(duration: 0.15)) {
-        isHovering = hovering
+    .contextMenu {
+      Toggle("Enable", isOn: Binding(
+        get: { filter.isEnabled },
+        set: { newValue in
+          filter.isEnabled = newValue
+          onToggle(newValue)
+        }
+      ))
+
+      Button {
+        onDelete()
+      } label: {
+        Label("Delete", systemImage: "trash")
       }
     }
+    .opacity(filter.isEnabled ? 1 : 0.5)
   }
 }
 
