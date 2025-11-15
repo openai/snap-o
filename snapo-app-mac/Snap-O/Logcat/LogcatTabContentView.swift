@@ -108,66 +108,59 @@ struct LogcatTabContentView: View {
     ScrollView(.horizontal, showsIndicators: true) {
       HStack(alignment: .top, spacing: 12) {
         ForEach(Array(tab.filterColumns.enumerated()), id: \.0) { columnIndex, column in
-          VStack(alignment: .leading, spacing: 6) {
-            if column.count > 1 {
-              TextField("Stage \(columnIndex + 1)", text: Binding(
-                get: { tab.columnNames[columnIndex] ?? defaultStageName(for: columnIndex, column: column) },
-                set: { tab.setColumnName($0, at: columnIndex) }
-              ))
-              .textFieldStyle(.roundedBorder)
-              .frame(height: 24)
-            } else {
-              Text(defaultStageName(for: columnIndex, column: column))
-                .fontWeight(.semibold)
+          ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 2) {
+              if column.count > 1 {
+                TextField("Stage \(columnIndex + 1)", text: Binding(
+                  get: { tab.columnNames[columnIndex] ?? defaultStageName(for: columnIndex, column: column) },
+                  set: { tab.setColumnName($0, at: columnIndex) }
+                ))
+                .textFieldStyle(.roundedBorder)
                 .frame(height: 24)
-            }
-            ScrollView(.vertical, showsIndicators: true) {
-              ForEach(Array(column.enumerated()), id: \.element.id) { rowIndex, filter in
-                VStack(spacing: 4) {
-                  LogcatFilterChip(
-                    filter: filter,
-                    isPopoverPresented: Binding(
-                      get: { activeFilterID == filter.id },
-                      set: { newValue in
-                        activeFilterID = newValue ? filter.id : nil
-                      }
-                    ),
-                    onToggle: { _ in
-                      tab.requestFilterRefresh()
-                    },
-                    onDelete: {
-                      tab.removeFilter(filter)
-                      activeFilterID = nil
-                    }
-                  )
-                  .frame(width: FilterLayout.cardWidth)
-                  .popover(isPresented: Binding(
+                .padding(.bottom, 2)
+              }
+              ForEach(column) { filter in
+                LogcatFilterChip(
+                  filter: filter,
+                  isPopoverPresented: Binding(
                     get: { activeFilterID == filter.id },
                     set: { newValue in
                       activeFilterID = newValue ? filter.id : nil
                     }
-                  ), attachmentAnchor: .rect(.bounds), arrowEdge: .trailing) {
-                    ScrollView(.vertical, showsIndicators: true) {
-                      LogcatFilterEditorView(
-                        filter: filter,
-                        onChange: {
-                          filter.autoKey = nil
-                          tab.requestFilterRefresh()
-                        },
-                        onDelete: {
-                          tab.removeFilter(filter)
-                          activeFilterID = nil
-                        }
-                      )
-                      .frame(width: 600)
-                    }.frame(maxHeight: 600)
+                  ),
+                  onToggle: { _ in
+                    tab.requestFilterRefresh()
+                  },
+                  onDelete: {
+                    tab.removeFilter(filter)
+                    activeFilterID = nil
                   }
-
-                  if rowIndex < column.count - 1 || rowIndex == 0 {
-                    OrConnector()
-                      .frame(width: FilterLayout.cardWidth, alignment: .center)
+                )
+                .frame(width: FilterLayout.cardWidth)
+                .popover(isPresented: Binding(
+                  get: { activeFilterID == filter.id },
+                  set: { newValue in
+                    activeFilterID = newValue ? filter.id : nil
+                  }
+                ), attachmentAnchor: .rect(.bounds), arrowEdge: .trailing) {
+                  ScrollView(.vertical, showsIndicators: true) {
+                    LogcatFilterEditorView(
+                      filter: filter,
+                      onChange: {
+                        filter.autoKey = nil
+                        tab.requestFilterRefresh()
+                      },
+                      onDelete: {
+                        tab.removeFilter(filter)
+                        activeFilterID = nil
+                      }
+                    )
+                    .frame(width: 600)
                   }
                 }
+
+                OrConnector()
+                  .frame(width: FilterLayout.cardWidth, alignment: .center)
               }
 
               FilterAddPlaceholder(title: "Add Filter", orientation: .vertical) {
@@ -315,8 +308,7 @@ private struct LogcatFilterChip: View {
   @Binding var isPopoverPresented: Bool
   var onToggle: (Bool) -> Void
   var onDelete: () -> Void
-
-  @State private var isHovering = false
+  @State private var isEnableButtonHovered = false
 
   var body: some View {
     HStack(spacing: 8) {
@@ -338,33 +330,25 @@ private struct LogcatFilterChip: View {
         .contentShape(Rectangle()) // ensures full tap area
       }
       .buttonStyle(.plain)
-
-      // Controls only visible on hover
-      if isHovering {
-        Toggle("", isOn: Binding(
-          get: { filter.isEnabled },
-          set: { newValue in
-            filter.isEnabled = newValue
-            onToggle(newValue)
-          }
-        ))
-        .toggleStyle(ColorizedSwitchToggleStyle(color: filter.color))
-        .labelsHidden()
-
+      if !filter.isEnabled {
         Button {
-          onDelete()
+          filter.isEnabled = true
+          onToggle(true)
         } label: {
-          Image(systemName: "trash")
-            .font(.caption)
+          Image(systemName: isEnableButtonHovered ? "eye" : "eye.slash")
+            .controlSize(.small)
+            .foregroundStyle(isEnableButtonHovered ? .primary : .secondary)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help("Remove filter")
+        .help("Enable filter")
+        .onHover { hovering in
+          isEnableButtonHovered = hovering
+        }
       }
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 8)
-    .frame(width: FilterLayout.cardWidth, height: FilterLayout.cardHeight, alignment: .leading)
+    .frame(width: FilterLayout.cardWidth, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
         .fill(filter.color.opacity(0.18))
@@ -372,12 +356,24 @@ private struct LogcatFilterChip: View {
     .overlay(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
         .stroke(filter.color.opacity(0.6), lineWidth: 1)
+        .padding(1)
     )
-    .onHover { hovering in
-      withAnimation(.easeOut(duration: 0.15)) {
-        isHovering = hovering
+    .contextMenu {
+      Toggle("Enable", isOn: Binding(
+        get: { filter.isEnabled },
+        set: { newValue in
+          filter.isEnabled = newValue
+          onToggle(newValue)
+        }
+      ))
+
+      Button {
+        onDelete()
+      } label: {
+        Label("Delete", systemImage: "trash")
       }
     }
+    .opacity(filter.isEnabled ? 1 : 0.5)
   }
 }
 
@@ -418,17 +414,17 @@ private struct FilterAddPlaceholder: View {
     Button {
       action()
     } label: {
-      VStack(spacing: 6) {
+      HStack(spacing: 6) {
         Image(systemName: "plus")
-          .font(.headline)
-        Text(title)
-          .font(.caption2)
       }
-      .frame(width: FilterLayout.cardWidth, height: orientation == .horizontal ? FilterLayout.cardHeight : FilterLayout.cardHeight * 0.65)
+      .font(.caption2)
+      .padding(10)
+      .frame(width: FilterLayout.cardWidth)
       .foregroundStyle(.secondary)
-      .overlay(
+      .background(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .stroke(style: StrokeStyle(lineWidth: 1, dash: [5]))
+          .stroke(.placeholder, style: StrokeStyle(lineWidth: 1, dash: [5]))
+          .padding(1)
       )
       .contentShape(Rectangle())
     }
@@ -458,6 +454,7 @@ private struct QuickFilterSearchField: NSViewRepresentable {
     searchField.sendsSearchStringImmediately = true
     searchField.sendsWholeSearchString = true
     searchField.delegate = context.coordinator
+    searchField.bezelStyle = .roundedBezel
     return searchField
   }
 
@@ -628,30 +625,16 @@ private struct CollapsedStageFilterRow: View {
 private struct OrConnector: View {
   var body: some View {
     Text("OR")
-      .font(.caption.weight(.semibold))
-      .padding(.horizontal, 6)
-      .padding(.vertical, 4)
-      .background(
-        Capsule()
-          .fill(Color.secondary.opacity(0.15))
-      )
+      .font(.caption)
       .foregroundStyle(.secondary)
-      .frame(width: 36)
   }
 }
 
 private struct AndConnector: View {
   var body: some View {
     Text("AND")
-      .font(.caption.weight(.semibold))
-      .padding(.horizontal, 6)
-      .padding(.vertical, 4)
-      .background(
-        Capsule()
-          .fill(Color.secondary.opacity(0.15))
-      )
+      .font(.caption)
       .foregroundStyle(.secondary)
-      .frame(width: 36)
   }
 }
 
@@ -663,17 +646,6 @@ private struct LogcatFilterEditorView: View {
   var body: some View {
     VStack(alignment: .leading) {
       HStack {
-        Text("Filter Settings")
-          .font(.headline)
-        Spacer()
-        Button(role: .destructive) {
-          onDelete()
-        } label: {
-          Label("Delete", systemImage: "trash")
-        }
-        .controlSize(.small)
-      }
-      HStack {
         TextField("Filter Name", text: $filter.name).frame(width: 200)
 
         Toggle("Enabled", isOn: Binding(
@@ -683,6 +655,15 @@ private struct LogcatFilterEditorView: View {
             onChange()
           }
         ))
+
+        Spacer()
+
+        Button(role: .destructive) {
+          onDelete()
+        } label: {
+          Label("Delete", systemImage: "trash")
+        }
+        .controlSize(.small)
       }
       HStack {
         Picker("Filter Type", selection: Binding(
@@ -716,17 +697,16 @@ private struct LogcatFilterEditorView: View {
 
       Divider()
 
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading) {
         Text("Conditions")
           .font(.subheadline.weight(.semibold))
+          .padding(.top, 4)
 
         LogcatFilterConditionEditor(
           condition: $filter.condition,
           onChange: onChange
         )
       }
-
-      Spacer()
     }
     .onChange(of: filter.condition, initial: false) {
       onChange()

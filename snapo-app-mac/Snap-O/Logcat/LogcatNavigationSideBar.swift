@@ -40,7 +40,7 @@ struct LogcatNavigationSideBar: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
 
-      Section {
+      Section("Views") {
         LogcatCrashesRow()
           .tag(LogcatSidebarSelection.crashes)
 
