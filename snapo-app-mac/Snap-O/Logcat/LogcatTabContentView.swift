@@ -156,7 +156,7 @@ struct LogcatTabContentView: View {
                       }
                     )
                     .frame(width: 600)
-                  }.frame(maxHeight: 600)
+                  }
                 }
 
                 OrConnector()
@@ -644,17 +644,6 @@ private struct LogcatFilterEditorView: View {
   var body: some View {
     VStack(alignment: .leading) {
       HStack {
-        Text("Filter Settings")
-          .font(.headline)
-        Spacer()
-        Button(role: .destructive) {
-          onDelete()
-        } label: {
-          Label("Delete", systemImage: "trash")
-        }
-        .controlSize(.small)
-      }
-      HStack {
         TextField("Filter Name", text: $filter.name).frame(width: 200)
 
         Toggle("Enabled", isOn: Binding(
@@ -664,6 +653,15 @@ private struct LogcatFilterEditorView: View {
             onChange()
           }
         ))
+
+        Spacer()
+
+        Button(role: .destructive) {
+          onDelete()
+        } label: {
+          Label("Delete", systemImage: "trash")
+        }
+        .controlSize(.small)
       }
       HStack {
         Picker("Filter Type", selection: Binding(
@@ -697,17 +695,16 @@ private struct LogcatFilterEditorView: View {
 
       Divider()
 
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading) {
         Text("Conditions")
           .font(.subheadline.weight(.semibold))
+          .padding(.top, 4)
 
         LogcatFilterConditionEditor(
           condition: $filter.condition,
           onChange: onChange
         )
       }
-
-      Spacer()
     }
     .onChange(of: filter.condition, initial: false) {
       onChange()
