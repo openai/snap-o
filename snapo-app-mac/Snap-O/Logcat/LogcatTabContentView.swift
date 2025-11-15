@@ -108,66 +108,59 @@ struct LogcatTabContentView: View {
     ScrollView(.horizontal, showsIndicators: true) {
       HStack(alignment: .top, spacing: 12) {
         ForEach(Array(tab.filterColumns.enumerated()), id: \.0) { columnIndex, column in
-          VStack(alignment: .leading, spacing: 6) {
-            if column.count > 1 {
-              TextField("Stage \(columnIndex + 1)", text: Binding(
-                get: { tab.columnNames[columnIndex] ?? defaultStageName(for: columnIndex, column: column) },
-                set: { tab.setColumnName($0, at: columnIndex) }
-              ))
-              .textFieldStyle(.roundedBorder)
-              .frame(height: 24)
-            } else {
-              Text(defaultStageName(for: columnIndex, column: column))
-                .fontWeight(.semibold)
+          ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 2) {
+              if column.count > 1 {
+                TextField("Stage \(columnIndex + 1)", text: Binding(
+                  get: { tab.columnNames[columnIndex] ?? defaultStageName(for: columnIndex, column: column) },
+                  set: { tab.setColumnName($0, at: columnIndex) }
+                ))
+                .textFieldStyle(.roundedBorder)
                 .frame(height: 24)
-            }
-            ScrollView(.vertical, showsIndicators: true) {
-              ForEach(Array(column.enumerated()), id: \.element.id) { rowIndex, filter in
-                VStack(spacing: 4) {
-                  LogcatFilterChip(
-                    filter: filter,
-                    isPopoverPresented: Binding(
-                      get: { activeFilterID == filter.id },
-                      set: { newValue in
-                        activeFilterID = newValue ? filter.id : nil
-                      }
-                    ),
-                    onToggle: { _ in
-                      tab.requestFilterRefresh()
-                    },
-                    onDelete: {
-                      tab.removeFilter(filter)
-                      activeFilterID = nil
-                    }
-                  )
-                  .frame(width: FilterLayout.cardWidth)
-                  .popover(isPresented: Binding(
+                .padding(.bottom, 2)
+              }
+              ForEach(column) { filter in
+                LogcatFilterChip(
+                  filter: filter,
+                  isPopoverPresented: Binding(
                     get: { activeFilterID == filter.id },
                     set: { newValue in
                       activeFilterID = newValue ? filter.id : nil
                     }
-                  ), attachmentAnchor: .rect(.bounds), arrowEdge: .trailing) {
-                    ScrollView(.vertical, showsIndicators: true) {
-                      LogcatFilterEditorView(
-                        filter: filter,
-                        onChange: {
-                          filter.autoKey = nil
-                          tab.requestFilterRefresh()
-                        },
-                        onDelete: {
-                          tab.removeFilter(filter)
-                          activeFilterID = nil
-                        }
-                      )
-                      .frame(width: 600)
-                    }.frame(maxHeight: 600)
+                  ),
+                  onToggle: { _ in
+                    tab.requestFilterRefresh()
+                  },
+                  onDelete: {
+                    tab.removeFilter(filter)
+                    activeFilterID = nil
                   }
-
-                  if rowIndex < column.count - 1 || rowIndex == 0 {
-                    OrConnector()
-                      .frame(width: FilterLayout.cardWidth, alignment: .center)
+                )
+                .frame(width: FilterLayout.cardWidth)
+                .popover(isPresented: Binding(
+                  get: { activeFilterID == filter.id },
+                  set: { newValue in
+                    activeFilterID = newValue ? filter.id : nil
                   }
+                ), attachmentAnchor: .rect(.bounds), arrowEdge: .trailing) {
+                  ScrollView(.vertical, showsIndicators: true) {
+                    LogcatFilterEditorView(
+                      filter: filter,
+                      onChange: {
+                        filter.autoKey = nil
+                        tab.requestFilterRefresh()
+                      },
+                      onDelete: {
+                        tab.removeFilter(filter)
+                        activeFilterID = nil
+                      }
+                    )
+                    .frame(width: 600)
+                  }.frame(maxHeight: 600)
                 }
+
+                OrConnector()
+                  .frame(width: FilterLayout.cardWidth, alignment: .center)
               }
 
               FilterAddPlaceholder(title: "Add Filter", orientation: .vertical) {
@@ -364,7 +357,7 @@ private struct LogcatFilterChip: View {
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 8)
-    .frame(width: FilterLayout.cardWidth, height: FilterLayout.cardHeight, alignment: .leading)
+    .frame(width: FilterLayout.cardWidth, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
         .fill(filter.color.opacity(0.18))
@@ -372,6 +365,7 @@ private struct LogcatFilterChip: View {
     .overlay(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
         .stroke(filter.color.opacity(0.6), lineWidth: 1)
+        .padding(1)
     )
     .onHover { hovering in
       withAnimation(.easeOut(duration: 0.15)) {
@@ -418,17 +412,19 @@ private struct FilterAddPlaceholder: View {
     Button {
       action()
     } label: {
-      VStack(spacing: 6) {
-        Image(systemName: "plus")
-          .font(.headline)
+      HStack(spacing: 6) {
         Text(title)
-          .font(.caption2)
+        Image(systemName: "plus")
+        Spacer()
       }
-      .frame(width: FilterLayout.cardWidth, height: orientation == .horizontal ? FilterLayout.cardHeight : FilterLayout.cardHeight * 0.65)
+      .font(.caption2)
+      .padding(10)
+      .frame(width: FilterLayout.cardWidth)
       .foregroundStyle(.secondary)
-      .overlay(
+      .background(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-          .stroke(style: StrokeStyle(lineWidth: 1, dash: [5]))
+          .stroke(.secondary, style: StrokeStyle(lineWidth: 1, dash: [5]))
+          .padding(1)
       )
       .contentShape(Rectangle())
     }
@@ -629,14 +625,7 @@ private struct OrConnector: View {
   var body: some View {
     Text("OR")
       .font(.caption.weight(.semibold))
-      .padding(.horizontal, 6)
-      .padding(.vertical, 4)
-      .background(
-        Capsule()
-          .fill(Color.secondary.opacity(0.15))
-      )
       .foregroundStyle(.secondary)
-      .frame(width: 36)
   }
 }
 
@@ -644,14 +633,7 @@ private struct AndConnector: View {
   var body: some View {
     Text("AND")
       .font(.caption.weight(.semibold))
-      .padding(.horizontal, 6)
-      .padding(.vertical, 4)
-      .background(
-        Capsule()
-          .fill(Color.secondary.opacity(0.15))
-      )
       .foregroundStyle(.secondary)
-      .frame(width: 36)
   }
 }
 
