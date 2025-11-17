@@ -5,14 +5,16 @@ struct CaptureToolbar: ToolbarContent {
   @Bindable var controller: CaptureWindowController
   @Environment(AppSettings.self)
   private var settings
+  @Environment(\.openWindow)
+  private var openWindow
 
   var body: some ToolbarContent {
     if controller.isRecording {
-      ToolbarItemGroup(placement: .primaryAction) {
+      ToolbarItemGroup(placement: .principal) {
         recordingControls()
       }
     } else if controller.isLivePreviewActive || controller.isStoppingLivePreview {
-      ToolbarItemGroup(placement: .primaryAction) {
+      ToolbarItemGroup(placement: .principal) {
         livePreviewControls()
       }
     } else {
@@ -24,6 +26,9 @@ struct CaptureToolbar: ToolbarContent {
         startLivePreview: { Task { await controller.startLivePreview() } },
         canStartLivePreviewNow: controller.canStartLivePreviewNow
       )
+    }
+    ToolbarItemGroup(placement: .primaryAction) {
+      toolControls()
     }
   }
 
@@ -72,6 +77,26 @@ struct CaptureToolbar: ToolbarContent {
     .keyboardShortcut(.escape, modifiers: [])
     .disabled(controller.isStoppingLivePreview)
   }
+
+  @ViewBuilder
+  private func toolControls() -> some View {
+    Button {
+      openWindow(id: NetworkInspectorWindowID.main)
+    } label: {
+      Label("Network Inspector", systemImage: "network")
+        .labelStyle(.iconOnly)
+    }
+    .controlSize(.large)
+    .help("Network Inspector (⌘⌥I)")
+    Button {
+      openWindow(id: LogcatWindowID.main)
+    } label: {
+      Label("Logcat Viewer", systemImage: "list.bullet.rectangle")
+        .labelStyle(.iconOnly)
+    }
+    .controlSize(.large)
+    .help("Logcat Viewer (⌘⌥L)")
+  }
 }
 
 struct IdleToolbarControls: ToolbarContent {
@@ -85,7 +110,7 @@ struct IdleToolbarControls: ToolbarContent {
   private var settings
 
   var body: some ToolbarContent {
-    ToolbarItemGroup(placement: .primaryAction) {
+    ToolbarItemGroup(placement: .principal) {
       Button {
         screenshot()
       } label: {
@@ -94,6 +119,7 @@ struct IdleToolbarControls: ToolbarContent {
       }
       .help("New Screenshot (⌘R)")
       .disabled(!canCaptureNow)
+      .controlSize(.large)
 
       if settings.recordAsBugReport {
         Menu {
@@ -115,6 +141,7 @@ struct IdleToolbarControls: ToolbarContent {
         .menuStyle(.button)
         .help("Start Recording Bug Report (⌘⇧R)")
         .disabled(!canStartRecordingNow)
+        .controlSize(.large)
       } else {
         Button {
           startRecording()
@@ -123,6 +150,7 @@ struct IdleToolbarControls: ToolbarContent {
         }
         .help("Start Recording (⌘⇧R)")
         .disabled(!canStartRecordingNow)
+        .controlSize(.large)
       }
 
       Button {
@@ -132,6 +160,7 @@ struct IdleToolbarControls: ToolbarContent {
       }
       .help("Live Preview (⌘⇧L)")
       .disabled(!canStartLivePreviewNow)
+      .controlSize(.large)
     }
   }
 }

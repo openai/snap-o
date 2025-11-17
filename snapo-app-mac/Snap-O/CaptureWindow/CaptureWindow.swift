@@ -89,11 +89,11 @@ struct CaptureWindow: View {
         ToolbarItem(placement: .status) {
           Text(progress)
             .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
             .background(
               Capsule()
                 .fill(.ultraThinMaterial)
-                .padding(.horizontal, -6)
-                .padding(.vertical, -4)
             )
             .onHover { controller.setProgressHovering($0) }
         }
