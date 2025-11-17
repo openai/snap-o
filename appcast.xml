@@ -8,6 +8,15 @@
     <description>Software updates for Snap‑O</description>
 
     <item>
+        <title>Snap‑O 0.14.0</title>
+        <pubDate>Mon, 17 Nov 2025 16:55:39 +0000</pubDate>
+        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+        <sparkle:version>20251117.00</sparkle:version>
+        <sparkle:shortVersionString>0.14.0</sparkle:shortVersionString>
+        <enclosure url="https://github.com/openai/snap-o/releases/download/0.14.0/Snap-O-0.14.0.zip" length="2451933" type="application/octet-stream" sparkle:edSignature="E0eWyNdCw3sufPbg7w83uzzMSDDNB4kDcEVrJlu8s1+ejunDAeGVD5Pz0LqG5o+gz4vSDGMYWFa1QktWzDPODw==" />
+    </item>
+
+    <item>
         <title>Snap‑O 0.13.0</title>
         <pubDate>Wed, 29 Oct 2025 18:32:22 +0000</pubDate>
         <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
