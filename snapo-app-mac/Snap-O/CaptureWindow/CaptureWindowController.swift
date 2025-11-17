@@ -24,6 +24,7 @@ final class CaptureWindowController {
   private var pendingPreferredDeviceID: String?
   @ObservationIgnored private var isPreloadConsumptionActive = false
   @ObservationIgnored private var hasAttemptedInitialPreload = false
+  @ObservationIgnored private var cachedCaptureProgressText: String?
 
   init(
     captureService: CaptureService,
@@ -115,7 +116,19 @@ final class CaptureWindowController {
     currentCapture?.device.displayTitle
   }
 
-  var captureProgressText: String? { mediaDisplayMode.captureProgressText }
+  var captureProgressText: String? {
+    if let progress = mediaDisplayMode.captureProgressText {
+      cachedCaptureProgressText = progress
+      return progress
+    }
+
+    guard isProcessing || isRecording else {
+      cachedCaptureProgressText = nil
+      return nil
+    }
+
+    return cachedCaptureProgressText
+  }
 
   var displayInfoForSizing: DisplayInfo? {
     if isRecording {
@@ -163,15 +176,18 @@ final class CaptureWindowController {
       devices: devices
     ) { [weak self] result in
       guard let self else { return }
-      isProcessing = false
       switch result {
       case .failed(let error):
         lastError = error.localizedDescription
+        isProcessing = false
         mode = .idle
       case .completed(let media, let error):
         if error == nil, media.isEmpty {
           mode = .idle
-          Task { await self.captureScreenshots() }
+          Task {
+            isProcessing = false
+            await self.captureScreenshots()
+          }
         } else {
           applyCaptureResults(newMedia: media, encounteredError: error)
         }

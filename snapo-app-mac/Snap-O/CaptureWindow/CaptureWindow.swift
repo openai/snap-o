@@ -85,7 +85,9 @@ struct CaptureWindow: View {
     .toolbar {
       CaptureToolbar(controller: controller)
 
-      if let progress = controller.captureProgressText {
+      if !controller.isRecording, let progress = controller.captureProgressText {
+        let isCaptureInFlight = controller.isProcessing || controller.isRecording
+
         ToolbarItem(placement: .status) {
           Text(progress)
             .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -95,7 +97,19 @@ struct CaptureWindow: View {
               Capsule()
                 .fill(.ultraThinMaterial)
             )
-            .onHover { controller.setProgressHovering($0) }
+            .opacity(isCaptureInFlight ? 0.45 : 1)
+            .allowsHitTesting(!isCaptureInFlight)
+            .onHover { hovering in
+              guard !isCaptureInFlight else {
+                if !hovering { controller.setProgressHovering(false) }
+                return
+              }
+              controller.setProgressHovering(hovering)
+            }
+            .onChange(of: isCaptureInFlight) { disabled in
+              guard disabled else { return }
+              controller.setProgressHovering(false)
+            }
         }
       }
     }
