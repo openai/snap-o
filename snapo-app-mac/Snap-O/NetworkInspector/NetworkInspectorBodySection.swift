@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct NetworkInspectorBodySection: View {
   let title: String
@@ -73,6 +74,14 @@ struct NetworkInspectorBodySection: View {
                   RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.primary.opacity(0.03))
                 )
+                .contextMenu {
+                  Button("Copy Image") {
+                    copyImage(imagePreview)
+                  }
+                  Button("Save As…") {
+                    saveImage(imagePreview)
+                  }
+                }
             }
           }
           .padding(.top, 8)
@@ -128,25 +137,69 @@ struct NetworkInspectorBodySection: View {
 
     return ImagePreview(
       image: Image(nsImage: nsImage),
+      nsImage: nsImage,
+      data: data,
       displaySize: nsImage.size,
       pixelSize: pixelSize,
       byteCount: data.count,
-      typeLabel: payload.contentType?.uppercased()
+      typeLabel: payload.contentType?.uppercased(),
+      contentType: payload.contentType
     )
+  }
+
+  private func copyImage(_ preview: ImagePreview) {
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.writeObjects([preview.nsImage])
+  }
+
+  private func saveImage(_ preview: ImagePreview) {
+    let panel = NSSavePanel()
+    panel.canCreateDirectories = true
+    if let type = preview.uniformType {
+      panel.allowedContentTypes = [type]
+      panel.nameFieldStringValue = "image.\(type.preferredFilenameExtension ?? "")"
+    } else {
+      panel.nameFieldStringValue = "image"
+    }
+
+    if panel.runModal() == .OK, let url = panel.url {
+      do {
+        try preview.data.write(to: url)
+      } catch {
+        NSSound.beep()
+      }
+    }
   }
 }
 
 private struct ImagePreview {
   let image: Image
+  let nsImage: NSImage
+  let data: Data
   let displaySize: CGSize
   let pixelSize: CGSize
   let byteCount: Int
   let typeLabel: String?
+  let contentType: String?
 
   var metadata: String {
     let dimensionText = "\(Int(pixelSize.width))×\(Int(pixelSize.height)) px"
     let sizeText = formatBytes(Int64(byteCount))
     return "\(dimensionText) • \(sizeText)"
+  }
+
+  var preferredExtension: String? {
+    guard let contentType else { return nil }
+    if contentType.hasPrefix("image/png") { return "png" }
+    if contentType.hasPrefix("image/jpeg") || contentType.hasPrefix("image/jpg") { return "jpg" }
+    if contentType.hasPrefix("image/webp") { return "webp" }
+    return nil
+  }
+
+  var uniformType: UTType? {
+    guard let ext = preferredExtension else { return nil }
+    return UTType(filenameExtension: ext)
   }
 }
 
