@@ -79,9 +79,9 @@ private extension NetworkInspectorSidebar {
   var sortTooltip: String {
     switch store.listSortOrder {
     case .oldestFirst:
-      return "Sorted by oldest to newest"
+      "Sorted by oldest to newest"
     case .newestFirst:
-      return "Sorted by newest to oldest"
+      "Sorted by newest to oldest"
     }
   }
 }

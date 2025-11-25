@@ -21,15 +21,15 @@ final class NetworkInspectorStore: ObservableObject {
 
     var label: String {
       switch self {
-      case .oldestFirst: return "Oldest"
-      case .newestFirst: return "Newest"
+      case .oldestFirst: "Oldest"
+      case .newestFirst: "Newest"
       }
     }
 
     var systemImage: String {
       switch self {
-      case .oldestFirst: return "arrow.up"
-      case .newestFirst: return "arrow.down"
+      case .oldestFirst: "arrow.up"
+      case .newestFirst: "arrow.down"
       }
     }
   }
@@ -112,17 +112,16 @@ final class NetworkInspectorStore: ObservableObject {
       requestSummaries.map { NetworkInspectorListItemViewModel(kind: .request($0), firstSeenAt: $0.firstSeenAt) } +
       webSocketSummaries.map { NetworkInspectorListItemViewModel(kind: .webSocket($0), firstSeenAt: $0.firstSeenAt) }
 
-    let comparator: (NetworkInspectorListItemViewModel, NetworkInspectorListItemViewModel) -> Bool
-    switch listSortOrder {
+    let comparator: (NetworkInspectorListItemViewModel, NetworkInspectorListItemViewModel) -> Bool = switch listSortOrder {
     case .oldestFirst:
-      comparator = { lhs, rhs in
+      { lhs, rhs in
         if lhs.firstSeenAt == rhs.firstSeenAt {
           return lhs.id.hashValue < rhs.id.hashValue
         }
         return lhs.firstSeenAt < rhs.firstSeenAt
       }
     case .newestFirst:
-      comparator = { lhs, rhs in
+      { lhs, rhs in
         if lhs.firstSeenAt == rhs.firstSeenAt {
           return lhs.id.hashValue < rhs.id.hashValue
         }
