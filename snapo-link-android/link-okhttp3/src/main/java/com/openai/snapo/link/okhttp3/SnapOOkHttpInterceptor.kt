@@ -29,6 +29,7 @@ import kotlin.math.max
 class SnapOOkHttpInterceptor @JvmOverloads constructor(
     private val responseBodyPreviewBytes: Int = DefaultBodyPreviewBytes,
     private val textBodyMaxBytes: Int = DefaultTextBodyMaxBytes,
+    private val binaryBodyMaxBytes: Int = DefaultBinaryBodyMaxBytes,
     dispatcher: CoroutineDispatcher = DefaultDispatcher,
 ) : Interceptor, Closeable {
 
@@ -133,15 +134,23 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val bodySize = body.safeContentLength()
         publish {
             val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
-            val bodyPreview = textBody?.preview ?: response.bodyPreview(responseBodyPreviewBytes)
+            val binaryBody = if (textBody == null) {
+                response.captureBinaryBody(binaryBodyMaxBytes, responseBodyPreviewBytes)
+            } else {
+                null
+            }
+            val bodyPreview = textBody?.preview
+                ?: binaryBody?.preview
+                ?: response.bodyPreview(responseBodyPreviewBytes)
             val truncatedBytes = textBody?.truncatedBytes(bodySize)
+                ?: binaryBody?.truncatedBytes(bodySize)
             OkhttpEventFactory.createResponseReceived(
                 context = context,
                 response = response,
                 endWall = endWall,
                 endMono = endMono,
                 bodyPreview = bodyPreview,
-                bodyText = textBody?.body,
+                bodyText = textBody?.body ?: binaryBody?.base64,
                 truncatedBytes = truncatedBytes,
                 bodySize = bodySize,
             )
@@ -183,6 +192,14 @@ internal data class InterceptContext(
 
 private data class TextBodyCapture(
     val body: String,
+    val preview: String?,
+    val truncated: Boolean,
+    val capturedBytes: Long,
+    val originalBytes: Long,
+)
+
+private data class BinaryBodyCapture(
+    val base64: String,
     val preview: String?,
     val truncated: Boolean,
     val capturedBytes: Long,
@@ -282,6 +299,45 @@ private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBody
     }
 }
 
+private fun Response.captureBinaryBody(maxBytes: Int, previewBytes: Int): BinaryBodyCapture? {
+    val responseBody = body
+    val mediaType = responseBody.contentType()
+    return when {
+        maxBytes <= 0L -> null
+        mediaType?.isTextLike() == true -> null
+        mediaType.isEventStream() -> null
+        else -> try {
+            val contentLength = responseBody.contentLength()
+            val effectiveMax = when {
+                contentLength in 0 until AbsoluteBodyTextMaxBytes ->
+                    max(maxBytes, contentLength.toInt())
+                else -> maxBytes
+            }
+            val peek = peekBody(effectiveMax.toLong() + 1L)
+            val bytes = peek.bytes()
+            val truncated = bytes.size > effectiveMax
+            val effective = if (truncated) bytes.copyOf(effectiveMax) else bytes
+            val previewLimit = previewBytes.coerceAtMost(effective.size)
+            val preview = if (previewLimit > 0) {
+                encodeToString(effective, 0, previewLimit, NO_WRAP)
+            } else {
+                null
+            }
+            BinaryBodyCapture(
+                base64 = encodeToString(effective, NO_WRAP),
+                preview = preview,
+                truncated = truncated,
+                capturedBytes = effective.size.toLong(),
+                originalBytes = bytes.size.toLong(),
+            )
+        } catch (_: IOException) {
+            null
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+}
+
 private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
     if (maxBytes <= 0) return null
     val requestBody = body ?: return null
@@ -307,6 +363,14 @@ private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
 }
 
 private fun TextBodyCapture.truncatedBytes(totalBytes: Long?): Long? {
+    return when {
+        totalBytes != null -> max(totalBytes - capturedBytes, 0L)
+        truncated -> max(originalBytes - capturedBytes, 0L)
+        else -> null
+    }
+}
+
+private fun BinaryBodyCapture.truncatedBytes(totalBytes: Long?): Long? {
     return when {
         totalBytes != null -> max(totalBytes - capturedBytes, 0L)
         truncated -> max(originalBytes - capturedBytes, 0L)
