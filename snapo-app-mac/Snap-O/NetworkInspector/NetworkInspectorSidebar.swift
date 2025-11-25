@@ -28,6 +28,17 @@ struct NetworkInspectorSidebar: View {
           .frame(maxWidth: .infinity)
 
         Button {
+          store.listSortOrder = store.listSortOrder == .oldestFirst ? .newestFirst : .oldestFirst
+        } label: {
+          Image(systemName: "arrow.up.arrow.down")
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(sortPrimaryColor, sortSecondaryColor)
+            .font(.system(size: 14))
+            .help(sortTooltip)
+        }
+        .buttonStyle(.borderless)
+
+        Button {
           store.clearCompleted()
         } label: {
           Image(systemName: "trash")
@@ -55,5 +66,22 @@ struct NetworkInspectorSidebar: View {
 private extension NetworkInspectorSidebar {
   var hasClearableItems: Bool {
     store.items.contains { !$0.isPending }
+  }
+
+  var sortPrimaryColor: Color {
+    store.listSortOrder == .newestFirst ? .primary : .secondary.opacity(0.5)
+  }
+
+  var sortSecondaryColor: Color {
+    store.listSortOrder == .newestFirst ? .secondary.opacity(0.5) : .primary
+  }
+
+  var sortTooltip: String {
+    switch store.listSortOrder {
+    case .oldestFirst:
+      return "Sorted by oldest to newest"
+    case .newestFirst:
+      return "Sorted by newest to oldest"
+    }
   }
 }
