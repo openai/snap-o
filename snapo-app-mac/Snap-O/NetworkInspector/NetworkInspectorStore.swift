@@ -706,14 +706,13 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     guard supportedImageTypes.contains(where: { contentType.hasPrefix($0) }) else { return nil }
 
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let base64Payload: String
-    if let dataURLRange = trimmed.range(of: "base64,", options: [.caseInsensitive]),
-       dataURLRange.upperBound < trimmed.endIndex {
-      base64Payload = String(trimmed[dataURLRange.upperBound...])
+    let base64Payload: String = if let dataURLRange = trimmed.range(of: "base64,", options: [.caseInsensitive]),
+                                   dataURLRange.upperBound < trimmed.endIndex {
+      String(trimmed[dataURLRange.upperBound...])
     } else if let commaIndex = trimmed.firstIndex(of: ","), trimmed.hasPrefix("data:") {
-      base64Payload = String(trimmed[trimmed.index(after: commaIndex)...])
+      String(trimmed[trimmed.index(after: commaIndex)...])
     } else {
-      base64Payload = trimmed
+      trimmed
     }
 
     if let data = Data(base64Encoded: base64Payload, options: [.ignoreUnknownCharacters]) {

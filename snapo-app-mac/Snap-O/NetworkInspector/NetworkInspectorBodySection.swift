@@ -17,7 +17,7 @@ struct NetworkInspectorBodySection: View {
   ) {
     self.title = title
     self.payload = payload
-    self.imagePreview = Self.makeImagePreview(from: payload)
+    imagePreview = Self.makeImagePreview(from: payload)
     _isExpanded = isExpanded
     _usePrettyPrinted = isPrettyPrinted
   }
