@@ -416,6 +416,8 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     let totalBytes: Int64?
     let capturedBytes: Int64
     let encoding: String?
+    let contentType: String?
+    let data: Data?
 
     static func prettyPrintedJSON(from text: String) -> String? {
       guard let data = text.data(using: .utf8) else { return nil }
@@ -675,6 +677,9 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       isLikelyJSON = true
     }
 
+    let normalizedContentType = normalizeContentType(encoding)
+    let binaryData = decodeImageDataIfNeeded(text: trimmed, contentType: normalizedContentType)
+
     return BodyPayload(
       rawText: text,
       prettyPrintedText: prettyPrinted,
@@ -683,8 +688,43 @@ struct NetworkInspectorRequestViewModel: Identifiable {
       truncatedBytes: truncatedBytes,
       totalBytes: totalBytes,
       capturedBytes: capturedBytes,
-      encoding: encoding
+      encoding: encoding,
+      contentType: normalizedContentType,
+      data: binaryData
     )
+  }
+
+  private static func normalizeContentType(_ rawValue: String?) -> String? {
+    guard let raw = rawValue, !raw.isEmpty else { return nil }
+    let parts = raw.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: true)
+    return parts.first.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+  }
+
+  private static func decodeImageDataIfNeeded(text: String, contentType: String?) -> Data? {
+    guard let contentType else { return nil }
+    let supportedImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
+    guard supportedImageTypes.contains(where: { contentType.hasPrefix($0) }) else { return nil }
+
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let base64Payload: String
+    if let dataURLRange = trimmed.range(of: "base64,", options: [.caseInsensitive]),
+       dataURLRange.upperBound < trimmed.endIndex {
+      base64Payload = String(trimmed[dataURLRange.upperBound...])
+    } else if let commaIndex = trimmed.firstIndex(of: ","), trimmed.hasPrefix("data:") {
+      base64Payload = String(trimmed[trimmed.index(after: commaIndex)...])
+    } else {
+      base64Payload = trimmed
+    }
+
+    if let data = Data(base64Encoded: base64Payload, options: [.ignoreUnknownCharacters]) {
+      return data
+    }
+
+    if let data = trimmed.data(using: .utf8), !data.isEmpty {
+      return data
+    }
+
+    return nil
   }
 }
 
