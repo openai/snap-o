@@ -1,14 +1,20 @@
 [![download](https://img.shields.io/github/v/release/openai/snap-o?label=download&color=brightgreen)](https://github.com/openai/snap-o/releases/latest)
 
 <p>
-  <img src=".github/banner.png" alt="Snap-O: Android screen capture tool for macOS">
+  <img src=".github/banner.png" alt="Snap-O: Android capture developer tool for macOS">
 </p>
 
-# Snap-O: Android Screen Capture Tool
+# Snap-O: Android Capture Developer Tool
 
-Snap-O is a fast, tidy macOS app for capturing screenshots and screen recordings from Android devices and emulators.
+Snap-O is a fast, tidy macOS app for capturing screenshots, screen recordings, and network requests from Android devices and emulators.
 
 It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
+
+## Network Inspector (Alpha)
+
+Curious about mirroring app traffic into the macOS client? Check the [Network Inspector (Alpha) guide](docs/network-inspector.md) for setup steps, dependency coordinates, and configuration tips.
+
+Snap-O can tell you about network requests even before you opened the Snap-O network inspector, and features collapsible JSON pretty printing.
 
 ## Why build a screen capture tool?
 
@@ -23,7 +29,7 @@ You might like Snap-O if you've ever wished you could:
 I've built variations of this tool a few times over the last decade; this is the first one
 I'm open-sourcing.
 
-## Features
+## Screen Capture Features
 
 - Shows a screenshot the moment the window opens
 - Instantly preview screen recordings, and step through frame-by-frame.
@@ -80,10 +86,6 @@ Use Android Studio’s External Tools to trigger Snap-O directly from the IDE.
 Running these tools launches Snap-O (or brings it to the foreground) and immediately starts a capture or recording.
 
 There is currently no support for choosing a specific device/emulator when starting Snap-O in this way.
-
-## Network Inspector (Alpha)
-
-Curious about mirroring app traffic into the macOS client? Check the [Network Inspector (Alpha) guide](docs/network-inspector.md) for setup steps, dependency coordinates, and configuration tips.
 
 ## Why not Compose Multiplatform?
 
