@@ -131,18 +131,49 @@ actor ADBService {
     await MainActor.run { handler() }
   }
 
+  // Avoid forcing the app to activate while in the background; wait until the user returns.
+  @MainActor
+  private func waitForActiveApplicationIfNeeded() async {
+    if NSApplication.shared.isActive { return }
+
+    let notifications = NotificationCenter.default.notifications(
+      named: NSApplication.didBecomeActiveNotification
+    )
+
+    for await _ in notifications where NSApplication.shared.isActive {
+      break
+    }
+  }
+
   private func presentADBPrompt(forcePrompt: Bool) async -> URL? {
     let previouslyCancelled = didCancelPrompt
     if previouslyCancelled, !forcePrompt { return nil }
 
     return await withCheckedContinuation { continuation in
-      Task { @MainActor in
+      Task { @MainActor [weak self] in
+        guard let self else {
+          continuation.resume(returning: nil)
+          return
+        }
+
+        if await promptState?.wasAutoDismissed == true {
+          continuation.resume(returning: nil)
+          return
+        }
+
+        await waitForActiveApplicationIfNeeded()
+
+        if await promptState?.wasAutoDismissed == true {
+          continuation.resume(returning: nil)
+          return
+        }
+
         let presentation = await presentPromptUI()
 
         switch presentation.style {
         case .sheet(let window):
           let sheetWindow = presentation.alert.window
-          await self.updatePromptDismissHandler {
+          await updatePromptDismissHandler {
             if let parent = sheetWindow.sheetParent {
               parent.endSheet(sheetWindow, returnCode: .abort)
             } else {
