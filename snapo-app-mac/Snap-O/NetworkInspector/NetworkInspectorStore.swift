@@ -702,7 +702,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
   private static func decodeImageDataIfNeeded(text: String, contentType: String?) -> Data? {
     guard let contentType else { return nil }
-    let supportedImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
+    let supportedImageTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]
     guard supportedImageTypes.contains(where: { contentType.hasPrefix($0) }) else { return nil }
 
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

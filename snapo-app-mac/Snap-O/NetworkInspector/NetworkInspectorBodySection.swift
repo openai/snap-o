@@ -194,6 +194,7 @@ private struct ImagePreview {
     if contentType.hasPrefix("image/png") { return "png" }
     if contentType.hasPrefix("image/jpeg") || contentType.hasPrefix("image/jpg") { return "jpg" }
     if contentType.hasPrefix("image/webp") { return "webp" }
+    if contentType.hasPrefix("image/gif") { return "gif" }
     return nil
   }
 
