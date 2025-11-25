@@ -106,8 +106,8 @@ struct CaptureWindow: View {
               }
               controller.setProgressHovering(hovering)
             }
-            .onChange(of: isCaptureInFlight) { disabled in
-              guard disabled else { return }
+            .onChange(of: isCaptureInFlight) {
+              guard isCaptureInFlight else { return }
               controller.setProgressHovering(false)
             }
         }
