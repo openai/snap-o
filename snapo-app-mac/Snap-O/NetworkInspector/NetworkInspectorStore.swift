@@ -13,8 +13,34 @@ final class NetworkInspectorStore: ObservableObject {
     case stream
   }
 
+  enum ListSortOrder: String, CaseIterable, Identifiable {
+    case oldestFirst
+    case newestFirst
+
+    var id: Self { self }
+
+    var label: String {
+      switch self {
+      case .oldestFirst: "Oldest"
+      case .newestFirst: "Newest"
+      }
+    }
+
+    var systemImage: String {
+      switch self {
+      case .oldestFirst: "arrow.up"
+      case .newestFirst: "arrow.down"
+      }
+    }
+  }
+
   @Published private(set) var servers: [NetworkInspectorServerViewModel] = []
   @Published private(set) var items: [NetworkInspectorListItemViewModel] = []
+  @Published var listSortOrder: ListSortOrder = .oldestFirst {
+    didSet {
+      rebuildViewModels()
+    }
+  }
 
   private let service: NetworkInspectorService
   private var tasks: [Task<Void, Never>] = []
@@ -86,12 +112,24 @@ final class NetworkInspectorStore: ObservableObject {
       requestSummaries.map { NetworkInspectorListItemViewModel(kind: .request($0), firstSeenAt: $0.firstSeenAt) } +
       webSocketSummaries.map { NetworkInspectorListItemViewModel(kind: .webSocket($0), firstSeenAt: $0.firstSeenAt) }
 
-    items = combined.sorted { lhs, rhs in
-      if lhs.firstSeenAt == rhs.firstSeenAt {
-        return lhs.id.hashValue < rhs.id.hashValue
+    let comparator: (NetworkInspectorListItemViewModel, NetworkInspectorListItemViewModel) -> Bool = switch listSortOrder {
+    case .oldestFirst:
+      { lhs, rhs in
+        if lhs.firstSeenAt == rhs.firstSeenAt {
+          return lhs.id.hashValue < rhs.id.hashValue
+        }
+        return lhs.firstSeenAt < rhs.firstSeenAt
       }
-      return lhs.firstSeenAt < rhs.firstSeenAt
+    case .newestFirst:
+      { lhs, rhs in
+        if lhs.firstSeenAt == rhs.firstSeenAt {
+          return lhs.id.hashValue < rhs.id.hashValue
+        }
+        return lhs.firstSeenAt > rhs.firstSeenAt
+      }
     }
+
+    items = combined.sorted(by: comparator)
 
     let validRequestIDs = Set(requestSummaries.map(\.id))
     requestUIStates = requestUIStates.filter { validRequestIDs.contains($0.key) }
