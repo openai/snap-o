@@ -140,8 +140,8 @@ actor ADBService {
       named: NSApplication.didBecomeActiveNotification
     )
 
-    for await _ in notifications {
-      if NSApplication.shared.isActive { break }
+    for await _ in notifications where NSApplication.shared.isActive {
+      break
     }
   }
 
