@@ -196,9 +196,10 @@ struct AdaptiveTimingText: View {
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
         .onChange(of: context.date, initial: true) { _, newDate in
-          let interval: TimeInterval = newDate.timeIntervalSince(timing.startDate) >= 60 ? 60 : 1
-          guard interval != refreshInterval else { return }
-          refreshInterval = interval
+          // Only update refreshInterval when it is 1 and we cross the 60s threshold
+          if refreshInterval == 1 && newDate.timeIntervalSince(timing.startDate) >= 60 {
+            refreshInterval = 60
+          }
         }
     }
   }
