@@ -113,10 +113,7 @@ struct NetworkInspectorRequestDetailView: View {
 
       HStack(alignment: .firstTextBaseline, spacing: 12) {
         statusBadge(for: request)
-        Text(request.timingSummary)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
+        AdaptiveTimingText(timing: request.timing, status: request.status)
       }
 
       if case .failure(let message) = request.status, let message, !message.isEmpty {
@@ -182,6 +179,29 @@ struct NetworkInspectorRequestDetailView: View {
     return Text(label)
       .font(.caption)
       .foregroundStyle(color)
+  }
+}
+
+/// Shared relative timing label used by request and WebSocket inspector views.
+struct AdaptiveTimingText: View {
+  let timing: InspectorTiming
+  let status: NetworkInspectorRequestViewModel.Status
+
+  @State private var refreshInterval: TimeInterval = 1
+
+  var body: some View {
+    TimelineView(.periodic(from: .now, by: refreshInterval)) { context in
+      Text(timing.summary(for: status, now: context.date))
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+        .onChange(of: context.date, initial: true) { _, newDate in
+          // Only update refreshInterval when it is 1 and we cross the 60s threshold
+          if refreshInterval == 1, newDate.timeIntervalSince(timing.startDate) >= 60 {
+            refreshInterval = 60
+          }
+        }
+    }
   }
 }
 

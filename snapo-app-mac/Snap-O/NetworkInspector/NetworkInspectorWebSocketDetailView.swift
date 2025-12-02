@@ -67,10 +67,7 @@ struct NetworkInspectorWebSocketDetailView: View {
 
       HStack(spacing: 12) {
         statusBadge(webSocket)
-        Text(webSocket.timingSummary)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
+        AdaptiveTimingText(timing: webSocket.timing, status: webSocket.status)
       }
 
       if case .failure(let message) = webSocket.status, let message, !message.isEmpty {
