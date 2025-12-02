@@ -295,6 +295,29 @@ struct NetworkInspectorServerViewModel: Identifiable {
   }
 }
 
+struct InspectorTiming {
+  let startMillis: Int64?
+  let endMillis: Int64?
+  let fallbackRange: (start: Date, end: Date)
+  let wallClockBase: Date?
+
+  func summary(for status: NetworkInspectorRequestViewModel.Status, now: Date = .now) -> String {
+    NetworkInspectorRequestViewModel.makeTimingSummary(
+      status: status,
+      startMillis: startMillis,
+      endMillis: endMillis,
+      fallbackRange: fallbackRange,
+      wallClockBase: wallClockBase,
+      now: now
+    )
+  }
+
+  var startDate: Date {
+    NetworkInspectorRequestViewModel.date(fromMillis: startMillis, base: wallClockBase)
+      ?? fallbackRange.start
+  }
+}
+
 struct NetworkInspectorRequestViewModel: Identifiable {
   enum Status {
     case pending
@@ -309,7 +332,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
   let status: Status
   let serverSummary: String
   let requestIdentifier: String
-  let timingSummary: String
+  let timing: InspectorTiming
   let requestHeaders: [Header]
   let responseHeaders: [Header]
   let requestBody: BodyPayload?
@@ -358,8 +381,7 @@ struct NetworkInspectorRequestViewModel: Identifiable {
 
     let startMillis = request.request?.tWallMs
     let endMillis = request.failure?.tWallMs ?? request.response?.tWallMs
-    timingSummary = Self.makeTimingSummary(
-      status: status,
+    timing = InspectorTiming(
       startMillis: startMillis,
       endMillis: endMillis,
       fallbackRange: (start: request.firstSeenAt, end: request.lastUpdatedAt),
@@ -656,15 +678,18 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     startMillis: Int64?,
     endMillis: Int64?,
     fallbackRange: (start: Date, end: Date),
-    wallClockBase: Date?
+    wallClockBase: Date?,
+    now: Date = .now
   ) -> String {
     let startDate = date(fromMillis: startMillis, base: wallClockBase) ?? fallbackRange.start
     let endDate = date(fromMillis: endMillis, base: wallClockBase) ?? fallbackRange.end
+    let startString = startDate.inspectorTimeString
+    let relativeStart = startDate.inspectorRelativeTimeString(reference: now)
+    let startSegment = "Started \(relativeStart) at \(startString)"
 
     switch status {
     case .pending:
-      let startString = startDate.inspectorTimeString
-      return "Started at \(startString)"
+      return startSegment
     case .success, .failure:
       let durationSeconds: Double = if let start = startMillis, let end = endMillis, end > start {
         Double(end - start) / 1000
@@ -672,12 +697,11 @@ struct NetworkInspectorRequestViewModel: Identifiable {
         max(endDate.timeIntervalSince(startDate), 0)
       }
       let durationString = formattedDuration(durationSeconds)
-      let startString = startDate.inspectorTimeString
-      return "\(durationString) (started at \(startString))"
+      return "\(durationString) total • \(startSegment)"
     }
   }
 
-  private static func date(fromMillis millis: Int64?, base: Date?) -> Date? {
+  static func date(fromMillis millis: Int64?, base: Date?) -> Date? {
     guard let millis, let base else { return nil }
     return base.addingTimeInterval(Double(millis) / 1000)
   }
@@ -793,7 +817,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
   let status: NetworkInspectorRequestViewModel.Status
   let serverSummary: String
   let socketIdentifier: String
-  let timingSummary: String
+  let timing: InspectorTiming
   let requestHeaders: [NetworkInspectorRequestViewModel.Header]
   let responseHeaders: [NetworkInspectorRequestViewModel.Header]
   let primaryPathComponent: String
@@ -858,8 +882,7 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       ?? session.closing?.tWallMs
       ?? session.messages.last?.tWallMs
 
-    timingSummary = NetworkInspectorRequestViewModel.makeTimingSummary(
-      status: status,
+    timing = InspectorTiming(
       startMillis: startMillis,
       endMillis: endMillis,
       fallbackRange: (start: session.firstSeenAt, end: session.lastUpdatedAt),
