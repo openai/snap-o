@@ -197,7 +197,7 @@ struct AdaptiveTimingText: View {
         .textSelection(.enabled)
         .onChange(of: context.date, initial: true) { _, newDate in
           // Only update refreshInterval when it is 1 and we cross the 60s threshold
-          if refreshInterval == 1 && newDate.timeIntervalSince(timing.startDate) >= 60 {
+          if refreshInterval == 1, newDate.timeIntervalSince(timing.startDate) >= 60 {
             refreshInterval = 60
           }
         }
