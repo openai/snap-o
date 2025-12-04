@@ -37,24 +37,21 @@ struct CaptureToolbar: ToolbarContent {
     let bugReportEnabled = settings.recordAsBugReport
 
     if controller.isProcessing {
-      ProgressView()
-        .progressViewStyle(.circular)
-        .tint(.red)
-        .controlSize(.small)
-        .frame(width: 24, height: 24)
-        .help("Stopping Recording…")
+      Button {} label: {
+        ProgressView()
+          .progressViewStyle(.circular)
+          .controlSize(.small)
+          .help("Stopping Recording…")
+          .disabled(true)
+      }
     } else {
       Button {
         Task { await controller.stopRecording() }
       } label: {
-        Label("Stop Recording", systemImage: bugReportEnabled ? "ant.fill" : "stop.fill")
-          .fontWeight(.semibold)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 6)
-          .background(RoundedRectangle(cornerRadius: 8).fill(Color.red))
-          .foregroundStyle(Color.white)
+        Label("Stop Recording", systemImage: bugReportEnabled ? "ant.circle" : "record.circle")
+          .symbolEffect(.pulse)
+          .foregroundStyle(.red)
       }
-      .buttonStyle(.plain)
       .help("Stop Recording (⎋)")
       .keyboardShortcut(.escape, modifiers: [])
     }
@@ -65,14 +62,10 @@ struct CaptureToolbar: ToolbarContent {
     Button {
       Task { await controller.stopLivePreview() }
     } label: {
-      Label("Live", systemImage: "pause.fill")
-        .fontWeight(.semibold)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.blue))
-        .foregroundStyle(Color.white)
+      Label("Live", systemImage: "play.circle")
+        .symbolEffect(.pulse)
+        .foregroundStyle(.blue)
     }
-    .buttonStyle(.plain)
     .help("Stop Live Preview (⎋)")
     .keyboardShortcut(.escape, modifiers: [])
     .disabled(controller.isStoppingLivePreview)
@@ -136,7 +129,6 @@ struct IdleToolbarControls: ToolbarContent {
             .font(.system(size: 5, weight: .bold))
             .offset(x: -6, y: -2)
         }
-        .padding(.horizontal, -3)
         .menuIndicator(.hidden)
         .menuStyle(.button)
         .help("Start Recording Bug Report (⌘⇧R)")
