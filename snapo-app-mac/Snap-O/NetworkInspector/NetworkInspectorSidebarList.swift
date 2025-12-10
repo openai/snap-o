@@ -189,7 +189,6 @@ private extension NetworkInspectorSidebarList {
       proxy.scrollTo(targetID, anchor: anchor)
     }
   }
-
 }
 
 private struct EdgeVisibilityDetector: View {
