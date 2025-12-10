@@ -8,7 +8,7 @@ struct NetworkInspectorSidebarList: View {
   let selectedServer: NetworkInspectorServerViewModel?
   @Binding var selectedItem: NetworkInspectorItemID?
   @State private var isScrolledToTop = true
-  @State private var isScrolledToBottom = true
+  @State private var isScrolledToBottom = false
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -65,8 +65,8 @@ struct NetworkInspectorSidebarList: View {
       }
       .listStyle(.sidebar)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .onChange(of: filteredItems.map(\.id)) { previous, current in
-        handleListChange(previous: previous, current: current, proxy: proxy)
+      .onChange(of: filteredItems) { previous, current in
+        handleListChange(previous: previous.map(\.id), current: current.map(\.id), proxy: proxy)
       }
     }
   }
@@ -149,7 +149,6 @@ private extension NetworkInspectorSidebarList {
   func placeholderRow(_ text: String) -> some View {
     Text(text)
       .foregroundStyle(.secondary)
-      .onAppear(perform: resetEdgePositions)
   }
 
   @ViewBuilder
@@ -191,10 +190,6 @@ private extension NetworkInspectorSidebarList {
     }
   }
 
-  func resetEdgePositions() {
-    isScrolledToTop = true
-    isScrolledToBottom = true
-  }
 }
 
 private struct EdgeVisibilityDetector: View {
