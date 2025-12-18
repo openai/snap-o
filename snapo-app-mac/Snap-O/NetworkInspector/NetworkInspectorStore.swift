@@ -389,22 +389,19 @@ struct NetworkInspectorRequestViewModel: Identifiable {
     )
 
     let components = URLComponents(string: url)
+    let querySuffix = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
     if let path = components?.path, !path.isEmpty {
       let parts = path.split(separator: "/", omittingEmptySubsequences: true)
-      primaryPathComponent = parts.last.map(String.init) ?? path
+      primaryPathComponent = (parts.last.map(String.init) ?? path) + querySuffix
       let remaining = parts.dropLast()
       if remaining.isEmpty {
-        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+        secondaryPath = ""
       } else {
         let base = "/" + remaining.joined(separator: "/")
-        if let query = components?.percentEncodedQuery, !query.isEmpty {
-          secondaryPath = base + "?" + query
-        } else {
-          secondaryPath = base
-        }
+        secondaryPath = base
       }
     } else {
-      primaryPathComponent = url
+      primaryPathComponent = url + querySuffix
       secondaryPath = ""
     }
 
@@ -985,22 +982,18 @@ struct NetworkInspectorRequestSummary: Identifiable {
     }
 
     let components = URLComponents(string: url)
+    let querySuffix = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
     if let path = components?.path, !path.isEmpty {
       let parts = path.split(separator: "/", omittingEmptySubsequences: true)
-      primaryPathComponent = parts.last.map(String.init) ?? path
+      primaryPathComponent = (parts.last.map(String.init) ?? path) + querySuffix
       let remaining = parts.dropLast()
       if remaining.isEmpty {
-        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+        secondaryPath = ""
       } else {
-        let base = "/" + remaining.joined(separator: "/")
-        if let query = components?.percentEncodedQuery, !query.isEmpty {
-          secondaryPath = base + "?" + query
-        } else {
-          secondaryPath = base
-        }
+        secondaryPath = "/" + remaining.joined(separator: "/")
       }
     } else {
-      primaryPathComponent = url
+      primaryPathComponent = url + querySuffix
       secondaryPath = ""
     }
 
@@ -1055,27 +1048,19 @@ struct NetworkInspectorWebSocketSummary: Identifiable {
     }
 
     let components = URLComponents(string: urlString)
+    let querySuffix = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
     if let path = components?.path, !path.isEmpty {
       let parts = path.split(separator: "/", omittingEmptySubsequences: true)
-      primaryPathComponent = parts.last.map(String.init) ?? path
+      primaryPathComponent = (parts.last.map(String.init) ?? path) + querySuffix
       let remaining = parts.dropLast()
       if remaining.isEmpty {
-        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? ""
+        secondaryPath = ""
       } else {
-        let base = "/" + remaining.joined(separator: "/")
-        if let query = components?.percentEncodedQuery, !query.isEmpty {
-          secondaryPath = base + "?" + query
-        } else {
-          secondaryPath = base
-        }
+        secondaryPath = "/" + remaining.joined(separator: "/")
       }
     } else {
-      primaryPathComponent = components?.host ?? session.socketID
-      if let query = components?.percentEncodedQuery, !query.isEmpty {
-        secondaryPath = "?\(query)"
-      } else {
-        secondaryPath = ""
-      }
+      primaryPathComponent = (components?.host ?? session.socketID) + querySuffix
+      secondaryPath = ""
     }
 
     showsActiveIndicator = session.cancelled == nil && session.failed == nil && session.closed == nil
