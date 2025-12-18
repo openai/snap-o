@@ -2,6 +2,7 @@ package com.openai.snapo.link.okhttp3
 
 import android.os.SystemClock
 import com.openai.snapo.link.core.Header
+import com.openai.snapo.link.core.NetworkInspector
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.link.core.SnapONetRecord
 import com.openai.snapo.link.core.WebSocketCancelled
@@ -73,11 +74,12 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
     }
 
     private inline fun publish(crossinline builder: () -> SnapONetRecord) {
-        val server = SnapOLink.serverOrNull() ?: return
+        if (!SnapOLink.isEnabled()) return
+        val feature = NetworkInspector.getOrNull() ?: return
         val record = builder()
         scope.launch {
             try {
-                server.publish(record)
+                feature.publish(record)
             } catch (_: Throwable) {
             }
         }

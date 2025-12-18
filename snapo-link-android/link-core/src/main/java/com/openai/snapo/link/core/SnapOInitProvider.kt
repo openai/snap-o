@@ -51,18 +51,21 @@ class SnapOInitProvider : ContentProvider() {
         val modeLabel = meta?.getString("snapo.mode_label") ?: "safe"
         val allowRelease = meta?.getBoolean("snapo.allow_release", false) ?: false
 
-        val config = SnapONetConfig(
-            bufferWindow = bufferMs.milliseconds,
-            maxBufferedEvents = maxEvents,
-            maxBufferedBytes = maxBytes,
+        val linkConfig = SnapOLinkConfig(
             singleClientOnly = true,
             modeLabel = modeLabel,
             allowRelease = allowRelease,
         )
+        val networkConfig = NetworkInspectorConfig(
+            bufferWindow = bufferMs.milliseconds,
+            maxBufferedEvents = maxEvents,
+            maxBufferedBytes = maxBytes,
+        )
 
+        NetworkInspector.initialize(networkConfig)
         SnapOLinkServer.start(
             ctx.applicationContext as Application,
-            config = config
+            config = linkConfig
         )
         return true
     }

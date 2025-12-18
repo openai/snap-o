@@ -6,7 +6,7 @@ import java.util.Collections
 import java.util.IdentityHashMap
 
 internal class EventBuffer(
-    private val config: SnapONetConfig,
+    private val config: NetworkInspectorConfig,
 ) {
 
     private val records: MutableList<SnapONetRecord> = ArrayList()
