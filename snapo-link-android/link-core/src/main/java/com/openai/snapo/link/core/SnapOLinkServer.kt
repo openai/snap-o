@@ -74,7 +74,7 @@ class SnapOLinkServer(
             Log.e(
                 TAG,
                 "Snap-O Link detected in a release build. Link server will NOT start. " +
-                    "Release builds should use link-okhttp3-noop instead, " +
+                    "Release builds should use network-okhttp3-noop instead, " +
                     "or set snapo.allow_release=\"true\" if intentional."
             )
             return
@@ -133,12 +133,11 @@ class SnapOLinkServer(
         try {
             if (proceed) {
                 val writer = attachClient(socket)
-                val sink = ServerEventSink()
                 writerLock.withLock {
                     writeHandshake(writer)
                 }
-                attachFeatures(sink)
-                sink.sendHighPriority(ReplayComplete())
+                attachFeatures()
+                sendHighPriorityRecord(ReplayComplete())
                 tailClient(socket)
             }
         } catch (ce: CancellationException) {
@@ -194,11 +193,12 @@ class SnapOLinkServer(
         return sink
     }
 
-    private suspend fun attachFeatures(sink: LinkEventSink) {
+    private suspend fun attachFeatures() {
         val features = SnapOLinkRegistry.snapshot()
         attachedFeatures = features
         for (feature in features) {
-            feature.onClientConnected(sink)
+            val featureSink = FeatureWrappingSink(feature.featureId)
+            feature.onClientConnected(featureSink)
         }
     }
 
@@ -237,23 +237,29 @@ class SnapOLinkServer(
     private fun isActiveSafe(): Boolean =
         (writerJob?.isActive != false)
 
-    private inner class ServerEventSink : LinkEventSink {
+    private inner class FeatureWrappingSink(
+        private val featureId: String,
+    ) : LinkEventSink {
         override suspend fun <T> sendHighPriority(payload: T, serializer: SerializationStrategy<T>) {
-            sendHighPriorityRecord(payload, serializer)
+            sendHighPriorityRecord(wrap(payload, serializer))
         }
 
         override suspend fun <T> sendLowPriority(payload: T, serializer: SerializationStrategy<T>) {
-            sendLowPriorityRecord(payload, serializer)
+            sendLowPriorityRecord(wrap(payload, serializer))
+        }
+
+        private fun <T> wrap(payload: T, serializer: SerializationStrategy<T>): LinkRecord {
+            val element = Ndjson.encodeToJsonElement(serializer, payload)
+            return FeatureEvent(feature = featureId, payload = element)
         }
     }
 
-    private fun <T> writeLine(
+    private fun writeLine(
         writer: BufferedWriter,
-        payload: T,
-        serializer: SerializationStrategy<T>,
+        payload: LinkRecord,
     ): Boolean {
         try {
-            writer.write(Ndjson.encodeToString(serializer, payload))
+            writer.write(Ndjson.encodeToString(LinkRecord.serializer(), payload))
             writer.write("\n")
             writer.flush()
             return true
@@ -268,22 +274,16 @@ class SnapOLinkServer(
         }
     }
 
-    private suspend fun <T> sendHighPriorityRecord(
-        payload: T,
-        serializer: SerializationStrategy<T>,
-    ) {
+    private suspend fun sendHighPriorityRecord(payload: LinkRecord) {
         writerLock.withLock {
             val writer = connectedSink ?: return
-            if (writeLine(writer, payload, serializer)) {
+            if (writeLine(writer, payload)) {
                 markHighPriorityEmission()
             }
         }
     }
 
-    private suspend fun <T> sendLowPriorityRecord(
-        payload: T,
-        serializer: SerializationStrategy<T>,
-    ) {
+    private suspend fun sendLowPriorityRecord(payload: LinkRecord) {
         val deferStart = SystemClock.elapsedRealtime()
         while (currentCoroutineContext().isActive) {
             if (connectedSink == null) return
@@ -300,7 +300,7 @@ class SnapOLinkServer(
                     return
                 }
                 try {
-                    writeLine(writer, payload, serializer)
+                    writeLine(writer, payload)
                 } finally {
                     writerLock.unlock()
                 }
@@ -341,7 +341,7 @@ class SnapOLinkServer(
         }
     }
 
-    private fun readClientHello(socket: LocalSocket): String? {
+    private fun readClientHello(socket: LocalSocket): String {
         socket.soTimeout = ClientHelloTimeoutMs
         val input = socket.inputStream
         val buffer = ByteArrayOutputStream()
@@ -375,14 +375,13 @@ class SnapOLinkServer(
                     serverStartMonoNs = serverStartMonoNs,
                     mode = config.modeLabel,
                 ),
-                serializer(),
             )
         ) {
             markHighPriorityEmission()
         }
 
         latestAppIcon?.let { icon ->
-            if (writeLine(writer, icon, serializer())) {
+            if (writeLine(writer, icon)) {
                 markHighPriorityEmission()
             }
         }
@@ -391,7 +390,7 @@ class SnapOLinkServer(
     private suspend fun streamAppIcon(icon: AppIcon) {
         writerLock.withLock {
             val writer = connectedSink ?: return
-            if (writeLine(writer, icon, serializer())) {
+            if (writeLine(writer, icon)) {
                 markHighPriorityEmission()
             }
         }

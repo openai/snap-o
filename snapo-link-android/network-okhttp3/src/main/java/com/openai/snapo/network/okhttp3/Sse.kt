@@ -1,9 +1,9 @@
 package com.openai.snapo.network.okhttp3
 
 import android.os.SystemClock
-import com.openai.snapo.link.core.ResponseStreamClosed
-import com.openai.snapo.link.core.ResponseStreamEvent
-import com.openai.snapo.link.core.SnapONetRecord
+import com.openai.snapo.network.record.ResponseStreamClosed
+import com.openai.snapo.network.record.ResponseStreamEvent
+import com.openai.snapo.network.record.SnapONetRecord
 import okhttp3.MediaType
 import okhttp3.ResponseBody
 import okio.Buffer

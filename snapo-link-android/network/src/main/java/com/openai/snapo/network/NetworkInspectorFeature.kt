@@ -1,12 +1,12 @@
 package com.openai.snapo.network
 
 import com.openai.snapo.link.core.LinkEventSink
-import com.openai.snapo.link.core.ResponseReceived
 import com.openai.snapo.link.core.SnapOLinkFeature
 import com.openai.snapo.link.core.SnapOLinkRegistry
-import com.openai.snapo.link.core.SnapONetRecord
 import com.openai.snapo.link.core.sendHighPriority
 import com.openai.snapo.link.core.sendLowPriority
+import com.openai.snapo.network.record.ResponseReceived
+import com.openai.snapo.network.record.SnapONetRecord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,25 +32,27 @@ class NetworkInspectorFeature(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : SnapOLinkFeature {
 
+    override val featureId: String = "network"
     private val bufferLock = Mutex()
     private val eventBuffer = EventBuffer(config)
 
     @Volatile
-    private var sink: LinkEventSink? = null
+    private var sink: RecordSink? = null
 
     override suspend fun onClientConnected(sink: LinkEventSink) {
-        this.sink = sink
+        val recordSink = RecordSink(sink)
+        this.sink = recordSink
         val deferredBodies = mutableListOf<ResponseReceived>()
         val snapshot: List<SnapONetRecord> = bufferLock.withLock { eventBuffer.snapshot() }
         for (record in snapshot) {
             if (record is ResponseReceived && record.hasBodyPayload()) {
-                sink.sendHighPriority(record.withoutBodyPayload())
+                recordSink.high(record.withoutBodyPayload())
                 deferredBodies.add(record)
             } else {
-                sink.sendHighPriority(record)
+                recordSink.high(record)
             }
         }
-        scheduleDeferredBodies(sink, deferredBodies)
+        scheduleDeferredBodies(recordSink, deferredBodies)
     }
 
     override fun onClientDisconnected() {
@@ -65,19 +67,19 @@ class NetworkInspectorFeature(
         when (record) {
             is ResponseReceived -> {
                 if (record.hasBodyPayload()) {
-                    currentSink.sendHighPriority(record.withoutBodyPayload())
+                    currentSink.high(record.withoutBodyPayload())
                     scheduleResponseBody(currentSink, record)
                 } else {
-                    currentSink.sendHighPriority(record)
+                    currentSink.high(record)
                 }
             }
 
-            else -> currentSink.sendHighPriority(record)
+            else -> currentSink.high(record)
         }
     }
 
     private fun scheduleDeferredBodies(
-        sink: LinkEventSink,
+        sink: RecordSink,
         deferredBodies: List<ResponseReceived>,
     ) {
         deferredBodies.forEachIndexed { index, response ->
@@ -87,7 +89,7 @@ class NetworkInspectorFeature(
     }
 
     private fun scheduleResponseBody(
-        sink: LinkEventSink,
+        sink: RecordSink,
         record: ResponseReceived,
         initialDelayMs: Long = ResponseBodyDelayMillis,
     ) {
@@ -97,7 +99,7 @@ class NetworkInspectorFeature(
                     delay(initialDelayMs)
                 }
                 if (this@NetworkInspectorFeature.sink !== sink) return@launch
-                sink.sendLowPriority(record)
+                sink.low(record)
             } catch (t: CancellationException) {
                 throw t
             } catch (_: Throwable) {
@@ -113,6 +115,16 @@ class NetworkInspectorFeature(
 
     private fun ResponseReceived.withoutBodyPayload(): ResponseReceived =
         copy(bodyPreview = null, body = null)
+}
+
+private class RecordSink(private val delegate: LinkEventSink) {
+    suspend fun high(record: SnapONetRecord) {
+        delegate.sendHighPriority(record)
+    }
+
+    suspend fun low(record: SnapONetRecord) {
+        delegate.sendLowPriority(record)
+    }
 }
 
 object NetworkInspector {

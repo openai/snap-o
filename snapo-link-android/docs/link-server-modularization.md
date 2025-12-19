@@ -12,12 +12,12 @@
 ## Proposed module layout
 - `:link-core` (existing): Snap-O Link server and shared protocol types.
 - `:network` (new): network inspector records, buffering, and replay logic. -- this is the new naming convention we will start to employ.
-- `:link-okhttp3` (existing): OkHttp interceptor + WebSocket hooks; depends on `:network`.
-- `:link-okhttp3-noop` (existing): no-op shim; depends on `:network` or re-exports stubs.
+- `:network-okhttp3` (renamed from `:link-okhttp3`): OkHttp interceptor + WebSocket hooks; depends on `:network`.
+- `:network-okhttp3-noop` (renamed from `:link-okhttp3-noop`): no-op shim; depends on `:network` or re-exports stubs.
 
 ## No-op strategy
 - No `:link-core-noop`. The server is only needed when a real feature is used.
-- Each feature module may provide its own `-noop` artifact (e.g. `:link-okhttp3-noop`) that does not depend on `:link-core`.
+- Each feature module may provide its own `-noop` artifact (e.g. `:network-okhttp3-noop`) that does not depend on `:link-core`.
 
 ## `:link-core` responsibilities
 **Purpose:** run the local socket server, manage connections, and multiplex feature data streams.
@@ -166,11 +166,11 @@ class NetworkInspectorFeature(
    - Implement `onFeatureOpened()` to begin streaming, replay buffered history, then emit `LinkReplayComplete`.
    - Implement `onClientDisconnected()` to reset the open state while continuing to buffer.
 8. OkHttp integration updates
-   - Update `:link-okhttp3` to publish via `NetworkInspectorFeature`.
+- Update `:network-okhttp3` to publish via `NetworkInspectorFeature`.
    - Provide a simple accessor in `:network` (e.g. `NetworkInspector.featureOrNull()`) so interceptors do not manage registration directly.
 9. No-op strategy
    - Optional: introduce `:network-noop` (stubs for the network feature).
-   - Update `:link-okhttp3-noop` to depend on `:network-noop` (not `:link-core`).
+- Update `:network-okhttp3-noop` to depend on `:network-noop` (not `:link-core`).
 10. Desktop client changes
    - Update the mac app client to read `LinkHello` + `LinkFeature`, then decode `FeatureEvent`.
    - Emit `FeatureOpened` when a feature UI is opened.
@@ -180,7 +180,7 @@ class NetworkInspectorFeature(
    - Add buffer/replay tests in `:network`.
 
 ## Example usage (automatic)
-Including `:link-core` and `:network` (via `:link-okhttp3`) keeps the current behavior:
+Including `:link-core` and `:network` (via `:network-okhttp3`) keeps the current behavior:
 - `SnapOInitProvider` auto-starts the server.
 - `SnapONetworkInitProvider` auto-registers the feature.
 

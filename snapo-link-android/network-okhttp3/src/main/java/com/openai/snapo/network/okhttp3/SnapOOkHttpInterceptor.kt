@@ -3,11 +3,11 @@ package com.openai.snapo.network.okhttp3
 import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
-import com.openai.snapo.link.core.RequestFailed
 import com.openai.snapo.link.core.SnapOLink
-import com.openai.snapo.link.core.SnapONetRecord
-import com.openai.snapo.link.core.Timings
 import com.openai.snapo.network.NetworkInspector
+import com.openai.snapo.network.record.RequestFailed
+import com.openai.snapo.network.record.SnapONetRecord
+import com.openai.snapo.network.record.Timings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob

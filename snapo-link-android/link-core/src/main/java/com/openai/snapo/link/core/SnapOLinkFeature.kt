@@ -4,6 +4,9 @@ import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.serializer
 
 interface SnapOLinkFeature {
+    /** Stable identifier used for feature envelopes. */
+    val featureId: String
+
     suspend fun onClientConnected(sink: LinkEventSink)
     fun onClientDisconnected()
 }

@@ -1,9 +1,9 @@
 package com.openai.snapo.network.okhttp3
 
-import com.openai.snapo.link.core.Header
-import com.openai.snapo.link.core.RequestWillBeSent
-import com.openai.snapo.link.core.ResponseReceived
-import com.openai.snapo.link.core.Timings
+import com.openai.snapo.network.record.Header
+import com.openai.snapo.network.record.RequestWillBeSent
+import com.openai.snapo.network.record.ResponseReceived
+import com.openai.snapo.network.record.Timings
 import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.RequestBody

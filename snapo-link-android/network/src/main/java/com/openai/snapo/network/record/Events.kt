@@ -1,12 +1,9 @@
-@file:OptIn(ExperimentalSerializationApi::class)
+package com.openai.snapo.network.record
 
-package com.openai.snapo.link.core
-
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** All records emitted over the wire are one-per-line NDJSON objects. */
+/** All records emitted over the wire for the network inspector. */
 @Serializable
 sealed interface SnapONetRecord
 
@@ -20,35 +17,6 @@ sealed interface TimedRecord {
     val tWallMs: Long
     val tMonoNs: Long
 }
-
-/** Emitted first on every connection. */
-@Serializable
-@SerialName("Hello")
-data class Hello(
-    val schemaVersion: Int = SchemaVersion,
-    val packageName: String,
-    val processName: String,
-    val pid: Int,
-    val serverStartWallMs: Long,
-    val serverStartMonoNs: Long,
-    val mode: String,
-) : SnapONetRecord
-
-/** Marker after snapshot dump completes. */
-@Serializable
-@SerialName("ReplayComplete")
-class ReplayComplete : SnapONetRecord
-
-/** Optional icon metadata to help the desktop show the app branding. */
-@Serializable
-@SerialName("AppIcon")
-data class AppIcon(
-    val packageName: String,
-    val width: Int,
-    val height: Int,
-    val format: String = "png",
-    val base64Data: String,
-) : SnapONetRecord
 
 /** Base for per-request events to let the desktop correlate rows. */
 sealed interface PerRequestRecord : SnapONetRecord, TimedRecord {
@@ -232,4 +200,4 @@ data class Timings(
     val totalMs: Long? = null,
 )
 
-internal const val SchemaVersion: Int = 1
+internal fun SnapONetRecord.perWebSocketRecord(): PerWebSocketRecord? = this as? PerWebSocketRecord
