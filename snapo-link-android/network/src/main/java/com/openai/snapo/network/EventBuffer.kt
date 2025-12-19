@@ -1,9 +1,19 @@
-package com.openai.snapo.link.core
+package com.openai.snapo.network
 
+import com.openai.snapo.link.core.RequestFailed
+import com.openai.snapo.link.core.RequestWillBeSent
+import com.openai.snapo.link.core.ResponseReceived
+import com.openai.snapo.link.core.ResponseStreamClosed
+import com.openai.snapo.link.core.ResponseStreamEvent
+import com.openai.snapo.link.core.SnapONetRecord
+import com.openai.snapo.link.core.TimedRecord
+import com.openai.snapo.link.core.WebSocketCancelled
+import com.openai.snapo.link.core.WebSocketClosed
+import com.openai.snapo.link.core.WebSocketFailed
+import com.openai.snapo.link.core.WebSocketOpened
+import com.openai.snapo.link.core.WebSocketWillOpen
 import kotlinx.serialization.encodeToString
 import java.util.ArrayList
-import java.util.Collections
-import java.util.IdentityHashMap
 
 internal class EventBuffer(
     private val config: NetworkInspectorConfig,
@@ -155,8 +165,9 @@ internal class EventBuffer(
             ?: false
     }
 
-    private fun evictWebSocketConversation(head: PerWebSocketRecord): Boolean {
-        if (openWebSockets.contains(head.id)) {
+    private fun evictWebSocketConversation(head: SnapONetRecord): Boolean {
+        val wsHead = head.perWebSocketRecord() ?: return false
+        if (openWebSockets.contains(wsHead.id)) {
             return false
         }
         val iterator = records.iterator()
@@ -164,7 +175,8 @@ internal class EventBuffer(
         while (iterator.hasNext()) {
             val candidate = iterator.next()
             if (candidate === head) continue
-            if (candidate is PerWebSocketRecord && candidate.id == head.id) {
+            val perSocket = candidate.perWebSocketRecord() ?: continue
+            if (perSocket.id == wsHead.id) {
                 iterator.remove()
                 subtractApproxBytes(candidate)
                 updateWebSocketStateOnRemove(candidate)
@@ -198,157 +210,45 @@ internal class EventBuffer(
     }
 
     private fun evictExpiredRecords(cutoff: Long) {
-        val state = buildExpiredRecordPruneState(cutoff)
-        markRequestRemovals(state)
-        markWebSocketRemovals(state)
-        removeMarkedRecords(state.toRemove)
-    }
-
-    private fun buildExpiredRecordPruneState(cutoff: Long): ExpiredRecordPruneState {
-        val state = ExpiredRecordPruneState()
-        for (record in records) {
-            val time = eventTime(record)
-            when {
-                record is PerRequestRecord -> collectRequestExpiryState(record, time, cutoff, state)
-                record is PerWebSocketRecord -> collectWebSocketExpiryState(record, time, cutoff, state)
-                time < cutoff -> state.toRemove.add(record)
-            }
-        }
-        return state
-    }
-
-    private fun collectRequestExpiryState(
-        record: PerRequestRecord,
-        time: Long,
-        cutoff: Long,
-        state: ExpiredRecordPruneState,
-    ) {
-        val requestState = state.requestStates.getOrPut(record.id) { RequestPruneState() }
-        if (time >= cutoff) {
-            requestState.hasRecentRecords = true
-            return
-        }
-
-        when (record) {
-            is RequestWillBeSent -> requestState.start = record
-            is ResponseStreamEvent -> requestState.oldEvents.add(record)
-            is ResponseReceived -> {
-                if (!activeResponseStreams.contains(record.id)) {
-                    requestState.terminal = record
-                }
-                requestState.oldRecords.add(record)
-            }
-
-            is RequestFailed -> {
-                requestState.terminal = record
-                requestState.oldRecords.add(record)
-            }
-
-            is ResponseStreamClosed -> {
-                requestState.terminal = record
-                requestState.oldRecords.add(record)
-            }
-        }
-    }
-
-    private fun collectWebSocketExpiryState(
-        record: PerWebSocketRecord,
-        time: Long,
-        cutoff: Long,
-        state: ExpiredRecordPruneState,
-    ) {
-        val webSocketState = state.webSocketStates.getOrPut(record.id) { WebSocketPruneState() }
-        if (time >= cutoff) {
-            webSocketState.hasRecentRecords = true
-            return
-        }
-
-        when (record) {
-            is WebSocketWillOpen,
-            is WebSocketOpened -> webSocketState.startRecords.add(record)
-
-            is WebSocketClosed,
-            is WebSocketFailed,
-            is WebSocketCancelled -> {
-                webSocketState.terminal = record
-                webSocketState.oldRecords.add(record)
-            }
-
-            else -> webSocketState.oldRecords.add(record)
-        }
-    }
-
-    private fun markRequestRemovals(state: ExpiredRecordPruneState) {
-        for ((id, requestState) in state.requestStates) {
-            if (requestState.oldEvents.isNotEmpty()) {
-                requestState.oldEvents.forEach(state.toRemove::add)
-            }
-            val hasRecent = requestState.hasRecentRecords || activeResponseStreams.contains(id)
-            if (!hasRecent && requestState.terminal != null) {
-                requestState.start?.let(state.toRemove::add)
-                requestState.oldRecords.forEach(state.toRemove::add)
-            }
-        }
-    }
-
-    private fun markWebSocketRemovals(state: ExpiredRecordPruneState) {
-        for ((id, webSocketState) in state.webSocketStates) {
-            val isOpen = openWebSockets.contains(id)
-            if (webSocketState.hasRecentRecords || isOpen) {
-                webSocketState.oldRecords.forEach(state.toRemove::add)
-            } else if (webSocketState.terminal != null) {
-                webSocketState.startRecords.forEach(state.toRemove::add)
-                webSocketState.oldRecords.forEach(state.toRemove::add)
-            }
-        }
-    }
-
-    private fun removeMarkedRecords(recordsToRemove: MutableSet<SnapONetRecord>) {
-        if (recordsToRemove.isEmpty()) return
         val iterator = records.iterator()
         while (iterator.hasNext()) {
             val record = iterator.next()
-            if (!recordsToRemove.contains(record)) continue
-            removeRecord(iterator, record)
+            if (record is TimedRecord && record.tWallMs < cutoff) {
+                iterator.remove()
+                subtractApproxBytes(record)
+                updateWebSocketStateOnRemove(record)
+                updateStreamStateOnRemove(record)
+            } else {
+                break
+            }
         }
     }
 
-    private fun removeRecord(
-        iterator: MutableIterator<SnapONetRecord>,
-        record: SnapONetRecord,
-    ) {
+    private fun removeRecord(iterator: MutableIterator<SnapONetRecord>, record: SnapONetRecord) {
         iterator.remove()
         subtractApproxBytes(record)
         updateWebSocketStateOnRemove(record)
         updateStreamStateOnRemove(record)
     }
 
+    private fun estimateSize(record: SnapONetRecord): Long {
+        // Very rough: rely on serialization length.
+        val json = com.openai.snapo.link.core.Ndjson.encodeToString(
+            com.openai.snapo.link.core.SnapONetRecord.serializer(),
+            record
+        )
+        // Avoid reallocating many times for the first few items.
+        if (approxBytes == 0L && records.isEmpty()) {
+            approxBytes = json.length.toLong()
+        }
+        return json.length.toLong()
+    }
+
     private fun subtractApproxBytes(record: SnapONetRecord) {
-        approxBytes = (approxBytes - estimateSize(record)).coerceAtLeast(0)
+        approxBytes -= estimateSize(record)
+        if (approxBytes < 0) approxBytes = 0
     }
-
-    private fun estimateSize(record: SnapONetRecord): Int {
-        return Ndjson.encodeToString(SnapONetRecord.serializer(), record).length
-    }
-
-    private data class RequestPruneState(
-        var start: RequestWillBeSent? = null,
-        var terminal: SnapONetRecord? = null,
-        val oldEvents: MutableList<ResponseStreamEvent> = mutableListOf(),
-        val oldRecords: MutableList<SnapONetRecord> = mutableListOf(),
-        var hasRecentRecords: Boolean = false,
-    )
-
-    private data class WebSocketPruneState(
-        val startRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
-        var terminal: PerWebSocketRecord? = null,
-        val oldRecords: MutableList<PerWebSocketRecord> = mutableListOf(),
-        var hasRecentRecords: Boolean = false,
-    )
-
-    private data class ExpiredRecordPruneState(
-        val requestStates: MutableMap<String, RequestPruneState> = mutableMapOf(),
-        val webSocketStates: MutableMap<String, WebSocketPruneState> = mutableMapOf(),
-        val toRemove: MutableSet<SnapONetRecord> = Collections.newSetFromMap(IdentityHashMap()),
-    )
 }
+
+private fun SnapONetRecord.perWebSocketRecord(): com.openai.snapo.link.core.PerWebSocketRecord? =
+    this as? com.openai.snapo.link.core.PerWebSocketRecord

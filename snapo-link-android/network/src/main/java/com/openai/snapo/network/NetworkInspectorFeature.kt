@@ -1,5 +1,12 @@
-package com.openai.snapo.link.core
+package com.openai.snapo.network
 
+import com.openai.snapo.link.core.LinkEventSink
+import com.openai.snapo.link.core.ResponseReceived
+import com.openai.snapo.link.core.SnapOLinkFeature
+import com.openai.snapo.link.core.SnapOLinkRegistry
+import com.openai.snapo.link.core.SnapONetRecord
+import com.openai.snapo.link.core.sendHighPriority
+import com.openai.snapo.link.core.sendLowPriority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,7 +28,7 @@ data class NetworkInspectorConfig(
 )
 
 class NetworkInspectorFeature(
-    config: NetworkInspectorConfig = NetworkInspectorConfig(),
+    private val config: NetworkInspectorConfig = NetworkInspectorConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : SnapOLinkFeature {
 
@@ -34,7 +41,7 @@ class NetworkInspectorFeature(
     override suspend fun onClientConnected(sink: LinkEventSink) {
         this.sink = sink
         val deferredBodies = mutableListOf<ResponseReceived>()
-        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
+        val snapshot: List<SnapONetRecord> = bufferLock.withLock { eventBuffer.snapshot() }
         for (record in snapshot) {
             if (record is ResponseReceived && record.hasBodyPayload()) {
                 sink.sendHighPriority(record.withoutBodyPayload())
@@ -51,7 +58,9 @@ class NetworkInspectorFeature(
     }
 
     suspend fun publish(record: SnapONetRecord) {
-        bufferLock.withLock { eventBuffer.append(record) }
+        bufferLock.withLock {
+            eventBuffer.append(record)
+        }
         val currentSink = sink ?: return
         when (record) {
             is ResponseReceived -> {
@@ -62,6 +71,7 @@ class NetworkInspectorFeature(
                     currentSink.sendHighPriority(record)
                 }
             }
+
             else -> currentSink.sendHighPriority(record)
         }
     }
@@ -122,6 +132,9 @@ object NetworkInspector {
 
     /** Return the active feature, or null if not initialized. */
     fun getOrNull(): NetworkInspectorFeature? = feature
+
+    // Backwards-friendly alias.
+    fun featureOrNull(): NetworkInspectorFeature? = feature
 }
 
 private const val ResponseBodyDelayMillis = 200L

@@ -18,6 +18,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerializationStrategy
+import kotlinx.serialization.serializer
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -236,18 +238,22 @@ class SnapOLinkServer(
         (writerJob?.isActive != false)
 
     private inner class ServerEventSink : LinkEventSink {
-        override suspend fun sendHighPriority(record: SnapONetRecord) {
-            sendHighPriorityRecord(record)
+        override suspend fun <T> sendHighPriority(payload: T, serializer: SerializationStrategy<T>) {
+            sendHighPriorityRecord(payload, serializer)
         }
 
-        override suspend fun sendLowPriority(record: SnapONetRecord) {
-            sendLowPriorityRecord(record)
+        override suspend fun <T> sendLowPriority(payload: T, serializer: SerializationStrategy<T>) {
+            sendLowPriorityRecord(payload, serializer)
         }
     }
 
-    private fun writeLine(writer: BufferedWriter, record: SnapONetRecord): Boolean {
+    private fun <T> writeLine(
+        writer: BufferedWriter,
+        payload: T,
+        serializer: SerializationStrategy<T>,
+    ): Boolean {
         try {
-            writer.write(Ndjson.encodeToString(SnapONetRecord.serializer(), record))
+            writer.write(Ndjson.encodeToString(serializer, payload))
             writer.write("\n")
             writer.flush()
             return true
@@ -262,16 +268,22 @@ class SnapOLinkServer(
         }
     }
 
-    private suspend fun sendHighPriorityRecord(record: SnapONetRecord) {
+    private suspend fun <T> sendHighPriorityRecord(
+        payload: T,
+        serializer: SerializationStrategy<T>,
+    ) {
         writerLock.withLock {
             val writer = connectedSink ?: return
-            if (writeLine(writer, record)) {
+            if (writeLine(writer, payload, serializer)) {
                 markHighPriorityEmission()
             }
         }
     }
 
-    private suspend fun sendLowPriorityRecord(record: SnapONetRecord) {
+    private suspend fun <T> sendLowPriorityRecord(
+        payload: T,
+        serializer: SerializationStrategy<T>,
+    ) {
         val deferStart = SystemClock.elapsedRealtime()
         while (currentCoroutineContext().isActive) {
             if (connectedSink == null) return
@@ -288,7 +300,7 @@ class SnapOLinkServer(
                     return
                 }
                 try {
-                    writeLine(writer, record)
+                    writeLine(writer, payload, serializer)
                 } finally {
                     writerLock.unlock()
                 }
@@ -352,7 +364,8 @@ class SnapOLinkServer(
     }
 
     private fun writeHandshake(writer: BufferedWriter) {
-        if (writeLine(
+        if (
+            writeLine(
                 writer,
                 Hello(
                     packageName = app.packageName,
@@ -361,14 +374,15 @@ class SnapOLinkServer(
                     serverStartWallMs = serverStartWallMs,
                     serverStartMonoNs = serverStartMonoNs,
                     mode = config.modeLabel,
-                )
+                ),
+                serializer(),
             )
         ) {
             markHighPriorityEmission()
         }
 
         latestAppIcon?.let { icon ->
-            if (writeLine(writer, icon)) {
+            if (writeLine(writer, icon, serializer())) {
                 markHighPriorityEmission()
             }
         }
@@ -377,7 +391,7 @@ class SnapOLinkServer(
     private suspend fun streamAppIcon(icon: AppIcon) {
         writerLock.withLock {
             val writer = connectedSink ?: return
-            if (writeLine(writer, icon)) {
+            if (writeLine(writer, icon, serializer())) {
                 markHighPriorityEmission()
             }
         }

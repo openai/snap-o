@@ -9,6 +9,7 @@ android {
 
 dependencies {
     api(project(":link-core"))
+    implementation(project(":network"))
     implementation(platform(libs.okhttp3.bom))
     implementation(libs.okhttp3.okhttp)
     implementation(libs.kotlinx.coroutines.core)

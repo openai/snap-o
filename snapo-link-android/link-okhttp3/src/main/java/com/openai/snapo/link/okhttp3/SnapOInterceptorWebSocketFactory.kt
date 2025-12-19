@@ -2,7 +2,6 @@ package com.openai.snapo.link.okhttp3
 
 import android.os.SystemClock
 import com.openai.snapo.link.core.Header
-import com.openai.snapo.link.core.NetworkInspector
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.link.core.SnapONetRecord
 import com.openai.snapo.link.core.WebSocketCancelled
@@ -14,6 +13,7 @@ import com.openai.snapo.link.core.WebSocketMessageReceived
 import com.openai.snapo.link.core.WebSocketMessageSent
 import com.openai.snapo.link.core.WebSocketOpened
 import com.openai.snapo.link.core.WebSocketWillOpen
+import com.openai.snapo.network.NetworkInspector
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob

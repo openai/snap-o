@@ -1,7 +1,6 @@
-package com.openai.snapo.link.core
+package com.openai.snapo.network
 
 import android.app.ActivityManager
-import android.app.Application
 import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
@@ -12,19 +11,21 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Process
 import androidx.core.content.ContentProviderCompat
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Auto-initializes the Snap-O link server very early in app startup.
+ * Auto-initializes the NetworkInspector feature very early in app startup.
  *
  * Reads configuration from this provider’s <meta-data> in the merged manifest.
  *
  * Manifest keys (all optional):
  *  - snapo.auto_init (boolean)        default: true
  *  - snapo.main_process_only (boolean)default: true
- *  - snapo.mode_label (string)        default: "safe"
- *  - snapo.allow_release (boolean)    default: false (set true to keep the server in release builds)
+ *  - snapo.buffer_window_ms (long)    default: 300000 (5 minutes)
+ *  - snapo.max_events (int)           default: 10000
+ *  - snapo.max_bytes (long)           default: 16777216 (16 MB)
  */
-class SnapOInitProvider : ContentProvider() {
+class SnapONetworkInitProvider : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val ctx = ContentProviderCompat.requireContext(this)
@@ -41,19 +42,17 @@ class SnapOInitProvider : ContentProvider() {
             return false
         }
 
-        val modeLabel = meta?.getString("snapo.mode_label") ?: "safe"
-        val allowRelease = meta?.getBoolean("snapo.allow_release", false) ?: false
+        val bufferMs = readLong(meta, "snapo.buffer_window_ms", 300_000L)
+        val maxEvents = readInt(meta, "snapo.max_events", 10_000)
+        val maxBytes = readLong(meta, "snapo.max_bytes", 16L * 1024 * 1024)
 
-        val linkConfig = SnapOLinkConfig(
-            singleClientOnly = true,
-            modeLabel = modeLabel,
-            allowRelease = allowRelease,
+        val networkConfig = NetworkInspectorConfig(
+            bufferWindow = bufferMs.milliseconds,
+            maxBufferedEvents = maxEvents,
+            maxBufferedBytes = maxBytes,
         )
 
-        SnapOLinkServer.start(
-            ctx.applicationContext as Application,
-            config = linkConfig
-        )
+        NetworkInspector.initialize(networkConfig)
         return true
     }
 
@@ -76,8 +75,28 @@ class SnapOInitProvider : ContentProvider() {
             val proc = am.runningAppProcesses?.firstOrNull { it.pid == pid }
             proc?.processName == ctx.packageName
         } catch (_: Throwable) {
-            // If we can’t determine, assume main to avoid silent no-op in simple apps.
             true
+        }
+    }
+
+    // Helpers: meta-data values can arrive as Int, Long, or String (from placeholders).
+    private fun readLong(meta: Bundle?, key: String, def: Long): Long {
+        val v = meta?.get(key) ?: return def
+        return when (v) {
+            is Int -> v.toLong()
+            is Long -> v
+            is String -> v.toLongOrNull() ?: def
+            else -> def
+        }
+    }
+
+    private fun readInt(meta: Bundle?, key: String, def: Int): Int {
+        val v = meta?.get(key) ?: return def
+        return when (v) {
+            is Int -> v
+            is Long -> v.toInt()
+            is String -> v.toIntOrNull() ?: def
+            else -> def
         }
     }
 
@@ -87,7 +106,7 @@ class SnapOInitProvider : ContentProvider() {
         projection: Array<out String>?,
         selection: String?,
         selectionArgs: Array<out String>?,
-        sortOrder: String?
+        sortOrder: String?,
     ): Cursor? = null
 
     override fun getType(uri: Uri): String? = null
@@ -97,6 +116,6 @@ class SnapOInitProvider : ContentProvider() {
         uri: Uri,
         values: ContentValues?,
         selection: String?,
-        selectionArgs: Array<out String>?
+        selectionArgs: Array<out String>?,
     ): Int = 0
 }
