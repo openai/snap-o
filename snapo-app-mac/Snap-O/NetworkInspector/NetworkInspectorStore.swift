@@ -825,8 +825,6 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
   let timing: InspectorTiming
   let requestHeaders: [NetworkInspectorRequestViewModel.Header]
   let responseHeaders: [NetworkInspectorRequestViewModel.Header]
-  let primaryPathComponent: String
-  let secondaryPath: String
   let willOpen: SnapONetWebSocketWillOpenRecord?
   let opened: SnapONetWebSocketOpenedRecord?
   let closing: SnapONetWebSocketClosingRecord?
@@ -893,30 +891,6 @@ struct NetworkInspectorWebSocketViewModel: Identifiable {
       fallbackRange: (start: session.firstSeenAt, end: session.lastUpdatedAt),
       wallClockBase: server?.wallClockBase
     )
-
-    let components = URLComponents(string: urlString)
-    if let path = components?.path, !path.isEmpty {
-      let parts = path.split(separator: "/", omittingEmptySubsequences: true)
-      primaryPathComponent = parts.last.map(String.init) ?? path
-      let remaining = parts.dropLast()
-      if remaining.isEmpty {
-        secondaryPath = components?.percentEncodedQuery.map { "?\($0)" } ?? "\n"
-      } else {
-        let base = "/" + remaining.joined(separator: "/")
-        if let query = components?.percentEncodedQuery, !query.isEmpty {
-          secondaryPath = base + "?" + query
-        } else {
-          secondaryPath = base
-        }
-      }
-    } else {
-      primaryPathComponent = components?.host ?? session.socketID
-      if let query = components?.percentEncodedQuery, !query.isEmpty {
-        secondaryPath = "?\(query)"
-      } else {
-        secondaryPath = ""
-      }
-    }
 
     requestHeaders = session.willOpen?.headers.map { NetworkInspectorRequestViewModel.Header(name: $0.name, value: $0.value) } ?? []
 
