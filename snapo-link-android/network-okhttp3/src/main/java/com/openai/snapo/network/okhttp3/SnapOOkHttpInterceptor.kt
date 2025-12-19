@@ -1,4 +1,4 @@
-package com.openai.snapo.link.okhttp3
+package com.openai.snapo.network.okhttp3
 
 import android.os.SystemClock
 import android.util.Base64.NO_WRAP

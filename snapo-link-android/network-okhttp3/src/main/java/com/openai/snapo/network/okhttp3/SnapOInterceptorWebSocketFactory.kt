@@ -1,4 +1,4 @@
-package com.openai.snapo.link.okhttp3
+package com.openai.snapo.network.okhttp3
 
 import android.os.SystemClock
 import com.openai.snapo.link.core.Header

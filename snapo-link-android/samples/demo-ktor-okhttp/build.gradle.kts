@@ -40,6 +40,6 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.websockets)
 
-    debugImplementation(project(":link-okhttp3"))
-    releaseImplementation(project(":link-okhttp3-noop"))
+    debugImplementation(project(":network-okhttp3"))
+    releaseImplementation(project(":network-okhttp3-noop"))
 }
