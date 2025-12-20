@@ -8,6 +8,7 @@ interface SnapOLinkFeature {
     val featureId: String
 
     suspend fun onClientConnected(sink: LinkEventSink)
+    suspend fun onFeatureOpened()
     fun onClientDisconnected()
 }
 

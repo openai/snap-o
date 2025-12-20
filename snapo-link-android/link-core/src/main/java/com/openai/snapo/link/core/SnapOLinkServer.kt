@@ -19,11 +19,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerializationStrategy
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.serializer
+import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
@@ -58,7 +61,7 @@ class SnapOLinkServer(
     private var lastHighPriorityEmissionMs: Long = 0L
 
     private val writerLock = Mutex()
-    private var attachedFeatures: List<SnapOLinkFeature> = emptyList()
+    private var attachedFeatures: List<AttachedFeature> = emptyList()
 
     @Volatile
     private var latestAppIcon: AppIcon? = null
@@ -195,27 +198,34 @@ class SnapOLinkServer(
 
     private suspend fun attachFeatures() {
         val features = SnapOLinkRegistry.snapshot()
-        attachedFeatures = features
+        val attached = ArrayList<AttachedFeature>(features.size)
         for (feature in features) {
             val featureSink = FeatureWrappingSink(feature.featureId)
             feature.onClientConnected(featureSink)
+            attached += AttachedFeature(feature = feature, sink = featureSink)
         }
+        attachedFeatures = attached
     }
 
-    private fun tailClient(socket: LocalSocket) {
-        // Block here reading from the client to detect disconnect; ignore any input.
-        val src = socket.inputStream
-        val buf = ByteArray(1024)
+    private suspend fun tailClient(socket: LocalSocket) {
+        val reader = BufferedReader(InputStreamReader(socket.inputStream, StandardCharsets.UTF_8))
         while (true) {
-            val n = src.read(buf)
-            if (n < 0) break
+            val line = try {
+                reader.readLine()
+            } catch (_: Throwable) {
+                null
+            }
+            if (line == null) break
+            val trimmed = line.trimEnd('\r')
+            if (trimmed.isEmpty()) continue
+            handleHostMessage(trimmed)
         }
     }
 
     private fun cleanupActiveConnection() {
         val features = attachedFeatures
         attachedFeatures = emptyList()
-        features.forEach { it.onClientDisconnected() }
+        features.forEach { it.feature.onClientDisconnected() }
         try {
             connectedSink?.close()
         } catch (_: Throwable) {
@@ -397,6 +407,22 @@ class SnapOLinkServer(
         }
     }
 
+    private suspend fun handleHostMessage(rawLine: String) {
+        val message = try {
+            Ndjson.decodeFromString(HostMessage.serializer(), rawLine)
+        } catch (_: Throwable) {
+            return
+        }
+        when (message) {
+            is FeatureOpened -> handleFeatureOpened(message)
+        }
+    }
+
+    private suspend fun handleFeatureOpened(message: FeatureOpened) {
+        val attached = attachedFeatures.firstOrNull { it.feature.featureId == message.feature } ?: return
+        attached.feature.onFeatureOpened()
+    }
+
     companion object {
         fun start(
             application: Application,
@@ -420,3 +446,8 @@ private sealed interface ClientHandshakeResult {
     object Accepted : ClientHandshakeResult
     data class Rejected(val reason: String) : ClientHandshakeResult
 }
+
+private data class AttachedFeature(
+    val feature: SnapOLinkFeature,
+    val sink: LinkEventSink,
+)

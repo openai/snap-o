@@ -84,17 +84,18 @@ struct NetworkInspectorView: View {
     .onChange(of: selectedServerID) { _, newValue in
       if let id = newValue {
         store.setRetainedServerIDs(Set([id]))
+        store.notifyFeatureOpened(feature: "network", serverID: id)
       } else {
         store.setRetainedServerIDs(Set<SnapOLinkServerID>())
       }
     }
-    .onChange(of: store.items.map(\.id)) { _, ids in
-      reconcileSelection(allIDs: ids, filteredIDs: filteredItems.map(\.id))
+    .onChange(of: allItemIDs) { _, ids in
+      reconcileSelection(allIDs: ids, filteredIDs: filteredItemIDs)
     }
-    .onChange(of: filteredItems.map(\.id)) { _, filteredIDs in
-      reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredIDs)
+    .onChange(of: filteredItemIDs) { _, filteredIDs in
+      reconcileSelection(allIDs: allItemIDs, filteredIDs: filteredIDs)
     }
-    .onChange(of: store.servers.map(\.id)) { _, ids in
+    .onChange(of: serverIDs) { _, ids in
       if ids.isEmpty {
         selectedServerID = nil
         isServerPickerPresented = false
@@ -105,6 +106,12 @@ struct NetworkInspectorView: View {
         selectedServerID = ids.first
       }
     }
+    .onChange(of: serverConnectionStates) { _, _ in
+      let target = selectedServerID ?? store.servers.first?.id
+      if let id = target {
+        store.notifyFeatureOpened(feature: "network", serverID: id)
+      }
+    }
     .onAppear {
       if selectedServerID == nil {
         selectedServerID = store.servers.first?.id
@@ -112,6 +119,7 @@ struct NetworkInspectorView: View {
 
       if let id = selectedServerID {
         store.setRetainedServerIDs(Set([id]))
+        store.notifyFeatureOpened(feature: "network", serverID: id)
       } else {
         store.setRetainedServerIDs(Set<SnapOLinkServerID>())
       }
@@ -146,6 +154,27 @@ struct NetworkInspectorView: View {
 }
 
 private extension NetworkInspectorView {
+  var allItemIDs: [NetworkInspectorItemID] {
+    store.items.map(\.id)
+  }
+
+  var filteredItemIDs: [NetworkInspectorItemID] {
+    filteredItems.map(\.id)
+  }
+
+  var serverIDs: [SnapOLinkServerID] {
+    store.servers.map(\.id)
+  }
+
+  var serverConnectionStates: [ServerConnectionState] {
+    store.servers.map { ServerConnectionState(id: $0.id, isConnected: $0.isConnected) }
+  }
+
+  struct ServerConnectionState: Equatable {
+    let id: SnapOLinkServerID
+    let isConnected: Bool
+  }
+
   @ViewBuilder var detailContent: some View {
     if let selection = selectedItem,
        let detail = store.detail(for: selection) {

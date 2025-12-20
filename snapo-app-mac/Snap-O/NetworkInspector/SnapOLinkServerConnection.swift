@@ -91,6 +91,21 @@ final class SnapOLinkServerConnection {
     }
   }
 
+  func sendFeatureOpened(feature: String) {
+    queue.async { [weak self] in
+      guard let self, !self.isStopped else { return }
+      let message = HostFeatureOpened(feature: feature)
+      guard let encoded = try? JSONEncoder().encode(message) else { return }
+      var data = encoded
+      data.append(0x0A)
+      connection.send(content: data, completion: .contentProcessed { [weak self] error in
+        if let error {
+          self?.finish(with: error)
+        }
+      })
+    }
+  }
+
   private func handleIncomingData(_ data: Data) {
     buffer.append(data)
 
@@ -130,6 +145,11 @@ private extension Data {
     }
     return trimmed
   }
+}
+
+private struct HostFeatureOpened: Encodable {
+  let type = "FeatureOpened"
+  let feature: String
 }
 
 extension SnapOLinkServerConnection: @unchecked Sendable {}

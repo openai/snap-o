@@ -228,6 +228,12 @@ final class NetworkInspectorStore: ObservableObject {
     }
   }
 
+  func notifyFeatureOpened(feature: String, serverID: SnapOLinkServerID?) {
+    Task {
+      await service.sendFeatureOpened(feature: feature, serverID: serverID)
+    }
+  }
+
   func requestViewModel(for id: NetworkInspectorRequestID) -> NetworkInspectorRequestViewModel? {
     guard let request = requestLookup[id] else { return nil }
     let server = serverLookup[request.serverID]

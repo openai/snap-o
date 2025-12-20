@@ -39,31 +39,50 @@ class NetworkInspectorFeature(
     @Volatile
     private var sink: RecordSink? = null
 
+    @Volatile
+    private var isOpen: Boolean = false
+
+    @Volatile
+    private var hasReplayedSnapshot: Boolean = false
+
     override suspend fun onClientConnected(sink: LinkEventSink) {
         val recordSink = RecordSink(sink)
         this.sink = recordSink
+        isOpen = false
+        hasReplayedSnapshot = false
+    }
+
+    override suspend fun onFeatureOpened() {
+        val currentSink = sink ?: return
+        isOpen = true
+        if (hasReplayedSnapshot) return
+
         val deferredBodies = mutableListOf<ResponseReceived>()
         val snapshot: List<SnapONetRecord> = bufferLock.withLock { eventBuffer.snapshot() }
         for (record in snapshot) {
             if (record is ResponseReceived && record.hasBodyPayload()) {
-                recordSink.high(record.withoutBodyPayload())
+                currentSink.high(record.withoutBodyPayload())
                 deferredBodies.add(record)
             } else {
-                recordSink.high(record)
+                currentSink.high(record)
             }
         }
-        scheduleDeferredBodies(recordSink, deferredBodies)
+        hasReplayedSnapshot = true
+        scheduleDeferredBodies(currentSink, deferredBodies)
     }
 
     override fun onClientDisconnected() {
         sink = null
+        isOpen = false
+        hasReplayedSnapshot = false
     }
 
     suspend fun publish(record: SnapONetRecord) {
         bufferLock.withLock {
             eventBuffer.append(record)
         }
-        val currentSink = sink ?: return
+        val currentSink = sink
+        if (!isOpen || currentSink == null) return
         when (record) {
             is ResponseReceived -> {
                 if (record.hasBodyPayload()) {
@@ -98,7 +117,7 @@ class NetworkInspectorFeature(
                 if (initialDelayMs > 0) {
                     delay(initialDelayMs)
                 }
-                if (this@NetworkInspectorFeature.sink !== sink) return@launch
+                if (!isOpen || this@NetworkInspectorFeature.sink !== sink) return@launch
                 sink.low(record)
             } catch (t: CancellationException) {
                 throw t
