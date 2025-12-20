@@ -46,6 +46,9 @@ class SnapOLinkServer(
 
     /** Name visible to `adb shell cat /proc/net/unix`. */
     val socketName: String = "snapo_server_${Process.myPid()}"
+    // Security note: this binds in the Linux abstract namespace. Access is governed by SELinux
+    // (connectto), not filesystem perms. Other apps will not be able to connect, but it is
+    // reachable by ADB forward.
 
     // --- lifecycle ---
     @Volatile
