@@ -1123,33 +1123,33 @@ enum SnapONetRecordDecoder {
     let discriminator = try decoder.decode(Discriminator.self, from: data)
     switch discriminator.type {
     case "RequestWillBeSent":
-      return .requestWillBeSent(try decoder.decode(SnapONetRequestWillBeSentRecord.self, from: data))
+      return try .requestWillBeSent(decoder.decode(SnapONetRequestWillBeSentRecord.self, from: data))
     case "ResponseReceived":
-      return .responseReceived(try decoder.decode(SnapONetResponseReceivedRecord.self, from: data))
+      return try .responseReceived(decoder.decode(SnapONetResponseReceivedRecord.self, from: data))
     case "ResponseStreamEvent":
-      return .responseStreamEvent(try decoder.decode(SnapONetResponseStreamEventRecord.self, from: data))
+      return try .responseStreamEvent(decoder.decode(SnapONetResponseStreamEventRecord.self, from: data))
     case "ResponseStreamClosed":
-      return .responseStreamClosed(try decoder.decode(SnapONetResponseStreamClosedRecord.self, from: data))
+      return try .responseStreamClosed(decoder.decode(SnapONetResponseStreamClosedRecord.self, from: data))
     case "RequestFailed":
-      return .requestFailed(try decoder.decode(SnapONetRequestFailedRecord.self, from: data))
+      return try .requestFailed(decoder.decode(SnapONetRequestFailedRecord.self, from: data))
     case "WebSocketWillOpen":
-      return .webSocketWillOpen(try decoder.decode(SnapONetWebSocketWillOpenRecord.self, from: data))
+      return try .webSocketWillOpen(decoder.decode(SnapONetWebSocketWillOpenRecord.self, from: data))
     case "WebSocketOpened":
-      return .webSocketOpened(try decoder.decode(SnapONetWebSocketOpenedRecord.self, from: data))
+      return try .webSocketOpened(decoder.decode(SnapONetWebSocketOpenedRecord.self, from: data))
     case "WebSocketMessageSent":
-      return .webSocketMessageSent(try decoder.decode(SnapONetWebSocketMessageSentRecord.self, from: data))
+      return try .webSocketMessageSent(decoder.decode(SnapONetWebSocketMessageSentRecord.self, from: data))
     case "WebSocketMessageReceived":
-      return .webSocketMessageReceived(try decoder.decode(SnapONetWebSocketMessageReceivedRecord.self, from: data))
+      return try .webSocketMessageReceived(decoder.decode(SnapONetWebSocketMessageReceivedRecord.self, from: data))
     case "WebSocketClosing":
-      return .webSocketClosing(try decoder.decode(SnapONetWebSocketClosingRecord.self, from: data))
+      return try .webSocketClosing(decoder.decode(SnapONetWebSocketClosingRecord.self, from: data))
     case "WebSocketClosed":
-      return .webSocketClosed(try decoder.decode(SnapONetWebSocketClosedRecord.self, from: data))
+      return try .webSocketClosed(decoder.decode(SnapONetWebSocketClosedRecord.self, from: data))
     case "WebSocketFailed":
-      return .webSocketFailed(try decoder.decode(SnapONetWebSocketFailedRecord.self, from: data))
+      return try .webSocketFailed(decoder.decode(SnapONetWebSocketFailedRecord.self, from: data))
     case "WebSocketCloseRequested":
-      return .webSocketCloseRequested(try decoder.decode(SnapONetWebSocketCloseRequestedRecord.self, from: data))
+      return try .webSocketCloseRequested(decoder.decode(SnapONetWebSocketCloseRequestedRecord.self, from: data))
     case "WebSocketCancelled":
-      return .webSocketCancelled(try decoder.decode(SnapONetWebSocketCancelledRecord.self, from: data))
+      return try .webSocketCancelled(decoder.decode(SnapONetWebSocketCancelledRecord.self, from: data))
     default:
       let raw = String(data: data, encoding: .utf8) ?? "<unparseable>"
       return .unknown(type: discriminator.type, rawJSON: raw)
