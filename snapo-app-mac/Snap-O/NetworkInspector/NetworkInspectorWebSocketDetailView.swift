@@ -180,7 +180,7 @@ struct NetworkInspectorWebSocketDetailView: View {
           .font(.subheadline)
           .foregroundStyle(.secondary)
       } else {
-        LazyVStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
           ForEach(webSocket.messages) { message in
             MessageCardView(message: message)
           }
