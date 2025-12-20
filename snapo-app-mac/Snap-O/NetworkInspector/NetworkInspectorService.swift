@@ -63,11 +63,10 @@ actor NetworkInspectorService {
   }
 
   func sendFeatureOpened(feature: String, serverID: SnapOLinkServerID?) async {
-    let targetID: SnapOLinkServerID?
-    if let serverID {
-      targetID = serverID
+    let targetID: SnapOLinkServerID? = if let serverID {
+      serverID
     } else {
-      targetID = serverStates.keys.first(where: { serverStates[$0]?.server.isConnected == true })
+      serverStates.keys.first { serverStates[$0]?.server.isConnected == true }
     }
     guard let id = targetID, let connection = serverStates[id]?.connection else { return }
     connection.sendFeatureOpened(feature: feature)

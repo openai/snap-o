@@ -8,11 +8,8 @@ import com.openai.snapo.network.record.ResponseStreamClosed
 import com.openai.snapo.network.record.ResponseStreamEvent
 import com.openai.snapo.network.record.SnapONetRecord
 import com.openai.snapo.network.record.TimedRecord
-import com.openai.snapo.network.record.Timings
 import com.openai.snapo.network.record.WebSocketCancelled
-import com.openai.snapo.network.record.WebSocketCloseRequested
 import com.openai.snapo.network.record.WebSocketClosed
-import com.openai.snapo.network.record.WebSocketClosing
 import com.openai.snapo.network.record.WebSocketFailed
 import com.openai.snapo.network.record.WebSocketMessageReceived
 import com.openai.snapo.network.record.WebSocketMessageSent
@@ -153,7 +150,10 @@ internal class EventBuffer(
     private fun evictRequestTerminal(head: RequestWillBeSent): Boolean {
         return records.indexOfFirst { candidate ->
             candidate !== head && when (candidate) {
-                is ResponseReceived -> candidate.id == head.id && !activeResponseStreams.contains(head.id)
+                is ResponseReceived -> candidate.id == head.id && !activeResponseStreams.contains(
+                    head.id
+                )
+
                 is RequestFailed -> candidate.id == head.id
                 is ResponseStreamClosed -> candidate.id == head.id
                 else -> false
@@ -180,9 +180,9 @@ internal class EventBuffer(
         var removedAny = false
         while (iterator.hasNext()) {
             val candidate = iterator.next()
-            if (candidate === head) continue
-            val perSocket = candidate.perWebSocketRecord() ?: continue
-            if (perSocket.id == wsHead.id) {
+            val perSocket = candidate.perWebSocketRecord()
+            val shouldRemove = perSocket != null && perSocket.id == wsHead.id && candidate !== head
+            if (shouldRemove) {
                 iterator.remove()
                 subtractApproxBytes(candidate)
                 updateWebSocketStateOnRemove(candidate)
@@ -238,49 +238,29 @@ internal class EventBuffer(
     }
 
     private fun estimateSize(record: SnapONetRecord): Long {
-        val base = 64L // rough per-record object overhead
-        return base + when (record) {
-            is RequestWillBeSent -> sizeOfString(record.method) +
-                sizeOfString(record.url) +
+        val base = 64 // rough per-record object overhead
+        val payloadEstimate = when (record) {
+            is RequestWillBeSent ->
+                record.method.length +
+                    record.url.length +
+                    sizeOfHeaders(record.headers) +
+                    record.body.length
+
+            is ResponseReceived ->
                 sizeOfHeaders(record.headers) +
-                sizeOfString(record.body) +
-                sizeOfString(record.bodyEncoding) +
-                sizeOfLong(record.bodyTruncatedBytes) +
-                sizeOfLong(record.bodySize)
+                    record.bodyPreview.length +
+                    record.body.length
 
-            is ResponseReceived -> sizeOfHeaders(record.headers) +
-                sizeOfString(record.bodyPreview) +
-                sizeOfString(record.body) +
-                sizeOfLong(record.bodyTruncatedBytes) +
-                sizeOfLong(record.bodySize) +
-                sizeOfTimings(record.timings)
-
-            is RequestFailed -> sizeOfString(record.errorKind) +
-                sizeOfString(record.message) +
-                sizeOfTimings(record.timings)
-
-            is ResponseStreamEvent -> sizeOfString(record.raw)
-
-            is ResponseStreamClosed -> sizeOfString(record.reason) +
-                sizeOfString(record.message) +
-                3 * Long.SIZE_BYTES // totalEvents + totalBytes + timestamps
-
-            is WebSocketWillOpen -> sizeOfString(record.url) + sizeOfHeaders(record.headers)
+            is ResponseStreamEvent -> record.raw.length
+            is ResponseStreamClosed -> record.reason.length + record.message.length
+            is WebSocketWillOpen -> record.url.length + sizeOfHeaders(record.headers)
             is WebSocketOpened -> sizeOfHeaders(record.headers)
-            is WebSocketMessageSent -> sizeOfString(record.opcode) +
-                sizeOfString(record.preview) +
-                sizeOfLong(record.payloadSize)
+            is WebSocketMessageSent -> record.preview.length
+            is WebSocketMessageReceived -> record.preview.length
 
-            is WebSocketMessageReceived -> sizeOfString(record.opcode) +
-                sizeOfString(record.preview) +
-                sizeOfLong(record.payloadSize)
-
-            is WebSocketClosing -> sizeOfString(record.reason)
-            is WebSocketClosed -> sizeOfString(record.reason)
-            is WebSocketFailed -> sizeOfString(record.errorKind) + sizeOfString(record.message)
-            is WebSocketCloseRequested -> sizeOfString(record.reason) + sizeOfString(record.initiated)
-            is WebSocketCancelled -> 0L
+            else -> 0
         }
+        return (base + payloadEstimate).toLong()
     }
 
     private fun subtractApproxBytes(record: SnapONetRecord) {
@@ -288,24 +268,8 @@ internal class EventBuffer(
         if (approxBytes < 0) approxBytes = 0
     }
 
-    private fun sizeOfString(s: String?): Long = s?.length?.toLong() ?: 0L
-
-    private fun sizeOfHeaders(headers: List<Header>): Long =
-        headers.sumOf { sizeOfString(it.name) + sizeOfString(it.value) }
-
-    private fun sizeOfLong(v: Long?): Long = if (v != null) Long.SIZE_BYTES.toLong() else 0L
-
-    private fun sizeOfTimings(t: Timings?): Long {
-        if (t == null) return 0L
-        var total = 0L
-        total += sizeOfLong(t.dnsMs)
-        total += sizeOfLong(t.connectMs)
-        total += sizeOfLong(t.tlsMs)
-        total += sizeOfLong(t.requestHeadersMs)
-        total += sizeOfLong(t.requestBodyMs)
-        total += sizeOfLong(t.ttfbMs)
-        total += sizeOfLong(t.responseBodyMs)
-        total += sizeOfLong(t.totalMs)
-        return total
-    }
+    private fun sizeOfHeaders(headers: List<Header>): Int =
+        headers.sumOf { it.name.length + it.value.length }
 }
+
+private val String?.length: Int get() = this?.length ?: 0

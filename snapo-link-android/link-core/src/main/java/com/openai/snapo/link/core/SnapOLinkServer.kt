@@ -217,8 +217,9 @@ class SnapOLinkServer(
             }
             if (line == null) break
             val trimmed = line.trimEnd('\r')
-            if (trimmed.isEmpty()) continue
-            handleHostMessage(trimmed)
+            if (trimmed.isNotEmpty()) {
+                handleHostMessage(trimmed)
+            }
         }
     }
 
