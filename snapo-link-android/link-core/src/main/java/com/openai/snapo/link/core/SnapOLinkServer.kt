@@ -12,24 +12,28 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerializationStrategy
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.serializer
+import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.coroutines.coroutineContext
 
 /**
- * App-side server that accepts arbitrary SnapONetRecord events,
- * buffers the last [SnapONetConfig.bufferWindow], and streams them to a single desktop client.
+ * App-side server that accepts a single desktop client and delegates streaming to features.
  *
  * Transport:
  * ABSTRACT local UNIX domain socket → adb forward tcp:PORT localabstract:snapo_server_$pid
@@ -37,11 +41,14 @@ import kotlin.coroutines.coroutineContext
 class SnapOLinkServer(
     private val app: Application,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-    private val config: SnapONetConfig = SnapONetConfig(),
+    private val config: SnapOLinkConfig = SnapOLinkConfig(),
 ) : Closeable {
 
     /** Name visible to `adb shell cat /proc/net/unix`. */
     val socketName: String = "snapo_server_${Process.myPid()}"
+    // Security note: this binds in the Linux abstract namespace. Access is governed by SELinux
+    // (connectto), not filesystem perms. Other apps will not be able to connect, but it is
+    // reachable by ADB forward.
 
     // --- lifecycle ---
     @Volatile
@@ -56,10 +63,8 @@ class SnapOLinkServer(
     @Volatile
     private var lastHighPriorityEmissionMs: Long = 0L
 
-    // --- buffering ---
-    private val bufferLock = Mutex()
     private val writerLock = Mutex()
-    private val eventBuffer = EventBuffer(config)
+    private var attachedFeatures: List<AttachedFeature> = emptyList()
 
     @Volatile
     private var latestAppIcon: AppIcon? = null
@@ -75,7 +80,7 @@ class SnapOLinkServer(
             Log.e(
                 TAG,
                 "Snap-O Link detected in a release build. Link server will NOT start. " +
-                    "Release builds should use link-okhttp3-noop instead, " +
+                    "Release builds should use network-okhttp3-noop instead, " +
                     "or set snapo.allow_release=\"true\" if intentional."
             )
             return
@@ -96,39 +101,12 @@ class SnapOLinkServer(
     override fun close() {
         writerJob?.cancel()
         writerJob = null
+        cleanupActiveConnection()
         try {
             server?.close()
         } catch (_: Throwable) {
         }
         server = null
-        try {
-            connectedSink?.close()
-        } catch (_: Throwable) {
-        }
-        connectedSink = null
-    }
-
-    /**
-     * Publish a record: it’s inserted into the in-memory buffer (kept sorted by wall clock time)
-     * and, if a client is connected, streamed immediately as an NDJSON line.
-     */
-    suspend fun publish(record: SnapONetRecord) {
-        // 1) add to buffer (evicting old items)
-        bufferLock.withLock {
-            eventBuffer.append(record)
-        }
-        // 2) stream live with priority rules
-        when (record) {
-            is ResponseReceived -> {
-                if (record.hasBodyPayload()) {
-                    streamLineIfConnected(record.withoutBodyPayload())
-                    scheduleResponseBody(record)
-                } else {
-                    streamLineIfConnected(record)
-                }
-            }
-            else -> streamLineIfConnected(record)
-        }
     }
 
     // ---- internals ----
@@ -160,9 +138,12 @@ class SnapOLinkServer(
 
         try {
             if (proceed) {
-                val sink = attachClient(socket)
-                val deferredBodies = replayBufferedHistory(sink)
-                scheduleDeferredBodies(deferredBodies)
+                val writer = attachClient(socket)
+                writerLock.withLock {
+                    writeHandshake(writer)
+                }
+                attachFeatures()
+                sendHighPriorityRecord(ReplayComplete())
                 tailClient(socket)
             }
         } catch (ce: CancellationException) {
@@ -218,42 +199,37 @@ class SnapOLinkServer(
         return sink
     }
 
-    private suspend fun replayBufferedHistory(sink: BufferedWriter): List<ResponseReceived> {
-        val deferredBodies = mutableListOf<ResponseReceived>()
-        writerLock.withLock {
-            writeHandshake(sink)
-            val snapshot: List<SnapONetRecord> = bufferLock.withLock { eventBuffer.snapshot() }
-            for (rec in snapshot) {
-                if (rec is ResponseReceived && rec.hasBodyPayload()) {
-                    writeLine(sink, rec.withoutBodyPayload())
-                    deferredBodies.add(rec)
-                } else {
-                    writeLine(sink, rec)
-                }
-            }
-            writeLine(sink, ReplayComplete())
+    private suspend fun attachFeatures() {
+        val features = SnapOLinkRegistry.snapshot()
+        val attached = ArrayList<AttachedFeature>(features.size)
+        for (feature in features) {
+            val featureSink = FeatureWrappingSink(feature.featureId)
+            feature.onClientConnected(featureSink)
+            attached += AttachedFeature(feature = feature, sink = featureSink)
         }
-        return deferredBodies
+        attachedFeatures = attached
     }
 
-    private fun scheduleDeferredBodies(deferredBodies: List<ResponseReceived>) {
-        deferredBodies.forEachIndexed { index, response ->
-            val stagger = ResponseBodyStaggerMillis * index
-            scheduleResponseBody(response, ResponseBodyDelayMillis + stagger)
-        }
-    }
-
-    private fun tailClient(socket: LocalSocket) {
-        // Block here reading from the client to detect disconnect; ignore any input.
-        val src = socket.inputStream
-        val buf = ByteArray(1024)
+    private suspend fun tailClient(socket: LocalSocket) {
+        val reader = BufferedReader(InputStreamReader(socket.inputStream, StandardCharsets.UTF_8))
         while (true) {
-            val n = src.read(buf)
-            if (n < 0) break
+            val line = try {
+                reader.readLine()
+            } catch (_: Throwable) {
+                null
+            }
+            if (line == null) break
+            val trimmed = line.trimEnd('\r')
+            if (trimmed.isNotEmpty()) {
+                handleHostMessage(trimmed)
+            }
         }
     }
 
     private fun cleanupActiveConnection() {
+        val features = attachedFeatures
+        attachedFeatures = emptyList()
+        features.forEach { it.feature.onClientDisconnected() }
         try {
             connectedSink?.close()
         } catch (_: Throwable) {
@@ -275,12 +251,32 @@ class SnapOLinkServer(
     private fun isActiveSafe(): Boolean =
         (writerJob?.isActive != false)
 
-    private fun writeLine(writer: BufferedWriter, record: SnapONetRecord) {
+    private inner class FeatureWrappingSink(
+        private val featureId: String,
+    ) : LinkEventSink {
+        override suspend fun <T> sendHighPriority(payload: T, serializer: SerializationStrategy<T>) {
+            sendHighPriorityRecord(wrap(payload, serializer))
+        }
+
+        override suspend fun <T> sendLowPriority(payload: T, serializer: SerializationStrategy<T>) {
+            sendLowPriorityRecord(wrap(payload, serializer))
+        }
+
+        private fun <T> wrap(payload: T, serializer: SerializationStrategy<T>): LinkRecord {
+            val element = Ndjson.encodeToJsonElement(serializer, payload)
+            return FeatureEvent(feature = featureId, payload = element)
+        }
+    }
+
+    private fun writeLine(
+        writer: BufferedWriter,
+        payload: LinkRecord,
+    ): Boolean {
         try {
-            writer.write(Ndjson.encodeToString(SnapONetRecord.serializer(), record))
+            writer.write(Ndjson.encodeToString(LinkRecord.serializer(), payload))
             writer.write("\n")
             writer.flush()
-            markHighPriorityEmission(record)
+            return true
         } catch (_: Throwable) {
             // connection likely dropped; accept loop will tidy up
             try {
@@ -288,19 +284,29 @@ class SnapOLinkServer(
             } catch (_: Throwable) {
             }
             if (connectedSink === writer) connectedSink = null
+            return false
         }
     }
 
-    private suspend fun streamLineIfConnected(record: SnapONetRecord) {
+    private suspend fun sendHighPriorityRecord(payload: LinkRecord) {
         writerLock.withLock {
             val writer = connectedSink ?: return
-            writeLine(writer, record)
+            if (writeLine(writer, payload)) {
+                markHighPriorityEmission()
+            }
         }
     }
 
-    private suspend fun streamLowPriority(record: SnapONetRecord) {
-        while (coroutineContext.isActive) {
+    private suspend fun sendLowPriorityRecord(payload: LinkRecord) {
+        val deferStart = SystemClock.elapsedRealtime()
+        while (currentCoroutineContext().isActive) {
             if (connectedSink == null) return
+            if (hasRecentHighPriorityEmission() &&
+                SystemClock.elapsedRealtime() - deferStart < MaxLowPriorityDeferMillis
+            ) {
+                delay(LowPriorityRetryDelayMillis)
+                continue
+            }
             if (writerLock.tryLock()) {
                 val writer = connectedSink
                 if (writer == null) {
@@ -308,7 +314,7 @@ class SnapOLinkServer(
                     return
                 }
                 try {
-                    writeLine(writer, record)
+                    writeLine(writer, payload)
                 } finally {
                     writerLock.unlock()
                 }
@@ -318,8 +324,7 @@ class SnapOLinkServer(
         }
     }
 
-    private fun markHighPriorityEmission(record: SnapONetRecord) {
-        if (!record.isHighPriorityRecord()) return
+    private fun markHighPriorityEmission() {
         lastHighPriorityEmissionMs = SystemClock.elapsedRealtime()
     }
 
@@ -327,44 +332,6 @@ class SnapOLinkServer(
         val last = lastHighPriorityEmissionMs
         if (last == 0L) return false
         return SystemClock.elapsedRealtime() - last < HighPriorityIdleThresholdMillis
-    }
-
-    private fun SnapONetRecord.isHighPriorityRecord(): Boolean = when (this) {
-        is ResponseReceived -> !this.hasBodyPayload()
-        else -> true
-    }
-
-    private fun ResponseReceived.hasBodyPayload(): Boolean {
-        if (!body.isNullOrEmpty()) return true
-        if (!bodyPreview.isNullOrEmpty()) return true
-        return false
-    }
-
-    private fun ResponseReceived.withoutBodyPayload(): ResponseReceived =
-        copy(bodyPreview = null, body = null)
-
-    private fun scheduleResponseBody(
-        record: ResponseReceived,
-        initialDelayMs: Long = ResponseBodyDelayMillis,
-    ) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                if (initialDelayMs > 0) {
-                    delay(initialDelayMs)
-                }
-                val deferStart = SystemClock.elapsedRealtime()
-                while (hasRecentHighPriorityEmission() && connectedSink != null) {
-                    if (SystemClock.elapsedRealtime() - deferStart >= MaxBodyDeferMillis) {
-                        break
-                    }
-                    delay(LowPriorityRetryDelayMillis)
-                }
-                streamLowPriority(record)
-            } catch (t: CancellationException) {
-                throw t
-            } catch (_: Throwable) {
-            }
-        }
     }
 
     private suspend fun emitAppIconIfAvailable() {
@@ -388,7 +355,7 @@ class SnapOLinkServer(
         }
     }
 
-    private fun readClientHello(socket: LocalSocket): String? {
+    private fun readClientHello(socket: LocalSocket): String {
         socket.soTimeout = ClientHelloTimeoutMs
         val input = socket.inputStream
         val buffer = ByteArrayOutputStream()
@@ -411,35 +378,60 @@ class SnapOLinkServer(
     }
 
     private fun writeHandshake(writer: BufferedWriter) {
-        writeLine(
-            writer,
-            Hello(
-                packageName = app.packageName,
-                processName = appProcessName(),
-                pid = Process.myPid(),
-                serverStartWallMs = serverStartWallMs,
-                serverStartMonoNs = serverStartMonoNs,
-                mode = config.modeLabel,
+        if (
+            writeLine(
+                writer,
+                Hello(
+                    packageName = app.packageName,
+                    processName = appProcessName(),
+                    pid = Process.myPid(),
+                    serverStartWallMs = serverStartWallMs,
+                    serverStartMonoNs = serverStartMonoNs,
+                    mode = config.modeLabel,
+                    features = SnapOLinkRegistry.snapshot().map { LinkFeatureInfo(it.featureId) },
+                ),
             )
-        )
+        ) {
+            markHighPriorityEmission()
+        }
 
         latestAppIcon?.let { icon ->
-            writeLine(writer, icon)
+            if (writeLine(writer, icon)) {
+                markHighPriorityEmission()
+            }
         }
     }
 
     private suspend fun streamAppIcon(icon: AppIcon) {
         writerLock.withLock {
             val writer = connectedSink ?: return
-            writeLine(writer, icon)
+            if (writeLine(writer, icon)) {
+                markHighPriorityEmission()
+            }
         }
+    }
+
+    private suspend fun handleHostMessage(rawLine: String) {
+        val message = try {
+            Ndjson.decodeFromString(HostMessage.serializer(), rawLine)
+        } catch (_: Throwable) {
+            return
+        }
+        when (message) {
+            is FeatureOpened -> handleFeatureOpened(message)
+        }
+    }
+
+    private suspend fun handleFeatureOpened(message: FeatureOpened) {
+        val attached = attachedFeatures.firstOrNull { it.feature.featureId == message.feature } ?: return
+        attached.feature.onFeatureOpened()
     }
 
     companion object {
         fun start(
             application: Application,
             scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            config: SnapONetConfig = SnapONetConfig(),
+            config: SnapOLinkConfig = SnapOLinkConfig(),
         ): SnapOLinkServer =
             SnapOLinkServer(application, scope, config)
                 .also { it.start() }
@@ -450,13 +442,16 @@ private const val TAG = "SnapOLink"
 private const val ClientHelloToken = "HelloSnapO"
 private const val ClientHelloTimeoutMs = 1_000
 private const val ClientHelloMaxBytes = 4 * 1024
-private const val ResponseBodyDelayMillis = 200L
-private const val ResponseBodyStaggerMillis = 25L
 private const val HighPriorityIdleThresholdMillis = 150L
 private const val LowPriorityRetryDelayMillis = 50L
-private const val MaxBodyDeferMillis = 2_000L
+private const val MaxLowPriorityDeferMillis = 2_000L
 
 private sealed interface ClientHandshakeResult {
     object Accepted : ClientHandshakeResult
     data class Rejected(val reason: String) : ClientHandshakeResult
 }
+
+private data class AttachedFeature(
+    val feature: SnapOLinkFeature,
+    val sink: LinkEventSink,
+)

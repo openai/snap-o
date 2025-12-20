@@ -17,8 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.openai.snapo.demo.ui.theme.SnapOLinkTheme
-import com.openai.snapo.link.okhttp3.SnapOOkHttpInterceptor
-import com.openai.snapo.link.okhttp3.withSnapOInterceptor
+import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
+import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

@@ -62,6 +62,16 @@ actor NetworkInspectorService {
     await purgeUnretainedDisconnectedServers()
   }
 
+  func sendFeatureOpened(feature: String, serverID: SnapOLinkServerID?) async {
+    let targetID: SnapOLinkServerID? = if let serverID {
+      serverID
+    } else {
+      serverStates.keys.first { serverStates[$0]?.server.isConnected == true }
+    }
+    guard let id = targetID, let connection = serverStates[id]?.connection else { return }
+    connection.sendFeatureOpened(feature: feature)
+  }
+
   func serversStream() -> AsyncStream<[SnapOLinkServer]> {
     let id = UUID()
     return AsyncStream { continuation in
@@ -345,6 +355,7 @@ actor NetworkInspectorService {
         state.server.hello = hello
         state.server.schemaVersion = hello.schemaVersion
         state.server.isSchemaNewerThanSupported = Self.schemaVersionIsNewerThanSupported(hello.schemaVersion)
+        state.server.features = Set(hello.features.map(\.id))
         state.server.wallClockBase = Date(timeIntervalSince1970: 0)
         state.server.lastEventAt = now
         serverStates[serverID] = state

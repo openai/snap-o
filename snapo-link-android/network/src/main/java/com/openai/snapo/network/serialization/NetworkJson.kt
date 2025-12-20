@@ -1,8 +1,8 @@
-package com.openai.snapo.link.core
+package com.openai.snapo.network.serialization
 
 import kotlinx.serialization.json.Json
 
-val Ndjson = Json {
+internal val NetworkJson: Json = Json {
     prettyPrint = false
     ignoreUnknownKeys = true
     encodeDefaults = false

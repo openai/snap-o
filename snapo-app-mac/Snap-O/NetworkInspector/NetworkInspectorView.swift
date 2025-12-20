@@ -84,17 +84,18 @@ struct NetworkInspectorView: View {
     .onChange(of: selectedServerID) { _, newValue in
       if let id = newValue {
         store.setRetainedServerIDs(Set([id]))
+        store.notifyFeatureOpened(feature: "network", serverID: id)
       } else {
         store.setRetainedServerIDs(Set<SnapOLinkServerID>())
       }
     }
-    .onChange(of: store.items.map(\.id)) { _, ids in
-      reconcileSelection(allIDs: ids, filteredIDs: filteredItems.map(\.id))
+    .onChange(of: allItemIDs) { _, ids in
+      reconcileSelection(allIDs: ids, filteredIDs: filteredItemIDs)
     }
-    .onChange(of: filteredItems.map(\.id)) { _, filteredIDs in
-      reconcileSelection(allIDs: store.items.map(\.id), filteredIDs: filteredIDs)
+    .onChange(of: filteredItemIDs) { _, filteredIDs in
+      reconcileSelection(allIDs: allItemIDs, filteredIDs: filteredIDs)
     }
-    .onChange(of: store.servers.map(\.id)) { _, ids in
+    .onChange(of: serverIDs) { _, ids in
       if ids.isEmpty {
         selectedServerID = nil
         isServerPickerPresented = false
@@ -105,6 +106,12 @@ struct NetworkInspectorView: View {
         selectedServerID = ids.first
       }
     }
+    .onChange(of: serverConnectionStates) { _, _ in
+      let target = selectedServerID ?? store.servers.first?.id
+      if let id = target {
+        store.notifyFeatureOpened(feature: "network", serverID: id)
+      }
+    }
     .onAppear {
       if selectedServerID == nil {
         selectedServerID = store.servers.first?.id
@@ -112,6 +119,7 @@ struct NetworkInspectorView: View {
 
       if let id = selectedServerID {
         store.setRetainedServerIDs(Set([id]))
+        store.notifyFeatureOpened(feature: "network", serverID: id)
       } else {
         store.setRetainedServerIDs(Set<SnapOLinkServerID>())
       }
@@ -146,6 +154,27 @@ struct NetworkInspectorView: View {
 }
 
 private extension NetworkInspectorView {
+  var allItemIDs: [NetworkInspectorItemID] {
+    store.items.map(\.id)
+  }
+
+  var filteredItemIDs: [NetworkInspectorItemID] {
+    filteredItems.map(\.id)
+  }
+
+  var serverIDs: [SnapOLinkServerID] {
+    store.servers.map(\.id)
+  }
+
+  var serverConnectionStates: [ServerConnectionState] {
+    store.servers.map { ServerConnectionState(id: $0.id, isConnected: $0.isConnected) }
+  }
+
+  struct ServerConnectionState: Equatable {
+    let id: SnapOLinkServerID
+    let isConnected: Bool
+  }
+
   @ViewBuilder var detailContent: some View {
     if let selection = selectedItem,
        let detail = store.detail(for: selection) {
@@ -155,6 +184,13 @@ private extension NetworkInspectorView {
       }
     } else if store.servers.isEmpty {
       emptyStateView()
+    } else if let server = selectedServer,
+              serverScopedItems.isEmpty,
+              server.hasHello,
+              !server.features.contains("network") {
+      networkFeatureDisabledView(for: server)
+    } else if serverScopedItems.isEmpty {
+      waitingForActivityView
     } else {
       placeholderSelectionView
     }
@@ -193,6 +229,44 @@ private extension NetworkInspectorView {
         .font(.title2)
         .foregroundStyle(.secondary)
       Text("Choose an entry to inspect its details.")
+        .font(.body)
+        .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  @ViewBuilder
+  private func networkFeatureDisabledView(for server: NetworkInspectorServerViewModel) -> some View {
+    VStack(spacing: 16) {
+      Image(systemName: "exclamationmark.triangle")
+        .font(.system(size: 44, weight: .regular))
+        .foregroundStyle(.secondary)
+
+      VStack(spacing: 8) {
+        Text("Network Inspector in \(server.displayName) not found")
+          .font(.title3.weight(.semibold))
+        Text("The server is connected, but the network feature is either not installed or not enabled.")
+          .font(.body)
+          .multilineTextAlignment(.center)
+          .foregroundStyle(.secondary)
+      }
+
+      if let documentationURL = URL(string: "https://github.com/openai/snap-o/blob/main/docs/network-inspector.md") {
+        Link(destination: documentationURL) {
+          Text("Read the developer guide")
+        }
+        .buttonStyle(.link)
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  @ViewBuilder private var waitingForActivityView: some View {
+    VStack(spacing: 12) {
+      Text("No activity for this app yet")
+        .font(.title2)
+        .foregroundStyle(.secondary)
+      Text("Requests will appear here once the app makes network calls.")
         .font(.body)
         .foregroundStyle(.secondary)
     }

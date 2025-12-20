@@ -36,6 +36,6 @@ dependencies {
     implementation(libs.okhttp3.okhttp)
     implementation(libs.okhttp3.coroutines)
 
-    debugImplementation(project(":link-okhttp3"))
-    releaseImplementation(project(":link-okhttp3-noop"))
+    debugImplementation(project(":network-okhttp3"))
+    releaseImplementation(project(":network-okhttp3-noop"))
 }

@@ -19,7 +19,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             compileSdk = 36
 
             defaultConfig {
-                minSdk = 23
+                minSdk = 24
                 targetSdk = 36
             }
 

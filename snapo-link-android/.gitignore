@@ -31,8 +31,7 @@
 .idea/copilot.data.migration*
 
 # Build outputs
-/build
-/build-logic/build
+build/
 /captures
 .externalNativeBuild
 .cxx

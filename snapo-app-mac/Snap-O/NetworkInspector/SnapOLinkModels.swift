@@ -24,6 +24,7 @@ struct SnapOLinkServer: Identifiable, Hashable, Sendable {
   var appIcon: SnapONetAppIconRecord?
   var wallClockBase: Date?
   var packageNameHint: String?
+  var features: Set<String> = []
   var hasHello: Bool {
     hello != nil
   }
@@ -252,6 +253,7 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
   let serverStartWallMs: Int64
   let serverStartMonoNs: Int64
   let mode: String
+  let features: [SnapOLinkFeatureInfo]
 
   init(
     schemaVersion: Int = SnapONetRecordDecoder.supportedSchemaVersion,
@@ -260,7 +262,8 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     pid: Int,
     serverStartWallMs: Int64,
     serverStartMonoNs: Int64,
-    mode: String
+    mode: String,
+    features: [SnapOLinkFeatureInfo] = []
   ) {
     self.schemaVersion = schemaVersion
     self.packageName = packageName
@@ -269,6 +272,7 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     self.serverStartWallMs = serverStartWallMs
     self.serverStartMonoNs = serverStartMonoNs
     self.mode = mode
+    self.features = features
   }
 
   init(from decoder: Decoder) throws {
@@ -281,6 +285,7 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     serverStartWallMs = try container.decode(Int64.self, forKey: .serverStartWallMs)
     serverStartMonoNs = try container.decode(Int64.self, forKey: .serverStartMonoNs)
     mode = try container.decode(String.self, forKey: .mode)
+    features = try container.decodeIfPresent([SnapOLinkFeatureInfo].self, forKey: .features) ?? []
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -291,7 +296,12 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     case serverStartWallMs
     case serverStartMonoNs
     case mode
+    case features
   }
+}
+
+struct SnapOLinkFeatureInfo: Decodable, Hashable, Sendable {
+  let id: String
 }
 
 struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {
@@ -1045,72 +1055,109 @@ struct SnapONetWebSocketCancelledRecord: SnapONetPerWebSocketRecord, Hashable {
 }
 
 enum SnapONetRecordDecoder {
-  static let supportedSchemaVersion = 1
+  static let supportedSchemaVersion = 2
   private struct Discriminator: Decodable {
     let type: String
   }
 
   static func decode(from data: Data) throws -> SnapONetRecord {
+    // Peek at the top-level JSON to allow FeatureEvent envelope.
+    let top = try JSONSerialization.jsonObject(with: data, options: [])
+    guard let dict = top as? [String: Any],
+          let type = dict["type"] as? String else {
+      let raw = String(data: data, encoding: .utf8) ?? "<unparseable>"
+      return .unknown(type: "<missing-type>", rawJSON: raw)
+    }
+
+    switch type {
+    case "FeatureEvent":
+      return try decodeFeatureEvent(from: dict, raw: data)
+    case "Hello":
+      return try JSONDecoder().decode(SnapONetHelloRecord.self, from: data).asEnum
+    case "ReplayComplete":
+      return try JSONDecoder().decode(SnapONetReplayCompleteRecord.self, from: data).asEnum
+    case "Lifecycle":
+      return try JSONDecoder().decode(SnapONetLifecycleRecord.self, from: data).asEnum
+    case "AppIcon":
+      return try JSONDecoder().decode(SnapONetAppIconRecord.self, from: data).asEnum
+    case "RequestWillBeSent",
+         "ResponseReceived",
+         "ResponseStreamEvent",
+         "ResponseStreamClosed",
+         "RequestFailed",
+         "WebSocketWillOpen",
+         "WebSocketOpened",
+         "WebSocketMessageSent",
+         "WebSocketMessageReceived",
+         "WebSocketClosing",
+         "WebSocketClosed",
+         "WebSocketFailed",
+         "WebSocketCloseRequested",
+         "WebSocketCancelled":
+      // Back-compat: allow legacy unwrapped network records.
+      return try decodeNetworkPayload(from: data)
+    default:
+      let raw = String(data: data, encoding: .utf8) ?? "<unparseable>"
+      return .unknown(type: type, rawJSON: raw)
+    }
+  }
+
+  private static func decodeFeatureEvent(from dict: [String: Any], raw: Data) throws -> SnapONetRecord {
+    guard let feature = dict["feature"] as? String,
+          let payloadObj = dict["payload"] else {
+      let rawJSON = String(data: raw, encoding: .utf8) ?? "<unparseable>"
+      return .unknown(type: "FeatureEvent", rawJSON: rawJSON)
+    }
+    let payloadData = try JSONSerialization.data(withJSONObject: payloadObj, options: [])
+    switch feature {
+    case "network":
+      return try decodeNetworkPayload(from: payloadData)
+    default:
+      let rawJSON = String(data: raw, encoding: .utf8) ?? "<unparseable>"
+      return .unknown(type: "FeatureEvent(\(feature))", rawJSON: rawJSON)
+    }
+  }
+
+  private static func decodeNetworkPayload(from data: Data) throws -> SnapONetRecord {
     let decoder = JSONDecoder()
     let discriminator = try decoder.decode(Discriminator.self, from: data)
     switch discriminator.type {
-    case "Hello":
-      let record = try decoder.decode(SnapONetHelloRecord.self, from: data)
-      return .hello(record)
-    case "ReplayComplete":
-      let record = try decoder.decode(SnapONetReplayCompleteRecord.self, from: data)
-      return .replayComplete(record)
-    case "Lifecycle":
-      let record = try decoder.decode(SnapONetLifecycleRecord.self, from: data)
-      return .lifecycle(record)
-    case "AppIcon":
-      let record = try decoder.decode(SnapONetAppIconRecord.self, from: data)
-      return .appIcon(record)
     case "RequestWillBeSent":
-      let record = try decoder.decode(SnapONetRequestWillBeSentRecord.self, from: data)
-      return .requestWillBeSent(record)
+      return try .requestWillBeSent(decoder.decode(SnapONetRequestWillBeSentRecord.self, from: data))
     case "ResponseReceived":
-      let record = try decoder.decode(SnapONetResponseReceivedRecord.self, from: data)
-      return .responseReceived(record)
+      return try .responseReceived(decoder.decode(SnapONetResponseReceivedRecord.self, from: data))
     case "ResponseStreamEvent":
-      let record = try decoder.decode(SnapONetResponseStreamEventRecord.self, from: data)
-      return .responseStreamEvent(record)
+      return try .responseStreamEvent(decoder.decode(SnapONetResponseStreamEventRecord.self, from: data))
     case "ResponseStreamClosed":
-      let record = try decoder.decode(SnapONetResponseStreamClosedRecord.self, from: data)
-      return .responseStreamClosed(record)
+      return try .responseStreamClosed(decoder.decode(SnapONetResponseStreamClosedRecord.self, from: data))
     case "RequestFailed":
-      let record = try decoder.decode(SnapONetRequestFailedRecord.self, from: data)
-      return .requestFailed(record)
+      return try .requestFailed(decoder.decode(SnapONetRequestFailedRecord.self, from: data))
     case "WebSocketWillOpen":
-      let record = try decoder.decode(SnapONetWebSocketWillOpenRecord.self, from: data)
-      return .webSocketWillOpen(record)
+      return try .webSocketWillOpen(decoder.decode(SnapONetWebSocketWillOpenRecord.self, from: data))
     case "WebSocketOpened":
-      let record = try decoder.decode(SnapONetWebSocketOpenedRecord.self, from: data)
-      return .webSocketOpened(record)
+      return try .webSocketOpened(decoder.decode(SnapONetWebSocketOpenedRecord.self, from: data))
     case "WebSocketMessageSent":
-      let record = try decoder.decode(SnapONetWebSocketMessageSentRecord.self, from: data)
-      return .webSocketMessageSent(record)
+      return try .webSocketMessageSent(decoder.decode(SnapONetWebSocketMessageSentRecord.self, from: data))
     case "WebSocketMessageReceived":
-      let record = try decoder.decode(SnapONetWebSocketMessageReceivedRecord.self, from: data)
-      return .webSocketMessageReceived(record)
+      return try .webSocketMessageReceived(decoder.decode(SnapONetWebSocketMessageReceivedRecord.self, from: data))
     case "WebSocketClosing":
-      let record = try decoder.decode(SnapONetWebSocketClosingRecord.self, from: data)
-      return .webSocketClosing(record)
+      return try .webSocketClosing(decoder.decode(SnapONetWebSocketClosingRecord.self, from: data))
     case "WebSocketClosed":
-      let record = try decoder.decode(SnapONetWebSocketClosedRecord.self, from: data)
-      return .webSocketClosed(record)
+      return try .webSocketClosed(decoder.decode(SnapONetWebSocketClosedRecord.self, from: data))
     case "WebSocketFailed":
-      let record = try decoder.decode(SnapONetWebSocketFailedRecord.self, from: data)
-      return .webSocketFailed(record)
+      return try .webSocketFailed(decoder.decode(SnapONetWebSocketFailedRecord.self, from: data))
     case "WebSocketCloseRequested":
-      let record = try decoder.decode(SnapONetWebSocketCloseRequestedRecord.self, from: data)
-      return .webSocketCloseRequested(record)
+      return try .webSocketCloseRequested(decoder.decode(SnapONetWebSocketCloseRequestedRecord.self, from: data))
     case "WebSocketCancelled":
-      let record = try decoder.decode(SnapONetWebSocketCancelledRecord.self, from: data)
-      return .webSocketCancelled(record)
+      return try .webSocketCancelled(decoder.decode(SnapONetWebSocketCancelledRecord.self, from: data))
     default:
       let raw = String(data: data, encoding: .utf8) ?? "<unparseable>"
       return .unknown(type: discriminator.type, rawJSON: raw)
     }
   }
 }
+
+private extension SnapONetHelloRecord { var asEnum: SnapONetRecord { .hello(self) } }
+private extension SnapONetReplayCompleteRecord { var asEnum: SnapONetRecord { .replayComplete(self) } }
+private extension SnapONetLifecycleRecord { var asEnum: SnapONetRecord { .lifecycle(self) } }
+private extension SnapONetAppIconRecord { var asEnum: SnapONetRecord { .appIcon(self) } }

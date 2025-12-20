@@ -14,15 +14,6 @@
                 android:name="snapo.main_process_only"
                 android:value="true" />
             <meta-data
-                android:name="snapo.buffer_window_ms"
-                android:value="300000" />
-            <meta-data
-                android:name="snapo.max_events"
-                android:value="10000" />
-            <meta-data
-                android:name="snapo.max_bytes"
-                android:value="16777216" />
-            <meta-data
                 android:name="snapo.mode_label"
                 android:value="safe" />
         </provider>

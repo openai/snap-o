@@ -228,6 +228,12 @@ final class NetworkInspectorStore: ObservableObject {
     }
   }
 
+  func notifyFeatureOpened(feature: String, serverID: SnapOLinkServerID?) {
+    Task {
+      await service.sendFeatureOpened(feature: feature, serverID: serverID)
+    }
+  }
+
   func requestViewModel(for id: NetworkInspectorRequestID) -> NetworkInspectorRequestViewModel? {
     guard let request = requestLookup[id] else { return nil }
     let server = serverLookup[request.serverID]
@@ -264,6 +270,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let schemaVersion: Int?
   let isSchemaNewerThanSupported: Bool
   let hasHello: Bool
+  let features: Set<String>
 
   init(server: SnapOLinkServer) {
     id = server.id
@@ -292,6 +299,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
     }
     schemaVersion = server.schemaVersion
     isSchemaNewerThanSupported = server.isSchemaNewerThanSupported
+    features = server.features
   }
 }
 

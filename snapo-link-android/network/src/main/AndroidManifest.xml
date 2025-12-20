@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <provider
+            android:name="com.openai.snapo.network.SnapONetworkInitProvider"
+            android:authorities="${applicationId}.snapo-network-init"
+            android:exported="false"
+            android:initOrder="101">
+            <meta-data
+                android:name="snapo.auto_init"
+                android:value="true" />
+            <meta-data
+                android:name="snapo.main_process_only"
+                android:value="true" />
+            <meta-data
+                android:name="snapo.buffer_window_ms"
+                android:value="300000" />
+            <meta-data
+                android:name="snapo.max_events"
+                android:value="10000" />
+            <meta-data
+                android:name="snapo.max_bytes"
+                android:value="16777216" />
+        </provider>
+    </application>
+</manifest>
