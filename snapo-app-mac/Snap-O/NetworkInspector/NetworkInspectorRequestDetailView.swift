@@ -296,7 +296,7 @@ private struct StreamEventsSection: View {
           .font(.subheadline)
           .foregroundStyle(.secondary)
       } else {
-        LazyVStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
           ForEach(events) { event in
             StreamEventCard(
               event: event,
