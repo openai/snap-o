@@ -374,6 +374,7 @@ class SnapOLinkServer(
                     serverStartWallMs = serverStartWallMs,
                     serverStartMonoNs = serverStartMonoNs,
                     mode = config.modeLabel,
+                    features = SnapOLinkRegistry.snapshot().map { LinkFeatureInfo(it.featureId) },
                 ),
             )
         ) {

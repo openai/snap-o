@@ -345,6 +345,7 @@ actor NetworkInspectorService {
         state.server.hello = hello
         state.server.schemaVersion = hello.schemaVersion
         state.server.isSchemaNewerThanSupported = Self.schemaVersionIsNewerThanSupported(hello.schemaVersion)
+        state.server.features = Set(hello.features.map(\.id))
         state.server.wallClockBase = Date(timeIntervalSince1970: 0)
         state.server.lastEventAt = now
         serverStates[serverID] = state

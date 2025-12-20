@@ -19,6 +19,7 @@ data class Hello(
     val serverStartWallMs: Long,
     val serverStartMonoNs: Long,
     val mode: String,
+    val features: List<LinkFeatureInfo> = emptyList(),
 ) : LinkRecord
 
 /** Optional icon metadata to help the desktop show the app branding. */
@@ -45,4 +46,9 @@ data class FeatureEvent(
     val payload: JsonElement,
 ) : LinkRecord
 
-internal const val SchemaVersion: Int = 1
+@Serializable
+data class LinkFeatureInfo(
+    val id: String,
+)
+
+internal const val SchemaVersion: Int = 2

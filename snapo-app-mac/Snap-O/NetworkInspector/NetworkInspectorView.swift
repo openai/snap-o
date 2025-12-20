@@ -155,6 +155,13 @@ private extension NetworkInspectorView {
       }
     } else if store.servers.isEmpty {
       emptyStateView()
+    } else if let server = selectedServer,
+              serverScopedItems.isEmpty,
+              server.hasHello,
+              !server.features.contains("network") {
+      networkFeatureDisabledView(for: server)
+    } else if serverScopedItems.isEmpty {
+      waitingForActivityView
     } else {
       placeholderSelectionView
     }
@@ -193,6 +200,44 @@ private extension NetworkInspectorView {
         .font(.title2)
         .foregroundStyle(.secondary)
       Text("Choose an entry to inspect its details.")
+        .font(.body)
+        .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  @ViewBuilder
+  private func networkFeatureDisabledView(for server: NetworkInspectorServerViewModel) -> some View {
+    VStack(spacing: 16) {
+      Image(systemName: "exclamationmark.triangle")
+        .font(.system(size: 44, weight: .regular))
+        .foregroundStyle(.secondary)
+
+      VStack(spacing: 8) {
+        Text("Network Inspector in \(server.displayName) not found")
+          .font(.title3.weight(.semibold))
+        Text("The server is connected, but the network feature is either not installed or not enabled.")
+          .font(.body)
+          .multilineTextAlignment(.center)
+          .foregroundStyle(.secondary)
+      }
+
+      if let documentationURL = URL(string: "https://github.com/openai/snap-o/blob/main/docs/network-inspector.md") {
+        Link(destination: documentationURL) {
+          Text("Read the developer guide")
+        }
+        .buttonStyle(.link)
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  @ViewBuilder private var waitingForActivityView: some View {
+    VStack(spacing: 12) {
+      Text("No activity for this app yet")
+        .font(.title2)
+        .foregroundStyle(.secondary)
+      Text("Requests will appear here once the app makes network calls.")
         .font(.body)
         .foregroundStyle(.secondary)
     }

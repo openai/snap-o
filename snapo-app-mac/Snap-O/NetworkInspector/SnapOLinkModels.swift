@@ -24,6 +24,7 @@ struct SnapOLinkServer: Identifiable, Hashable, Sendable {
   var appIcon: SnapONetAppIconRecord?
   var wallClockBase: Date?
   var packageNameHint: String?
+  var features: Set<String> = []
   var hasHello: Bool {
     hello != nil
   }
@@ -252,6 +253,7 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
   let serverStartWallMs: Int64
   let serverStartMonoNs: Int64
   let mode: String
+  let features: [SnapOLinkFeatureInfo]
 
   init(
     schemaVersion: Int = SnapONetRecordDecoder.supportedSchemaVersion,
@@ -260,7 +262,8 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     pid: Int,
     serverStartWallMs: Int64,
     serverStartMonoNs: Int64,
-    mode: String
+    mode: String,
+    features: [SnapOLinkFeatureInfo] = []
   ) {
     self.schemaVersion = schemaVersion
     self.packageName = packageName
@@ -269,6 +272,7 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     self.serverStartWallMs = serverStartWallMs
     self.serverStartMonoNs = serverStartMonoNs
     self.mode = mode
+    self.features = features
   }
 
   init(from decoder: Decoder) throws {
@@ -281,6 +285,7 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     serverStartWallMs = try container.decode(Int64.self, forKey: .serverStartWallMs)
     serverStartMonoNs = try container.decode(Int64.self, forKey: .serverStartMonoNs)
     mode = try container.decode(String.self, forKey: .mode)
+    features = try container.decodeIfPresent([SnapOLinkFeatureInfo].self, forKey: .features) ?? []
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -291,7 +296,12 @@ struct SnapONetHelloRecord: Decodable, Hashable, Sendable {
     case serverStartWallMs
     case serverStartMonoNs
     case mode
+    case features
   }
+}
+
+struct SnapOLinkFeatureInfo: Decodable, Hashable, Sendable {
+  let id: String
 }
 
 struct SnapONetAppIconRecord: Decodable, Hashable, Sendable {

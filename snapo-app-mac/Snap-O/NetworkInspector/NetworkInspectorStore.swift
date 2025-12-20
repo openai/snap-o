@@ -264,6 +264,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
   let schemaVersion: Int?
   let isSchemaNewerThanSupported: Bool
   let hasHello: Bool
+  let features: Set<String>
 
   init(server: SnapOLinkServer) {
     id = server.id
@@ -292,6 +293,7 @@ struct NetworkInspectorServerViewModel: Identifiable {
     }
     schemaVersion = server.schemaVersion
     isSchemaNewerThanSupported = server.isSchemaNewerThanSupported
+    features = server.features
   }
 }
 

@@ -117,9 +117,14 @@ struct NetworkInspectorSidebarList: View {
 
 private extension NetworkInspectorSidebarList {
   var statusPlaceholder: String {
-    if selectedServer?.hasHello == true {
+    guard let server = selectedServer else {
+      return "Waiting for connection…"
+    }
+
+    if server.hasHello {
       return "No activity for this app yet"
     }
+
     return "Waiting for connection…"
   }
 }
