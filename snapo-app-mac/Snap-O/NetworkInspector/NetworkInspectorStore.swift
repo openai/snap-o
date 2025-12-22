@@ -1093,7 +1093,7 @@ struct NetworkInspectorWebSocketSummary: Identifiable {
   }
 }
 
-struct NetworkInspectorListItemViewModel: Identifiable {
+struct NetworkInspectorListItemViewModel: Identifiable, Equatable {
   enum Kind {
     case request(NetworkInspectorRequestSummary)
     case webSocket(NetworkInspectorWebSocketSummary)
@@ -1179,6 +1179,12 @@ struct NetworkInspectorListItemViewModel: Identifiable {
     case .webSocket(let webSocket):
       webSocket.url
     }
+  }
+}
+
+extension NetworkInspectorListItemViewModel {
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.id == rhs.id
   }
 }
 
