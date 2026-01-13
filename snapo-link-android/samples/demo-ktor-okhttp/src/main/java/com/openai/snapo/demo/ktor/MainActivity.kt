@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,7 +17,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.openai.snapo.demo.ktor.ui.theme.SnapOLinkTheme
 import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 import io.ktor.client.HttpClient
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            SnapOLinkTheme {
+            MaterialTheme {
                 val scope = rememberCoroutineScope()
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     DemoContent(
@@ -119,7 +119,7 @@ private fun DemoContent(
 @Preview(showBackground = true)
 @Composable
 private fun DemoPreview() {
-    SnapOLinkTheme {
+    MaterialTheme {
         DemoContent(
             onNetworkRequestClick = {},
             onWebSocketDemoClick = {},
