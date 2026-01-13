@@ -25,6 +25,15 @@ dependencies {
 
 This release dependency lets your code be the same in debug and release builds, but the Snap-O server and interceptors will not run.
 
+If you're using `HttpURLConnection`, depend on the corresponding interceptor instead:
+
+```kotlin
+dependencies {
+    debugImplementation("com.github.openai.snap-o:link-httpurlconnection:<version>")
+    releaseImplementation("com.github.openai.snap-o:link-httpurlconnection-noop:<version>")
+}
+```
+
 ## 2. Using OkHttp directly
 
 See [samples/demo-okhttp](https://github.com/openai/snap-o/blob/b406e928499648a50b8141f0864206c20a5f10c3/snapo-link-android/samples/demo-okhttp/src/main/java/com/openai/snapo/demo/MainActivity.kt#L35).
@@ -101,7 +110,24 @@ HttpClient(OkHttp) {
 }
 ```
 
-## 4. Optional: SnapOInitProvider configuration
+## 4. Using HttpURLConnection
+
+Attach the interceptor when opening a connection. Calls to `connect()`, `getInputStream()`, and `getResponseCode()` trigger capture.
+
+```kotlin
+val interceptor = SnapOHttpUrlInterceptor()
+val connection = interceptor.open(URL("https://example.com"))
+connection.connect()
+```
+
+Or wrap an existing connection:
+
+```kotlin
+val connection = URL("https://example.com").openConnection() as HttpURLConnection
+val intercepted = SnapOHttpUrlInterceptor().intercept(connection)
+```
+
+## 5. Optional: SnapOInitProvider configuration
 
 Debug builds start the link server automatically—most apps do not need any extra setup, via a `SnapOInitProvider` ContentProvider.
 
@@ -126,7 +152,7 @@ Customize the provider only if you need to adjust behavior. Override its metadat
 - `snapo.max_events` the max number of events that can stay in the buffer. (default: 10000)
 - `snapo.max_bytes` the max number of bytes that can stay in the buffer. (default: 16777216)
 
-## 5. Verify the connection
+## 6. Verify the connection
 
 1. Install your debug build on a device or emulator.
 2. Launch Snap-O on macOS and connect to the device.
