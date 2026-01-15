@@ -1,4 +1,3 @@
-import Sparkle
 import SwiftUI
 
 @main
@@ -11,11 +10,7 @@ struct SnapOApp: App {
   private let fileStore: FileStore
   private let captureService: CaptureService
   private let settings = AppSettings.shared
-  private let updaterController = SPUStandardUpdaterController(
-    startingUpdater: true,
-    updaterDelegate: nil,
-    userDriverDelegate: nil
-  )
+  private let updateCoordinator = UpdateCoordinator.shared
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
@@ -55,60 +50,26 @@ struct SnapOApp: App {
         fileStore: fileStore,
         adbService: adbService
       )
+      .handlesExternalEvents(
+        preferring: Set(["record", "capture", "livepreview", "check-updates", "check-for-updates"]),
+        allowing: Set(["*"])
+      )
     }
     .environment(settings)
     .defaultSize(width: 480, height: 480)
+    .handlesExternalEvents(matching: Set(["record", "capture", "livepreview"]))
     .commands {
       SnapOCommands(
         settings: settings,
         adbService: adbService,
-        updaterController: updaterController
+        updaterController: updateCoordinator.updaterController
       )
     }
-
-    Window("Network Inspector (Alpha)", id: NetworkInspectorWindowID.main) {
-      NetworkInspectorWindowRoot(
-        adbService: adbService,
-        deviceTracker: deviceTracker
-      )
-    }
-    .environment(settings)
-    .defaultSize(width: 960, height: 520)
 
     Window("Logcat Viewer", id: LogcatWindowID.main) {
       LogcatWindowRoot(adbService: adbService, deviceTracker: deviceTracker)
     }
     .defaultSize(width: 1000, height: 600)
-  }
-}
-
-private struct NetworkInspectorWindowRoot: View {
-  @StateObject private var store: NetworkInspectorStore
-  @Environment(AppSettings.self)
-  private var settings
-
-  init(
-    adbService: ADBService,
-    deviceTracker: DeviceTracker
-  ) {
-    _store = StateObject(
-      wrappedValue: NetworkInspectorStore(
-        service: NetworkInspectorService(
-          adbService: adbService,
-          deviceTracker: deviceTracker
-        )
-      )
-    )
-  }
-
-  var body: some View {
-    NetworkInspectorView(store: store)
-      .onAppear {
-        settings.shouldReopenNetworkInspector = true
-      }
-      .onDisappear {
-        guard settings.isAppTerminating != true else { return }
-        settings.shouldReopenNetworkInspector = false
-      }
+    .handlesExternalEvents(matching: Set(["logcat"]))
   }
 }

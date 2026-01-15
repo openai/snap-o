@@ -1,0 +1,32 @@
+# Snap-O Desktop (Compose)
+
+This is a macOS-only Compose Desktop implementation of Snap-O’s **Network Inspector**.
+
+Important: this app is expected to be packaged alongside the Xcode-built Snap-O app in `snapo-app-mac`. It is not shipped as a standalone product. The Kotlin Multiplatform implementation is packaged as a separate app for now because it was simpler to build and embed, so Snap-O acts as the host app and includes Network Inspector as a helper app.
+
+However, a user could open up the Network Inspector app directly if they want.
+
+Scope (for now):
+- Network Inspector only (requests, responses, SSE, WebSockets)
+- No screenshot / recording / live preview windows
+
+## Requirements
+
+- macOS (but it's practically cross-platform)
+- A running local ADB server (`adb start-server`)
+- At least one connected device/emulator running an app that includes the Snap-O link dependencies
+
+See the developer guide: https://github.com/openai/snap-o/blob/main/docs/network-inspector.md
+
+## Run for development
+
+```bash
+cd snapo-desktop-compose
+./gradlew run
+```
+
+## Package (release)
+
+Release packaging is handled by `snapo-app-mac`. Follow its packaging instructions (if present) since that build embeds this helper app alongside Snap-O.
+
+That being said, it can be tested with `./gradlew create(Release)Distributable`

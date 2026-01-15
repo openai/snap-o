@@ -1,0 +1,1 @@
+-dontwarn androidx.compose.material.**

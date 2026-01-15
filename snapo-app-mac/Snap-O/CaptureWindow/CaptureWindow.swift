@@ -1,3 +1,4 @@
+import Combine
 import Observation
 import SwiftUI
 
@@ -13,12 +14,6 @@ extension FocusedValues {
 }
 
 struct CaptureWindow: View {
-  @Environment(\.openWindow)
-  private var openWindow
-
-  @Environment(AppSettings.self)
-  private var settings
-
   @State private var controller: CaptureWindowController
 
   init(
@@ -62,14 +57,11 @@ struct CaptureWindow: View {
       }
     }
     .task { await controller.start() }
-    .onAppear {
-      guard !settings.hasRestoredNetworkInspector else { return }
-      settings.hasRestoredNetworkInspector = true
-      if settings.shouldReopenNetworkInspector {
-        openWindow(id: NetworkInspectorWindowID.main)
-      }
-    }
     .onDisappear { controller.tearDown() }
+    .onReceive(NotificationCenter.default.publisher(for: .snapoCommandRequested)) { notification in
+      guard let command = notification.object as? SnapOCommand else { return }
+      Task { await handle(command, controller: controller) }
+    }
     .focusedSceneValue(\.captureController, controller)
     .navigationTitle(controller.navigationTitle)
     .background(
@@ -112,6 +104,20 @@ struct CaptureWindow: View {
             }
         }
       }
+    }
+  }
+
+  private func handle(_ command: SnapOCommand, controller: CaptureWindowController) async {
+    switch command {
+    case .record:
+      guard controller.canStartRecordingNow else { return }
+      await controller.startRecording()
+    case .capture:
+      guard controller.canCaptureNow else { return }
+      await controller.captureScreenshots()
+    case .livepreview:
+      guard controller.canStartLivePreviewNow else { return }
+      await controller.startLivePreview()
     }
   }
 }
