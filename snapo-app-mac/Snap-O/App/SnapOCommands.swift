@@ -113,7 +113,7 @@ struct SnapOCommands: Commands {
     }
     CommandMenu("Tools") {
       Button("Network Inspector (Alpha)") {
-        openWindow(id: NetworkInspectorWindowID.main)
+        NetworkInspectorHelperLauncher.open()
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
 

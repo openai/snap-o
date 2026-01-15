@@ -74,7 +74,7 @@ struct CaptureToolbar: ToolbarContent {
   @ViewBuilder
   private func toolControls() -> some View {
     Button {
-      openWindow(id: NetworkInspectorWindowID.main)
+      NetworkInspectorHelperLauncher.open()
     } label: {
       Label("Network Inspector", systemImage: "network")
         .labelStyle(.iconOnly)

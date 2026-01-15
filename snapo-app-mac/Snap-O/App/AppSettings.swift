@@ -16,11 +16,5 @@ final class AppSettings {
     didSet { UserDefaults.standard.set(recordAsBugReport, forKey: "recordAsBugReport") }
   }
 
-  var shouldReopenNetworkInspector: Bool = UserDefaults.standard.bool(forKey: "reopenNetworkInspector") {
-    didSet { UserDefaults.standard.set(shouldReopenNetworkInspector, forKey: "reopenNetworkInspector") }
-  }
-
-  var hasRestoredNetworkInspector: Bool = false
-
   var isAppTerminating: Bool = false
 }
