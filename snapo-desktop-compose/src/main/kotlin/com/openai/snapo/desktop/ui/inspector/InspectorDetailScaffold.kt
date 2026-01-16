@@ -2,15 +2,14 @@ package com.openai.snapo.desktop.ui.inspector
 
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,19 +26,28 @@ internal val InspectorDetailContentPadding = PaddingValues(
 fun InspectorDetailScaffold(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = InspectorDetailContentPadding,
-    content: @Composable ColumnScope.() -> Unit,
+    selectionEnabled: Boolean = true,
+    content: LazyListScope.() -> Unit,
 ) {
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
     Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(contentPadding),
-            content = content,
-        )
+        val list = @Composable {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = contentPadding,
+                content = content,
+            )
+        }
+        if (selectionEnabled) {
+            SelectionContainer {
+                list()
+            }
+        } else {
+            list()
+        }
         VerticalScrollbar(
-            adapter = rememberScrollbarAdapter(scrollState),
+            adapter = rememberScrollbarAdapter(listState),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .fillMaxHeight(),

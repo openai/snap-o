@@ -4,11 +4,8 @@ package com.openai.snapo.desktop.ui.inspector
 
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ContextMenuItem
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,7 +22,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.openai.snapo.desktop.inspector.NetworkInspectorRequestUiModel
 import com.openai.snapo.desktop.ui.TriangleIndicator
-import com.openai.snapo.desktop.ui.json.JsonOutlineExpansionState
 import com.openai.snapo.desktop.ui.theme.Spacings
 import java.awt.FileDialog
 import java.awt.Frame
@@ -38,42 +34,8 @@ import java.io.FileOutputStream
 import javax.imageio.ImageIO
 import org.jetbrains.skia.Image as SkiaImage
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun BodySection(
-    title: String,
-    payload: NetworkInspectorRequestUiModel.BodyPayload,
-    isExpanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    usePrettyPrinted: Boolean,
-    onPrettyPrintedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    jsonOutlineState: JsonOutlineExpansionState? = null,
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(Spacings.sm),
-        modifier = modifier,
-    ) {
-        BodySectionHeader(
-            title = title,
-            payload = payload,
-            isExpanded = isExpanded,
-            onExpandedChange = onExpandedChange,
-        )
-
-        if (isExpanded) {
-            BodySectionContent(
-                payload = payload,
-                usePrettyPrinted = usePrettyPrinted,
-                onPrettyPrintedChange = onPrettyPrintedChange,
-                jsonOutlineState = jsonOutlineState,
-            )
-        }
-    }
-}
-
-@Composable
-private fun BodySectionHeader(
+internal fun BodySectionHeader(
     title: String,
     payload: NetworkInspectorRequestUiModel.BodyPayload,
     isExpanded: Boolean,
@@ -106,32 +68,7 @@ private fun BodySectionHeader(
 }
 
 @Composable
-private fun BodySectionContent(
-    payload: NetworkInspectorRequestUiModel.BodyPayload,
-    usePrettyPrinted: Boolean,
-    onPrettyPrintedChange: (Boolean) -> Unit,
-    jsonOutlineState: JsonOutlineExpansionState?,
-) {
-    val imageBitmap = remember(payload.data) { payload.data?.let(::decodeImageBitmap) }
-    val bytes = payload.data
-    if (imageBitmap != null && bytes != null) {
-        BodyImagePreview(
-            payload = payload,
-            imageBitmap = imageBitmap,
-            bytes = bytes,
-        )
-    } else {
-        BodyTextPayload(
-            payload = payload,
-            usePrettyPrinted = usePrettyPrinted,
-            onPrettyPrintedChange = onPrettyPrintedChange,
-            jsonOutlineState = jsonOutlineState,
-        )
-    }
-}
-
-@Composable
-private fun BodyImagePreview(
+internal fun BodyImagePreview(
     payload: NetworkInspectorRequestUiModel.BodyPayload,
     imageBitmap: ImageBitmap,
     bytes: ByteArray,
@@ -166,26 +103,6 @@ private fun BodyImagePreview(
                     .fillMaxWidth(),
             )
         }
-    }
-}
-
-@Composable
-private fun BodyTextPayload(
-    payload: NetworkInspectorRequestUiModel.BodyPayload,
-    usePrettyPrinted: Boolean,
-    onPrettyPrintedChange: (Boolean) -> Unit,
-    jsonOutlineState: JsonOutlineExpansionState?,
-) {
-    InspectorCard {
-        InspectorPayloadView(
-            rawText = payload.rawText,
-            prettyText = payload.prettyPrintedText,
-            isLikelyJson = payload.isLikelyJson,
-            usePrettyPrinted = usePrettyPrinted,
-            onPrettyPrintedChange = onPrettyPrintedChange,
-            jsonOutlineState = jsonOutlineState,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -226,7 +143,7 @@ private fun formatBytes(byteCount: Long): String {
     }
 }
 
-private fun decodeImageBitmap(bytes: ByteArray): ImageBitmap? {
+internal fun decodeImageBitmap(bytes: ByteArray): ImageBitmap? {
     return try {
         SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap()
     } catch (_: Throwable) {

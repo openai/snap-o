@@ -837,11 +837,7 @@ private fun previewSidebarState(
     sortOrder: ListSortOrder = ListSortOrder.NewestFirst,
 ): SidebarState {
     val serverScopedItems = items.filter { selectedServer == null || it.serverId == selectedServer.id }
-    val filteredItems = if (searchText.isBlank()) {
-        serverScopedItems
-    } else {
-        serverScopedItems.filter { it.url.contains(searchText, ignoreCase = true) }
-    }
+    val filteredItems = filterItemsByUrlSearch(serverScopedItems, searchText)
     return SidebarState(
         servers = servers,
         selectedServer = selectedServer,

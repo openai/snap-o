@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -18,7 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +36,7 @@ import com.openai.snapo.desktop.inspector.NetworkInspectorRequestStatus
 import com.openai.snapo.desktop.inspector.NetworkInspectorStatusPresentation
 import com.openai.snapo.desktop.inspector.NetworkInspectorWebSocketUiModel
 import com.openai.snapo.desktop.inspector.WebSocketMessage
+import com.openai.snapo.desktop.protocol.Header
 import com.openai.snapo.desktop.ui.TriangleIndicator
 import com.openai.snapo.desktop.ui.json.JsonOutlineExpansionState
 import com.openai.snapo.desktop.ui.theme.SnapOAccents
@@ -60,38 +62,48 @@ fun WebSocketDetailView(
     val uiState = remember(webSocket.id) { uiStateStore.webSocketState(webSocket.id) }
 
     InspectorDetailScaffold(modifier = modifier) {
-        HeaderSummary(webSocket = webSocket, modifier = Modifier.padding(bottom = Spacings.md))
+        item(key = "websocket:header") {
+            HeaderSummary(webSocket = webSocket, modifier = Modifier.padding(bottom = Spacings.md))
+        }
 
-        HeadersSection(
+        headersSectionItems(
             title = "Request Headers",
             headers = webSocket.requestHeaders,
             isExpanded = uiState.requestHeadersExpanded,
             onExpandedChange = { uiState.requestHeadersExpanded = it },
+            keyPrefix = "ws-request-headers",
         )
 
-        HeadersSection(
+        headersSectionItems(
             title = "Response Headers",
             headers = webSocket.responseHeaders,
             isExpanded = uiState.responseHeadersExpanded,
             onExpandedChange = { uiState.responseHeadersExpanded = it },
+            keyPrefix = "ws-response-headers",
         )
 
-        MessagesSectionHeader(
-            isExpanded = uiState.messagesExpanded,
-            onExpandedChange = { uiState.messagesExpanded = it },
-        )
+        item(key = "ws-messages:header") {
+            DisableSelection {
+                MessagesSectionHeader(
+                    isExpanded = uiState.messagesExpanded,
+                    onExpandedChange = { uiState.messagesExpanded = it },
+                )
+            }
+        }
 
         if (uiState.messagesExpanded) {
             if (webSocket.messages.isEmpty()) {
-                Text(
-                    "No messages yet",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = Spacings.mdPlus, top = Spacings.md),
-                )
+                item(key = "ws-messages:empty") {
+                    Text(
+                        "No messages yet",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = Spacings.mdPlus, top = Spacings.md),
+                    )
+                }
             } else {
                 webSocket.messages.forEach { message ->
-                    key(message.id) {
+                    item(key = "ws-message:${message.id}") {
                         MessageCard(
                             message = message,
                             jsonOutlineState = uiState.messageJsonState(message.id),
@@ -100,6 +112,31 @@ fun WebSocketDetailView(
                     }
                 }
             }
+        }
+    }
+}
+
+private fun LazyListScope.headersSectionItems(
+    title: String,
+    headers: List<Header>,
+    isExpanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    keyPrefix: String,
+) {
+    if (headers.isEmpty()) return
+    item(key = "$keyPrefix:header") {
+        HeadersSectionHeader(
+            title = title,
+            isExpanded = isExpanded,
+            onExpandedChange = onExpandedChange,
+        )
+    }
+    if (isExpanded) {
+        item(key = "$keyPrefix:body") {
+            HeadersSectionBody(
+                headers = headers,
+                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.xs),
+            )
         }
     }
 }

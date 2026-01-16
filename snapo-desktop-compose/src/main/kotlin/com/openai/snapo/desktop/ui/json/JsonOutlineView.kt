@@ -45,6 +45,17 @@ import com.openai.snapo.desktop.ui.theme.SnapOAccents
 import com.openai.snapo.desktop.ui.theme.SnapOMono
 import com.openai.snapo.desktop.ui.theme.Spacings
 
+internal data class JsonOutlineRowsState(
+    val rows: List<JsonOutlineRow>,
+    val expandedNodes: Set<String>,
+    val expandedStrings: Set<String>,
+    val onToggleExpand: (String) -> Unit,
+    val onToggleStringExpand: (String) -> Unit,
+    val onExpandAll: (JsonOutlineNode) -> Unit,
+    val onCollapseChildren: (JsonOutlineNode) -> Unit,
+    val rootId: String,
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun JsonOutlineView(
@@ -55,6 +66,50 @@ fun JsonOutlineView(
     expansionState: JsonOutlineExpansionState? = null,
     payloadKey: Int? = null,
 ) {
+    val outlineState = rememberJsonOutlineRowsState(
+        root = root,
+        initiallyExpanded = initiallyExpanded,
+        expansionState = expansionState,
+        payloadKey = payloadKey,
+    )
+
+    SelectionContainer {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Spacings.xxs),
+            modifier = modifier
+                .fillMaxWidth()
+                .background(Color.Transparent),
+        ) {
+            for (row in outlineState.rows) {
+                JsonOutlineRowItem(
+                    row = row,
+                    outlineState = outlineState,
+                    rootTrailingContent = rootTrailingContent,
+                )
+            }
+        }
+    }
+}
+
+internal sealed interface JsonOutlineRow {
+    val key: String
+
+    data class Node(val node: JsonOutlineNode, val indent: Int) : JsonOutlineRow {
+        override val key: String = "node:${node.id}"
+    }
+
+    data class Closing(val parentId: String, val indent: Int, val symbol: String) : JsonOutlineRow {
+        override val key: String = "close:$parentId:$indent:$symbol"
+    }
+}
+
+@Composable
+internal fun rememberJsonOutlineRowsState(
+    root: JsonOutlineNode,
+    initiallyExpanded: Boolean,
+    expansionState: JsonOutlineExpansionState?,
+    payloadKey: Int?,
+): JsonOutlineRowsState {
     val localState = remember(root.id) { JsonOutlineExpansionState(initiallyExpanded) }
     val state = expansionState ?: localState
     val effectivePayloadKey = payloadKey ?: root.hashCode()
@@ -69,62 +124,58 @@ fun JsonOutlineView(
         }
     }
 
-    SelectionContainer {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Spacings.xxs),
-            modifier = modifier
-                .fillMaxWidth()
-                .background(Color.Transparent),
-        ) {
-            for (row in rows) {
-                when (row) {
-                    is JsonOutlineRow.Node -> JsonNodeRow(
-                        node = row.node,
-                        indent = row.indent,
-                        expandedNodes = state.expandedNodes,
-                        expandedStrings = state.expandedStrings,
-                        onToggleExpand = { id ->
-                            val current = state.expandedNodes
-                            state.expandedNodes =
-                                if (current.contains(id)) current - id else current + id
-                        },
-                        onToggleStringExpand = { id ->
-                            val current = state.expandedStrings
-                            state.expandedStrings =
-                                if (current.contains(id)) current - id else current + id
-                        },
-                        onExpandAll = { node ->
-                            state.expandedNodes =
-                                state.expandedNodes + node.collectExpandableIds(includeSelf = true)
-                        },
-                        onCollapseChildren = { node ->
-                            state.expandedNodes =
-                                state.expandedNodes - node.collectExpandableIds(includeSelf = false)
-                            state.expandedStrings =
-                                state.expandedStrings - node.collectStringNodeIds(includeSelf = false)
-                        },
-                        trailingContent = if (row.node.id == root.id) rootTrailingContent else null,
-                    )
-
-                    is JsonOutlineRow.Closing -> JsonClosingRow(
-                        indent = row.indent,
-                        symbol = row.symbol,
-                    )
-                }
-            }
-        }
-    }
+    return JsonOutlineRowsState(
+        rows = rows,
+        expandedNodes = state.expandedNodes,
+        expandedStrings = state.expandedStrings,
+        onToggleExpand = { id ->
+            val current = state.expandedNodes
+            state.expandedNodes = if (current.contains(id)) current - id else current + id
+        },
+        onToggleStringExpand = { id ->
+            val current = state.expandedStrings
+            state.expandedStrings = if (current.contains(id)) current - id else current + id
+        },
+        onExpandAll = { node ->
+            state.expandedNodes =
+                state.expandedNodes + node.collectExpandableIds(includeSelf = true)
+        },
+        onCollapseChildren = { node ->
+            state.expandedNodes =
+                state.expandedNodes - node.collectExpandableIds(includeSelf = false)
+            state.expandedStrings =
+                state.expandedStrings - node.collectStringNodeIds(includeSelf = false)
+        },
+        rootId = root.id,
+    )
 }
 
-private sealed interface JsonOutlineRow {
-    val key: String
+@Composable
+internal fun JsonOutlineRowItem(
+    row: JsonOutlineRow,
+    outlineState: JsonOutlineRowsState,
+    rootTrailingContent: (@Composable RowScope.(JsonOutlineNode) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        when (row) {
+            is JsonOutlineRow.Node -> JsonNodeRow(
+                node = row.node,
+                indent = row.indent,
+                expandedNodes = outlineState.expandedNodes,
+                expandedStrings = outlineState.expandedStrings,
+                onToggleExpand = outlineState.onToggleExpand,
+                onToggleStringExpand = outlineState.onToggleStringExpand,
+                onExpandAll = outlineState.onExpandAll,
+                onCollapseChildren = outlineState.onCollapseChildren,
+                trailingContent = if (row.node.id == outlineState.rootId) rootTrailingContent else null,
+            )
 
-    data class Node(val node: JsonOutlineNode, val indent: Int) : JsonOutlineRow {
-        override val key: String = "node:${node.id}"
-    }
-
-    data class Closing(val parentId: String, val indent: Int, val symbol: String) : JsonOutlineRow {
-        override val key: String = "close:$parentId:$indent:$symbol"
+            is JsonOutlineRow.Closing -> JsonClosingRow(
+                indent = row.indent,
+                symbol = row.symbol,
+            )
+        }
     }
 }
 
