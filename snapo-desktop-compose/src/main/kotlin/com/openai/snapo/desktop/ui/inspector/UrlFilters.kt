@@ -29,11 +29,12 @@ private fun parseUrlFilterTokens(searchText: String): UrlFilterTokens {
     val excludes = mutableListOf<String>()
 
     tokenizeUrlSearch(searchText).forEach { token ->
-        if (token.value.isBlank()) return@forEach
-        if (token.isExcluded) {
-            excludes.add(token.value)
-        } else {
-            includes.add(token.value)
+        if (token.value.isNotBlank()) {
+            if (token.isExcluded) {
+                excludes.add(token.value)
+            } else {
+                includes.add(token.value)
+            }
         }
     }
 
@@ -47,73 +48,121 @@ private data class UrlFilterToken(
 
 private fun tokenizeUrlSearch(searchText: String): List<UrlFilterToken> {
     val tokens = mutableListOf<UrlFilterToken>()
-    var index = 0
-
-    fun skipWhitespace() {
-        while (index < searchText.length && searchText[index].isWhitespace()) {
-            index++
-        }
-    }
-
-    while (index < searchText.length) {
-        skipWhitespace()
-        if (index >= searchText.length) break
-
-        var isExcluded = false
-        if (searchText[index] == '-') {
-            isExcluded = true
-            index++
-        }
-
-        if (index >= searchText.length) break
-
-        val value = if (searchText[index] == '"') {
-            index++
-            val builder = StringBuilder()
-            while (index < searchText.length) {
-                val current = searchText[index]
-                if (current == '\\' && index + 1 < searchText.length) {
-                    val next = searchText[index + 1]
-                    when (next) {
-                        '"', '\\' -> {
-                            builder.append(next)
-                            index += 2
-                            continue
-                        }
-                    }
-                }
-                if (current == '"') {
-                    index++
-                    break
-                }
-                builder.append(current)
-                index++
-            }
-            builder.toString()
-        } else {
-            val builder = StringBuilder()
-            while (index < searchText.length && !searchText[index].isWhitespace()) {
-                val current = searchText[index]
-                if (current == '\\' && index + 1 < searchText.length) {
-                    val next = searchText[index + 1]
-                    when (next) {
-                        '"', '\\', ' ', '\t', '\n' -> {
-                            builder.append(next)
-                            index += 2
-                            continue
-                        }
-                    }
-                }
-                builder.append(current)
-                index++
-            }
-            builder.toString()
-        }
-
-        if (value.isNotBlank()) {
-            tokens.add(UrlFilterToken(value = value, isExcluded = isExcluded))
-        }
+    val cursor = UrlSearchCursor(searchText)
+    while (true) {
+        val token = cursor.nextToken() ?: break
+        tokens.add(token)
     }
 
     return tokens
+}
+
+private class UrlSearchCursor(
+    private val text: String,
+) {
+    private val length = text.length
+    private var index = 0
+
+    fun nextToken(): UrlFilterToken? {
+        skipWhitespace()
+        if (index >= length) return null
+
+        val isExcluded = consumeExcludePrefix()
+        if (index >= length) return null
+
+        val value = if (peek() == '"') {
+            readQuotedToken()
+        } else {
+            readBareToken()
+        }
+
+        return UrlFilterToken(value = value, isExcluded = isExcluded)
+    }
+
+    private fun skipWhitespace() {
+        while (index < length && text[index].isWhitespace()) {
+            index++
+        }
+    }
+
+    private fun consumeExcludePrefix(): Boolean {
+        return if (peek() == '-') {
+            index++
+            true
+        } else {
+            false
+        }
+    }
+
+    private fun readQuotedToken(): String {
+        index++
+        val builder = StringBuilder()
+        while (index < length) {
+            val current = text[index]
+            if (current == '"') {
+                index++
+                break
+            }
+
+            if (current == '\\') {
+                val escaped = readQuotedEscape()
+                if (escaped != null) {
+                    builder.append(escaped)
+                } else {
+                    builder.append(current)
+                    index++
+                }
+            } else {
+                builder.append(current)
+                index++
+            }
+        }
+        return builder.toString()
+    }
+
+    private fun readBareToken(): String {
+        val builder = StringBuilder()
+        while (index < length && !text[index].isWhitespace()) {
+            val current = text[index]
+            if (current == '\\') {
+                val escaped = readBareEscape()
+                if (escaped != null) {
+                    builder.append(escaped)
+                } else {
+                    builder.append(current)
+                    index++
+                }
+            } else {
+                builder.append(current)
+                index++
+            }
+        }
+        return builder.toString()
+    }
+
+    private fun readQuotedEscape(): Char? {
+        if (index + 1 >= length) return null
+        val next = text[index + 1]
+        return if (next == '"' || next == '\\') {
+            index += 2
+            next
+        } else {
+            null
+        }
+    }
+
+    private fun readBareEscape(): Char? {
+        if (index + 1 >= length) return null
+        val next = text[index + 1]
+        return if (next == '"' || next == '\\' || next.isWhitespace()) {
+            index += 2
+            next
+        } else {
+            null
+        }
+    }
+
+    private fun peek(): Char? {
+        return if (index < length) text[index] else null
+    }
 }
