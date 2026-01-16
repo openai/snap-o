@@ -152,11 +152,7 @@ private fun rememberDerivedState(
         }
     }
     val filteredItems = remember(serverScopedItems, searchText) {
-        if (searchText.isBlank()) {
-            serverScopedItems
-        } else {
-            serverScopedItems.filter { it.url.contains(searchText, ignoreCase = true) }
-        }
+        filterItemsByUrlSearch(serverScopedItems, searchText)
     }
     return InspectorDerivedState(
         selectedServer = selectedServer,
