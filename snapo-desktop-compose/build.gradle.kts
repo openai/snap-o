@@ -184,6 +184,8 @@ compose.desktop {
             packageVersion = resolvedPackageVersion
             macOS {
                 iconFile.set(project.file("src/main/resources/icons/network.icns"))
+                entitlementsFile.set(project.file("macos/NetworkInspector.entitlements"))
+                runtimeEntitlementsFile.set(project.file("macos/NetworkInspector.entitlements"))
             }
         }
 
