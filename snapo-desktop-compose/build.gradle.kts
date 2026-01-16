@@ -22,19 +22,10 @@ repositories {
 }
 
 kotlin {
-    // Compose Desktop is happiest on a modern JDK; toolchains let Gradle provision one even if the
-    // user has an older `java` on PATH.
-    jvmToolchain(17)
     sourceSets {
         named("main") {
             kotlin.srcDir(layout.buildDirectory.dir("generated/version"))
         }
-    }
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
     }
 }
 
@@ -101,8 +92,16 @@ val generateBuildInfo by tasks.registering {
     }
 }
 
-val java17Launcher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(17))
+val releaseDistributionTasks = setOf(
+    "createReleaseDistributable",
+    "runReleaseDistributable",
+    "packageReleaseDistributionForCurrentOS",
+    "packageReleaseDmg",
+    "packageReleaseUberJarForCurrentOS",
+    "notarizeReleaseDmg",
+)
+val isReleaseDistribution = gradle.startParameter.taskNames.any { taskName ->
+    releaseDistributionTasks.contains(taskName.substringAfterLast(":"))
 }
 
 tasks.withType<AbstractJLinkTask>().configureEach {
@@ -168,9 +167,6 @@ tasks.withType<Detekt>().configureEach {
 
 compose.desktop {
     application {
-        // Compose Desktop packaging uses tools like `jpackage` which are not available in older JDKs.
-        // The Gradle daemon might still run on an older JDK, so explicitly point Compose to JDK 17.
-        javaHome = java17Launcher.get().metadata.installationPath.asFile.absolutePath
         mainClass = "com.openai.snapo.desktop.MainKt"
         jvmArgs("-Dapple.awt.application.appearance=system")
 
@@ -184,8 +180,10 @@ compose.desktop {
             packageVersion = resolvedPackageVersion
             macOS {
                 iconFile.set(project.file("src/main/resources/icons/network.icns"))
-                entitlementsFile.set(project.file("macos/NetworkInspector.entitlements"))
-                runtimeEntitlementsFile.set(project.file("macos/NetworkInspector.entitlements"))
+                if (isReleaseDistribution) {
+                    entitlementsFile.set(project.file("macos/NetworkInspector.entitlements"))
+                    runtimeEntitlementsFile.set(project.file("macos/NetworkInspector.entitlements"))
+                }
             }
         }
 
