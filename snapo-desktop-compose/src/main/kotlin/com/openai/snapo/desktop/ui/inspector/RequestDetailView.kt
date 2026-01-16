@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -18,13 +20,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import com.openai.snapo.desktop.inspector.NetworkInspectorCopyExporter
 import com.openai.snapo.desktop.inspector.NetworkInspectorRequestStatus
 import com.openai.snapo.desktop.inspector.NetworkInspectorRequestUiModel
@@ -115,116 +117,251 @@ private data class RequestDetailActions(
     val onCopyAllEvents: () -> Unit,
 )
 
+private data class RequestDetailPayloads(
+    val requestBody: NetworkInspectorRequestUiModel.BodyPayload?,
+    val responseBody: NetworkInspectorRequestUiModel.BodyPayload?,
+    val requestBodyImage: ImageBitmap?,
+    val responseBodyImage: ImageBitmap?,
+    val requestPayloadState: InspectorPayloadLazyState?,
+    val responsePayloadState: InspectorPayloadLazyState?,
+)
+
 @Composable
 private fun RequestDetailContent(
     state: RequestDetailState,
     actions: RequestDetailActions,
 ) {
     val request = state.request
+    val payloads = rememberRequestDetailPayloads(state, actions)
+
     InspectorDetailScaffold {
-        HeaderSummary(
-            request = request,
-            modifier = Modifier.padding(start = Spacings.xs, end = Spacings.xs, bottom = Spacings.md),
+        requestDetailItems(
+            state = state,
+            actions = actions,
+            payloads = payloads,
         )
-
-        RequestHeadersSection(state, actions)
-        RequestBodySection(state, actions)
-        PendingResponseSection(request)
-        ResponseHeadersSection(state, actions)
-
-        if (request.isStreamingResponse) {
-            StreamEventsSection(
-                request = request,
-                streamExpanded = state.streamExpanded,
-                onStreamExpandedChange = actions.onStreamExpandedChange,
-                didCopyAllEvents = state.didCopyAllEvents,
-                onCopyAllEvents = actions.onCopyAllEvents,
-                streamEventJsonStateProvider = state.streamEventJsonStateProvider,
-            )
-        }
-
-        ResponseBodySection(state, actions)
     }
 }
 
 @Composable
-private fun RequestHeadersSection(
+private fun rememberRequestDetailPayloads(
     state: RequestDetailState,
     actions: RequestDetailActions,
-) {
+): RequestDetailPayloads {
     val request = state.request
-    if (request.requestHeaders.isEmpty()) return
-    HeadersSection(
-        title = "Request Headers",
-        headers = request.requestHeaders,
-        isExpanded = state.requestHeadersExpanded,
-        onExpandedChange = actions.onRequestHeadersExpandedChange,
-    )
-}
-
-@Composable
-private fun RequestBodySection(
-    state: RequestDetailState,
-    actions: RequestDetailActions,
-) {
-    val request = state.request
-    val payload = request.requestBody ?: return
-    BodySection(
-        title = "Request Body",
-        payload = payload,
+    val requestBody = request.requestBody
+    val responseBody = request.responseBody
+    val requestBodyImage = remember(requestBody?.data, state.requestBodyExpanded) {
+        if (state.requestBodyExpanded) requestBody?.data?.let(::decodeImageBitmap) else null
+    }
+    val responseBodyImage = remember(responseBody?.data, state.responseBodyExpanded) {
+        if (state.responseBodyExpanded) responseBody?.data?.let(::decodeImageBitmap) else null
+    }
+    val requestPayloadState = rememberPayloadStateIfNeeded(
+        payload = requestBody,
+        imageBitmap = requestBodyImage,
         isExpanded = state.requestBodyExpanded,
-        onExpandedChange = actions.onRequestBodyExpandedChange,
         usePrettyPrinted = state.requestBodyPretty,
         onPrettyPrintedChange = actions.onRequestBodyPrettyChange,
         jsonOutlineState = state.requestBodyJsonState,
     )
-}
-
-@Composable
-private fun PendingResponseSection(request: NetworkInspectorRequestUiModel) {
-    if (request.status !is NetworkInspectorRequestStatus.Pending) return
-    Text(
-        "Waiting for response...",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun ResponseHeadersSection(
-    state: RequestDetailState,
-    actions: RequestDetailActions,
-) {
-    val request = state.request
-    if (request.responseHeaders.isEmpty()) return
-    HeadersSection(
-        title = "Response Headers",
-        headers = request.responseHeaders,
-        isExpanded = state.responseHeadersExpanded,
-        onExpandedChange = actions.onResponseHeadersExpandedChange,
-    )
-}
-
-@Composable
-private fun ResponseBodySection(
-    state: RequestDetailState,
-    actions: RequestDetailActions,
-) {
-    val request = state.request
-    val payload = request.responseBody ?: return
-    BodySection(
-        title = "Response Body",
-        payload = payload,
+    val responsePayloadState = rememberPayloadStateIfNeeded(
+        payload = responseBody,
+        imageBitmap = responseBodyImage,
         isExpanded = state.responseBodyExpanded,
-        onExpandedChange = actions.onResponseBodyExpandedChange,
         usePrettyPrinted = state.responseBodyPretty,
         onPrettyPrintedChange = actions.onResponseBodyPrettyChange,
         jsonOutlineState = state.responseBodyJsonState,
     )
+    return RequestDetailPayloads(
+        requestBody = requestBody,
+        responseBody = responseBody,
+        requestBodyImage = requestBodyImage,
+        responseBodyImage = responseBodyImage,
+        requestPayloadState = requestPayloadState,
+        responsePayloadState = responsePayloadState,
+    )
+}
+
+private fun LazyListScope.requestDetailItems(
+    state: RequestDetailState,
+    actions: RequestDetailActions,
+    payloads: RequestDetailPayloads,
+) {
+    val request = state.request
+    item(key = "request:header") {
+        HeaderSummary(
+            request = request,
+            modifier = Modifier.padding(start = Spacings.xs, end = Spacings.xs, bottom = Spacings.md),
+        )
+    }
+
+    requestHeadersSectionItems(
+        state = state,
+        actions = actions,
+        keyPrefix = "request-headers",
+    )
+    bodySectionItems(
+        title = "Request Body",
+        payload = payloads.requestBody,
+        isExpanded = state.requestBodyExpanded,
+        onExpandedChange = actions.onRequestBodyExpandedChange,
+        imageBitmap = payloads.requestBodyImage,
+        payloadState = payloads.requestPayloadState,
+        keyPrefix = "request-body",
+    )
+    pendingResponseSectionItems(request)
+    responseHeadersSectionItems(
+        state = state,
+        actions = actions,
+        keyPrefix = "response-headers",
+    )
+
+    if (request.isStreamingResponse) {
+        streamEventsSectionItems(
+            request = request,
+            streamExpanded = state.streamExpanded,
+            onStreamExpandedChange = actions.onStreamExpandedChange,
+            didCopyAllEvents = state.didCopyAllEvents,
+            onCopyAllEvents = actions.onCopyAllEvents,
+            streamEventJsonStateProvider = state.streamEventJsonStateProvider,
+        )
+    }
+
+    bodySectionItems(
+        title = "Response Body",
+        payload = payloads.responseBody,
+        isExpanded = state.responseBodyExpanded,
+        onExpandedChange = actions.onResponseBodyExpandedChange,
+        imageBitmap = payloads.responseBodyImage,
+        payloadState = payloads.responsePayloadState,
+        keyPrefix = "response-body",
+    )
 }
 
 @Composable
-private fun StreamEventsSection(
+private fun rememberPayloadStateIfNeeded(
+    payload: NetworkInspectorRequestUiModel.BodyPayload?,
+    imageBitmap: ImageBitmap?,
+    isExpanded: Boolean,
+    usePrettyPrinted: Boolean,
+    onPrettyPrintedChange: (Boolean) -> Unit,
+    jsonOutlineState: JsonOutlineExpansionState?,
+): InspectorPayloadLazyState? {
+    if (payload == null) return null
+    if (imageBitmap != null && payload.data != null) return null
+    if (!isExpanded) return null
+    return rememberInspectorPayloadLazyState(
+        rawText = payload.rawText,
+        prettyText = payload.prettyPrintedText,
+        isLikelyJson = payload.isLikelyJson,
+        usePrettyPrinted = usePrettyPrinted,
+        onPrettyPrintedChange = onPrettyPrintedChange,
+        jsonOutlineState = jsonOutlineState,
+    )
+}
+
+private fun LazyListScope.requestHeadersSectionItems(
+    state: RequestDetailState,
+    actions: RequestDetailActions,
+    keyPrefix: String,
+) {
+    val request = state.request
+    if (request.requestHeaders.isEmpty()) return
+    item(key = "$keyPrefix:header") {
+        HeadersSectionHeader(
+            title = "Request Headers",
+            isExpanded = state.requestHeadersExpanded,
+            onExpandedChange = actions.onRequestHeadersExpandedChange,
+        )
+    }
+    if (state.requestHeadersExpanded) {
+        item(key = "$keyPrefix:body") {
+            HeadersSectionBody(
+                headers = request.requestHeaders,
+                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.xs),
+            )
+        }
+    }
+}
+
+private fun LazyListScope.responseHeadersSectionItems(
+    state: RequestDetailState,
+    actions: RequestDetailActions,
+    keyPrefix: String,
+) {
+    val request = state.request
+    if (request.responseHeaders.isEmpty()) return
+    item(key = "$keyPrefix:header") {
+        HeadersSectionHeader(
+            title = "Response Headers",
+            isExpanded = state.responseHeadersExpanded,
+            onExpandedChange = actions.onResponseHeadersExpandedChange,
+        )
+    }
+    if (state.responseHeadersExpanded) {
+        item(key = "$keyPrefix:body") {
+            HeadersSectionBody(
+                headers = request.responseHeaders,
+                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.xs),
+            )
+        }
+    }
+}
+
+private fun LazyListScope.bodySectionItems(
+    title: String,
+    payload: NetworkInspectorRequestUiModel.BodyPayload?,
+    isExpanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    imageBitmap: ImageBitmap?,
+    payloadState: InspectorPayloadLazyState?,
+    keyPrefix: String,
+) {
+    if (payload == null) return
+    item(key = "$keyPrefix:header") {
+        DisableSelection {
+            BodySectionHeader(
+                title = title,
+                payload = payload,
+                isExpanded = isExpanded,
+                onExpandedChange = onExpandedChange,
+            )
+        }
+    }
+    if (isExpanded) {
+        item(key = "$keyPrefix:gap") { Spacer(modifier = Modifier.size(Spacings.sm)) }
+        if (imageBitmap != null && payload.data != null) {
+            item(key = "$keyPrefix:image") {
+                BodyImagePreview(
+                    payload = payload,
+                    imageBitmap = imageBitmap,
+                    bytes = payload.data,
+                )
+            }
+        } else if (payloadState != null) {
+            inspectorPayloadItems(
+                state = payloadState,
+                keyPrefix = "$keyPrefix:payload",
+            )
+        }
+    }
+}
+
+private fun LazyListScope.pendingResponseSectionItems(
+    request: NetworkInspectorRequestUiModel,
+) {
+    if (request.status !is NetworkInspectorRequestStatus.Pending) return
+    item(key = "response:pending") {
+        Text(
+            "Waiting for response...",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun LazyListScope.streamEventsSectionItems(
     request: NetworkInspectorRequestUiModel,
     streamExpanded: Boolean,
     onStreamExpandedChange: (Boolean) -> Unit,
@@ -232,24 +369,30 @@ private fun StreamEventsSection(
     onCopyAllEvents: () -> Unit,
     streamEventJsonStateProvider: (Long) -> JsonOutlineExpansionState,
 ) {
-    StreamEventsHeader(
-        isExpanded = streamExpanded,
-        onExpandedChange = onStreamExpandedChange,
-        hasEvents = request.streamEvents.isNotEmpty(),
-        didCopyAll = didCopyAllEvents,
-        onCopyAll = onCopyAllEvents,
-    )
+    item(key = "stream:header") {
+        DisableSelection {
+            StreamEventsHeader(
+                isExpanded = streamExpanded,
+                onExpandedChange = onStreamExpandedChange,
+                hasEvents = request.streamEvents.isNotEmpty(),
+                didCopyAll = didCopyAllEvents,
+                onCopyAll = onCopyAllEvents,
+            )
+        }
+    }
 
     if (streamExpanded) {
         if (request.streamEvents.isEmpty()) {
-            Text(
-                "Awaiting events...",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            item(key = "stream:empty") {
+                Text(
+                    "Awaiting events...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
             request.streamEvents.forEach { event ->
-                key(event.id) {
+                item(key = "stream:event:${event.id}") {
                     StreamEventCard(
                         event = event,
                         jsonOutlineState = streamEventJsonStateProvider(event.id),
@@ -260,7 +403,9 @@ private fun StreamEventsSection(
         }
 
         request.streamClosed?.let { closed ->
-            StreamClosedInfo(closed = closed)
+            item(key = "stream:closed") {
+                StreamClosedInfo(closed = closed)
+            }
         }
     }
 }

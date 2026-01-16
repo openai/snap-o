@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import com.openai.snapo.desktop.generated.resources.Res
 import com.openai.snapo.desktop.generated.resources.check_24px
@@ -39,7 +44,10 @@ import com.openai.snapo.desktop.generated.resources.content_copy_24px
 import com.openai.snapo.desktop.inspector.NetworkInspectorCopyExporter
 import com.openai.snapo.desktop.ui.json.JsonOutlineExpansionState
 import com.openai.snapo.desktop.ui.json.JsonOutlineNode
+import com.openai.snapo.desktop.ui.json.JsonOutlineRowItem
+import com.openai.snapo.desktop.ui.json.JsonOutlineRowsState
 import com.openai.snapo.desktop.ui.json.JsonOutlineView
+import com.openai.snapo.desktop.ui.json.rememberJsonOutlineRowsState
 import com.openai.snapo.desktop.ui.theme.SnapOMono
 import com.openai.snapo.desktop.ui.theme.Spacings
 import kotlinx.coroutines.delay
@@ -166,6 +174,31 @@ private data class InspectorPayloadDerived(
     val showJsonParseFailureHint: Boolean,
 )
 
+internal data class InspectorPayloadLazyState(
+    val displayText: String,
+    val prettyText: String?,
+    val jsonRoot: JsonOutlineNode?,
+    val showsJsonOutline: Boolean,
+    val showInlineActionsInJsonOutline: Boolean,
+    val hasToggle: Boolean,
+    val hasCopy: Boolean,
+    val localPretty: Boolean,
+    val didCopy: Boolean,
+    val prettyInitiallyExpanded: Boolean,
+    val payloadKey: Int,
+    val onTogglePretty: () -> Unit,
+    val onCopy: () -> Unit,
+    val showJsonParseFailureHint: Boolean,
+    val rootTrailingContent: (@Composable RowScope.(JsonOutlineNode) -> Unit)?,
+    val jsonOutlineRowsState: JsonOutlineRowsState?,
+)
+
+private data class InspectorPayloadBodyParts(
+    val bodyState: InspectorPayloadBodyState,
+    val bodyActions: InspectorPayloadBodyActions,
+    val didCopy: Boolean,
+)
+
 @Composable
 private fun rememberInspectorPayloadDerived(
     localPretty: Boolean,
@@ -197,6 +230,111 @@ private fun rememberInspectorPayloadDerived(
         showsJsonOutline = showsJsonOutline,
         showInlineActionsInJsonOutline = showInlineActionsInJsonOutline,
         showJsonParseFailureHint = showJsonParseFailureHint,
+    )
+}
+
+@Composable
+internal fun rememberInspectorPayloadLazyState(
+    rawText: String,
+    prettyText: String?,
+    isLikelyJson: Boolean,
+    usePrettyPrinted: Boolean,
+    onPrettyPrintedChange: (Boolean) -> Unit,
+    showsToggle: Boolean = true,
+    showsCopyButton: Boolean = true,
+    prettyInitiallyExpanded: Boolean = true,
+    jsonOutlineState: JsonOutlineExpansionState? = null,
+): InspectorPayloadLazyState {
+    val prettyState = rememberPrettyToggleState(
+        usePrettyPrinted = usePrettyPrinted,
+        onPrettyPrintedChange = onPrettyPrintedChange,
+    )
+    val derived = rememberInspectorPayloadDerived(
+        localPretty = prettyState.isPretty,
+        prettyText = prettyText,
+        rawText = rawText,
+        showsToggle = showsToggle,
+        showsCopyButton = showsCopyButton,
+        isLikelyJson = isLikelyJson,
+    )
+    val bodyParts = rememberInspectorPayloadBodyParts(
+        derived = derived,
+        prettyState = prettyState,
+        prettyText = prettyText,
+        prettyInitiallyExpanded = prettyInitiallyExpanded,
+        jsonOutlineState = jsonOutlineState,
+    )
+    val rootTrailingContent = inlineJsonOutlineActions(
+        enabled = derived.showInlineActionsInJsonOutline,
+        hasToggle = derived.hasToggle,
+        hasCopy = derived.hasCopy,
+        localPretty = prettyState.isPretty,
+        didCopy = bodyParts.didCopy,
+        onTogglePretty = bodyParts.bodyActions.onTogglePretty,
+        onCopy = bodyParts.bodyActions.onCopy,
+    )
+    val jsonOutlineRowsState =
+        if (bodyParts.bodyState.showsJsonOutline && bodyParts.bodyState.jsonRoot != null) {
+            rememberJsonOutlineRowsState(
+                root = bodyParts.bodyState.jsonRoot,
+                initiallyExpanded = bodyParts.bodyState.prettyInitiallyExpanded,
+                expansionState = bodyParts.bodyState.jsonOutlineState,
+                payloadKey = bodyParts.bodyState.payloadKey,
+            )
+        } else {
+            null
+        }
+    return InspectorPayloadLazyState(
+        displayText = derived.displayText,
+        prettyText = prettyText,
+        jsonRoot = derived.jsonRoot,
+        showsJsonOutline = derived.showsJsonOutline,
+        showInlineActionsInJsonOutline = derived.showInlineActionsInJsonOutline,
+        hasToggle = derived.hasToggle,
+        hasCopy = derived.hasCopy,
+        localPretty = prettyState.isPretty,
+        didCopy = bodyParts.didCopy,
+        prettyInitiallyExpanded = prettyInitiallyExpanded,
+        payloadKey = derived.payloadKey,
+        onTogglePretty = bodyParts.bodyActions.onTogglePretty,
+        onCopy = bodyParts.bodyActions.onCopy,
+        showJsonParseFailureHint = derived.showJsonParseFailureHint,
+        rootTrailingContent = rootTrailingContent,
+        jsonOutlineRowsState = jsonOutlineRowsState,
+    )
+}
+
+@Composable
+private fun rememberInspectorPayloadBodyParts(
+    derived: InspectorPayloadDerived,
+    prettyState: PrettyToggleState,
+    prettyText: String?,
+    prettyInitiallyExpanded: Boolean,
+    jsonOutlineState: JsonOutlineExpansionState?,
+): InspectorPayloadBodyParts {
+    val copyFeedback = rememberCopyFeedback(displayText = derived.displayText, copyKey = derived.payloadKey)
+    val bodyState = InspectorPayloadBodyState(
+        displayText = derived.displayText,
+        prettyText = prettyText,
+        jsonRoot = derived.jsonRoot,
+        showsJsonOutline = derived.showsJsonOutline,
+        showInlineActionsInJsonOutline = derived.showInlineActionsInJsonOutline,
+        hasToggle = derived.hasToggle,
+        hasCopy = derived.hasCopy,
+        localPretty = prettyState.isPretty,
+        didCopy = copyFeedback.didCopy,
+        prettyInitiallyExpanded = prettyInitiallyExpanded,
+        payloadKey = derived.payloadKey,
+        jsonOutlineState = jsonOutlineState,
+    )
+    val bodyActions = InspectorPayloadBodyActions(
+        onTogglePretty = prettyState.onTogglePretty,
+        onCopy = copyFeedback.onCopy,
+    )
+    return InspectorPayloadBodyParts(
+        bodyState = bodyState,
+        bodyActions = bodyActions,
+        didCopy = copyFeedback.didCopy,
     )
 }
 
@@ -306,6 +444,197 @@ private fun JsonParseFailureHint(show: Boolean) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+internal fun LazyListScope.inspectorPayloadItems(
+    state: InspectorPayloadLazyState,
+    keyPrefix: String,
+    modifier: Modifier = Modifier,
+) {
+    val segments = buildPayloadSegments(state)
+    val lastIndex = segments.lastIndex
+    itemsIndexed(
+        items = segments,
+        key = { _, segment -> "$keyPrefix:${segment.key}" },
+    ) { index, segment ->
+        InspectorCardSegment(
+            index = index,
+            lastIndex = lastIndex,
+            bottomPadding = segment.bottomPadding,
+            modifier = modifier,
+        ) {
+            segment.content()
+        }
+    }
+}
+
+private data class PayloadSegment(
+    val key: String,
+    val bottomPadding: androidx.compose.ui.unit.Dp,
+    val content: @Composable () -> Unit,
+)
+
+private fun buildPayloadSegments(state: InspectorPayloadLazyState): List<PayloadSegment> {
+    val hasBody = state.showsJsonOutline || state.displayText.isNotEmpty() || state.prettyText != null
+    return buildList {
+        addControlsSegment(state, hasBody)
+        addParseHintSegment(state, hasBody)
+        addBodySegments(state)
+    }
+}
+
+private fun MutableList<PayloadSegment>.addControlsSegment(
+    state: InspectorPayloadLazyState,
+    hasBody: Boolean,
+) {
+    if (state.showInlineActionsInJsonOutline) return
+    val bottomPadding = if (state.showJsonParseFailureHint || hasBody) Spacings.sm else 0.dp
+    add(
+        PayloadSegment(
+            key = "controls",
+            bottomPadding = bottomPadding,
+        ) {
+            ControlsRow(
+                hasToggle = state.hasToggle,
+                prettyChecked = state.localPretty,
+                onPrettyToggle = state.onTogglePretty,
+                showsCopyButton = state.hasCopy,
+                didCopy = state.didCopy,
+                onCopy = state.onCopy,
+            )
+        }
+    )
+}
+
+private fun MutableList<PayloadSegment>.addParseHintSegment(
+    state: InspectorPayloadLazyState,
+    hasBody: Boolean,
+) {
+    if (!state.showJsonParseFailureHint) return
+    val bottomPadding = if (hasBody) Spacings.sm else 0.dp
+    add(
+        PayloadSegment(
+            key = "parse-hint",
+            bottomPadding = bottomPadding,
+        ) { JsonParseFailureHint(show = true) }
+    )
+}
+
+private fun MutableList<PayloadSegment>.addBodySegments(
+    state: InspectorPayloadLazyState,
+) {
+    if (state.showsJsonOutline && state.jsonOutlineRowsState != null) {
+        addJsonSegments(state)
+    } else {
+        addTextSegment(state)
+    }
+}
+
+private fun MutableList<PayloadSegment>.addJsonSegments(
+    state: InspectorPayloadLazyState,
+) {
+    val rows = state.jsonOutlineRowsState?.rows.orEmpty()
+    rows.forEachIndexed { index, row ->
+        val bottomPadding = if (index == rows.lastIndex) 0.dp else Spacings.xxs
+        add(
+            PayloadSegment(
+                key = "json:${row.key}",
+                bottomPadding = bottomPadding,
+            ) {
+                JsonOutlineRowItem(
+                    row = row,
+                    outlineState = state.jsonOutlineRowsState!!,
+                    rootTrailingContent = state.rootTrailingContent,
+                )
+            }
+        )
+    }
+}
+
+private fun MutableList<PayloadSegment>.addTextSegment(
+    state: InspectorPayloadLazyState,
+) {
+    add(
+        PayloadSegment(
+            key = "text",
+            bottomPadding = 0.dp,
+        ) {
+            Text(
+                text = payloadDisplayText(state),
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = SnapOMono,
+            )
+        }
+    )
+}
+
+private fun payloadDisplayText(state: InspectorPayloadLazyState): String {
+    return if (state.localPretty && state.prettyText != null) {
+        state.prettyText
+    } else {
+        state.displayText
+    }
+}
+
+@Composable
+private fun InspectorCardSegment(
+    index: Int,
+    lastIndex: Int,
+    bottomPadding: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val shape = cardSegmentShape(index, lastIndex)
+    val topPadding = if (index == 0) Spacings.md else 0.dp
+    val endPadding = Spacings.mdPlus
+    val startPadding = Spacings.mdPlus
+    val finalBottomPadding = bottomPadding + if (index == lastIndex) Spacings.md else 0.dp
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = shape,
+            )
+            .padding(
+                start = startPadding,
+                end = endPadding,
+                top = topPadding,
+                bottom = finalBottomPadding,
+            ),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun cardSegmentShape(
+    index: Int,
+    lastIndex: Int,
+): Shape {
+    val baseShape = MaterialTheme.shapes.extraSmall
+    if (index == 0 && index == lastIndex) return baseShape
+    val cornerShape = baseShape
+    val topStart = cornerShape.topStart
+    val topEnd = cornerShape.topEnd
+    val bottomStart = cornerShape.bottomStart
+    val bottomEnd = cornerShape.bottomEnd
+
+    return when {
+        index == 0 -> RoundedCornerShape(
+            topStart = topStart,
+            topEnd = topEnd,
+            bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+            bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp),
+        )
+        index == lastIndex -> RoundedCornerShape(
+            topStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+            topEnd = androidx.compose.foundation.shape.CornerSize(0.dp),
+            bottomStart = bottomStart,
+            bottomEnd = bottomEnd,
+        )
+        else -> RectangleShape
+    }
 }
 
 private data class InspectorPayloadBodyState(

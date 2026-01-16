@@ -3,14 +3,12 @@
 package com.openai.snapo.desktop.ui.inspector
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -54,17 +52,12 @@ import kotlin.math.max
 import java.awt.datatransfer.Clipboard as AwtClipboard
 
 @Composable
-fun HeadersSection(
+internal fun HeadersSectionHeader(
     title: String,
-    headers: List<Header>,
     isExpanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(Spacings.sm),
-        modifier = modifier,
-    ) {
+    DisableSelection {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -80,21 +73,20 @@ fun HeadersSection(
                 style = MaterialTheme.typography.titleSmallEmphasized,
             )
         }
-
-        if (isExpanded) {
-            HeadersSectionBody(headers = headers)
-            Spacer(modifier = Modifier.size(Spacings.xs))
-        }
     }
 }
 
 @Composable
-private fun HeadersSectionBody(headers: List<Header>) {
+internal fun HeadersSectionBody(
+    headers: List<Header>,
+    modifier: Modifier = Modifier,
+) {
     if (headers.isEmpty()) {
         Text(
             text = "None",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier,
         )
         return
     }
@@ -111,7 +103,7 @@ private fun HeadersSectionBody(headers: List<Header>) {
         SelectionContainer {
             HeaderGridLayout(
                 rowGap = Spacings.sm,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = modifier.fillMaxWidth(),
             ) {
                 headers.forEach { header ->
                     HeaderNameCell(
