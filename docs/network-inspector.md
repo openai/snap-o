@@ -4,7 +4,7 @@
 
 The Network Inspector can display HTTP/S network requests from your Android app, including server-side events and websocket messages. Requests can be tracked from the beginning of the app.
 
-Currently Snap-O only has an interceptor for OkHttp, but could easily support other engines in the future.
+Snap-O currently ships interceptors for OkHttp and HttpURLConnection (via the `network-httpurlconnection` library), and could support other engines in the future.
 
 ## 1. Add the dependencies
 
@@ -16,23 +16,19 @@ repositories {
 }
 
 dependencies {
-    debugImplementation("com.github.openai.snap-o:link-okhttp3:<version>")
-    releaseImplementation("com.github.openai.snap-o:link-okhttp3-noop:<version>")
+    # If using OkHttp:
+    debugImplementation("com.github.openai.snap-o:network-okhttp3:<version>")
+    releaseImplementation("com.github.openai.snap-o:network-okhttp3-noop:<version>")
+
+    # If using HttpUrlConnection directly:
+    debugImplementation("com.github.openai.snap-o:network-httpurlconnection:<version>")
+    releaseImplementation("com.github.openai.snap-o:network-httpurlconnection-noop:<version>")
 }
 ```
 
 ![version](https://img.shields.io/github/v/release/openai/snap-o?label=latest+version)
 
-This release dependency lets your code be the same in debug and release builds, but the Snap-O server and interceptors will not run.
-
-If you're using `HttpURLConnection`, depend on the corresponding interceptor instead:
-
-```kotlin
-dependencies {
-    debugImplementation("com.github.openai.snap-o:link-httpurlconnection:<version>")
-    releaseImplementation("com.github.openai.snap-o:link-httpurlconnection-noop:<version>")
-}
-```
+The noop dependency allows your code be the same in debug and release builds, but the Snap-O server and interceptors will not run.
 
 ## 2. Using OkHttp directly
 
@@ -111,6 +107,8 @@ HttpClient(OkHttp) {
 ```
 
 ## 4. Using HttpURLConnection
+
+This interceptor lives in the `network-httpurlconnection` library.
 
 Attach the interceptor when opening a connection. Calls to `connect()`, `getInputStream()`, and `getResponseCode()` trigger capture.
 

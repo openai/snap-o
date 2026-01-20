@@ -89,7 +89,9 @@ There is currently no support for choosing a specific device/emulator when start
 
 ## Why not Compose Multiplatform?
 
-Snap-O uses AVKit because it gives a polished video player on macOS and keeps the download small. VLC-based playback felt clunky and the viewing experience suffered. When Compose Multiplatform lets us use a native player with the same quality, we'll revisit the design.
+The Network Inspector is now written with Compose Multiplatform, and that's working quite well.
+
+The screenshot tool uses SwiftUI because it delivers a better macOS experience for video playback today. Snap-O uses AVKit because it gives a polished video player on macOS and keeps the download small. VLC-based playback felt clunky and the viewing experience suffered. When Compose Multiplatform offers a better video playback experience, we'd like to move everything to Compose Multiplatform.
 
 ## Alternatives
 
