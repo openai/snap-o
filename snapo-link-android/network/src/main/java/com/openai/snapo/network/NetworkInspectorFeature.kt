@@ -1,10 +1,10 @@
 package com.openai.snapo.network
 
+import com.openai.snapo.link.core.ClientId
+import com.openai.snapo.link.core.EventPriority
 import com.openai.snapo.link.core.LinkEventSink
 import com.openai.snapo.link.core.SnapOLinkFeature
 import com.openai.snapo.link.core.SnapOLinkRegistry
-import com.openai.snapo.link.core.sendHighPriority
-import com.openai.snapo.link.core.sendLowPriority
 import com.openai.snapo.network.record.ResponseReceived
 import com.openai.snapo.network.record.SnapONetRecord
 import kotlinx.coroutines.CoroutineScope
@@ -28,7 +28,7 @@ data class NetworkInspectorConfig(
 )
 
 class NetworkInspectorFeature(
-    private val config: NetworkInspectorConfig = NetworkInspectorConfig(),
+    config: NetworkInspectorConfig = NetworkInspectorConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : SnapOLinkFeature {
 
@@ -37,79 +37,63 @@ class NetworkInspectorFeature(
     private val eventBuffer = EventBuffer(config)
 
     @Volatile
-    private var sink: RecordSink? = null
+    private var sink: NetworkEventSink? = null
 
-    @Volatile
-    private var isOpen: Boolean = false
-
-    @Volatile
-    private var hasReplayedSnapshot: Boolean = false
-
-    override suspend fun onClientConnected(sink: LinkEventSink) {
-        val recordSink = RecordSink(sink)
-        this.sink = recordSink
-        isOpen = false
-        hasReplayedSnapshot = false
+    override fun onLinkAvailable(sink: LinkEventSink) {
+        this.sink = NetworkEventSink(sink)
     }
 
-    override suspend fun onFeatureOpened() {
-        val currentSink = sink ?: return
-        isOpen = true
-        if (hasReplayedSnapshot) return
+    override suspend fun onFeatureOpened(clientId: Long) {
+        val current = sink ?: return
+        val target = ClientId.Specific(clientId)
 
         val deferredBodies = mutableListOf<ResponseReceived>()
-        val snapshot: List<SnapONetRecord> = bufferLock.withLock { eventBuffer.snapshot() }
+        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
         for (record in snapshot) {
             if (record is ResponseReceived && record.hasBodyPayload()) {
-                currentSink.high(record.withoutBodyPayload())
+                current.send(record.withoutBodyPayload(), clientId = target)
                 deferredBodies.add(record)
             } else {
-                currentSink.high(record)
+                current.send(record, clientId = target)
             }
         }
-        hasReplayedSnapshot = true
-        scheduleDeferredBodies(currentSink, deferredBodies)
-    }
-
-    override fun onClientDisconnected() {
-        sink = null
-        isOpen = false
-        hasReplayedSnapshot = false
+        scheduleDeferredBodies(current, target, deferredBodies)
     }
 
     suspend fun publish(record: SnapONetRecord) {
         bufferLock.withLock {
             eventBuffer.append(record)
         }
-        val currentSink = sink
-        if (!isOpen || currentSink == null) return
+        val currentSink = sink ?: return
         when (record) {
             is ResponseReceived -> {
                 if (record.hasBodyPayload()) {
-                    currentSink.high(record.withoutBodyPayload())
+                    currentSink.send(record.withoutBodyPayload())
                     scheduleResponseBody(currentSink, record)
                 } else {
-                    currentSink.high(record)
+                    currentSink.send(record)
                 }
             }
 
-            else -> currentSink.high(record)
+            else -> currentSink.send(record)
         }
     }
 
     private fun scheduleDeferredBodies(
-        sink: RecordSink,
+        sink: NetworkEventSink,
+        target: ClientId,
         deferredBodies: List<ResponseReceived>,
     ) {
         deferredBodies.forEachIndexed { index, response ->
             val stagger = ResponseBodyStaggerMillis * index
-            scheduleResponseBody(sink, response, ResponseBodyDelayMillis + stagger)
+            scheduleResponseBody(sink, response, target, ResponseBodyDelayMillis + stagger)
         }
     }
 
     private fun scheduleResponseBody(
-        sink: RecordSink,
+        sink: NetworkEventSink,
         record: ResponseReceived,
+        target: ClientId = ClientId.All,
         initialDelayMs: Long = ResponseBodyDelayMillis,
     ) {
         scope.launch(Dispatchers.IO) {
@@ -117,8 +101,7 @@ class NetworkInspectorFeature(
                 if (initialDelayMs > 0) {
                     delay(initialDelayMs)
                 }
-                if (!isOpen || this@NetworkInspectorFeature.sink !== sink) return@launch
-                sink.low(record)
+                sink.send(record, clientId = target, priority = EventPriority.Low)
             } catch (t: CancellationException) {
                 throw t
             } catch (_: Throwable) {
@@ -128,22 +111,11 @@ class NetworkInspectorFeature(
 
     private fun ResponseReceived.hasBodyPayload(): Boolean {
         if (!body.isNullOrEmpty()) return true
-        if (!bodyPreview.isNullOrEmpty()) return true
         return false
     }
 
     private fun ResponseReceived.withoutBodyPayload(): ResponseReceived =
-        copy(bodyPreview = null, body = null)
-}
-
-private class RecordSink(private val delegate: LinkEventSink) {
-    suspend fun high(record: SnapONetRecord) {
-        delegate.sendHighPriority(record)
-    }
-
-    suspend fun low(record: SnapONetRecord) {
-        delegate.sendLowPriority(record)
-    }
+        copy(body = null)
 }
 
 object NetworkInspector {
@@ -163,10 +135,19 @@ object NetworkInspector {
 
     /** Return the active feature, or null if not initialized. */
     fun getOrNull(): NetworkInspectorFeature? = feature
-
-    // Backwards-friendly alias.
-    fun featureOrNull(): NetworkInspectorFeature? = feature
 }
 
 private const val ResponseBodyDelayMillis = 200L
 private const val ResponseBodyStaggerMillis = 25L
+
+private class NetworkEventSink(
+    private val delegate: LinkEventSink,
+) {
+    fun send(
+        record: SnapONetRecord,
+        clientId: ClientId = ClientId.All,
+        priority: EventPriority = EventPriority.High,
+    ) {
+        delegate.send(record, SnapONetRecord.serializer(), clientId, priority)
+    }
+}

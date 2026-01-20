@@ -9,13 +9,10 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.getByType
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
 class AndroidLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
         target.pluginManager.apply("com.android.library")
-        target.pluginManager.apply("org.jetbrains.kotlin.android")
         target.pluginManager.apply("maven-publish")
 
         val extension = target.extensions.getByType<LibraryExtension>()
@@ -42,10 +39,6 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
                     withSourcesJar()
                 }
             }
-        }
-
-        target.extensions.configure<KotlinAndroidProjectExtension> {
-            compilerOptions.jvmTarget.set(JvmTarget.JVM_11)
         }
 
         target.afterEvaluate {

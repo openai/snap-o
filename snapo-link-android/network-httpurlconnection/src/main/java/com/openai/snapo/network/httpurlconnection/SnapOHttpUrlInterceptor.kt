@@ -538,69 +538,101 @@ private class ResponseCapturingInputStream(
     private fun complete(error: Throwable?) {
         if (!completed.compareAndSet(false, true)) return
         val currentContext = context ?: return
-        val meta = responseMeta
         val snapshot = capture.snapshot()
+        val meta = responseMeta
         val bytes = snapshot.bytes
-        val totalBytes = snapshot.totalBytes.takeIf { it > 0L } ?: meta?.contentLength
-        val truncatedBytes = snapshot.truncatedBytes
         val charset = mediaType?.charsetOrUtf8() ?: Charsets.UTF_8
         val isText = mediaType?.isTextLike() == true
-
-        val bodyPreview = if (interceptor.responseBodyPreviewBytes > 0 && bytes.isNotEmpty()) {
-            val previewLimit = interceptor.responseBodyPreviewBytes.coerceAtMost(bytes.size)
-            if (isText) {
-                String(bytes, 0, previewLimit, charset)
-            } else {
-                encodeToString(bytes, 0, previewLimit, NO_WRAP)
-            }
-        } else {
-            null
-        }
-
-        val body = if (bytes.isNotEmpty()) {
-            if (isText) {
-                String(bytes, charset)
-            } else {
-                encodeToString(bytes, NO_WRAP)
-            }
-        } else {
-            null
-        }
-
+        val bodyPreview = buildBodyPreview(bytes, isText, charset)
+        val body = buildBody(bytes, isText, charset)
+        val totalBytes = snapshot.totalBytes.takeIf { it > 0L } ?: meta?.contentLength
         val responseWall = meta?.responseWall ?: System.currentTimeMillis()
         val responseMono = meta?.responseMono ?: SystemClock.elapsedRealtimeNanos()
 
-        val hasPayload = !body.isNullOrEmpty() || !bodyPreview.isNullOrEmpty() || truncatedBytes != null
-        if (hasPayload || error != null) {
-            interceptor.publish {
-                ResponseReceived(
-                    id = currentContext.requestId,
-                    tWallMs = responseWall,
-                    tMonoNs = responseMono,
-                    code = meta?.code ?: -1,
-                    headers = meta?.headers ?: emptyList(),
-                    bodyPreview = bodyPreview,
-                    body = body,
-                    bodyTruncatedBytes = truncatedBytes,
-                    bodySize = totalBytes,
-                    timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
-                )
-            }
-        }
+        publishResponseIfNeeded(
+            currentContext = currentContext,
+            meta = meta,
+            bodyPreview = bodyPreview,
+            body = body,
+            truncatedBytes = snapshot.truncatedBytes,
+            totalBytes = totalBytes,
+            responseWall = responseWall,
+            responseMono = responseMono,
+            error = error,
+        )
+        publishFailureIfNeeded(currentContext, error)
+    }
 
-        if (error != null) {
-            val failWall = System.currentTimeMillis()
-            val failMono = SystemClock.elapsedRealtimeNanos()
-            interceptor.publish {
-                RequestFailed(
-                    id = currentContext.requestId,
-                    tWallMs = failWall,
-                    tMonoNs = failMono,
-                    errorKind = error.javaClass.simpleName.ifEmpty { error.javaClass.name },
-                    message = error.message,
-                    timings = Timings(totalMs = nanosToMillis(failMono - currentContext.startMono)),
-                )
-            }
+    private fun buildBodyPreview(
+        bytes: ByteArray,
+        isText: Boolean,
+        charset: java.nio.charset.Charset,
+    ): String? {
+        val previewLimit = interceptor.responseBodyPreviewBytes
+        if (previewLimit <= 0 || bytes.isEmpty()) return null
+        val limit = previewLimit.coerceAtMost(bytes.size)
+        return if (isText) {
+            String(bytes, 0, limit, charset)
+        } else {
+            encodeToString(bytes, 0, limit, NO_WRAP)
+        }
+    }
+
+    private fun buildBody(
+        bytes: ByteArray,
+        isText: Boolean,
+        charset: java.nio.charset.Charset,
+    ): String? {
+        if (bytes.isEmpty()) return null
+        return if (isText) {
+            String(bytes, charset)
+        } else {
+            encodeToString(bytes, NO_WRAP)
+        }
+    }
+
+    private fun publishResponseIfNeeded(
+        currentContext: InterceptContext,
+        meta: ResponseMeta?,
+        bodyPreview: String?,
+        body: String?,
+        truncatedBytes: Long?,
+        totalBytes: Long?,
+        responseWall: Long,
+        responseMono: Long,
+        error: Throwable?,
+    ) {
+        val hasPayload = !body.isNullOrEmpty() || !bodyPreview.isNullOrEmpty() || truncatedBytes != null
+        if (!hasPayload && error == null) return
+        interceptor.publish {
+            ResponseReceived(
+                id = currentContext.requestId,
+                tWallMs = responseWall,
+                tMonoNs = responseMono,
+                code = meta?.code ?: -1,
+                headers = meta?.headers ?: emptyList(),
+                bodyPreview = bodyPreview,
+                body = body,
+                bodyTruncatedBytes = truncatedBytes,
+                bodySize = totalBytes,
+                timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
+            )
+        }
+    }
+
+    private fun publishFailureIfNeeded(currentContext: InterceptContext, error: Throwable?) {
+        if (error == null) return
+        val failWall = System.currentTimeMillis()
+        val failMono = SystemClock.elapsedRealtimeNanos()
+        interceptor.publish {
+            RequestFailed(
+                id = currentContext.requestId,
+                tWallMs = failWall,
+                tMonoNs = failMono,
+                errorKind = error.javaClass.simpleName.ifEmpty { error.javaClass.name },
+                message = error.message,
+                timings = Timings(totalMs = nanosToMillis(failMono - currentContext.startMono)),
+            )
         }
     }
 }
@@ -729,12 +761,10 @@ private fun parseMediaType(value: String?): ParsedMediaType? {
 
     var charset: java.nio.charset.Charset? = null
     for (index in 1 until parts.size) {
-        val param = parts[index].trim()
-        if (!param.startsWith("charset=", ignoreCase = true)) continue
-        val valueStart = param.indexOf('=') + 1
-        if (valueStart <= 0 || valueStart >= param.length) continue
-        val rawCharset = param.substring(valueStart).trim().trim('"')
-        charset = runCatching { java.nio.charset.Charset.forName(rawCharset) }.getOrNull()
+        val rawCharset = extractCharset(parts[index].trim())
+        if (rawCharset != null) {
+            charset = runCatching { java.nio.charset.Charset.forName(rawCharset) }.getOrNull()
+        }
     }
 
     return ParsedMediaType(type = type, subtype = subtype, charset = charset)
@@ -760,6 +790,13 @@ private fun ParsedMediaType.isEventStream(): Boolean =
 
 private fun ParsedMediaType.charsetOrUtf8(): java.nio.charset.Charset =
     charset ?: Charsets.UTF_8
+
+private fun extractCharset(param: String): String? {
+    if (!param.startsWith("charset=", ignoreCase = true)) return null
+    val valueStart = param.indexOf('=') + 1
+    if (valueStart <= 0 || valueStart >= param.length) return null
+    return param.substring(valueStart).trim().trim('"')
+}
 
 private fun resolveEffectiveMaxBytes(maxBytes: Int, contentLength: Long?): Int {
     if (maxBytes <= 0) return 0
