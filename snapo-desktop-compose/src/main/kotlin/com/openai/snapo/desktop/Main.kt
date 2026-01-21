@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -24,12 +26,12 @@ import dev.zacsweers.metro.createGraph
 import kotlinx.coroutines.launch
 import java.awt.Desktop
 import java.net.URI
+import java.util.UUID
 
 fun main() {
     configurePlatformAppearance()
-    val appGraph = createGraph<AppGraph>()
     application {
-        val windowState = rememberPersistedWindowState()
+        val windows = remember { mutableStateListOf(createInspectorWindow()) }
         val updateController = remember {
             UpdateController(
                 checker = UpdateChecker(),
@@ -47,21 +49,40 @@ fun main() {
                 AutoCheckDecision.Disabled -> Unit
             }
         }
-        Window(
-            onCloseRequest = ::exitApplication,
-            title = "Snap-O Network Inspector",
-            state = windowState,
-        ) {
-            SnapOMenuBar(
-                controller = updateController,
-                onCheckForUpdates = {
-                    scope.launch {
-                        updateController.checkForUpdates(UpdateCheckSource.Manual)
-                    }
-                },
-                onCloseRequest = ::exitApplication,
-            )
-            App(appGraph)
+
+        fun openNewWindow() {
+            windows.add(createInspectorWindow())
+        }
+
+        fun closeWindow(window: InspectorWindow) {
+            window.graph.store.stop()
+            windows.remove(window)
+            if (windows.isEmpty()) {
+                exitApplication()
+            }
+        }
+
+        windows.forEach { window ->
+            key(window.id) {
+                val windowState = rememberPersistedWindowState()
+                Window(
+                    onCloseRequest = { closeWindow(window) },
+                    title = "Snap-O Network Inspector",
+                    state = windowState,
+                ) {
+                    SnapOMenuBar(
+                        controller = updateController,
+                        onNewWindow = ::openNewWindow,
+                        onCheckForUpdates = {
+                            scope.launch {
+                                updateController.checkForUpdates(UpdateCheckSource.Manual)
+                            }
+                        },
+                        onCloseRequest = { closeWindow(window) },
+                    )
+                    App(window.graph)
+                }
+            }
         }
     }
 }
@@ -92,4 +113,13 @@ private fun openSnapOUpdate() {
             Desktop.getDesktop().browse(URI("snapo://check-updates"))
         }
     }
+}
+
+private data class InspectorWindow(
+    val id: String = UUID.randomUUID().toString(),
+    val graph: AppGraph,
+)
+
+private fun createInspectorWindow(): InspectorWindow {
+    return InspectorWindow(graph = createGraph<AppGraph>())
 }
