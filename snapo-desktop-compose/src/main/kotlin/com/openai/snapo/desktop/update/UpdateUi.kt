@@ -9,11 +9,17 @@ import androidx.compose.ui.window.MenuBar
 @Composable
 internal fun FrameWindowScope.SnapOMenuBar(
     controller: UpdateController,
+    onNewWindow: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onCloseRequest: () -> Unit,
 ) {
     MenuBar {
         Menu("File") {
+            Item(
+                text = "New Window",
+                shortcut = KeyShortcut(Key.N, meta = true),
+                onClick = onNewWindow,
+            )
             Item(
                 text = "Close",
                 shortcut = KeyShortcut(Key.W, meta = true),
