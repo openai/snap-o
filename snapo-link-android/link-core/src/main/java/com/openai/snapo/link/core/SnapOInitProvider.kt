@@ -45,7 +45,6 @@ class SnapOInitProvider : ContentProvider() {
         val allowRelease = meta?.getBoolean("snapo.allow_release", false) ?: false
 
         val linkConfig = SnapOLinkConfig(
-            singleClientOnly = true,
             modeLabel = modeLabel,
             allowRelease = allowRelease,
         )

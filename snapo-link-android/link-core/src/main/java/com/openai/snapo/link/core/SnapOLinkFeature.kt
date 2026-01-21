@@ -7,20 +7,39 @@ interface SnapOLinkFeature {
     /** Stable identifier used for feature envelopes. */
     val featureId: String
 
-    suspend fun onClientConnected(sink: LinkEventSink)
-    suspend fun onFeatureOpened()
-    fun onClientDisconnected()
+    /** Called once when the link server is available so features can broadcast or target clients. */
+    fun onLinkAvailable(sink: LinkEventSink) {}
+
+    /** Invoked once per client session when a client opens this feature. */
+    suspend fun onFeatureOpened(clientId: Long)
+
+    /** Invoked when a client disconnects. */
+    fun onClientDisconnected(clientId: Long) {}
+}
+
+sealed interface ClientId {
+    data object All : ClientId
+    data class Specific(val value: Long) : ClientId
+}
+
+enum class EventPriority {
+    High,
+    Low,
 }
 
 interface LinkEventSink {
-    suspend fun <T> sendHighPriority(payload: T, serializer: SerializationStrategy<T>)
-    suspend fun <T> sendLowPriority(payload: T, serializer: SerializationStrategy<T>)
+    fun <T> send(
+        payload: T,
+        serializer: SerializationStrategy<T>,
+        clientId: ClientId = ClientId.All,
+        priority: EventPriority = EventPriority.High,
+    )
 }
 
-suspend inline fun <reified T> LinkEventSink.sendHighPriority(payload: T) {
-    sendHighPriority(payload, serializer())
-}
-
-suspend inline fun <reified T> LinkEventSink.sendLowPriority(payload: T) {
-    sendLowPriority(payload, serializer())
+inline fun <reified T> LinkEventSink.send(
+    payload: T,
+    clientId: ClientId = ClientId.All,
+    priority: EventPriority = EventPriority.High,
+) {
+    send(payload, serializer(), clientId, priority)
 }
