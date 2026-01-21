@@ -169,8 +169,8 @@ internal class SnapOLinkSession(
     }
 
     private suspend fun handleFeatureOpened(message: FeatureOpened) {
-        openedFeatures.add(message.feature)
         val feature = attachedFeatures[message.feature] ?: return
+        if (!openedFeatures.add(message.feature)) return
         feature.onFeatureOpened(id)
     }
 

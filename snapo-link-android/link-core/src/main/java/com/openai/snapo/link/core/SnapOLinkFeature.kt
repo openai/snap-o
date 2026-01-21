@@ -10,7 +10,7 @@ interface SnapOLinkFeature {
     /** Called once when the link server is available so features can broadcast or target clients. */
     fun onLinkAvailable(sink: LinkEventSink) {}
 
-    /** Invoked when a specific client opens this feature. */
+    /** Invoked once per client session when a client opens this feature. */
     suspend fun onFeatureOpened(clientId: Long)
 
     /** Invoked when a client disconnects. */
