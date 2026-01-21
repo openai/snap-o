@@ -11,6 +11,7 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.prefs.Preferences
@@ -30,18 +31,24 @@ private data class WindowPreferences(
 )
 
 @Composable
-internal fun rememberPersistedWindowState(): WindowState {
+internal fun rememberPersistedWindowState(initialPosition: WindowPosition? = null): WindowState {
     val prefs = remember { Preferences.userRoot().node(WindowPrefNode) }
     val storedPreferences = remember { loadWindowPreferences(prefs) }
+    val startingPosition = if (initialPosition != null && initialPosition.isSpecified) {
+        initialPosition
+    } else {
+        storedPreferences.position
+    }
     val windowState = rememberWindowState(
         placement = storedPreferences.placement,
-        position = storedPreferences.position,
+        position = startingPosition,
         size = storedPreferences.size,
     )
     PersistWindowStateEffect(windowState = windowState, prefs = prefs)
     return windowState
 }
 
+@OptIn(FlowPreview::class)
 @Composable
 private fun PersistWindowStateEffect(windowState: WindowState, prefs: Preferences) {
     LaunchedEffect(windowState, prefs) {

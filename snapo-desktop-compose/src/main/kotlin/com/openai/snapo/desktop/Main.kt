@@ -10,7 +10,12 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import com.openai.snapo.desktop.di.AppGraph
 import com.openai.snapo.desktop.ui.SnapOContextMenuProviders
@@ -50,8 +55,12 @@ fun main() {
             }
         }
 
-        fun openNewWindow() {
-            windows.add(createInspectorWindow())
+        fun openNewWindow(parentState: WindowState?) {
+            val initialPosition = parentState
+                ?.position
+                ?.takeIf { it.isSpecified && it.x.isSpecified && it.y.isSpecified }
+                ?.let { WindowPosition(it.x + NewWindowOffset, it.y + NewWindowOffset) }
+            windows.add(createInspectorWindow(initialPosition = initialPosition))
         }
 
         fun closeWindow(window: InspectorWindow) {
@@ -64,7 +73,7 @@ fun main() {
 
         windows.forEach { window ->
             key(window.id) {
-                val windowState = rememberPersistedWindowState()
+                val windowState = rememberPersistedWindowState(initialPosition = window.initialPosition)
                 Window(
                     onCloseRequest = { closeWindow(window) },
                     title = "Snap-O Network Inspector",
@@ -72,7 +81,7 @@ fun main() {
                 ) {
                     SnapOMenuBar(
                         controller = updateController,
-                        onNewWindow = ::openNewWindow,
+                        onNewWindow = { openNewWindow(windowState) },
                         onCheckForUpdates = {
                             scope.launch {
                                 updateController.checkForUpdates(UpdateCheckSource.Manual)
@@ -118,8 +127,14 @@ private fun openSnapOUpdate() {
 private data class InspectorWindow(
     val id: String = UUID.randomUUID().toString(),
     val graph: AppGraph,
+    val initialPosition: WindowPosition? = null,
 )
 
-private fun createInspectorWindow(): InspectorWindow {
-    return InspectorWindow(graph = createGraph<AppGraph>())
+private fun createInspectorWindow(initialPosition: WindowPosition? = null): InspectorWindow {
+    return InspectorWindow(
+        graph = createGraph<AppGraph>(),
+        initialPosition = initialPosition,
+    )
 }
+
+private val NewWindowOffset: Dp = 100.dp
