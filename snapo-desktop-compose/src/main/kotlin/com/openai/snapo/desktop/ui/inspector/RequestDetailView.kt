@@ -357,6 +357,11 @@ private fun LazyListScope.pendingResponseSectionItems(
             "Waiting for response...",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(
+                start = Spacings.md,
+                top = Spacings.md,
+                bottom = Spacings.sm,
+            ),
         )
     }
 }
