@@ -491,21 +491,23 @@ private fun MessageHeaderActions(
         NetworkInspectorCopyExporter.copyText(displayText)
         copyToken += 1
     }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Spacings.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (prettyText != null) {
-            InspectorInlineTextToggle(
-                label = if (pretty) "PRETTY" else "RAW",
-                onClick = onPrettyToggle,
-            )
-        }
-        if (displayText.isNotEmpty()) {
-            InspectorInlineCopyButton(
-                isCopied = didCopy,
-                onCopy = onCopy,
-            )
+    DisableSelection {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Spacings.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (prettyText != null) {
+                InspectorInlineTextToggle(
+                    label = if (pretty) "PRETTY" else "RAW",
+                    onClick = onPrettyToggle,
+                )
+            }
+            if (displayText.isNotEmpty()) {
+                InspectorInlineCopyButton(
+                    isCopied = didCopy,
+                    onCopy = onCopy,
+                )
+            }
         }
     }
 }

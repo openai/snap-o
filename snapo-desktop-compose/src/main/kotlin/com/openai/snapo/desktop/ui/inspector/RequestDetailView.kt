@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,8 @@ fun RequestDetailView(
 
     var requestBodyPretty by remember(request.id) { mutableStateOf(request.requestBody?.prettyPrintedText != null) }
     var responseBodyPretty by remember(request.id) { mutableStateOf(request.responseBody?.prettyPrintedText != null) }
+    var requestBodyPrettyTouched by remember(request.id) { mutableStateOf(false) }
+    var responseBodyPrettyTouched by remember(request.id) { mutableStateOf(false) }
 
     var didCopyAllEvents by remember(request.id) { mutableStateOf(false) }
 
@@ -70,8 +73,14 @@ fun RequestDetailView(
         onResponseHeadersExpandedChange = { uiState.responseHeadersExpanded = it },
         onResponseBodyExpandedChange = { uiState.responseBodyExpanded = it },
         onStreamExpandedChange = { uiState.streamExpanded = it },
-        onRequestBodyPrettyChange = { requestBodyPretty = it },
-        onResponseBodyPrettyChange = { responseBodyPretty = it },
+        onRequestBodyPrettyChange = {
+            requestBodyPrettyTouched = true
+            requestBodyPretty = it
+        },
+        onResponseBodyPrettyChange = {
+            responseBodyPrettyTouched = true
+            responseBodyPretty = it
+        },
         onCopyAllEvents = {
             NetworkInspectorCopyExporter.copyStreamEventsRaw(request.streamEvents)
             didCopyAllEvents = true
@@ -82,11 +91,47 @@ fun RequestDetailView(
         state = state,
         actions = actions,
     )
+    RequestDetailEffects(
+        request = request,
+        requestBodyPrettyTouched = requestBodyPrettyTouched,
+        responseBodyPrettyTouched = responseBodyPrettyTouched,
+        onRequestBodyPrettyAvailable = { requestBodyPretty = true },
+        onResponseBodyPrettyAvailable = { responseBodyPretty = true },
+        didCopyAllEvents = didCopyAllEvents,
+        onClearCopyAllEvents = { didCopyAllEvents = false },
+    )
+}
+
+@Composable
+private fun RequestDetailEffects(
+    request: NetworkInspectorRequestUiModel,
+    requestBodyPrettyTouched: Boolean,
+    responseBodyPrettyTouched: Boolean,
+    onRequestBodyPrettyAvailable: () -> Unit,
+    onResponseBodyPrettyAvailable: () -> Unit,
+    didCopyAllEvents: Boolean,
+    onClearCopyAllEvents: () -> Unit,
+) {
+    val latestOnRequestBodyPrettyAvailable by rememberUpdatedState(onRequestBodyPrettyAvailable)
+    val latestOnResponseBodyPrettyAvailable by rememberUpdatedState(onResponseBodyPrettyAvailable)
+    val latestOnClearCopyAllEvents by rememberUpdatedState(onClearCopyAllEvents)
+
+    LaunchedEffect(request.id, request.requestBody?.prettyPrintedText) {
+        if (request.requestBody?.prettyPrintedText != null && !requestBodyPrettyTouched) {
+            latestOnRequestBodyPrettyAvailable()
+        }
+    }
+
+    LaunchedEffect(request.id, request.responseBody?.prettyPrintedText) {
+        if (request.responseBody?.prettyPrintedText != null && !responseBodyPrettyTouched) {
+            latestOnResponseBodyPrettyAvailable()
+        }
+    }
 
     if (didCopyAllEvents) {
         LaunchedEffect(request.id, didCopyAllEvents) {
             delay(1_000)
-            didCopyAllEvents = false
+            latestOnClearCopyAllEvents()
         }
     }
 }
@@ -344,6 +389,9 @@ private fun LazyListScope.bodySectionItems(
                 state = payloadState,
                 keyPrefix = "$keyPrefix:payload",
             )
+        }
+        item(key = "$keyPrefix:bottom-gap") {
+            Spacer(modifier = Modifier.size(Spacings.md))
         }
     }
 }
