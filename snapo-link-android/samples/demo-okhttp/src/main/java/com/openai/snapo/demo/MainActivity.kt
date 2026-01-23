@@ -22,8 +22,10 @@ import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -54,6 +56,28 @@ class MainActivity : ComponentActivity() {
                                 .header("Duplicated", "11111111")
                                 .addHeader("Duplicated", "2222222")
                                 .url("https://publicobject.com/helloworld.txt")
+                                .build()
+                            val call = client.newCall(request)
+                            scope.launch {
+                                call.executeAsync().use { response ->
+                                    withContext(Dispatchers.IO) {
+                                        println(response.body.string())
+                                    }
+                                }
+                            }
+                        },
+                        onPostRequestClick = {
+                            val mediaType = "application/json; charset=utf-8".toMediaType()
+                            val body = """
+                                {
+                                  "message": "Hello from Snap-O!",
+                                  "source": "okhttp-demo"
+                                }
+                            """.trimIndent().toRequestBody(mediaType)
+                            val request = Request.Builder()
+                                .url("https://postman-echo.com/post")
+                                .header("X-SnapO-Demo", "okhttp-post")
+                                .post(body)
                                 .build()
                             val call = client.newCall(request)
                             scope.launch {
@@ -105,6 +129,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Greeting(
     onNetworkRequestClick: () -> Unit,
+    onPostRequestClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -114,6 +139,9 @@ fun Greeting(
     ) {
         Button(onClick = onNetworkRequestClick) {
             Text("Network Request")
+        }
+        Button(onClick = onPostRequestClick) {
+            Text("POST Request")
         }
         Button(onClick = onWebSocketDemoClick) {
             Text("WebSocket Echo")
@@ -127,6 +155,7 @@ private fun GreetingPreview() {
     MaterialTheme {
         Greeting(
             onNetworkRequestClick = {},
+            onPostRequestClick = {},
             onWebSocketDemoClick = {},
         )
     }

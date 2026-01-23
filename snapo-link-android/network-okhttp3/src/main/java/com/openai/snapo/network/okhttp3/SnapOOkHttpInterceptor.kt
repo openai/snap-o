@@ -15,10 +15,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import okhttp3.Interceptor
 import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.Buffer
+import okio.BufferedSink
+import okio.ForwardingSink
+import okio.buffer
 import java.io.Closeable
 import java.io.IOException
 import java.nio.charset.Charset
@@ -44,8 +48,35 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         )
 
         val request = chain.request()
-        publishRequest(context, request)
+        val requestBody = request.body
+        if (requestBody != null && requestBody.isOneShot()) {
+            val capturingBody = CapturingRequestBody(requestBody, textBodyMaxBytes)
+            val requestWithCapture = request.newBuilder()
+                .method(request.method, capturingBody)
+                .build()
+            var didPublish = false
+            fun publishOnce() {
+                if (didPublish) return
+                didPublish = true
+                publishRequest(
+                    context = context,
+                    request = requestWithCapture,
+                    capturedBody = capturingBody.snapshot(),
+                    skipFallback = true,
+                )
+            }
 
+            return runCatching {
+                val response = chain.proceed(requestWithCapture)
+                publishOnce()
+                handleResponse(context, response)
+            }.onFailure { error ->
+                publishOnce()
+                handleFailure(context, error)
+            }.getOrThrow()
+        }
+
+        publishRequest(context, request)
         return runCatching {
             val response = chain.proceed(request)
             handleResponse(context, response)
@@ -58,15 +89,25 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         scope.cancel()
     }
 
-    private fun publishRequest(context: InterceptContext, request: Request) {
-        val requestBody = request.captureBody(textBodyMaxBytes)
+    private fun publishRequest(
+        context: InterceptContext,
+        request: Request,
+        capturedBody: RequestBodyCapture? = null,
+        skipFallback: Boolean = false,
+    ) {
+        val requestBody = if (skipFallback) capturedBody else capturedBody ?: request.captureBody(textBodyMaxBytes)
+        val contentType = resolveRequestContentType(requestBody?.contentType, request)
         publish {
             var encoding: String? = null
             val encodedBody: String? = when {
                 requestBody == null -> null
 
-                requestBody.contentType.isTextLike() -> {
-                    val charset = requestBody.contentType.resolveCharset()
+                contentType.isMultipartFormData() -> {
+                    formatMultipartBody(requestBody.body, contentType)
+                }
+
+                contentType.isTextLike() -> {
+                    val charset = contentType.resolveCharset()
                     String(requestBody.body, charset)
                 }
 
@@ -214,6 +255,67 @@ internal data class RequestBodyCapture(
     val truncatedBytes: Long,
 )
 
+private class RequestBodyCaptureBuffer(private val maxBytes: Int) {
+    private val buffer = Buffer()
+    private var totalBytes: Long = 0
+
+    fun append(source: Buffer, byteCount: Long) {
+        if (byteCount <= 0L) return
+        totalBytes += byteCount
+        if (maxBytes <= 0) return
+        val remaining = maxBytes.toLong() - buffer.size
+        if (remaining <= 0L) return
+        val toCopy = minOf(byteCount, remaining)
+        source.copyTo(buffer, 0, toCopy)
+    }
+
+    fun snapshot(contentType: MediaType?): RequestBodyCapture? {
+        if (maxBytes <= 0) return null
+        val captured = buffer.readByteArray()
+        val truncatedBytes = (totalBytes - captured.size.toLong()).coerceAtLeast(0L)
+        return RequestBodyCapture(
+            contentType = contentType,
+            body = captured,
+            truncatedBytes = truncatedBytes,
+        )
+    }
+}
+
+private class CapturingRequestBody(
+    private val delegate: okhttp3.RequestBody,
+    private val maxBytes: Int,
+) : okhttp3.RequestBody() {
+    @Volatile
+    private var captured: RequestBodyCapture? = null
+
+    fun snapshot(): RequestBodyCapture? = captured
+
+    override fun contentType(): MediaType? = delegate.contentType()
+
+    override fun contentLength(): Long = delegate.contentLength()
+
+    override fun isOneShot(): Boolean = delegate.isOneShot()
+
+    override fun isDuplex(): Boolean = delegate.isDuplex()
+
+    override fun writeTo(sink: BufferedSink) {
+        val capture = RequestBodyCaptureBuffer(maxBytes)
+        val capturingSink = object : ForwardingSink(sink) {
+            override fun write(source: Buffer, byteCount: Long) {
+                capture.append(source, byteCount)
+                super.write(source, byteCount)
+            }
+        }
+        val buffered = capturingSink.buffer()
+        try {
+            delegate.writeTo(buffered)
+            buffered.flush()
+        } finally {
+            captured = capture.snapshot(contentType())
+        }
+    }
+}
+
 private fun ResponseBody?.safeContentLength(): Long? = this?.let {
     try {
         it.contentLength().takeIf { len -> len >= 0L }
@@ -253,6 +355,12 @@ private fun MediaType?.isTextLike(): Boolean = when {
         "csv",
         "yaml",
     ).any(subtype.lowercase()::contains)
+}
+
+private fun MediaType?.isMultipartFormData(): Boolean {
+    val mediaType = this ?: return false
+    return mediaType.type.equals("multipart", ignoreCase = true) &&
+        mediaType.subtype.equals("form-data", ignoreCase = true)
 }
 
 private fun MediaType?.isEventStream(): Boolean {
@@ -386,6 +494,259 @@ private fun MediaType?.resolveCharset(): Charset {
     } catch (_: IllegalArgumentException) {
         Charsets.UTF_8
     }
+}
+
+private fun resolveRequestContentType(
+    captureContentType: MediaType?,
+    request: Request,
+): MediaType? {
+    if (captureContentType != null) return captureContentType
+    val headerValue = request.header("Content-Type") ?: return null
+    return headerValue.toMediaTypeOrNull()
+}
+
+private fun formatMultipartBody(bodyBytes: ByteArray, contentType: MediaType?): String {
+    val boundary = extractMultipartBoundary(contentType) ?: return String(bodyBytes, Charsets.UTF_8)
+    val sections = splitMultipartSections(bodyBytes, boundary)
+    val parts = sections.mapNotNull(::parseMultipartSection)
+    if (parts.isEmpty()) return String(bodyBytes, Charsets.UTF_8)
+    return renderMultipartParts(parts)
+}
+
+private fun extractMultipartBoundary(contentType: MediaType?): String? {
+    val boundary = contentType?.parameter("boundary")?.trim()?.trim('"') ?: return null
+    return boundary.takeIf { it.isNotEmpty() }
+}
+
+private data class MultipartPart(
+    val name: String?,
+    val filename: String?,
+    val contentType: String?,
+    val bodyBytes: ByteArray,
+    val isText: Boolean,
+    val charset: Charset?,
+)
+
+private fun parseMultipartSection(sectionBytes: ByteArray): MultipartPart? {
+    val trimmed = sectionBytes.trimMultipartSection() ?: return null
+    val (headerBytes, bodyBytes) = splitMultipartBytes(trimmed)
+    val headers = parseMultipartHeaders(headerBytes)
+    val disposition = headers["content-disposition"]
+    val name = disposition?.let { parseHeaderParam(it, "name") }
+    val filename = disposition?.let { parseHeaderParam(it, "filename") }
+    val partType = headers["content-type"]
+    val isText = isTextMultipartPart(partType, filename)
+    val charset = parseCharset(partType)
+
+    return MultipartPart(
+        name = name,
+        filename = filename,
+        contentType = partType,
+        bodyBytes = bodyBytes,
+        isText = isText,
+        charset = charset,
+    )
+}
+
+private fun splitMultipartSections(bodyBytes: ByteArray, boundary: String): List<ByteArray> {
+    val marker = ("--$boundary").toByteArray(Charsets.UTF_8)
+    val indices = findAllMarkers(bodyBytes, marker)
+    if (indices.isEmpty()) return emptyList()
+    val sections = ArrayList<ByteArray>(indices.size)
+    for (index in indices.indices) {
+        val markerIndex = indices[index]
+        if (startsWith(bodyBytes, markerIndex + marker.size, byteArrayOf('-'.code.toByte(), '-'.code.toByte()))) {
+            break
+        }
+        val sectionStart = skipLineBreaks(bodyBytes, markerIndex + marker.size)
+        val sectionEnd = resolveSectionEnd(bodyBytes, indices, index)
+        if (sectionStart < sectionEnd) {
+            sections.add(bodyBytes.copyOfRange(sectionStart, sectionEnd))
+        }
+    }
+    return sections
+}
+
+private fun resolveSectionEnd(
+    bodyBytes: ByteArray,
+    indices: List<Int>,
+    index: Int,
+): Int {
+    val nextIndex = indices.getOrNull(index + 1) ?: bodyBytes.size
+    var end = nextIndex
+    if (end >= 2 && bodyBytes[end - 2] == '\r'.code.toByte() && bodyBytes[end - 1] == '\n'.code.toByte()) {
+        end -= 2
+    }
+    return end
+}
+
+private fun findAllMarkers(source: ByteArray, marker: ByteArray): List<Int> {
+    val indices = ArrayList<Int>()
+    var index = indexOfSequence(source, marker, 0)
+    while (index >= 0) {
+        indices.add(index)
+        index = indexOfSequence(source, marker, index + marker.size)
+    }
+    return indices
+}
+
+private fun indexOfSequence(source: ByteArray, pattern: ByteArray, startIndex: Int): Int {
+    if (pattern.isEmpty() || source.size < pattern.size) return -1
+    val maxIndex = source.size - pattern.size
+    var index = startIndex.coerceAtLeast(0)
+    while (index <= maxIndex) {
+        if (matchesAt(source, pattern, index)) return index
+        index++
+    }
+    return -1
+}
+
+private fun matchesAt(source: ByteArray, pattern: ByteArray, index: Int): Boolean {
+    for (offset in pattern.indices) {
+        if (source[index + offset] != pattern[offset]) return false
+    }
+    return true
+}
+
+private fun skipLineBreaks(source: ByteArray, startIndex: Int): Int {
+    var index = startIndex
+    if (startsWith(source, index, byteArrayOf('\r'.code.toByte(), '\n'.code.toByte()))) {
+        index += 2
+    } else if (startsWith(source, index, byteArrayOf('\n'.code.toByte()))) {
+        index += 1
+    }
+    return index
+}
+
+private fun startsWith(source: ByteArray, startIndex: Int, prefix: ByteArray): Boolean {
+    if (startIndex < 0 || startIndex + prefix.size > source.size) return false
+    for (i in prefix.indices) {
+        if (source[startIndex + i] != prefix[i]) return false
+    }
+    return true
+}
+
+private fun splitMultipartBytes(section: ByteArray): Pair<ByteArray, ByteArray> {
+    val crlfcrlf = byteArrayOf(
+        '\r'.code.toByte(),
+        '\n'.code.toByte(),
+        '\r'.code.toByte(),
+        '\n'.code.toByte(),
+    )
+    val lfLf = byteArrayOf('\n'.code.toByte(), '\n'.code.toByte())
+    val crlfIndex = indexOfSequence(section, crlfcrlf, 0)
+    if (crlfIndex >= 0) {
+        return section.copyOfRange(0, crlfIndex) to section.copyOfRange(crlfIndex + crlfcrlf.size, section.size)
+    }
+    val lfIndex = indexOfSequence(section, lfLf, 0)
+    if (lfIndex >= 0) {
+        return section.copyOfRange(0, lfIndex) to section.copyOfRange(lfIndex + lfLf.size, section.size)
+    }
+    return section to ByteArray(0)
+}
+
+private fun renderMultipartParts(parts: List<MultipartPart>): String {
+    val rendered = StringBuilder()
+    parts.forEach { part ->
+        rendered.append("Part")
+        if (part.name != null) rendered.append(" name=\"").append(part.name).append("\"")
+        if (part.filename != null) rendered.append(" filename=\"").append(part.filename).append("\"")
+        if (part.contentType != null) rendered.append(" (").append(part.contentType).append(")")
+        rendered.append("\n")
+
+        if (part.isText) {
+            rendered.append(String(part.bodyBytes, part.charset ?: Charsets.UTF_8))
+        } else {
+            rendered.append(encodeToString(part.bodyBytes, NO_WRAP))
+        }
+        rendered.append("\n\n")
+    }
+    return rendered.toString().trimEnd()
+}
+
+private fun parseMultipartHeaders(headerBytes: ByteArray): Map<String, String> {
+    if (headerBytes.isEmpty()) return emptyMap()
+    return parseMultipartHeaders(headerBytes.toString(Charsets.ISO_8859_1))
+}
+
+private fun parseMultipartHeaders(headerBlock: String): Map<String, String> {
+    if (headerBlock.isBlank()) return emptyMap()
+    return headerBlock
+        .lines()
+        .mapNotNull { line ->
+            val idx = line.indexOf(':')
+            if (idx <= 0) return@mapNotNull null
+            val key = line.substring(0, idx).trim().lowercase()
+            val value = line.substring(idx + 1).trim()
+            key to value
+        }
+        .toMap()
+}
+
+private fun ByteArray.trimMultipartSection(): ByteArray? {
+    if (isEmpty()) return null
+    var start = 0
+    var end = size
+    while (start < end && this[start].toInt() == '\n'.code) start++
+    while (start < end && this[start].toInt() == '\r'.code) start++
+    while (end > start && this[end - 1].toInt() == '\n'.code) end--
+    while (end > start && this[end - 1].toInt() == '\r'.code) end--
+    if (start >= end) return null
+    return copyOfRange(start, end)
+}
+
+private fun isTextMultipartPart(contentType: String?, filename: String?): Boolean {
+    return when {
+        contentType != null -> contentType.isTextLikeHeader()
+        filename != null -> false
+        else -> true
+    }
+}
+
+private fun parseCharset(contentType: String?): Charset? {
+    val value = contentType ?: return null
+    val charset = value.split(';')
+        .firstOrNull { it.trim().startsWith("charset=", ignoreCase = true) }
+        ?.substringAfter('=')
+        ?.trim()
+        ?.trim('"')
+        ?.takeIf { it.isNotEmpty() }
+        ?: return null
+    return try {
+        Charset.forName(charset)
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}
+
+private fun parseHeaderParam(headerValue: String, paramName: String): String? {
+    return headerValue
+        .split(';')
+        .asSequence()
+        .map { it.trim() }
+        .mapNotNull { segment ->
+            val idx = segment.indexOf('=')
+            if (idx <= 0) return@mapNotNull null
+            val key = segment.substring(0, idx).trim()
+            val value = segment.substring(idx + 1).trim().trim('"')
+            key to value
+        }
+        .firstOrNull { (key, _) -> key.equals(paramName, ignoreCase = true) }
+        ?.second
+}
+
+private fun String.isTextLikeHeader(): Boolean {
+    val value = lowercase()
+    return value.startsWith("text/") ||
+        listOf(
+            "application/json",
+            "application/xml",
+            "application/x-www-form-urlencoded",
+            "application/graphql",
+            "application/javascript",
+        ).any { value.contains(it) } ||
+        listOf("json", "xml", "html", "javascript", "form", "graphql", "plain", "csv", "yaml")
+            .any { value.contains(it) }
 }
 
 internal fun nanosToMillis(deltaNs: Long): Long? {

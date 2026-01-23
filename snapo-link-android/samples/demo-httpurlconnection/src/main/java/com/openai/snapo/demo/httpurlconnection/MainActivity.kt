@@ -30,36 +30,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent {
-            MaterialTheme {
-                val scope = rememberCoroutineScope()
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    DemoContent(
-                        onNetworkRequestClick = {
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    val connection = interceptor.open(
-                                        URL("https://publicobject.com/helloworld.txt")
-                                    )
-                                    try {
-                                        connection.requestMethod = "GET"
-                                        connection.addRequestProperty("Duplicated", "11111111")
-                                        connection.addRequestProperty("Duplicated", "2222222")
-                                        connection.connect()
-                                        connection.inputStream.bufferedReader().use { reader ->
-                                            println(reader.readText())
-                                        }
-                                    } finally {
-                                        connection.disconnect()
-                                    }
-                                }
-                            }
-                        },
-                        modifier = Modifier.padding(innerPadding),
-                    )
-                }
-            }
-        }
+        setContent { DemoScreen(interceptor = interceptor) }
     }
 
     override fun onDestroy() {
@@ -69,8 +40,82 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+private fun DemoScreen(interceptor: SnapOHttpUrlInterceptor) {
+    MaterialTheme {
+        val scope = rememberCoroutineScope()
+        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+            DemoContent(
+                onNetworkRequestClick = {
+                    scope.launch { performGetRequest(interceptor) }
+                },
+                onPostRequestClick = {
+                    scope.launch { performPostRequest(interceptor) }
+                },
+                modifier = Modifier.padding(innerPadding),
+            )
+        }
+    }
+}
+
+private suspend fun performGetRequest(interceptor: SnapOHttpUrlInterceptor) {
+    withContext(Dispatchers.IO) {
+        val connection = interceptor.open(
+            URL("https://publicobject.com/helloworld.txt")
+        )
+        try {
+            connection.requestMethod = "GET"
+            connection.addRequestProperty("Duplicated", "11111111")
+            connection.addRequestProperty("Duplicated", "2222222")
+            connection.connect()
+            connection.inputStream.bufferedReader().use { reader ->
+                println(reader.readText())
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+}
+
+private suspend fun performPostRequest(interceptor: SnapOHttpUrlInterceptor) {
+    withContext(Dispatchers.IO) {
+        val connection = interceptor.open(
+            URL("https://postman-echo.com/post")
+        )
+        try {
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty(
+                "Content-Type",
+                "application/json; charset=utf-8",
+            )
+            connection.setRequestProperty("X-SnapO-Demo", "httpurl-post")
+            val payload = """
+                {
+                  "message": "Hello from Snap-O!",
+                  "source": "httpurlconnection-demo"
+                }
+            """.trimIndent()
+            connection.outputStream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+            }
+            val stream = if (connection.responseCode >= 400) {
+                connection.errorStream
+            } else {
+                connection.inputStream
+            }
+            stream?.bufferedReader()?.use { reader ->
+                println(reader.readText())
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+}
+
+@Composable
 private fun DemoContent(
     onNetworkRequestClick: () -> Unit,
+    onPostRequestClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -80,6 +125,9 @@ private fun DemoContent(
         Button(onClick = onNetworkRequestClick) {
             Text("Network Request")
         }
+        Button(onClick = onPostRequestClick) {
+            Text("POST Request")
+        }
     }
 }
 
@@ -87,6 +135,9 @@ private fun DemoContent(
 @Composable
 private fun DemoPreview() {
     MaterialTheme {
-        DemoContent(onNetworkRequestClick = {})
+        DemoContent(
+            onNetworkRequestClick = {},
+            onPostRequestClick = {},
+        )
     }
 }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -706,21 +707,23 @@ private fun inlineJsonOutlineActions(
 ): (@Composable RowScope.(JsonOutlineNode) -> Unit)? {
     if (!enabled) return null
     return { _ ->
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Spacings.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (hasToggle) {
-                InspectorInlineTextToggle(
-                    label = if (localPretty) "PRETTY" else "RAW",
-                    onClick = onTogglePretty,
-                )
-            }
-            if (hasCopy) {
-                InspectorInlineCopyButton(
-                    isCopied = didCopy,
-                    onCopy = onCopy,
-                )
+        DisableSelection {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacings.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (hasToggle) {
+                    InspectorInlineTextToggle(
+                        label = if (localPretty) "PRETTY" else "RAW",
+                        onClick = onTogglePretty,
+                    )
+                }
+                if (hasCopy) {
+                    InspectorInlineCopyButton(
+                        isCopied = didCopy,
+                        onCopy = onCopy,
+                    )
+                }
             }
         }
     }
@@ -737,26 +740,28 @@ private fun ControlsRow(
 ) {
     if (!hasToggle && !showsCopyButton) return
 
-    Row(
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    DisableSelection {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(Spacings.sm),
+            horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            if (hasToggle) {
-                InspectorInlineTextToggle(
-                    label = if (prettyChecked) "PRETTY" else "RAW",
-                    onClick = onPrettyToggle,
-                )
-            }
-            if (showsCopyButton) {
-                InspectorInlineCopyButton(
-                    isCopied = didCopy,
-                    onCopy = onCopy,
-                )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacings.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (hasToggle) {
+                    InspectorInlineTextToggle(
+                        label = if (prettyChecked) "PRETTY" else "RAW",
+                        onClick = onPrettyToggle,
+                    )
+                }
+                if (showsCopyButton) {
+                    InspectorInlineCopyButton(
+                        isCopied = didCopy,
+                        onCopy = onCopy,
+                    )
+                }
             }
         }
     }
