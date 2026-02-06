@@ -234,7 +234,21 @@ class SnapOLinkServer(
         ): Boolean =
             when (priority) {
                 EventPriority.High -> session.sendHighPriority(record)
-                EventPriority.Low -> session.sendLowPriority(record)
+                EventPriority.Low -> when (session.sendLowPriority(record)) {
+                    SnapOLinkSession.LowPrioritySendResult.SENT -> true
+                    SnapOLinkSession.LowPrioritySendResult.DROPPED_QUEUE_FULL -> {
+                        val dropped = session.lowPriorityDroppedCount()
+                        if (dropped == 1L || dropped % LowPriorityDropLogInterval == 0L) {
+                            Log.w(
+                                TAG,
+                                "Dropped low-priority records for session ${session.id}; dropped=$dropped"
+                            )
+                        }
+                        true
+                    }
+
+                    SnapOLinkSession.LowPrioritySendResult.SESSION_NOT_READY -> false
+                }
             }
 
         private fun <T> wrap(payload: T, serializer: SerializationStrategy<T>): LinkRecord {
@@ -254,3 +268,4 @@ class SnapOLinkServer(
 }
 
 private const val TAG = "SnapOLink"
+private const val LowPriorityDropLogInterval = 100L
