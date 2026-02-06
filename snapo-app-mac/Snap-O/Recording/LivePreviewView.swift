@@ -47,8 +47,13 @@ final class LivePreviewDisplayView: NSView {
     configureLayerIfNeeded()
   }
 
-  override var acceptsFirstResponder: Bool { true }
-  override var isFlipped: Bool { true }
+  override var acceptsFirstResponder: Bool {
+    true
+  }
+
+  override var isFlipped: Bool {
+    true
+  }
 
   func update(with renderer: LivePreviewRenderer?) {
     let shouldDetach: Bool = switch (self.renderer?.session, renderer?.session) {
@@ -112,12 +117,29 @@ final class LivePreviewDisplayView: NSView {
     addTrackingArea(area)
   }
 
-  override func mouseEntered(with event: NSEvent) { handlePointer(.hoverEnter, event: event) }
-  override func mouseMoved(with event: NSEvent) { handlePointer(.hoverMove, event: event) }
-  override func mouseExited(with event: NSEvent) { handlePointer(.hoverExit, event: event) }
-  override func mouseDown(with event: NSEvent) { handlePointer(.down, event: event) }
-  override func mouseDragged(with event: NSEvent) { handlePointer(.drag, event: event) }
-  override func mouseUp(with event: NSEvent) { handlePointer(.up, event: event) }
+  override func mouseEntered(with event: NSEvent) {
+    handlePointer(.hoverEnter, event: event)
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    handlePointer(.hoverMove, event: event)
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    handlePointer(.hoverExit, event: event)
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    handlePointer(.down, event: event)
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    handlePointer(.drag, event: event)
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    handlePointer(.up, event: event)
+  }
 
   private enum PointerPhase { case hoverEnter, hoverMove, hoverExit, down, drag, up }
 

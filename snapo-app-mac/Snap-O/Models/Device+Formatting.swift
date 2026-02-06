@@ -1,7 +1,7 @@
 import Foundation
 
 extension Device {
-  // Primary display name prefers vendor model when available.
+  /// Primary display name prefers vendor model when available.
   var displayTitle: String {
     // Prefer emulator AVD name when available
     if let avdName, !avdName.isEmpty {

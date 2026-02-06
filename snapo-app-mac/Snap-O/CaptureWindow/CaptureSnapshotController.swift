@@ -19,7 +19,9 @@ final class CaptureSnapshotController {
   private(set) var lastPreviewDisplayInfo: DisplayInfo?
   private(set) var lastViewedDeviceID: String?
 
-  var currentCapture: CaptureMedia? { currentCaptureSnapshot }
+  var currentCapture: CaptureMedia? {
+    currentCaptureSnapshot
+  }
 
   var captureProgressText: String? {
     guard mediaList.count > 1,
@@ -29,7 +31,9 @@ final class CaptureSnapshotController {
     return "\(index + 1)/\(mediaList.count)"
   }
 
-  var hasAlternativeMedia: Bool { mediaList.count > 1 }
+  var hasAlternativeMedia: Bool {
+    mediaList.count > 1
+  }
 
   func selectMedia(id: CaptureMedia.ID) {
     selectMedia(id: Optional(id))

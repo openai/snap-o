@@ -62,8 +62,13 @@ struct LogcatRingBuffer {
     return result
   }
 
-  var isEmpty: Bool { entryCount == 0 }
-  var currentCount: Int { entryCount }
+  var isEmpty: Bool {
+    entryCount == 0
+  }
+
+  var currentCount: Int {
+    entryCount
+  }
 
   mutating func consumeDropCount() -> Int {
     let value = droppedEntriesCount

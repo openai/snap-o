@@ -30,7 +30,7 @@ struct LogcatCrashContentView: View {
     }
   }
 
-  @ViewBuilder private var crashList: some View {
+  private var crashList: some View {
     VStack(alignment: .leading, spacing: 0) {
       if store.crashes.isEmpty {
         LogcatPlaceholderView(
@@ -50,7 +50,7 @@ struct LogcatCrashContentView: View {
     }
   }
 
-  @ViewBuilder private var crashDetail: some View {
+  private var crashDetail: some View {
     VStack(alignment: .trailing, spacing: 0) {
       if let crash = store.selectedCrash {
         LogcatCrashDetailPane(

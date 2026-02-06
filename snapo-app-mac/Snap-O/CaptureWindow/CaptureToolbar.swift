@@ -57,7 +57,6 @@ struct CaptureToolbar: ToolbarContent {
     }
   }
 
-  @ViewBuilder
   private func livePreviewControls() -> some View {
     Button {
       Task { await controller.stopLivePreview() }

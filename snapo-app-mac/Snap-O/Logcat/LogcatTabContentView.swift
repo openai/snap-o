@@ -250,7 +250,7 @@ struct LogcatTabContentView: View {
     return "Stage \(index + 1)"
   }
 
-  @ViewBuilder private var content: some View {
+  private var content: some View {
     ZStack(alignment: .top) {
       if !tab.hasEntries {
         LogcatPlaceholderView(

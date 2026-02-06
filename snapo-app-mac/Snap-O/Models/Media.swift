@@ -17,7 +17,9 @@ struct MediaCommon: Equatable, Sendable {
 struct DisplayInfo: Equatable, Sendable {
   let size: CGSize
   let densityScale: CGFloat?
-  var aspectRatio: CGFloat { size.width / size.height }
+  var aspectRatio: CGFloat {
+    size.width / size.height
+  }
 }
 
 // MARK: - Conveniences
@@ -36,13 +38,34 @@ extension Media {
     }
   }
 
-  var isImage: Bool { if case .image = self { true } else { false } }
-  var isVideo: Bool { if case .video = self { true } else { false } }
-  var isLivePreview: Bool { if case .livePreview = self { true } else { false } }
-  var aspectRatio: CGFloat { common.display.aspectRatio }
-  var size: CGSize { common.display.size }
-  var capturedAt: Date { common.capturedAt }
-  var densityScale: CGFloat? { common.display.densityScale }
+  var isImage: Bool {
+    if case .image = self { true } else { false }
+  }
+
+  var isVideo: Bool {
+    if case .video = self { true } else { false }
+  }
+
+  var isLivePreview: Bool {
+    if case .livePreview = self { true } else { false }
+  }
+
+  var aspectRatio: CGFloat {
+    common.display.aspectRatio
+  }
+
+  var size: CGSize {
+    common.display.size
+  }
+
+  var capturedAt: Date {
+    common.capturedAt
+  }
+
+  var densityScale: CGFloat? {
+    common.display.densityScale
+  }
+
   var saveKind: MediaSaveKind? {
     switch self {
     case .image: .image

@@ -14,8 +14,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     !flag
   }
 
-  func applicationShouldRestoreApplicationState(_ app: NSApplication) -> Bool { false }
-  func applicationShouldSaveApplicationState(_ app: NSApplication) -> Bool { false }
+  func applicationShouldRestoreApplicationState(_ app: NSApplication) -> Bool {
+    false
+  }
+
+  func applicationShouldSaveApplicationState(_ app: NSApplication) -> Bool {
+    false
+  }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     AppSettings.shared.isAppTerminating = true

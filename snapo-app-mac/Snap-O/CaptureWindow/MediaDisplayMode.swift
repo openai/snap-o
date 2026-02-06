@@ -10,15 +10,41 @@ final class MediaDisplayMode {
     self.snapshotController = snapshotController
   }
 
-  var mediaList: [CaptureMedia] { snapshotController.mediaList }
-  var selectedMediaID: CaptureMedia.ID? { snapshotController.selectedMediaID }
-  var currentCaptureViewID: UUID? { snapshotController.currentCaptureViewID }
-  var shouldShowPreviewHint: Bool { snapshotController.shouldShowPreviewHint }
-  var overlayMediaList: [CaptureMedia] { snapshotController.overlayMediaList }
-  var lastViewedDeviceID: String? { snapshotController.lastViewedDeviceID }
-  var currentCapture: CaptureMedia? { snapshotController.currentCapture }
-  var captureProgressText: String? { snapshotController.captureProgressText }
-  var lastPreviewDisplayInfo: DisplayInfo? { snapshotController.lastPreviewDisplayInfo }
+  var mediaList: [CaptureMedia] {
+    snapshotController.mediaList
+  }
+
+  var selectedMediaID: CaptureMedia.ID? {
+    snapshotController.selectedMediaID
+  }
+
+  var currentCaptureViewID: UUID? {
+    snapshotController.currentCaptureViewID
+  }
+
+  var shouldShowPreviewHint: Bool {
+    snapshotController.shouldShowPreviewHint
+  }
+
+  var overlayMediaList: [CaptureMedia] {
+    snapshotController.overlayMediaList
+  }
+
+  var lastViewedDeviceID: String? {
+    snapshotController.lastViewedDeviceID
+  }
+
+  var currentCapture: CaptureMedia? {
+    snapshotController.currentCapture
+  }
+
+  var captureProgressText: String? {
+    snapshotController.captureProgressText
+  }
+
+  var lastPreviewDisplayInfo: DisplayInfo? {
+    snapshotController.lastPreviewDisplayInfo
+  }
 
   func selectMedia(id: CaptureMedia.ID?) {
     snapshotController.selectMedia(id: id)

@@ -1,15 +1,15 @@
 import Foundation
 
-// Device discovered via `adb devices -l`
+/// Device discovered via `adb devices -l`
 public struct Device: Identifiable, Hashable, Sendable {
   public let id: String // adb serial
   public let model: String
   public let androidVersion: String
-  // Preferred display model from vendor props if available
+  /// Preferred display model from vendor props if available
   public let vendorModel: String?
-  // Manufacturer, preferred from vendor props if available (falls back to ro.product.manufacturer)
+  /// Manufacturer, preferred from vendor props if available (falls back to ro.product.manufacturer)
   public let manufacturer: String?
-  // Emulator AVD name (from ro.boot.qemu.avd_name), underscores replaced with spaces
+  /// Emulator AVD name (from ro.boot.qemu.avd_name), underscores replaced with spaces
   public let avdName: String?
 }
 
