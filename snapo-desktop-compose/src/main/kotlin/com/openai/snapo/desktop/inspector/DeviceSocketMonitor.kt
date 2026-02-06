@@ -83,27 +83,27 @@ internal class DeviceSocketMonitor(
         }
     }
 
-    private fun startMonitoringDevice(deviceId: String) {
-        val job = scope.launch(Dispatchers.Default) {
-            while (true) {
-                try {
-                    val output = adb.listUnixSockets(deviceId)
-                    val sockets = parseServers(output)
-                    handleSocketsUpdate(deviceId, sockets)
-                } catch (t: CancellationException) {
-                    throw t
-                } catch (_: Throwable) {
-                    handleSocketsUpdate(deviceId, emptySet())
+    private suspend fun startMonitoringDevice(deviceId: String) {
+        val job = mutex.withLock {
+            if (deviceMonitors.containsKey(deviceId)) {
+                return@withLock null
+            }
+            scope.launch(Dispatchers.Default, start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                while (true) {
+                    try {
+                        val output = adb.listUnixSockets(deviceId)
+                        val sockets = parseServers(output)
+                        handleSocketsUpdate(deviceId, sockets)
+                    } catch (t: CancellationException) {
+                        throw t
+                    } catch (_: Throwable) {
+                        handleSocketsUpdate(deviceId, emptySet())
+                    }
+                    delay(2_000)
                 }
-                delay(2_000)
-            }
+            }.also { deviceMonitors[deviceId] = it }
         }
-        scope.launch {
-            val previous = mutex.withLock { deviceMonitors.putIfAbsent(deviceId, job) }
-            if (previous != null) {
-                job.cancel()
-            }
-        }
+        job?.start()
     }
 
     private suspend fun stopMonitoringDevice(deviceId: String) {
