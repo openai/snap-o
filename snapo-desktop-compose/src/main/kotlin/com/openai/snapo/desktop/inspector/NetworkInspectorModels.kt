@@ -1,22 +1,7 @@
 package com.openai.snapo.desktop.inspector
 
 import com.openai.snapo.desktop.protocol.AppIcon
-import com.openai.snapo.desktop.protocol.Header
 import com.openai.snapo.desktop.protocol.Hello
-import com.openai.snapo.desktop.protocol.RequestFailed
-import com.openai.snapo.desktop.protocol.RequestWillBeSent
-import com.openai.snapo.desktop.protocol.ResponseReceived
-import com.openai.snapo.desktop.protocol.ResponseStreamClosed
-import com.openai.snapo.desktop.protocol.ResponseStreamEvent
-import com.openai.snapo.desktop.protocol.WebSocketCancelled
-import com.openai.snapo.desktop.protocol.WebSocketCloseRequested
-import com.openai.snapo.desktop.protocol.WebSocketClosed
-import com.openai.snapo.desktop.protocol.WebSocketClosing
-import com.openai.snapo.desktop.protocol.WebSocketFailed
-import com.openai.snapo.desktop.protocol.WebSocketMessageReceived
-import com.openai.snapo.desktop.protocol.WebSocketMessageSent
-import com.openai.snapo.desktop.protocol.WebSocketOpened
-import com.openai.snapo.desktop.protocol.WebSocketWillOpen
 import java.time.Instant
 import java.util.UUID
 

@@ -1,20 +1,25 @@
 package com.openai.snapo.network
 
+import com.openai.snapo.link.core.CdpError
+import com.openai.snapo.link.core.CdpGetRequestPostDataParams
+import com.openai.snapo.link.core.CdpGetRequestPostDataResult
+import com.openai.snapo.link.core.CdpGetResponseBodyParams
+import com.openai.snapo.link.core.CdpGetResponseBodyResult
+import com.openai.snapo.link.core.CdpMessage
+import com.openai.snapo.link.core.CdpNetworkMethod
 import com.openai.snapo.link.core.ClientId
 import com.openai.snapo.link.core.EventPriority
 import com.openai.snapo.link.core.LinkEventSink
+import com.openai.snapo.link.core.Ndjson
 import com.openai.snapo.link.core.SnapOLinkFeature
 import com.openai.snapo.link.core.SnapOLinkRegistry
+import com.openai.snapo.network.record.RequestWillBeSent
 import com.openai.snapo.network.record.ResponseReceived
-import com.openai.snapo.network.record.SnapONetRecord
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.openai.snapo.network.record.ResponseStreamEvent
+import com.openai.snapo.network.record.NetworkEventRecord
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.serialization.json.JsonElement
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -29,7 +34,6 @@ data class NetworkInspectorConfig(
 
 class NetworkInspectorFeature(
     config: NetworkInspectorConfig = NetworkInspectorConfig(),
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : SnapOLinkFeature {
 
     override val featureId: String = "network"
@@ -46,76 +50,171 @@ class NetworkInspectorFeature(
     override suspend fun onFeatureOpened(clientId: Long) {
         val current = sink ?: return
         val target = ClientId.Specific(clientId)
-
-        val deferredBodies = mutableListOf<ResponseReceived>()
         val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
+
+        val requestUrls = HashMap<String, String>()
         for (record in snapshot) {
-            if (record is ResponseReceived && record.hasBodyPayload()) {
-                current.send(record.withoutBodyPayload(), clientId = target)
-                deferredBodies.add(record)
-            } else {
-                current.send(record, clientId = target)
+            if (record is RequestWillBeSent) {
+                requestUrls[record.id] = record.url
             }
+            val wireRecord = record.withoutInlineBodyPayloads()
+            val requestUrl = when (wireRecord) {
+                is ResponseReceived -> requestUrls[wireRecord.id]
+                else -> null
+            }
+            current.send(wireRecord.toCdpMessage(requestUrl = requestUrl), clientId = target)
         }
-        scheduleDeferredBodies(current, target, deferredBodies)
     }
 
-    suspend fun publish(record: SnapONetRecord) {
-        bufferLock.withLock {
+    override suspend fun onFeatureCommand(clientId: Long, payload: JsonElement) {
+        val current = sink ?: return
+        val command = runCatching {
+            Ndjson.decodeFromJsonElement(CdpMessage.serializer(), payload)
+        }.getOrNull() ?: return
+
+        val commandId = command.id ?: return
+        val method = command.method ?: return
+        val target = ClientId.Specific(clientId)
+
+        when (method) {
+            CdpNetworkMethod.GetRequestPostData -> {
+                val params = runCatching {
+                    Ndjson.decodeFromJsonElement(CdpGetRequestPostDataParams.serializer(), command.params ?: return)
+                }.getOrNull()
+                if (params == null) {
+                    current.sendError(commandId, "Missing request parameters", target)
+                    return
+                }
+                val request = findLatestRequest(params.requestId)
+                val postData = request?.body
+                if (postData.isNullOrEmpty()) {
+                    current.sendError(commandId, "No request body captured for ${params.requestId}", target)
+                    return
+                }
+                current.sendResult(
+                    id = commandId,
+                    result = CdpGetRequestPostDataResult(postData = postData),
+                    serializer = CdpGetRequestPostDataResult.serializer(),
+                    clientId = target,
+                )
+            }
+
+            CdpNetworkMethod.GetResponseBody -> {
+                val params = runCatching {
+                    Ndjson.decodeFromJsonElement(CdpGetResponseBodyParams.serializer(), command.params ?: return)
+                }.getOrNull()
+                if (params == null) {
+                    current.sendError(commandId, "Missing response parameters", target)
+                    return
+                }
+
+                val response = findLatestResponse(params.requestId)
+                val streamBody = if (response?.body.isNullOrEmpty()) {
+                    joinSseBody(params.requestId)
+                } else {
+                    null
+                }
+                val resolvedBody = response?.body ?: streamBody
+                if (resolvedBody.isNullOrEmpty()) {
+                    current.sendError(commandId, "No response body captured for ${params.requestId}", target)
+                    return
+                }
+
+                val base64 = when {
+                    response != null -> response.hasNonTextBodyEncoding()
+                    else -> false
+                }
+
+                current.sendResult(
+                    id = commandId,
+                    result = CdpGetResponseBodyResult(
+                        body = resolvedBody,
+                        base64Encoded = base64,
+                    ),
+                    serializer = CdpGetResponseBodyResult.serializer(),
+                    clientId = target,
+                )
+            }
+
+            else -> current.sendError(commandId, "Unsupported method: $method", target)
+        }
+    }
+
+    suspend fun publish(record: NetworkEventRecord) {
+        val wireMessage = bufferLock.withLock {
             eventBuffer.append(record)
+            val snapshot = eventBuffer.snapshot()
+            val wireRecord = record.withoutInlineBodyPayloads()
+            val requestUrl = when (wireRecord) {
+                is ResponseReceived -> latestRequestUrl(snapshot, wireRecord.id)
+                else -> null
+            }
+            wireRecord.toCdpMessage(requestUrl = requestUrl)
         }
         val currentSink = sink ?: return
-        when (record) {
-            is ResponseReceived -> {
-                if (record.hasBodyPayload()) {
-                    currentSink.send(record.withoutBodyPayload())
-                    scheduleResponseBody(currentSink, record)
-                } else {
-                    currentSink.send(record)
+        currentSink.send(wireMessage)
+    }
+
+    private suspend fun findLatestRequest(requestId: String): RequestWillBeSent? {
+        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
+        return snapshot.asReversed().firstNotNullOfOrNull { record ->
+            (record as? RequestWillBeSent)?.takeIf { it.id == requestId }
+        }
+    }
+
+    private suspend fun findLatestResponse(requestId: String): ResponseReceived? {
+        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
+        return snapshot.asReversed().firstNotNullOfOrNull { record ->
+            (record as? ResponseReceived)?.takeIf { it.id == requestId }
+        }
+    }
+
+    private suspend fun joinSseBody(requestId: String): String? {
+        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
+        val events = snapshot
+            .filterIsInstance<ResponseStreamEvent>()
+            .filter { it.id == requestId }
+            .sortedWith(compareBy<ResponseStreamEvent> { it.sequence }.thenBy { it.tWallMs })
+        if (events.isEmpty()) return null
+        return events.joinToString(separator = "") { event ->
+            val normalized = event.raw.replace(Regex("\\n+$"), "")
+            "$normalized\n\n"
+        }
+    }
+
+    private fun latestRequestUrl(snapshot: List<NetworkEventRecord>, requestId: String): String? =
+        snapshot.asReversed().firstNotNullOfOrNull { record ->
+            (record as? RequestWillBeSent)?.takeIf { it.id == requestId }?.url
+        }
+
+    private fun NetworkEventRecord.withoutInlineBodyPayloads(): NetworkEventRecord {
+        return when (this) {
+            is RequestWillBeSent -> copy(body = null)
+            is ResponseReceived -> copy(bodyPreview = null, body = null)
+            else -> this
+        }
+    }
+
+    private fun ResponseReceived.hasNonTextBodyEncoding(): Boolean {
+        val headersTextLike = headers.any { header ->
+            header.name.equals("Content-Type", ignoreCase = true) &&
+                header.value.substringBefore(';').trim().let { value ->
+                    value.startsWith("text/", ignoreCase = true) ||
+                        listOf(
+                            "json",
+                            "xml",
+                            "html",
+                            "javascript",
+                            "form",
+                            "graphql",
+                            "plain",
+                            "csv",
+                            "yaml",
+                        ).any { token -> value.contains(token, ignoreCase = true) }
                 }
-            }
-
-            else -> currentSink.send(record)
         }
+        return !headersTextLike
     }
-
-    private fun scheduleDeferredBodies(
-        sink: NetworkEventSink,
-        target: ClientId,
-        deferredBodies: List<ResponseReceived>,
-    ) {
-        deferredBodies.forEachIndexed { index, response ->
-            val stagger = ResponseBodyStaggerMillis * index
-            scheduleResponseBody(sink, response, target, ResponseBodyDelayMillis + stagger)
-        }
-    }
-
-    private fun scheduleResponseBody(
-        sink: NetworkEventSink,
-        record: ResponseReceived,
-        target: ClientId = ClientId.All,
-        initialDelayMs: Long = ResponseBodyDelayMillis,
-    ) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                if (initialDelayMs > 0) {
-                    delay(initialDelayMs)
-                }
-                sink.send(record, clientId = target, priority = EventPriority.Low)
-            } catch (t: CancellationException) {
-                throw t
-            } catch (_: Throwable) {
-            }
-        }
-    }
-
-    private fun ResponseReceived.hasBodyPayload(): Boolean {
-        if (!body.isNullOrEmpty()) return true
-        return false
-    }
-
-    private fun ResponseReceived.withoutBodyPayload(): ResponseReceived =
-        copy(body = null)
 }
 
 object NetworkInspector {
@@ -137,17 +236,47 @@ object NetworkInspector {
     fun getOrNull(): NetworkInspectorFeature? = feature
 }
 
-private const val ResponseBodyDelayMillis = 200L
-private const val ResponseBodyStaggerMillis = 25L
-
 private class NetworkEventSink(
     private val delegate: LinkEventSink,
 ) {
     fun send(
-        record: SnapONetRecord,
+        message: CdpMessage,
         clientId: ClientId = ClientId.All,
         priority: EventPriority = EventPriority.High,
     ) {
-        delegate.send(record, SnapONetRecord.serializer(), clientId, priority)
+        delegate.send(message, CdpMessage.serializer(), clientId, priority)
+    }
+
+    fun sendError(
+        id: Int,
+        message: String,
+        clientId: ClientId,
+    ) {
+        send(
+            CdpMessage(
+                id = id,
+                error = CdpError(
+                    code = -32000,
+                    message = message,
+                ),
+            ),
+            clientId = clientId,
+        )
+    }
+
+    fun <T> sendResult(
+        id: Int,
+        result: T,
+        serializer: kotlinx.serialization.KSerializer<T>,
+        clientId: ClientId,
+    ) {
+        val payload = Ndjson.encodeToJsonElement(serializer, result)
+        send(
+            CdpMessage(
+                id = id,
+                result = payload,
+            ),
+            clientId = clientId,
+        )
     }
 }

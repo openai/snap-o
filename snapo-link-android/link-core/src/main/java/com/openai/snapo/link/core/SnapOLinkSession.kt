@@ -172,6 +172,7 @@ internal class SnapOLinkSession(
         }
         when (message) {
             is FeatureOpened -> handleFeatureOpened(message)
+            is FeatureCommand -> handleFeatureCommand(message)
         }
     }
 
@@ -179,6 +180,12 @@ internal class SnapOLinkSession(
         val feature = attachedFeatures[message.feature] ?: return
         if (!openedFeatures.add(message.feature)) return
         feature.onFeatureOpened(id)
+    }
+
+    private suspend fun handleFeatureCommand(message: FeatureCommand) {
+        val feature = attachedFeatures[message.feature] ?: return
+        if (!openedFeatures.contains(message.feature)) return
+        feature.onFeatureCommand(id, message.payload)
     }
 
     fun isFeatureOpened(featureId: String): Boolean =

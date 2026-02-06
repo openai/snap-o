@@ -266,6 +266,7 @@ private fun DetailPane(
 ) {
     when (val content = resolveDetailContent(store, state.selectedItemId)) {
         is DetailContent.Request -> {
+            RequestBodyFetchEffect(store = store, request = content.model)
             RequestDetailView(request = content.model, uiStateStore = uiStateStore)
             return
         }
@@ -279,6 +280,16 @@ private fun DetailPane(
     }
 
     DetailPaneEmptyState(state)
+}
+
+@Composable
+private fun RequestBodyFetchEffect(
+    store: NetworkInspectorStore,
+    request: NetworkInspectorRequestUiModel,
+) {
+    LaunchedEffect(request.id, request.status) {
+        store.requestBodiesForRequest(request.id)
+    }
 }
 
 private sealed interface DetailContent {

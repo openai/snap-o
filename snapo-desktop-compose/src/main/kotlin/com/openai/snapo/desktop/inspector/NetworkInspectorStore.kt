@@ -83,6 +83,10 @@ class NetworkInspectorStore(
         service.sendFeatureOpened(feature, serverId)
     }
 
+    fun requestBodiesForRequest(id: NetworkInspectorRequestId) {
+        service.requestBodiesForRequest(id)
+    }
+
     fun requestOrNull(id: NetworkInspectorRequestId): NetworkInspectorRequest? = requestLookup[id]
 
     fun webSocketOrNull(id: NetworkInspectorWebSocketId): NetworkInspectorWebSocket? = webSocketLookup[id]

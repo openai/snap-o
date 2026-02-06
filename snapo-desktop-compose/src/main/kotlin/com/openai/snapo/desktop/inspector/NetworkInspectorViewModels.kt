@@ -1,6 +1,5 @@
 package com.openai.snapo.desktop.inspector
 
-import com.openai.snapo.desktop.protocol.ResponseStreamEvent
 import java.net.URI
 import java.time.Instant
 

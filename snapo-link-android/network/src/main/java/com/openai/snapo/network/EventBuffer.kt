@@ -6,7 +6,7 @@ import com.openai.snapo.network.record.RequestWillBeSent
 import com.openai.snapo.network.record.ResponseReceived
 import com.openai.snapo.network.record.ResponseStreamClosed
 import com.openai.snapo.network.record.ResponseStreamEvent
-import com.openai.snapo.network.record.SnapONetRecord
+import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.TimedRecord
 import com.openai.snapo.network.record.WebSocketCancelled
 import com.openai.snapo.network.record.WebSocketClosed
@@ -22,12 +22,12 @@ internal class EventBuffer(
     private val config: NetworkInspectorConfig,
 ) {
 
-    private val records: MutableList<SnapONetRecord> = ArrayList()
+    private val records: MutableList<NetworkEventRecord> = ArrayList()
     private var approxBytes: Long = 0L
     private val openWebSockets: MutableSet<String> = mutableSetOf()
     private val activeResponseStreams: MutableSet<String> = mutableSetOf()
 
-    fun append(record: SnapONetRecord) {
+    fun append(record: NetworkEventRecord) {
         insertSorted(record)
         approxBytes += estimateSize(record)
         updateWebSocketStateOnAdd(record)
@@ -37,14 +37,14 @@ internal class EventBuffer(
         trimToCountLimit()
     }
 
-    fun snapshot(): List<SnapONetRecord> = ArrayList(records)
+    fun snapshot(): List<NetworkEventRecord> = ArrayList(records)
 
-    private fun insertSorted(record: SnapONetRecord) {
+    private fun insertSorted(record: NetworkEventRecord) {
         val insertIndex = findInsertIndex(record)
         records.add(insertIndex, record)
     }
 
-    private fun findInsertIndex(record: SnapONetRecord): Int {
+    private fun findInsertIndex(record: NetworkEventRecord): Int {
         var low = 0
         var high = records.size
         while (low < high) {
@@ -59,17 +59,17 @@ internal class EventBuffer(
         return low
     }
 
-    private fun compareEventTimes(a: SnapONetRecord, b: SnapONetRecord): Int {
+    private fun compareEventTimes(a: NetworkEventRecord, b: NetworkEventRecord): Int {
         val left = eventTime(a)
         val right = eventTime(b)
         return left.compareTo(right)
     }
 
-    private fun eventTime(record: SnapONetRecord): Long {
+    private fun eventTime(record: NetworkEventRecord): Long {
         return (record as? TimedRecord)?.tWallMs ?: Long.MAX_VALUE
     }
 
-    private fun evictExpiredIfNeeded(record: SnapONetRecord) {
+    private fun evictExpiredIfNeeded(record: NetworkEventRecord) {
         if (record is TimedRecord) {
             val cutoff = record.tWallMs - config.bufferWindow.inWholeMilliseconds
             evictExpiredRecords(cutoff)
@@ -111,7 +111,7 @@ internal class EventBuffer(
         return evicted
     }
 
-    private fun updateWebSocketStateOnAdd(record: SnapONetRecord) {
+    private fun updateWebSocketStateOnAdd(record: NetworkEventRecord) {
         when (record) {
             is WebSocketWillOpen -> openWebSockets.add(record.id)
             is WebSocketOpened -> openWebSockets.add(record.id)
@@ -122,7 +122,7 @@ internal class EventBuffer(
         }
     }
 
-    private fun updateWebSocketStateOnRemove(record: SnapONetRecord) {
+    private fun updateWebSocketStateOnRemove(record: NetworkEventRecord) {
         when (record) {
             is WebSocketWillOpen -> openWebSockets.remove(record.id)
             is WebSocketOpened -> openWebSockets.remove(record.id)
@@ -130,7 +130,7 @@ internal class EventBuffer(
         }
     }
 
-    private fun updateStreamStateOnAdd(record: SnapONetRecord) {
+    private fun updateStreamStateOnAdd(record: NetworkEventRecord) {
         when (record) {
             is ResponseStreamEvent -> activeResponseStreams.add(record.id)
             is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
@@ -139,7 +139,7 @@ internal class EventBuffer(
         }
     }
 
-    private fun updateStreamStateOnRemove(record: SnapONetRecord) {
+    private fun updateStreamStateOnRemove(record: NetworkEventRecord) {
         when (record) {
             is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
             is RequestFailed -> activeResponseStreams.remove(record.id)
@@ -171,7 +171,7 @@ internal class EventBuffer(
             ?: false
     }
 
-    private fun evictWebSocketConversation(head: SnapONetRecord): Boolean {
+    private fun evictWebSocketConversation(head: NetworkEventRecord): Boolean {
         val wsHead = head.perWebSocketRecord() ?: return false
         if (openWebSockets.contains(wsHead.id)) {
             return false
@@ -230,14 +230,14 @@ internal class EventBuffer(
         }
     }
 
-    private fun removeRecord(iterator: MutableIterator<SnapONetRecord>, record: SnapONetRecord) {
+    private fun removeRecord(iterator: MutableIterator<NetworkEventRecord>, record: NetworkEventRecord) {
         iterator.remove()
         subtractApproxBytes(record)
         updateWebSocketStateOnRemove(record)
         updateStreamStateOnRemove(record)
     }
 
-    private fun estimateSize(record: SnapONetRecord): Long {
+    private fun estimateSize(record: NetworkEventRecord): Long {
         val base = 64 // rough per-record object overhead
         val payloadEstimate = when (record) {
             is RequestWillBeSent ->
@@ -263,7 +263,7 @@ internal class EventBuffer(
         return (base + payloadEstimate).toLong()
     }
 
-    private fun subtractApproxBytes(record: SnapONetRecord) {
+    private fun subtractApproxBytes(record: NetworkEventRecord) {
         approxBytes -= estimateSize(record)
         if (approxBytes < 0) approxBytes = 0
     }

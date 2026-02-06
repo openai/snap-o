@@ -1,14 +1,5 @@
 package com.openai.snapo.desktop.inspector
 
-import com.openai.snapo.desktop.protocol.Header
-import com.openai.snapo.desktop.protocol.RequestWillBeSent
-import com.openai.snapo.desktop.protocol.ResponseReceived
-import com.openai.snapo.desktop.protocol.ResponseStreamClosed
-import com.openai.snapo.desktop.protocol.ResponseStreamEvent
-import com.openai.snapo.desktop.protocol.WebSocketCloseRequested
-import com.openai.snapo.desktop.protocol.WebSocketClosed
-import com.openai.snapo.desktop.protocol.WebSocketClosing
-import com.openai.snapo.desktop.protocol.WebSocketOpened
 import com.openai.snapo.desktop.util.JsonOrderPreservingFormatter
 import kotlinx.serialization.json.Json
 import java.net.URI
@@ -274,12 +265,18 @@ private fun responseBodyPayload(
 ): NetworkInspectorRequestUiModel.BodyPayload? {
     val resolved = record ?: return null
     val bodyText = resolved.body ?: resolved.bodyPreview ?: return null
+    val contentType = contentTypeFor(resolved.headers)
+    val encoding = when {
+        resolved.bodyBase64Encoded -> "base64"
+        !resolved.bodyEncoding.isNullOrBlank() -> resolved.bodyEncoding
+        else -> contentType
+    }
     return makeBodyPayload(
         text = bodyText,
         isPreview = resolved.body == null,
         truncatedBytes = resolved.bodyTruncatedBytes,
         totalBytes = resolved.bodySize,
-        encoding = contentTypeFor(resolved.headers),
+        encoding = encoding,
     )
 }
 

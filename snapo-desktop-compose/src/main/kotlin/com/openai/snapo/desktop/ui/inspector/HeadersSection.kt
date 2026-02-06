@@ -40,7 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
-import com.openai.snapo.desktop.protocol.Header
+import com.openai.snapo.desktop.inspector.Header
 import com.openai.snapo.desktop.ui.TriangleIndicator
 import com.openai.snapo.desktop.ui.theme.Spacings
 import java.awt.datatransfer.ClipboardOwner

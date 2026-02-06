@@ -3,7 +3,7 @@ package com.openai.snapo.network.okhttp3
 import android.os.SystemClock
 import com.openai.snapo.network.record.ResponseStreamClosed
 import com.openai.snapo.network.record.ResponseStreamEvent
-import com.openai.snapo.network.record.SnapONetRecord
+import com.openai.snapo.network.record.NetworkEventRecord
 import okhttp3.MediaType
 import okhttp3.ResponseBody
 import okio.Buffer
@@ -44,7 +44,7 @@ internal class StreamingResponseRelayBody(
 }
 
 internal fun interface ResponseStreamListener {
-    fun onResponseStreamRecord(recordBuilder: () -> SnapONetRecord)
+    fun onResponseStreamRecord(recordBuilder: () -> NetworkEventRecord)
 }
 
 private class ResponseStreamRelay(

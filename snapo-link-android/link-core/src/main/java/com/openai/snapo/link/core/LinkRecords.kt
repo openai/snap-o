@@ -51,4 +51,4 @@ data class LinkFeatureInfo(
     val id: String,
 )
 
-internal const val SchemaVersion: Int = 2
+internal const val SchemaVersion: Int = 3

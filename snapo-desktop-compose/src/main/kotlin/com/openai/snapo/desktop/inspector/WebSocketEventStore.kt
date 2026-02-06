@@ -1,15 +1,5 @@
 package com.openai.snapo.desktop.inspector
 
-import com.openai.snapo.desktop.protocol.SnapONetRecord
-import com.openai.snapo.desktop.protocol.WebSocketCancelled
-import com.openai.snapo.desktop.protocol.WebSocketCloseRequested
-import com.openai.snapo.desktop.protocol.WebSocketClosed
-import com.openai.snapo.desktop.protocol.WebSocketClosing
-import com.openai.snapo.desktop.protocol.WebSocketFailed
-import com.openai.snapo.desktop.protocol.WebSocketMessageReceived
-import com.openai.snapo.desktop.protocol.WebSocketMessageSent
-import com.openai.snapo.desktop.protocol.WebSocketOpened
-import com.openai.snapo.desktop.protocol.WebSocketWillOpen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +15,7 @@ internal class WebSocketEventStore {
     private val _webSockets = MutableStateFlow<List<NetworkInspectorWebSocket>>(emptyList())
     val webSockets: StateFlow<List<NetworkInspectorWebSocket>> = _webSockets.asStateFlow()
 
-    suspend fun handle(serverId: SnapOLinkServerId, payload: SnapONetRecord) {
+    suspend fun handle(serverId: SnapOLinkServerId, payload: NetworkEventRecord) {
         when (payload) {
             is WebSocketWillOpen -> updateWebSocket(serverId, payload)
             is WebSocketOpened -> updateWebSocket(serverId, payload)

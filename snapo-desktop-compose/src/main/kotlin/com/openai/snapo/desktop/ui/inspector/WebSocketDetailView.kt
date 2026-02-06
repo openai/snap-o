@@ -36,7 +36,7 @@ import com.openai.snapo.desktop.inspector.NetworkInspectorRequestStatus
 import com.openai.snapo.desktop.inspector.NetworkInspectorStatusPresentation
 import com.openai.snapo.desktop.inspector.NetworkInspectorWebSocketUiModel
 import com.openai.snapo.desktop.inspector.WebSocketMessage
-import com.openai.snapo.desktop.protocol.Header
+import com.openai.snapo.desktop.inspector.Header
 import com.openai.snapo.desktop.ui.TriangleIndicator
 import com.openai.snapo.desktop.ui.json.JsonOutlineExpansionState
 import com.openai.snapo.desktop.ui.theme.SnapOAccents

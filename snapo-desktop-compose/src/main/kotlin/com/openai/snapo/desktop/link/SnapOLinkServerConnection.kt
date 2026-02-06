@@ -1,5 +1,6 @@
 package com.openai.snapo.desktop.link
 
+import com.openai.snapo.desktop.protocol.FeatureCommand
 import com.openai.snapo.desktop.protocol.FeatureOpened
 import com.openai.snapo.desktop.protocol.HostMessage
 import com.openai.snapo.desktop.protocol.Ndjson
@@ -11,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -49,6 +51,12 @@ class SnapOLinkServerConnection(
         // Fire-and-forget: the UI may call this frequently (e.g., focus changes).
         scope.launch {
             sendHostMessage(FeatureOpened(feature))
+        }
+    }
+
+    fun sendFeatureCommand(feature: String, payload: JsonElement) {
+        scope.launch {
+            sendHostMessage(FeatureCommand(feature = feature, payload = payload))
         }
     }
 
