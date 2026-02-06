@@ -7,7 +7,9 @@ struct ADBForwardHandle: Sendable {
   fileprivate let localPort: UInt16
   fileprivate let remote: String
 
-  var port: UInt16 { localPort }
+  var port: UInt16 {
+    localPort
+  }
 }
 
 struct ADBExec: Sendable {
@@ -256,8 +258,8 @@ struct ADBExec: Sendable {
     }
   }
 
-  // Currently exposed for LivePreviewPointerInjector which issues multiple calls over a single connection.
-  // Need a more consistent API.
+  /// Currently exposed for LivePreviewPointerInjector which issues multiple calls over a single connection.
+  /// Need a more consistent API.
   func makeConnection(maxAttempts: Int = 3) async throws -> ADBSocketConnection {
     try await runWithRetry(maxAttempts: maxAttempts) { connection in connection }
   }
@@ -280,20 +282,20 @@ struct ADBExec: Sendable {
     return output
   }
 
-  private func withConnection<T>(
+  private func withConnection<T: Sendable>(
     maxAttempts: Int = 3,
     _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
-  ) async throws -> T where T: Sendable {
+  ) async throws -> T {
     try await runWithRetry(maxAttempts: maxAttempts) { connection in
       defer { connection.close() }
       return try body(connection)
     }
   }
 
-  private func runWithRetry<T>(
+  private func runWithRetry<T: Sendable>(
     maxAttempts: Int,
     _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
-  ) async throws -> T where T: Sendable {
+  ) async throws -> T {
     var lastError: Error?
     var didRestartServer = false
 

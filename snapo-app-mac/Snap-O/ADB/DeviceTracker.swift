@@ -4,6 +4,7 @@ private let log = SnapOLog.tracker
 
 final class DeviceTracker: @unchecked Sendable {
   private let adbService: ADBService
+  private let infoCache = DeviceInfoCache()
 
   private var trackTask: Task<Void, Never>?
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
@@ -15,7 +16,6 @@ final class DeviceTracker: @unchecked Sendable {
     return _latestDevices
   }
 
-  private var infoCache: [String: DeviceInfo] = [:]
   private var hasSeenFirstMessage: Bool = false
 
   init(adbService: ADBService) {
@@ -160,7 +160,7 @@ final class DeviceTracker: @unchecked Sendable {
   }
 
   private func deviceInfo(for id: String, fallbackModel: String?, exec: ADBExec) async -> DeviceInfo {
-    if let cached = infoCache[id] {
+    if let cached = await infoCache.value(for: id) {
       return cached
     }
 
@@ -184,7 +184,7 @@ final class DeviceTracker: @unchecked Sendable {
       manufacturer: manufacturer,
       avdName: avdName
     )
-    infoCache[id] = info
+    await infoCache.set(info, for: id)
     return info
   }
 
@@ -196,6 +196,18 @@ final class DeviceTracker: @unchecked Sendable {
     let vendorModel: String?
     let manufacturer: String?
     let avdName: String?
+  }
+
+  private actor DeviceInfoCache {
+    private var storage: [String: DeviceInfo] = [:]
+
+    func value(for deviceID: String) -> DeviceInfo? {
+      storage[deviceID]
+    }
+
+    func set(_ info: DeviceInfo, for deviceID: String) {
+      storage[deviceID] = info
+    }
   }
 
   // MARK: - Property helpers

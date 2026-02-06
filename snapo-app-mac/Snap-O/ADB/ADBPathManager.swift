@@ -2,7 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 actor ADBPathManager {
-  // Static so static funcs can use it without hard-coding the string.
+  /// Static so static funcs can use it without hard-coding the string.
   private static let bookmarkKey = "adbBookmark"
 
   nonisolated static func lastKnownADBURL() -> URL? {

@@ -17,7 +17,7 @@ actor ADBService {
     adbURL = defaultURL
   }
 
-  // Configuration/UI
+  /// Configuration/UI
   func ensureConfigured() async {
     if validStoredURL() == nil {
       await promptForPath()
@@ -29,7 +29,7 @@ actor ADBService {
     _ = await promptForPathIfNeeded(forcePrompt: true)
   }
 
-  // State API merged from previous client
+  /// State API merged from previous client
   func setURL(_ newURL: URL?) {
     adbURL = newURL
     if let url = newURL, FileManager.default.fileExists(atPath: url.path) {
@@ -42,7 +42,9 @@ actor ADBService {
     }
   }
 
-  func currentURL() -> URL? { adbURL }
+  func currentURL() -> URL? {
+    adbURL
+  }
 
   func awaitConfigured() async {
     if let url = adbURL, FileManager.default.fileExists(atPath: url.path) { return }
@@ -131,7 +133,7 @@ actor ADBService {
     await MainActor.run { handler() }
   }
 
-  // Avoid forcing the app to activate while in the background; wait until the user returns.
+  /// Avoid forcing the app to activate while in the background; wait until the user returns.
   @MainActor
   private func waitForActiveApplicationIfNeeded() async {
     if NSApplication.shared.isActive { return }

@@ -76,7 +76,9 @@ final class CaptureWindowController {
     snapshotController.hasAlternativeMedia
   }
 
-  var hasDevices: Bool { !knownDevices.isEmpty }
+  var hasDevices: Bool {
+    !knownDevices.isEmpty
+  }
 
   var isRecording: Bool {
     if case .recording = mode { return true }
@@ -95,18 +97,45 @@ final class CaptureWindowController {
     return false
   }
 
-  var canCaptureNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
-  var canStartRecordingNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
-  var canStartLivePreviewNow: Bool { !isProcessing && !isRecording && !isLivePreviewActive && hasDevices }
+  var canCaptureNow: Bool {
+    !isProcessing && !isRecording && !isLivePreviewActive && hasDevices
+  }
 
-  var mediaList: [CaptureMedia] { mediaDisplayMode.mediaList }
-  var selectedMediaID: CaptureMedia.ID? { mediaDisplayMode.selectedMediaID }
-  var currentCaptureViewID: UUID? { mediaDisplayMode.currentCaptureViewID }
-  var shouldShowPreviewHint: Bool { mediaDisplayMode.shouldShowPreviewHint }
-  var overlayMediaList: [CaptureMedia] { mediaDisplayMode.overlayMediaList }
-  var lastViewedDeviceID: String? { mediaDisplayMode.lastViewedDeviceID }
+  var canStartRecordingNow: Bool {
+    !isProcessing && !isRecording && !isLivePreviewActive && hasDevices
+  }
 
-  var currentCapture: CaptureMedia? { mediaDisplayMode.currentCapture }
+  var canStartLivePreviewNow: Bool {
+    !isProcessing && !isRecording && !isLivePreviewActive && hasDevices
+  }
+
+  var mediaList: [CaptureMedia] {
+    mediaDisplayMode.mediaList
+  }
+
+  var selectedMediaID: CaptureMedia.ID? {
+    mediaDisplayMode.selectedMediaID
+  }
+
+  var currentCaptureViewID: UUID? {
+    mediaDisplayMode.currentCaptureViewID
+  }
+
+  var shouldShowPreviewHint: Bool {
+    mediaDisplayMode.shouldShowPreviewHint
+  }
+
+  var overlayMediaList: [CaptureMedia] {
+    mediaDisplayMode.overlayMediaList
+  }
+
+  var lastViewedDeviceID: String? {
+    mediaDisplayMode.lastViewedDeviceID
+  }
+
+  var currentCapture: CaptureMedia? {
+    mediaDisplayMode.currentCapture
+  }
 
   var navigationTitle: String {
     currentCapture?.device.displayTitle ?? "Snap-O"

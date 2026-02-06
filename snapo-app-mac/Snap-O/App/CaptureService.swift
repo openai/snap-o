@@ -52,8 +52,7 @@ actor CaptureService {
       capturedAt: capturedAt,
       display: display
     )
-    let captureMedia = CaptureMedia(device: device, media: media)
-    return captureMedia
+    return CaptureMedia(device: device, media: media)
   }
 
   func startRecordings(for devices: [Device]) async -> ([String: RecordingSession], Error?) {

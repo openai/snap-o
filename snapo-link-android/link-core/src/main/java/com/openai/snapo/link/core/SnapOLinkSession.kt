@@ -21,6 +21,7 @@ import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 internal class SnapOLinkSession(
     val id: Long,
@@ -47,6 +48,7 @@ internal class SnapOLinkSession(
     private val openedFeatures = ConcurrentHashMap.newKeySet<String>()
 
     private val closed = AtomicBoolean(false)
+    private val lowPriorityDroppedCount = AtomicLong(0L)
 
     @Volatile
     private var onCloseListener: ((SnapOLinkSession) -> Unit)? = null
@@ -97,12 +99,17 @@ internal class SnapOLinkSession(
         return true
     }
 
-    fun sendLowPriority(payload: LinkRecord): Boolean {
-        if (!isReady()) return false
+    fun sendLowPriority(payload: LinkRecord): LowPrioritySendResult {
+        if (!isReady()) return LowPrioritySendResult.SESSION_NOT_READY
         val item = LowPriorityRecord(payload, SystemClock.elapsedRealtime())
         val result = lowPriorityQueue.trySend(item)
-        return result.isSuccess || !result.isClosed
+        if (result.isSuccess) return LowPrioritySendResult.SENT
+        if (result.isClosed) return LowPrioritySendResult.SESSION_NOT_READY
+        lowPriorityDroppedCount.incrementAndGet()
+        return LowPrioritySendResult.DROPPED_QUEUE_FULL
     }
+
+    fun lowPriorityDroppedCount(): Long = lowPriorityDroppedCount.get()
 
     fun markClosed(): Boolean = closed.compareAndSet(false, true)
 
@@ -354,6 +361,12 @@ internal class SnapOLinkSession(
 
     private fun isReady(): Boolean =
         !isClosed() && sessionState == SnapOLinkSessionState.ACTIVE
+
+    enum class LowPrioritySendResult {
+        SENT,
+        DROPPED_QUEUE_FULL,
+        SESSION_NOT_READY,
+    }
 }
 
 internal sealed interface ClientHandshakeResult {

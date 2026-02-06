@@ -8,7 +8,9 @@ enum LogcatFilterAction: String, CaseIterable, Identifiable {
   case exclude
   case none
 
-  var id: String { rawValue }
+  var id: String {
+    rawValue
+  }
 
   var displayName: String {
     switch self {
@@ -31,7 +33,9 @@ enum LogcatFilterField: String, CaseIterable, Identifiable {
   case message
   case raw
 
-  var id: String { rawValue }
+  var id: String {
+    rawValue
+  }
 
   var displayName: String {
     switch self {

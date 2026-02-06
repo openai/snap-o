@@ -105,13 +105,24 @@ final class PerfStore: @unchecked Sendable {
 
 public enum Perf {
   @inlinable
-  public static func start(_ key: PerfKey, name: String) { PerfStore.shared.start(key, name: name) }
+  public static func start(_ key: PerfKey, name: String) {
+    PerfStore.shared.start(key, name: name)
+  }
+
   @inlinable
-  public static func startIfNeeded(_ key: PerfKey, name: String) { PerfStore.shared.startIfNeeded(key, name: name) }
+  public static func startIfNeeded(_ key: PerfKey, name: String) {
+    PerfStore.shared.startIfNeeded(key, name: name)
+  }
+
   @inlinable
-  public static func step(_ key: PerfKey, _ label: String) { PerfStore.shared.step(key, label) }
+  public static func step(_ key: PerfKey, _ label: String) {
+    PerfStore.shared.step(key, label)
+  }
+
   @inlinable
-  public static func end(_ key: PerfKey, finalLabel: String? = nil) { PerfStore.shared.end(key, finalLabel: finalLabel) }
+  public static func end(_ key: PerfKey, finalLabel: String? = nil) {
+    PerfStore.shared.end(key, finalLabel: finalLabel)
+  }
 }
 
 #else
