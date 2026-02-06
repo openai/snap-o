@@ -81,23 +81,19 @@ class SnapONetworkInitProvider : ContentProvider() {
 
     // Helpers: meta-data values can arrive as Int, Long, or String (from placeholders).
     private fun readLong(meta: Bundle?, key: String, def: Long): Long {
-        val v = meta?.get(key) ?: return def
-        return when (v) {
-            is Int -> v.toLong()
-            is Long -> v
-            is String -> v.toLongOrNull() ?: def
-            else -> def
-        }
+        val data = meta ?: return def
+        if (!data.containsKey(key)) return def
+        data.getString(key)?.toLongOrNull()?.let { return it }
+        return runCatching { data.getLong(key) }
+            .getOrElse { runCatching { data.getInt(key).toLong() }.getOrDefault(def) }
     }
 
     private fun readInt(meta: Bundle?, key: String, def: Int): Int {
-        val v = meta?.get(key) ?: return def
-        return when (v) {
-            is Int -> v
-            is Long -> v.toInt()
-            is String -> v.toIntOrNull() ?: def
-            else -> def
-        }
+        val data = meta ?: return def
+        if (!data.containsKey(key)) return def
+        data.getString(key)?.toIntOrNull()?.let { return it }
+        return runCatching { data.getInt(key) }
+            .getOrElse { runCatching { data.getLong(key).toInt() }.getOrDefault(def) }
     }
 
     // --- Required stubs (not used) ---
