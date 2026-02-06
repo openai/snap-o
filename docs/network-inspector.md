@@ -150,6 +150,10 @@ Customize the provider only if you need to adjust behavior. Override its metadat
 - `snapo.max_events` the max number of events that can stay in the buffer. (default: 10000)
 - `snapo.max_bytes` the max number of bytes that can stay in the buffer. (default: 16777216)
 
+## Security model note
+
+Snap-O Link transport on Android uses an app-local abstract Unix domain socket and depends on Android app sandbox + SELinux isolation. Under the current verified platform assumptions for this project, other apps cannot connect to the Snap-O Link server socket.
+
 ## 6. Verify the connection
 
 1. Install your debug build on a device or emulator.
