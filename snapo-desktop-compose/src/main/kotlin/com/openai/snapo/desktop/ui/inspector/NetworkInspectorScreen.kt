@@ -195,7 +195,13 @@ private fun NetworkInspectorScreenContent(
                 Sidebar(
                     state = sidebarState,
                     actions = sidebarActions,
-                    contextMenuItems = { item -> sidebarContextMenuItems(store, item) },
+                    contextMenuItems = { item ->
+                        sidebarContextMenuItems(
+                            store = store,
+                            item = item,
+                            selectedItemId = sidebarState.selectedItemId,
+                        )
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
             }

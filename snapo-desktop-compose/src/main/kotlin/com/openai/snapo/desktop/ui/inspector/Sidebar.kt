@@ -61,6 +61,7 @@ import com.openai.snapo.desktop.generated.resources.Res
 import com.openai.snapo.desktop.generated.resources.delete_24px
 import com.openai.snapo.desktop.generated.resources.sort_24px
 import com.openai.snapo.desktop.generated.resources.sync_24px
+import com.openai.snapo.desktop.inspector.export.NetworkInspectorHarExporter
 import com.openai.snapo.desktop.inspector.ListSortOrder
 import com.openai.snapo.desktop.inspector.NetworkInspectorCopyExporter
 import com.openai.snapo.desktop.inspector.NetworkInspectorItemId
@@ -435,7 +436,10 @@ private fun sidebarPlaceholderText(
 internal fun sidebarContextMenuItems(
     store: NetworkInspectorStore,
     item: NetworkInspectorListItemUiModel,
+    selectedItemId: NetworkInspectorItemId? = null,
 ): List<ContextMenuItem> {
+    val exportSelection = contextMenuSelection(clicked = item.id, selected = selectedItemId)
+
     return when (val kind = item.kind) {
         is NetworkInspectorListItemUiModel.Kind.Request -> listOf(
             ContextMenuItem("Copy URL") {
@@ -446,10 +450,44 @@ internal fun sidebarContextMenuItems(
                     ?.let { NetworkInspectorRequestUiModel.from(it) }
                 if (model != null) NetworkInspectorCopyExporter.copyCurl(model)
             },
+            ContextMenuItem("Export (sanitized)...") {
+                exportSidebarSelectionAsHar(store = store, selection = exportSelection)
+            },
         )
 
-        is NetworkInspectorListItemUiModel.Kind.WebSocket -> emptyList()
+        is NetworkInspectorListItemUiModel.Kind.WebSocket -> listOf(
+            ContextMenuItem("Export (sanitized)...") {
+                exportSidebarSelectionAsHar(store = store, selection = exportSelection)
+            },
+        )
     }
+}
+
+private fun contextMenuSelection(
+    clicked: NetworkInspectorItemId,
+    selected: NetworkInspectorItemId?,
+): List<NetworkInspectorItemId> {
+    if (selected == null || selected == clicked) return listOf(clicked)
+    if (selected::class != clicked::class) return listOf(clicked)
+    return listOf(selected, clicked)
+}
+
+private fun exportSidebarSelectionAsHar(
+    store: NetworkInspectorStore,
+    selection: List<NetworkInspectorItemId>,
+) {
+    val requests = selection.mapNotNull { selectedId ->
+        (selectedId as? NetworkInspectorItemId.Request)?.id?.let(store::requestOrNull)
+    }.distinctBy { request -> request.id }
+
+    val webSockets = selection.mapNotNull { selectedId ->
+        (selectedId as? NetworkInspectorItemId.WebSocket)?.id?.let(store::webSocketOrNull)
+    }.distinctBy { socket -> socket.id }
+
+    NetworkInspectorHarExporter.exportAsHar(
+        requests = requests,
+        webSockets = webSockets,
+    )
 }
 
 @Composable
