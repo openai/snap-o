@@ -61,7 +61,6 @@ import com.openai.snapo.desktop.generated.resources.Res
 import com.openai.snapo.desktop.generated.resources.delete_24px
 import com.openai.snapo.desktop.generated.resources.sort_24px
 import com.openai.snapo.desktop.generated.resources.sync_24px
-import com.openai.snapo.desktop.inspector.export.NetworkInspectorHarExporter
 import com.openai.snapo.desktop.inspector.ListSortOrder
 import com.openai.snapo.desktop.inspector.NetworkInspectorCopyExporter
 import com.openai.snapo.desktop.inspector.NetworkInspectorItemId
@@ -74,6 +73,7 @@ import com.openai.snapo.desktop.inspector.NetworkInspectorServerUiModel
 import com.openai.snapo.desktop.inspector.NetworkInspectorStatusPresentation
 import com.openai.snapo.desktop.inspector.NetworkInspectorStore
 import com.openai.snapo.desktop.inspector.SnapOLinkServerId
+import com.openai.snapo.desktop.inspector.export.NetworkInspectorHarExporter
 import com.openai.snapo.desktop.ui.theme.SnapOAccents
 import com.openai.snapo.desktop.ui.theme.SnapOMono
 import com.openai.snapo.desktop.ui.theme.SnapOTheme
