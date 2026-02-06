@@ -429,7 +429,7 @@ private class InterceptingHttpURLConnection(
         return contentLength?.toLongOrNull()
     }
 
-    private fun Map<String, List<String>>.toHeaderList(): List<Header> {
+    private fun Map<out String?, List<String>>.toHeaderList(): List<Header> {
         if (isEmpty()) return emptyList()
         val headers = ArrayList<Header>(size)
         for ((key, values) in this) {
