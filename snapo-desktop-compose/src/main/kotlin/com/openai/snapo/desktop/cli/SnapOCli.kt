@@ -7,23 +7,30 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
-import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
 import com.openai.snapo.desktop.adb.AdbExec
 import com.openai.snapo.desktop.adb.AdbForwardHandle
 import com.openai.snapo.desktop.link.SnapOLinkServerConnection
 import com.openai.snapo.desktop.link.SnapORecord
 import com.openai.snapo.desktop.protocol.CdpGetResponseBodyParams
 import com.openai.snapo.desktop.protocol.CdpGetResponseBodyResult
+import com.openai.snapo.desktop.protocol.CdpLoadingFailedParams
+import com.openai.snapo.desktop.protocol.CdpLoadingFinishedParams
 import com.openai.snapo.desktop.protocol.CdpMessage
 import com.openai.snapo.desktop.protocol.CdpNetworkMethod
+import com.openai.snapo.desktop.protocol.CdpRequestWillBeSentParams
+import com.openai.snapo.desktop.protocol.CdpResponseReceivedParams
+import com.openai.snapo.desktop.protocol.CdpWebSocketFrameReceivedParams
+import com.openai.snapo.desktop.protocol.CdpWebSocketFrameSentParams
 import com.openai.snapo.desktop.protocol.Hello
 import com.openai.snapo.desktop.protocol.Ndjson
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.serializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -41,39 +48,49 @@ object SnapOCli {
     private val requestHeaderNames = setOf("authorization", "cookie")
     private val responseHeaderNames = setOf("set-cookie")
 
+    private enum class OutputMode {
+        Human,
+        Json,
+    }
+
     fun run(args: Array<String>) {
         RootCommand(this).main(args)
     }
 
-    private suspend fun runNetworkList(includeAppInfo: Boolean): Int {
+    private suspend fun runNetworkList(
+        includeAppInfo: Boolean,
+        outputMode: OutputMode,
+    ): Int {
         val adb = AdbExec()
         val servers = discoverServers(adb)
         servers.forEach { server ->
             if (!includeAppInfo) {
-                printJson(
-                    CliServerLine(
-                        server = server.identifier,
-                        deviceId = server.deviceId,
-                        socketName = server.socketName,
-                    )
+                val line = CliServerLine(
+                    server = server.identifier,
+                    deviceId = server.deviceId,
+                    socketName = server.socketName,
                 )
+                emitServerLine(line = line, outputMode = outputMode)
             } else {
                 val appInfo = resolveServerAppInfo(adb, server)
-                printJson(
-                    CliServerWithAppInfoLine(
-                        server = server.identifier,
-                        deviceId = server.deviceId,
-                        socketName = server.socketName,
-                        packageName = appInfo.packageName,
-                        appName = appInfo.appName,
-                    )
+                val line = CliServerWithAppInfoLine(
+                    server = server.identifier,
+                    deviceId = server.deviceId,
+                    socketName = server.socketName,
+                    packageName = appInfo.packageName,
+                    appName = appInfo.appName,
                 )
+                emitServerLine(line = line, outputMode = outputMode)
             }
         }
         return 0
     }
 
-    private suspend fun runNetworkRequests(serverArgument: String, noStream: Boolean): Int {
+    private suspend fun runNetworkRequests(
+        serverArgument: String,
+        noStream: Boolean,
+        outputMode: OutputMode,
+    ): Int {
         val server = parseServerRef(serverArgument) ?: run {
             printError("Invalid server. Expected <deviceId/socketName>, got: $serverArgument")
             return 1
@@ -89,12 +106,12 @@ object SnapOCli {
 
         return try {
             if (noStream) {
-                if (!runSnapshotRequests(session)) {
+                if (!runSnapshotRequests(session, outputMode)) {
                     printError("Timed out waiting for handshake from ${server.identifier}")
                     return 1
                 }
             } else {
-                runStreamingRequests(session)
+                runStreamingRequests(session, outputMode)
             }
             0
         } finally {
@@ -103,7 +120,7 @@ object SnapOCli {
     }
 
     @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
-    private suspend fun runSnapshotRequests(session: ServerSession): Boolean {
+    private suspend fun runSnapshotRequests(session: ServerSession, outputMode: OutputMode): Boolean {
         var featureOpenedAtMs: Long? = null
         var lastNetworkEventMs: Long? = null
         val startedAtMs = System.currentTimeMillis()
@@ -142,7 +159,7 @@ object SnapOCli {
                 }
 
                 is SnapORecord.NetworkEvent -> {
-                    printJson(sanitizeMessage(record.value))
+                    emitNetworkEvent(message = sanitizeMessage(record.value), outputMode = outputMode)
                     lastNetworkEventMs = System.currentTimeMillis()
                 }
 
@@ -151,7 +168,7 @@ object SnapOCli {
         }
     }
 
-    private suspend fun runStreamingRequests(session: ServerSession) {
+    private suspend fun runStreamingRequests(session: ServerSession, outputMode: OutputMode) {
         var featureOpened = false
         while (true) {
             val record = session.events.receiveCatching().getOrNull() ?: return
@@ -163,47 +180,53 @@ object SnapOCli {
                     }
                 }
 
-                is SnapORecord.NetworkEvent -> printJson(sanitizeMessage(record.value))
+                is SnapORecord.NetworkEvent -> {
+                    emitNetworkEvent(message = sanitizeMessage(record.value), outputMode = outputMode)
+                }
                 else -> Unit
             }
         }
     }
 
-    private suspend fun runNetworkResponseBody(requestId: String): Int {
+    private suspend fun runNetworkResponseBody(
+        serverArgument: String,
+        requestId: String,
+        outputMode: OutputMode,
+    ): Int {
+        val server = parseServerRef(serverArgument) ?: run {
+            printError("Invalid server. Expected <deviceId/socketName>, got: $serverArgument")
+            return 1
+        }
         if (requestId.isBlank()) {
             printError("Request ID cannot be empty")
             return 1
         }
 
         val adb = AdbExec()
-        val servers = discoverServers(adb)
-        if (servers.isEmpty()) {
-            printError("No Snap-O link servers found")
-            return 1
-        }
+        return when (val result = fetchResponseBody(adb, server, requestId)) {
+            is FetchResponseBodyResult.Success -> {
+                emitResponseBody(
+                    line = CliResponseBodyLine(
+                        server = server.identifier,
+                        requestId = requestId,
+                        body = result.body,
+                        base64Encoded = result.base64Encoded,
+                    ),
+                    outputMode = outputMode,
+                )
+                0
+            }
 
-        var lastError: String? = null
-        for (server in servers) {
-            when (val result = fetchResponseBody(adb, server, requestId)) {
-                is FetchResponseBodyResult.Success -> {
-                    printJson(
-                        CliResponseBodyLine(
-                            server = server.identifier,
-                            requestId = requestId,
-                            body = result.body,
-                            base64Encoded = result.base64Encoded,
-                        )
-                    )
-                    return 0
-                }
+            is FetchResponseBodyResult.MissingBody -> {
+                printError(result.message)
+                1
+            }
 
-                is FetchResponseBodyResult.MissingBody -> lastError = result.message
-                is FetchResponseBodyResult.Failure -> lastError = result.message
+            is FetchResponseBodyResult.Failure -> {
+                printError(result.message)
+                1
             }
         }
-
-        printError(lastError ?: "No response body captured for $requestId")
-        return 1
     }
 
     @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
@@ -525,6 +548,101 @@ object SnapOCli {
         System.err.println("snapo: $message")
     }
 
+    private fun emitServerLine(line: CliServerLine, outputMode: OutputMode) {
+        when (outputMode) {
+            OutputMode.Json -> printJson(line)
+            OutputMode.Human -> {
+                println("${line.server} (device=${line.deviceId}, socket=${line.socketName})")
+            }
+        }
+    }
+
+    private fun emitServerLine(line: CliServerWithAppInfoLine, outputMode: OutputMode) {
+        when (outputMode) {
+            OutputMode.Json -> printJson(line)
+            OutputMode.Human -> {
+                val packagePart = line.packageName ?: "unknown"
+                val appPart = line.appName ?: "unknown"
+                println(
+                    "${line.server} (device=${line.deviceId}, socket=${line.socketName}, " +
+                        "package=$packagePart, app=$appPart)"
+                )
+            }
+        }
+    }
+
+    private fun emitNetworkEvent(message: CdpMessage, outputMode: OutputMode) {
+        when (outputMode) {
+            OutputMode.Json -> printJson(message)
+            OutputMode.Human -> println(formatNetworkEventLine(message))
+        }
+    }
+
+    private fun emitResponseBody(line: CliResponseBodyLine, outputMode: OutputMode) {
+        when (outputMode) {
+            OutputMode.Json -> printJson(line)
+            OutputMode.Human -> {
+                println("Server: ${line.server}")
+                println("Request ID: ${line.requestId}")
+                println("Base64 Encoded: ${line.base64Encoded}")
+                println("Body:")
+                println(line.body)
+            }
+        }
+    }
+
+    @Suppress("CyclomaticComplexMethod")
+    private fun formatNetworkEventLine(message: CdpMessage): String {
+        val method = message.method
+        if (method == null) {
+            return "EVENT ${Ndjson.encodeToString(CdpMessage.serializer(), message)}"
+        }
+
+        return when (method) {
+            CdpNetworkMethod.RequestWillBeSent -> {
+                val params = decodeParams<CdpRequestWillBeSentParams>(message) ?: return "REQUEST ?"
+                "REQUEST ${params.requestId} ${params.request.method} ${params.request.url}"
+            }
+
+            CdpNetworkMethod.ResponseReceived -> {
+                val params = decodeParams<CdpResponseReceivedParams>(message) ?: return "RESPONSE ?"
+                val url = params.response.url ?: "unknown-url"
+                "RESPONSE ${params.requestId} ${params.response.status} $url"
+            }
+
+            CdpNetworkMethod.LoadingFinished -> {
+                val params = decodeParams<CdpLoadingFinishedParams>(message) ?: return "FINISH ?"
+                val bytes = params.encodedDataLength?.toLong() ?: 0L
+                "FINISH ${params.requestId} bytes=$bytes"
+            }
+
+            CdpNetworkMethod.LoadingFailed -> {
+                val params = decodeParams<CdpLoadingFailedParams>(message) ?: return "FAIL ?"
+                val error = params.errorText ?: params.type ?: "unknown-error"
+                "FAIL ${params.requestId} $error"
+            }
+
+            CdpNetworkMethod.WebSocketFrameSent -> {
+                val params = decodeParams<CdpWebSocketFrameSentParams>(message) ?: return "WS-SENT ?"
+                "WS-SENT ${params.requestId} opcode=${params.response.opcode} size=${params.response.payloadSize ?: 0L}"
+            }
+
+            CdpNetworkMethod.WebSocketFrameReceived -> {
+                val params = decodeParams<CdpWebSocketFrameReceivedParams>(message) ?: return "WS-RECV ?"
+                "WS-RECV ${params.requestId} opcode=${params.response.opcode} size=${params.response.payloadSize ?: 0L}"
+            }
+
+            else -> "EVENT $method"
+        }
+    }
+
+    private inline fun <reified T> decodeParams(message: CdpMessage): T? {
+        val params = message.params ?: return null
+        return runCatching {
+            Ndjson.decodeFromJsonElement(serializer<T>(), params)
+        }.getOrNull()
+    }
+
     private inline fun <reified T> printJson(payload: T) {
         println(Ndjson.encodeToString(payload))
     }
@@ -670,12 +788,20 @@ object SnapOCli {
         override fun help(context: Context): String = "List available Snap-O link servers"
 
         private val includeAppInfo by option(
+            "-a",
             "--include-app-info",
             help = "Include package name and app name (process) when available",
         ).flag(default = false)
+        private val json by option(
+            "--json",
+            help = "Emit machine-readable NDJSON",
+        ).flag(default = false)
 
         override fun run() = runBlocking {
-            val exitCode = runtime.runNetworkList(includeAppInfo = includeAppInfo)
+            val exitCode = runtime.runNetworkList(
+                includeAppInfo = includeAppInfo,
+                outputMode = if (json) OutputMode.Json else OutputMode.Human,
+            )
             if (exitCode != 0) throw ProgramResult(exitCode)
         }
     }
@@ -685,19 +811,25 @@ object SnapOCli {
     ) : CliktCommand(name = "requests") {
         override fun help(context: Context): String = "Emit CDP network events for a server"
 
-        private val server by argument(
-            name = "server",
-            help = "<deviceId/socketName>",
-        )
+        private val server by option(
+            "-s",
+            "--server",
+            help = "Target Snap-O server (<deviceId/socketName>)",
+        ).required()
         private val noStream by option(
             "--no-stream",
             help = "Emit only the buffered snapshot and then exit",
+        ).flag(default = false)
+        private val json by option(
+            "--json",
+            help = "Emit machine-readable NDJSON",
         ).flag(default = false)
 
         override fun run() = runBlocking {
             val exitCode = runtime.runNetworkRequests(
                 serverArgument = server,
                 noStream = noStream,
+                outputMode = if (json) OutputMode.Json else OutputMode.Human,
             )
             if (exitCode != 0) throw ProgramResult(exitCode)
         }
@@ -708,13 +840,27 @@ object SnapOCli {
     ) : CliktCommand(name = "response-body") {
         override fun help(context: Context): String = "Fetch response body for a request id"
 
-        private val requestId by argument(
-            name = "requestId",
+        private val server by option(
+            "-s",
+            "--server",
+            help = "Target Snap-O server (<deviceId/socketName>)",
+        ).required()
+        private val requestId by option(
+            "-r",
+            "--request-id",
             help = "CDP request id",
-        )
+        ).required()
+        private val json by option(
+            "--json",
+            help = "Emit machine-readable NDJSON",
+        ).flag(default = false)
 
         override fun run() = runBlocking {
-            val exitCode = runtime.runNetworkResponseBody(requestId)
+            val exitCode = runtime.runNetworkResponseBody(
+                serverArgument = server,
+                requestId = requestId,
+                outputMode = if (json) OutputMode.Json else OutputMode.Human,
+            )
             if (exitCode != 0) throw ProgramResult(exitCode)
         }
     }
