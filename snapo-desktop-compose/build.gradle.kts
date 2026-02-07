@@ -152,7 +152,7 @@ detekt {
     buildUponDefaultConfig = true
     autoCorrect = true
     config.setFrom(file("config/detekt/detekt.yml"))
-    ignoreFailures = true
+    ignoreFailures = false
 }
 
 tasks.withType<Detekt>().configureEach {
