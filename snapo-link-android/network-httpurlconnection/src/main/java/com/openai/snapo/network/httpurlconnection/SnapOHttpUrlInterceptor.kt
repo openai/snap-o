@@ -4,9 +4,9 @@ import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
 import com.openai.snapo.link.core.SnapOLink
-import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.Header
 import com.openai.snapo.network.NetworkEventRecord
+import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.RequestFailed
 import com.openai.snapo.network.RequestWillBeSent
 import com.openai.snapo.network.ResponseReceived

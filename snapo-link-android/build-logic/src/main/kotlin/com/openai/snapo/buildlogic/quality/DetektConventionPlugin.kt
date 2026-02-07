@@ -34,7 +34,7 @@ class DetektConventionPlugin : Plugin<Project> {
             buildUponDefaultConfig = true
             autoCorrect = true
             config.setFrom(target.rootProject.file("config/detekt/detekt.yml"))
-            ignoreFailures = true
+            ignoreFailures = false
         }
 
         target.tasks.withType<Detekt>().configureEach {

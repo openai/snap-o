@@ -2,9 +2,9 @@ package com.openai.snapo.network.okhttp3
 
 import android.os.SystemClock
 import com.openai.snapo.link.core.SnapOLink
-import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.Header
 import com.openai.snapo.network.NetworkEventRecord
+import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.WebSocketCancelled
 import com.openai.snapo.network.WebSocketCloseRequested
 import com.openai.snapo.network.WebSocketClosed
