@@ -27,24 +27,31 @@ cd snapo-desktop-compose
 
 ## CLI (experimental)
 
-The desktop app now supports CLI mode when arguments are provided.
+The distributed `Snap-O.app` bundle includes a `snapo` launcher at `Contents/MacOS/snapo`:
 
 ```bash
-cd snapo-desktop-compose
-./gradlew run --args='network list'
-./gradlew run --args='network list --json'
-./gradlew run --args='network list --no-app-info'
-./gradlew run --args='network requests -e -n snapo_server_12345'
-./gradlew run --args='network requests -s emulator-5554 -n snapo_server_12345 --json'
-./gradlew run --args='network requests -d --no-stream'
-./gradlew run --args='network response-body -e -n snapo_server_12345 -r <requestId>'
-./gradlew run --args='network response-body -s emulator-5554 -n snapo_server_12345 -r <requestId> --json'
+SNAPO_APP="/Applications/Snap-O.app"
+SNAPO_CLI="$SNAPO_APP/Contents/MacOS/snapo"
+snapo() { "$SNAPO_CLI" "$@"; }
+
+snapo network list
+snapo network list --json
+snapo network list --no-app-info
+snapo network requests -e -n snapo_server_12345
+snapo network requests -s emulator-5554 -n snapo_server_12345 --json
+snapo network requests -d --no-stream
+snapo network show -e -n snapo_server_12345 -r <requestId>
+snapo network show -s emulator-5554 -n snapo_server_12345 -r <requestId> --json
 ```
+
+For local development only, you can still invoke the same CLI entrypoint via Gradle:
+`./gradlew run --args='network list'`
 
 By default, commands print human-readable output.
 Use `--json` for machine-readable NDJSON output.
 
 `network requests` emits CDP network messages in `--json` mode.
+`network show` prints request/response headers plus request/response bodies for one request id.
 Sensitive headers are redacted by default (`Authorization`, `Cookie`, `Set-Cookie`).
 `network list` includes package and app metadata by default.
 Use `--no-app-info` to skip metadata lookup.

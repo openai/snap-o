@@ -9,11 +9,12 @@ import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.clikt.parameters.options.required
 import com.openai.snapo.desktop.adb.AdbExec
 import com.openai.snapo.desktop.adb.AdbForwardHandle
 import com.openai.snapo.desktop.link.SnapOLinkServerConnection
 import com.openai.snapo.desktop.link.SnapORecord
+import com.openai.snapo.desktop.protocol.CdpGetRequestPostDataParams
+import com.openai.snapo.desktop.protocol.CdpGetRequestPostDataResult
 import com.openai.snapo.desktop.protocol.CdpGetResponseBodyParams
 import com.openai.snapo.desktop.protocol.CdpGetResponseBodyResult
 import com.openai.snapo.desktop.protocol.CdpLoadingFailedParams
@@ -215,14 +216,14 @@ object SnapOCli {
         }
     }
 
-    private suspend fun runNetworkResponseBody(
+    private suspend fun runNetworkShow(
         deviceSelection: DeviceSelectionOptions,
         socketArgument: String?,
         requestId: String,
         outputMode: OutputMode,
     ): Int {
         if (requestId.isBlank()) {
-            printError("Request ID cannot be empty")
+            printError("Please specify a request ID with -r/--request-id")
             return 1
         }
 
@@ -236,26 +237,33 @@ object SnapOCli {
             }
         }
 
-        return when (val result = fetchResponseBody(adb, server, requestId)) {
-            is FetchResponseBodyResult.Success -> {
-                emitResponseBody(
-                    line = CliResponseBodyLine(
+        return when (val result = fetchRequestDetails(adb, server, requestId)) {
+            is FetchRequestDetailsResult.Success -> {
+                emitRequestDetails(
+                    line = CliRequestDetailsLine(
                         server = server.identifier,
                         requestId = requestId,
-                        body = result.body,
-                        base64Encoded = result.base64Encoded,
+                        requestMethod = result.requestMethod,
+                        requestUrl = result.requestUrl,
+                        requestHeaders = result.requestHeaders,
+                        requestBody = result.requestBody,
+                        responseStatus = result.responseStatus,
+                        responseUrl = result.responseUrl,
+                        responseHeaders = result.responseHeaders,
+                        responseBody = result.responseBody,
+                        responseBodyBase64Encoded = result.responseBodyBase64Encoded,
                     ),
                     outputMode = outputMode,
                 )
                 0
             }
 
-            is FetchResponseBodyResult.MissingBody -> {
+            is FetchRequestDetailsResult.MissingBody -> {
                 printError(result.message)
                 1
             }
 
-            is FetchResponseBodyResult.Failure -> {
+            is FetchRequestDetailsResult.Failure -> {
                 printError(result.message)
                 1
             }
@@ -263,25 +271,33 @@ object SnapOCli {
     }
 
     @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
-    private suspend fun fetchResponseBody(
+    private suspend fun fetchRequestDetails(
         adb: AdbExec,
         server: ServerRef,
         requestId: String,
-    ): FetchResponseBodyResult {
+    ): FetchRequestDetailsResult {
         val session = ServerSession(adb, server)
         val started = session.start()
         if (!started) {
-            return FetchResponseBodyResult.Failure("Failed to connect to ${server.identifier}")
+            return FetchRequestDetailsResult.Failure("Failed to connect to ${server.identifier}")
         }
 
         return try {
             var featureOpened = false
             var commandId = 1
-            var pendingId: Int? = null
-            var attempts = 0
+            var pendingRequestBodyId: Int? = null
+            var pendingResponseBodyId: Int? = null
+            var requestBodyAttempts = 0
+            var responseBodyAttempts = 0
             val startedAtMs = System.currentTimeMillis()
+            var details = RequestDetailsSnapshot()
+            var requestBody: String? = null
+            var requestBodyResolved = false
+            var responseBody: String? = null
+            var responseBodyBase64Encoded = false
+            var responseBodyResolved = false
 
-            while (attempts < CommandAttemptLimit) {
+            while (true) {
                 val record = withTimeoutOrNull(CommandResponseTimeoutMs) {
                     session.events.receiveCatching().getOrNull()
                 }
@@ -291,15 +307,14 @@ object SnapOCli {
                         if (!featureOpened) {
                             val elapsed = System.currentTimeMillis() - startedAtMs
                             if (elapsed >= SnapshotMaxWaitMs) {
-                                return FetchResponseBodyResult.Failure(
+                                return FetchRequestDetailsResult.Failure(
                                     "Timed out waiting for handshake from ${server.identifier}"
                                 )
                             }
                             continue
                         }
-                        if (pendingId != null) {
-                            pendingId = null
-                        }
+                        if (pendingRequestBodyId != null) pendingRequestBodyId = null
+                        if (pendingResponseBodyId != null) pendingResponseBodyId = null
                     }
 
                     is SnapORecord.HelloRecord -> {
@@ -311,60 +326,132 @@ object SnapOCli {
 
                     is SnapORecord.NetworkEvent -> {
                         val message = record.value
-                        val resolvedPendingId = pendingId
-                        if (resolvedPendingId != null && message.id == resolvedPendingId && message.method == null) {
-                            val error = message.error
-                            if (error != null) {
-                                val messageText = error.message
-                                return if (messageText.contains("No response body captured", ignoreCase = true)) {
-                                    FetchResponseBodyResult.MissingBody(messageText)
+                        details = updateRequestDetailsSnapshot(details, message, requestId)
+
+                        val responseId = message.id
+                        if (responseId != null && message.method == null) {
+                            if (responseId == pendingRequestBodyId) {
+                                pendingRequestBodyId = null
+                                val error = message.error
+                                if (error != null) {
+                                    requestBodyResolved = true
                                 } else {
-                                    FetchResponseBodyResult.Failure(messageText)
+                                    val parsedResult = message.result
+                                        ?.let { result ->
+                                            runCatching {
+                                                Ndjson.decodeFromJsonElement(
+                                                    CdpGetRequestPostDataResult.serializer(),
+                                                    result,
+                                                )
+                                            }.getOrNull()
+                                        }
+                                    requestBody = parsedResult?.postData
+                                    requestBodyResolved = true
                                 }
+                            } else if (responseId == pendingResponseBodyId) {
+                                pendingResponseBodyId = null
+                                val error = message.error
+                                if (error != null) {
+                                    val messageText = error.message
+                                    return if (messageText.contains("No response body captured", ignoreCase = true)) {
+                                        FetchRequestDetailsResult.MissingBody(messageText)
+                                    } else {
+                                        FetchRequestDetailsResult.Failure(messageText)
+                                    }
+                                }
+
+                                val parsedResult = message.result
+                                    ?.let { result ->
+                                        runCatching {
+                                            Ndjson.decodeFromJsonElement(
+                                                CdpGetResponseBodyResult.serializer(),
+                                                result,
+                                            )
+                                        }.getOrNull()
+                                    }
+                                    ?: return FetchRequestDetailsResult.Failure(
+                                        "Malformed response for Network.getResponseBody"
+                                    )
+
+                                responseBody = parsedResult.body
+                                responseBodyBase64Encoded = parsedResult.base64Encoded
+                                responseBodyResolved = true
                             }
-
-                            val parsedResult = message.result
-                                ?.let { result ->
-                                    runCatching {
-                                        Ndjson.decodeFromJsonElement(
-                                            CdpGetResponseBodyResult.serializer(),
-                                            result,
-                                        )
-                                    }.getOrNull()
-                                }
-                                ?: return FetchResponseBodyResult.Failure(
-                                    "Malformed response for Network.getResponseBody"
-                                )
-
-                            return FetchResponseBodyResult.Success(
-                                body = parsedResult.body,
-                                base64Encoded = parsedResult.base64Encoded,
-                            )
                         }
                     }
 
                     else -> Unit
                 }
 
-                if (featureOpened && pendingId == null) {
-                    attempts += 1
-                    pendingId = commandId
-                    val params = Ndjson.encodeToJsonElement(
+                if (featureOpened && !requestBodyResolved && pendingRequestBodyId == null &&
+                    requestBodyAttempts < CommandAttemptLimit
+                ) {
+                    requestBodyAttempts += 1
+                    pendingRequestBodyId = commandId
+                    val requestBodyParams = Ndjson.encodeToJsonElement(
+                        CdpGetRequestPostDataParams.serializer(),
+                        CdpGetRequestPostDataParams(requestId = requestId),
+                    )
+                    val requestBodyCommand = CdpMessage(
+                        id = commandId,
+                        method = CdpNetworkMethod.GetRequestPostData,
+                        params = requestBodyParams,
+                    )
+                    session.sendFeatureCommand(requestBodyCommand)
+                    commandId += 1
+                }
+
+                if (featureOpened && !responseBodyResolved && pendingResponseBodyId == null &&
+                    responseBodyAttempts < CommandAttemptLimit
+                ) {
+                    responseBodyAttempts += 1
+                    pendingResponseBodyId = commandId
+                    val responseBodyParams = Ndjson.encodeToJsonElement(
                         CdpGetResponseBodyParams.serializer(),
                         CdpGetResponseBodyParams(requestId = requestId),
                     )
-                    val command = CdpMessage(
+                    val responseBodyCommand = CdpMessage(
                         id = commandId,
                         method = CdpNetworkMethod.GetResponseBody,
-                        params = params,
+                        params = responseBodyParams,
                     )
-                    session.sendFeatureCommand(command)
+                    session.sendFeatureCommand(responseBodyCommand)
                     commandId += 1
+                }
+
+                if (!requestBodyResolved &&
+                    requestBodyAttempts >= CommandAttemptLimit &&
+                    pendingRequestBodyId == null
+                ) {
+                    requestBodyResolved = true
+                }
+
+                if (!responseBodyResolved &&
+                    responseBodyAttempts >= CommandAttemptLimit &&
+                    pendingResponseBodyId == null
+                ) {
+                    return FetchRequestDetailsResult.Failure(
+                        "Timed out waiting for Network.getResponseBody for $requestId on ${server.identifier}"
+                    )
+                }
+
+                if (requestBodyResolved && responseBodyResolved) {
+                    return FetchRequestDetailsResult.Success(
+                        requestMethod = details.requestMethod,
+                        requestUrl = details.requestUrl,
+                        requestHeaders = details.requestHeaders,
+                        requestBody = requestBody,
+                        responseStatus = details.responseStatus,
+                        responseUrl = details.responseUrl,
+                        responseHeaders = details.responseHeaders,
+                        responseBody = responseBody.orEmpty(),
+                        responseBodyBase64Encoded = responseBodyBase64Encoded,
+                    )
                 }
             }
 
-            FetchResponseBodyResult.Failure(
-                "Timed out waiting for Network.getResponseBody for $requestId on ${server.identifier}"
+            FetchRequestDetailsResult.Failure(
+                "Timed out waiting for body details for $requestId on ${server.identifier}"
             )
         } finally {
             session.close()
@@ -563,7 +650,7 @@ object SnapOCli {
             return if (servers.size == 1) {
                 ServerResolutionResult.Success(servers.first())
             } else {
-                val socketList = servers.joinToString(", ") { it.socketName }
+                val socketList = formatSocketChoicesWithPackageHint(adb, servers)
                 ServerResolutionResult.Failure(
                     "Multiple sockets found; select one with -n/--socket. Available: $socketList"
                 )
@@ -589,8 +676,9 @@ object SnapOCli {
             }
 
             matches.size > 1 -> {
+                val matchList = formatSocketChoicesWithPackageHint(adb, matches)
                 ServerResolutionResult.Failure(
-                    "Socket '$socketName' exists on multiple devices; use -s <serial>, -d, or -e"
+                    "Socket '$socketName' exists on multiple devices; use -s <serial>, -d, or -e. Available: $matchList"
                 )
             }
 
@@ -605,6 +693,18 @@ object SnapOCli {
         val socketName = value.substring(separator + 1).trim()
         if (deviceId.isEmpty() || socketName.isEmpty()) return null
         return ServerRef(deviceId = deviceId, socketName = socketName)
+    }
+
+    private suspend fun formatSocketChoicesWithPackageHint(
+        adb: AdbExec,
+        servers: List<ServerRef>,
+    ): String {
+        val entries = ArrayList<String>(servers.size)
+        for (server in servers) {
+            val packageName = packageNameHint(adb, server) ?: "unknown"
+            entries.add("${server.socketName} (pkg:$packageName)")
+        }
+        return entries.joinToString(", ")
     }
 
     private fun snapshotWaitMs(
@@ -753,17 +853,41 @@ object SnapOCli {
         }
     }
 
-    private fun emitResponseBody(line: CliResponseBodyLine, outputMode: OutputMode) {
+    private fun emitRequestDetails(line: CliRequestDetailsLine, outputMode: OutputMode) {
         when (outputMode) {
             OutputMode.Json -> printJson(line)
             OutputMode.Human -> {
                 println("Server: ${line.server}")
                 println("Request ID: ${line.requestId}")
-                println("Base64 Encoded: ${line.base64Encoded}")
-                println("Body:")
-                println(line.body)
+                val requestMethod = line.requestMethod ?: "unknown"
+                val requestUrl = line.requestUrl ?: "unknown"
+                println("Request: $requestMethod $requestUrl")
+                emitHeadersSection("Request Headers", line.requestHeaders)
+
+                val responseStatus = line.responseStatus?.toString() ?: "unknown"
+                val responseUrl = line.responseUrl ?: "unknown"
+                println("Response: $responseStatus $responseUrl")
+                emitHeadersSection("Response Headers", line.responseHeaders)
+
+                println("Request Body:")
+                println(line.requestBody ?: "<none>")
+                println("Response Body (base64 encoded: ${line.responseBodyBase64Encoded}):")
+                println(line.responseBody)
             }
         }
+    }
+
+    private fun emitHeadersSection(title: String, headers: Map<String, String>) {
+        println("$title:")
+        if (headers.isEmpty()) {
+            println("  <none>")
+            return
+        }
+        headers.entries
+            .sortedBy { it.key.lowercase() }
+            .forEach { (name, value) ->
+                println("  $name: $value")
+            }
     }
 
     @Suppress("CyclomaticComplexMethod")
@@ -839,12 +963,76 @@ object SnapOCli {
     )
 
     @Serializable
-    private data class CliResponseBodyLine(
+    private data class CliRequestDetailsLine(
         val server: String,
         val requestId: String,
-        val body: String,
-        val base64Encoded: Boolean,
+        val requestMethod: String? = null,
+        val requestUrl: String? = null,
+        val requestHeaders: Map<String, String> = emptyMap(),
+        val requestBody: String? = null,
+        val responseStatus: Int? = null,
+        val responseUrl: String? = null,
+        val responseHeaders: Map<String, String> = emptyMap(),
+        val responseBody: String,
+        val responseBodyBase64Encoded: Boolean,
     )
+
+    private data class RequestDetailsSnapshot(
+        val requestMethod: String? = null,
+        val requestUrl: String? = null,
+        val requestHeaders: Map<String, String> = emptyMap(),
+        val responseStatus: Int? = null,
+        val responseUrl: String? = null,
+        val responseHeaders: Map<String, String> = emptyMap(),
+    )
+
+    private fun updateRequestDetailsSnapshot(
+        current: RequestDetailsSnapshot,
+        message: CdpMessage,
+        requestId: String,
+    ): RequestDetailsSnapshot {
+        return when (message.method) {
+            CdpNetworkMethod.RequestWillBeSent -> {
+                val params = decodeParams<CdpRequestWillBeSentParams>(message) ?: return current
+                if (params.requestId != requestId) return current
+                current.copy(
+                    requestMethod = params.request.method,
+                    requestUrl = params.request.url,
+                    requestHeaders = redactHeaderMap(params.request.headers, requestHeaderNames),
+                )
+            }
+
+            CdpNetworkMethod.ResponseReceived -> {
+                val params = decodeParams<CdpResponseReceivedParams>(message) ?: return current
+                if (params.requestId != requestId) return current
+                current.copy(
+                    responseStatus = params.response.status,
+                    responseUrl = params.response.url,
+                    responseHeaders = redactHeaderMap(params.response.headers, responseHeaderNames),
+                )
+            }
+
+            else -> current
+        }
+    }
+
+    private fun redactHeaderMap(
+        headers: Map<String, String>,
+        sensitiveHeaderNames: Set<String>,
+    ): Map<String, String> {
+        if (headers.isEmpty()) return headers
+        var changed = false
+        val updated = LinkedHashMap<String, String>(headers.size)
+        headers.forEach { (name, value) ->
+            if (sensitiveHeaderNames.any { sensitive -> sensitive.equals(name, ignoreCase = true) }) {
+                updated[name] = RedactedValue
+                changed = true
+            } else {
+                updated[name] = value
+            }
+        }
+        return if (changed) updated else headers
+    }
 
     private data class ServerRef(
         val deviceId: String,
@@ -880,19 +1068,26 @@ object SnapOCli {
         data class Failure(val message: String) : ServerResolutionResult
     }
 
-    private sealed interface FetchResponseBodyResult {
+    private sealed interface FetchRequestDetailsResult {
         data class Success(
-            val body: String,
-            val base64Encoded: Boolean,
-        ) : FetchResponseBodyResult
+            val requestMethod: String?,
+            val requestUrl: String?,
+            val requestHeaders: Map<String, String>,
+            val requestBody: String?,
+            val responseStatus: Int?,
+            val responseUrl: String?,
+            val responseHeaders: Map<String, String>,
+            val responseBody: String,
+            val responseBodyBase64Encoded: Boolean,
+        ) : FetchRequestDetailsResult
 
         data class MissingBody(
             val message: String,
-        ) : FetchResponseBodyResult
+        ) : FetchRequestDetailsResult
 
         data class Failure(
             val message: String,
-        ) : FetchResponseBodyResult
+        ) : FetchRequestDetailsResult
     }
 
     private class ServerSession(
@@ -971,7 +1166,7 @@ object SnapOCli {
             subcommands(
                 NetworkListCommand(runtime),
                 NetworkRequestsCommand(runtime),
-                NetworkResponseBodyCommand(runtime),
+                NetworkShowCommand(runtime),
             )
         }
 
@@ -1055,10 +1250,10 @@ object SnapOCli {
         }
     }
 
-    private class NetworkResponseBodyCommand(
+    private class NetworkShowCommand(
         private val runtime: SnapOCli,
-    ) : DeviceScopedCommand(name = "response-body") {
-        override fun help(context: Context): String = "Fetch response body for a request id"
+    ) : DeviceScopedCommand(name = "show") {
+        override fun help(context: Context): String = "Show details for a request id (headers + request/response bodies)"
 
         private val socketName by option(
             "-n",
@@ -1068,18 +1263,18 @@ object SnapOCli {
         private val requestId by option(
             "-r",
             "--request-id",
-            help = "CDP request id",
-        ).required()
+            help = "CDP request id (required)",
+        )
         private val json by option(
             "--json",
             help = "Emit machine-readable NDJSON",
         ).flag(default = false)
 
         override fun run() = runBlocking {
-            val exitCode = runtime.runNetworkResponseBody(
+            val exitCode = runtime.runNetworkShow(
                 deviceSelection = deviceSelectionOptions(),
                 socketArgument = socketName,
-                requestId = requestId,
+                requestId = requestId.orEmpty(),
                 outputMode = if (json) OutputMode.Json else OutputMode.Human,
             )
             if (exitCode != 0) throw ProgramResult(exitCode)
