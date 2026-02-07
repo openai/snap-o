@@ -37,6 +37,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.math.max
 
+@Suppress("LargeClass")
 object SnapOCli {
     private const val NetworkFeatureId: String = "network"
     private const val SnapshotQuietPeriodMs: Long = 300L
@@ -383,8 +384,13 @@ object SnapOCli {
                     else -> Unit
                 }
 
-                if (featureOpened && !requestBodyResolved && pendingRequestBodyId == null &&
-                    requestBodyAttempts < CommandAttemptLimit
+                if (
+                    shouldSendRequestBodyCommand(
+                        featureOpened = featureOpened,
+                        requestBodyResolved = requestBodyResolved,
+                        pendingRequestBodyId = pendingRequestBodyId,
+                        requestBodyAttempts = requestBodyAttempts,
+                    )
                 ) {
                     requestBodyAttempts += 1
                     pendingRequestBodyId = commandId
@@ -401,8 +407,13 @@ object SnapOCli {
                     commandId += 1
                 }
 
-                if (featureOpened && !responseBodyResolved && pendingResponseBodyId == null &&
-                    responseBodyAttempts < CommandAttemptLimit
+                if (
+                    shouldSendResponseBodyCommand(
+                        featureOpened = featureOpened,
+                        responseBodyResolved = responseBodyResolved,
+                        pendingResponseBodyId = pendingResponseBodyId,
+                        responseBodyAttempts = responseBodyAttempts,
+                    )
                 ) {
                     responseBodyAttempts += 1
                     pendingResponseBodyId = commandId
@@ -705,6 +716,26 @@ object SnapOCli {
             entries.add("${server.socketName} (pkg:$packageName)")
         }
         return entries.joinToString(", ")
+    }
+
+    private fun shouldSendRequestBodyCommand(
+        featureOpened: Boolean,
+        requestBodyResolved: Boolean,
+        pendingRequestBodyId: Int?,
+        requestBodyAttempts: Int,
+    ): Boolean {
+        if (!featureOpened || requestBodyResolved || pendingRequestBodyId != null) return false
+        return requestBodyAttempts < CommandAttemptLimit
+    }
+
+    private fun shouldSendResponseBodyCommand(
+        featureOpened: Boolean,
+        responseBodyResolved: Boolean,
+        pendingResponseBodyId: Int?,
+        responseBodyAttempts: Int,
+    ): Boolean {
+        if (!featureOpened || responseBodyResolved || pendingResponseBodyId != null) return false
+        return responseBodyAttempts < CommandAttemptLimit
     }
 
     private fun snapshotWaitMs(
@@ -1253,7 +1284,9 @@ object SnapOCli {
     private class NetworkShowCommand(
         private val runtime: SnapOCli,
     ) : DeviceScopedCommand(name = "show") {
-        override fun help(context: Context): String = "Show details for a request id (headers + request/response bodies)"
+        override fun help(
+            context: Context
+        ): String = "Show details for a request id (headers + request/response bodies)"
 
         private val socketName by option(
             "-n",

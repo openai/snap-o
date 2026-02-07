@@ -14,6 +14,8 @@ import com.openai.snapo.desktop.protocol.CdpWebSocketFrameReceivedParams
 import com.openai.snapo.desktop.protocol.CdpWebSocketFrameSentParams
 import com.openai.snapo.desktop.protocol.CdpWebSocketHandshakeResponseReceivedParams
 import com.openai.snapo.desktop.protocol.Ndjson
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.json.JsonElement
 import kotlin.math.roundToLong
 
 internal class CdpNetworkMessageTranslator {
@@ -22,90 +24,51 @@ internal class CdpNetworkMessageTranslator {
     private val sseEventCountByRequestId = mutableMapOf<String, Long>()
     private val sseSequenceByRequestId = mutableMapOf<String, Long>()
 
+    @Suppress("CyclomaticComplexMethod")
     fun toRecord(message: CdpMessage): NetworkEventRecord? {
         val method = message.method ?: return null
         val params = message.params ?: return null
 
         return when (method) {
-            CdpNetworkMethod.RequestWillBeSent -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpRequestWillBeSentParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toRequestWillBeSent(decoded)
-            }
-
-            CdpNetworkMethod.ResponseReceived -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpResponseReceivedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toResponseReceived(decoded)
-            }
-
-            CdpNetworkMethod.LoadingFinished -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpLoadingFinishedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toLoadingFinished(decoded)
-            }
-
-            CdpNetworkMethod.LoadingFailed -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpLoadingFailedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toLoadingFailed(decoded)
-            }
-
-            CdpNetworkMethod.EventSourceMessageReceived -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpEventSourceMessageReceivedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toEventSourceMessage(decoded)
-            }
-
-            CdpNetworkMethod.WebSocketCreated -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpWebSocketCreatedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toWebSocketCreated(decoded)
-            }
-
-            CdpNetworkMethod.WebSocketHandshakeResponseReceived -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpWebSocketHandshakeResponseReceivedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toWebSocketOpened(decoded)
-            }
-
-            CdpNetworkMethod.WebSocketFrameSent -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpWebSocketFrameSentParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toWebSocketFrameSent(decoded)
-            }
-
-            CdpNetworkMethod.WebSocketFrameReceived -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpWebSocketFrameReceivedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toWebSocketFrameReceived(decoded)
-            }
-
-            CdpNetworkMethod.WebSocketClosed -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpWebSocketClosedParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toWebSocketClosed(decoded)
-            }
-
-            CdpNetworkMethod.WebSocketFrameError -> {
-                val decoded = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpWebSocketFrameErrorParams.serializer(), params)
-                }.getOrNull() ?: return null
-                toWebSocketFailed(decoded)
-            }
-
+            CdpNetworkMethod.RequestWillBeSent ->
+                decodeRecord(params, CdpRequestWillBeSentParams.serializer(), ::toRequestWillBeSent)
+            CdpNetworkMethod.ResponseReceived ->
+                decodeRecord(params, CdpResponseReceivedParams.serializer(), ::toResponseReceived)
+            CdpNetworkMethod.LoadingFinished ->
+                decodeRecord(params, CdpLoadingFinishedParams.serializer(), ::toLoadingFinished)
+            CdpNetworkMethod.LoadingFailed ->
+                decodeRecord(params, CdpLoadingFailedParams.serializer(), ::toLoadingFailed)
+            CdpNetworkMethod.EventSourceMessageReceived ->
+                decodeRecord(params, CdpEventSourceMessageReceivedParams.serializer(), ::toEventSourceMessage)
+            CdpNetworkMethod.WebSocketCreated ->
+                decodeRecord(params, CdpWebSocketCreatedParams.serializer(), ::toWebSocketCreated)
+            CdpNetworkMethod.WebSocketHandshakeResponseReceived ->
+                decodeRecord(
+                    params,
+                    CdpWebSocketHandshakeResponseReceivedParams.serializer(),
+                    ::toWebSocketOpened,
+                )
+            CdpNetworkMethod.WebSocketFrameSent ->
+                decodeRecord(params, CdpWebSocketFrameSentParams.serializer(), ::toWebSocketFrameSent)
+            CdpNetworkMethod.WebSocketFrameReceived ->
+                decodeRecord(params, CdpWebSocketFrameReceivedParams.serializer(), ::toWebSocketFrameReceived)
+            CdpNetworkMethod.WebSocketClosed ->
+                decodeRecord(params, CdpWebSocketClosedParams.serializer(), ::toWebSocketClosed)
+            CdpNetworkMethod.WebSocketFrameError ->
+                decodeRecord(params, CdpWebSocketFrameErrorParams.serializer(), ::toWebSocketFailed)
             else -> null
         }
+    }
+
+    private fun <T> decodeRecord(
+        params: JsonElement,
+        serializer: KSerializer<T>,
+        transform: (T) -> NetworkEventRecord?,
+    ): NetworkEventRecord? {
+        val decoded = runCatching {
+            Ndjson.decodeFromJsonElement(serializer, params)
+        }.getOrNull() ?: return null
+        return transform(decoded)
     }
 
     private fun toRequestWillBeSent(params: CdpRequestWillBeSentParams): RequestWillBeSent {
