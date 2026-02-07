@@ -3,21 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Snap-O — Android screen capture tool for macOS</title>
+    <title>Snap-O</title>
     <meta
       name="description"
-      content="Snap-O is a tidy, speedy macOS app for capturing Android screenshots and screen recordings."
+      content="Snap-O is a fast, tidy macOS app for Android inspection: capture screenshots and recordings, and inspect network traffic."
     />
     <meta
       property="og:title"
-      content="Snap-O — Android screen capture tool for macOS"
+      content="Snap-O"
     />
     <meta
       property="og:description"
-      content="Capture Android screenshots and screen recordings on macOS. Fast drag-and-drop. Notarized builds."
+      content="Capture screenshots and recordings, and inspect Android app network traffic on macOS."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="assets/snapo-banner.png" />
+    <meta property="og:image" content="assets/snapo-banner.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/png" href="assets/icon-64.png" />
     <link
@@ -37,12 +37,12 @@
         --ink-2: #5a6472;
         --line: #e6e8ec; /* thin light-gray borders everywhere */
 
-        /* Greens sampled to match banner */
-        --green-1: #19a965; /* primary */
-        --green-2: #3bd47e; /* lighter blend */
-        --green-3: #a6f8ab; /* mint highlight */
+        /* Bright neon greens to match current banner accents */
+        --green-1: #00c94f; /* primary */
+        --green-2: #00e45c; /* brighter */
+        --green-3: #00ff66; /* neon highlight */
 
-        --radius: 12px;
+        --radius: 4px;
         --maxw: 1200px;
 
         --space-1: clamp(10px, 1.2vw, 14px);
@@ -118,7 +118,7 @@
         gap: 0.6em;
         padding: 0 1.4em;
         min-height: var(--h);
-        border-radius: 999px;
+        border-radius: var(--radius);
         font-weight: 700;
         text-decoration: none;
         letter-spacing: 0.01em;
@@ -166,16 +166,19 @@
         font-size: 22px;
       }
 
-      /* Primary button recolored to banner palette; subtle gradient, no drop shadow */
+      /* Primary button: dark base with green text to match banner */
       .btn.primary {
-        color: #052d19;
-        background: linear-gradient(120deg, var(--green-2), var(--green-3));
+        color: #0a0a0a;
+        background: #ffffff;
+        border-color: #0a0a0a;
         font-size: 1.2em;
-        padding: var(--space-1) var(--space-2);
+        padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
       }
       .primary:hover,
       .primary:focus-visible {
-        filter: saturate(1.05) brightness(1.02);
+        color: #ffffff;
+        background: #000000;
+        border-color: #000000;
       }
 
       /* Secondary = plain card with line only */
@@ -268,14 +271,15 @@
           --ink-1: #f1f4fa;
           --ink-2: #bbc6d6;
           --line: #2a364b;
-          --green-1: #4ddf95;
-          --green-2: #1fb574;
-          --green-3: #4ae596;
+          --green-1: #00d85a;
+          --green-2: #00ef68;
+          --green-3: #39ff84;
         }
 
         .primary {
-          color: #02150d;
-          background: linear-gradient(120deg, var(--green-2), var(--green-3));
+          color: #0a0a0a;
+          background: #ffffff;
+          border-color: #0a0a0a;
         }
 
         .secondary {
@@ -291,8 +295,9 @@
           <div>
             <h1>Snap-O</h1>
             <p class="lead">
-              Android screenshots and screen recordings on macOS without the
-              friction
+              A fast, tidy macOS app for Android inspection: capture
+              screenshots and recordings, and inspect network traffic from
+              Android devices and emulators.
             </p>
             <div class="cta">
               <a
@@ -310,9 +315,9 @@
                 <span
                   class="material-symbols-rounded"
                   aria-hidden="true"
-                  data-icon="star"
+                  data-icon="code"
                 ></span>
-                Star / Fork on GitHub
+                View on GitHub
               </a>
             </div>
             <p class="note">
@@ -322,10 +327,9 @@
           </div>
 
           <figure class="demo">
-            <!-- Keep your banner or demo video; border only, no shadow -->
             <img
-              src="assets/snapo-banner.png"
-              alt="Snap-O — Android screen capture tool for macOS"
+              src="assets/snapo-banner.jpg"
+              alt="Snap-O: Android inspection system for macOS"
             />
           </figure>
         </div>
@@ -339,14 +343,14 @@
                 <span
                   class="material-symbols-rounded"
                   aria-hidden="true"
-                  data-icon="bolt"
+                  data-icon="photo_camera"
                 ></span>
                 <div>
-                  <h3 style="margin: 0.1rem 0 0.3rem">Fast and clean</h3>
+                  <h3 style="margin: 0.1rem 0 0.3rem">Screen capture</h3>
                   <p style="margin: 0; color: var(--ink-2)">
-                    Opens with an instant screenshot and starts or ends
-                    recordings without delay. Frame-by-frame previews make it
-                    easy to check your work right away.
+                    Grab screenshots and recordings quickly, preview recordings
+                    instantly, and scrub frame-by-frame when checking animations
+                    or UI flow.
                   </p>
                 </div>
               </li>
@@ -358,11 +362,11 @@
                 ></span>
                 <div>
                   <h3 style="margin: 0.1rem 0 0.3rem">
-                    Drag-and-drop everything
+                    Drag and drop without saving
                   </h3>
                   <p style="margin: 0; color: var(--ink-2)">
-                    Share screenshots and videos directly into GitHub, Slack, or
-                    any other tool, for easier collaboration.
+                    Drop captures directly into pull requests, chat, and docs
+                    without the usual save-first friction.
                   </p>
                 </div>
               </li>
@@ -370,15 +374,33 @@
                 <span
                   class="material-symbols-rounded"
                   aria-hidden="true"
-                  data-icon="shortcut"
+                  data-icon="devices"
                 ></span>
                 <div>
                   <h3 style="margin: 0.1rem 0 0.3rem">
-                    Trigger from other apps
+                    Multi-device and quick controls
                   </h3>
                   <p style="margin: 0; color: var(--ink-2)">
-                    Control Snap-O through Android Studio External Tools or your
-                    own hotkeys in other apps.
+                    Works across connected devices and emulators, with direct
+                    keyboard shortcuts and Android Studio External Tools
+                    integration.
+                  </p>
+                </div>
+              </li>
+              <li class="feature">
+                <span
+                  class="material-symbols-rounded"
+                  aria-hidden="true"
+                  data-icon="bolt"
+                ></span>
+                <div>
+                  <h3 style="margin: 0.1rem 0 0.3rem">
+                    Network Inspector (Alpha)
+                  </h3>
+                  <p style="margin: 0; color: var(--ink-2)">
+                    Mirror app traffic into the macOS client, inspect requests
+                    and responses, and explore payloads with collapsible JSON
+                    pretty printing.
                   </p>
                 </div>
               </li>
@@ -392,8 +414,8 @@
           <div class="callout">
             <h3>Learn more</h3>
             <p>
-              Read the full README for shortcuts, External Tools setup, and
-              contributor notes.
+              Read the full README for setup, shortcuts, Android Studio External
+              Tools, project status, and contribution details.
             </p>
             <p style="margin: 0.6rem 0 0">
               <a
