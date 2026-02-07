@@ -7,7 +7,6 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
-import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
@@ -111,7 +110,7 @@ object SnapOCli {
 
     private suspend fun runNetworkRequests(
         deviceSelection: DeviceSelectionOptions,
-        socketArgument: String,
+        socketArgument: String?,
         noStream: Boolean,
         outputMode: OutputMode,
     ): Int {
@@ -218,7 +217,7 @@ object SnapOCli {
 
     private suspend fun runNetworkResponseBody(
         deviceSelection: DeviceSelectionOptions,
-        socketArgument: String,
+        socketArgument: String?,
         requestId: String,
         outputMode: OutputMode,
     ): Int {
@@ -546,13 +545,10 @@ object SnapOCli {
 
     private suspend fun resolveServer(
         adb: AdbExec,
-        socketArgument: String,
+        socketArgument: String?,
         deviceSelection: DeviceSelectionOptions,
     ): ServerResolutionResult {
-        val socketName = socketArgument.trim()
-        if (socketName.isEmpty()) {
-            return ServerResolutionResult.Failure("Socket name cannot be empty")
-        }
+        val socketName = socketArgument?.trim()?.takeIf { it.isNotEmpty() }
 
         val discovery = discoverServers(adb, deviceSelection)
         val servers = when (discovery) {
@@ -561,6 +557,17 @@ object SnapOCli {
         }
         if (servers.isEmpty()) {
             return ServerResolutionResult.Failure("No Snap-O link servers found for selected device(s)")
+        }
+
+        if (socketName == null) {
+            return if (servers.size == 1) {
+                ServerResolutionResult.Success(servers.first())
+            } else {
+                val socketList = servers.joinToString(", ") { it.socketName }
+                ServerResolutionResult.Failure(
+                    "Multiple sockets found; select one with -n/--socket. Available: $socketList"
+                )
+            }
         }
 
         val qualified = parseServerRef(socketName)
@@ -1023,9 +1030,10 @@ object SnapOCli {
     ) : DeviceScopedCommand(name = "requests") {
         override fun help(context: Context): String = "Emit CDP network events for a server"
 
-        private val socketName by argument(
-            name = "socket",
-            help = "Snap-O socket name (e.g. snapo_server_12345)",
+        private val socketName by option(
+            "-n",
+            "--socket",
+            help = "Snap-O socket name (e.g. snapo_server_12345). Optional if only one is available",
         )
         private val noStream by option(
             "--no-stream",
@@ -1052,9 +1060,10 @@ object SnapOCli {
     ) : DeviceScopedCommand(name = "response-body") {
         override fun help(context: Context): String = "Fetch response body for a request id"
 
-        private val socketName by argument(
-            name = "socket",
-            help = "Snap-O socket name (e.g. snapo_server_12345)",
+        private val socketName by option(
+            "-n",
+            "--socket",
+            help = "Snap-O socket name (e.g. snapo_server_12345). Optional if only one is available",
         )
         private val requestId by option(
             "-r",

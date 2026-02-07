@@ -34,11 +34,11 @@ cd snapo-desktop-compose
 ./gradlew run --args='network list'
 ./gradlew run --args='network list --json'
 ./gradlew run --args='network list --no-app-info'
-./gradlew run --args='network requests -e snapo_server_12345'
-./gradlew run --args='network requests -s emulator-5554 snapo_server_12345 --json'
-./gradlew run --args='network requests -d snapo_server_12345 --no-stream'
-./gradlew run --args='network response-body -e snapo_server_12345 -r <requestId>'
-./gradlew run --args='network response-body -s emulator-5554 snapo_server_12345 -r <requestId> --json'
+./gradlew run --args='network requests -e -n snapo_server_12345'
+./gradlew run --args='network requests -s emulator-5554 -n snapo_server_12345 --json'
+./gradlew run --args='network requests -d --no-stream'
+./gradlew run --args='network response-body -e -n snapo_server_12345 -r <requestId>'
+./gradlew run --args='network response-body -s emulator-5554 -n snapo_server_12345 -r <requestId> --json'
 ```
 
 By default, commands print human-readable output.
@@ -48,6 +48,7 @@ Use `--json` for machine-readable NDJSON output.
 Sensitive headers are redacted by default (`Authorization`, `Cookie`, `Set-Cookie`).
 `network list` includes package and app metadata by default.
 Use `--no-app-info` to skip metadata lookup.
+`-n/--socket` is optional when exactly one Snap-O socket is available for the selected device scope.
 
 ## Package (release)
 
