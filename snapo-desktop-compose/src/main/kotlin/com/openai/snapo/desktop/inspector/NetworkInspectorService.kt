@@ -155,13 +155,14 @@ class NetworkInspectorService(
             params = params,
         )
         val payload = Ndjson.encodeToJsonElement(CdpMessage.serializer(), message)
-        runCatching {
+        val sent = runCatching {
             serverRegistry.sendFeatureCommand(
                 feature = NetworkFeatureId,
                 payload = payload,
                 serverId = key.requestId.serverId,
             )
-        }.onFailure {
+        }.getOrElse { false }
+        if (!sent) {
             commandMutex.withLock {
                 pendingBodyCommands.remove(resolvedCommandId)
                 inFlightBodyRequests.remove(key)

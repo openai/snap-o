@@ -142,9 +142,10 @@ internal class SnapOLinkServerRegistry(
         feature: String,
         payload: JsonElement,
         serverId: SnapOLinkServerId,
-    ) {
-        val connection = mutex.withLock { serverStates[serverId]?.connection } ?: return
+    ): Boolean {
+        val connection = mutex.withLock { serverStates[serverId]?.connection } ?: return false
         connection.sendFeatureCommand(feature = feature, payload = payload)
+        return true
     }
 
     suspend fun shutdown() {
