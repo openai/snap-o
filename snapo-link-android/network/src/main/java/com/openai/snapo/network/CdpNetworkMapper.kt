@@ -19,12 +19,12 @@ import com.openai.snapo.link.core.CdpWebSocketHandshakeResponse
 import com.openai.snapo.link.core.CdpWebSocketHandshakeResponseReceivedParams
 import com.openai.snapo.link.core.Ndjson
 import com.openai.snapo.network.record.Header
+import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.RequestFailed
 import com.openai.snapo.network.record.RequestWillBeSent
 import com.openai.snapo.network.record.ResponseReceived
 import com.openai.snapo.network.record.ResponseStreamClosed
 import com.openai.snapo.network.record.ResponseStreamEvent
-import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.WebSocketCancelled
 import com.openai.snapo.network.record.WebSocketCloseRequested
 import com.openai.snapo.network.record.WebSocketClosed
@@ -35,6 +35,7 @@ import com.openai.snapo.network.record.WebSocketMessageSent
 import com.openai.snapo.network.record.WebSocketOpened
 import com.openai.snapo.network.record.WebSocketWillOpen
 
+@Suppress("CyclomaticComplexMethod")
 internal fun NetworkEventRecord.toCdpMessage(requestUrl: String?): CdpMessage {
     return when (this) {
         is RequestWillBeSent -> toCdpRequestWillBeSent()

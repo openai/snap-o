@@ -1,8 +1,8 @@
 package com.openai.snapo.link.core
 
 import kotlinx.serialization.SerializationStrategy
-import kotlinx.serialization.serializer
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.serializer
 
 interface SnapOLinkFeature {
     /** Stable identifier used for feature envelopes. */

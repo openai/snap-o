@@ -1,12 +1,12 @@
 package com.openai.snapo.network
 
 import com.openai.snapo.network.record.Header
+import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.RequestFailed
 import com.openai.snapo.network.record.RequestWillBeSent
 import com.openai.snapo.network.record.ResponseReceived
 import com.openai.snapo.network.record.ResponseStreamClosed
 import com.openai.snapo.network.record.ResponseStreamEvent
-import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.TimedRecord
 import com.openai.snapo.network.record.WebSocketCancelled
 import com.openai.snapo.network.record.WebSocketClosed

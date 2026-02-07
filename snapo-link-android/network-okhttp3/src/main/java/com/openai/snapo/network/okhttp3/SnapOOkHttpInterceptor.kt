@@ -5,8 +5,8 @@ import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.network.NetworkInspector
-import com.openai.snapo.network.record.RequestFailed
 import com.openai.snapo.network.record.NetworkEventRecord
+import com.openai.snapo.network.record.RequestFailed
 import com.openai.snapo.network.record.Timings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope

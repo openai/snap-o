@@ -13,10 +13,10 @@ import com.openai.snapo.link.core.LinkEventSink
 import com.openai.snapo.link.core.Ndjson
 import com.openai.snapo.link.core.SnapOLinkFeature
 import com.openai.snapo.link.core.SnapOLinkRegistry
+import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.RequestWillBeSent
 import com.openai.snapo.network.record.ResponseReceived
 import com.openai.snapo.network.record.ResponseStreamEvent
-import com.openai.snapo.network.record.NetworkEventRecord
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
@@ -77,67 +77,93 @@ class NetworkInspectorFeature(
         val target = ClientId.Specific(clientId)
 
         when (method) {
-            CdpNetworkMethod.GetRequestPostData -> {
-                val params = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpGetRequestPostDataParams.serializer(), command.params ?: return)
-                }.getOrNull()
-                if (params == null) {
-                    current.sendError(commandId, "Missing request parameters", target)
-                    return
-                }
-                val request = findLatestRequest(params.requestId)
-                val postData = request?.body
-                if (postData.isNullOrEmpty()) {
-                    current.sendError(commandId, "No request body captured for ${params.requestId}", target)
-                    return
-                }
-                current.sendResult(
-                    id = commandId,
-                    result = CdpGetRequestPostDataResult(postData = postData),
-                    serializer = CdpGetRequestPostDataResult.serializer(),
-                    clientId = target,
+            CdpNetworkMethod.GetRequestPostData ->
+                handleGetRequestPostDataCommand(
+                    sink = current,
+                    commandId = commandId,
+                    target = target,
+                    paramsElement = command.params,
                 )
-            }
 
-            CdpNetworkMethod.GetResponseBody -> {
-                val params = runCatching {
-                    Ndjson.decodeFromJsonElement(CdpGetResponseBodyParams.serializer(), command.params ?: return)
-                }.getOrNull()
-                if (params == null) {
-                    current.sendError(commandId, "Missing response parameters", target)
-                    return
-                }
-
-                val response = findLatestResponse(params.requestId)
-                val streamBody = if (response?.body.isNullOrEmpty()) {
-                    joinSseBody(params.requestId)
-                } else {
-                    null
-                }
-                val resolvedBody = response?.body ?: streamBody
-                if (resolvedBody.isNullOrEmpty()) {
-                    current.sendError(commandId, "No response body captured for ${params.requestId}", target)
-                    return
-                }
-
-                val base64 = when {
-                    response != null -> response.hasNonTextBodyEncoding()
-                    else -> false
-                }
-
-                current.sendResult(
-                    id = commandId,
-                    result = CdpGetResponseBodyResult(
-                        body = resolvedBody,
-                        base64Encoded = base64,
-                    ),
-                    serializer = CdpGetResponseBodyResult.serializer(),
-                    clientId = target,
+            CdpNetworkMethod.GetResponseBody ->
+                handleGetResponseBodyCommand(
+                    sink = current,
+                    commandId = commandId,
+                    target = target,
+                    paramsElement = command.params,
                 )
-            }
 
             else -> current.sendError(commandId, "Unsupported method: $method", target)
         }
+    }
+
+    private suspend fun handleGetRequestPostDataCommand(
+        sink: NetworkEventSink,
+        commandId: Int,
+        target: ClientId,
+        paramsElement: JsonElement?,
+    ) {
+        val params = paramsElement?.let { element ->
+            runCatching {
+                Ndjson.decodeFromJsonElement(CdpGetRequestPostDataParams.serializer(), element)
+            }.getOrNull()
+        }
+        if (params == null) {
+            sink.sendError(commandId, "Missing request parameters", target)
+            return
+        }
+
+        val postData = findLatestRequest(params.requestId)?.body
+        if (postData.isNullOrEmpty()) {
+            sink.sendError(commandId, "No request body captured for ${params.requestId}", target)
+            return
+        }
+
+        sink.sendResult(
+            id = commandId,
+            result = CdpGetRequestPostDataResult(postData = postData),
+            serializer = CdpGetRequestPostDataResult.serializer(),
+            clientId = target,
+        )
+    }
+
+    private suspend fun handleGetResponseBodyCommand(
+        sink: NetworkEventSink,
+        commandId: Int,
+        target: ClientId,
+        paramsElement: JsonElement?,
+    ) {
+        val params = paramsElement?.let { element ->
+            runCatching {
+                Ndjson.decodeFromJsonElement(CdpGetResponseBodyParams.serializer(), element)
+            }.getOrNull()
+        }
+        if (params == null) {
+            sink.sendError(commandId, "Missing response parameters", target)
+            return
+        }
+
+        val response = findLatestResponse(params.requestId)
+        val streamBody = if (response?.body.isNullOrEmpty()) {
+            joinSseBody(params.requestId)
+        } else {
+            null
+        }
+        val resolvedBody = response?.body ?: streamBody
+        if (resolvedBody.isNullOrEmpty()) {
+            sink.sendError(commandId, "No response body captured for ${params.requestId}", target)
+            return
+        }
+
+        sink.sendResult(
+            id = commandId,
+            result = CdpGetResponseBodyResult(
+                body = resolvedBody,
+                base64Encoded = response?.hasNonTextBodyEncoding() == true,
+            ),
+            serializer = CdpGetResponseBodyResult.serializer(),
+            clientId = target,
+        )
     }
 
     suspend fun publish(record: NetworkEventRecord) {
