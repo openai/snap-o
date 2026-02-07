@@ -31,12 +31,12 @@ import androidx.compose.ui.unit.dp
 import com.openai.snapo.desktop.generated.resources.Res
 import com.openai.snapo.desktop.generated.resources.inbox_24px
 import com.openai.snapo.desktop.generated.resources.send_24px
+import com.openai.snapo.desktop.inspector.Header
 import com.openai.snapo.desktop.inspector.NetworkInspectorCopyExporter
 import com.openai.snapo.desktop.inspector.NetworkInspectorRequestStatus
 import com.openai.snapo.desktop.inspector.NetworkInspectorStatusPresentation
 import com.openai.snapo.desktop.inspector.NetworkInspectorWebSocketUiModel
 import com.openai.snapo.desktop.inspector.WebSocketMessage
-import com.openai.snapo.desktop.inspector.Header
 import com.openai.snapo.desktop.ui.TriangleIndicator
 import com.openai.snapo.desktop.ui.json.JsonOutlineExpansionState
 import com.openai.snapo.desktop.ui.theme.SnapOAccents

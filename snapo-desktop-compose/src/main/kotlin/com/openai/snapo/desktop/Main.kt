@@ -17,6 +17,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
+import com.openai.snapo.desktop.cli.SnapOCli
 import com.openai.snapo.desktop.di.AppGraph
 import com.openai.snapo.desktop.ui.SnapOContextMenuProviders
 import com.openai.snapo.desktop.ui.inspector.NetworkInspectorScreen
@@ -32,8 +33,13 @@ import kotlinx.coroutines.launch
 import java.awt.Desktop
 import java.net.URI
 import java.util.UUID
+import kotlin.system.exitProcess
 
-fun main() {
+fun main(args: Array<String>) {
+    if (args.isNotEmpty()) {
+        exitProcess(SnapOCli.run(args))
+    }
+
     configurePlatformAppearance()
     application {
         val windows = remember { mutableStateListOf(createInspectorWindow()) }

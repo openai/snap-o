@@ -25,6 +25,21 @@ cd snapo-desktop-compose
 ./gradlew run
 ```
 
+## CLI (experimental)
+
+The desktop app now supports CLI mode when arguments are provided.
+
+```bash
+cd snapo-desktop-compose
+./gradlew run --args='network list'
+./gradlew run --args='network requests emulator-5554/snapo_server_12345'
+./gradlew run --args='network requests emulator-5554/snapo_server_12345 --no-stream'
+./gradlew run --args='network response-body <requestId>'
+```
+
+`network requests` emits CDP network messages (one JSON line per message).
+Sensitive headers are redacted by default (`Authorization`, `Cookie`, `Set-Cookie`).
+
 ## Package (release)
 
 Release packaging is handled by `snapo-app-mac`. Follow its packaging instructions (if present) since that build embeds this helper app alongside Snap-O.
