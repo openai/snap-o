@@ -6,12 +6,12 @@ import android.util.Base64.encodeToString
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.record.Header
+import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.RequestFailed
 import com.openai.snapo.network.record.RequestWillBeSent
 import com.openai.snapo.network.record.ResponseReceived
 import com.openai.snapo.network.record.ResponseStreamClosed
 import com.openai.snapo.network.record.ResponseStreamEvent
-import com.openai.snapo.network.record.SnapONetRecord
 import com.openai.snapo.network.record.Timings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -54,7 +54,7 @@ class SnapOHttpUrlInterceptor @JvmOverloads constructor(
         scope.cancel()
     }
 
-    internal fun publish(builder: () -> SnapONetRecord) {
+    internal fun publish(builder: () -> NetworkEventRecord) {
         if (!SnapOLink.isEnabled()) return
         val feature = NetworkInspector.getOrNull() ?: return
         val record = builder()

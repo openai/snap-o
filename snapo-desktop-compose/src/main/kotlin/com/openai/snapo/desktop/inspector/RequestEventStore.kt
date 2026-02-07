@@ -1,11 +1,5 @@
 package com.openai.snapo.desktop.inspector
 
-import com.openai.snapo.desktop.protocol.RequestFailed
-import com.openai.snapo.desktop.protocol.RequestWillBeSent
-import com.openai.snapo.desktop.protocol.ResponseReceived
-import com.openai.snapo.desktop.protocol.ResponseStreamClosed
-import com.openai.snapo.desktop.protocol.ResponseStreamEvent
-import com.openai.snapo.desktop.protocol.SnapONetRecord
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +15,7 @@ internal class RequestEventStore {
     private val _requests = MutableStateFlow<List<NetworkInspectorRequest>>(emptyList())
     val requests: StateFlow<List<NetworkInspectorRequest>> = _requests.asStateFlow()
 
-    suspend fun handle(serverId: SnapOLinkServerId, payload: SnapONetRecord): Boolean {
+    suspend fun handle(serverId: SnapOLinkServerId, payload: NetworkEventRecord): Boolean {
         return when (payload) {
             is RequestWillBeSent -> {
                 updateRequest(serverId, payload)
@@ -70,6 +64,68 @@ internal class RequestEventStore {
             requestOrder.removeAll { it.serverId == serverId }
             val toRemove = requestStates.keys.filter { it.serverId == serverId }
             for (key in toRemove) requestStates.remove(key)
+            broadcastRequestsLocked()
+        }
+    }
+
+    suspend fun shouldRequestRequestBody(id: NetworkInspectorRequestId): Boolean {
+        return mutex.withLock {
+            val state = requestStates[id] ?: return@withLock false
+            val request = state.request ?: return@withLock false
+            if (!request.body.isNullOrEmpty()) return@withLock false
+            // null means unknown size; still try.
+            val size = request.bodySize
+            size == null || size != 0L
+        }
+    }
+
+    suspend fun shouldRequestResponseBody(id: NetworkInspectorRequestId): Boolean {
+        return mutex.withLock {
+            val state = requestStates[id] ?: return@withLock false
+            if (state.streamEvents.isNotEmpty()) return@withLock true
+            if (state.isLikelyStreamingResponse && state.streamClosed != null) return@withLock true
+            val response = state.response ?: return@withLock false
+            if (!response.body.isNullOrEmpty()) return@withLock false
+            // null means unknown size; still try.
+            val size = response.bodySize
+            size == null || size != 0L
+        }
+    }
+
+    suspend fun applyRequestBody(
+        id: NetworkInspectorRequestId,
+        body: String,
+    ) {
+        val now = Instant.now()
+        mutex.withLock {
+            val existing = requestStates[id] ?: return@withLock
+            val request = existing.request ?: return@withLock
+            if (request.body == body) return@withLock
+            requestStates[id] = existing.copy(
+                request = request.copy(body = body),
+                lastUpdatedAt = now,
+            )
+            broadcastRequestsLocked()
+        }
+    }
+
+    suspend fun applyResponseBody(
+        id: NetworkInspectorRequestId,
+        body: String,
+        base64Encoded: Boolean,
+    ) {
+        val now = Instant.now()
+        mutex.withLock {
+            val existing = requestStates[id] ?: return@withLock
+            val response = existing.response ?: return@withLock
+            if (response.body == body && response.bodyBase64Encoded == base64Encoded) return@withLock
+            requestStates[id] = existing.copy(
+                response = response.copy(
+                    body = body,
+                    bodyBase64Encoded = base64Encoded,
+                ),
+                lastUpdatedAt = now,
+            )
             broadcastRequestsLocked()
         }
     }

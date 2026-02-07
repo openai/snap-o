@@ -83,18 +83,33 @@ class SnapONetworkInitProvider : ContentProvider() {
     private fun readLong(meta: Bundle?, key: String, def: Long): Long {
         val data = meta ?: return def
         if (!data.containsKey(key)) return def
-        data.getString(key)?.toLongOrNull()?.let { return it }
-        return runCatching { data.getLong(key) }
-            .getOrElse { runCatching { data.getInt(key).toLong() }.getOrDefault(def) }
+        val raw = readRawMetaValue(data, key) ?: return def
+        return when (raw) {
+            is Long -> raw
+            is Int -> raw.toLong()
+            is Short -> raw.toLong()
+            is Byte -> raw.toLong()
+            is String -> raw.toLongOrNull() ?: def
+            else -> def
+        }
     }
 
     private fun readInt(meta: Bundle?, key: String, def: Int): Int {
         val data = meta ?: return def
         if (!data.containsKey(key)) return def
-        data.getString(key)?.toIntOrNull()?.let { return it }
-        return runCatching { data.getInt(key) }
-            .getOrElse { runCatching { data.getLong(key).toInt() }.getOrDefault(def) }
+        val raw = readRawMetaValue(data, key) ?: return def
+        return when (raw) {
+            is Int -> raw
+            is Long -> raw.toInt()
+            is Short -> raw.toInt()
+            is Byte -> raw.toInt()
+            is String -> raw.toIntOrNull() ?: def
+            else -> def
+        }
     }
+
+    @Suppress("DEPRECATION")
+    private fun readRawMetaValue(bundle: Bundle, key: String): Any? = bundle.get(key)
 
     // --- Required stubs (not used) ---
     override fun query(

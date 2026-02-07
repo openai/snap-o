@@ -25,6 +25,38 @@ cd snapo-desktop-compose
 ./gradlew run
 ```
 
+## CLI (experimental)
+
+The distributed `Snap-O.app` bundle includes a `snapo` launcher at `Contents/MacOS/snapo`:
+
+```bash
+SNAPO_APP="/Applications/Snap-O.app"
+SNAPO_CLI="$SNAPO_APP/Contents/MacOS/snapo"
+snapo() { "$SNAPO_CLI" "$@"; }
+
+snapo network list
+snapo network list --json
+snapo network list --no-app-info
+snapo network requests -e -n snapo_server_12345
+snapo network requests -s emulator-5554 -n snapo_server_12345 --json
+snapo network requests -d --no-stream
+snapo network show -e -n snapo_server_12345 -r <requestId>
+snapo network show -s emulator-5554 -n snapo_server_12345 -r <requestId> --json
+```
+
+For local development only, you can still invoke the same CLI entrypoint via Gradle:
+`./gradlew run --args='network list'`
+
+By default, commands print human-readable output.
+Use `--json` for machine-readable NDJSON output.
+
+`network requests` emits CDP network messages in `--json` mode.
+`network show` prints request/response headers plus request/response bodies for one request id.
+Sensitive headers are redacted by default (`Authorization`, `Cookie`, `Set-Cookie`).
+`network list` includes package and app metadata by default.
+Use `--no-app-info` to skip metadata lookup.
+`-n/--socket` is optional when exactly one Snap-O socket is available for the selected device scope.
+
 ## Package (release)
 
 Release packaging is handled by `snapo-app-mac`. Follow its packaging instructions (if present) since that build embeds this helper app alongside Snap-O.

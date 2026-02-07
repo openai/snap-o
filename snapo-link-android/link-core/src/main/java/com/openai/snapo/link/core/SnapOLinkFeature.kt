@@ -1,6 +1,7 @@
 package com.openai.snapo.link.core
 
 import kotlinx.serialization.SerializationStrategy
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.serializer
 
 interface SnapOLinkFeature {
@@ -12,6 +13,9 @@ interface SnapOLinkFeature {
 
     /** Invoked once per client session when a client opens this feature. */
     suspend fun onFeatureOpened(clientId: Long)
+
+    /** Invoked for host-originated commands targeting this feature. */
+    suspend fun onFeatureCommand(clientId: Long, payload: JsonElement) {}
 
     /** Invoked when a client disconnects. */
     fun onClientDisconnected(clientId: Long) {}

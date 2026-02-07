@@ -139,6 +139,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.serialization.json)
+    implementation(libs.clikt)
 }
 
 compose.resources {

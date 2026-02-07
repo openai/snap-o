@@ -165,6 +165,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 			32F7D8A12F5B123400C0FFEE /* Embed Network Inspector Helper */ = {
 				isa = PBXShellScriptBuildPhase;
+				alwaysOutOfDate = 1;
 				buildActionMask = 2147483647;
 				files = (
 				);
@@ -175,14 +176,16 @@
 				name = "Embed Network Inspector Helper";
 				outputPaths = (
 					"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/Snap-O Network Inspector.app",
+					"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/snapo",
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -e\n\nHELPER_APP_NAME=\"Snap-O Network Inspector.app\"\nBASE_DIR=\"${PROJECT_DIR}/../snapo-desktop-compose/build/compose/binaries\"\n\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  SOURCE_APP=\"${BASE_DIR}/main-release/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"createReleaseDistributable\"\nelse\n  SOURCE_APP=\"${BASE_DIR}/main/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"createDistributable\"\nfi\n\nif [ ! -d \"${SOURCE_APP}\" ]; then\n  echo \"warning: Snap-O Network Inspector helper app not found at ${SOURCE_APP}.\"\n  echo \"warning: Build it with: (cd ../snapo-desktop-compose && ./gradlew ${BUILD_TASK})\"\n  exit 0\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nDEST_APP=\"${DEST_DIR}/${HELPER_APP_NAME}\"\n\nmkdir -p \"${DEST_DIR}\"\n/bin/rm -rf \"${DEST_APP}\"\n/usr/bin/ditto \"${SOURCE_APP}\" \"${DEST_APP}\"\n";
+				shellScript = "set -e\n\nHELPER_APP_NAME=\"Snap-O Network Inspector.app\"\nBASE_DIR=\"${PROJECT_DIR}/../snapo-desktop-compose/build/compose/binaries\"\n\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  SOURCE_APP=\"${BASE_DIR}/main-release/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"createReleaseDistributable\"\nelse\n  SOURCE_APP=\"${BASE_DIR}/main/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"createDistributable\"\nfi\n\nif [ ! -d \"${SOURCE_APP}\" ]; then\n  echo \"warning: Snap-O Network Inspector helper app not found at ${SOURCE_APP}.\"\n  echo \"warning: Build it with: (cd ../snapo-desktop-compose && ./gradlew ${BUILD_TASK})\"\n  exit 0\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nDEST_APP=\"${DEST_DIR}/${HELPER_APP_NAME}\"\nLAUNCHER_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nLAUNCHER_PATH=\"${LAUNCHER_DIR}/snapo\"\n\nmkdir -p \"${DEST_DIR}\" \"${LAUNCHER_DIR}\"\n/bin/rm -rf \"${DEST_APP}\"\n/usr/bin/ditto \"${SOURCE_APP}\" \"${DEST_APP}\"\n\nprintf '%s\\n' \\\n  '#!/bin/sh' \\\n  'set -e' \\\n  'APP_ROOT=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"' \\\n  'exec \"$APP_ROOT/Helpers/Snap-O Network Inspector.app/Contents/MacOS/Snap-O Network Inspector\" \"$@\"' \\\n  > \"${LAUNCHER_PATH}\"\n\n/bin/chmod +x \"${LAUNCHER_PATH}\"\n";
 			showEnvVarsInLog = 0;
 		};
 			32F7D8A22F5B123400C0FFEE /* Build Network Inspector Helper */ = {
 				isa = PBXShellScriptBuildPhase;
+				alwaysOutOfDate = 1;
 				buildActionMask = 2147483647;
 				files = (
 				);

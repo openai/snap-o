@@ -1,12 +1,12 @@
 package com.openai.snapo.desktop.link
 
 import com.openai.snapo.desktop.protocol.AppIcon
+import com.openai.snapo.desktop.protocol.CdpMessage
 import com.openai.snapo.desktop.protocol.FeatureEvent
 import com.openai.snapo.desktop.protocol.Hello
 import com.openai.snapo.desktop.protocol.LinkRecord
 import com.openai.snapo.desktop.protocol.Ndjson
 import com.openai.snapo.desktop.protocol.ReplayComplete
-import com.openai.snapo.desktop.protocol.SnapONetRecord
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -41,23 +41,6 @@ object SnapORecordDecoder {
                 SnapORecord.AppIconRecord(Ndjson.decodeFromString(AppIcon.serializer(), trimmed))
             }
 
-            // Back-compat: allow legacy unwrapped network records (without FeatureEvent envelope).
-            "RequestWillBeSent",
-            "ResponseReceived",
-            "ResponseStreamEvent",
-            "ResponseStreamClosed",
-            "RequestFailed",
-            "WebSocketWillOpen",
-            "WebSocketOpened",
-            "WebSocketMessageSent",
-            "WebSocketMessageReceived",
-            "WebSocketClosing",
-            "WebSocketClosed",
-            "WebSocketFailed",
-            "WebSocketCloseRequested",
-            "WebSocketCancelled",
-            -> decodeNetworkPayload(rawJson = trimmed)
-
             else -> SnapORecord.Unknown(type = type, rawJson = trimmed)
         }
     }
@@ -74,17 +57,12 @@ object SnapORecordDecoder {
         }
 
         return try {
-            val payload = Ndjson.decodeFromJsonElement(SnapONetRecord.serializer(), event.payload)
+            val payload = Ndjson.decodeFromJsonElement(CdpMessage.serializer(), event.payload)
             SnapORecord.NetworkEvent(payload)
         } catch (_: Throwable) {
             SnapORecord.Unknown(type = "FeatureEvent(${event.feature})", rawJson = raw)
         }
     }
-
-    private fun decodeNetworkPayload(rawJson: String): SnapORecord =
-        decodeCatching(type = "NetworkPayload", raw = rawJson) {
-            SnapORecord.NetworkEvent(Ndjson.decodeFromString(SnapONetRecord.serializer(), rawJson))
-        }
 
     private inline fun decodeCatching(type: String, raw: String, block: () -> SnapORecord): SnapORecord =
         try {

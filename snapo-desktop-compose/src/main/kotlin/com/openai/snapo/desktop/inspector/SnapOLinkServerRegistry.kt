@@ -5,7 +5,7 @@ import com.openai.snapo.desktop.adb.AdbForwardHandle
 import com.openai.snapo.desktop.adb.Device
 import com.openai.snapo.desktop.link.SnapOLinkServerConnection
 import com.openai.snapo.desktop.link.SnapORecord
-import com.openai.snapo.desktop.protocol.SnapONetRecord
+import com.openai.snapo.desktop.protocol.CdpMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,12 +13,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonElement
 import java.time.Instant
 
 internal class SnapOLinkServerRegistry(
     private val adb: AdbExec,
     private val scope: CoroutineScope,
-    private val onNetworkEvent: suspend (SnapOLinkServerId, SnapONetRecord) -> Unit,
+    private val onNetworkEvent: suspend (SnapOLinkServerId, CdpMessage) -> Unit,
     private val onServerRemoved: suspend (SnapOLinkServerId) -> Unit,
     private val onSocketStale: suspend (String, String) -> Unit,
 ) {
@@ -135,6 +136,16 @@ internal class SnapOLinkServerRegistry(
         } ?: return
 
         connection.sendFeatureOpened(feature)
+    }
+
+    suspend fun sendFeatureCommand(
+        feature: String,
+        payload: JsonElement,
+        serverId: SnapOLinkServerId,
+    ): Boolean {
+        val connection = mutex.withLock { serverStates[serverId]?.connection } ?: return false
+        connection.sendFeatureCommand(feature = feature, payload = payload)
+        return true
     }
 
     suspend fun shutdown() {
@@ -282,7 +293,7 @@ internal class SnapOLinkServerRegistry(
 
     private suspend fun handleNetworkEvent(
         serverId: SnapOLinkServerId,
-        payload: SnapONetRecord,
+        payload: CdpMessage,
         now: Instant,
     ) {
         val shouldHandle = mutex.withLock {
@@ -313,6 +324,6 @@ internal class SnapOLinkServerRegistry(
     }
 
     companion object {
-        private const val SupportedSchemaVersion: Int = 2
+        private const val SupportedSchemaVersion: Int = 3
     }
 }

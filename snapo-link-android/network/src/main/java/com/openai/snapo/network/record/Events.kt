@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 /** All records emitted over the wire for the network inspector. */
 @Serializable
-sealed interface SnapONetRecord
+sealed interface NetworkEventRecord
 
 @Serializable
 data class Header(
@@ -19,7 +19,7 @@ sealed interface TimedRecord {
 }
 
 /** Base for per-request events to let the desktop correlate rows. */
-sealed interface PerRequestRecord : SnapONetRecord, TimedRecord {
+sealed interface PerRequestRecord : NetworkEventRecord, TimedRecord {
     val id: String
 }
 
@@ -91,7 +91,7 @@ data class ResponseStreamClosed(
     val totalBytes: Long,
 ) : PerRequestRecord
 
-sealed interface PerWebSocketRecord : SnapONetRecord, TimedRecord {
+sealed interface PerWebSocketRecord : NetworkEventRecord, TimedRecord {
     val id: String
 }
 
@@ -200,4 +200,4 @@ data class Timings(
     val totalMs: Long? = null,
 )
 
-internal fun SnapONetRecord.perWebSocketRecord(): PerWebSocketRecord? = this as? PerWebSocketRecord
+internal fun NetworkEventRecord.perWebSocketRecord(): PerWebSocketRecord? = this as? PerWebSocketRecord

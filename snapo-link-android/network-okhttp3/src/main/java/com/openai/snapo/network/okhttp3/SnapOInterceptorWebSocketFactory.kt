@@ -4,7 +4,7 @@ import android.os.SystemClock
 import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.record.Header
-import com.openai.snapo.network.record.SnapONetRecord
+import com.openai.snapo.network.record.NetworkEventRecord
 import com.openai.snapo.network.record.WebSocketCancelled
 import com.openai.snapo.network.record.WebSocketCloseRequested
 import com.openai.snapo.network.record.WebSocketClosed
@@ -73,7 +73,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
             .also { interceptingListener.interceptedWebSocket = it }
     }
 
-    private inline fun publish(crossinline builder: () -> SnapONetRecord) {
+    private inline fun publish(crossinline builder: () -> NetworkEventRecord) {
         if (!SnapOLink.isEnabled()) return
         val feature = NetworkInspector.getOrNull() ?: return
         val record = builder()

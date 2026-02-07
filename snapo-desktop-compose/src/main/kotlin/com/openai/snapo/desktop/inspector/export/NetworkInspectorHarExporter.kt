@@ -1,15 +1,14 @@
 package com.openai.snapo.desktop.inspector.export
 
 import com.openai.snapo.desktop.BuildInfo
+import com.openai.snapo.desktop.inspector.Header
 import com.openai.snapo.desktop.inspector.NetworkInspectorRequest
 import com.openai.snapo.desktop.inspector.NetworkInspectorWebSocket
+import com.openai.snapo.desktop.inspector.RequestFailed
+import com.openai.snapo.desktop.inspector.RequestWillBeSent
+import com.openai.snapo.desktop.inspector.ResponseReceived
+import com.openai.snapo.desktop.inspector.ResponseStreamEvent
 import com.openai.snapo.desktop.inspector.WebSocketMessage
-import com.openai.snapo.desktop.protocol.Header
-import com.openai.snapo.desktop.protocol.RequestFailed
-import com.openai.snapo.desktop.protocol.RequestWillBeSent
-import com.openai.snapo.desktop.protocol.ResponseReceived
-import com.openai.snapo.desktop.protocol.ResponseStreamEvent
-import com.openai.snapo.desktop.protocol.Timings
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -118,7 +117,7 @@ object NetworkInspectorHarExporter {
         val responseHeaders = responseRecord?.headers.orEmpty()
 
         val startedAt = requestRecord?.tWallMs?.let(Instant::ofEpochMilli) ?: request.firstSeenAt
-        val timings = requestTimings(responseRecord?.timings ?: failureRecord?.timings)
+        val timings = requestTimings()
         val fallbackDurationMs = requestDurationFallbackMs(
             startWallMs = requestRecord?.tWallMs,
             endWallMs = failureRecord?.tWallMs ?: responseRecord?.tWallMs,
@@ -206,6 +205,7 @@ object NetworkInspectorHarExporter {
             mimeType = mimeType,
             bodyText = bodyText,
             fromStreamEvents = shouldMarkAsStreamEventBody(bodyText, responseRecord, request),
+            response = responseRecord,
         )
         val contentSize = responseContentSize(
             response = responseRecord,
@@ -354,8 +354,11 @@ object NetworkInspectorHarExporter {
         mimeType: String,
         bodyText: String?,
         fromStreamEvents: Boolean,
+        response: ResponseReceived?,
     ): String? {
         if (bodyText == null || fromStreamEvents) return null
+        if (response?.bodyBase64Encoded == true) return "base64"
+        if (response?.bodyEncoding.equals("base64", ignoreCase = true)) return "base64"
         if (mimeType.isTextLikeMimeType()) return null
         return if (isLikelyBase64(bodyText)) "base64" else null
     }
@@ -403,18 +406,15 @@ object NetworkInspectorHarExporter {
         return bodyText?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: -1
     }
 
-    private fun requestTimings(timings: Timings?): HarTimings {
+    private fun requestTimings(): HarTimings {
         return HarTimings(
             blocked = -1.0,
-            dns = timings.msOrMinusOne { it.dnsMs },
-            connect = timings.msOrMinusOne { it.connectMs },
-            send = timings.sumMsOrMinusOne(
-                first = { it.requestHeadersMs },
-                second = { it.requestBodyMs },
-            ),
-            wait = timings.msOrMinusOne { it.ttfbMs },
-            receive = timings.msOrMinusOne { it.responseBodyMs },
-            ssl = timings.msOrMinusOne { it.tlsMs },
+            dns = -1.0,
+            connect = -1.0,
+            send = -1.0,
+            wait = -1.0,
+            receive = -1.0,
+            ssl = -1.0,
         )
     }
 
@@ -442,21 +442,6 @@ object NetworkInspectorHarExporter {
         val start = startWallMs ?: fallbackStart.toEpochMilli()
         val end = endWallMs ?: fallbackEnd.toEpochMilli()
         return max(0L, end - start)
-    }
-
-    private fun Timings?.msOrMinusOne(selector: (Timings) -> Long?): Double {
-        val value = this?.let(selector) ?: return -1.0
-        return if (value >= 0) value.toDouble() else -1.0
-    }
-
-    private fun Timings?.sumMsOrMinusOne(
-        first: (Timings) -> Long?,
-        second: (Timings) -> Long?,
-    ): Double {
-        val resolved = this ?: return -1.0
-        val values = listOfNotNull(first(resolved), second(resolved)).filter { it >= 0 }
-        if (values.isEmpty()) return -1.0
-        return values.sum().toDouble()
     }
 
     private fun contentTypeFromHeaders(headers: List<Header>): String? {

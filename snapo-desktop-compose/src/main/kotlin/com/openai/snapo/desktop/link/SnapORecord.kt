@@ -1,14 +1,14 @@
 package com.openai.snapo.desktop.link
 
 import com.openai.snapo.desktop.protocol.AppIcon
+import com.openai.snapo.desktop.protocol.CdpMessage
 import com.openai.snapo.desktop.protocol.Hello
-import com.openai.snapo.desktop.protocol.SnapONetRecord
 
 sealed interface SnapORecord {
     data class HelloRecord(val value: Hello) : SnapORecord
     data class AppIconRecord(val value: AppIcon) : SnapORecord
     data object ReplayComplete : SnapORecord
-    data class NetworkEvent(val value: SnapONetRecord) : SnapORecord
+    data class NetworkEvent(val value: CdpMessage) : SnapORecord
 
     /**
      * Preserve the raw NDJSON line to help debugging schema mismatches.
