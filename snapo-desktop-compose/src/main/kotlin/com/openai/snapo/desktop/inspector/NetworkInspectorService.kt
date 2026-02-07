@@ -177,8 +177,29 @@ class NetworkInspectorService(
         }
         val event = translator.toRecord(payload) ?: return
 
-        if (requestStore.handle(serverId, event)) return
+        if (requestStore.handle(serverId, event)) {
+            prefetchBodiesIfNeeded(serverId, event)
+            return
+        }
         webSocketStore.handle(serverId, event)
+    }
+
+    private suspend fun prefetchBodiesIfNeeded(serverId: SnapOLinkServerId, event: NetworkEventRecord) {
+        when (event) {
+            is RequestWillBeSent -> {
+                requestBodyIfNeeded(
+                    NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
+                )
+            }
+
+            is ResponseReceived -> {
+                responseBodyIfNeeded(
+                    NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
+                )
+            }
+
+            else -> Unit
+        }
     }
 
     private suspend fun handleCommandResponse(serverId: SnapOLinkServerId, payload: CdpMessage): Boolean {
