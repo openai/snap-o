@@ -1,3 +1,5 @@
+@file:Suppress("ImportOrdering")
+
 package com.openai.snapo.desktop.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
@@ -16,6 +18,7 @@ import com.openai.snapo.desktop.protocol.CdpGetResponseBodyParams
 import com.openai.snapo.desktop.protocol.CdpGetResponseBodyResult
 import com.openai.snapo.desktop.protocol.CdpMessage
 import com.openai.snapo.desktop.protocol.CdpNetworkMethod
+import com.openai.snapo.desktop.protocol.Hello
 import com.openai.snapo.desktop.protocol.Ndjson
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
@@ -32,6 +35,7 @@ object SnapOCli {
     private const val SnapshotMaxWaitMs: Long = 5_000L
     private const val CommandResponseTimeoutMs: Long = 500L
     private const val CommandAttemptLimit: Int = 3
+    private const val HelloWaitTimeoutMs: Long = 1_200L
     private const val RedactedValue: String = "[REDACTED]"
 
     private val requestHeaderNames = setOf("authorization", "cookie")
@@ -41,17 +45,30 @@ object SnapOCli {
         RootCommand(this).main(args)
     }
 
-    private suspend fun runNetworkList(): Int {
+    private suspend fun runNetworkList(includeAppInfo: Boolean): Int {
         val adb = AdbExec()
         val servers = discoverServers(adb)
         servers.forEach { server ->
-            printJson(
-                CliServerLine(
-                    server = server.identifier,
-                    deviceId = server.deviceId,
-                    socketName = server.socketName,
+            if (!includeAppInfo) {
+                printJson(
+                    CliServerLine(
+                        server = server.identifier,
+                        deviceId = server.deviceId,
+                        socketName = server.socketName,
+                    )
                 )
-            )
+            } else {
+                val appInfo = resolveServerAppInfo(adb, server)
+                printJson(
+                    CliServerWithAppInfoLine(
+                        server = server.identifier,
+                        deviceId = server.deviceId,
+                        socketName = server.socketName,
+                        packageName = appInfo.packageName,
+                        appName = appInfo.appName,
+                    )
+                )
+            }
         }
         return 0
     }
@@ -319,6 +336,60 @@ object SnapOCli {
         return result.sortedWith(compareBy<ServerRef> { it.deviceId }.thenBy { it.socketName })
     }
 
+    private suspend fun resolveServerAppInfo(adb: AdbExec, server: ServerRef): ServerAppInfo {
+        val hint = packageNameHint(adb, server)
+        val hello = fetchHello(adb, server)
+        val packageName = hello?.packageName ?: hint
+        val appName = hello?.processName?.takeIf { it.isNotBlank() }
+        return ServerAppInfo(
+            packageName = packageName,
+            appName = appName,
+        )
+    }
+
+    private suspend fun fetchHello(adb: AdbExec, server: ServerRef): Hello? {
+        val session = ServerSession(adb, server)
+        val started = session.start()
+        if (!started) return null
+
+        var hello: Hello? = null
+        try {
+            while (hello == null) {
+                val next = withTimeoutOrNull(HelloWaitTimeoutMs) {
+                    session.events.receiveCatching().getOrNull()
+                } ?: break
+                if (next is SnapORecord.HelloRecord) {
+                    hello = next.value
+                }
+            }
+        } finally {
+            session.close()
+        }
+        return hello
+    }
+
+    private suspend fun packageNameHint(adb: AdbExec, server: ServerRef): String? {
+        val pid = pidFromSocketName(server.socketName) ?: return null
+        val output = runCatching {
+            adb.runShellString(server.deviceId, "cat /proc/$pid/cmdline 2>/dev/null")
+        }.getOrNull() ?: return null
+
+        return output
+            .split('\u0000')
+            .firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: output.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun pidFromSocketName(socketName: String): Int? {
+        val prefix = "snapo_server_"
+        if (!socketName.startsWith(prefix)) return null
+        val suffix = socketName.removePrefix(prefix)
+        if (suffix.isBlank() || suffix.any { !it.isDigit() }) return null
+        return suffix.toIntOrNull()
+    }
+
     private fun parseConnectedDeviceIds(output: String): List<String> {
         val invalidStates = listOf("offline", "unauthorized", "recovery", "authorizing")
         val result = LinkedHashSet<String>()
@@ -466,6 +537,15 @@ object SnapOCli {
     )
 
     @Serializable
+    private data class CliServerWithAppInfoLine(
+        val server: String,
+        val deviceId: String,
+        val socketName: String,
+        val packageName: String? = null,
+        val appName: String? = null,
+    )
+
+    @Serializable
     private data class CliResponseBodyLine(
         val server: String,
         val requestId: String,
@@ -480,6 +560,11 @@ object SnapOCli {
         val identifier: String
             get() = "$deviceId/$socketName"
     }
+
+    private data class ServerAppInfo(
+        val packageName: String?,
+        val appName: String?,
+    )
 
     private sealed interface FetchResponseBodyResult {
         data class Success(
@@ -584,8 +669,13 @@ object SnapOCli {
     ) : CliktCommand(name = "list") {
         override fun help(context: Context): String = "List available Snap-O link servers"
 
+        private val includeAppInfo by option(
+            "--include-app-info",
+            help = "Include package name and app name (process) when available",
+        ).flag(default = false)
+
         override fun run() = runBlocking {
-            val exitCode = runtime.runNetworkList()
+            val exitCode = runtime.runNetworkList(includeAppInfo = includeAppInfo)
             if (exitCode != 0) throw ProgramResult(exitCode)
         }
     }
