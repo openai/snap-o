@@ -10,8 +10,8 @@
 -dontwarn java.lang.invoke.MethodHandles
 -dontwarn java.lang.invoke.VarHandle
 
-# Accessed reflectively from SnapOTextContextMenuProvider.
--keepclassmembers class androidx.compose.foundation.text.contextmenu.data.TextContextMenuItemWithComposableLeadingIcon {
+# Accessed reflectively from SnapOTextContextMenuProvider via Class.forName.
+-keep class androidx.compose.foundation.text.contextmenu.data.TextContextMenuItemWithComposableLeadingIcon {
     public java.lang.String getLabel();
     public boolean getEnabled();
     public kotlin.jvm.functions.Function1 getOnClick();
