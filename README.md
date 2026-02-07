@@ -1,24 +1,29 @@
 [![download](https://img.shields.io/github/v/release/openai/snap-o?label=download&color=brightgreen)](https://github.com/openai/snap-o/releases/latest)
 
 <p>
-  <img src=".github/banner.png" alt="Snap-O: Android capture developer tool for macOS">
+  <img src=".github/banner.jpg" width="640" alt="Snap-O: Android inspection system for macOS">
 </p>
 
-# Snap-O: Android Capture Developer Tool
+# Snap-O: Android Inspection System
 
-Snap-O is a fast, tidy macOS app for capturing screenshots, screen recordings, and network requests from Android devices and emulators.
+Snap-O is a fast, tidy macOS app for Android inspection: capture screenshots and recordings, and inspect network traffic from Android devices and emulators.
 
 It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
+
+## Top-Level Features
+
+- **Network Inspector (Alpha):** Mirror app traffic into the macOS client, inspect requests and responses, and explore payloads with collapsible JSON pretty printing. Start with the [Network Inspector (Alpha) guide](docs/network-inspector.md).
+- **Screen Capture:** Grab screenshots and screen recordings quickly, preview recordings instantly, and drag captures directly into PRs, chat, and docs without save-first friction.
 
 ## Network Inspector (Alpha)
 
 Curious about mirroring app traffic into the macOS client? Check the [Network Inspector (Alpha) guide](docs/network-inspector.md) for setup steps, dependency coordinates, and configuration tips.
 
-Snap-O can tell you about network requests even before you opened the Snap-O network inspector, and features collapsible JSON pretty printing.
+Snap-O can replay network requests that happened before you opened Snap-O, so you do not miss early events, and includes collapsible JSON pretty printing.
 
-## Why build a screen capture tool?
+## Why build an Android inspection system?
 
-Taking screenshots for teammates or pull requests adds many small paper cuts.
+Capturing visuals and validating traffic for teammates or pull requests adds many small paper cuts.
 You might like Snap-O if you've ever wished you could:
 
 - Share screenshots and recordings without littering your disk with throwaway files
