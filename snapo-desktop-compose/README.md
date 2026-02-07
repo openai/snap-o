@@ -33,12 +33,12 @@ The desktop app now supports CLI mode when arguments are provided.
 cd snapo-desktop-compose
 ./gradlew run --args='network list'
 ./gradlew run --args='network list --json'
-./gradlew run --args='network list --include-app-info'
-./gradlew run --args='network requests emulator-5554/snapo_server_12345'
-./gradlew run --args='network requests emulator-5554/snapo_server_12345 --json'
-./gradlew run --args='network requests emulator-5554/snapo_server_12345 --no-stream'
-./gradlew run --args='network response-body <requestId>'
-./gradlew run --args='network response-body <requestId> --json'
+./gradlew run --args='network list -a'
+./gradlew run --args='network requests -s emulator-5554/snapo_server_12345'
+./gradlew run --args='network requests -s emulator-5554/snapo_server_12345 --json'
+./gradlew run --args='network requests -s emulator-5554/snapo_server_12345 --no-stream'
+./gradlew run --args='network response-body -s emulator-5554/snapo_server_12345 -r <requestId>'
+./gradlew run --args='network response-body -s emulator-5554/snapo_server_12345 -r <requestId> --json'
 ```
 
 By default, commands print human-readable output.
@@ -46,7 +46,7 @@ Use `--json` for machine-readable NDJSON output.
 
 `network requests` emits CDP network messages in `--json` mode.
 Sensitive headers are redacted by default (`Authorization`, `Cookie`, `Set-Cookie`).
-`network list --include-app-info` also emits `packageName` and `appName` (process name) if available.
+`network list -a` (`--include-app-info`) also emits `packageName` and `appName` (process name) if available.
 
 ## Package (release)
 
