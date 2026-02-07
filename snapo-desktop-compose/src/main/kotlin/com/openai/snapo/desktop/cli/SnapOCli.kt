@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
@@ -58,45 +59,72 @@ object SnapOCli {
     }
 
     private suspend fun runNetworkList(
+        deviceSelection: DeviceSelectionOptions,
         includeAppInfo: Boolean,
         outputMode: OutputMode,
     ): Int {
         val adb = AdbExec()
-        val servers = discoverServers(adb)
-        servers.forEach { server ->
-            if (!includeAppInfo) {
-                val line = CliServerLine(
-                    server = server.identifier,
-                    deviceId = server.deviceId,
-                    socketName = server.socketName,
-                )
-                emitServerLine(line = line, outputMode = outputMode)
-            } else {
-                val appInfo = resolveServerAppInfo(adb, server)
-                val line = CliServerWithAppInfoLine(
-                    server = server.identifier,
-                    deviceId = server.deviceId,
-                    socketName = server.socketName,
-                    packageName = appInfo.packageName,
-                    appName = appInfo.appName,
-                )
-                emitServerLine(line = line, outputMode = outputMode)
+        val discovery = discoverServers(adb, deviceSelection)
+        val servers = when (discovery) {
+            is ServerDiscoveryResult.Success -> discovery.servers
+            is ServerDiscoveryResult.Failure -> {
+                printError(discovery.message)
+                return 1
             }
         }
+        if (servers.isEmpty()) {
+            printError("No Snap-O link servers found")
+            return 1
+        }
+
+        val appInfoByServer = if (includeAppInfo) {
+            servers.associateWith { resolveServerAppInfo(adb, it) }
+        } else {
+            emptyMap()
+        }
+
+        when (outputMode) {
+            OutputMode.Json -> {
+                servers.forEach { server ->
+                    val appInfo = appInfoByServer[server]
+                    emitServerLine(
+                        line = CliServerWithAppInfoLine(
+                            server = server.identifier,
+                            deviceId = server.deviceId,
+                            socketName = server.socketName,
+                            packageName = appInfo?.packageName,
+                            appName = appInfo?.appName,
+                        ),
+                        outputMode = OutputMode.Json,
+                    )
+                }
+            }
+
+            OutputMode.Human -> emitServerListHuman(
+                servers = servers,
+                appInfoByServer = appInfoByServer.takeIf { includeAppInfo },
+            )
+        }
+
         return 0
     }
 
     private suspend fun runNetworkRequests(
-        serverArgument: String,
+        deviceSelection: DeviceSelectionOptions,
+        socketArgument: String,
         noStream: Boolean,
         outputMode: OutputMode,
     ): Int {
-        val server = parseServerRef(serverArgument) ?: run {
-            printError("Invalid server. Expected <deviceId/socketName>, got: $serverArgument")
-            return 1
+        val adb = AdbExec()
+        val resolved = resolveServer(adb = adb, socketArgument = socketArgument, deviceSelection = deviceSelection)
+        val server = when (resolved) {
+            is ServerResolutionResult.Success -> resolved.server
+            is ServerResolutionResult.Failure -> {
+                printError(resolved.message)
+                return 1
+            }
         }
 
-        val adb = AdbExec()
         val session = ServerSession(adb, server)
         val started = session.start()
         if (!started) {
@@ -189,20 +217,26 @@ object SnapOCli {
     }
 
     private suspend fun runNetworkResponseBody(
-        serverArgument: String,
+        deviceSelection: DeviceSelectionOptions,
+        socketArgument: String,
         requestId: String,
         outputMode: OutputMode,
     ): Int {
-        val server = parseServerRef(serverArgument) ?: run {
-            printError("Invalid server. Expected <deviceId/socketName>, got: $serverArgument")
-            return 1
-        }
         if (requestId.isBlank()) {
             printError("Request ID cannot be empty")
             return 1
         }
 
         val adb = AdbExec()
+        val resolved = resolveServer(adb = adb, socketArgument = socketArgument, deviceSelection = deviceSelection)
+        val server = when (resolved) {
+            is ServerResolutionResult.Success -> resolved.server
+            is ServerResolutionResult.Failure -> {
+                printError(resolved.message)
+                return 1
+            }
+        }
+
         return when (val result = fetchResponseBody(adb, server, requestId)) {
             is FetchResponseBodyResult.Success -> {
                 emitResponseBody(
@@ -338,13 +372,25 @@ object SnapOCli {
         }
     }
 
-    private suspend fun discoverServers(adb: AdbExec): List<ServerRef> {
-        val devicesOutput = runCatching { adb.devicesList() }.getOrElse { return emptyList() }
+    private suspend fun discoverServers(
+        adb: AdbExec,
+        deviceSelection: DeviceSelectionOptions,
+    ): ServerDiscoveryResult {
+        val devicesOutput = runCatching { adb.devicesList() }.getOrElse {
+            return ServerDiscoveryResult.Failure("Failed to list adb devices")
+        }
         val deviceIds = parseConnectedDeviceIds(devicesOutput)
-        if (deviceIds.isEmpty()) return emptyList()
+        if (deviceIds.isEmpty()) {
+            return ServerDiscoveryResult.Failure("No connected devices found")
+        }
+
+        val selectedDeviceIds = when (val selection = resolveTargetDeviceIds(deviceIds, deviceSelection)) {
+            is DeviceSelectionResult.Success -> selection.deviceIds
+            is DeviceSelectionResult.Failure -> return ServerDiscoveryResult.Failure(selection.message)
+        }
 
         val result = ArrayList<ServerRef>()
-        for (deviceId in deviceIds) {
+        for (deviceId in selectedDeviceIds) {
             val socketsOutput = runCatching { adb.listUnixSockets(deviceId) }.getOrNull() ?: continue
             val sockets = parseSnapOServerSockets(socketsOutput)
             sockets.forEach { socketName ->
@@ -356,7 +402,9 @@ object SnapOCli {
                 )
             }
         }
-        return result.sortedWith(compareBy<ServerRef> { it.deviceId }.thenBy { it.socketName })
+        return ServerDiscoveryResult.Success(
+            result.sortedWith(compareBy<ServerRef> { it.deviceId }.thenBy { it.socketName })
+        )
     }
 
     private suspend fun resolveServerAppInfo(adb: AdbExec, server: ServerRef): ServerAppInfo {
@@ -429,6 +477,59 @@ object SnapOCli {
         return result.toList()
     }
 
+    private fun resolveTargetDeviceIds(
+        connectedDeviceIds: List<String>,
+        deviceSelection: DeviceSelectionOptions,
+    ): DeviceSelectionResult {
+        val hasSerial = !deviceSelection.serialId.isNullOrBlank()
+        val selectedByCount = listOf(
+            hasSerial,
+            deviceSelection.useUsbDevice,
+            deviceSelection.useEmulator,
+        ).count { it }
+        if (selectedByCount > 1) {
+            return DeviceSelectionResult.Failure("Options -s, -d, and -e are mutually exclusive")
+        }
+
+        val serial = deviceSelection.serialId?.trim()?.takeIf { it.isNotEmpty() }
+        if (serial != null) {
+            return if (connectedDeviceIds.contains(serial)) {
+                DeviceSelectionResult.Success(listOf(serial))
+            } else {
+                DeviceSelectionResult.Failure("Device '$serial' is not connected")
+            }
+        }
+
+        if (deviceSelection.useEmulator) {
+            val emulators = connectedDeviceIds.filter(::isEmulatorDeviceId)
+            return when {
+                emulators.isEmpty() -> DeviceSelectionResult.Failure("No emulator connected")
+                emulators.size > 1 -> {
+                    DeviceSelectionResult.Failure("More than one emulator connected; use -s <serial>")
+                }
+
+                else -> DeviceSelectionResult.Success(emulators)
+            }
+        }
+
+        if (deviceSelection.useUsbDevice) {
+            val usbDevices = connectedDeviceIds.filterNot(::isEmulatorDeviceId)
+            return when {
+                usbDevices.isEmpty() -> DeviceSelectionResult.Failure("No USB device connected")
+                usbDevices.size > 1 -> {
+                    DeviceSelectionResult.Failure("More than one USB device connected; use -s <serial>")
+                }
+
+                else -> DeviceSelectionResult.Success(usbDevices)
+            }
+        }
+
+        return DeviceSelectionResult.Success(connectedDeviceIds)
+    }
+
+    private fun isEmulatorDeviceId(deviceId: String): Boolean =
+        deviceId.startsWith("emulator-")
+
     private fun parseSnapOServerSockets(output: String): List<String> {
         val result = LinkedHashSet<String>()
         output.lineSequence().forEach { rawLine ->
@@ -441,6 +542,53 @@ object SnapOCli {
             }
         }
         return result.toList()
+    }
+
+    private suspend fun resolveServer(
+        adb: AdbExec,
+        socketArgument: String,
+        deviceSelection: DeviceSelectionOptions,
+    ): ServerResolutionResult {
+        val socketName = socketArgument.trim()
+        if (socketName.isEmpty()) {
+            return ServerResolutionResult.Failure("Socket name cannot be empty")
+        }
+
+        val discovery = discoverServers(adb, deviceSelection)
+        val servers = when (discovery) {
+            is ServerDiscoveryResult.Success -> discovery.servers
+            is ServerDiscoveryResult.Failure -> return ServerResolutionResult.Failure(discovery.message)
+        }
+        if (servers.isEmpty()) {
+            return ServerResolutionResult.Failure("No Snap-O link servers found for selected device(s)")
+        }
+
+        val qualified = parseServerRef(socketName)
+        if (qualified != null) {
+            val exactMatch = servers.firstOrNull { it == qualified }
+            return if (exactMatch != null) {
+                ServerResolutionResult.Success(exactMatch)
+            } else {
+                ServerResolutionResult.Failure(
+                    "Server '${qualified.identifier}' was not found for selected device(s)"
+                )
+            }
+        }
+
+        val matches = servers.filter { it.socketName == socketName }
+        return when {
+            matches.isEmpty() -> {
+                ServerResolutionResult.Failure("No Snap-O link server named '$socketName' found")
+            }
+
+            matches.size > 1 -> {
+                ServerResolutionResult.Failure(
+                    "Socket '$socketName' exists on multiple devices; use -s <serial>, -d, or -e"
+                )
+            }
+
+            else -> ServerResolutionResult.Success(matches.first())
+        }
     }
 
     private fun parseServerRef(value: String): ServerRef? {
@@ -546,6 +694,26 @@ object SnapOCli {
 
     private fun printError(message: String) {
         System.err.println("snapo: $message")
+    }
+
+    private fun emitServerListHuman(
+        servers: List<ServerRef>,
+        appInfoByServer: Map<ServerRef, ServerAppInfo>?,
+    ) {
+        val byDevice = servers.groupBy { it.deviceId }.toSortedMap()
+        byDevice.forEach { (deviceId, deviceServers) ->
+            println("$deviceId:")
+            deviceServers
+                .sortedBy { it.socketName }
+                .forEach { server ->
+                    if (appInfoByServer == null) {
+                        println("    ${server.socketName}")
+                        return@forEach
+                    }
+                    val packageName = appInfoByServer[server]?.packageName ?: "unknown"
+                    println("    ${server.socketName}  pkg:$packageName")
+                }
+        }
     }
 
     private fun emitServerLine(line: CliServerLine, outputMode: OutputMode) {
@@ -684,6 +852,27 @@ object SnapOCli {
         val appName: String?,
     )
 
+    private data class DeviceSelectionOptions(
+        val serialId: String?,
+        val useUsbDevice: Boolean,
+        val useEmulator: Boolean,
+    )
+
+    private sealed interface DeviceSelectionResult {
+        data class Success(val deviceIds: List<String>) : DeviceSelectionResult
+        data class Failure(val message: String) : DeviceSelectionResult
+    }
+
+    private sealed interface ServerDiscoveryResult {
+        data class Success(val servers: List<ServerRef>) : ServerDiscoveryResult
+        data class Failure(val message: String) : ServerDiscoveryResult
+    }
+
+    private sealed interface ServerResolutionResult {
+        data class Success(val server: ServerRef) : ServerResolutionResult
+        data class Failure(val message: String) : ServerResolutionResult
+    }
+
     private sealed interface FetchResponseBodyResult {
         data class Success(
             val body: String,
@@ -782,15 +971,37 @@ object SnapOCli {
         override fun run() = Unit
     }
 
+    private abstract class DeviceScopedCommand(name: String) : CliktCommand(name = name) {
+        protected val serialId by option(
+            "-s",
+            "--serial",
+            help = "Use device with given serial",
+        )
+        protected val useUsbDevice by option(
+            "-d",
+            help = "Use the single connected USB device",
+        ).flag(default = false)
+        protected val useEmulator by option(
+            "-e",
+            help = "Use the single connected emulator",
+        ).flag(default = false)
+
+        protected fun deviceSelectionOptions(): DeviceSelectionOptions =
+            DeviceSelectionOptions(
+                serialId = serialId,
+                useUsbDevice = useUsbDevice,
+                useEmulator = useEmulator,
+            )
+    }
+
     private class NetworkListCommand(
         private val runtime: SnapOCli,
-    ) : CliktCommand(name = "list") {
+    ) : DeviceScopedCommand(name = "list") {
         override fun help(context: Context): String = "List available Snap-O link servers"
 
-        private val includeAppInfo by option(
-            "-a",
-            "--include-app-info",
-            help = "Include package name and app name (process) when available",
+        private val noAppInfo by option(
+            "--no-app-info",
+            help = "Skip package and app metadata lookup",
         ).flag(default = false)
         private val json by option(
             "--json",
@@ -799,7 +1010,8 @@ object SnapOCli {
 
         override fun run() = runBlocking {
             val exitCode = runtime.runNetworkList(
-                includeAppInfo = includeAppInfo,
+                deviceSelection = deviceSelectionOptions(),
+                includeAppInfo = !noAppInfo,
                 outputMode = if (json) OutputMode.Json else OutputMode.Human,
             )
             if (exitCode != 0) throw ProgramResult(exitCode)
@@ -808,14 +1020,13 @@ object SnapOCli {
 
     private class NetworkRequestsCommand(
         private val runtime: SnapOCli,
-    ) : CliktCommand(name = "requests") {
+    ) : DeviceScopedCommand(name = "requests") {
         override fun help(context: Context): String = "Emit CDP network events for a server"
 
-        private val server by option(
-            "-s",
-            "--server",
-            help = "Target Snap-O server (<deviceId/socketName>)",
-        ).required()
+        private val socketName by argument(
+            name = "socket",
+            help = "Snap-O socket name (e.g. snapo_server_12345)",
+        )
         private val noStream by option(
             "--no-stream",
             help = "Emit only the buffered snapshot and then exit",
@@ -827,7 +1038,8 @@ object SnapOCli {
 
         override fun run() = runBlocking {
             val exitCode = runtime.runNetworkRequests(
-                serverArgument = server,
+                deviceSelection = deviceSelectionOptions(),
+                socketArgument = socketName,
                 noStream = noStream,
                 outputMode = if (json) OutputMode.Json else OutputMode.Human,
             )
@@ -837,14 +1049,13 @@ object SnapOCli {
 
     private class NetworkResponseBodyCommand(
         private val runtime: SnapOCli,
-    ) : CliktCommand(name = "response-body") {
+    ) : DeviceScopedCommand(name = "response-body") {
         override fun help(context: Context): String = "Fetch response body for a request id"
 
-        private val server by option(
-            "-s",
-            "--server",
-            help = "Target Snap-O server (<deviceId/socketName>)",
-        ).required()
+        private val socketName by argument(
+            name = "socket",
+            help = "Snap-O socket name (e.g. snapo_server_12345)",
+        )
         private val requestId by option(
             "-r",
             "--request-id",
@@ -857,7 +1068,8 @@ object SnapOCli {
 
         override fun run() = runBlocking {
             val exitCode = runtime.runNetworkResponseBody(
-                serverArgument = server,
+                deviceSelection = deviceSelectionOptions(),
+                socketArgument = socketName,
                 requestId = requestId,
                 outputMode = if (json) OutputMode.Json else OutputMode.Human,
             )
