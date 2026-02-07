@@ -13,10 +13,6 @@ import com.openai.snapo.link.core.LinkEventSink
 import com.openai.snapo.link.core.Ndjson
 import com.openai.snapo.link.core.SnapOLinkFeature
 import com.openai.snapo.link.core.SnapOLinkRegistry
-import com.openai.snapo.network.record.NetworkEventRecord
-import com.openai.snapo.network.record.RequestWillBeSent
-import com.openai.snapo.network.record.ResponseReceived
-import com.openai.snapo.network.record.ResponseStreamEvent
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement

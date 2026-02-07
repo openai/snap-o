@@ -1,13 +1,12 @@
-package com.openai.snapo.network.record
+package com.openai.snapo.network
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-
-/** All records emitted over the wire for the network inspector. */
-@Serializable
+/**
+ * Internal normalized network events used on-device before conversion to CDP.
+ *
+ * Wire/runtime payloads are CDP messages; export payloads are HAR.
+ */
 sealed interface NetworkEventRecord
 
-@Serializable
 data class Header(
     val name: String,
     val value: String,
@@ -24,8 +23,6 @@ sealed interface PerRequestRecord : NetworkEventRecord, TimedRecord {
 }
 
 /** Request line + headers + tiny, already-redacted preview (if any). */
-@Serializable
-@SerialName("RequestWillBeSent")
 data class RequestWillBeSent(
     override val id: String,
     override val tWallMs: Long,
@@ -40,8 +37,6 @@ data class RequestWillBeSent(
 ) : PerRequestRecord
 
 /** Response line + headers + timing breakdown + body preview/full text (when available). */
-@Serializable
-@SerialName("ResponseReceived")
 data class ResponseReceived(
     override val id: String,
     override val tWallMs: Long,
@@ -56,8 +51,6 @@ data class ResponseReceived(
 ) : PerRequestRecord
 
 /** Failure with partial timings if available. */
-@Serializable
-@SerialName("RequestFailed")
 data class RequestFailed(
     override val id: String,
     override val tWallMs: Long,
@@ -68,8 +61,6 @@ data class RequestFailed(
 ) : PerRequestRecord
 
 /** Incremental Server-Sent Event payload emitted while streaming. */
-@Serializable
-@SerialName("ResponseStreamEvent")
 data class ResponseStreamEvent(
     override val id: String,
     override val tWallMs: Long,
@@ -79,8 +70,6 @@ data class ResponseStreamEvent(
 ) : PerRequestRecord
 
 /** Indicates the streaming response completed or terminated. */
-@Serializable
-@SerialName("ResponseStreamClosed")
 data class ResponseStreamClosed(
     override val id: String,
     override val tWallMs: Long,
@@ -95,8 +84,6 @@ sealed interface PerWebSocketRecord : NetworkEventRecord, TimedRecord {
     val id: String
 }
 
-@Serializable
-@SerialName("WebSocketWillOpen")
 data class WebSocketWillOpen(
     override val id: String,
     override val tWallMs: Long,
@@ -105,8 +92,6 @@ data class WebSocketWillOpen(
     val headers: List<Header> = emptyList(),
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketOpened")
 data class WebSocketOpened(
     override val id: String,
     override val tWallMs: Long,
@@ -115,8 +100,6 @@ data class WebSocketOpened(
     val headers: List<Header> = emptyList(),
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketMessageSent")
 data class WebSocketMessageSent(
     override val id: String,
     override val tWallMs: Long,
@@ -127,8 +110,6 @@ data class WebSocketMessageSent(
     val enqueued: Boolean,
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketMessageReceived")
 data class WebSocketMessageReceived(
     override val id: String,
     override val tWallMs: Long,
@@ -138,8 +119,6 @@ data class WebSocketMessageReceived(
     val payloadSize: Long? = null,
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketClosing")
 data class WebSocketClosing(
     override val id: String,
     override val tWallMs: Long,
@@ -148,8 +127,6 @@ data class WebSocketClosing(
     val reason: String? = null,
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketClosed")
 data class WebSocketClosed(
     override val id: String,
     override val tWallMs: Long,
@@ -158,8 +135,6 @@ data class WebSocketClosed(
     val reason: String? = null,
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketFailed")
 data class WebSocketFailed(
     override val id: String,
     override val tWallMs: Long,
@@ -168,8 +143,6 @@ data class WebSocketFailed(
     val message: String? = null,
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketCloseRequested")
 data class WebSocketCloseRequested(
     override val id: String,
     override val tWallMs: Long,
@@ -180,15 +153,12 @@ data class WebSocketCloseRequested(
     val accepted: Boolean,
 ) : PerWebSocketRecord
 
-@Serializable
-@SerialName("WebSocketCancelled")
 data class WebSocketCancelled(
     override val id: String,
     override val tWallMs: Long,
     override val tMonoNs: Long,
 ) : PerWebSocketRecord
 
-@Serializable
 data class Timings(
     val dnsMs: Long? = null,
     val connectMs: Long? = null,
