@@ -8,6 +8,7 @@ composeHotReload = "1.1.0-alpha03"
 coroutines = "1.10.2"
 serialization = "1.9.0"
 detekt = "1.23.8"
+clikt = "5.0.3"
 
 [libraries]
 detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
@@ -18,6 +19,7 @@ compose-material3 = { group = "org.jetbrains.compose.material3", name = "materia
 compose-components-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "composeMultiplatform" }
 compose-components-splitpane = { group = "org.jetbrains.compose.components", name = "components-splitpane", version.ref = "composeMultiplatform" }
 compose-ui-tooling-preview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "composeMultiplatform" }
+clikt = { group = "com.github.ajalt.clikt", name = "clikt", version.ref = "clikt" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

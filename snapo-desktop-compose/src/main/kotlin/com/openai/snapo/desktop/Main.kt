@@ -33,11 +33,11 @@ import kotlinx.coroutines.launch
 import java.awt.Desktop
 import java.net.URI
 import java.util.UUID
-import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     if (args.isNotEmpty()) {
-        exitProcess(SnapOCli.run(args))
+        SnapOCli.run(args)
+        return
     }
 
     configurePlatformAppearance()

@@ -1,5 +1,13 @@
 package com.openai.snapo.desktop.cli
 
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
+import com.github.ajalt.clikt.core.main
+import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.option
 import com.openai.snapo.desktop.adb.AdbExec
 import com.openai.snapo.desktop.adb.AdbForwardHandle
 import com.openai.snapo.desktop.link.SnapOLinkServerConnection
@@ -29,56 +37,11 @@ object SnapOCli {
     private val requestHeaderNames = setOf("authorization", "cookie")
     private val responseHeaderNames = setOf("set-cookie")
 
-    fun run(args: Array<String>): Int = runBlocking {
-        runInternal(args.toList())
+    fun run(args: Array<String>) {
+        RootCommand(this).main(args)
     }
 
-    private suspend fun runInternal(args: List<String>): Int {
-        if (args.isEmpty()) {
-            printUsage()
-            return 1
-        }
-
-        return when (args.first()) {
-            "help", "-h", "--help" -> {
-                printUsage()
-                0
-            }
-
-            "network" -> runNetwork(args.drop(1))
-            else -> {
-                printError("Unknown command: ${args.first()}")
-                printUsage()
-                1
-            }
-        }
-    }
-
-    private suspend fun runNetwork(args: List<String>): Int {
-        if (args.isEmpty()) {
-            printNetworkUsage()
-            return 1
-        }
-
-        return when (args.first()) {
-            "list" -> runNetworkList(args.drop(1))
-            "requests" -> runNetworkRequests(args.drop(1))
-            "response-body" -> runNetworkResponseBody(args.drop(1))
-            else -> {
-                printError("Unknown network command: ${args.first()}")
-                printNetworkUsage()
-                1
-            }
-        }
-    }
-
-    private suspend fun runNetworkList(args: List<String>): Int {
-        if (args.isNotEmpty()) {
-            printError("Unexpected arguments: ${args.joinToString(" ")}")
-            printNetworkListUsage()
-            return 1
-        }
-
+    private suspend fun runNetworkList(): Int {
         val adb = AdbExec()
         val servers = discoverServers(adb)
         servers.forEach { server ->
@@ -93,27 +56,10 @@ object SnapOCli {
         return 0
     }
 
-    private suspend fun runNetworkRequests(args: List<String>): Int {
-        if (args.isEmpty()) {
-            printNetworkRequestsUsage()
+    private suspend fun runNetworkRequests(serverArgument: String, noStream: Boolean): Int {
+        val server = parseServerRef(serverArgument) ?: run {
+            printError("Invalid server. Expected <deviceId/socketName>, got: $serverArgument")
             return 1
-        }
-
-        val server = parseServerRef(args.first()) ?: run {
-            printError("Invalid server. Expected <deviceId/socketName>, got: ${args.first()}")
-            printNetworkRequestsUsage()
-            return 1
-        }
-
-        val extra = args.drop(1)
-        val noStream = when {
-            extra.isEmpty() -> false
-            extra == listOf("--no-stream") -> true
-            else -> {
-                printError("Unexpected arguments: ${extra.joinToString(" ")}")
-                printNetworkRequestsUsage()
-                return 1
-            }
         }
 
         val adb = AdbExec()
@@ -206,13 +152,7 @@ object SnapOCli {
         }
     }
 
-    private suspend fun runNetworkResponseBody(args: List<String>): Int {
-        if (args.size != 1) {
-            printNetworkResponseBodyUsage()
-            return 1
-        }
-
-        val requestId = args.first()
+    private suspend fun runNetworkResponseBody(requestId: String): Int {
         if (requestId.isBlank()) {
             printError("Request ID cannot be empty")
             return 1
@@ -240,13 +180,8 @@ object SnapOCli {
                     return 0
                 }
 
-                is FetchResponseBodyResult.MissingBody -> {
-                    lastError = result.message
-                }
-
-                is FetchResponseBodyResult.Failure -> {
-                    lastError = result.message
-                }
+                is FetchResponseBodyResult.MissingBody -> lastError = result.message
+                is FetchResponseBodyResult.Failure -> lastError = result.message
             }
         }
 
@@ -449,18 +384,21 @@ object SnapOCli {
             CdpNetworkMethod.RequestWillBeSent -> redactHeadersAtPath(
                 params,
                 listOf("request", "headers"),
-                requestHeaderNames
+                requestHeaderNames,
             )
+
             CdpNetworkMethod.ResponseReceived -> redactHeadersAtPath(
                 params,
                 listOf("response", "headers"),
-                responseHeaderNames
+                responseHeaderNames,
             )
+
             CdpNetworkMethod.WebSocketCreated -> redactHeadersAtPath(
                 params,
                 listOf("headers"),
                 requestHeaderNames,
             )
+
             CdpNetworkMethod.WebSocketHandshakeResponseReceived -> {
                 redactHeadersAtPath(
                     params,
@@ -512,42 +450,8 @@ object SnapOCli {
         return JsonObject(updated)
     }
 
-    private fun printUsage() {
-        printLine("Usage: snapo <command>")
-        printLine("")
-        printLine("Commands:")
-        printLine("  network list")
-        printLine("  network requests <deviceId/socketName> [--no-stream]")
-        printLine("  network response-body <requestId>")
-    }
-
-    private fun printNetworkUsage() {
-        printLine("Usage: snapo network <command>")
-        printLine("")
-        printLine("Commands:")
-        printLine("  list")
-        printLine("  requests <deviceId/socketName> [--no-stream]")
-        printLine("  response-body <requestId>")
-    }
-
-    private fun printNetworkListUsage() {
-        printLine("Usage: snapo network list")
-    }
-
-    private fun printNetworkRequestsUsage() {
-        printLine("Usage: snapo network requests <deviceId/socketName> [--no-stream]")
-    }
-
-    private fun printNetworkResponseBodyUsage() {
-        printLine("Usage: snapo network response-body <requestId>")
-    }
-
     private fun printError(message: String) {
         System.err.println("snapo: $message")
-    }
-
-    private fun printLine(message: String) {
-        println(message)
     }
 
     private inline fun <reified T> printJson(payload: T) {
@@ -642,6 +546,86 @@ object SnapOCli {
             }
             forwardHandle = null
             events.close()
+        }
+    }
+
+    private class RootCommand(
+        private val runtime: SnapOCli,
+    ) : CliktCommand(name = "snapo") {
+        override fun help(context: Context): String = "Snap-O command line tools"
+        override val printHelpOnEmptyArgs: Boolean = true
+
+        init {
+            subcommands(NetworkCommand(runtime))
+        }
+
+        override fun run() = Unit
+    }
+
+    private class NetworkCommand(
+        private val runtime: SnapOCli,
+    ) : CliktCommand(name = "network") {
+        override fun help(context: Context): String = "Inspect Snap-O network data"
+        override val printHelpOnEmptyArgs: Boolean = true
+
+        init {
+            subcommands(
+                NetworkListCommand(runtime),
+                NetworkRequestsCommand(runtime),
+                NetworkResponseBodyCommand(runtime),
+            )
+        }
+
+        override fun run() = Unit
+    }
+
+    private class NetworkListCommand(
+        private val runtime: SnapOCli,
+    ) : CliktCommand(name = "list") {
+        override fun help(context: Context): String = "List available Snap-O link servers"
+
+        override fun run() = runBlocking {
+            val exitCode = runtime.runNetworkList()
+            if (exitCode != 0) throw ProgramResult(exitCode)
+        }
+    }
+
+    private class NetworkRequestsCommand(
+        private val runtime: SnapOCli,
+    ) : CliktCommand(name = "requests") {
+        override fun help(context: Context): String = "Emit CDP network events for a server"
+
+        private val server by argument(
+            name = "server",
+            help = "<deviceId/socketName>",
+        )
+        private val noStream by option(
+            "--no-stream",
+            help = "Emit only the buffered snapshot and then exit",
+        ).flag(default = false)
+
+        override fun run() = runBlocking {
+            val exitCode = runtime.runNetworkRequests(
+                serverArgument = server,
+                noStream = noStream,
+            )
+            if (exitCode != 0) throw ProgramResult(exitCode)
+        }
+    }
+
+    private class NetworkResponseBodyCommand(
+        private val runtime: SnapOCli,
+    ) : CliktCommand(name = "response-body") {
+        override fun help(context: Context): String = "Fetch response body for a request id"
+
+        private val requestId by argument(
+            name = "requestId",
+            help = "CDP request id",
+        )
+
+        override fun run() = runBlocking {
+            val exitCode = runtime.runNetworkResponseBody(requestId)
+            if (exitCode != 0) throw ProgramResult(exitCode)
         }
     }
 }
