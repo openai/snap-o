@@ -20,188 +20,174 @@
     <meta property="og:image" content="assets/snapo-banner.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/png" href="assets/icon-64.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0,0"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
     />
 
     <style>
       :root {
         color-scheme: light;
-        /* Clean white surface */
         --bg: #ffffff;
-        --card: #ffffff;
-
-        /* Ink + lines */
-        --ink-1: #0b0f19;
-        --ink-2: #5a6472;
-        --line: #e6e8ec; /* thin light-gray borders everywhere */
-
-        /* Bright neon greens to match current banner accents */
-        --green-1: #00c94f; /* primary */
-        --green-2: #00e45c; /* brighter */
-        --green-3: #00ff66; /* neon highlight */
-
-        --radius: 4px;
-        --maxw: 1200px;
-
-        --space-1: clamp(10px, 1.2vw, 14px);
-        --space-2: clamp(16px, 1.6vw, 22px);
-        --space-3: clamp(24px, 2.6vw, 36px);
-        --space-4: clamp(40px, 4vw, 64px);
-        --space-5: clamp(64px, 7vw, 96px);
-
-        --title: 42px;
-        --lead: clamp(1.05rem, 1.5vw, 1.2rem);
+        --surface: #ffffff;
+        --ink: #0a0a0a;
+        --muted: #5f5f5f;
+        --line: #d8d8d8;
+        --accent: #00e85f;
+        --radius: 2px;
+        --maxw: 1240px;
       }
       * {
         box-sizing: border-box;
       }
-      html {
-        scroll-behavior: smooth;
-      }
       body {
         margin: 0;
-        font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
-          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-        color: var(--ink-1);
+        font: 15px/1.52 "IBM Plex Sans", "Neue Haas Grotesk Text Pro",
+          "Helvetica Neue", sans-serif;
+        color: var(--ink);
         background: var(--bg);
         -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: inherit;
       }
 
       .wrap {
         max-width: var(--maxw);
         margin-inline: auto;
-        padding-inline: clamp(20px, 4vw, 48px);
-      }
-      .hero {
-        padding-block: var(--space-5) var(--space-4);
+        padding-inline: clamp(16px, 3.2vw, 40px);
       }
 
-      .grid {
-        display: grid;
-        gap: var(--space-4);
-        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      .topbar {
+        border-bottom: 1px solid var(--line);
       }
-      @media (max-width: 980px) {
-        .grid {
-          grid-template-columns: 1fr;
-          text-align: center;
-        }
-        .cta {
-          justify-content: center;
-        }
+      .topbar-inner {
+        min-height: 52px;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        gap: 16px;
+      }
+      .brand {
+        margin: 0;
+        text-decoration: none;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        font-size: 0.76rem;
+        font-weight: 600;
+      }
+      .top-links {
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 8px 22px;
+      }
+      .top-links a {
+        text-decoration: none;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.68rem;
+        color: var(--muted);
+      }
+      .top-links a:hover,
+      .top-links a:focus-visible {
+        color: var(--ink);
+      }
+
+      .hero {
+        padding-block: clamp(34px, 6vw, 72px) clamp(28px, 5vw, 50px);
+      }
+      .hero-grid {
+        display: grid;
+        gap: clamp(20px, 3vw, 34px);
+        grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+        align-items: start;
+      }
+
+      .kicker {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        font-size: 0.68rem;
+        color: var(--muted);
       }
 
       h1 {
-        margin: 0 0 var(--space-2);
-        font-weight: 500;
-        letter-spacing: -0.01em;
-        font-size: var(--title);
+        margin: 0.5rem 0 0;
+        font-size: clamp(2.15rem, 7vw, 5rem);
+        line-height: 0.95;
+        letter-spacing: -0.03em;
+        font-weight: 600;
       }
       .lead {
-        margin: 0 0 var(--space-3);
-        color: var(--ink-2);
-        font-size: var(--lead);
+        margin: 1.1rem 0 0;
+        color: var(--muted);
         max-width: 60ch;
       }
 
       .cta {
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-2);
+        gap: 10px;
+        margin-top: 20px;
       }
       .btn {
-        --h: 46px;
         display: inline-flex;
         align-items: center;
-        gap: 0.6em;
-        padding: 0 1.4em;
-        min-height: var(--h);
+        justify-content: center;
+        min-height: 42px;
+        padding: 0 14px;
         border-radius: var(--radius);
-        font-weight: 700;
+        border: 1px solid;
         text-decoration: none;
-        letter-spacing: 0.01em;
-        border: 1px solid var(--line);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-weight: 600;
+        font-size: 0.7rem;
+        transition: color 140ms ease, background-color 140ms ease,
+          border-color 140ms ease;
       }
-      .material-symbols-rounded {
-        font-family: "Material Symbols Rounded";
-        font-style: normal;
-        font-size: 22px;
-        display: inline-flex;
-        width: 1.4em;
-        height: 1.4em;
-        align-items: center;
-        justify-content: center;
-        letter-spacing: normal;
-        text-transform: none;
-        line-height: 1;
-        position: relative;
-        font-variation-settings: "FILL" 0, "GRAD" 0, "opsz" 24, "wght" 500;
-        overflow: hidden;
-      }
-      .material-symbols-rounded::before,
-      .material-symbols-rounded::after {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .material-symbols-rounded::before {
-        content: "";
-      }
-      .material-symbols-rounded::after {
-        content: attr(data-icon);
-        opacity: 0;
-      }
-      .icons-ready .material-symbols-rounded::before {
-        display: none;
-      }
-      .icons-ready .material-symbols-rounded::after {
-        opacity: 1;
-      }
-
-      .btn .material-symbols-rounded {
-        font-size: 22px;
-      }
-
-      /* Primary button: dark base with green text to match banner */
       .btn.primary {
         color: #0a0a0a;
         background: #ffffff;
         border-color: #0a0a0a;
-        font-size: 1.2em;
-        padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
       }
-      .primary:hover,
-      .primary:focus-visible {
+      .btn.primary:hover,
+      .btn.primary:focus-visible {
         color: #ffffff;
         background: #000000;
         border-color: #000000;
       }
-
-      /* Secondary = plain card with line only */
-      .secondary {
-        color: var(--ink-1);
-        background: var(--card);
+      .btn.secondary {
+        color: var(--ink);
+        background: #ffffff;
+        border-color: var(--line);
+      }
+      .btn.secondary:hover,
+      .btn.secondary:focus-visible {
+        border-color: #0a0a0a;
       }
 
       .note {
-        margin: var(--space-1) 0 0;
-        color: var(--ink-2);
-        font-size: 0.95rem;
+        margin: 14px 0 0;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.66rem;
+      }
+      .note code {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.95em;
       }
 
-      /* Demo and cards: only a thin border; NO shadows */
-      .demo img,
-      .callout {
-        border-radius: var(--radius);
-        background: var(--card);
-        border: 1px solid var(--line);
-      }
       .demo {
+        margin: 0;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
         overflow: hidden;
+        background: #f4f4f4;
       }
       .demo img {
         display: block;
@@ -210,89 +196,150 @@
       }
 
       .section {
-        padding-block: var(--space-2);
+        border-top: 1px solid var(--line);
+        padding-block: clamp(20px, 3vw, 34px);
       }
-      .card {
-        padding-bottom: var(--space-3);
+      .section-label {
+        margin: 0 0 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.68rem;
+        color: var(--muted);
       }
 
-      .features {
-        display: grid;
-        gap: var(--space-3);
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      .feature-list {
         list-style: none;
-        padding: 0;
         margin: 0;
+        padding: 0;
+        border-top: 1px solid var(--line);
       }
-      .feature {
+      .feature-item {
         display: grid;
-        grid-template-columns: auto 1fr;
+        grid-template-columns: 52px minmax(0, 1fr);
         align-items: start;
+        gap: 12px;
+        padding: 14px 0 16px;
+        border-bottom: 1px solid var(--line);
       }
-      .feature .material-symbols-rounded {
-        font-size: 28px;
-        color: var(--green-1);
-        width: var(--space-4);
+      .feature-index {
+        margin: 3px 0 0;
+        font: 500 0.67rem/1.2 "IBM Plex Mono", ui-monospace, monospace;
+        color: var(--muted);
+        letter-spacing: 0.1em;
+      }
+      .feature-title {
+        margin: 0;
+        font-size: clamp(0.98rem, 1.8vw, 1.12rem);
+        letter-spacing: -0.01em;
+        line-height: 1.28;
+        font-weight: 600;
+      }
+      .feature-copy {
+        margin: 4px 0 0;
+        color: var(--muted);
       }
 
-      .callout {
-        padding: var(--space-3) var(--space-4);
+      .resource-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
-      .callout h3 {
-        margin: 0.1rem 0 0.4rem;
+      .resource-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface);
+        padding: 16px;
       }
-      .callout p {
-        margin: 0.2rem 0 0;
-        color: var(--ink-2);
+      .resource-title {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.68rem;
+      }
+      .resource-copy {
+        margin: 10px 0 0;
+        color: var(--muted);
       }
       .text-link {
         display: inline-flex;
-        align-items: center;
-        gap: 0.4em;
-        font-weight: 600;
-        color: inherit;
+        margin-top: 14px;
         text-decoration: none;
-        border-bottom: 2px solid currentColor;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.68rem;
+        font-weight: 600;
+        border-bottom: 1px solid var(--accent);
         padding-bottom: 2px;
+        color: #0b8f42;
+      }
+      .text-link:hover,
+      .text-link:focus-visible {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
       }
 
       footer {
-        padding-block: var(--space-4) var(--space-3);
-        text-align: center;
-        color: var(--ink-2);
-        font-size: 0.9rem;
+        border-top: 1px solid var(--line);
+        margin-top: 14px;
+      }
+      .footer-row {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 16px;
+        flex-wrap: wrap;
+      }
+      .footer-copy {
+        margin: 0;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.64rem;
       }
 
-      @media (prefers-color-scheme: dark) {
-        :root {
-          color-scheme: dark;
-          --bg: #06090f;
-          --card: #101725;
-          --ink-1: #f1f4fa;
-          --ink-2: #bbc6d6;
-          --line: #2a364b;
-          --green-1: #00d85a;
-          --green-2: #00ef68;
-          --green-3: #39ff84;
+      @media (max-width: 980px) {
+        .hero-grid {
+          grid-template-columns: 1fr;
         }
-
-        .primary {
-          color: #0a0a0a;
-          background: #ffffff;
-          border-color: #0a0a0a;
+      }
+      @media (max-width: 840px) {
+        .topbar-inner {
+          grid-template-columns: 1fr;
+          padding-block: 10px;
         }
-
-        .secondary {
-          background: var(--card);
+        .top-links {
+          justify-content: flex-start;
+        }
+      }
+      @media (max-width: 760px) {
+        .resource-grid {
+          grid-template-columns: 1fr;
         }
       }
     </style>
   </head>
   <body>
+    <header class="topbar">
+      <div class="wrap topbar-inner">
+        <a class="brand" href="https://github.com/openai/snap-o">Snap-O</a>
+        <nav class="top-links" aria-label="Primary">
+          <a href="https://github.com/openai/snap-o/releases/latest"
+            >Latest Release</a
+          >
+          <a href="https://github.com/openai/snap-o/blob/main/docs/network-inspector.md"
+            >Network Guide</a
+          >
+          <a href="https://github.com/openai/snap-o#readme">Readme</a>
+        </nav>
+      </div>
+    </header>
+
     <main>
       <section class="hero">
-        <div class="wrap grid">
+        <div class="wrap hero-grid">
           <div>
+            <p class="kicker">Android inspection system</p>
             <h1>Snap-O</h1>
             <p class="lead">
               A fast, tidy macOS app for Android inspection: capture
@@ -300,23 +347,10 @@
               Android devices and emulators.
             </p>
             <div class="cta">
-              <a
-                class="btn primary"
-                href="https://github.com/openai/snap-o/releases/latest"
-              >
-                <span
-                  class="material-symbols-rounded"
-                  aria-hidden="true"
-                  data-icon="download"
-                ></span>
+              <a class="btn primary" href="https://github.com/openai/snap-o/releases/latest">
                 Download for macOS
               </a>
               <a class="btn secondary" href="https://github.com/openai/snap-o">
-                <span
-                  class="material-symbols-rounded"
-                  aria-hidden="true"
-                  data-icon="code"
-                ></span>
                 View on GitHub
               </a>
             </div>
@@ -337,121 +371,96 @@
 
       <section class="section">
         <div class="wrap">
-          <article class="card">
-            <ul class="features">
-              <li class="feature">
-                <span
-                  class="material-symbols-rounded"
-                  aria-hidden="true"
-                  data-icon="photo_camera"
-                ></span>
-                <div>
-                  <h3 style="margin: 0.1rem 0 0.3rem">Screen capture</h3>
-                  <p style="margin: 0; color: var(--ink-2)">
-                    Grab screenshots and recordings quickly, preview recordings
-                    instantly, and scrub frame-by-frame when checking animations
-                    or UI flow.
-                  </p>
-                </div>
-              </li>
-              <li class="feature">
-                <span
-                  class="material-symbols-rounded"
-                  aria-hidden="true"
-                  data-icon="pan_tool_alt"
-                ></span>
-                <div>
-                  <h3 style="margin: 0.1rem 0 0.3rem">
-                    Drag and drop without saving
-                  </h3>
-                  <p style="margin: 0; color: var(--ink-2)">
-                    Drop captures directly into pull requests, chat, and docs
-                    without the usual save-first friction.
-                  </p>
-                </div>
-              </li>
-              <li class="feature">
-                <span
-                  class="material-symbols-rounded"
-                  aria-hidden="true"
-                  data-icon="devices"
-                ></span>
-                <div>
-                  <h3 style="margin: 0.1rem 0 0.3rem">
-                    Multi-device and quick controls
-                  </h3>
-                  <p style="margin: 0; color: var(--ink-2)">
-                    Works across connected devices and emulators, with direct
-                    keyboard shortcuts and Android Studio External Tools
-                    integration.
-                  </p>
-                </div>
-              </li>
-              <li class="feature">
-                <span
-                  class="material-symbols-rounded"
-                  aria-hidden="true"
-                  data-icon="bolt"
-                ></span>
-                <div>
-                  <h3 style="margin: 0.1rem 0 0.3rem">
-                    Network Inspector (Alpha)
-                  </h3>
-                  <p style="margin: 0; color: var(--ink-2)">
-                    Mirror app traffic into the macOS client, inspect requests
-                    and responses, and explore payloads with collapsible JSON
-                    pretty printing.
-                  </p>
-                </div>
-              </li>
-            </ul>
-          </article>
+          <p class="section-label">Top-Level Features</p>
+          <ol class="feature-list">
+            <li class="feature-item">
+              <p class="feature-index">01</p>
+              <div>
+                <h3 class="feature-title">Screen capture</h3>
+                <p class="feature-copy">
+                  Grab screenshots and recordings quickly, preview recordings
+                  instantly, and scrub frame-by-frame when checking animations
+                  or UI flow.
+                </p>
+              </div>
+            </li>
+            <li class="feature-item">
+              <p class="feature-index">02</p>
+              <div>
+                <h3 class="feature-title">Drag and drop without saving</h3>
+                <p class="feature-copy">
+                  Drop captures directly into pull requests, chat, and docs
+                  without the usual save-first friction.
+                </p>
+              </div>
+            </li>
+            <li class="feature-item">
+              <p class="feature-index">03</p>
+              <div>
+                <h3 class="feature-title">Multi-device and quick controls</h3>
+                <p class="feature-copy">
+                  Works across connected devices and emulators, with direct
+                  keyboard shortcuts and Android Studio External Tools
+                  integration.
+                </p>
+              </div>
+            </li>
+            <li class="feature-item">
+              <p class="feature-index">04</p>
+              <div>
+                <h3 class="feature-title">Network Inspector (Alpha)</h3>
+                <p class="feature-copy">
+                  Mirror app traffic into the macOS client, inspect requests
+                  and responses, and explore payloads with collapsible JSON
+                  pretty printing.
+                </p>
+              </div>
+            </li>
+          </ol>
         </div>
       </section>
 
       <section class="section">
         <div class="wrap">
-          <div class="callout">
-            <h3>Learn more</h3>
-            <p>
-              Read the full README for setup, shortcuts, Android Studio External
-              Tools, project status, and contribution details.
-            </p>
-            <p style="margin: 0.6rem 0 0">
+          <p class="section-label">Resources</p>
+          <div class="resource-grid">
+            <article class="resource-card">
+              <p class="resource-title">Network Inspector (Alpha)</p>
+              <p class="resource-copy">
+                Setup steps, dependency coordinates, and configuration tips for
+                mirroring app traffic into Snap-O.
+              </p>
               <a
                 class="text-link"
-                href="https://github.com/openai/snap-o#readme"
+                href="https://github.com/openai/snap-o/blob/main/docs/network-inspector.md"
               >
-                View README on GitHub
-                <span
-                  class="material-symbols-rounded"
-                  aria-hidden="true"
-                  data-icon="arrow_right_alt"
-                ></span>
+                Open Guide ->
               </a>
-            </p>
+            </article>
+            <article class="resource-card">
+              <p class="resource-title">Full Readme</p>
+              <p class="resource-copy">
+                See setup notes, shortcuts, Android Studio External Tools, and
+                project status.
+              </p>
+              <a class="text-link" href="https://github.com/openai/snap-o#readme">
+                View Readme ->
+              </a>
+            </article>
           </div>
         </div>
       </section>
     </main>
 
-    <footer>© <span id="year"></span> OpenAI • Apache 2.0</footer>
+    <footer>
+      <div class="wrap footer-row">
+        <p class="footer-copy">© <span id="year"></span> OpenAI</p>
+        <p class="footer-copy">Apache 2.0</p>
+      </div>
+    </footer>
 
     <script>
       document.getElementById("year").textContent = new Date().getFullYear();
-
-      if ("fonts" in document) {
-        document.fonts
-          .load('1em "Material Symbols Rounded"')
-          .then(function () {
-            document.documentElement.classList.add("icons-ready");
-          })
-          .catch(function () {
-            document.documentElement.classList.add("icons-ready");
-          });
-      } else {
-        document.documentElement.classList.add("icons-ready");
-      }
     </script>
   </body>
 </html>
