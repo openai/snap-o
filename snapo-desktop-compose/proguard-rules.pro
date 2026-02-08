@@ -10,9 +10,10 @@
 -dontwarn java.lang.invoke.MethodHandles
 -dontwarn java.lang.invoke.VarHandle
 
-# Fixes release CLI startup crash:
-# java.lang.VerifyError in OptionWithValuesKt__OptionWithValuesKt.option(...)
-# observed when running `snapo network list` from release artifacts.
--keep,includedescriptorclasses class com.github.ajalt.clikt.parameters.options.OptionWithValues { *; }
--keep,includedescriptorclasses class com.github.ajalt.clikt.parameters.options.OptionWithValuesImpl { *; }
--keep,includedescriptorclasses class com.github.ajalt.clikt.parameters.options.OptionWithValuesKt__OptionWithValuesKt { *; }
+# Keep Clikt unshrunk/unoptimized in release artifacts. This avoids brittle
+# optimizer interactions in generated parser/help code paths.
+-keep,includedescriptorclasses class com.github.ajalt.clikt.** { *; }
+
+# Mordant terminal providers are loaded via ServiceLoader, so keep JNA backend
+# provider implementation classes from Mordant.
+-keep class com.github.ajalt.mordant.terminal.terminalinterface.jna.** { *; }
