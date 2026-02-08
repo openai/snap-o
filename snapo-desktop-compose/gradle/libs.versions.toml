@@ -1,21 +1,20 @@
 [versions]
-detektComposeRules = "0.4.23"
-kotlin = "2.3.0"
-metro = "0.9.3"
-composeMultiplatform = "1.10.0"
-composeMaterial3 = "1.10.0-alpha05"
-composeHotReload = "1.1.0-alpha03"
+detektComposeRules = "0.5.6"
+kotlin = "2.3.10"
+metro = "0.10.2"
+composeMultiplatform = "1.11.0-alpha02"
+composeHotReload = "1.1.0-alpha04"
 coroutines = "1.10.2"
-serialization = "1.9.0"
+serialization = "1.10.0"
 detekt = "1.23.8"
-clikt = "5.0.3"
+clikt = "5.1.0"
 
 [libraries]
 detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
 detekt-compose-rules = { module = "io.nlopez.compose.rules:detekt", version.ref = "detektComposeRules" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
-compose-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "composeMaterial3" }
+compose-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "composeMultiplatform" }
 compose-components-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "composeMultiplatform" }
 compose-components-splitpane = { group = "org.jetbrains.compose.components", name = "components-splitpane", version.ref = "composeMultiplatform" }
 compose-ui-tooling-preview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "composeMultiplatform" }
