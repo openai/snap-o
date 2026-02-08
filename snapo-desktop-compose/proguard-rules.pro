@@ -9,3 +9,10 @@
 -dontwarn java.lang.foreign.**
 -dontwarn java.lang.invoke.MethodHandles
 -dontwarn java.lang.invoke.VarHandle
+
+# Fixes release CLI startup crash:
+# java.lang.VerifyError in OptionWithValuesKt__OptionWithValuesKt.option(...)
+# observed when running `snapo network list` from release artifacts.
+-keep,includedescriptorclasses class com.github.ajalt.clikt.parameters.options.OptionWithValues { *; }
+-keep,includedescriptorclasses class com.github.ajalt.clikt.parameters.options.OptionWithValuesImpl { *; }
+-keep,includedescriptorclasses class com.github.ajalt.clikt.parameters.options.OptionWithValuesKt__OptionWithValuesKt { *; }
