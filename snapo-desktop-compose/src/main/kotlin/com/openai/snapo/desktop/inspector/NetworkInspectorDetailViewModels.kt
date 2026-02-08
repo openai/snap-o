@@ -248,7 +248,7 @@ private fun requestBodyPayload(
     val resolved = record ?: return null
     val bodyText = resolved.body ?: resolved.bodyPreview ?: return null
     val contentType = contentTypeFor(resolved.headers)
-    val encoding = resolved.bodyEncoding ?: contentType
+    val encoding = resolved.bodyEncoding
     val truncated = resolved.bodyTruncatedBytes
     val isPreview = (resolved.body == null) || ((truncated ?: 0) > 0)
     return makeBodyPayload(
@@ -256,6 +256,7 @@ private fun requestBodyPayload(
         isPreview = isPreview,
         truncatedBytes = truncated,
         totalBytes = resolved.bodySize,
+        contentType = contentType,
         encoding = encoding,
     )
 }
@@ -276,6 +277,7 @@ private fun responseBodyPayload(
         isPreview = resolved.body == null,
         truncatedBytes = resolved.bodyTruncatedBytes,
         totalBytes = resolved.bodySize,
+        contentType = contentType,
         encoding = encoding,
     )
 }
@@ -407,6 +409,7 @@ private fun makeBodyPayload(
     isPreview: Boolean,
     truncatedBytes: Long?,
     totalBytes: Long?,
+    contentType: String?,
     encoding: String?,
 ): NetworkInspectorRequestUiModel.BodyPayload {
     val capturedBytes = text.toByteArray(Charsets.UTF_8).size.toLong()
@@ -419,7 +422,7 @@ private fun makeBodyPayload(
     val pretty = prettyPrintedJsonOrNull(text)
     val isLikelyJson = pretty != null || encodingMatchesJson || prefixSuggestsJson
 
-    val normalizedContentType = normalizeContentType(encoding)
+    val normalizedContentType = normalizeContentType(contentType) ?: normalizeContentType(encoding)
     val binaryData = decodeImageDataIfNeeded(trimmed, normalizedContentType)
 
     return NetworkInspectorRequestUiModel.BodyPayload(
