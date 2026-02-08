@@ -5,6 +5,8 @@
 
 CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM = $(SNAPO_DEVELOPMENT_TEAM)
+// Default to ad-hoc signing so local builds work without Signing.xcconfig.
+SNAPO_CODE_SIGN_IDENTITY = -
 CODE_SIGN_IDENTITY = $(SNAPO_CODE_SIGN_IDENTITY)
 ENABLE_HARDENED_RUNTIME = YES
 
