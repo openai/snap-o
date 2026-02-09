@@ -1,6 +1,7 @@
 package com.openai.snapo.demo.httpurlconnection
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +18,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import com.openai.snapo.demo.shared.DemoMockServer
 import com.openai.snapo.network.httpurlconnection.SnapOHttpUrlInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -26,30 +29,42 @@ import java.net.URL
 class MainActivity : ComponentActivity() {
 
     private val interceptor = SnapOHttpUrlInterceptor()
+    private val mockServer = DemoMockServer()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { mockServer.ensureStarted() }
+                .onFailure { error -> Log.e(DemoLogTag, "Failed to start MockWebServer", error) }
+        }
         enableEdgeToEdge()
-        setContent { DemoScreen(interceptor = interceptor) }
+        setContent {
+            DemoScreen(
+                interceptor = interceptor,
+                mockServer = mockServer,
+            )
+        }
     }
 
     override fun onDestroy() {
         interceptor.close()
+        runCatching { mockServer.close() }
+            .onFailure { error -> Log.e(DemoLogTag, "Failed to stop MockWebServer", error) }
         super.onDestroy()
     }
 }
 
 @Composable
-private fun DemoScreen(interceptor: SnapOHttpUrlInterceptor) {
+private fun DemoScreen(interceptor: SnapOHttpUrlInterceptor, mockServer: DemoMockServer) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             DemoContent(
                 onNetworkRequestClick = {
-                    scope.launch { performGetRequest(interceptor) }
+                    scope.launch { performGetRequest(interceptor, mockServer) }
                 },
                 onPostRequestClick = {
-                    scope.launch { performPostRequest(interceptor) }
+                    scope.launch { performPostRequest(interceptor, mockServer) }
                 },
                 modifier = Modifier.padding(innerPadding),
             )
@@ -57,10 +72,14 @@ private fun DemoScreen(interceptor: SnapOHttpUrlInterceptor) {
     }
 }
 
-private suspend fun performGetRequest(interceptor: SnapOHttpUrlInterceptor) {
+private suspend fun performGetRequest(
+    interceptor: SnapOHttpUrlInterceptor,
+    mockServer: DemoMockServer,
+) {
+    val url = resolveMockHttpUrl(mockServer, "/helloworld.txt") ?: return
     withContext(Dispatchers.IO) {
         val connection = interceptor.open(
-            URL("https://publicobject.com/helloworld.txt")
+            URL(url)
         )
         try {
             connection.requestMethod = "GET"
@@ -76,10 +95,14 @@ private suspend fun performGetRequest(interceptor: SnapOHttpUrlInterceptor) {
     }
 }
 
-private suspend fun performPostRequest(interceptor: SnapOHttpUrlInterceptor) {
+private suspend fun performPostRequest(
+    interceptor: SnapOHttpUrlInterceptor,
+    mockServer: DemoMockServer,
+) {
+    val url = resolveMockHttpUrl(mockServer, "/post") ?: return
     withContext(Dispatchers.IO) {
         val connection = interceptor.open(
-            URL("https://postman-echo.com/post")
+            URL(url)
         )
         try {
             connection.requestMethod = "POST"
@@ -112,6 +135,14 @@ private suspend fun performPostRequest(interceptor: SnapOHttpUrlInterceptor) {
     }
 }
 
+private suspend fun resolveMockHttpUrl(mockServer: DemoMockServer, path: String): String? {
+    return withContext(Dispatchers.IO) {
+        runCatching { mockServer.httpUrl(path) }
+            .onFailure { error -> Log.e(DemoLogTag, "Failed to resolve MockWebServer URL", error) }
+            .getOrNull()
+    }
+}
+
 @Composable
 private fun DemoContent(
     onNetworkRequestClick: () -> Unit,
@@ -141,3 +172,5 @@ private fun DemoPreview() {
         )
     }
 }
+
+private const val DemoLogTag = "SnapODemo"
