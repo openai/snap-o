@@ -177,6 +177,26 @@ class NetworkInspectorFeature(
         currentSink.send(wireMessage)
     }
 
+    suspend fun updateLatestResponseBody(
+        requestId: String,
+        bodyPreview: String?,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ) {
+        bufferLock.withLock {
+            eventBuffer.updateLatestResponseBody(
+                requestId = requestId,
+                bodyPreview = bodyPreview,
+                body = body,
+                bodyEncoding = bodyEncoding,
+                bodyTruncatedBytes = bodyTruncatedBytes,
+                bodySize = bodySize,
+            )
+        }
+    }
+
     private suspend fun findLatestRequest(requestId: String): RequestWillBeSent? {
         val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
         return snapshot.asReversed().firstNotNullOfOrNull { record ->

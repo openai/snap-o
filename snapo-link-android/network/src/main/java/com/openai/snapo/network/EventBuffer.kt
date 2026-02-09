@@ -23,6 +23,32 @@ internal class EventBuffer(
 
     fun snapshot(): List<NetworkEventRecord> = ArrayList(records)
 
+    fun updateLatestResponseBody(
+        requestId: String,
+        bodyPreview: String?,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ): Boolean {
+        val index = records.indexOfLast { candidate ->
+            (candidate as? ResponseReceived)?.id == requestId
+        }
+        if (index < 0) return false
+        val existing = records[index] as? ResponseReceived ?: return false
+        val updated = existing.copy(
+            bodyPreview = bodyPreview,
+            body = body,
+            bodyEncoding = bodyEncoding,
+            bodyTruncatedBytes = bodyTruncatedBytes,
+            bodySize = bodySize ?: existing.bodySize,
+        )
+        records[index] = updated
+        subtractApproxBytes(existing)
+        approxBytes += estimateSize(updated)
+        return true
+    }
+
     private fun insertSorted(record: NetworkEventRecord) {
         val insertIndex = findInsertIndex(record)
         records.add(insertIndex, record)
@@ -118,6 +144,7 @@ internal class EventBuffer(
         when (record) {
             is ResponseStreamEvent -> activeResponseStreams.add(record.id)
             is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
+            is ResponseFinished -> activeResponseStreams.remove(record.id)
             is RequestFailed -> activeResponseStreams.remove(record.id)
             else -> Unit
         }
@@ -126,6 +153,7 @@ internal class EventBuffer(
     private fun updateStreamStateOnRemove(record: NetworkEventRecord) {
         when (record) {
             is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
+            is ResponseFinished -> activeResponseStreams.remove(record.id)
             is RequestFailed -> activeResponseStreams.remove(record.id)
             else -> Unit
         }
@@ -138,6 +166,7 @@ internal class EventBuffer(
                     head.id
                 )
 
+                is ResponseFinished -> candidate.id == head.id
                 is RequestFailed -> candidate.id == head.id
                 is ResponseStreamClosed -> candidate.id == head.id
                 else -> false
@@ -183,6 +212,12 @@ internal class EventBuffer(
             val record = iterator.next()
             when (record) {
                 is ResponseReceived -> if (record.id == requestId) {
+                    iterator.remove()
+                    subtractApproxBytes(record)
+                    updateStreamStateOnRemove(record)
+                }
+
+                is ResponseFinished -> if (record.id == requestId) {
                     iterator.remove()
                     subtractApproxBytes(record)
                     updateStreamStateOnRemove(record)
@@ -235,6 +270,7 @@ internal class EventBuffer(
                     record.bodyPreview.length +
                     record.body.length
 
+            is ResponseFinished -> 0
             is ResponseStreamEvent -> record.raw.length
             is ResponseStreamClosed -> record.reason.length + record.message.length
             is WebSocketWillOpen -> record.url.length + sizeOfHeaders(record.headers)

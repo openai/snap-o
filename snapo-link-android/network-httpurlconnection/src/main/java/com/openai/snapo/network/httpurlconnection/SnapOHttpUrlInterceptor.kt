@@ -9,6 +9,7 @@ import com.openai.snapo.network.NetworkEventRecord
 import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.RequestFailed
 import com.openai.snapo.network.RequestWillBeSent
+import com.openai.snapo.network.ResponseFinished
 import com.openai.snapo.network.ResponseReceived
 import com.openai.snapo.network.ResponseStreamClosed
 import com.openai.snapo.network.ResponseStreamEvent
@@ -63,6 +64,31 @@ class SnapOHttpUrlInterceptor @JvmOverloads constructor(
         scope.launch {
             try {
                 feature.publish(record)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    internal fun updateLatestResponseBody(
+        requestId: String,
+        bodyPreview: String?,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ) {
+        if (!SnapOLink.isEnabled()) return
+        val feature = NetworkInspector.getOrNull() ?: return
+        scope.launch {
+            try {
+                feature.updateLatestResponseBody(
+                    requestId = requestId,
+                    bodyPreview = bodyPreview,
+                    body = body,
+                    bodyEncoding = bodyEncoding,
+                    bodyTruncatedBytes = bodyTruncatedBytes,
+                    bodySize = bodySize,
+                )
             } catch (_: Throwable) {
             }
         }
@@ -609,17 +635,16 @@ private class ResponseCapturingInputStream(
             previewBytes = interceptor.responseBodyPreviewBytes,
         )
         val totalBytes = snapshot.totalBytes.takeIf { it > 0L } ?: meta?.contentLength
-        val responseWall = meta?.responseWall ?: System.currentTimeMillis()
-        val responseMono = meta?.responseMono ?: SystemClock.elapsedRealtimeNanos()
-
-        publishResponseIfNeeded(
-            currentContext = currentContext,
-            meta = meta,
+        updateResponseBodyIfNeeded(
+            requestId = currentContext.requestId,
             bodyValues = bodyValues,
             truncatedBytes = snapshot.truncatedBytes,
             totalBytes = totalBytes,
-            responseWall = responseWall,
-            responseMono = responseMono,
+            error = error,
+        )
+        publishLoadingFinishedIfNeeded(
+            requestId = currentContext.requestId,
+            totalBytes = totalBytes,
             error = error,
         )
         publishFailureIfNeeded(currentContext, error)
@@ -674,33 +699,41 @@ private class ResponseCapturingInputStream(
         }
     }
 
-    private fun publishResponseIfNeeded(
-        currentContext: InterceptContext,
-        meta: ResponseMeta?,
+    private fun updateResponseBodyIfNeeded(
+        requestId: String,
         bodyValues: CapturedBodyValues,
         truncatedBytes: Long?,
         totalBytes: Long?,
-        responseWall: Long,
-        responseMono: Long,
         error: Throwable?,
     ) {
         val bodyPreview = bodyValues.bodyPreview
         val body = bodyValues.body
         val hasPayload = !body.isNullOrEmpty() || !bodyPreview.isNullOrEmpty() || truncatedBytes != null
         if (!hasPayload && error == null) return
+        interceptor.updateLatestResponseBody(
+            requestId = requestId,
+            bodyPreview = bodyPreview,
+            body = body,
+            bodyEncoding = bodyValues.bodyEncoding,
+            bodyTruncatedBytes = truncatedBytes,
+            bodySize = totalBytes,
+        )
+    }
+
+    private fun publishLoadingFinishedIfNeeded(
+        requestId: String,
+        totalBytes: Long?,
+        error: Throwable?,
+    ) {
+        if (error != null) return
+        val nowWall = System.currentTimeMillis()
+        val nowMono = SystemClock.elapsedRealtimeNanos()
         interceptor.publish {
-            ResponseReceived(
-                id = currentContext.requestId,
-                tWallMs = responseWall,
-                tMonoNs = responseMono,
-                code = meta?.code ?: -1,
-                headers = meta?.headers ?: emptyList(),
-                bodyPreview = bodyPreview,
-                body = body,
-                bodyEncoding = bodyValues.bodyEncoding,
-                bodyTruncatedBytes = truncatedBytes,
+            ResponseFinished(
+                id = requestId,
+                tWallMs = nowWall,
+                tMonoNs = nowMono,
                 bodySize = totalBytes,
-                timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
             )
         }
     }

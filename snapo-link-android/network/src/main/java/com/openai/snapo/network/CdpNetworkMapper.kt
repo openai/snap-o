@@ -24,6 +24,7 @@ internal fun NetworkEventRecord.toCdpMessage(requestUrl: String?): CdpMessage {
     return when (this) {
         is RequestWillBeSent -> toCdpRequestWillBeSent()
         is ResponseReceived -> toCdpResponseReceived(requestUrl)
+        is ResponseFinished -> toCdpLoadingFinished()
         is RequestFailed -> toCdpLoadingFailed()
         is ResponseStreamEvent -> toCdpEventSourceMessageReceived()
         is ResponseStreamClosed -> toCdpStreamClosed()
@@ -93,6 +94,20 @@ private fun RequestFailed.toCdpLoadingFailed(): CdpMessage {
                 timestamp = tMonoNs.toMonotonicSeconds(),
                 type = "XHR",
                 errorText = message ?: errorKind,
+            ),
+        ),
+    )
+}
+
+private fun ResponseFinished.toCdpLoadingFinished(): CdpMessage {
+    return CdpMessage(
+        method = CdpNetworkMethod.LoadingFinished,
+        params = Ndjson.encodeToJsonElement(
+            CdpLoadingFinishedParams.serializer(),
+            CdpLoadingFinishedParams(
+                requestId = id,
+                timestamp = tMonoNs.toMonotonicSeconds(),
+                encodedDataLength = bodySize?.toDouble(),
             ),
         ),
     )

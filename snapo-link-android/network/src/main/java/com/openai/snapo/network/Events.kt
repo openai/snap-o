@@ -52,6 +52,14 @@ data class ResponseReceived(
     val timings: Timings = Timings(),
 ) : PerRequestRecord
 
+/** Indicates a non-streaming response completed successfully. */
+data class ResponseFinished(
+    override val id: String,
+    override val tWallMs: Long,
+    override val tMonoNs: Long,
+    val bodySize: Long? = null,
+) : PerRequestRecord
+
 /** Failure with partial timings if available. */
 data class RequestFailed(
     override val id: String,
