@@ -47,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
@@ -170,8 +171,9 @@ private fun SidebarContent(
         ) {
             SchemaWarning(
                 server = state.selectedServer,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacings.lg)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacings.md)
             )
+            Spacer(Modifier.size(Spacings.md))
         }
 
         SidebarFilterRow(
@@ -315,28 +317,31 @@ private fun SchemaWarning(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        color = SnapOAccents.current().warningSurface,
+        color = SnapOAccents.current().warningSurfaceStrong,
+        contentColor = SnapOAccents.current().onWarningSurfaceStrong,
         shape = MaterialTheme.shapes.medium,
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(Spacings.lg)) {
-            val versionText = server.schemaVersion?.toString() ?: "not reported"
-            Text("App reports schema v$versionText", style = MaterialTheme.typography.bodyMedium)
-            val compatibilityText = if (server.isSchemaOlderThanSupported) {
-                "This Android build is using an older schema than this Network Inspector supports."
-            } else {
-                "This Android build may be newer than the Network Inspector understands."
-            }
             Text(
-                compatibilityText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                when (server.schemaVersion) {
+                    null -> "Incompatible schema version"
+                    else -> "Incompatible schema version ${server.schemaVersion}"
+                },
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                modifier = Modifier.padding(bottom = Spacings.md),
             )
-            if (server.isSchemaOlderThanSupported) {
+            Text(
+                when (server.isSchemaOlderThanSupported) {
+                    true -> "This Android build is using an older schema than this Network Inspector supports."
+                    false -> "This Android build may be newer than the Network Inspector understands."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (server.isSchemaOlderThanSupported && server.schemaVersion == null) {
                 Text(
-                    "Use Snap-O 0.19.0 or older for schema versions below v$SupportedSchemaVersion.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    "Use Snap-O 0.19.0 to inspect this app.",
+                    style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = Spacings.sm),
                 )
             }
