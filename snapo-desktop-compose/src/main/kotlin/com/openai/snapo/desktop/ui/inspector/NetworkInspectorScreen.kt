@@ -40,6 +40,7 @@ import com.openai.snapo.desktop.inspector.NetworkInspectorServerUiModel
 import com.openai.snapo.desktop.inspector.NetworkInspectorStore
 import com.openai.snapo.desktop.inspector.NetworkInspectorWebSocketUiModel
 import com.openai.snapo.desktop.inspector.SnapOLinkServerId
+import com.openai.snapo.desktop.inspector.SupportedSchemaVersion
 import com.openai.snapo.desktop.ui.theme.Spacings
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -264,6 +265,11 @@ private fun DetailPane(
     state: DetailPaneState,
     uiStateStore: InspectorUiStateStore,
 ) {
+    if (isUnsupportedLegacySchemaRequestSelection(state)) {
+        UnsupportedLegacySchemaRequestNote(server = state.selectedServer)
+        return
+    }
+
     when (val content = resolveDetailContent(store, state.selectedItemId)) {
         is DetailContent.Request -> {
             RequestBodyFetchEffect(store = store, request = content.model)
@@ -280,6 +286,30 @@ private fun DetailPane(
     }
 
     DetailPaneEmptyState(state)
+}
+
+private fun isUnsupportedLegacySchemaRequestSelection(state: DetailPaneState): Boolean {
+    val selectedServer = state.selectedServer ?: return false
+    if (!selectedServer.isSchemaOlderThanSupported) return false
+    val selectedRequest = state.selectedItemId as? NetworkInspectorItemId.Request ?: return false
+    return selectedRequest.id.serverId == selectedServer.id
+}
+
+@Composable
+private fun UnsupportedLegacySchemaRequestNote(server: NetworkInspectorServerUiModel?) {
+    val schemaText = server?.schemaVersion?.toString() ?: "not reported"
+    val message = buildString {
+        append("App reports schema v")
+        append(schemaText)
+        append(". This Snap-O Desktop supports schema v")
+        append(SupportedSchemaVersion)
+        append(" and newer. Use Snap-O 0.19.0 or older to inspect this app server.")
+    }
+    EmptyState(
+        title = "This app server uses an unsupported schema",
+        body = message,
+        showDocsLink = false,
+    )
 }
 
 @Composable

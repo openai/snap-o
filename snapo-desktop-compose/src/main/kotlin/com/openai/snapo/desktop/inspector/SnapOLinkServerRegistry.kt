@@ -76,6 +76,7 @@ internal class SnapOLinkServerRegistry(
             hello = existing?.hello,
             schemaVersion = existing?.schemaVersion,
             isSchemaNewerThanSupported = existing?.isSchemaNewerThanSupported ?: false,
+            isSchemaOlderThanSupported = existing?.isSchemaOlderThanSupported ?: false,
             lastEventAt = existing?.lastEventAt,
             deviceDisplayTitle = deviceTitle,
             isConnected = true,
@@ -262,10 +263,12 @@ internal class SnapOLinkServerRegistry(
             val state = serverStates[serverId] ?: return@withLock
             val hello = record.value
             val features = hello.features.map { it.id }.toSet()
+            val schemaVersion = hello.schemaVersion
             val updated = state.server.copy(
                 hello = hello,
-                schemaVersion = hello.schemaVersion,
-                isSchemaNewerThanSupported = hello.schemaVersion > SupportedSchemaVersion,
+                schemaVersion = schemaVersion,
+                isSchemaNewerThanSupported = schemaVersion?.let { it > SupportedSchemaVersion } == true,
+                isSchemaOlderThanSupported = schemaVersion == null || schemaVersion < SupportedSchemaVersion,
                 features = features,
                 lastEventAt = now,
             )
@@ -321,9 +324,5 @@ internal class SnapOLinkServerRegistry(
         _servers.value = serverStates.values
             .map { it.server }
             .sortedWith(compareBy<SnapOLinkServer> { it.deviceId }.thenBy { it.socketName })
-    }
-
-    companion object {
-        private const val SupportedSchemaVersion: Int = 3
     }
 }

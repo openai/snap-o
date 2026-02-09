@@ -17,6 +17,7 @@ data class SnapOLinkServer(
     val hello: Hello? = null,
     val schemaVersion: Int? = null,
     val isSchemaNewerThanSupported: Boolean = false,
+    val isSchemaOlderThanSupported: Boolean = false,
     val lastEventAt: Instant? = null,
     val deviceDisplayTitle: String = deviceId,
     val isConnected: Boolean = true,

@@ -274,6 +274,7 @@ private fun ServerPickerButtonPreview() {
             appIconBase64 = null,
             schemaVersion = 2,
             isSchemaNewerThanSupported = false,
+            isSchemaOlderThanSupported = false,
             hasHello = true,
             features = setOf("network"),
         )

@@ -73,6 +73,7 @@ import com.openai.snapo.desktop.inspector.NetworkInspectorServerUiModel
 import com.openai.snapo.desktop.inspector.NetworkInspectorStatusPresentation
 import com.openai.snapo.desktop.inspector.NetworkInspectorStore
 import com.openai.snapo.desktop.inspector.SnapOLinkServerId
+import com.openai.snapo.desktop.inspector.SupportedSchemaVersion
 import com.openai.snapo.desktop.inspector.export.NetworkInspectorHarExporter
 import com.openai.snapo.desktop.ui.theme.SnapOAccents
 import com.openai.snapo.desktop.ui.theme.SnapOMono
@@ -164,7 +165,9 @@ private fun SidebarContent(
 
         Spacer(Modifier.size(Spacings.md))
 
-        if (state.selectedServer?.isSchemaNewerThanSupported == true) {
+        if (state.selectedServer?.isSchemaNewerThanSupported == true ||
+            state.selectedServer?.isSchemaOlderThanSupported == true
+        ) {
             SchemaWarning(
                 server = state.selectedServer,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacings.lg)
@@ -317,13 +320,26 @@ private fun SchemaWarning(
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(Spacings.lg)) {
-            val versionText = server.schemaVersion?.toString() ?: "unknown"
+            val versionText = server.schemaVersion?.toString() ?: "not reported"
             Text("App reports schema v$versionText", style = MaterialTheme.typography.bodyMedium)
+            val compatibilityText = if (server.isSchemaOlderThanSupported) {
+                "This Android build is using an older schema than this Network Inspector supports."
+            } else {
+                "This Android build may be newer than the Network Inspector understands."
+            }
             Text(
-                "This Android build may be newer than the Network Inspector understands.",
+                compatibilityText,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (server.isSchemaOlderThanSupported) {
+                Text(
+                    "Use Snap-O 0.19.0 or older for schema versions below v$SupportedSchemaVersion.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacings.sm),
+                )
+            }
         }
     }
 }
@@ -806,6 +822,7 @@ private fun previewServer(
         appIconBase64 = null,
         schemaVersion = 2,
         isSchemaNewerThanSupported = false,
+        isSchemaOlderThanSupported = false,
         hasHello = true,
         features = setOf("network"),
     )
