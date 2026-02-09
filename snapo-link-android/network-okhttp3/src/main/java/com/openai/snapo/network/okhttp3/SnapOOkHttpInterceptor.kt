@@ -97,12 +97,18 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
     ) {
         val requestBody = if (skipFallback) capturedBody else capturedBody ?: request.captureBody(textBodyMaxBytes)
         val contentType = resolveRequestContentType(requestBody?.contentType, request)
+        val contentEncoding = request.header("Content-Encoding")
         val hasCapturedBody = (requestBody?.body?.isNotEmpty() == true) || (requestBody?.truncatedBytes ?: 0L) > 0L
         val hasBody = request.body != null || hasCapturedBody
         publish {
             var encoding: String? = null
             val encodedBody: String? = when {
                 requestBody == null -> null
+
+                hasNonIdentityContentEncoding(contentEncoding) -> {
+                    encoding = "base64"
+                    encodeToString(requestBody.body, NO_WRAP)
+                }
 
                 contentType.isMultipartFormData() -> {
                     formatMultipartBody(requestBody.body, contentType)
@@ -473,6 +479,15 @@ private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
     } catch (_: RuntimeException) {
         null
     }
+}
+
+private fun hasNonIdentityContentEncoding(contentEncoding: String?): Boolean {
+    val encodings = contentEncoding
+        ?.split(',')
+        ?.map { token -> token.substringBefore(';').trim().lowercase() }
+        ?.filter { token -> token.isNotEmpty() }
+        .orEmpty()
+    return encodings.any { token -> token != "identity" }
 }
 
 private fun TextBodyCapture.truncatedBytes(totalBytes: Long?): Long? {

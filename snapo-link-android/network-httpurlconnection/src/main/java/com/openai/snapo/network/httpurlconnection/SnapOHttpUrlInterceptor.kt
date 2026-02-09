@@ -286,6 +286,7 @@ private class InterceptingHttpURLConnection(
         val currentContext = context ?: return
         val capture = requestBodyCapture?.snapshot()
         val contentType = requestContentType()
+        val contentEncoding = requestContentEncoding()
         val mediaType = parseMediaType(contentType)
         val requestBodyBytes = capture?.bytes
         val bodySize = capture?.totalBytes ?: requestContentLength()
@@ -298,6 +299,11 @@ private class InterceptingHttpURLConnection(
                 requestBodyBytes == null || requestBodyBytes.isEmpty() -> {
                     bodyEncoding = null
                     null
+                }
+
+                hasNonIdentityContentEncoding(contentEncoding) -> {
+                    bodyEncoding = "base64"
+                    encodeToString(requestBodyBytes, NO_WRAP)
                 }
 
                 mediaType?.isTextLike() == true -> {
@@ -429,6 +435,12 @@ private class InterceptingHttpURLConnection(
         val contentLength = properties["Content-Length"]?.firstOrNull()
             ?: properties["content-length"]?.firstOrNull()
         return contentLength?.toLongOrNull()
+    }
+
+    private fun requestContentEncoding(): String? {
+        val properties = delegate.requestProperties
+        return properties["Content-Encoding"]?.firstOrNull()
+            ?: properties["content-encoding"]?.firstOrNull()
     }
 
     private fun Map<out String?, List<String>>.toHeaderList(): List<Header> {
@@ -848,6 +860,15 @@ private fun ByteArray.toNormalizedString(charset: java.nio.charset.Charset): Str
     val raw = String(this, charset)
     if (raw.indexOf('\r') == -1) return raw
     return raw.replace("\r\n", "\n").replace('\r', '\n')
+}
+
+private fun hasNonIdentityContentEncoding(contentEncoding: String?): Boolean {
+    val encodings = contentEncoding
+        ?.split(',')
+        ?.map { token -> token.substringBefore(';').trim().lowercase() }
+        ?.filter { token -> token.isNotEmpty() }
+        .orEmpty()
+    return encodings.any { token -> token != "identity" }
 }
 
 private val DefaultDispatcher: CoroutineDispatcher = Dispatchers.Default
