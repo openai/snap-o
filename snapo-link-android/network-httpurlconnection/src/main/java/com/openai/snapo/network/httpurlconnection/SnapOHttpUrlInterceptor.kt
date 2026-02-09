@@ -121,6 +121,7 @@ private class InterceptingHttpURLConnection(
     private var requestPublished: Boolean = false
     private var responseMeta: ResponseMeta? = null
     private var responsePublished: Boolean = false
+    private var responseFinishedPublished: Boolean = false
     private var requestBodyCapture: BodyCaptureSink? = null
 
     override fun connect() {
@@ -408,11 +409,22 @@ private class InterceptingHttpURLConnection(
                 )
             }
         }
+        if (responseHasNoBody(method = delegate.requestMethod, code = responseCode, contentLength = contentLength)) {
+            publishLoadingFinishedOnce(totalBytes = contentLength ?: 0L)
+        }
         return meta
     }
 
     private fun wrapResponseStream(stream: InputStream): InputStream {
         val meta = ensureResponseStarted()
+        if (meta != null && responseHasNoBody(
+                method = delegate.requestMethod,
+                code = meta.code,
+                contentLength = meta.contentLength,
+            )
+        ) {
+            return stream
+        }
         val mediaType = parseMediaType(meta?.contentType)
         if (mediaType?.isEventStream() == true) {
             return SseCapturingInputStream(
@@ -462,6 +474,33 @@ private class InterceptingHttpURLConnection(
                 timings = Timings(totalMs = nanosToMillis(failMono - currentContext.startMono)),
             )
         }
+    }
+
+    private fun publishLoadingFinishedOnce(totalBytes: Long?) {
+        if (responseFinishedPublished) return
+        val currentContext = context ?: return
+        responseFinishedPublished = true
+        val nowWall = System.currentTimeMillis()
+        val nowMono = SystemClock.elapsedRealtimeNanos()
+        interceptor.publish {
+            ResponseFinished(
+                id = currentContext.requestId,
+                tWallMs = nowWall,
+                tMonoNs = nowMono,
+                bodySize = totalBytes,
+            )
+        }
+    }
+
+    private fun responseHasNoBody(method: String?, code: Int, contentLength: Long?): Boolean {
+        if (method.equals("HEAD", ignoreCase = true)) return true
+        if (code in 100..199 ||
+            code == HttpURLConnection.HTTP_NO_CONTENT ||
+            code == HttpURLConnection.HTTP_NOT_MODIFIED
+        ) {
+            return true
+        }
+        return contentLength == 0L
     }
 
     private fun requestContentType(): String? {
