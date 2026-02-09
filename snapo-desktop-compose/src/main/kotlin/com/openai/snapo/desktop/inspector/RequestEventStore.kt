@@ -343,14 +343,15 @@ internal class RequestEventStore {
         state: NetworkInspectorRequest,
         response: ResponseReceived,
     ): Boolean {
-        if (state.request?.method.equals("HEAD", ignoreCase = true)) return true
-        val status = response.code
-        if (status in 100..199 || status == 204 || status == 304) return true
         val contentLength = response.headers
             .firstOrNull { header -> header.name.equals("Content-Length", ignoreCase = true) }
             ?.value
             ?.trim()
             ?.toLongOrNull()
-        return contentLength == 0L
+        return responseIsDefinedAsBodyless(
+            requestMethod = state.request?.method,
+            responseStatus = response.code,
+            responseContentLength = contentLength,
+        )
     }
 }

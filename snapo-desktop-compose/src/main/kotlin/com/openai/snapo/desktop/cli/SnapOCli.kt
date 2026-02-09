@@ -12,6 +12,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.openai.snapo.desktop.adb.AdbExec
 import com.openai.snapo.desktop.adb.AdbForwardHandle
 import com.openai.snapo.desktop.inspector.decodeBodyForDisplay
+import com.openai.snapo.desktop.inspector.responseIsDefinedAsBodyless
 import com.openai.snapo.desktop.link.SnapOLinkServerConnection
 import com.openai.snapo.desktop.link.SnapORecord
 import com.openai.snapo.desktop.protocol.CdpGetRequestPostDataParams
@@ -1150,15 +1151,16 @@ object SnapOCli {
     }
 
     private fun responseShouldNotHaveBody(snapshot: RequestDetailsSnapshot): Boolean {
-        if (snapshot.requestMethod.equals("HEAD", ignoreCase = true)) return true
-        val status = snapshot.responseStatus ?: return false
-        if (status in 100..199 || status == 204 || status == 304) return true
         val contentLength = snapshot.responseHeaders.entries
             .firstOrNull { (name, _) -> name.equals("Content-Length", ignoreCase = true) }
             ?.value
             ?.trim()
             ?.toLongOrNull()
-        return contentLength == 0L
+        return responseIsDefinedAsBodyless(
+            requestMethod = snapshot.requestMethod,
+            responseStatus = snapshot.responseStatus,
+            responseContentLength = contentLength,
+        )
     }
 
     private fun shouldResolveEmptyResponseBody(
