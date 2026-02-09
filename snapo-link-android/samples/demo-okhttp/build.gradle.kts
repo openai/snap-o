@@ -35,7 +35,7 @@ dependencies {
     implementation(platform(libs.okhttp3.bom))
     implementation(libs.okhttp3.okhttp)
     implementation(libs.okhttp3.coroutines)
-    implementation(libs.okhttp3.mockwebserver3)
+    implementation(project(":samples:demo-shared"))
 
     debugImplementation(project(":network-okhttp3"))
     releaseImplementation(project(":network-okhttp3-noop"))

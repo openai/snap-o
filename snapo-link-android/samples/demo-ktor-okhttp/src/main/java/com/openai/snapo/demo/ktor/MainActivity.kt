@@ -1,6 +1,7 @@
 package com.openai.snapo.demo.ktor
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +18,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import com.openai.snapo.demo.shared.DemoMockServer
+import com.openai.snapo.demo.shared.toWebSocketUrl
 import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 import io.ktor.client.HttpClient
@@ -30,16 +34,19 @@ import io.ktor.client.request.headers
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
-import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.send
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 class MainActivity : ComponentActivity() {
+
+    private val mockServer = DemoMockServer()
 
     private val httpClient: HttpClient by lazy {
         val okHttpClient = OkHttpClient.Builder()
@@ -57,33 +64,44 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { mockServer.ensureStarted() }
+                .onFailure { error -> Log.e(DemoLogTag, "Failed to start MockWebServer", error) }
+        }
         enableEdgeToEdge()
-        setContent { DemoScreen(httpClient = httpClient) }
+        setContent {
+            DemoScreen(
+                httpClient = httpClient,
+                mockServer = mockServer,
+            )
+        }
     }
 
     override fun onDestroy() {
         httpClient.close()
+        runCatching { mockServer.close() }
+            .onFailure { error -> Log.e(DemoLogTag, "Failed to stop MockWebServer", error) }
         super.onDestroy()
     }
 }
 
 @Composable
-private fun DemoScreen(httpClient: HttpClient) {
+private fun DemoScreen(httpClient: HttpClient, mockServer: DemoMockServer) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             DemoContent(
                 onNetworkRequestClick = {
-                    scope.launch { performGetRequest(httpClient) }
+                    scope.launch { performGetRequest(httpClient, mockServer) }
                 },
                 onPostRequestClick = {
-                    scope.launch { performPostRequest(httpClient) }
+                    scope.launch { performPostRequest(httpClient, mockServer) }
                 },
                 onFormRequestClick = {
-                    scope.launch { performFormRequest(httpClient) }
+                    scope.launch { performFormRequest(httpClient, mockServer) }
                 },
                 onWebSocketDemoClick = {
-                    scope.launch { performWebSocketDemo(httpClient) }
+                    scope.launch { performWebSocketDemo(httpClient, mockServer) }
                 },
                 modifier = Modifier.padding(innerPadding),
             )
@@ -91,8 +109,9 @@ private fun DemoScreen(httpClient: HttpClient) {
     }
 }
 
-private suspend fun performGetRequest(httpClient: HttpClient) {
-    httpClient.get("https://publicobject.com/helloworld.txt") {
+private suspend fun performGetRequest(httpClient: HttpClient, mockServer: DemoMockServer) {
+    val url = resolveMockHttpUrl(mockServer, "/helloworld.txt") ?: return
+    httpClient.get(url) {
         headers {
             append("Duplicated", "1111111")
             append("Duplicated", "2222222")
@@ -100,8 +119,9 @@ private suspend fun performGetRequest(httpClient: HttpClient) {
     }
 }
 
-private suspend fun performPostRequest(httpClient: HttpClient) {
-    httpClient.post("https://postman-echo.com/post") {
+private suspend fun performPostRequest(httpClient: HttpClient, mockServer: DemoMockServer) {
+    val url = resolveMockHttpUrl(mockServer, "/post") ?: return
+    httpClient.post(url) {
         contentType(ContentType.Application.Json)
         headers { append("X-SnapO-Demo", "ktor-post") }
         setBody(
@@ -115,21 +135,20 @@ private suspend fun performPostRequest(httpClient: HttpClient) {
     }
 }
 
-private suspend fun performFormRequest(httpClient: HttpClient) {
+private suspend fun performFormRequest(httpClient: HttpClient, mockServer: DemoMockServer) {
+    val url = resolveMockHttpUrl(mockServer, "/form-post") ?: return
     httpClient.submitFormWithBinaryData(
-        url = "https://postman-echo.com/post",
+        url = url,
         formData = formData {
             append("field1", "example payload")
             append("field2", """{"test":true,"value":123}""")
         },
-    ) {
-        method = HttpMethod.Post
-        url { parameters.append("param1", "example") }
-    }
+    )
 }
 
-private suspend fun performWebSocketDemo(httpClient: HttpClient) {
-    httpClient.webSocket(urlString = "wss://echo.websocket.org") {
+private suspend fun performWebSocketDemo(httpClient: HttpClient, mockServer: DemoMockServer) {
+    val websocketUrl = resolveMockHttpUrl(mockServer, "/ws-echo")?.toWebSocketUrl() ?: return
+    httpClient.webSocket(urlString = websocketUrl) {
         send("Hello from Snap-O!")
         for (frame in incoming) {
             if (frame is Frame.Text) {
@@ -142,6 +161,14 @@ private suspend fun performWebSocketDemo(httpClient: HttpClient) {
                 break
             }
         }
+    }
+}
+
+private suspend fun resolveMockHttpUrl(mockServer: DemoMockServer, path: String): String? {
+    return withContext(Dispatchers.IO) {
+        runCatching { mockServer.httpUrl(path) }
+            .onFailure { error -> Log.e(DemoLogTag, "Failed to resolve MockWebServer URL", error) }
+            .getOrNull()
     }
 }
 
@@ -184,3 +211,5 @@ private fun DemoPreview() {
         )
     }
 }
+
+private const val DemoLogTag = "SnapODemo"

@@ -19,16 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import com.openai.snapo.demo.shared.DemoMockServer
+import com.openai.snapo.demo.shared.toWebSocketUrl
 import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import mockwebserver3.Dispatcher
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
-import mockwebserver3.RecordedRequest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -42,7 +40,6 @@ import okio.BufferedSink
 import okio.ByteString
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.net.InetAddress
 import java.util.zip.GZIPOutputStream
 
 class MainActivity : ComponentActivity() {
@@ -55,12 +52,13 @@ class MainActivity : ComponentActivity() {
     private val webSocketFactory = client.withSnapOInterceptor()
 
     private var activeWebSocket: WebSocket? = null
-    private var mockServer: MockWebServer? = null
+    private val mockServer = DemoMockServer()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         lifecycleScope.launch(Dispatchers.IO) {
-            ensureMockServer()
+            runCatching { mockServer.ensureStarted() }
+                .onFailure { error -> Log.e("SnapODemo", "Failed to start MockWebServer", error) }
         }
         enableEdgeToEdge()
         setContent {
@@ -72,7 +70,7 @@ class MainActivity : ComponentActivity() {
                         onPostRequestClick = { runPostRequest(scope) },
                         onUnknownLengthGzipPostRequestClick = { runUnknownLengthGzipPostRequest(scope) },
                         onNoContentTypeTextResponseClick = { runNoContentTypeTextResponseRequest(scope) },
-                        onWebSocketDemoClick = { startWebSocketDemo() },
+                        onWebSocketDemoClick = { startWebSocketDemo(scope) },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -82,63 +80,64 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         activeWebSocket?.close(1000, "Activity destroyed")
-        runCatching { mockServer?.close() }
+        runCatching { mockServer.close() }
             .onFailure { error -> Log.e("SnapODemo", "Failed to stop MockWebServer", error) }
-        mockServer = null
         super.onDestroy()
     }
 
     private fun runGetRequest(scope: CoroutineScope) {
-        val request = Request.Builder()
-            .header("Duplicated", "11111111")
-            .addHeader("Duplicated", "2222222")
-            .url("https://publicobject.com/helloworld.txt")
-            .build()
-        executeRequest(scope, request)
+        scope.launch {
+            val url = resolveMockHttpUrl("/helloworld.txt") ?: return@launch
+            val request = Request.Builder()
+                .header("Duplicated", "11111111")
+                .addHeader("Duplicated", "2222222")
+                .url(url)
+                .build()
+            executeRequest(scope, request)
+        }
     }
 
     private fun runPostRequest(scope: CoroutineScope) {
-        val mediaType = "application/json; charset=utf-8".toMediaType()
-        val body = """
-            {
-              "message": "Hello from Snap-O!",
-              "source": "okhttp-demo"
-            }
-        """.trimIndent().toRequestBody(mediaType)
-        val request = Request.Builder()
-            .url("https://postman-echo.com/post")
-            .header("X-SnapO-Demo", "okhttp-post")
-            .post(body)
-            .build()
-        executeRequest(scope, request)
+        scope.launch {
+            val url = resolveMockHttpUrl("/post") ?: return@launch
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val body = """
+                {
+                  "message": "Hello from Snap-O!",
+                  "source": "okhttp-demo"
+                }
+            """.trimIndent().toRequestBody(mediaType)
+            val request = Request.Builder()
+                .url(url)
+                .header("X-SnapO-Demo", "okhttp-post")
+                .post(body)
+                .build()
+            executeRequest(scope, request)
+        }
     }
 
     private fun runUnknownLengthGzipPostRequest(scope: CoroutineScope) {
-        val payload = """
-            {
-              "message": "Hello from Snap-O unknown length gzip!",
-              "source": "okhttp-demo"
-            }
-        """.trimIndent()
-        val request = Request.Builder()
-            .url("https://postman-echo.com/post")
-            .header("X-SnapO-Demo", "okhttp-post-gzip-unknown-length")
-            .header("Content-Encoding", "gzip")
-            .post(gzippedUnknownLengthJsonBody(payload))
-            .build()
-        executeRequest(scope, request)
+        scope.launch {
+            val url = resolveMockHttpUrl("/post-gzip-unknown-length") ?: return@launch
+            val payload = """
+                {
+                  "message": "Hello from Snap-O unknown length gzip!",
+                  "source": "okhttp-demo"
+                }
+            """.trimIndent()
+            val request = Request.Builder()
+                .url(url)
+                .header("X-SnapO-Demo", "okhttp-post-gzip-unknown-length")
+                .header("Content-Encoding", "gzip")
+                .post(gzippedUnknownLengthJsonBody(payload))
+                .build()
+            executeRequest(scope, request)
+        }
     }
 
     private fun runNoContentTypeTextResponseRequest(scope: CoroutineScope) {
         scope.launch {
-            val url = withContext(Dispatchers.IO) {
-                val server = ensureMockServer() ?: return@withContext null
-                "http://127.0.0.1:${server.port}/no-content-type-text"
-            }
-            if (url == null) {
-                Log.e("SnapODemo", "MockWebServer is not running")
-                return@launch
-            }
+            val url = resolveMockHttpUrl("/no-content-type-text") ?: return@launch
             val request = Request.Builder()
                 .url(url)
                 .header("X-SnapO-Demo", "okhttp-response-no-content-type-text")
@@ -162,63 +161,38 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startWebSocketDemo() {
-        val request = Request.Builder()
-            .url("wss://echo.websocket.org")
-            .build()
+    private fun startWebSocketDemo(scope: CoroutineScope) {
+        scope.launch {
+            val httpUrl = resolveMockHttpUrl("/ws-echo") ?: return@launch
+            val request = Request.Builder()
+                .url(httpUrl.toWebSocketUrl())
+                .build()
 
-        activeWebSocket?.cancel()
-        activeWebSocket = webSocketFactory.newWebSocket(
-            request,
-            object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    webSocket.send("Hello from Snap-O demo!")
+            activeWebSocket?.cancel()
+            activeWebSocket = webSocketFactory.newWebSocket(
+                request,
+                object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: Response) {
+                        webSocket.send("Hello from Snap-O demo!")
+                    }
+
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        webSocket.close(1000, "Closing after echo")
+                    }
+
+                    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                        webSocket.close(1000, "Closing after echo")
+                    }
                 }
-
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    webSocket.close(1000, "Closing after echo")
-                }
-
-                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                    webSocket.close(1000, "Closing after echo")
-                }
-            }
-        )
-    }
-
-    private fun ensureMockServer(): MockWebServer? {
-        mockServer?.let { return it }
-        val started = runCatching {
-            createDemoMockServer().also {
-                it.start(InetAddress.getByName("127.0.0.1"), 0)
-                Log.d("SnapODemo", "MockWebServer started on 127.0.0.1:${it.port}")
-            }
-        }.onFailure { error ->
-            Log.e("SnapODemo", "Failed to start MockWebServer", error)
-        }.getOrNull()
-        if (started != null) {
-            mockServer = started
+            )
         }
-        return started
     }
-}
 
-private fun createDemoMockServer(): MockWebServer {
-    val body = """{"message":"Hello from Snap-O without Content-Type","source":"okhttp-demo"}"""
-    return MockWebServer().apply {
-        dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse {
-                Log.d("SnapODemo", "MockWebServer dispatch target=${request.target}")
-                return when (request.target.substringBefore('?')) {
-                    "/no-content-type-text" -> MockResponse.Builder()
-                        .code(200)
-                        .setHeader("Content-Length", body.toByteArray(Charsets.UTF_8).size.toString())
-                        .setHeader("Connection", "close")
-                        .body(body)
-                        .build()
-                    else -> MockResponse.Builder().code(404).build()
-                }
-            }
+    private suspend fun resolveMockHttpUrl(path: String): String? {
+        return withContext(Dispatchers.IO) {
+            runCatching { mockServer.httpUrl(path) }
+                .onFailure { error -> Log.e("SnapODemo", "Failed to resolve MockWebServer URL", error) }
+                .getOrNull()
         }
     }
 }
