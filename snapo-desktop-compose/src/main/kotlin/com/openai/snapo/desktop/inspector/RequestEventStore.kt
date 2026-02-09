@@ -98,6 +98,7 @@ internal class RequestEventStore {
 
             if (state.finished == null) return@withLock false
             val response = state.response ?: return@withLock false
+            if (responseHasNoBody(state = state, response = response)) return@withLock false
             if (!response.body.isNullOrEmpty()) return@withLock false
             // null means unknown size; still try.
             val size = response.bodySize
@@ -336,5 +337,20 @@ internal class RequestEventStore {
 
     private fun broadcastRequestsLocked() {
         _requests.value = requestOrder.mapNotNull { requestStates[it] }
+    }
+
+    private fun responseHasNoBody(
+        state: NetworkInspectorRequest,
+        response: ResponseReceived,
+    ): Boolean {
+        if (state.request?.method.equals("HEAD", ignoreCase = true)) return true
+        val status = response.code
+        if (status in 100..199 || status == 204 || status == 304) return true
+        val contentLength = response.headers
+            .firstOrNull { header -> header.name.equals("Content-Length", ignoreCase = true) }
+            ?.value
+            ?.trim()
+            ?.toLongOrNull()
+        return contentLength == 0L
     }
 }
