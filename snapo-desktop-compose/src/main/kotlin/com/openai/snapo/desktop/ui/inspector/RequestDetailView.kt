@@ -297,7 +297,7 @@ private fun rememberPayloadStateIfNeeded(
     if (imageBitmap != null && payload.data != null) return null
     if (!isExpanded) return null
     return rememberInspectorPayloadLazyState(
-        rawText = payload.rawText,
+        rawText = payload.displayText,
         prettyText = payload.prettyPrintedText,
         isLikelyJson = payload.isLikelyJson,
         usePrettyPrinted = usePrettyPrinted,
