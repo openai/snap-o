@@ -427,7 +427,12 @@ private fun makeBodyPayload(
     contentType: String?,
     encoding: String?,
 ): NetworkInspectorRequestUiModel.BodyPayload {
-    val capturedBytes = rawText.toByteArray(Charsets.UTF_8).size.toLong()
+    val capturedBytes = resolveCapturedWireBytes(
+        rawText = rawText,
+        encoding = encoding,
+        totalBytes = totalBytes,
+        truncatedBytes = truncatedBytes,
+    )
     val trimmed = displayText.trim()
 
     val encodingLower = encoding?.lowercase()
@@ -453,6 +458,27 @@ private fun makeBodyPayload(
         contentType = normalizedContentType,
         data = binaryData,
     )
+}
+
+private fun resolveCapturedWireBytes(
+    rawText: String,
+    encoding: String?,
+    totalBytes: Long?,
+    truncatedBytes: Long?,
+): Long {
+    val normalizedTotal = totalBytes?.takeIf { it >= 0L }
+    if (normalizedTotal != null && truncatedBytes != null) {
+        return (normalizedTotal - truncatedBytes).coerceAtLeast(0L)
+    }
+    if (normalizedTotal != null) {
+        return normalizedTotal
+    }
+    if (encoding.equals("base64", ignoreCase = true)) {
+        val normalized = rawText.filterNot(Char::isWhitespace)
+        val decoded = runCatching { Base64.getDecoder().decode(normalized) }.getOrNull()
+        if (decoded != null) return decoded.size.toLong()
+    }
+    return rawText.toByteArray(Charsets.UTF_8).size.toLong()
 }
 
 private fun normalizeContentType(rawValue: String?): String? {
