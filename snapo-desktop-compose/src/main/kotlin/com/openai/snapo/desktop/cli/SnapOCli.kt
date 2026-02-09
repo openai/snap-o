@@ -334,6 +334,19 @@ object SnapOCli {
                         if (requestBodyEncoding == null) {
                             requestBodyEncoding = details.requestBodyEncoding
                         }
+                        if (!requestBodyResolved && details.requestSeen && !details.requestHasPostData) {
+                            requestBodyResolved = true
+                        }
+                        if (shouldResolveEmptyResponseBody(responseBodyResolved, details)) {
+                            responseBody = ""
+                            responseBodyBase64Encoded = false
+                            responseBodyResolved = true
+                        }
+                        if (details.responseTerminal && !details.responseSeen) {
+                            val failureMessage = details.loadingFailedMessage
+                                ?: "Request failed before receiving a response for $requestId"
+                            return FetchRequestDetailsResult.Failure(failureMessage)
+                        }
 
                         val responseId = message.id
                         if (responseId != null && message.method == null) {
@@ -393,6 +406,7 @@ object SnapOCli {
                 if (
                     shouldSendRequestBodyCommand(
                         featureOpened = featureOpened,
+                        canRequestBody = details.requestSeen && details.requestHasPostData,
                         requestBodyResolved = requestBodyResolved,
                         pendingRequestBodyId = pendingRequestBodyId,
                         requestBodyAttempts = requestBodyAttempts,
@@ -416,6 +430,9 @@ object SnapOCli {
                 if (
                     shouldSendResponseBodyCommand(
                         featureOpened = featureOpened,
+                        canRequestBody = details.responseSeen &&
+                            details.responseTerminal &&
+                            !responseShouldNotHaveBody(details),
                         responseBodyResolved = responseBodyResolved,
                         pendingResponseBodyId = pendingResponseBodyId,
                         responseBodyAttempts = responseBodyAttempts,
@@ -464,6 +481,12 @@ object SnapOCli {
                         responseHeaders = details.responseHeaders,
                         responseBody = responseBody.orEmpty(),
                         responseBodyBase64Encoded = responseBodyBase64Encoded,
+                    )
+                }
+
+                if (System.currentTimeMillis() - startedAtMs >= SnapshotMaxWaitMs) {
+                    return FetchRequestDetailsResult.Failure(
+                        "Timed out waiting for network lifecycle for $requestId on ${server.identifier}"
                     )
                 }
             }
@@ -727,21 +750,29 @@ object SnapOCli {
 
     private fun shouldSendRequestBodyCommand(
         featureOpened: Boolean,
+        canRequestBody: Boolean,
         requestBodyResolved: Boolean,
         pendingRequestBodyId: Int?,
         requestBodyAttempts: Int,
     ): Boolean {
-        if (!featureOpened || requestBodyResolved || pendingRequestBodyId != null) return false
+        if (!featureOpened) return false
+        if (!canRequestBody) return false
+        if (requestBodyResolved) return false
+        if (pendingRequestBodyId != null) return false
         return requestBodyAttempts < CommandAttemptLimit
     }
 
     private fun shouldSendResponseBodyCommand(
         featureOpened: Boolean,
+        canRequestBody: Boolean,
         responseBodyResolved: Boolean,
         pendingResponseBodyId: Int?,
         responseBodyAttempts: Int,
     ): Boolean {
-        if (!featureOpened || responseBodyResolved || pendingResponseBodyId != null) return false
+        if (!featureOpened) return false
+        if (!canRequestBody) return false
+        if (responseBodyResolved) return false
+        if (pendingResponseBodyId != null) return false
         return responseBodyAttempts < CommandAttemptLimit
     }
 
@@ -1028,10 +1059,15 @@ object SnapOCli {
     )
 
     private data class RequestDetailsSnapshot(
+        val requestSeen: Boolean = false,
+        val requestHasPostData: Boolean = false,
         val requestMethod: String? = null,
         val requestUrl: String? = null,
         val requestHeaders: Map<String, String> = emptyMap(),
         val requestBodyEncoding: String? = null,
+        val responseSeen: Boolean = false,
+        val responseTerminal: Boolean = false,
+        val loadingFailedMessage: String? = null,
         val responseStatus: Int? = null,
         val responseUrl: String? = null,
         val responseHeaders: Map<String, String> = emptyMap(),
@@ -1043,29 +1079,93 @@ object SnapOCli {
         requestId: String,
     ): RequestDetailsSnapshot {
         return when (message.method) {
-            CdpNetworkMethod.RequestWillBeSent -> {
-                val params = decodeParams<CdpRequestWillBeSentParams>(message) ?: return current
-                if (params.requestId != requestId) return current
-                current.copy(
-                    requestMethod = params.request.method,
-                    requestUrl = params.request.url,
-                    requestHeaders = redactHeaderMap(params.request.headers, requestHeaderNames),
-                    requestBodyEncoding = params.request.postDataEncoding,
-                )
-            }
-
-            CdpNetworkMethod.ResponseReceived -> {
-                val params = decodeParams<CdpResponseReceivedParams>(message) ?: return current
-                if (params.requestId != requestId) return current
-                current.copy(
-                    responseStatus = params.response.status,
-                    responseUrl = params.response.url,
-                    responseHeaders = redactHeaderMap(params.response.headers, responseHeaderNames),
-                )
-            }
+            CdpNetworkMethod.RequestWillBeSent -> updateSnapshotForRequest(current, message, requestId)
+            CdpNetworkMethod.ResponseReceived -> updateSnapshotForResponse(current, message, requestId)
+            CdpNetworkMethod.LoadingFinished -> updateSnapshotForLoadingFinished(current, message, requestId)
+            CdpNetworkMethod.LoadingFailed -> updateSnapshotForLoadingFailed(current, message, requestId)
 
             else -> current
         }
+    }
+
+    private fun updateSnapshotForRequest(
+        current: RequestDetailsSnapshot,
+        message: CdpMessage,
+        requestId: String,
+    ): RequestDetailsSnapshot {
+        val params = decodeParams<CdpRequestWillBeSentParams>(message) ?: return current
+        if (params.requestId != requestId) return current
+        return current.copy(
+            requestSeen = true,
+            requestHasPostData = params.request.hasPostData,
+            requestMethod = params.request.method,
+            requestUrl = params.request.url,
+            requestHeaders = redactHeaderMap(params.request.headers, requestHeaderNames),
+            requestBodyEncoding = params.request.postDataEncoding,
+        )
+    }
+
+    private fun updateSnapshotForResponse(
+        current: RequestDetailsSnapshot,
+        message: CdpMessage,
+        requestId: String,
+    ): RequestDetailsSnapshot {
+        val params = decodeParams<CdpResponseReceivedParams>(message) ?: return current
+        if (params.requestId != requestId) return current
+        return current.copy(
+            responseSeen = true,
+            responseStatus = params.response.status,
+            responseUrl = params.response.url,
+            responseHeaders = redactHeaderMap(params.response.headers, responseHeaderNames),
+        )
+    }
+
+    private fun updateSnapshotForLoadingFinished(
+        current: RequestDetailsSnapshot,
+        message: CdpMessage,
+        requestId: String,
+    ): RequestDetailsSnapshot {
+        val params = decodeParams<CdpLoadingFinishedParams>(message) ?: return current
+        if (params.requestId != requestId) return current
+        return current.copy(
+            responseTerminal = true,
+            loadingFailedMessage = null,
+        )
+    }
+
+    private fun updateSnapshotForLoadingFailed(
+        current: RequestDetailsSnapshot,
+        message: CdpMessage,
+        requestId: String,
+    ): RequestDetailsSnapshot {
+        val params = decodeParams<CdpLoadingFailedParams>(message) ?: return current
+        if (params.requestId != requestId) return current
+        return current.copy(
+            responseTerminal = true,
+            loadingFailedMessage = params.errorText ?: params.type,
+        )
+    }
+
+    private fun responseShouldNotHaveBody(snapshot: RequestDetailsSnapshot): Boolean {
+        if (snapshot.requestMethod.equals("HEAD", ignoreCase = true)) return true
+        val status = snapshot.responseStatus ?: return false
+        if (status in 100..199 || status == 204 || status == 304) return true
+        val contentLength = snapshot.responseHeaders.entries
+            .firstOrNull { (name, _) -> name.equals("Content-Length", ignoreCase = true) }
+            ?.value
+            ?.trim()
+            ?.toLongOrNull()
+        return contentLength == 0L
+    }
+
+    private fun shouldResolveEmptyResponseBody(
+        responseBodyResolved: Boolean,
+        details: RequestDetailsSnapshot,
+    ): Boolean {
+        if (responseBodyResolved) return false
+        if (!details.responseSeen) return false
+        if (!details.responseTerminal) return false
+        return responseShouldNotHaveBody(details)
     }
 
     private fun redactHeaderMap(
