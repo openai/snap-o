@@ -25,7 +25,9 @@ import okio.ForwardingSink
 import okio.buffer
 import java.io.Closeable
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
@@ -162,6 +164,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endMono = endMono,
                 bodyPreview = null,
                 bodyText = null,
+                bodyEncoding = null,
                 truncatedBytes = null,
                 bodySize = body.safeContentLength(),
             )
@@ -195,6 +198,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 ?: response.bodyPreview(responseBodyPreviewBytes)
             val truncatedBytes = textBody?.truncatedBytes(bodySize)
                 ?: binaryBody?.truncatedBytes(bodySize)
+            val bodyEncoding = if (binaryBody != null) "base64" else null
             OkhttpEventFactory.createResponseReceived(
                 context = context,
                 response = response,
@@ -202,6 +206,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endMono = endMono,
                 bodyPreview = bodyPreview,
                 bodyText = textBody?.body ?: binaryBody?.base64,
+                bodyEncoding = bodyEncoding,
                 truncatedBytes = truncatedBytes,
                 bodySize = bodySize,
             )
@@ -381,9 +386,10 @@ private fun MediaType?.isEventStream(): Boolean {
 private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBodyCapture? {
     val responseBody = body
     val mediaType = responseBody.contentType()
+    val isKnownText = mediaType?.isTextLike() == true
     return when {
         maxBytes <= 0L -> null
-        mediaType?.isTextLike() != true -> null
+        mediaType != null && !isKnownText -> null
         else -> try {
             val contentLength = responseBody.contentLength()
             val effectiveMax = when {
@@ -395,7 +401,11 @@ private fun Response.captureTextBody(maxBytes: Int, previewBytes: Int): TextBody
             val truncated = bytes.size > effectiveMax
             val effective = if (truncated) bytes.copyOf(effectiveMax) else bytes
             val charset = mediaType.resolveCharset()
-            val text = String(effective, charset)
+            val text = if (isKnownText) {
+                String(effective, charset)
+            } else {
+                effective.decodeUtf8TextIfLikely() ?: return null
+            }
             val previewLimit = previewBytes
                 .coerceAtMost(effective.size)
             val preview = if (previewLimit > 0) {
@@ -521,6 +531,24 @@ private fun resolveRequestContentType(
     if (captureContentType != null) return captureContentType
     val headerValue = request.header("Content-Type") ?: return null
     return headerValue.toMediaTypeOrNull()
+}
+
+private fun ByteArray.decodeUtf8TextIfLikely(): String? {
+    if (isEmpty()) return ""
+    val decoded = runCatching {
+        Charsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(this))
+            .toString()
+    }.getOrNull() ?: return null
+    if (decoded.isEmpty()) return decoded
+    val printable = decoded.count { ch ->
+        ch == '\n' || ch == '\r' || ch == '\t' || (ch >= ' ' && ch != '\u007f')
+    }
+    val printableRatio = printable.toDouble() / decoded.length.toDouble()
+    return decoded.takeIf { printableRatio >= MinLikelyTextRatio }
 }
 
 private fun formatMultipartBody(bodyBytes: ByteArray, contentType: MediaType?): String {
@@ -772,4 +800,5 @@ internal fun nanosToMillis(deltaNs: Long): Long? {
     return TimeUnit.NANOSECONDS.toMillis(deltaNs)
 }
 
+private const val MinLikelyTextRatio: Double = 0.85
 private const val AbsoluteBodyTextMaxBytes: Long = 8L * 1024L * 1024L

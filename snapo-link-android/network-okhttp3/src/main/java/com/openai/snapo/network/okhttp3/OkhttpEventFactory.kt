@@ -41,6 +41,7 @@ internal object OkhttpEventFactory {
         endMono: Long,
         bodyPreview: String?,
         bodyText: String?,
+        bodyEncoding: String?,
         truncatedBytes: Long?,
         bodySize: Long?,
     ): ResponseReceived =
@@ -52,6 +53,7 @@ internal object OkhttpEventFactory {
             headers = response.headers.toHeaderList(),
             bodyPreview = bodyPreview,
             body = bodyText,
+            bodyEncoding = bodyEncoding,
             bodyTruncatedBytes = truncatedBytes,
             bodySize = bodySize,
             timings = Timings(totalMs = nanosToMillis(endMono - context.startMono)),

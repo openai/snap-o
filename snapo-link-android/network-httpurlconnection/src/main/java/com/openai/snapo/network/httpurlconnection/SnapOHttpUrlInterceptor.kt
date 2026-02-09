@@ -29,6 +29,8 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.ProtocolException
 import java.net.URL
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.security.Permission
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -362,6 +364,7 @@ private class InterceptingHttpURLConnection(
                     headers = headers,
                     bodyPreview = null,
                     body = null,
+                    bodyEncoding = null,
                     bodyTruncatedBytes = null,
                     bodySize = contentLength,
                     timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
@@ -555,10 +558,11 @@ private class ResponseCapturingInputStream(
         val snapshot = capture.snapshot()
         val meta = responseMeta
         val bytes = snapshot.bytes
-        val charset = mediaType?.charsetOrUtf8() ?: Charsets.UTF_8
-        val isText = mediaType?.isTextLike() == true
-        val bodyPreview = buildBodyPreview(bytes, isText, charset)
-        val body = buildBody(bytes, isText, charset)
+        val bodyValues = resolveCapturedBodyValues(
+            bytes = bytes,
+            mediaType = mediaType,
+            previewBytes = interceptor.responseBodyPreviewBytes,
+        )
         val totalBytes = snapshot.totalBytes.takeIf { it > 0L } ?: meta?.contentLength
         val responseWall = meta?.responseWall ?: System.currentTimeMillis()
         val responseMono = meta?.responseMono ?: SystemClock.elapsedRealtimeNanos()
@@ -566,8 +570,7 @@ private class ResponseCapturingInputStream(
         publishResponseIfNeeded(
             currentContext = currentContext,
             meta = meta,
-            bodyPreview = bodyPreview,
-            body = body,
+            bodyValues = bodyValues,
             truncatedBytes = snapshot.truncatedBytes,
             totalBytes = totalBytes,
             responseWall = responseWall,
@@ -577,45 +580,67 @@ private class ResponseCapturingInputStream(
         publishFailureIfNeeded(currentContext, error)
     }
 
-    private fun buildBodyPreview(
+    private fun resolveCapturedBodyValues(
         bytes: ByteArray,
-        isText: Boolean,
-        charset: java.nio.charset.Charset,
-    ): String? {
-        val previewLimit = interceptor.responseBodyPreviewBytes
-        if (previewLimit <= 0 || bytes.isEmpty()) return null
-        val limit = previewLimit.coerceAtMost(bytes.size)
-        return if (isText) {
-            String(bytes, 0, limit, charset)
-        } else {
-            encodeToString(bytes, 0, limit, NO_WRAP)
+        mediaType: ParsedMediaType?,
+        previewBytes: Int,
+    ): CapturedBodyValues {
+        if (bytes.isEmpty()) {
+            return CapturedBodyValues(
+                bodyPreview = null,
+                body = null,
+                bodyEncoding = null,
+            )
         }
-    }
-
-    private fun buildBody(
-        bytes: ByteArray,
-        isText: Boolean,
-        charset: java.nio.charset.Charset,
-    ): String? {
-        if (bytes.isEmpty()) return null
-        return if (isText) {
+        val charset = mediaType?.charsetOrUtf8() ?: Charsets.UTF_8
+        val isKnownText = mediaType?.isTextLike() == true
+        val bodyText = if (isKnownText) {
             String(bytes, charset)
+        } else if (mediaType == null) {
+            decodeUtf8TextIfLikely(bytes)
         } else {
-            encodeToString(bytes, NO_WRAP)
+            null
+        }
+
+        return if (bodyText != null) {
+            val preview = if (previewBytes > 0) {
+                val limit = previewBytes.coerceAtMost(bytes.size)
+                String(bytes, 0, limit, charset)
+            } else {
+                null
+            }
+            CapturedBodyValues(
+                bodyPreview = preview,
+                body = bodyText,
+                bodyEncoding = null,
+            )
+        } else {
+            val preview = if (previewBytes > 0) {
+                val limit = previewBytes.coerceAtMost(bytes.size)
+                encodeToString(bytes, 0, limit, NO_WRAP)
+            } else {
+                null
+            }
+            CapturedBodyValues(
+                bodyPreview = preview,
+                body = encodeToString(bytes, NO_WRAP),
+                bodyEncoding = "base64",
+            )
         }
     }
 
     private fun publishResponseIfNeeded(
         currentContext: InterceptContext,
         meta: ResponseMeta?,
-        bodyPreview: String?,
-        body: String?,
+        bodyValues: CapturedBodyValues,
         truncatedBytes: Long?,
         totalBytes: Long?,
         responseWall: Long,
         responseMono: Long,
         error: Throwable?,
     ) {
+        val bodyPreview = bodyValues.bodyPreview
+        val body = bodyValues.body
         val hasPayload = !body.isNullOrEmpty() || !bodyPreview.isNullOrEmpty() || truncatedBytes != null
         if (!hasPayload && error == null) return
         interceptor.publish {
@@ -627,6 +652,7 @@ private class ResponseCapturingInputStream(
                 headers = meta?.headers ?: emptyList(),
                 bodyPreview = bodyPreview,
                 body = body,
+                bodyEncoding = bodyValues.bodyEncoding,
                 bodyTruncatedBytes = truncatedBytes,
                 bodySize = totalBytes,
                 timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
@@ -649,6 +675,30 @@ private class ResponseCapturingInputStream(
             )
         }
     }
+}
+
+private data class CapturedBodyValues(
+    val bodyPreview: String?,
+    val body: String?,
+    val bodyEncoding: String?,
+)
+
+private fun decodeUtf8TextIfLikely(bytes: ByteArray): String? {
+    if (bytes.isEmpty()) return ""
+    val decoded = runCatching {
+        Charsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    }.getOrNull() ?: return null
+    if (decoded.isEmpty()) return decoded
+    val printable = decoded.count { ch ->
+        ch == '\n' || ch == '\r' || ch == '\t' || (ch >= ' ' && ch != '\u007f')
+    }
+    val printableRatio = printable.toDouble() / decoded.length.toDouble()
+    return decoded.takeIf { printableRatio >= MinLikelyTextRatio }
 }
 
 private class SseCapturingInputStream(
@@ -875,4 +925,5 @@ private val DefaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 private const val DefaultBodyPreviewBytes: Int = 4096
 private const val DefaultTextBodyMaxBytes: Int = 5 * 1024 * 1024
 private const val DefaultBinaryBodyMaxBytes: Int = DefaultTextBodyMaxBytes
+private const val MinLikelyTextRatio: Double = 0.85
 private const val AbsoluteBodyTextMaxBytes: Long = 8L * 1024L * 1024L

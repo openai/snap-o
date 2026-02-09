@@ -155,7 +155,7 @@ class NetworkInspectorFeature(
             id = commandId,
             result = CdpGetResponseBodyResult(
                 body = resolvedBody,
-                base64Encoded = response?.hasNonTextBodyEncoding() == true,
+                base64Encoded = response?.bodyEncoding.equals("base64", ignoreCase = true),
             ),
             serializer = CdpGetResponseBodyResult.serializer(),
             clientId = target,
@@ -215,27 +215,6 @@ class NetworkInspectorFeature(
             is ResponseReceived -> copy(bodyPreview = null, body = null)
             else -> this
         }
-    }
-
-    private fun ResponseReceived.hasNonTextBodyEncoding(): Boolean {
-        val headersTextLike = headers.any { header ->
-            header.name.equals("Content-Type", ignoreCase = true) &&
-                header.value.substringBefore(';').trim().let { value ->
-                    value.startsWith("text/", ignoreCase = true) ||
-                        listOf(
-                            "json",
-                            "xml",
-                            "html",
-                            "javascript",
-                            "form",
-                            "graphql",
-                            "plain",
-                            "csv",
-                            "yaml",
-                        ).any { token -> value.contains(token, ignoreCase = true) }
-                }
-        }
-        return !headersTextLike
     }
 }
 

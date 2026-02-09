@@ -1,6 +1,7 @@
 package com.openai.snapo.demo
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,12 +18,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -35,6 +41,8 @@ import okhttp3.coroutines.executeAsync
 import okio.BufferedSink
 import okio.ByteString
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.net.InetAddress
 import java.util.zip.GZIPOutputStream
 
 class MainActivity : ComponentActivity() {
@@ -47,9 +55,13 @@ class MainActivity : ComponentActivity() {
     private val webSocketFactory = client.withSnapOInterceptor()
 
     private var activeWebSocket: WebSocket? = null
+    private var mockServer: MockWebServer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch(Dispatchers.IO) {
+            ensureMockServer()
+        }
         enableEdgeToEdge()
         setContent {
             MaterialTheme {
@@ -59,6 +71,7 @@ class MainActivity : ComponentActivity() {
                         onNetworkRequestClick = { runGetRequest(scope) },
                         onPostRequestClick = { runPostRequest(scope) },
                         onUnknownLengthGzipPostRequestClick = { runUnknownLengthGzipPostRequest(scope) },
+                        onNoContentTypeTextResponseClick = { runNoContentTypeTextResponseRequest(scope) },
                         onWebSocketDemoClick = { startWebSocketDemo() },
                         modifier = Modifier.padding(innerPadding)
                     )
@@ -69,6 +82,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         activeWebSocket?.close(1000, "Activity destroyed")
+        runCatching { mockServer?.close() }
+            .onFailure { error -> Log.e("SnapODemo", "Failed to stop MockWebServer", error) }
+        mockServer = null
         super.onDestroy()
     }
 
@@ -113,13 +129,35 @@ class MainActivity : ComponentActivity() {
         executeRequest(scope, request)
     }
 
+    private fun runNoContentTypeTextResponseRequest(scope: CoroutineScope) {
+        scope.launch {
+            val url = withContext(Dispatchers.IO) {
+                val server = ensureMockServer() ?: return@withContext null
+                "http://127.0.0.1:${server.port}/no-content-type-text"
+            }
+            if (url == null) {
+                Log.e("SnapODemo", "MockWebServer is not running")
+                return@launch
+            }
+            val request = Request.Builder()
+                .url(url)
+                .header("X-SnapO-Demo", "okhttp-response-no-content-type-text")
+                .build()
+            executeRequest(scope, request)
+        }
+    }
+
     private fun executeRequest(scope: CoroutineScope, request: Request) {
         val call = client.newCall(request)
         scope.launch {
-            call.executeAsync().use { response ->
-                withContext(Dispatchers.IO) {
-                    println(response.body.string())
+            try {
+                call.executeAsync().use { response ->
+                    withContext(Dispatchers.IO) {
+                        println(response.body.string())
+                    }
                 }
+            } catch (error: IOException) {
+                Log.e("SnapODemo", "Request failed: ${request.url}", error)
             }
         }
     }
@@ -147,6 +185,42 @@ class MainActivity : ComponentActivity() {
             }
         )
     }
+
+    private fun ensureMockServer(): MockWebServer? {
+        mockServer?.let { return it }
+        val started = runCatching {
+            createDemoMockServer().also {
+                it.start(InetAddress.getByName("127.0.0.1"), 0)
+                Log.d("SnapODemo", "MockWebServer started on 127.0.0.1:${it.port}")
+            }
+        }.onFailure { error ->
+            Log.e("SnapODemo", "Failed to start MockWebServer", error)
+        }.getOrNull()
+        if (started != null) {
+            mockServer = started
+        }
+        return started
+    }
+}
+
+private fun createDemoMockServer(): MockWebServer {
+    val body = """{"message":"Hello from Snap-O without Content-Type","source":"okhttp-demo"}"""
+    return MockWebServer().apply {
+        dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                Log.d("SnapODemo", "MockWebServer dispatch target=${request.target}")
+                return when (request.target.substringBefore('?')) {
+                    "/no-content-type-text" -> MockResponse.Builder()
+                        .code(200)
+                        .setHeader("Content-Length", body.toByteArray(Charsets.UTF_8).size.toString())
+                        .setHeader("Connection", "close")
+                        .body(body)
+                        .build()
+                    else -> MockResponse.Builder().code(404).build()
+                }
+            }
+        }
+    }
 }
 
 private fun gzippedUnknownLengthJsonBody(text: String): RequestBody {
@@ -173,6 +247,7 @@ fun Greeting(
     onNetworkRequestClick: () -> Unit,
     onPostRequestClick: () -> Unit,
     onUnknownLengthGzipPostRequestClick: () -> Unit,
+    onNoContentTypeTextResponseClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -189,6 +264,9 @@ fun Greeting(
         Button(onClick = onUnknownLengthGzipPostRequestClick) {
             Text("POST gzip (unknown length)")
         }
+        Button(onClick = onNoContentTypeTextResponseClick) {
+            Text("GET text (no Content-Type)")
+        }
         Button(onClick = onWebSocketDemoClick) {
             Text("WebSocket Echo")
         }
@@ -203,6 +281,7 @@ private fun GreetingPreview() {
             onNetworkRequestClick = {},
             onPostRequestClick = {},
             onUnknownLengthGzipPostRequestClick = {},
+            onNoContentTypeTextResponseClick = {},
             onWebSocketDemoClick = {},
         )
     }

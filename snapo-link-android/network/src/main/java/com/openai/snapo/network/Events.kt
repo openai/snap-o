@@ -46,6 +46,7 @@ data class ResponseReceived(
     val headers: List<Header> = emptyList(),
     val bodyPreview: String? = null,
     val body: String? = null,
+    val bodyEncoding: String? = null,
     val bodyTruncatedBytes: Long? = null,
     val bodySize: Long? = null,
     val timings: Timings = Timings(),
