@@ -15,6 +15,7 @@ internal object OkhttpEventFactory {
     fun createRequestWillBeSent(
         context: InterceptContext,
         request: Request,
+        hasBody: Boolean,
         body: String?,
         bodyEncoding: String?,
         truncatedBytes: Long?,
@@ -26,6 +27,7 @@ internal object OkhttpEventFactory {
             method = request.method,
             url = request.url.toString(),
             headers = request.headers.toHeaderList(),
+            hasBody = hasBody,
             body = body,
             bodyEncoding = bodyEncoding,
             bodyTruncatedBytes = truncatedBytes,

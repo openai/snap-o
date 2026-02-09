@@ -52,7 +52,7 @@ private fun RequestWillBeSent.toCdpRequestWillBeSent(): CdpMessage {
                     url = url,
                     method = method,
                     headers = headers.toCdpHeaderMap(),
-                    hasPostData = (bodySize ?: 0L) > 0L || !body.isNullOrEmpty(),
+                    hasPostData = hasBody || (bodySize ?: 0L) > 0L || !body.isNullOrEmpty(),
                     postDataLength = bodySize,
                     postDataEncoding = bodyEncoding,
                 ),

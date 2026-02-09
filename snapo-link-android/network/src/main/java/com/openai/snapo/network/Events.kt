@@ -30,6 +30,7 @@ data class RequestWillBeSent(
     val method: String,
     val url: String,
     val headers: List<Header> = emptyList(),
+    val hasBody: Boolean = false,
     val body: String?,
     val bodyEncoding: String?,
     val bodyTruncatedBytes: Long?,

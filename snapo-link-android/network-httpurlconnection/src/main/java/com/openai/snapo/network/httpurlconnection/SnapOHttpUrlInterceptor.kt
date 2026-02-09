@@ -290,6 +290,7 @@ private class InterceptingHttpURLConnection(
         val requestBodyBytes = capture?.bytes
         val bodySize = capture?.totalBytes ?: requestContentLength()
         val truncatedBytes = capture?.truncatedBytes
+        val hasBody = delegate.doOutput || requestBodyCapture != null || (bodySize?.let { it > 0L } == true)
 
         interceptor.publish {
             val bodyEncoding: String?
@@ -316,6 +317,7 @@ private class InterceptingHttpURLConnection(
                 method = delegate.requestMethod,
                 url = delegate.url.toString(),
                 headers = delegate.requestProperties.toHeaderList(),
+                hasBody = hasBody,
                 body = body,
                 bodyEncoding = bodyEncoding,
                 bodyTruncatedBytes = truncatedBytes,

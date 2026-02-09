@@ -97,6 +97,8 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
     ) {
         val requestBody = if (skipFallback) capturedBody else capturedBody ?: request.captureBody(textBodyMaxBytes)
         val contentType = resolveRequestContentType(requestBody?.contentType, request)
+        val hasCapturedBody = (requestBody?.body?.isNotEmpty() == true) || (requestBody?.truncatedBytes ?: 0L) > 0L
+        val hasBody = request.body != null || hasCapturedBody
         publish {
             var encoding: String? = null
             val encodedBody: String? = when {
@@ -119,6 +121,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             OkhttpEventFactory.createRequestWillBeSent(
                 context,
                 request,
+                hasBody = hasBody,
                 body = encodedBody,
                 bodyEncoding = encoding,
                 truncatedBytes = requestBody?.truncatedBytes,
