@@ -373,6 +373,9 @@ object SnapOCli {
                                 val error = message.error
                                 if (error != null) {
                                     val messageText = error.message
+                                    if (!details.loadingFailedMessage.isNullOrBlank()) {
+                                        return FetchRequestDetailsResult.Failure(details.loadingFailedMessage)
+                                    }
                                     return if (messageText.contains("No response body captured", ignoreCase = true)) {
                                         FetchRequestDetailsResult.MissingBody(messageText)
                                     } else {
