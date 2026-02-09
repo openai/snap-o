@@ -90,6 +90,7 @@ private class InterceptingHttpURLConnection(
     private val interceptor: SnapOHttpUrlInterceptor,
 ) : HttpURLConnection(delegate.url) {
 
+    private val requestHeaders = snapshotHeaders(delegate)
     private var context: InterceptContext? = null
     private var requestPublished: Boolean = false
     private var responseMeta: ResponseMeta? = null
@@ -243,15 +244,25 @@ private class InterceptingHttpURLConnection(
 
     override fun addRequestProperty(key: String?, value: String?) {
         delegate.addRequestProperty(key, value)
+        addHeader(key, value)
     }
 
     override fun setRequestProperty(key: String?, value: String?) {
         delegate.setRequestProperty(key, value)
+        setHeader(key, value)
     }
 
-    override fun getRequestProperty(key: String?): String? = delegate.getRequestProperty(key)
+    override fun getRequestProperty(key: String?): String? {
+        return runCatching { delegate.getRequestProperty(key) }
+            .getOrNull()
+            ?: headerFirst(key)
+    }
 
-    override fun getRequestProperties(): Map<String, List<String>> = delegate.requestProperties
+    override fun getRequestProperties(): Map<String, List<String>> {
+        return runCatching { delegate.requestProperties }
+            .getOrNull()
+            ?: requestHeaders.toMapCopy()
+    }
 
     override fun setFixedLengthStreamingMode(contentLength: Int) {
         delegate.setFixedLengthStreamingMode(contentLength)
@@ -324,7 +335,7 @@ private class InterceptingHttpURLConnection(
                 tMonoNs = currentContext.startMono,
                 method = delegate.requestMethod,
                 url = delegate.url.toString(),
-                headers = delegate.requestProperties.toHeaderList(),
+                headers = requestHeaders.toMapCopy().toHeaderList(),
                 hasBody = hasBody,
                 body = body,
                 bodyEncoding = bodyEncoding,
@@ -428,22 +439,56 @@ private class InterceptingHttpURLConnection(
     }
 
     private fun requestContentType(): String? {
-        val properties = delegate.requestProperties
-        return properties["Content-Type"]?.firstOrNull()
-            ?: properties["content-type"]?.firstOrNull()
+        return headerFirst("Content-Type")
     }
 
     private fun requestContentLength(): Long? {
-        val properties = delegate.requestProperties
-        val contentLength = properties["Content-Length"]?.firstOrNull()
-            ?: properties["content-length"]?.firstOrNull()
-        return contentLength?.toLongOrNull()
+        return headerFirst("Content-Length")?.toLongOrNull()
     }
 
     private fun requestContentEncoding(): String? {
-        val properties = delegate.requestProperties
-        return properties["Content-Encoding"]?.firstOrNull()
-            ?: properties["content-encoding"]?.firstOrNull()
+        return headerFirst("Content-Encoding")
+    }
+
+    private fun addHeader(key: String?, value: String?) {
+        if (key == null || value == null) return
+        val existingKey = requestHeaders.keys.firstOrNull { it.equals(key, ignoreCase = true) } ?: key
+        requestHeaders.getOrPut(existingKey) { mutableListOf() }.add(value)
+    }
+
+    private fun setHeader(key: String?, value: String?) {
+        if (key == null) return
+        val existingKey = requestHeaders.keys.firstOrNull { it.equals(key, ignoreCase = true) } ?: key
+        if (value == null) {
+            requestHeaders.remove(existingKey)
+            return
+        }
+        requestHeaders[existingKey] = mutableListOf(value)
+    }
+
+    private fun headerFirst(key: String?): String? {
+        if (key == null) return null
+        val matchingKey = requestHeaders.keys.firstOrNull { it.equals(key, ignoreCase = true) } ?: return null
+        return requestHeaders[matchingKey]?.firstOrNull()
+    }
+
+    private fun LinkedHashMap<String, MutableList<String>>.toMapCopy(): Map<String, List<String>> {
+        if (isEmpty()) return emptyMap()
+        val copy = LinkedHashMap<String, List<String>>(size)
+        for ((key, values) in this) {
+            copy[key] = values.toList()
+        }
+        return copy
+    }
+
+    private fun snapshotHeaders(connection: HttpURLConnection): LinkedHashMap<String, MutableList<String>> {
+        val snapshot = LinkedHashMap<String, MutableList<String>>()
+        val properties = runCatching { connection.requestProperties }.getOrNull() ?: return snapshot
+        for ((key, values) in properties) {
+            if (key == null) continue
+            snapshot[key] = values.toMutableList()
+        }
+        return snapshot
     }
 
     private fun Map<out String?, List<String>>.toHeaderList(): List<Header> {
