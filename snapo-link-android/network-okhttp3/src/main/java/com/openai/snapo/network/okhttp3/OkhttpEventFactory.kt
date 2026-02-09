@@ -15,6 +15,7 @@ internal object OkhttpEventFactory {
     fun createRequestWillBeSent(
         context: InterceptContext,
         request: Request,
+        hasBody: Boolean,
         body: String?,
         bodyEncoding: String?,
         truncatedBytes: Long?,
@@ -26,6 +27,7 @@ internal object OkhttpEventFactory {
             method = request.method,
             url = request.url.toString(),
             headers = request.headers.toHeaderList(),
+            hasBody = hasBody,
             body = body,
             bodyEncoding = bodyEncoding,
             bodyTruncatedBytes = truncatedBytes,
@@ -39,6 +41,7 @@ internal object OkhttpEventFactory {
         endMono: Long,
         bodyPreview: String?,
         bodyText: String?,
+        bodyEncoding: String?,
         truncatedBytes: Long?,
         bodySize: Long?,
     ): ResponseReceived =
@@ -50,6 +53,7 @@ internal object OkhttpEventFactory {
             headers = response.headers.toHeaderList(),
             bodyPreview = bodyPreview,
             body = bodyText,
+            bodyEncoding = bodyEncoding,
             bodyTruncatedBytes = truncatedBytes,
             bodySize = bodySize,
             timings = Timings(totalMs = nanosToMillis(endMono - context.startMono)),

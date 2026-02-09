@@ -52,7 +52,7 @@ private fun RequestWillBeSent.toCdpRequestWillBeSent(): CdpMessage {
                     url = url,
                     method = method,
                     headers = headers.toCdpHeaderMap(),
-                    hasPostData = (bodySize ?: 0L) > 0L || !body.isNullOrEmpty(),
+                    hasPostData = hasBody || (bodySize ?: 0L) > 0L || !body.isNullOrEmpty(),
                     postDataLength = bodySize,
                     postDataEncoding = bodyEncoding,
                 ),
@@ -76,7 +76,7 @@ private fun ResponseReceived.toCdpResponseReceived(requestUrl: String?): CdpMess
                     headers = headers.toCdpHeaderMap(),
                     mimeType = headers.contentType(),
                     encodedDataLength = bodySize?.toDouble(),
-                    bodyEncoding = inferBodyEncoding(),
+                    bodyEncoding = bodyEncoding,
                 ),
             ),
         ),
@@ -300,11 +300,6 @@ private fun WebSocketCancelled.toCdpWebSocketCancelled(): CdpMessage {
     )
 }
 
-private fun ResponseReceived.inferBodyEncoding(): String? {
-    if ((bodySize ?: 0L) <= 0L && body.isNullOrEmpty()) return null
-    return if (headers.isTextLikeContentType()) null else "base64"
-}
-
 private fun List<Header>.toCdpHeaderMap(): Map<String, String> {
     if (isEmpty()) return emptyMap()
     val grouped = LinkedHashMap<String, MutableList<String>>()
@@ -325,22 +320,6 @@ private fun List<Header>.contentType(): String? {
 private fun List<Header>.isEventStream(): Boolean {
     val contentType = contentType() ?: return false
     return contentType.equals("text/event-stream", ignoreCase = true)
-}
-
-private fun List<Header>.isTextLikeContentType(): Boolean {
-    val contentType = contentType()?.lowercase() ?: return false
-    if (contentType.startsWith("text/")) return true
-    return listOf(
-        "json",
-        "xml",
-        "html",
-        "javascript",
-        "form",
-        "graphql",
-        "plain",
-        "csv",
-        "yaml",
-    ).any(contentType::contains)
 }
 
 private fun String.toWebSocketOpcode(): Int {

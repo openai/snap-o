@@ -29,6 +29,8 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.ProtocolException
 import java.net.URL
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.security.Permission
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -88,6 +90,7 @@ private class InterceptingHttpURLConnection(
     private val interceptor: SnapOHttpUrlInterceptor,
 ) : HttpURLConnection(delegate.url) {
 
+    private val requestHeaders = snapshotHeaders(delegate)
     private var context: InterceptContext? = null
     private var requestPublished: Boolean = false
     private var responseMeta: ResponseMeta? = null
@@ -241,15 +244,25 @@ private class InterceptingHttpURLConnection(
 
     override fun addRequestProperty(key: String?, value: String?) {
         delegate.addRequestProperty(key, value)
+        addHeader(key, value)
     }
 
     override fun setRequestProperty(key: String?, value: String?) {
         delegate.setRequestProperty(key, value)
+        setHeader(key, value)
     }
 
-    override fun getRequestProperty(key: String?): String? = delegate.getRequestProperty(key)
+    override fun getRequestProperty(key: String?): String? {
+        return runCatching { delegate.getRequestProperty(key) }
+            .getOrNull()
+            ?: headerFirst(key)
+    }
 
-    override fun getRequestProperties(): Map<String, List<String>> = delegate.requestProperties
+    override fun getRequestProperties(): Map<String, List<String>> {
+        return runCatching { delegate.requestProperties }
+            .getOrNull()
+            ?: requestHeaders.toMapCopy()
+    }
 
     override fun setFixedLengthStreamingMode(contentLength: Int) {
         delegate.setFixedLengthStreamingMode(contentLength)
@@ -286,10 +299,12 @@ private class InterceptingHttpURLConnection(
         val currentContext = context ?: return
         val capture = requestBodyCapture?.snapshot()
         val contentType = requestContentType()
+        val contentEncoding = requestContentEncoding()
         val mediaType = parseMediaType(contentType)
         val requestBodyBytes = capture?.bytes
         val bodySize = capture?.totalBytes ?: requestContentLength()
         val truncatedBytes = capture?.truncatedBytes
+        val hasBody = delegate.doOutput || requestBodyCapture != null || (bodySize?.let { it > 0L } == true)
 
         interceptor.publish {
             val bodyEncoding: String?
@@ -297,6 +312,11 @@ private class InterceptingHttpURLConnection(
                 requestBodyBytes == null || requestBodyBytes.isEmpty() -> {
                     bodyEncoding = null
                     null
+                }
+
+                hasNonIdentityContentEncoding(contentEncoding) -> {
+                    bodyEncoding = "base64"
+                    encodeToString(requestBodyBytes, NO_WRAP)
                 }
 
                 mediaType?.isTextLike() == true -> {
@@ -315,7 +335,8 @@ private class InterceptingHttpURLConnection(
                 tMonoNs = currentContext.startMono,
                 method = delegate.requestMethod,
                 url = delegate.url.toString(),
-                headers = delegate.requestProperties.toHeaderList(),
+                headers = requestHeaders.toMapCopy().toHeaderList(),
+                hasBody = hasBody,
                 body = body,
                 bodyEncoding = bodyEncoding,
                 bodyTruncatedBytes = truncatedBytes,
@@ -354,6 +375,7 @@ private class InterceptingHttpURLConnection(
                     headers = headers,
                     bodyPreview = null,
                     body = null,
+                    bodyEncoding = null,
                     bodyTruncatedBytes = null,
                     bodySize = contentLength,
                     timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
@@ -417,16 +439,56 @@ private class InterceptingHttpURLConnection(
     }
 
     private fun requestContentType(): String? {
-        val properties = delegate.requestProperties
-        return properties["Content-Type"]?.firstOrNull()
-            ?: properties["content-type"]?.firstOrNull()
+        return headerFirst("Content-Type")
     }
 
     private fun requestContentLength(): Long? {
-        val properties = delegate.requestProperties
-        val contentLength = properties["Content-Length"]?.firstOrNull()
-            ?: properties["content-length"]?.firstOrNull()
-        return contentLength?.toLongOrNull()
+        return headerFirst("Content-Length")?.toLongOrNull()
+    }
+
+    private fun requestContentEncoding(): String? {
+        return headerFirst("Content-Encoding")
+    }
+
+    private fun addHeader(key: String?, value: String?) {
+        if (key == null || value == null) return
+        val existingKey = requestHeaders.keys.firstOrNull { it.equals(key, ignoreCase = true) } ?: key
+        requestHeaders.getOrPut(existingKey) { mutableListOf() }.add(value)
+    }
+
+    private fun setHeader(key: String?, value: String?) {
+        if (key == null) return
+        val existingKey = requestHeaders.keys.firstOrNull { it.equals(key, ignoreCase = true) } ?: key
+        if (value == null) {
+            requestHeaders.remove(existingKey)
+            return
+        }
+        requestHeaders[existingKey] = mutableListOf(value)
+    }
+
+    private fun headerFirst(key: String?): String? {
+        if (key == null) return null
+        val matchingKey = requestHeaders.keys.firstOrNull { it.equals(key, ignoreCase = true) } ?: return null
+        return requestHeaders[matchingKey]?.firstOrNull()
+    }
+
+    private fun LinkedHashMap<String, MutableList<String>>.toMapCopy(): Map<String, List<String>> {
+        if (isEmpty()) return emptyMap()
+        val copy = LinkedHashMap<String, List<String>>(size)
+        for ((key, values) in this) {
+            copy[key] = values.toList()
+        }
+        return copy
+    }
+
+    private fun snapshotHeaders(connection: HttpURLConnection): LinkedHashMap<String, MutableList<String>> {
+        val snapshot = LinkedHashMap<String, MutableList<String>>()
+        val properties = runCatching { connection.requestProperties }.getOrNull() ?: return snapshot
+        for ((key, values) in properties) {
+            if (key == null) continue
+            snapshot[key] = values.toMutableList()
+        }
+        return snapshot
     }
 
     private fun Map<out String?, List<String>>.toHeaderList(): List<Header> {
@@ -541,10 +603,11 @@ private class ResponseCapturingInputStream(
         val snapshot = capture.snapshot()
         val meta = responseMeta
         val bytes = snapshot.bytes
-        val charset = mediaType?.charsetOrUtf8() ?: Charsets.UTF_8
-        val isText = mediaType?.isTextLike() == true
-        val bodyPreview = buildBodyPreview(bytes, isText, charset)
-        val body = buildBody(bytes, isText, charset)
+        val bodyValues = resolveCapturedBodyValues(
+            bytes = bytes,
+            mediaType = mediaType,
+            previewBytes = interceptor.responseBodyPreviewBytes,
+        )
         val totalBytes = snapshot.totalBytes.takeIf { it > 0L } ?: meta?.contentLength
         val responseWall = meta?.responseWall ?: System.currentTimeMillis()
         val responseMono = meta?.responseMono ?: SystemClock.elapsedRealtimeNanos()
@@ -552,8 +615,7 @@ private class ResponseCapturingInputStream(
         publishResponseIfNeeded(
             currentContext = currentContext,
             meta = meta,
-            bodyPreview = bodyPreview,
-            body = body,
+            bodyValues = bodyValues,
             truncatedBytes = snapshot.truncatedBytes,
             totalBytes = totalBytes,
             responseWall = responseWall,
@@ -563,45 +625,67 @@ private class ResponseCapturingInputStream(
         publishFailureIfNeeded(currentContext, error)
     }
 
-    private fun buildBodyPreview(
+    private fun resolveCapturedBodyValues(
         bytes: ByteArray,
-        isText: Boolean,
-        charset: java.nio.charset.Charset,
-    ): String? {
-        val previewLimit = interceptor.responseBodyPreviewBytes
-        if (previewLimit <= 0 || bytes.isEmpty()) return null
-        val limit = previewLimit.coerceAtMost(bytes.size)
-        return if (isText) {
-            String(bytes, 0, limit, charset)
-        } else {
-            encodeToString(bytes, 0, limit, NO_WRAP)
+        mediaType: ParsedMediaType?,
+        previewBytes: Int,
+    ): CapturedBodyValues {
+        if (bytes.isEmpty()) {
+            return CapturedBodyValues(
+                bodyPreview = null,
+                body = null,
+                bodyEncoding = null,
+            )
         }
-    }
-
-    private fun buildBody(
-        bytes: ByteArray,
-        isText: Boolean,
-        charset: java.nio.charset.Charset,
-    ): String? {
-        if (bytes.isEmpty()) return null
-        return if (isText) {
+        val charset = mediaType?.charsetOrUtf8() ?: Charsets.UTF_8
+        val isKnownText = mediaType?.isTextLike() == true
+        val bodyText = if (isKnownText) {
             String(bytes, charset)
+        } else if (mediaType == null) {
+            decodeUtf8TextIfLikely(bytes)
         } else {
-            encodeToString(bytes, NO_WRAP)
+            null
+        }
+
+        return if (bodyText != null) {
+            val preview = if (previewBytes > 0) {
+                val limit = previewBytes.coerceAtMost(bytes.size)
+                String(bytes, 0, limit, charset)
+            } else {
+                null
+            }
+            CapturedBodyValues(
+                bodyPreview = preview,
+                body = bodyText,
+                bodyEncoding = null,
+            )
+        } else {
+            val preview = if (previewBytes > 0) {
+                val limit = previewBytes.coerceAtMost(bytes.size)
+                encodeToString(bytes, 0, limit, NO_WRAP)
+            } else {
+                null
+            }
+            CapturedBodyValues(
+                bodyPreview = preview,
+                body = encodeToString(bytes, NO_WRAP),
+                bodyEncoding = "base64",
+            )
         }
     }
 
     private fun publishResponseIfNeeded(
         currentContext: InterceptContext,
         meta: ResponseMeta?,
-        bodyPreview: String?,
-        body: String?,
+        bodyValues: CapturedBodyValues,
         truncatedBytes: Long?,
         totalBytes: Long?,
         responseWall: Long,
         responseMono: Long,
         error: Throwable?,
     ) {
+        val bodyPreview = bodyValues.bodyPreview
+        val body = bodyValues.body
         val hasPayload = !body.isNullOrEmpty() || !bodyPreview.isNullOrEmpty() || truncatedBytes != null
         if (!hasPayload && error == null) return
         interceptor.publish {
@@ -613,6 +697,7 @@ private class ResponseCapturingInputStream(
                 headers = meta?.headers ?: emptyList(),
                 bodyPreview = bodyPreview,
                 body = body,
+                bodyEncoding = bodyValues.bodyEncoding,
                 bodyTruncatedBytes = truncatedBytes,
                 bodySize = totalBytes,
                 timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
@@ -635,6 +720,30 @@ private class ResponseCapturingInputStream(
             )
         }
     }
+}
+
+private data class CapturedBodyValues(
+    val bodyPreview: String?,
+    val body: String?,
+    val bodyEncoding: String?,
+)
+
+private fun decodeUtf8TextIfLikely(bytes: ByteArray): String? {
+    if (bytes.isEmpty()) return ""
+    val decoded = runCatching {
+        Charsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    }.getOrNull() ?: return null
+    if (decoded.isEmpty()) return decoded
+    val printable = decoded.count { ch ->
+        ch == '\n' || ch == '\r' || ch == '\t' || (ch >= ' ' && ch != '\u007f')
+    }
+    val printableRatio = printable.toDouble() / decoded.length.toDouble()
+    return decoded.takeIf { printableRatio >= MinLikelyTextRatio }
 }
 
 private class SseCapturingInputStream(
@@ -848,8 +957,18 @@ private fun ByteArray.toNormalizedString(charset: java.nio.charset.Charset): Str
     return raw.replace("\r\n", "\n").replace('\r', '\n')
 }
 
+private fun hasNonIdentityContentEncoding(contentEncoding: String?): Boolean {
+    val encodings = contentEncoding
+        ?.split(',')
+        ?.map { token -> token.substringBefore(';').trim().lowercase() }
+        ?.filter { token -> token.isNotEmpty() }
+        .orEmpty()
+    return encodings.any { token -> token != "identity" }
+}
+
 private val DefaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 private const val DefaultBodyPreviewBytes: Int = 4096
 private const val DefaultTextBodyMaxBytes: Int = 5 * 1024 * 1024
 private const val DefaultBinaryBodyMaxBytes: Int = DefaultTextBodyMaxBytes
+private const val MinLikelyTextRatio: Double = 0.85
 private const val AbsoluteBodyTextMaxBytes: Long = 8L * 1024L * 1024L

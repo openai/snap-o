@@ -11,6 +11,7 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.openai.snapo.desktop.adb.AdbExec
 import com.openai.snapo.desktop.adb.AdbForwardHandle
+import com.openai.snapo.desktop.inspector.decodeBodyForDisplay
 import com.openai.snapo.desktop.link.SnapOLinkServerConnection
 import com.openai.snapo.desktop.link.SnapORecord
 import com.openai.snapo.desktop.protocol.CdpGetRequestPostDataParams
@@ -247,6 +248,7 @@ object SnapOCli {
                         requestMethod = result.requestMethod,
                         requestUrl = result.requestUrl,
                         requestHeaders = result.requestHeaders,
+                        requestBodyEncoding = result.requestBodyEncoding,
                         requestBody = result.requestBody,
                         responseStatus = result.responseStatus,
                         responseUrl = result.responseUrl,
@@ -293,6 +295,7 @@ object SnapOCli {
             val startedAtMs = System.currentTimeMillis()
             var details = RequestDetailsSnapshot()
             var requestBody: String? = null
+            var requestBodyEncoding: String? = null
             var requestBodyResolved = false
             var responseBody: String? = null
             var responseBodyBase64Encoded = false
@@ -328,6 +331,9 @@ object SnapOCli {
                     is SnapORecord.NetworkEvent -> {
                         val message = record.value
                         details = updateRequestDetailsSnapshot(details, message, requestId)
+                        if (requestBodyEncoding == null) {
+                            requestBodyEncoding = details.requestBodyEncoding
+                        }
 
                         val responseId = message.id
                         if (responseId != null && message.method == null) {
@@ -451,6 +457,7 @@ object SnapOCli {
                         requestMethod = details.requestMethod,
                         requestUrl = details.requestUrl,
                         requestHeaders = details.requestHeaders,
+                        requestBodyEncoding = requestBodyEncoding ?: details.requestBodyEncoding,
                         requestBody = requestBody,
                         responseStatus = details.responseStatus,
                         responseUrl = details.responseUrl,
@@ -901,7 +908,18 @@ object SnapOCli {
                 emitHeadersSection("Response Headers", line.responseHeaders)
 
                 println("Request Body:")
-                println(line.requestBody ?: "<none>")
+                println(
+                    line.requestBody?.let { rawBody ->
+                        decodeBodyForDisplay(
+                            rawBody = rawBody,
+                            rawEncoding = line.requestBodyEncoding,
+                            contentEncodingHeader = line.requestHeaders
+                                .entries
+                                .firstOrNull { it.key.equals("Content-Encoding", ignoreCase = true) }
+                                ?.value,
+                        )
+                    } ?: "<none>"
+                )
                 println("Response Body (base64 encoded: ${line.responseBodyBase64Encoded}):")
                 println(line.responseBody)
             }
@@ -1000,6 +1018,7 @@ object SnapOCli {
         val requestMethod: String? = null,
         val requestUrl: String? = null,
         val requestHeaders: Map<String, String> = emptyMap(),
+        val requestBodyEncoding: String? = null,
         val requestBody: String? = null,
         val responseStatus: Int? = null,
         val responseUrl: String? = null,
@@ -1012,6 +1031,7 @@ object SnapOCli {
         val requestMethod: String? = null,
         val requestUrl: String? = null,
         val requestHeaders: Map<String, String> = emptyMap(),
+        val requestBodyEncoding: String? = null,
         val responseStatus: Int? = null,
         val responseUrl: String? = null,
         val responseHeaders: Map<String, String> = emptyMap(),
@@ -1030,6 +1050,7 @@ object SnapOCli {
                     requestMethod = params.request.method,
                     requestUrl = params.request.url,
                     requestHeaders = redactHeaderMap(params.request.headers, requestHeaderNames),
+                    requestBodyEncoding = params.request.postDataEncoding,
                 )
             }
 
@@ -1104,6 +1125,7 @@ object SnapOCli {
             val requestMethod: String?,
             val requestUrl: String?,
             val requestHeaders: Map<String, String>,
+            val requestBodyEncoding: String?,
             val requestBody: String?,
             val responseStatus: Int?,
             val responseUrl: String?,

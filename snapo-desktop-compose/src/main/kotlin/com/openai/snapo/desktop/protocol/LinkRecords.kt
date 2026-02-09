@@ -12,7 +12,7 @@ sealed interface LinkRecord
 @Serializable
 @SerialName("Hello")
 data class Hello(
-    val schemaVersion: Int = 3,
+    val schemaVersion: Int? = null,
     val packageName: String,
     val processName: String,
     val pid: Int,

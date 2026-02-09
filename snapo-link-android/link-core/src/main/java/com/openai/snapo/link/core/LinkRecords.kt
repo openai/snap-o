@@ -1,5 +1,9 @@
+@file:OptIn(ExperimentalSerializationApi::class)
+
 package com.openai.snapo.link.core
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -12,6 +16,7 @@ sealed interface LinkRecord
 @Serializable
 @SerialName("Hello")
 data class Hello(
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val schemaVersion: Int = SchemaVersion,
     val packageName: String,
     val processName: String,

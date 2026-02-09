@@ -29,6 +29,7 @@ data class NetworkInspectorServerUiModel(
     val appIconBase64: String?,
     val schemaVersion: Int?,
     val isSchemaNewerThanSupported: Boolean,
+    val isSchemaOlderThanSupported: Boolean,
     val hasHello: Boolean,
     val features: Set<String>,
 ) {
@@ -50,6 +51,7 @@ data class NetworkInspectorServerUiModel(
                 appIconBase64 = server.appIcon?.base64Data,
                 schemaVersion = server.schemaVersion,
                 isSchemaNewerThanSupported = server.isSchemaNewerThanSupported,
+                isSchemaOlderThanSupported = server.isSchemaOlderThanSupported,
                 hasHello = server.hasHello,
                 features = server.features,
             )

@@ -39,6 +39,7 @@ dependencies {
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.websockets)
+    implementation(project(":samples:demo-shared"))
 
     debugImplementation(project(":network-okhttp3"))
     releaseImplementation(project(":network-okhttp3-noop"))

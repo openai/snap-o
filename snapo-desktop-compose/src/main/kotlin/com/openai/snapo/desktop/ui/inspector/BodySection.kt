@@ -108,12 +108,13 @@ internal fun BodyImagePreview(
 
 private fun metadataText(payload: NetworkInspectorRequestUiModel.BodyPayload): String? {
     val parts = mutableListOf<String>()
+    val totalBytes = payload.totalBytes?.takeIf { it >= 0L }
 
     if (payload.capturedBytes > 0) {
         parts += "Captured ${formatBytes(payload.capturedBytes)}"
-        payload.totalBytes?.let { parts += "of ${formatBytes(it)}" }
-    } else if (payload.totalBytes != null) {
-        parts += "Total ${formatBytes(payload.totalBytes)}"
+        totalBytes?.let { parts += "of ${formatBytes(it)}" }
+    } else if (totalBytes != null) {
+        parts += "Total ${formatBytes(totalBytes)}"
     }
 
     val truncated = payload.truncatedBytes
@@ -130,16 +131,16 @@ private fun metadataText(payload: NetworkInspectorRequestUiModel.BodyPayload): S
 }
 
 private fun formatBytes(byteCount: Long): String {
-    val kib = 1024.0
-    val mib = kib * 1024.0
-    val gib = mib * 1024.0
+    val kb = 1000.0
+    val mb = kb * 1000.0
+    val gb = mb * 1000.0
 
     val value = byteCount.toDouble()
     return when {
-        value < kib -> "$byteCount B"
-        value < mib -> "%.1f KiB".format(value / kib)
-        value < gib -> "%.1f MiB".format(value / mib)
-        else -> "%.1f GiB".format(value / gib)
+        value < kb -> "$byteCount B"
+        value < mb -> "%.1f KB".format(value / kb)
+        value < gb -> "%.1f MB".format(value / mb)
+        else -> "%.1f GB".format(value / gb)
     }
 }
 
