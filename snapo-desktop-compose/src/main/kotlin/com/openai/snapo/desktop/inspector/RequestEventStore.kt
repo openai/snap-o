@@ -230,7 +230,6 @@ internal class RequestEventStore {
             } else {
                 existing.copy(
                     failure = record,
-                    response = null,
                     finished = null,
                     lastUpdatedAt = now,
                 )
