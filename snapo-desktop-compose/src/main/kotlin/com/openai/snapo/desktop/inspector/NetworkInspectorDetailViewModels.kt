@@ -235,7 +235,10 @@ private fun requestStatus(request: NetworkInspectorRequest): NetworkInspectorReq
 
 private fun requestTiming(request: NetworkInspectorRequest): InspectorTiming {
     val startMillis = request.request?.tWallMs
-    val endMillis = request.failure?.tWallMs ?: request.response?.tWallMs
+    val endMillis = request.failure?.tWallMs
+        ?: request.streamClosed?.tWallMs
+        ?: request.finished?.tWallMs
+        ?: request.response?.tWallMs
     return InspectorTiming(
         startMillis = startMillis,
         endMillis = endMillis,

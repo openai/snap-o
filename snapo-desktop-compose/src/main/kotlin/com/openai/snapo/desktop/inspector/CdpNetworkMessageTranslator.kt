@@ -96,10 +96,16 @@ internal class CdpNetworkMessageTranslator {
         )
     }
 
-    private fun toLoadingFinished(params: CdpLoadingFinishedParams): ResponseStreamClosed? {
-        if (!sseRequestIds.contains(params.requestId)) return null
+    private fun toLoadingFinished(params: CdpLoadingFinishedParams): PerRequestRecord {
         val wallMs = resolveWallMs(timestampSeconds = params.timestamp)
         val monoNs = resolveMonoNs(params.timestamp)
+        if (!sseRequestIds.contains(params.requestId)) {
+            return ResponseFinished(
+                params = params,
+                tWallMs = wallMs,
+                tMonoNs = monoNs,
+            )
+        }
         val totalEvents = sseEventCountByRequestId.remove(params.requestId) ?: 0L
         sseSequenceByRequestId.remove(params.requestId)
         sseRequestIds.remove(params.requestId)

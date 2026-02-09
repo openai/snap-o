@@ -193,7 +193,9 @@ class NetworkInspectorService(
                 )
             }
 
-            is ResponseReceived -> {
+            is ResponseFinished,
+            is ResponseStreamClosed,
+            -> {
                 responseBodyIfNeeded(
                     NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
                 )
