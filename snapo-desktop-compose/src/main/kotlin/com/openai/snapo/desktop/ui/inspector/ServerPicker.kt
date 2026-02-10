@@ -2,6 +2,7 @@
 
 package com.openai.snapo.desktop.ui.inspector
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -111,9 +112,10 @@ private fun ServerPickerButton(
         shape = MaterialTheme.shapes.small,
         contentPadding = PaddingValues(horizontal = Spacings.lg, vertical = Spacings.md),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onBackground,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
+        border = BorderStroke(1.0.dp, MaterialTheme.colorScheme.outline),
         modifier = Modifier.fillMaxWidth(),
     ) {
         val iconBitmap = remember(selectedServer?.id, selectedServer?.appIconBase64) {
