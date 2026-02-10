@@ -324,7 +324,7 @@ private fun LazyListScope.requestHeadersSectionItems(
         item(key = "$keyPrefix:body") {
             HeadersSectionBody(
                 headers = request.requestHeaders,
-                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.xs),
+                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.md),
             )
         }
     }
@@ -348,7 +348,7 @@ private fun LazyListScope.responseHeadersSectionItems(
         item(key = "$keyPrefix:body") {
             HeadersSectionBody(
                 headers = request.responseHeaders,
-                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.xs),
+                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.md),
             )
         }
     }

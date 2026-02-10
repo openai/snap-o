@@ -135,7 +135,7 @@ private fun LazyListScope.headersSectionItems(
         item(key = "$keyPrefix:body") {
             HeadersSectionBody(
                 headers = headers,
-                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.xs),
+                modifier = Modifier.padding(top = Spacings.sm, bottom = Spacings.sm),
             )
         }
     }
