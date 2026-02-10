@@ -494,12 +494,10 @@ private class InterceptingHttpURLConnection(
 
     private fun responseHasNoBody(method: String?, code: Int, contentLength: Long?): Boolean {
         if (method.equals("HEAD", ignoreCase = true)) return true
-        if (code in 100..199 ||
-            code == HttpURLConnection.HTTP_NO_CONTENT ||
-            code == HttpURLConnection.HTTP_NOT_MODIFIED
-        ) {
-            return true
-        }
+        if (code in 100..199) return true
+        if (code == HttpURLConnection.HTTP_NO_CONTENT) return true
+        if (code == HttpURLConnection.HTTP_RESET) return true
+        if (code == HttpURLConnection.HTTP_NOT_MODIFIED) return true
         return contentLength == 0L
     }
 
