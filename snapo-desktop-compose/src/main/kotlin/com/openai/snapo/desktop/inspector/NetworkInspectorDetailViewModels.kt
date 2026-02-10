@@ -229,13 +229,26 @@ data class NetworkInspectorWebSocketUiModel(
 private fun requestStatus(request: NetworkInspectorRequest): NetworkInspectorRequestStatus =
     when {
         request.failure != null -> NetworkInspectorRequestStatus.Failure(request.failure.message)
-        request.response != null -> NetworkInspectorRequestStatus.Success(request.response.code)
+        request.isLikelyStreamingResponse && request.streamClosed?.reason.equals("error", ignoreCase = true) ->
+            NetworkInspectorRequestStatus.Failure(request.streamClosed?.message)
+
+        request.isLikelyStreamingResponse && request.streamClosed != null ->
+            NetworkInspectorRequestStatus.Success(request.response?.code ?: 200)
+
+        request.isLikelyStreamingResponse -> NetworkInspectorRequestStatus.Pending
+        request.response != null && request.finished != null ->
+            NetworkInspectorRequestStatus.Success(request.response.code)
+
+        request.response != null -> NetworkInspectorRequestStatus.Pending
         else -> NetworkInspectorRequestStatus.Pending
     }
 
 private fun requestTiming(request: NetworkInspectorRequest): InspectorTiming {
     val startMillis = request.request?.tWallMs
-    val endMillis = request.failure?.tWallMs ?: request.response?.tWallMs
+    val endMillis = request.failure?.tWallMs
+        ?: request.streamClosed?.tWallMs
+        ?: request.finished?.tWallMs
+        ?: request.response?.tWallMs
     return InspectorTiming(
         startMillis = startMillis,
         endMillis = endMillis,

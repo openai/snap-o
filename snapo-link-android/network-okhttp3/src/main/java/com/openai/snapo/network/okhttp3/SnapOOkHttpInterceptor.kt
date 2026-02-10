@@ -7,6 +7,7 @@ import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.network.NetworkEventRecord
 import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.RequestFailed
+import com.openai.snapo.network.ResponseFinished
 import com.openai.snapo.network.Timings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +22,9 @@ import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.Buffer
 import okio.BufferedSink
+import okio.BufferedSource
 import okio.ForwardingSink
+import okio.ForwardingSource
 import okio.buffer
 import java.io.Closeable
 import java.io.IOException
@@ -30,6 +33,7 @@ import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 /** OkHttp interceptor that mirrors traffic to the active SnapO link if present. */
@@ -141,11 +145,28 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val endWall = System.currentTimeMillis()
         val endMono = SystemClock.elapsedRealtimeNanos()
         val responseBody = response.body
+        if (response.code == 101) {
+            publishStandardResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
+            publishLoadingFinished(context, bodySize = 0L)
+            return response
+        }
         return if (responseBody.contentType().isEventStream()) {
             handleStreamingResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
         } else {
             publishStandardResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
-            response
+            response.newBuilder()
+                .body(
+                    CompletionTrackingResponseBody(
+                        delegate = responseBody,
+                        onFinished = { totalBytes ->
+                            publishLoadingFinished(context, totalBytes)
+                        },
+                        onFailed = { error ->
+                            handleFailure(context, error)
+                        },
+                    ),
+                )
+                .build()
         }
     }
 
@@ -224,6 +245,19 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 errorKind = error.javaClass.simpleName.ifEmpty { error.javaClass.name },
                 message = error.message,
                 timings = Timings(totalMs = nanosToMillis(failMono - context.startMono)),
+            )
+        }
+    }
+
+    private fun publishLoadingFinished(context: InterceptContext, bodySize: Long?) {
+        val finishWall = System.currentTimeMillis()
+        val finishMono = SystemClock.elapsedRealtimeNanos()
+        publish {
+            ResponseFinished(
+                id = context.requestId,
+                tWallMs = finishWall,
+                tMonoNs = finishMono,
+                bodySize = bodySize,
             )
         }
     }
@@ -327,6 +361,70 @@ private class CapturingRequestBody(
         } finally {
             captured = capture.snapshot(contentType())
         }
+    }
+}
+
+private class CompletionTrackingResponseBody(
+    private val delegate: ResponseBody,
+    private val onFinished: (Long?) -> Unit,
+    private val onFailed: (Throwable) -> Unit,
+) : ResponseBody() {
+    private val closed = AtomicBoolean(false)
+    private val completionNotified = AtomicBoolean(false)
+    private var totalBytes: Long = 0L
+
+    private val bufferedSource: BufferedSource by lazy {
+        object : ForwardingSource(delegate.source()) {
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                return runCatching {
+                    val read = super.read(sink, byteCount)
+                    if (read > 0L) {
+                        totalBytes += read
+                    } else if (read == -1L) {
+                        completeSuccessfully()
+                    }
+                    read
+                }.onFailure { error ->
+                    completeWithError(error)
+                }.getOrThrow()
+            }
+
+            override fun close() {
+                val result = runCatching { super.close() }
+                result.onFailure { error -> completeWithError(error) }
+                if (result.isSuccess) {
+                    completeSuccessfully()
+                }
+                result.getOrThrow()
+            }
+        }.buffer()
+    }
+
+    override fun contentType(): MediaType? = delegate.contentType()
+
+    override fun contentLength(): Long = delegate.contentLength()
+
+    override fun source(): BufferedSource = bufferedSource
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) {
+            bufferedSource.close()
+        }
+    }
+
+    private fun completeSuccessfully() {
+        if (!completionNotified.compareAndSet(false, true)) return
+        val total = if (totalBytes > 0L) {
+            totalBytes
+        } else {
+            delegate.safeContentLength()
+        }
+        onFinished(total)
+    }
+
+    private fun completeWithError(error: Throwable) {
+        if (!completionNotified.compareAndSet(false, true)) return
+        onFailed(error)
     }
 }
 

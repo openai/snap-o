@@ -25,6 +25,10 @@ internal class RequestEventStore {
                 updateRequest(serverId, payload)
                 true
             }
+            is ResponseFinished -> {
+                updateRequest(serverId, payload)
+                true
+            }
             is RequestFailed -> {
                 updateRequest(serverId, payload)
                 true
@@ -49,7 +53,8 @@ internal class RequestEventStore {
                     request.streamClosed != null -> false
                     request.streamEvents.isNotEmpty() -> true
                     request.isLikelyStreamingResponse -> true
-                    else -> request.response == null
+                    request.response != null && request.finished != null -> false
+                    else -> true
                 }
             }
             requestStates.clear()
@@ -82,9 +87,18 @@ internal class RequestEventStore {
     suspend fun shouldRequestResponseBody(id: NetworkInspectorRequestId): Boolean {
         return mutex.withLock {
             val state = requestStates[id] ?: return@withLock false
-            if (state.streamEvents.isNotEmpty()) return@withLock true
-            if (state.isLikelyStreamingResponse && state.streamClosed != null) return@withLock true
+            if (state.streamEvents.isNotEmpty() || state.isLikelyStreamingResponse) {
+                if (state.streamClosed == null) return@withLock false
+                val response = state.response
+                if (response == null) return@withLock true
+                if (!response.body.isNullOrEmpty()) return@withLock false
+                val size = response.bodySize
+                return@withLock size == null || size != 0L
+            }
+
+            if (state.finished == null) return@withLock false
             val response = state.response ?: return@withLock false
+            if (responseHasNoBody(state = state, response = response)) return@withLock false
             if (!response.body.isNullOrEmpty()) return@withLock false
             // null means unknown size; still try.
             val size = response.bodySize
@@ -142,6 +156,7 @@ internal class RequestEventStore {
                     requestId = record.id,
                     request = record,
                     response = null,
+                    finished = null,
                     failure = null,
                     streamEvents = emptyList(),
                     streamClosed = null,
@@ -151,7 +166,6 @@ internal class RequestEventStore {
             } else {
                 existing.copy(
                     request = record,
-                    failure = null,
                     lastUpdatedAt = now,
                 )
             }
@@ -173,6 +187,7 @@ internal class RequestEventStore {
                     requestId = record.id,
                     request = null,
                     response = record,
+                    finished = null,
                     failure = null,
                     streamEvents = emptyList(),
                     streamClosed = null,
@@ -182,7 +197,6 @@ internal class RequestEventStore {
             } else {
                 existing.copy(
                     response = record,
-                    failure = null,
                     lastUpdatedAt = now,
                 )
             }
@@ -204,6 +218,7 @@ internal class RequestEventStore {
                     requestId = record.id,
                     request = null,
                     response = null,
+                    finished = null,
                     failure = record,
                     streamEvents = emptyList(),
                     streamClosed = null,
@@ -213,7 +228,6 @@ internal class RequestEventStore {
             } else {
                 existing.copy(
                     failure = record,
-                    response = null,
                     lastUpdatedAt = now,
                 )
             }
@@ -234,6 +248,7 @@ internal class RequestEventStore {
                     requestId = record.id,
                     request = null,
                     response = null,
+                    finished = null,
                     failure = null,
                     streamEvents = emptyList(),
                     streamClosed = null,
@@ -269,6 +284,7 @@ internal class RequestEventStore {
                     requestId = record.id,
                     request = null,
                     response = null,
+                    finished = null,
                     failure = null,
                     streamEvents = emptyList(),
                     streamClosed = null,
@@ -284,7 +300,54 @@ internal class RequestEventStore {
         }
     }
 
+    private suspend fun updateRequest(serverId: SnapOLinkServerId, record: ResponseFinished) {
+        val now = Instant.now()
+        val id = NetworkInspectorRequestId(serverId = serverId, requestId = record.id)
+
+        mutex.withLock {
+            val existing = requestStates[id]
+            val updated = if (existing == null) {
+                NetworkInspectorRequest(
+                    serverId = serverId,
+                    requestId = record.id,
+                    request = null,
+                    response = null,
+                    finished = record,
+                    failure = null,
+                    streamEvents = emptyList(),
+                    streamClosed = null,
+                    firstSeenAt = now,
+                    lastUpdatedAt = now,
+                ).also { requestOrder.add(id) }
+            } else {
+                existing.copy(
+                    finished = record,
+                    lastUpdatedAt = now,
+                )
+            }
+
+            requestStates[id] = updated
+            broadcastRequestsLocked()
+        }
+    }
+
     private fun broadcastRequestsLocked() {
         _requests.value = requestOrder.mapNotNull { requestStates[it] }
+    }
+
+    private fun responseHasNoBody(
+        state: NetworkInspectorRequest,
+        response: ResponseReceived,
+    ): Boolean {
+        val contentLength = response.headers
+            .firstOrNull { header -> header.name.equals("Content-Length", ignoreCase = true) }
+            ?.value
+            ?.trim()
+            ?.toLongOrNull()
+        return responseIsDefinedAsBodyless(
+            requestMethod = state.request?.method,
+            responseStatus = response.code,
+            responseContentLength = contentLength,
+        )
     }
 }

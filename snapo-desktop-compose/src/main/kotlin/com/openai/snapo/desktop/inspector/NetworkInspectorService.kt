@@ -141,7 +141,9 @@ class NetworkInspectorService(
     ) {
         var commandId: Int? = null
         commandMutex.withLock {
-            if (!inFlightBodyRequests.add(key)) return@withLock
+            if (!inFlightBodyRequests.add(key)) {
+                return@withLock
+            }
             val id = nextCommandId
             nextCommandId += 1
             pendingBodyCommands[id] = PendingBodyCommand(key = key, method = method)
@@ -187,17 +189,19 @@ class NetworkInspectorService(
 
     private suspend fun prefetchBodiesIfNeeded(serverId: SnapOLinkServerId, event: NetworkEventRecord) {
         when (event) {
-            is RequestWillBeSent -> {
-                requestBodyIfNeeded(
-                    NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
-                )
-            }
+            is RequestWillBeSent -> requestBodyIfNeeded(
+                NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
+            )
 
-            is ResponseReceived -> {
-                responseBodyIfNeeded(
-                    NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
-                )
-            }
+            is ResponseReceived -> responseBodyIfNeeded(
+                NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
+            )
+
+            is ResponseFinished,
+            is ResponseStreamClosed,
+            -> responseBodyIfNeeded(
+                NetworkInspectorRequestId(serverId = serverId, requestId = event.id)
+            )
 
             else -> Unit
         }
@@ -219,16 +223,28 @@ class NetworkInspectorService(
         if (resolvedPending.key.requestId.serverId != serverId) return true
         if (payload.error != null) return true
 
-        when (resolvedPending.method) {
+        applyBodyCommandResult(resolvedPending, payload)
+
+        return true
+    }
+
+    private suspend fun applyBodyCommandResult(
+        pending: PendingBodyCommand,
+        payload: CdpMessage,
+    ) {
+        when (pending.method) {
             CdpNetworkMethod.GetRequestPostData -> {
                 val result = payload.result
                     ?.let { element ->
                         runCatching {
-                            Ndjson.decodeFromJsonElement(CdpGetRequestPostDataResult.serializer(), element)
+                            Ndjson.decodeFromJsonElement(
+                                CdpGetRequestPostDataResult.serializer(),
+                                element,
+                            )
                         }.getOrNull()
-                    } ?: return true
+                    } ?: return
                 requestStore.applyRequestBody(
-                    id = resolvedPending.key.requestId,
+                    id = pending.key.requestId,
                     body = result.postData,
                 )
             }
@@ -237,18 +253,19 @@ class NetworkInspectorService(
                 val result = payload.result
                     ?.let { element ->
                         runCatching {
-                            Ndjson.decodeFromJsonElement(CdpGetResponseBodyResult.serializer(), element)
+                            Ndjson.decodeFromJsonElement(
+                                CdpGetResponseBodyResult.serializer(),
+                                element,
+                            )
                         }.getOrNull()
-                    } ?: return true
+                    } ?: return
                 requestStore.applyResponseBody(
-                    id = resolvedPending.key.requestId,
+                    id = pending.key.requestId,
                     body = result.body,
                     base64Encoded = result.base64Encoded,
                 )
             }
         }
-
-        return true
     }
 
     private suspend fun handleServerRemoved(serverId: SnapOLinkServerId) {

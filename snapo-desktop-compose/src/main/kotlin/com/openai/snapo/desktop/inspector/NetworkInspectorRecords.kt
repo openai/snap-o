@@ -2,6 +2,7 @@ package com.openai.snapo.desktop.inspector
 
 import com.openai.snapo.desktop.protocol.CdpEventSourceMessageReceivedParams
 import com.openai.snapo.desktop.protocol.CdpLoadingFailedParams
+import com.openai.snapo.desktop.protocol.CdpLoadingFinishedParams
 import com.openai.snapo.desktop.protocol.CdpRequestWillBeSentParams
 import com.openai.snapo.desktop.protocol.CdpResponseReceivedParams
 import com.openai.snapo.desktop.protocol.CdpWebSocketClosedParams
@@ -69,6 +70,15 @@ data class RequestFailed(
     override val id: String get() = params.requestId
     val errorKind: String get() = params.type ?: "NetworkError"
     val message: String? get() = params.errorText
+}
+
+data class ResponseFinished(
+    val params: CdpLoadingFinishedParams,
+    override val tWallMs: Long,
+    override val tMonoNs: Long,
+) : PerRequestRecord {
+    override val id: String get() = params.requestId
+    val bodySize: Long? get() = params.encodedDataLength?.toLong()
 }
 
 data class ResponseStreamEvent(

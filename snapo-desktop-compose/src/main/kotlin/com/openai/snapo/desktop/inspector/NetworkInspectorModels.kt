@@ -46,6 +46,7 @@ data class NetworkInspectorRequest(
     val requestId: String,
     val request: RequestWillBeSent? = null,
     val response: ResponseReceived? = null,
+    val finished: ResponseFinished? = null,
     val failure: RequestFailed? = null,
     val streamEvents: List<ResponseStreamEvent> = emptyList(),
     val streamClosed: ResponseStreamClosed? = null,

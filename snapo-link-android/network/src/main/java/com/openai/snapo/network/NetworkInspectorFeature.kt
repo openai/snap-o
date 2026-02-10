@@ -109,7 +109,9 @@ class NetworkInspectorFeature(
             return
         }
 
-        val postData = findLatestRequest(params.requestId)?.body
+        val postData = bufferLock.withLock {
+            eventBuffer.findRequestBody(params.requestId)?.body
+        }
         if (postData.isNullOrEmpty()) {
             sink.sendError(commandId, "No request body captured for ${params.requestId}", target)
             return
@@ -139,13 +141,15 @@ class NetworkInspectorFeature(
             return
         }
 
-        val response = findLatestResponse(params.requestId)
-        val streamBody = if (response?.body.isNullOrEmpty()) {
+        val responseBody = bufferLock.withLock {
+            eventBuffer.findResponseBody(params.requestId)
+        }
+        val streamBody = if (responseBody?.body.isNullOrEmpty()) {
             joinSseBody(params.requestId)
         } else {
             null
         }
-        val resolvedBody = response?.body ?: streamBody
+        val resolvedBody = responseBody?.body ?: streamBody
         if (resolvedBody.isNullOrEmpty()) {
             sink.sendError(commandId, "No response body captured for ${params.requestId}", target)
             return
@@ -155,7 +159,7 @@ class NetworkInspectorFeature(
             id = commandId,
             result = CdpGetResponseBodyResult(
                 body = resolvedBody,
-                base64Encoded = response?.bodyEncoding.equals("base64", ignoreCase = true),
+                base64Encoded = responseBody?.encoding.equals("base64", ignoreCase = true),
             ),
             serializer = CdpGetResponseBodyResult.serializer(),
             clientId = target,
@@ -177,17 +181,23 @@ class NetworkInspectorFeature(
         currentSink.send(wireMessage)
     }
 
-    private suspend fun findLatestRequest(requestId: String): RequestWillBeSent? {
-        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
-        return snapshot.asReversed().firstNotNullOfOrNull { record ->
-            (record as? RequestWillBeSent)?.takeIf { it.id == requestId }
-        }
-    }
-
-    private suspend fun findLatestResponse(requestId: String): ResponseReceived? {
-        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
-        return snapshot.asReversed().firstNotNullOfOrNull { record ->
-            (record as? ResponseReceived)?.takeIf { it.id == requestId }
+    suspend fun updateLatestResponseBody(
+        requestId: String,
+        bodyPreview: String?,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ) {
+        bufferLock.withLock {
+            eventBuffer.updateLatestResponseBody(
+                requestId = requestId,
+                bodyPreview = bodyPreview,
+                body = body,
+                bodyEncoding = bodyEncoding,
+                bodyTruncatedBytes = bodyTruncatedBytes,
+                bodySize = bodySize,
+            )
         }
     }
 

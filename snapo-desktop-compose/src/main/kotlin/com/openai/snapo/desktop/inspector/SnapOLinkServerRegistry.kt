@@ -7,6 +7,8 @@ import com.openai.snapo.desktop.link.SnapOLinkServerConnection
 import com.openai.snapo.desktop.link.SnapORecord
 import com.openai.snapo.desktop.protocol.CdpMessage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +29,8 @@ internal class SnapOLinkServerRegistry(
         val server: SnapOLinkServer,
         val forwardHandle: AdbForwardHandle?,
         val connection: SnapOLinkServerConnection?,
+        val eventChannel: Channel<SnapORecord>?,
+        val eventProcessorJob: Job?,
     )
 
     private val mutex = Mutex()
@@ -66,13 +70,48 @@ internal class SnapOLinkServerRegistry(
         }
 
         val serverId = SnapOLinkServerId(deviceId = deviceId, socketName = socketName)
-        val existing = mutex.withLock { serverStates[serverId]?.server }
-        val deviceTitle = mutex.withLock { devices[deviceId]?.displayTitle } ?: deviceId
-
-        val server = SnapOLinkServer(
+        val server = createServerStateModel(
+            serverId = serverId,
             deviceId = deviceId,
             socketName = socketName,
             localPort = handle.localPort,
+        )
+
+        val eventChannel = Channel<SnapORecord>(capacity = Channel.UNLIMITED)
+        val eventProcessorJob = createEventProcessor(serverId, eventChannel)
+        val connection = createServerConnection(serverId, handle.localPort, eventChannel)
+
+        mutex.withLock {
+            serverStates[serverId] = ServerState(
+                server = server,
+                forwardHandle = handle,
+                connection = connection,
+                eventChannel = eventChannel,
+                eventProcessorJob = eventProcessorJob,
+            )
+            broadcastServersLocked()
+        }
+
+        connection.start()
+
+        if (server.hello == null && server.packageNameHint.isNullOrBlank()) {
+            populatePackageNameHint(serverId, deviceId, socketName)
+        }
+    }
+
+    private suspend fun createServerStateModel(
+        serverId: SnapOLinkServerId,
+        deviceId: String,
+        socketName: String,
+        localPort: Int,
+    ): SnapOLinkServer {
+        val existing = mutex.withLock { serverStates[serverId]?.server }
+        val deviceTitle = mutex.withLock { devices[deviceId]?.displayTitle } ?: deviceId
+
+        return SnapOLinkServer(
+            deviceId = deviceId,
+            socketName = socketName,
+            localPort = localPort,
             hello = existing?.hello,
             schemaVersion = existing?.schemaVersion,
             isSchemaNewerThanSupported = existing?.isSchemaNewerThanSupported ?: false,
@@ -84,27 +123,33 @@ internal class SnapOLinkServerRegistry(
             packageNameHint = existing?.packageNameHint,
             features = existing?.features ?: emptySet(),
         )
+    }
 
-        val connection = SnapOLinkServerConnection(
-            port = handle.localPort,
+    private fun createEventProcessor(
+        serverId: SnapOLinkServerId,
+        eventChannel: Channel<SnapORecord>,
+    ): Job {
+        return scope.launch {
+            for (record in eventChannel) {
+                handleRecord(record, from = serverId)
+            }
+        }
+    }
+
+    private fun createServerConnection(
+        serverId: SnapOLinkServerId,
+        localPort: Int,
+        eventChannel: Channel<SnapORecord>,
+    ): SnapOLinkServerConnection {
+        return SnapOLinkServerConnection(
+            port = localPort,
             onEvent = { record ->
-                scope.launch { handleRecord(record, from = serverId) }
+                eventChannel.trySend(record)
             },
             onClose = { _ ->
                 scope.launch { connectionClosed(serverId) }
             },
         )
-
-        mutex.withLock {
-            serverStates[serverId] = ServerState(server = server, forwardHandle = handle, connection = connection)
-            broadcastServersLocked()
-        }
-
-        connection.start()
-
-        if (server.hello == null && server.packageNameHint.isNullOrBlank()) {
-            populatePackageNameHint(serverId, deviceId, socketName)
-        }
     }
 
     suspend fun stopServerConnection(deviceId: String, socketName: String) {
@@ -152,6 +197,7 @@ internal class SnapOLinkServerRegistry(
     suspend fun shutdown() {
         val states = mutex.withLock { serverStates.values.toList() }
         for (state in states) {
+            stopEventDelivery(state)
             try {
                 state.connection?.stop()
             } catch (_: Throwable) {
@@ -203,6 +249,8 @@ internal class SnapOLinkServerRegistry(
             state to retain
         } ?: return
 
+        stopEventDelivery(state)
+
         try {
             state.connection?.stop()
         } catch (_: Throwable) {
@@ -221,6 +269,8 @@ internal class SnapOLinkServerRegistry(
                     server = state.server.copy(isConnected = false),
                     forwardHandle = null,
                     connection = null,
+                    eventChannel = null,
+                    eventProcessorJob = null,
                 )
                 broadcastServersLocked()
                 false
@@ -240,12 +290,19 @@ internal class SnapOLinkServerRegistry(
         removeServer(serverId)
     }
 
+    private fun stopEventDelivery(state: ServerState) {
+        state.eventChannel?.close()
+        state.eventProcessorJob?.cancel()
+    }
+
     private suspend fun handleRecord(record: SnapORecord, from: SnapOLinkServerId) {
         val now = Instant.now()
 
         when (record) {
             is SnapORecord.HelloRecord -> handleHelloRecord(from, record, now)
+
             is SnapORecord.AppIconRecord -> handleAppIconRecord(from, record, now)
+
             is SnapORecord.NetworkEvent -> handleNetworkEvent(from, record.value, now)
 
             SnapORecord.ReplayComplete -> Unit

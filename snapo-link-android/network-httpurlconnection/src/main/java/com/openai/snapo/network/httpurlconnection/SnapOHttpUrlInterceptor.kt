@@ -9,6 +9,7 @@ import com.openai.snapo.network.NetworkEventRecord
 import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.RequestFailed
 import com.openai.snapo.network.RequestWillBeSent
+import com.openai.snapo.network.ResponseFinished
 import com.openai.snapo.network.ResponseReceived
 import com.openai.snapo.network.ResponseStreamClosed
 import com.openai.snapo.network.ResponseStreamEvent
@@ -67,6 +68,31 @@ class SnapOHttpUrlInterceptor @JvmOverloads constructor(
             }
         }
     }
+
+    internal fun updateLatestResponseBody(
+        requestId: String,
+        bodyPreview: String?,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ) {
+        if (!SnapOLink.isEnabled()) return
+        val feature = NetworkInspector.getOrNull() ?: return
+        scope.launch {
+            try {
+                feature.updateLatestResponseBody(
+                    requestId = requestId,
+                    bodyPreview = bodyPreview,
+                    body = body,
+                    bodyEncoding = bodyEncoding,
+                    bodyTruncatedBytes = bodyTruncatedBytes,
+                    bodySize = bodySize,
+                )
+            } catch (_: Throwable) {
+            }
+        }
+    }
 }
 
 private data class InterceptContext(
@@ -95,6 +121,7 @@ private class InterceptingHttpURLConnection(
     private var requestPublished: Boolean = false
     private var responseMeta: ResponseMeta? = null
     private var responsePublished: Boolean = false
+    private var responseFinishedPublished: Boolean = false
     private var requestBodyCapture: BodyCaptureSink? = null
 
     override fun connect() {
@@ -382,11 +409,22 @@ private class InterceptingHttpURLConnection(
                 )
             }
         }
+        if (responseHasNoBody(method = delegate.requestMethod, code = responseCode, contentLength = contentLength)) {
+            publishLoadingFinishedOnce(totalBytes = contentLength ?: 0L)
+        }
         return meta
     }
 
     private fun wrapResponseStream(stream: InputStream): InputStream {
         val meta = ensureResponseStarted()
+        if (meta != null && responseHasNoBody(
+                method = delegate.requestMethod,
+                code = meta.code,
+                contentLength = meta.contentLength,
+            )
+        ) {
+            return stream
+        }
         val mediaType = parseMediaType(meta?.contentType)
         if (mediaType?.isEventStream() == true) {
             return SseCapturingInputStream(
@@ -436,6 +474,33 @@ private class InterceptingHttpURLConnection(
                 timings = Timings(totalMs = nanosToMillis(failMono - currentContext.startMono)),
             )
         }
+    }
+
+    private fun publishLoadingFinishedOnce(totalBytes: Long?) {
+        if (responseFinishedPublished) return
+        val currentContext = context ?: return
+        responseFinishedPublished = true
+        val nowWall = System.currentTimeMillis()
+        val nowMono = SystemClock.elapsedRealtimeNanos()
+        interceptor.publish {
+            ResponseFinished(
+                id = currentContext.requestId,
+                tWallMs = nowWall,
+                tMonoNs = nowMono,
+                bodySize = totalBytes,
+            )
+        }
+    }
+
+    private fun responseHasNoBody(method: String?, code: Int, contentLength: Long?): Boolean {
+        if (method.equals("HEAD", ignoreCase = true)) return true
+        if (code in 100..199 ||
+            code == HttpURLConnection.HTTP_NO_CONTENT ||
+            code == HttpURLConnection.HTTP_NOT_MODIFIED
+        ) {
+            return true
+        }
+        return contentLength == 0L
     }
 
     private fun requestContentType(): String? {
@@ -609,17 +674,16 @@ private class ResponseCapturingInputStream(
             previewBytes = interceptor.responseBodyPreviewBytes,
         )
         val totalBytes = snapshot.totalBytes.takeIf { it > 0L } ?: meta?.contentLength
-        val responseWall = meta?.responseWall ?: System.currentTimeMillis()
-        val responseMono = meta?.responseMono ?: SystemClock.elapsedRealtimeNanos()
-
-        publishResponseIfNeeded(
-            currentContext = currentContext,
-            meta = meta,
+        updateResponseBodyIfNeeded(
+            requestId = currentContext.requestId,
             bodyValues = bodyValues,
             truncatedBytes = snapshot.truncatedBytes,
             totalBytes = totalBytes,
-            responseWall = responseWall,
-            responseMono = responseMono,
+            error = error,
+        )
+        publishLoadingFinishedIfNeeded(
+            requestId = currentContext.requestId,
+            totalBytes = totalBytes,
             error = error,
         )
         publishFailureIfNeeded(currentContext, error)
@@ -674,33 +738,41 @@ private class ResponseCapturingInputStream(
         }
     }
 
-    private fun publishResponseIfNeeded(
-        currentContext: InterceptContext,
-        meta: ResponseMeta?,
+    private fun updateResponseBodyIfNeeded(
+        requestId: String,
         bodyValues: CapturedBodyValues,
         truncatedBytes: Long?,
         totalBytes: Long?,
-        responseWall: Long,
-        responseMono: Long,
         error: Throwable?,
     ) {
         val bodyPreview = bodyValues.bodyPreview
         val body = bodyValues.body
         val hasPayload = !body.isNullOrEmpty() || !bodyPreview.isNullOrEmpty() || truncatedBytes != null
         if (!hasPayload && error == null) return
+        interceptor.updateLatestResponseBody(
+            requestId = requestId,
+            bodyPreview = bodyPreview,
+            body = body,
+            bodyEncoding = bodyValues.bodyEncoding,
+            bodyTruncatedBytes = truncatedBytes,
+            bodySize = totalBytes,
+        )
+    }
+
+    private fun publishLoadingFinishedIfNeeded(
+        requestId: String,
+        totalBytes: Long?,
+        error: Throwable?,
+    ) {
+        if (error != null) return
+        val nowWall = System.currentTimeMillis()
+        val nowMono = SystemClock.elapsedRealtimeNanos()
         interceptor.publish {
-            ResponseReceived(
-                id = currentContext.requestId,
-                tWallMs = responseWall,
-                tMonoNs = responseMono,
-                code = meta?.code ?: -1,
-                headers = meta?.headers ?: emptyList(),
-                bodyPreview = bodyPreview,
-                body = body,
-                bodyEncoding = bodyValues.bodyEncoding,
-                bodyTruncatedBytes = truncatedBytes,
+            ResponseFinished(
+                id = requestId,
+                tWallMs = nowWall,
+                tMonoNs = nowMono,
                 bodySize = totalBytes,
-                timings = Timings(totalMs = nanosToMillis(responseMono - currentContext.startMono)),
             )
         }
     }

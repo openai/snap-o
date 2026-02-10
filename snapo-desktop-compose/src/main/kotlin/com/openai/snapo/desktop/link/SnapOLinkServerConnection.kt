@@ -61,7 +61,8 @@ class SnapOLinkServerConnection(
     }
 
     private suspend fun sendHostMessage(message: HostMessage) {
-        val writer = output ?: return
+        val writer = output
+        if (writer == null) return
         val line = Ndjson.encodeToString(HostMessage.serializer(), message) + "\n"
         val bytes = line.toByteArray(StandardCharsets.UTF_8)
         withContext(Dispatchers.IO) {
@@ -172,11 +173,10 @@ class SnapOLinkServerConnection(
     private fun dispatchLine(lineBuffer: ByteArrayOutputStream) {
         val line = lineBuffer.toString(StandardCharsets.UTF_8.name())
         if (line.isNotBlank()) {
-            try {
-                onEvent(SnapORecordDecoder.decodeNdjsonLine(line))
-            } catch (_: Throwable) {
-                // Ignore malformed lines; keep the connection alive.
-            }
+            val record = runCatching {
+                SnapORecordDecoder.decodeNdjsonLine(line)
+            }.getOrNull() ?: return
+            onEvent(record)
         }
     }
 

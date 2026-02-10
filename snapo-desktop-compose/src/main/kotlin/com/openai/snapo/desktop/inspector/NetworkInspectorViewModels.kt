@@ -154,11 +154,7 @@ internal fun requestSummary(request: NetworkInspectorRequest): NetworkInspectorR
     val method = request.request?.method ?: "?"
     val url = request.request?.url ?: "Request ${request.requestId}"
 
-    val status = when {
-        request.failure != null -> NetworkInspectorRequestStatus.Failure(request.failure.message)
-        request.response != null -> NetworkInspectorRequestStatus.Success(request.response.code)
-        else -> NetworkInspectorRequestStatus.Pending
-    }
+    val status = resolveRequestStatus(request)
 
     val (primary, secondary) = splitPath(url, includeQueryInPrimary = true)
 
@@ -180,6 +176,24 @@ internal fun requestSummary(request: NetworkInspectorRequest): NetworkInspectorR
         firstSeenAt = request.firstSeenAt,
         lastUpdatedAt = request.lastUpdatedAt,
     )
+}
+
+private fun resolveRequestStatus(request: NetworkInspectorRequest): NetworkInspectorRequestStatus {
+    return when {
+        request.failure != null -> NetworkInspectorRequestStatus.Failure(request.failure.message)
+        request.isLikelyStreamingResponse && request.streamClosed?.reason.equals("error", ignoreCase = true) ->
+            NetworkInspectorRequestStatus.Failure(request.streamClosed?.message)
+
+        request.isLikelyStreamingResponse && request.streamClosed != null ->
+            NetworkInspectorRequestStatus.Success(request.response?.code ?: 200)
+
+        request.isLikelyStreamingResponse -> NetworkInspectorRequestStatus.Pending
+        request.response != null && request.finished != null ->
+            NetworkInspectorRequestStatus.Success(request.response.code)
+
+        request.response != null -> NetworkInspectorRequestStatus.Pending
+        else -> NetworkInspectorRequestStatus.Pending
+    }
 }
 
 internal fun webSocketSummary(session: NetworkInspectorWebSocket): NetworkInspectorWebSocketSummary {
