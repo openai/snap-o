@@ -145,7 +145,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val endWall = System.currentTimeMillis()
         val endMono = SystemClock.elapsedRealtimeNanos()
         val responseBody = response.body
-        if (response.code == 101) {
+        if (response.hasNoBodyByProtocol()) {
             publishStandardResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
             publishLoadingFinished(context, bodySize = 0L)
             return response
@@ -434,6 +434,14 @@ private fun ResponseBody?.safeContentLength(): Long? = this?.let {
     } catch (_: IOException) {
         null
     }
+}
+
+private fun Response.hasNoBodyByProtocol(): Boolean {
+    if (request.method.equals("HEAD", ignoreCase = true)) return true
+    return code in 100..199 ||
+        code == 204 ||
+        code == 205 ||
+        code == 304
 }
 
 private fun Response.bodyPreview(maxBytes: Int): String? {
