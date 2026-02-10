@@ -2,26 +2,38 @@ package com.openai.snapo.network
 
 import java.util.ArrayList
 
+internal data class CapturedBody(
+    val body: String,
+    val encoding: String?,
+)
+
 internal class EventBuffer(
     private val config: NetworkInspectorConfig,
 ) {
 
     private val records: MutableList<NetworkEventRecord> = ArrayList()
     private var approxBytes: Long = 0L
+    private val requestBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
+    private val responseBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val openWebSockets: MutableSet<String> = mutableSetOf()
     private val activeResponseStreams: MutableSet<String> = mutableSetOf()
 
     fun append(record: NetworkEventRecord) {
-        insertSorted(record)
-        approxBytes += estimateSize(record)
-        updateWebSocketStateOnAdd(record)
-        updateStreamStateOnAdd(record)
-        evictExpiredIfNeeded(record)
+        val normalizedRecord = normalizeRecord(record)
+        insertSorted(normalizedRecord)
+        approxBytes += estimateSize(normalizedRecord)
+        updateWebSocketStateOnAdd(normalizedRecord)
+        updateStreamStateOnAdd(normalizedRecord)
+        evictExpiredIfNeeded(normalizedRecord)
         trimToByteLimit()
         trimToCountLimit()
     }
 
     fun snapshot(): List<NetworkEventRecord> = ArrayList(records)
+
+    fun findRequestBody(requestId: String): CapturedBody? = requestBodiesById[requestId]
+
+    fun findResponseBody(requestId: String): CapturedBody? = responseBodiesById[requestId]
 
     fun updateLatestResponseBody(
         requestId: String,
@@ -31,14 +43,20 @@ internal class EventBuffer(
         bodyTruncatedBytes: Long?,
         bodySize: Long?,
     ): Boolean {
+        val hasRelatedRecords = records.any { candidate ->
+            (candidate as? PerRequestRecord)?.id == requestId
+        }
+        if (!body.isNullOrEmpty() && hasRelatedRecords) {
+            upsertResponseBody(requestId, body, bodyEncoding)
+        }
         val index = records.indexOfLast { candidate ->
             (candidate as? ResponseReceived)?.id == requestId
         }
-        if (index < 0) return false
+        if (index < 0) return !body.isNullOrEmpty() && hasRelatedRecords
         val existing = records[index] as? ResponseReceived ?: return false
         val updated = existing.copy(
             bodyPreview = bodyPreview,
-            body = body,
+            body = null,
             bodyEncoding = bodyEncoding,
             bodyTruncatedBytes = bodyTruncatedBytes,
             bodySize = bodySize ?: existing.bodySize,
@@ -47,6 +65,26 @@ internal class EventBuffer(
         subtractApproxBytes(existing)
         approxBytes += estimateSize(updated)
         return true
+    }
+
+    private fun normalizeRecord(record: NetworkEventRecord): NetworkEventRecord {
+        return when (record) {
+            is RequestWillBeSent -> {
+                if (!record.body.isNullOrEmpty()) {
+                    upsertRequestBody(record.id, record.body, record.bodyEncoding)
+                }
+                if (record.body == null) record else record.copy(body = null)
+            }
+
+            is ResponseReceived -> {
+                if (!record.body.isNullOrEmpty()) {
+                    upsertResponseBody(record.id, record.body, record.bodyEncoding)
+                }
+                if (record.body == null) record else record.copy(body = null)
+            }
+
+            else -> record
+        }
     }
 
     private fun insertSorted(record: NetworkEventRecord) {
@@ -175,9 +213,7 @@ internal class EventBuffer(
             .takeIf { it >= 0 }
             ?.let { index ->
                 val candidate = records.removeAt(index)
-                subtractApproxBytes(candidate)
-                updateWebSocketStateOnRemove(candidate)
-                updateStreamStateOnRemove(candidate)
+                onRecordRemoved(candidate)
                 removeAdditionalRequestRecords(head.id)
                 true
             }
@@ -197,9 +233,7 @@ internal class EventBuffer(
             val shouldRemove = perSocket != null && perSocket.id == wsHead.id && candidate !== head
             if (shouldRemove) {
                 iterator.remove()
-                subtractApproxBytes(candidate)
-                updateWebSocketStateOnRemove(candidate)
-                updateStreamStateOnRemove(candidate)
+                onRecordRemoved(candidate)
                 removedAny = true
             }
         }
@@ -213,20 +247,17 @@ internal class EventBuffer(
             when (record) {
                 is ResponseReceived -> if (record.id == requestId) {
                     iterator.remove()
-                    subtractApproxBytes(record)
-                    updateStreamStateOnRemove(record)
+                    onRecordRemoved(record)
                 }
 
                 is ResponseFinished -> if (record.id == requestId) {
                     iterator.remove()
-                    subtractApproxBytes(record)
-                    updateStreamStateOnRemove(record)
+                    onRecordRemoved(record)
                 }
 
                 is ResponseStreamEvent -> if (record.id == requestId) {
                     iterator.remove()
-                    subtractApproxBytes(record)
-                    updateStreamStateOnRemove(record)
+                    onRecordRemoved(record)
                 }
 
                 else -> Unit
@@ -240,9 +271,7 @@ internal class EventBuffer(
             val record = iterator.next()
             if (record is TimedRecord && record.tWallMs < cutoff) {
                 iterator.remove()
-                subtractApproxBytes(record)
-                updateWebSocketStateOnRemove(record)
-                updateStreamStateOnRemove(record)
+                onRecordRemoved(record)
             } else {
                 break
             }
@@ -251,9 +280,69 @@ internal class EventBuffer(
 
     private fun removeRecord(iterator: MutableIterator<NetworkEventRecord>, record: NetworkEventRecord) {
         iterator.remove()
+        onRecordRemoved(record)
+    }
+
+    private fun onRecordRemoved(record: NetworkEventRecord) {
         subtractApproxBytes(record)
         updateWebSocketStateOnRemove(record)
         updateStreamStateOnRemove(record)
+        maybeEvictBodiesFor(record)
+    }
+
+    private fun maybeEvictBodiesFor(record: NetworkEventRecord) {
+        val requestRecord = record as? PerRequestRecord ?: return
+        val requestId = requestRecord.id
+        val hasRemainingRequestRecords = records.any { candidate ->
+            (candidate as? PerRequestRecord)?.id == requestId
+        }
+        if (hasRemainingRequestRecords) return
+        removeRequestBody(requestId)
+        removeResponseBody(requestId)
+    }
+
+    private fun upsertRequestBody(
+        requestId: String,
+        body: String,
+        encoding: String?,
+    ) {
+        val captured = CapturedBody(body = body, encoding = encoding)
+        val previous = requestBodiesById.put(requestId, captured)
+        if (previous != null) {
+            approxBytes -= estimateBodyEntrySize(requestId, previous)
+        }
+        approxBytes += estimateBodyEntrySize(requestId, captured)
+    }
+
+    private fun upsertResponseBody(
+        requestId: String,
+        body: String,
+        encoding: String?,
+    ) {
+        val captured = CapturedBody(body = body, encoding = encoding)
+        val previous = responseBodiesById.put(requestId, captured)
+        if (previous != null) {
+            approxBytes -= estimateBodyEntrySize(requestId, previous)
+        }
+        approxBytes += estimateBodyEntrySize(requestId, captured)
+    }
+
+    private fun removeRequestBody(requestId: String) {
+        val removed = requestBodiesById.remove(requestId) ?: return
+        approxBytes -= estimateBodyEntrySize(requestId, removed)
+        if (approxBytes < 0) approxBytes = 0
+    }
+
+    private fun removeResponseBody(requestId: String) {
+        val removed = responseBodiesById.remove(requestId) ?: return
+        approxBytes -= estimateBodyEntrySize(requestId, removed)
+        if (approxBytes < 0) approxBytes = 0
+    }
+
+    private fun estimateBodyEntrySize(requestId: String, capturedBody: CapturedBody): Long {
+        val base = 48
+        val payload = requestId.length + capturedBody.body.length + capturedBody.encoding.length
+        return (base + payload).toLong()
     }
 
     private fun estimateSize(record: NetworkEventRecord): Long {
