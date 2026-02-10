@@ -145,6 +145,11 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val endWall = System.currentTimeMillis()
         val endMono = SystemClock.elapsedRealtimeNanos()
         val responseBody = response.body
+        if (response.code == 101) {
+            publishStandardResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
+            publishLoadingFinished(context, bodySize = 0L)
+            return response
+        }
         return if (responseBody.contentType().isEventStream()) {
             handleStreamingResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
         } else {

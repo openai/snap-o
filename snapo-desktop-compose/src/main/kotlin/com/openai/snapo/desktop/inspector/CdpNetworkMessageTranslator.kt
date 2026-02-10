@@ -67,7 +67,7 @@ internal class CdpNetworkMessageTranslator {
     ): NetworkEventRecord? {
         val decoded = runCatching {
             Ndjson.decodeFromJsonElement(serializer, params)
-        }.getOrNull() ?: return null
+        }.getOrElse { return null }
         return transform(decoded)
     }
 

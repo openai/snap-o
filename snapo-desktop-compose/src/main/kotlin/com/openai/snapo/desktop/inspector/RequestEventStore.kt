@@ -166,8 +166,6 @@ internal class RequestEventStore {
             } else {
                 existing.copy(
                     request = record,
-                    finished = null,
-                    failure = null,
                     lastUpdatedAt = now,
                 )
             }
@@ -199,7 +197,6 @@ internal class RequestEventStore {
             } else {
                 existing.copy(
                     response = record,
-                    failure = null,
                     lastUpdatedAt = now,
                 )
             }
@@ -231,7 +228,6 @@ internal class RequestEventStore {
             } else {
                 existing.copy(
                     failure = record,
-                    finished = null,
                     lastUpdatedAt = now,
                 )
             }

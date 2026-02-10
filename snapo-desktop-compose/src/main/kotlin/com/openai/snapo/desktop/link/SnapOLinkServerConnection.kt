@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -61,7 +62,8 @@ class SnapOLinkServerConnection(
     }
 
     private suspend fun sendHostMessage(message: HostMessage) {
-        val writer = output ?: return
+        val writer = output
+        if (writer == null) return
         val line = Ndjson.encodeToString(HostMessage.serializer(), message) + "\n"
         val bytes = line.toByteArray(StandardCharsets.UTF_8)
         withContext(Dispatchers.IO) {
@@ -174,7 +176,9 @@ class SnapOLinkServerConnection(
         if (line.isNotBlank()) {
             try {
                 onEvent(SnapORecordDecoder.decodeNdjsonLine(line))
-            } catch (_: Throwable) {
+            } catch (error: SerializationException) {
+                // Ignore malformed lines; keep the connection alive.
+            } catch (error: IllegalArgumentException) {
                 // Ignore malformed lines; keep the connection alive.
             }
         }
