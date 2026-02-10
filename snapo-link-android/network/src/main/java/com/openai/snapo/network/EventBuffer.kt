@@ -378,7 +378,9 @@ internal class EventBuffer(
     }
 
     private fun sizeOfHeaders(headers: List<Header>): Int =
-        headers.sumOf { it.name.length + it.value.length }
+        headers.fold(0) { total, header ->
+            total + header.name.length + header.value.length
+        }
 }
 
 private val String?.length: Int get() = this?.length ?: 0
