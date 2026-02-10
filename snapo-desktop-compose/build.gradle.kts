@@ -180,6 +180,7 @@ compose.desktop {
             packageName = "Snap-O Network Inspector"
             packageVersion = resolvedPackageVersion
             macOS {
+                packageBuildVersion = versionInfo.buildNumber
                 iconFile.set(project.file("src/main/resources/icons/network.icns"))
                 if (isReleaseDistribution) {
                     entitlementsFile.set(project.file("macos/NetworkInspector.entitlements"))
