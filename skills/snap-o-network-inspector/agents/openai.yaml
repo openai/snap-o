@@ -1,0 +1,4 @@
+interface:
+  display_name: "Snap-O Network Inspector"
+  short_description: "Inspect Android network requests with Snap-O"
+  default_prompt: "Use $snap-o-network-inspector to inspect network data from the attached Android device/emulator."

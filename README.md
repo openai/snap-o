@@ -116,6 +116,16 @@ Building requires Xcode 16 or later.
 2. Open `Snap-O.xcodeproj` in Xcode.
 3. Build and run.
 
+## Codex Skill
+
+This repo includes a Codex skill at `skills/snap-o-network-inspector`.
+
+Example prompt in Codex:
+
+```text
+$skill-installer install the snap-o-network-inspector skill from https://github.com/openai/snap-o/tree/main/skills/snap-o-network-inspector
+```
+
 ### Notarizing or shipping builds
 
 If you need to notarize the app yourself:
