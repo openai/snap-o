@@ -25,6 +25,8 @@ import okio.BufferedSink
 import okio.BufferedSource
 import okio.ForwardingSink
 import okio.ForwardingSource
+import okio.Sink
+import okio.Timeout
 import okio.buffer
 import java.io.Closeable
 import java.io.IOException
@@ -578,23 +580,31 @@ private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
     val requestBody = body ?: return null
     if (requestBody.isDuplex() || requestBody.isOneShot()) return null
     return try {
-        val buffer = Buffer()
-        requestBody.writeTo(buffer)
-        val totalBytes = buffer.size
-        val capturedBytesCount = totalBytes.coerceAtMost(maxBytes.toLong()).toInt()
-        val body = buffer.readByteArray(capturedBytesCount.toLong())
-        val truncatedBytes = (totalBytes - body.size.toLong()).coerceAtLeast(0L)
-
-        RequestBodyCapture(
-            contentType = requestBody.contentType(),
-            body = body,
-            truncatedBytes = truncatedBytes,
-        )
+        val capture = RequestBodyCaptureBuffer(maxBytes)
+        val sink = CapturingBlackholeSink(capture).buffer()
+        requestBody.writeTo(sink)
+        sink.flush()
+        capture.snapshot(requestBody.contentType())
     } catch (_: IOException) {
         null
     } catch (_: RuntimeException) {
         null
     }
+}
+
+private class CapturingBlackholeSink(
+    private val capture: RequestBodyCaptureBuffer,
+) : Sink {
+    override fun write(source: Buffer, byteCount: Long) {
+        capture.append(source, byteCount)
+        source.skip(byteCount)
+    }
+
+    override fun flush() = Unit
+
+    override fun timeout(): Timeout = Timeout.NONE
+
+    override fun close() = Unit
 }
 
 private fun hasNonIdentityContentEncoding(contentEncoding: String?): Boolean {
