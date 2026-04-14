@@ -13,3 +13,20 @@ internal fun responseIsDefinedAsBodyless(
     if (status == 304) return true
     return responseContentLength == 0L
 }
+
+internal fun responseIsDefinedAsBodyless(
+    requestMethod: String?,
+    responseStatus: Int?,
+    responseHeaders: List<Header>?,
+): Boolean {
+    val contentLength = responseHeaders
+        ?.firstOrNull { header -> header.name.equals("Content-Length", ignoreCase = true) }
+        ?.value
+        ?.trim()
+        ?.toLongOrNull()
+    return responseIsDefinedAsBodyless(
+        requestMethod = requestMethod,
+        responseStatus = responseStatus,
+        responseContentLength = contentLength,
+    )
+}

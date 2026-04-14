@@ -155,7 +155,17 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         return if (responseBody.contentType().isEventStream()) {
             handleStreamingResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
         } else {
-            publishStandardResponse(context, response, responseBody, endWall = endWall, endMono = endMono)
+            val completeBodySize = publishStandardResponse(
+                context = context,
+                response = response,
+                body = responseBody,
+                endWall = endWall,
+                endMono = endMono,
+            )
+            if (completeBodySize != null) {
+                publishLoadingFinished(context, completeBodySize)
+                return response
+            }
             response.newBuilder()
                 .body(
                     CompletionTrackingResponseBody(
@@ -207,8 +217,9 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         body: ResponseBody,
         endWall: Long,
         endMono: Long,
-    ) {
+    ): Long? {
         val bodySize = body.safeContentLength()
+        var completeBodySize = bodySize.takeIf { it == 0L }
         publish {
             val textBody = response.captureTextBody(textBodyMaxBytes, responseBodyPreviewBytes)
             val binaryBody = if (textBody == null) {
@@ -216,6 +227,11 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             } else {
                 null
             }
+            completeBodySize = completeCapturedBodySize(
+                textBody = textBody,
+                binaryBody = binaryBody,
+                bodySize = bodySize,
+            )
             val bodyPreview = textBody?.preview
                 ?: binaryBody?.preview
                 ?: response.bodyPreview(responseBodyPreviewBytes)
@@ -234,6 +250,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 bodySize = bodySize,
             )
         }
+        return completeBodySize
     }
 
     private fun handleFailure(context: InterceptContext, error: Throwable) {
@@ -573,6 +590,19 @@ private fun Response.captureBinaryBody(maxBytes: Int, previewBytes: Int): Binary
             null
         }
     }
+}
+
+private fun completeCapturedBodySize(
+    textBody: TextBodyCapture?,
+    binaryBody: BinaryBodyCapture?,
+    bodySize: Long?,
+): Long? {
+    if (bodySize == 0L) return 0L
+    val capturedBytes = textBody?.capturedBytes ?: binaryBody?.capturedBytes ?: return null
+    val truncated = textBody?.truncated ?: binaryBody?.truncated ?: return null
+    if (truncated) return null
+    if (bodySize != null && capturedBytes < bodySize) return null
+    return bodySize ?: capturedBytes
 }
 
 private fun Request.captureBody(maxBytes: Int): RequestBodyCapture? {
