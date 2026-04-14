@@ -188,8 +188,8 @@ private fun resolveRequestStatus(request: NetworkInspectorRequest): NetworkInspe
             NetworkInspectorRequestStatus.Success(request.response?.code ?: 200)
 
         request.isLikelyStreamingResponse -> NetworkInspectorRequestStatus.Pending
-        request.response != null && request.finished != null ->
-            NetworkInspectorRequestStatus.Success(request.response.code)
+        request.hasCompleteResponse ->
+            NetworkInspectorRequestStatus.Success(request.response?.code ?: 200)
 
         request.response != null -> NetworkInspectorRequestStatus.Pending
         else -> NetworkInspectorRequestStatus.Pending

@@ -64,6 +64,19 @@ val NetworkInspectorRequest.isLikelyStreamingResponse: Boolean
         return false
     }
 
+val NetworkInspectorRequest.hasBodylessResponse: Boolean
+    get() {
+        val responseRecord = response ?: return false
+        return responseIsDefinedAsBodyless(
+            requestMethod = request?.method,
+            responseStatus = responseRecord.code,
+            responseHeaders = responseRecord.headers,
+        )
+    }
+
+val NetworkInspectorRequest.hasCompleteResponse: Boolean
+    get() = response != null && (finished != null || hasBodylessResponse)
+
 private fun hasEventStreamHeader(headers: List<Header>?): Boolean {
     if (headers.isNullOrEmpty()) return false
     return headers.any { header ->

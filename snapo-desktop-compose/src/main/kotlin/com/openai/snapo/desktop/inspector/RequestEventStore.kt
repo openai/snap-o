@@ -53,7 +53,7 @@ internal class RequestEventStore {
                     request.streamClosed != null -> false
                     request.streamEvents.isNotEmpty() -> true
                     request.isLikelyStreamingResponse -> true
-                    request.response != null && request.finished != null -> false
+                    request.hasCompleteResponse -> false
                     else -> true
                 }
             }
@@ -96,9 +96,9 @@ internal class RequestEventStore {
                 return@withLock size == null || size != 0L
             }
 
-            if (state.finished == null) return@withLock false
             val response = state.response ?: return@withLock false
-            if (responseHasNoBody(state = state, response = response)) return@withLock false
+            if (state.hasBodylessResponse) return@withLock false
+            if (state.finished == null) return@withLock false
             if (!response.body.isNullOrEmpty()) return@withLock false
             // null means unknown size; still try.
             val size = response.bodySize
@@ -333,21 +333,5 @@ internal class RequestEventStore {
 
     private fun broadcastRequestsLocked() {
         _requests.value = requestOrder.mapNotNull { requestStates[it] }
-    }
-
-    private fun responseHasNoBody(
-        state: NetworkInspectorRequest,
-        response: ResponseReceived,
-    ): Boolean {
-        val contentLength = response.headers
-            .firstOrNull { header -> header.name.equals("Content-Length", ignoreCase = true) }
-            ?.value
-            ?.trim()
-            ?.toLongOrNull()
-        return responseIsDefinedAsBodyless(
-            requestMethod = state.request?.method,
-            responseStatus = response.code,
-            responseContentLength = contentLength,
-        )
     }
 }
