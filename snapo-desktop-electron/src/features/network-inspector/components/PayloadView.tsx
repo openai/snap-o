@@ -51,25 +51,35 @@ export function PayloadView({
   const copyFeedback = useCopyFeedback(displayText);
   const hasToggle = showsToggle && payload.prettyText != null;
   const hasCopy = showsCopyButton && displayText.length > 0;
+  const controls =
+    hasToggle || hasCopy ? (
+      <>
+        {hasToggle ? (
+          <InlineTextToggle label={pretty ? "PRETTY" : "RAW"} onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)} />
+        ) : null}
+        {hasCopy ? <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} /> : null}
+      </>
+    ) : null;
 
   return (
     <div className="payload-card">
-      {hasToggle || hasCopy ? (
-        <div className="payload-controls">
-          {hasToggle ? (
-            <InlineTextToggle label={pretty ? "PRETTY" : "RAW"} onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)} />
-          ) : null}
-          {hasCopy ? <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} /> : null}
-        </div>
-      ) : null}
+      {jsonRoot == null && controls != null ? <div className="payload-controls">{controls}</div> : null}
       {payload.prettyText == null && payload.isLikelyJson ? (
         <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
       ) : null}
-      {jsonRoot == null ? (
-        <pre>{displayText}</pre>
-      ) : (
-        <JsonOutline node={jsonRoot} storageKey={`${storageKey}:json`} uiState={uiState} initiallyExpanded={prettyInitiallyExpanded} />
-      )}
+      <div className="payload-scroll">
+        {jsonRoot == null ? (
+          <pre>{displayText}</pre>
+        ) : (
+          <JsonOutline
+            node={jsonRoot}
+            storageKey={`${storageKey}:json`}
+            uiState={uiState}
+            initiallyExpanded={prettyInitiallyExpanded}
+            trailing={controls == null ? null : <span className="json-row-trailing">{controls}</span>}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -106,13 +116,15 @@ function JsonOutline({
   storageKey,
   uiState,
   depth = 0,
-  initiallyExpanded
+  initiallyExpanded,
+  trailing
 }: {
   node: JsonNode;
   storageKey: string;
   uiState: PersistentInspectorUiState;
   depth?: number;
   initiallyExpanded: boolean;
+  trailing?: React.ReactNode;
 }): JSX.Element {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const expandable = node.children.length > 0;
@@ -135,7 +147,7 @@ function JsonOutline({
   return (
     <div className="json-outline">
       <div
-        className="json-row"
+        className={trailing == null ? "json-row" : "json-row json-row-with-trailing"}
         style={{ paddingLeft: `${depth * 14}px` }}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -166,6 +178,7 @@ function JsonOutline({
           <span className="json-toggle-spacer" />
         )}
         <JsonNodeLine node={node} expanded={expanded} />
+        {trailing}
       </div>
       {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       {expanded ? (

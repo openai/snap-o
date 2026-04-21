@@ -610,6 +610,12 @@ button:disabled {
   gap: 6px;
 }
 
+.payload-scroll {
+  min-height: 0;
+  max-height: min(520px, calc(100vh - 220px));
+  overflow: auto;
+}
+
 .payload-controls,
 .body-toolbar {
   display: flex;
@@ -673,14 +679,30 @@ button:disabled {
   display: flex;
   align-items: baseline;
   gap: 4px;
+  width: 100%;
+  min-width: 0;
   color: var(--on-surface);
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 16px;
+  overflow: hidden;
 }
 
 .json-row:hover {
   background: var(--surface-container-high);
+}
+
+.json-row-with-trailing {
+  min-height: 24px;
+  align-items: center;
+}
+
+.json-row-trailing {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
 }
 
 .json-toggle {
@@ -706,15 +728,32 @@ button:disabled {
 }
 
 .json-preview {
+  display: inline-block;
+  flex: 1 1 auto;
   min-width: 0;
+  vertical-align: bottom;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .json-line {
+  display: flex;
+  align-items: baseline;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.json-line span {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.json-line > .json-key,
+.json-line > .json-punctuation {
+  flex: 0 0 auto;
 }
 
 .json-punctuation {
