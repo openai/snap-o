@@ -1,4 +1,4 @@
-import { ArrowDownUp, Trash2 } from "lucide-react";
+import { SortAsc, SortDesc, Trash2 } from "lucide-react";
 import { memo } from "react";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord, ServerId } from "../../../network/cdp";
@@ -44,6 +44,9 @@ export const Sidebar = memo(function Sidebar({
   onClearCompleted(): void;
   onRecordSelect(id: string): void;
 }): JSX.Element {
+  const SortIcon = sortNewestFirst ? SortDesc : SortAsc;
+  const sortLabel = sortNewestFirst ? "newest first" : "oldest first";
+
   return (
     <aside className="sidebar">
       <div className="server-picker-frame">
@@ -76,11 +79,11 @@ export const Sidebar = memo(function Sidebar({
           <button
             className="toolbar-icon-button"
             type="button"
-            title="Toggle sort order"
-            aria-label="Toggle sort order"
+            title={`Sorted ${sortLabel}`}
+            aria-label={`Sorted ${sortLabel}. Toggle sort order`}
             onClick={onToggleSortOrder}
           >
-            <ArrowDownUp size={16} className={sortNewestFirst ? "sort-icon newest" : "sort-icon"} />
+            <SortIcon size={16} />
           </button>
           <button
             className="toolbar-icon-button"

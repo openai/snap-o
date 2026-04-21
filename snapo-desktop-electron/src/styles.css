@@ -336,14 +336,6 @@ button:disabled {
   color: rgba(107, 107, 107, 0.4);
 }
 
-.sort-icon {
-  transform: rotate(0deg);
-}
-
-.sort-icon.newest {
-  transform: rotate(180deg);
-}
-
 .record-list {
   flex: 1;
   min-height: 0;

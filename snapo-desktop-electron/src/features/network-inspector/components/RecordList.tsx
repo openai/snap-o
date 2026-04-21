@@ -107,12 +107,10 @@ function sidebarContextMenuItems(
   client: NetworkClient
 ): ContextMenuItem[] {
   const exportRecords = contextMenuExportSelection(clicked, selectedRecordId, allRecords);
+  const items: ContextMenuItem[] = [{ label: "Copy URL", action: () => void navigator.clipboard.writeText(clicked.url) }];
   if (clicked.kind === "request") {
-    return [
-      { label: "Copy URL", action: () => void navigator.clipboard.writeText(clicked.url) },
-      { label: "Copy as cURL", action: () => void copyCurl(client, clicked) },
-      { label: "Export (sanitized)...", action: () => void exportAsHar(client, exportRecords) }
-    ];
+    items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked) });
   }
-  return [{ label: "Export (sanitized)...", action: () => void exportAsHar(client, exportRecords) }];
+  items.push({ label: "Export (sanitized)...", action: () => void exportAsHar(client, exportRecords) });
+  return items;
 }
