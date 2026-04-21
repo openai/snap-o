@@ -119,6 +119,7 @@ function JsonOutline({
   const rowKey = `${storageKey}:${node.key}`;
   const expanded = expandable ? uiState.jsonExpanded(rowKey, depth === 0 ? initiallyExpanded : false) : false;
   const descendantRowKeys = useMemo(() => collectDescendantRowKeys(node, storageKey), [node, storageKey]);
+  const closingSymbol = node.type === "array" ? "]" : "}";
 
   useEffect(() => {
     if (menu == null) return;
@@ -164,12 +165,12 @@ function JsonOutline({
         ) : (
           <span className="json-toggle-spacer" />
         )}
-        <span className="json-key">{node.label}</span>
-        {node.valuePreview == null ? null : <span className="json-preview">{node.valuePreview}</span>}
+        <JsonNodeLine node={node} expanded={expanded} />
       </div>
       {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
-      {expanded
-        ? node.children.map((child) => (
+      {expanded ? (
+        <>
+          {node.children.map((child) => (
             <JsonOutline
               key={child.key}
               node={child}
@@ -178,10 +179,115 @@ function JsonOutline({
               depth={depth + 1}
               initiallyExpanded={false}
             />
-          ))
-        : null}
+          ))}
+          <div className="json-row json-closing-row" style={{ paddingLeft: `${depth * 14}px` }}>
+            <span className="json-toggle-spacer" />
+            <span className="json-punctuation">{closingSymbol}</span>
+          </div>
+        </>
+      ) : null}
     </div>
   );
+}
+
+function JsonNodeLine({ node, expanded }: { node: JsonNode; expanded: boolean }): JSX.Element {
+  return (
+    <span className="json-line">
+      {node.label.length === 0 ? null : (
+        <>
+          <span className="json-key">{node.label}</span>
+          <span className="json-punctuation">: </span>
+        </>
+      )}
+      <JsonNodeValue node={node} expanded={expanded} />
+    </span>
+  );
+}
+
+function JsonNodeValue({ node, expanded }: { node: JsonNode; expanded: boolean }): JSX.Element {
+  if (node.type === "object") {
+    if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
+    if (expanded) return <span className="json-punctuation">{"{"}</span>;
+    return <JsonInlinePreview node={node} />;
+  }
+  if (node.type === "array") {
+    if (node.children.length === 0) return <span className="json-punctuation">[ ]</span>;
+    if (expanded) return <span className="json-punctuation">[</span>;
+    return <JsonInlinePreview node={node} />;
+  }
+  if (node.type === "string") return <span className="json-string">{jsonQuoted(String(node.rawValue))}</span>;
+  if (node.type === "number" || node.type === "boolean") {
+    return <span className="json-number-bool">{String(node.rawValue)}</span>;
+  }
+  return <span className="json-null">null</span>;
+}
+
+function JsonInlinePreview({ node }: { node: JsonNode }): JSX.Element {
+  return <span className="json-preview">{inlinePreviewParts(node, 120)}</span>;
+}
+
+function inlinePreviewParts(node: JsonNode, maxLength: number): React.ReactNode {
+  const fullText = inlinePreviewText(node);
+  if (fullText.length > maxLength) return <span className="json-punctuation">{`${fullText.slice(0, Math.max(0, maxLength - 3))}...`}</span>;
+  return renderInlinePreviewNode(node);
+}
+
+function renderInlinePreviewNode(node: JsonNode): React.ReactNode {
+  if (node.type === "object") {
+    if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
+    return (
+      <>
+        <span className="json-punctuation">{"{ "}</span>
+        {node.children.map((child, index) => (
+          <span key={child.key}>
+            {index === 0 ? null : <span className="json-punctuation">, </span>}
+            <span className="json-key">{jsonQuoted(child.label)}</span>
+            <span className="json-punctuation">: </span>
+            {renderInlinePreviewNode(child)}
+          </span>
+        ))}
+        <span className="json-punctuation">{" }"}</span>
+      </>
+    );
+  }
+  if (node.type === "array") {
+    if (node.children.length === 0) return <span className="json-punctuation">[ ]</span>;
+    return (
+      <>
+        <span className="json-punctuation">[ </span>
+        {node.children.map((child, index) => (
+          <span key={child.key}>
+            {index === 0 ? null : <span className="json-punctuation">, </span>}
+            {renderInlinePreviewNode(child)}
+          </span>
+        ))}
+        <span className="json-punctuation"> ]</span>
+      </>
+    );
+  }
+  if (node.type === "string") return <span className="json-string">{jsonQuoted(String(node.rawValue))}</span>;
+  if (node.type === "number" || node.type === "boolean") {
+    return <span className="json-number-bool">{String(node.rawValue)}</span>;
+  }
+  return <span className="json-null">null</span>;
+}
+
+function inlinePreviewText(node: JsonNode): string {
+  if (node.type === "object") {
+    if (node.children.length === 0) return "{ }";
+    return `{ ${node.children.map((child) => `${jsonQuoted(child.label)}: ${inlinePreviewText(child)}`).join(", ")} }`;
+  }
+  if (node.type === "array") {
+    if (node.children.length === 0) return "[ ]";
+    return `[ ${node.children.map(inlinePreviewText).join(", ")} ]`;
+  }
+  if (node.type === "string") return jsonQuoted(String(node.rawValue));
+  if (node.type === "number" || node.type === "boolean") return String(node.rawValue);
+  return "null";
+}
+
+function jsonQuoted(value: string): string {
+  return JSON.stringify(value);
 }
 
 function jsonContextMenuItems({
@@ -239,9 +345,9 @@ function collectDescendantRowKeys(node: JsonNode, storageKey: string): string[] 
 }
 
 function jsonNodeCopyText(node: JsonNode): string {
-  if (node.type === "primitive") {
-    return node.rawValue == null || typeof node.rawValue !== "string" ? String(node.rawValue) : node.rawValue;
-  }
+  if (node.type === "string") return String(node.rawValue);
+  if (node.type === "number" || node.type === "boolean") return String(node.rawValue);
+  if (node.type === "null") return "null";
   return JSON.stringify(node.rawValue, null, 2);
 }
 

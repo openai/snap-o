@@ -4,8 +4,7 @@ export interface JsonNode {
   key: string;
   label: string;
   rawValue: unknown;
-  valuePreview?: string;
-  type: "object" | "array" | "primitive";
+  type: "object" | "array" | "string" | "number" | "boolean" | "null";
   children: JsonNode[];
 }
 
@@ -98,38 +97,37 @@ function valueToNode(value: unknown, label: string, key: string, isRoot = false)
   if (Array.isArray(value)) {
     return {
       key,
-      label: isRoot ? "[]" : label,
+      label: isRoot ? "" : label,
       rawValue: value,
-      valuePreview: `${value.length} items`,
       type: "array",
-      children: value.map((child, index) => valueToNode(child, `${index}`, `${key}.${index}`))
+      children: value.map((child, index) => valueToNode(child, `[${index}]`, `${key}.${index}`))
     };
   }
   if (value != null && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>);
     return {
       key,
-      label: isRoot ? "{}" : label,
+      label: isRoot ? "" : label,
       rawValue: value,
-      valuePreview: `${entries.length} fields`,
       type: "object",
       children: entries.map(([childKey, childValue]) => valueToNode(childValue, childKey, `${key}.${escapeKey(childKey)}`))
     };
   }
+  const type = primitiveType(value);
   return {
     key,
     label,
     rawValue: value,
-    valuePreview: primitivePreview(value),
-    type: "primitive",
+    type,
     children: []
   };
 }
 
-function primitivePreview(value: unknown): string {
-  if (typeof value === "string") return JSON.stringify(value);
-  if (value == null) return "null";
-  return String(value);
+function primitiveType(value: unknown): JsonNode["type"] {
+  if (typeof value === "string") return "string";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "null";
 }
 
 function escapeKey(key: string): string {

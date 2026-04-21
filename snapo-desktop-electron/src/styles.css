@@ -22,6 +22,9 @@
   --accent-blue: #2778db;
   --sidebar-selection: #bcd6ff;
   --json-key: #6e3a9c;
+  --json-number: #2f6fae;
+  --json-string: #b74840;
+  --json-null: #8c7a72;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--background);
   color: var(--on-surface);
@@ -51,6 +54,9 @@
     --accent-blue: #5aa4e8;
     --sidebar-selection: #2f4a72;
     --json-key: #c38be8;
+    --json-number: #89b7f2;
+    --json-string: #ff8f7d;
+    --json-null: #b9a596;
   }
 }
 
@@ -695,16 +701,36 @@ button:disabled {
 }
 
 .json-key {
-  color: var(--json-key, #6e3a9c);
+  color: var(--json-key);
   font-weight: 500;
 }
 
 .json-preview {
   min-width: 0;
-  color: var(--on-surface-variant);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.json-line {
+  min-width: 0;
+  flex: 1;
+}
+
+.json-punctuation {
+  color: var(--on-surface);
+}
+
+.json-string {
+  color: var(--json-string);
+}
+
+.json-number-bool {
+  color: var(--json-number);
+}
+
+.json-null {
+  color: var(--json-null);
 }
 
 pre {
