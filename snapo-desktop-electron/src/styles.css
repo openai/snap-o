@@ -408,13 +408,16 @@ button:disabled {
 
 .detail-pane {
   min-width: 0;
-  overflow: hidden;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--surface-bright);
+  scrollbar-gutter: stable;
 }
 
 .detail-scroll {
-  height: 100%;
-  overflow: auto;
+  min-height: 100%;
+  overflow: visible;
   padding: 24px 24px 24px 16px;
 }
 

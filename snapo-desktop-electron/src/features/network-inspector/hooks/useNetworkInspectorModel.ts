@@ -138,11 +138,16 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const selectedRequestBodyLoad = useMemo(() => {
     if (selectedRecord?.kind !== "request") return null;
     if (selectedRecord.requestBody != null && selectedRecord.responseBody != null) return null;
+    const key = requestRecordKey(selectedRecord.server, selectedRecord.requestId);
+    const statusKey = requestStatusKey(selectedRecord.status);
+    const responseProgressKey =
+      selectedRecord.streamEvents.length > 0 ? selectedRecord.streamEvents.length : selectedRecord.endedAt ?? "";
     return {
-      key: requestRecordKey(selectedRecord.server, selectedRecord.requestId),
+      key,
       deviceId: selectedRecord.server.deviceId,
       socketName: selectedRecord.server.socketName,
-      requestId: selectedRecord.requestId
+      requestId: selectedRecord.requestId,
+      loadKey: [key, statusKey, responseProgressKey].join("\u0000")
     };
   }, [selectedRecord]);
 
@@ -175,6 +180,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     client,
     selectedRequestBodyLoad?.deviceId,
     selectedRequestBodyLoad?.key,
+    selectedRequestBodyLoad?.loadKey,
     selectedRequestBodyLoad?.requestId,
     selectedRequestBodyLoad?.socketName
   ]);
@@ -239,6 +245,17 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
 
 function serverKey(server: ServerId | null): string {
   return server == null ? "" : `${server.deviceId}\u0000${server.socketName}`;
+}
+
+function requestStatusKey(status: InspectorRecord["status"]): string {
+  switch (status.kind) {
+    case "success":
+      return `success:${status.code}`;
+    case "failure":
+      return `failure:${status.message ?? ""}`;
+    case "pending":
+      return "pending";
+  }
 }
 
 function areServersEqual(left: SnapOServer[], right: SnapOServer[]): boolean {
