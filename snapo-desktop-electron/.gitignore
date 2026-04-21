@@ -1,0 +1,4 @@
+dist-electron/
+dist-renderer/
+node_modules/
+
