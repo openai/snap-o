@@ -3,6 +3,7 @@ import type { Header } from "./cdp";
 export interface JsonNode {
   key: string;
   label: string;
+  rawValue: unknown;
   valuePreview?: string;
   type: "object" | "array" | "primitive";
   children: JsonNode[];
@@ -98,6 +99,7 @@ function valueToNode(value: unknown, label: string, key: string, isRoot = false)
     return {
       key,
       label: isRoot ? "[]" : label,
+      rawValue: value,
       valuePreview: `${value.length} items`,
       type: "array",
       children: value.map((child, index) => valueToNode(child, `${index}`, `${key}.${index}`))
@@ -108,6 +110,7 @@ function valueToNode(value: unknown, label: string, key: string, isRoot = false)
     return {
       key,
       label: isRoot ? "{}" : label,
+      rawValue: value,
       valuePreview: `${entries.length} fields`,
       type: "object",
       children: entries.map(([childKey, childValue]) => valueToNode(childValue, childKey, `${key}.${escapeKey(childKey)}`))
@@ -116,6 +119,7 @@ function valueToNode(value: unknown, label: string, key: string, isRoot = false)
   return {
     key,
     label,
+    rawValue: value,
     valuePreview: primitivePreview(value),
     type: "primitive",
     children: []

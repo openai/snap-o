@@ -1,5 +1,5 @@
 import { Check, Copy } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   bodyMetadata as payloadMetadata,
   dataUrlForImage,
@@ -11,6 +11,7 @@ import {
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
 import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
 import { copyImageToClipboard, downloadDataUrl, imageFileName } from "../lib/imageActions";
+import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 
 export function BodySection({
   payload,
@@ -113,12 +114,44 @@ function JsonOutline({
   depth?: number;
   initiallyExpanded: boolean;
 }): JSX.Element {
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const expandable = node.children.length > 0;
   const rowKey = `${storageKey}:${node.key}`;
   const expanded = expandable ? uiState.jsonExpanded(rowKey, depth === 0 ? initiallyExpanded : false) : false;
+  const descendantRowKeys = useMemo(() => collectDescendantRowKeys(node, storageKey), [node, storageKey]);
+
+  useEffect(() => {
+    if (menu == null) return;
+    const close = () => setMenu(null);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [menu]);
+
   return (
     <div className="json-outline">
-      <div className="json-row" style={{ paddingLeft: `${depth * 14}px` }}>
+      <div
+        className="json-row"
+        style={{ paddingLeft: `${depth * 14}px` }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: jsonContextMenuItems({
+              node,
+              rowKey,
+              descendantRowKeys,
+              expanded,
+              expandable,
+              uiState
+            })
+          });
+        }}
+      >
         {expandable ? (
           <button
             className="json-toggle"
@@ -134,6 +167,7 @@ function JsonOutline({
         <span className="json-key">{node.label}</span>
         {node.valuePreview == null ? null : <span className="json-preview">{node.valuePreview}</span>}
       </div>
+      {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       {expanded
         ? node.children.map((child) => (
             <JsonOutline
@@ -148,6 +182,67 @@ function JsonOutline({
         : null}
     </div>
   );
+}
+
+function jsonContextMenuItems({
+  node,
+  rowKey,
+  descendantRowKeys,
+  expanded,
+  expandable,
+  uiState
+}: {
+  node: JsonNode;
+  rowKey: string;
+  descendantRowKeys: string[];
+  expanded: boolean;
+  expandable: boolean;
+  uiState: PersistentInspectorUiState;
+}): ContextMenuItem[] {
+  const descendantsLabel = descendantRowKeys.length === 0 ? "children" : `${descendantRowKeys.length} children`;
+  return [
+    {
+      label: expanded ? "Collapse" : "Expand",
+      disabled: !expandable,
+      action: () => uiState.setJsonExpanded(rowKey, !expanded)
+    },
+    {
+      label: `Expand ${descendantsLabel}`,
+      disabled: !expandable,
+      action: () => {
+        uiState.setJsonExpanded(rowKey, true);
+        for (const key of descendantRowKeys) uiState.setJsonExpanded(key, true);
+      }
+    },
+    {
+      label: `Collapse ${descendantsLabel}`,
+      disabled: !expandable,
+      action: () => {
+        uiState.setJsonExpanded(rowKey, false);
+        for (const key of descendantRowKeys) uiState.setJsonExpanded(key, false);
+      }
+    },
+    {
+      label: "Copy value",
+      action: () => void navigator.clipboard.writeText(jsonNodeCopyText(node))
+    }
+  ];
+}
+
+function collectDescendantRowKeys(node: JsonNode, storageKey: string): string[] {
+  const keys: string[] = [];
+  for (const child of node.children) {
+    if (child.children.length > 0) keys.push(`${storageKey}:${child.key}`);
+    keys.push(...collectDescendantRowKeys(child, storageKey));
+  }
+  return keys;
+}
+
+function jsonNodeCopyText(node: JsonNode): string {
+  if (node.type === "primitive") {
+    return node.rawValue == null || typeof node.rawValue !== "string" ? String(node.rawValue) : node.rawValue;
+  }
+  return JSON.stringify(node.rawValue, null, 2);
 }
 
 function ImagePreview({ payload }: { payload: BodyPayload }): JSX.Element | null {

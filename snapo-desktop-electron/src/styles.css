@@ -673,6 +673,10 @@ button:disabled {
   line-height: 16px;
 }
 
+.json-row:hover {
+  background: var(--surface-container-high);
+}
+
 .json-toggle {
   width: 12px;
   height: 16px;
@@ -841,6 +845,16 @@ pre {
 
 .context-menu-item:hover {
   background: var(--surface-container-high);
+}
+
+.context-menu-item:disabled {
+  color: var(--on-surface-variant);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.context-menu-item:disabled:hover {
+  background: transparent;
 }
 
 .empty-detail {

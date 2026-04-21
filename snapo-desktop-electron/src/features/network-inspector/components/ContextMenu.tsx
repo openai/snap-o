@@ -7,6 +7,7 @@ export interface ContextMenuState {
 export interface ContextMenuItem {
   label: string;
   action: () => void;
+  disabled?: boolean;
 }
 
 export function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose: () => void }): JSX.Element {
@@ -16,8 +17,10 @@ export function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose
         <button
           className="context-menu-item"
           type="button"
+          disabled={item.disabled}
           key={item.label}
           onClick={() => {
+            if (item.disabled === true) return;
             item.action();
             onClose();
           }}
