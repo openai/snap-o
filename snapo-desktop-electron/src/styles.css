@@ -102,8 +102,11 @@ button:disabled {
 
 .sidebar {
   min-width: 0;
+  min-height: 0;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--surface);
   border-right: 1px solid var(--outline-variant);
 }

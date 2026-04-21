@@ -49,7 +49,8 @@ const SseEventCard = memo(function SseEventCard({
   storageKey: string;
   uiState: PersistentInspectorUiState;
 }): JSX.Element {
-  const rawText = event.data ?? event.raw;
+  const parsedPayload = parseSsePayload(event.data) ?? parseSsePayload(event.raw);
+  const rawText = parsedPayload?.data ?? event.data ?? event.raw;
   const prettyText = prettyJsonOrNull(rawText);
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
   const displayText = pretty && prettyText != null ? prettyText : rawText;
@@ -81,9 +82,47 @@ const SseEventCard = memo(function SseEventCard({
           prettyInitiallyExpanded={false}
         />
       )}
-      {event.eventId == null || event.eventId.length === 0 ? null : (
-        <div className="stream-event-metadata">Last-Event-ID: {event.eventId}</div>
+      {event.eventId == null && parsedPayload?.lastEventId == null ? null : (
+        <div className="stream-event-metadata">Last-Event-ID: {event.eventId ?? parsedPayload?.lastEventId}</div>
       )}
     </div>
   );
 });
+
+interface ParsedSsePayload {
+  data: string | null;
+  lastEventId: string | null;
+}
+
+function parseSsePayload(text: string | null | undefined): ParsedSsePayload | null {
+  if (text == null || text.length === 0) return null;
+
+  let sawSseField = false;
+  let lastEventId: string | null = null;
+  const dataLines: string[] = [];
+
+  for (const line of text.split(/\r?\n/u)) {
+    if (line.length === 0 || line.startsWith(":")) continue;
+
+    const separatorIndex = line.indexOf(":");
+    const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+    const rawValue = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
+    const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+
+    if (field === "data") {
+      sawSseField = true;
+      dataLines.push(value);
+    } else if (field === "id") {
+      sawSseField = true;
+      lastEventId = value;
+    } else if (field === "event" || field === "retry") {
+      sawSseField = true;
+    }
+  }
+
+  if (!sawSseField) return null;
+  return {
+    data: dataLines.length === 0 ? null : dataLines.join("\n"),
+    lastEventId
+  };
+}

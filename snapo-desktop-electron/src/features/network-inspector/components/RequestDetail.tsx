@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { recordId, type RequestRecord } from "../../../network/cdp";
+import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
 import { makeBodyPayload } from "../../../network/payload";
 import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
 import { formatTiming } from "../lib/format";
@@ -15,17 +15,20 @@ export const RequestDetail = memo(function RequestDetail({
   record: RequestRecord;
   uiState: PersistentInspectorUiState;
 }): JSX.Element {
+  const isSseResponse = isLikelySseResponse(record);
   const requestBody = makeBodyPayload({
     body: record.requestBody,
     headers: record.requestHeaders,
     encoding: record.requestBodyEncoding
   });
-  const responseBody = makeBodyPayload({
-    body: record.responseBody,
-    headers: record.responseHeaders,
-    base64Encoded: record.responseBodyBase64Encoded,
-    totalBytes: record.encodedDataLength
-  });
+  const responseBody = isSseResponse
+    ? null
+    : makeBodyPayload({
+        body: record.responseBody,
+        headers: record.responseHeaders,
+        base64Encoded: record.responseBodyBase64Encoded,
+        totalBytes: record.encodedDataLength
+      });
   const prefix = `request:${recordId(record)}`;
 
   return (
@@ -64,7 +67,7 @@ export const RequestDetail = memo(function RequestDetail({
           <HeadersTable headers={record.responseHeaders} />
         </Section>
       )}
-      {record.streamEvents.length > 0 ? (
+      {isSseResponse ? (
         <Section
           title="Server-Sent Events"
           storageKey={`${prefix}:stream`}
@@ -82,3 +85,16 @@ export const RequestDetail = memo(function RequestDetail({
     </div>
   );
 });
+
+function isLikelySseResponse(record: RequestRecord): boolean {
+  if (record.streamEvents.length > 0) return true;
+  return hasEventStreamHeader(record.responseHeaders) || hasEventStreamHeader(record.requestHeaders);
+}
+
+function hasEventStreamHeader(headers: Header[]): boolean {
+  return headers.some((header) => {
+    const name = header.name.toLowerCase();
+    const value = header.value.toLowerCase();
+    return (name === "content-type" || name === "accept") && value.includes("text/event-stream");
+  });
+}
