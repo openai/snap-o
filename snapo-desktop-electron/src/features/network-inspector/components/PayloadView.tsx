@@ -209,7 +209,7 @@ function JsonNodeLine({ node, expanded }: { node: JsonNode; expanded: boolean })
       {node.label.length === 0 ? null : (
         <>
           <span className="json-key">{node.label}</span>
-          <span className="json-punctuation">: </span>
+          <span className="json-punctuation json-property-separator">:</span>
         </>
       )}
       <JsonNodeValue node={node} expanded={expanded} />
