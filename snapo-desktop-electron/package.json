@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 dist-electron/electron/main.js && SNAPO_ELECTRON_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "dev": "node scripts/dev.mjs",
     "build": "tsc -p tsconfig.electron.json && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
     "start": "npm run build && electron ."
