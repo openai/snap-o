@@ -188,13 +188,26 @@ function reduceLoadingFinished(
   params: LoadingFinishedEvent,
   now: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => ({
-    ...requestDefaults(existing, server, requestId(params), now),
-    status: existing?.status.kind === "success" ? existing.status : { kind: "success", code: 200 },
-    endedAt: now,
-    encodedDataLength: params.encodedDataLength ?? existing?.encodedDataLength,
-    updatedAt: now
-  }));
+  return updateRequest(state, server, requestId(params), (existing) => {
+    const base = requestDefaults(existing, server, requestId(params), now);
+    const encodedDataLength = params.encodedDataLength ?? existing?.encodedDataLength;
+    const status = base.status.kind === "success" ? base.status : { kind: "success" as const, code: 200 };
+    return {
+      ...base,
+      status,
+      endedAt: now,
+      encodedDataLength,
+      streamClosed: isLikelyStreamingRequest(base)
+        ? {
+            timestamp: now,
+            reason: "completed",
+            totalEvents: base.streamEvents.length,
+            totalBytes: encodedDataLength
+          }
+        : base.streamClosed,
+      updatedAt: now
+    };
+  });
 }
 
 function reduceLoadingFailed(
@@ -203,15 +216,29 @@ function reduceLoadingFailed(
   params: LoadingFailedEvent,
   now: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => ({
-    ...requestDefaults(existing, server, requestId(params), now),
-    status: {
-      kind: "failure",
-      message: params.errorText ?? stringAt(params, "type")
-    },
-    endedAt: now,
-    updatedAt: now
-  }));
+  return updateRequest(state, server, requestId(params), (existing) => {
+    const base = requestDefaults(existing, server, requestId(params), now);
+    const message = params.errorText ?? stringAt(params, "type");
+    const isStreamFailure = isLikelyStreamingRequest(base) || stringAt(params, "type")?.toLowerCase() === "eventsource";
+    return {
+      ...base,
+      status: {
+        kind: "failure",
+        message
+      },
+      endedAt: now,
+      streamClosed: isStreamFailure
+        ? {
+            timestamp: now,
+            reason: "error",
+            message,
+            totalEvents: base.streamEvents.length,
+            totalBytes: 0
+          }
+        : base.streamClosed,
+      updatedAt: now
+    };
+  });
 }
 
 function reduceEventSourceMessage(
@@ -436,6 +463,19 @@ function headersFrom(headers: Record<string, unknown> | null): Header[] {
       .split("\n")
       .map((line) => ({ name, value: line }))
   );
+}
+
+function isLikelyStreamingRequest(record: RequestRecord): boolean {
+  if (record.streamEvents.length > 0) return true;
+  return hasEventStreamHeader(record.responseHeaders) || hasEventStreamHeader(record.requestHeaders);
+}
+
+function hasEventStreamHeader(headers: Header[]): boolean {
+  return headers.some((header) => {
+    const name = header.name.toLowerCase();
+    const value = header.value.toLowerCase();
+    return (name === "content-type" || name === "accept") && value.includes("text/event-stream");
+  });
 }
 
 function recordFromProtocolHeaders(headers: unknown): Record<string, unknown> | null {
