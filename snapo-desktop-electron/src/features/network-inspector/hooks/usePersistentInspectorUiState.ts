@@ -9,7 +9,7 @@ interface InspectorUiPreferences {
 }
 
 export interface PersistentInspectorUiState {
-  sectionExpanded(key: string): boolean;
+  sectionExpanded(key: string, fallback?: boolean): boolean;
   setSectionExpanded(key: string, value: boolean): void;
   prettyEnabled(key: string, fallback: boolean): boolean;
   setPrettyEnabled(key: string, value: boolean): void;
@@ -24,7 +24,7 @@ export function usePersistentInspectorUiState(): PersistentInspectorUiState {
     window.localStorage.setItem(inspectorUiStorageKey, JSON.stringify(prefs));
   }, [prefs]);
 
-  const sectionExpanded = useCallback((key: string) => prefs.sections[key] ?? true, [prefs.sections]);
+  const sectionExpanded = useCallback((key: string, fallback = true) => prefs.sections[key] ?? fallback, [prefs.sections]);
   const setSectionExpanded = useCallback(
     (key: string, value: boolean) => setPrefs((current) => ({ ...current, sections: { ...current.sections, [key]: value } })),
     []

@@ -43,12 +43,18 @@ export const RequestDetail = memo(function RequestDetail({
       </header>
 
       {record.requestHeaders.length === 0 ? null : (
-        <Section title="Request Headers" storageKey={`${prefix}:requestHeaders`} uiState={uiState}>
+        <Section title="Request Headers" storageKey={`${prefix}:requestHeaders`} uiState={uiState} initiallyExpanded={false}>
           <HeadersTable headers={record.requestHeaders} />
         </Section>
       )}
       {requestBody == null ? null : (
-        <Section title="Request Body" meta={payloadMetadata(requestBody)} storageKey={`${prefix}:requestBody`} uiState={uiState}>
+        <Section
+          title="Request Body"
+          meta={payloadMetadata(requestBody)}
+          storageKey={`${prefix}:requestBody`}
+          uiState={uiState}
+          initiallyExpanded={false}
+        >
           <BodySection payload={requestBody} storageKey={`${prefix}:requestBody:payload`} uiState={uiState} />
         </Section>
       )}

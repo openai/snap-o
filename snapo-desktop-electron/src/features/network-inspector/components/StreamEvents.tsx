@@ -74,7 +74,7 @@ const SseEventCard = memo(function SseEventCard({
       ) : (
         <PayloadView
           payload={{ ...payload, prettyText, isLikelyJson: prettyText != null || payload.isLikelyJson }}
-          storageKey={`${storageKey}:payload`}
+          storageKey={storageKey}
           uiState={uiState}
           showsToggle={false}
           showsCopyButton={false}

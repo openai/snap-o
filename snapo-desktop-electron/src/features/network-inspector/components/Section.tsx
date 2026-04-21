@@ -6,6 +6,7 @@ export function Section({
   meta,
   storageKey,
   uiState,
+  initiallyExpanded = true,
   trailing,
   children
 }: {
@@ -13,10 +14,11 @@ export function Section({
   meta?: string | null;
   storageKey: string;
   uiState: PersistentInspectorUiState;
+  initiallyExpanded?: boolean;
   trailing?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
-  const expanded = uiState.sectionExpanded(storageKey);
+  const expanded = uiState.sectionExpanded(storageKey, initiallyExpanded);
   return (
     <section className="detail-section">
       <div className="section-header-row">

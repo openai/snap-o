@@ -45,7 +45,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
       {payload == null ? null : (
         <PayloadView
           payload={{ ...payload, prettyText, isLikelyJson: prettyText != null || payload.isLikelyJson }}
-          storageKey={`${storageKey}:payload`}
+          storageKey={storageKey}
           uiState={uiState}
           showsToggle={false}
           showsCopyButton={false}
