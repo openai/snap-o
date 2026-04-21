@@ -49,7 +49,8 @@ const SseEventCard = memo(function SseEventCard({
   storageKey: string;
   uiState: PersistentInspectorUiState;
 }): JSX.Element {
-  const parsedPayload = parseSsePayload(event.data) ?? parseSsePayload(event.raw);
+  const parsedDataPayload = parseSsePayload(event.data);
+  const parsedPayload = parsedDataPayload ?? parseSsePayload(event.raw);
   const rawText = parsedPayload?.data ?? event.data ?? event.raw;
   const prettyText = prettyJsonOrNull(rawText);
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
@@ -82,8 +83,8 @@ const SseEventCard = memo(function SseEventCard({
           prettyInitiallyExpanded={false}
         />
       )}
-      {event.eventId == null && parsedPayload?.lastEventId == null ? null : (
-        <div className="stream-event-metadata">Last-Event-ID: {event.eventId ?? parsedPayload?.lastEventId}</div>
+      {parsedDataPayload?.lastEventId == null ? null : (
+        <div className="stream-event-metadata">Last-Event-ID: {parsedDataPayload.lastEventId}</div>
       )}
     </div>
   );

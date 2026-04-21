@@ -549,17 +549,13 @@ button:disabled {
 .headers-grid {
   width: 100%;
   padding: 6px 0 8px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  row-gap: 8px;
 }
 
 .header-row {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  row-gap: 0;
-  margin-bottom: 6px;
-}
-
-.header-row:last-child {
-  margin-bottom: 0;
+  display: contents;
 }
 
 .header-name,
@@ -578,6 +574,7 @@ button:disabled {
   white-space: nowrap;
   color: var(--on-surface-variant);
   font-weight: 600;
+  padding-right: 14px;
 }
 
 .header-value {
