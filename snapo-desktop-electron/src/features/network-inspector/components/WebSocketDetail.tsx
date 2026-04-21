@@ -59,12 +59,41 @@ export const WebSocketDetail = memo(function WebSocketDetail({
 });
 
 function WebSocketCloseDetails({ record }: { record: WebSocketRecord }): JSX.Element | null {
-  if (record.status.kind !== "success" || record.endedAt == null) return null;
-  const reason = record.closeReason;
+  const closeRequested = record.closeRequested;
+  const closing = record.closing;
+  const closed = record.closed;
+  if (closeRequested == null && closing == null && closed == null) return null;
+
   return (
     <div className="close-details">
-      <div>Closed: {record.status.code}</div>
-      {reason == null || reason.length === 0 ? null : <div>Reason: {reason}</div>}
+      {closeRequested == null ? null : (
+        <>
+          <div>
+            Close requested: {closeRequested.code} • {capitalize(closeRequested.initiated)} •{" "}
+            {closeRequested.accepted ? "accepted" : "not accepted"}
+          </div>
+          {closeRequested.reason == null || closeRequested.reason.length === 0 ? null : (
+            <div>Reason: {closeRequested.reason}</div>
+          )}
+        </>
+      )}
+      {closing == null ? null : (
+        <>
+          <div>Closing handshake: {closing.code}</div>
+          {closing.reason == null || closing.reason.length === 0 ? null : <div>Reason: {closing.reason}</div>}
+        </>
+      )}
+      {closed == null ? null : (
+        <>
+          <div>Closed: {closed.code}</div>
+          {closed.reason == null || closed.reason.length === 0 ? null : <div>Reason: {closed.reason}</div>}
+        </>
+      )}
     </div>
   );
+}
+
+function capitalize(value: string): string {
+  if (value.length === 0) return value;
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }

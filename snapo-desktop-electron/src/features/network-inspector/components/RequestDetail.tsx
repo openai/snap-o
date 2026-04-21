@@ -74,7 +74,12 @@ export const RequestDetail = memo(function RequestDetail({
           uiState={uiState}
           trailing={<SseCopyAllButton events={record.streamEvents} />}
         >
-          <SseEventList events={record.streamEvents} storageKey={`${prefix}:stream`} uiState={uiState} />
+          <SseEventList
+            events={record.streamEvents}
+            closed={record.streamClosed}
+            storageKey={`${prefix}:stream`}
+            uiState={uiState}
+          />
         </Section>
       ) : null}
       {responseBody == null ? null : (
@@ -88,6 +93,7 @@ export const RequestDetail = memo(function RequestDetail({
 
 function isLikelySseResponse(record: RequestRecord): boolean {
   if (record.streamEvents.length > 0) return true;
+  if (record.responseType?.toLowerCase() === "eventsource") return true;
   return hasEventStreamHeader(record.responseHeaders) || hasEventStreamHeader(record.requestHeaders);
 }
 

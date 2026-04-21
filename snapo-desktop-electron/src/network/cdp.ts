@@ -38,10 +38,13 @@ export interface RequestRecord {
   startedAt: number;
   endedAt?: number;
   encodedDataLength?: number;
+  requestHasPostData?: boolean | null;
+  requestBodySize?: number | null;
   requestBody?: string | null;
   requestBodyEncoding?: string | null;
   responseBody?: string | null;
   responseBodyBase64Encoded?: boolean | null;
+  responseType?: string | null;
   streamEvents: StreamEventRecord[];
   streamClosed?: StreamClosedRecord;
   updatedAt: number;
@@ -59,6 +62,12 @@ export interface WebSocketRecord {
   startedAt: number;
   endedAt?: number;
   messages: WebSocketMessageRecord[];
+  opened?: WebSocketOpenedRecord | null;
+  closeRequested?: WebSocketCloseRequestedRecord | null;
+  closing?: WebSocketCloseRecord | null;
+  closed?: WebSocketCloseRecord | null;
+  cancelled?: WebSocketCancelledRecord | null;
+  failed?: WebSocketFailedRecord | null;
   closeReason?: string | null;
   updatedAt: number;
 }
@@ -68,6 +77,9 @@ export interface StreamEventRecord {
   timestamp: number;
   eventName?: string | null;
   eventId?: string | null;
+  lastEventId?: string | null;
+  retryMillis?: number | null;
+  comment?: string | null;
   data?: string | null;
   raw: string;
 }
@@ -88,6 +100,34 @@ export interface WebSocketMessageRecord {
   payloadSize?: number | null;
   timestamp: number;
   enqueued?: boolean | null;
+}
+
+export interface WebSocketOpenedRecord {
+  timestamp: number;
+  code: number;
+}
+
+export interface WebSocketCloseRequestedRecord {
+  timestamp: number;
+  code: number;
+  reason?: string | null;
+  initiated: string;
+  accepted: boolean;
+}
+
+export interface WebSocketCloseRecord {
+  timestamp: number;
+  code: number;
+  reason?: string | null;
+}
+
+export interface WebSocketCancelledRecord {
+  timestamp: number;
+}
+
+export interface WebSocketFailedRecord {
+  timestamp: number;
+  message?: string | null;
 }
 
 export interface InspectorDataState {
@@ -152,15 +192,21 @@ function reduceRequestWillBeSent(
   params: RequestWillBeSentEvent,
   now: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => ({
-    ...requestDefaults(existing, server, requestId(params), now),
-    method: params.request?.method ?? existing?.method ?? "?",
-    url: params.request?.url ?? existing?.url ?? `Request ${requestId(params)}`,
-    requestHeaders: headersFrom(recordFromProtocolHeaders(params.request?.headers)),
-    requestBodyEncoding: stringAt(params, "request.postDataEncoding") ?? existing?.requestBodyEncoding,
-    startedAt: wallTimeMs(params) ?? existing?.startedAt ?? now,
-    updatedAt: now
-  }));
+  return updateRequest(state, server, requestId(params), (existing) => {
+    const hasPostData = booleanAt(params, "request.hasPostData") ?? false;
+    const postDataLength = numberAt(params, "request.postDataLength");
+    return {
+      ...requestDefaults(existing, server, requestId(params), now),
+      method: params.request?.method ?? existing?.method ?? "?",
+      url: params.request?.url ?? existing?.url ?? `Request ${requestId(params)}`,
+      requestHeaders: headersFrom(recordFromProtocolHeaders(params.request?.headers)),
+      requestHasPostData: hasPostData,
+      requestBodySize: postDataLength ?? (hasPostData ? -1 : 0),
+      requestBodyEncoding: stringAt(params, "request.postDataEncoding") ?? existing?.requestBodyEncoding,
+      startedAt: wallTimeMs(params) ?? existing?.startedAt ?? now,
+      updatedAt: now
+    };
+  });
 }
 
 function reduceResponseReceived(
@@ -177,6 +223,7 @@ function reduceResponseReceived(
       status: status == null ? existing?.status ?? { kind: "pending" } : { kind: "success", code: status },
       endedAt: existing?.endedAt,
       encodedDataLength: params.response?.encodedDataLength ?? existing?.encodedDataLength,
+      responseType: stringAt(params, "type") ?? existing?.responseType,
       updatedAt: now
     };
   });
@@ -249,13 +296,20 @@ function reduceEventSourceMessage(
 ): InspectorDataState {
   return updateRequest(state, server, requestId(params), (existing) => {
     const base = requestDefaults(existing, server, requestId(params), now);
+    const raw = stringAt(params, "data") ?? "";
+    const parsed = parseSseRaw(raw);
+    const eventName = parsed.eventName ?? (parsed.sawSseField ? null : params.eventName);
+    const data = parsed.data ?? (parsed.sawSseField ? null : params.data);
     const nextEvent: StreamEventRecord = {
-      sequence: base.streamEvents.length + 1,
+      sequence: numericEventSequence(params.eventId) ?? base.streamEvents.length + 1,
       timestamp: now,
-      eventName: params.eventName,
+      eventName,
       eventId: params.eventId,
-      data: params.data,
-      raw: formatSseRaw(params)
+      lastEventId: parsed.lastEventId,
+      retryMillis: parsed.retryMillis,
+      comment: parsed.comment,
+      data,
+      raw
     };
     return {
       ...base,
@@ -294,6 +348,7 @@ function reduceWebSocketHandshakeResponse(
       ...webSocketDefaults(existing, server, requestId(params), now),
       responseHeaders: headersFrom(recordFromProtocolHeaders(params.response?.headers)),
       status: status == null ? existing?.status ?? { kind: "pending" } : { kind: "success", code: status },
+      opened: status == null ? existing?.opened : { timestamp: now, code: status },
       updatedAt: now
     };
   });
@@ -305,13 +360,28 @@ function reduceWebSocketClosed(
   params: WebSocketClosedEvent,
   now: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => ({
-    ...webSocketDefaults(existing, server, requestId(params), now),
-    status: { kind: "success", code: numberAt(params, "code") ?? 1000 },
-    closeReason: stringAt(params, "reason"),
-    endedAt: now,
-    updatedAt: now
-  }));
+  return updateWebSocket(state, server, requestId(params), (existing) => {
+    const code = numberAt(params, "code");
+    const reason = stringAt(params, "reason");
+    const base = webSocketDefaults(existing, server, requestId(params), now);
+    if (reason?.toLowerCase() === "cancelled" && code == null) {
+      return {
+        ...base,
+        status: { kind: "failure", message: "Cancelled" },
+        cancelled: { timestamp: now },
+        endedAt: now,
+        updatedAt: now
+      };
+    }
+    return {
+      ...base,
+      status: { kind: "success", code: code ?? 1000 },
+      closed: { timestamp: now, code: code ?? 1000, reason },
+      closeReason: reason,
+      endedAt: now,
+      updatedAt: now
+    };
+  });
 }
 
 function reduceWebSocketFrameError(
@@ -323,6 +393,7 @@ function reduceWebSocketFrameError(
   return updateWebSocket(state, server, requestId(params), (existing) => ({
     ...webSocketDefaults(existing, server, requestId(params), now),
     status: { kind: "failure", message: params.errorMessage },
+    failed: { timestamp: now, message: params.errorMessage },
     endedAt: now,
     updatedAt: now
   }));
@@ -433,12 +504,20 @@ function appendWebSocketMessage(
   direction: "outgoing" | "incoming",
   now: number
 ): InspectorDataState {
+  const opcode = numberAt(params, "response.opcode");
+  const closeCode = numberAt(params, "response.closeCode");
+  if (opcode === 8 && closeCode != null) {
+    return direction === "outgoing"
+      ? reduceWebSocketCloseRequested(state, server, params, now)
+      : reduceWebSocketClosing(state, server, params, now);
+  }
+
   return updateWebSocket(state, server, requestId(params), (existing) => {
     const base = webSocketDefaults(existing, server, requestId(params), now);
     const message: WebSocketMessageRecord = {
       id: `${base.socketId}:${base.messages.length + 1}`,
       direction,
-      opcode: opcodeLabel(numberAt(params, "response.opcode")),
+      opcode: opcodeLabel(opcode),
       preview: stringAt(params, "response.payloadData"),
       payloadSize: numberAt(params, "response.payloadSize"),
       timestamp: now,
@@ -446,7 +525,49 @@ function appendWebSocketMessage(
     };
     return {
       ...base,
-      messages: [...base.messages, message],
+      messages: [...base.messages, message].sort((left, right) => left.timestamp - right.timestamp),
+      updatedAt: now
+    };
+  });
+}
+
+function reduceWebSocketCloseRequested(
+  state: InspectorDataState,
+  server: ServerId,
+  params: Record<string, unknown>,
+  now: number
+): InspectorDataState {
+  return updateWebSocket(state, server, requestId(params), (existing) => {
+    const base = webSocketDefaults(existing, server, requestId(params), now);
+    return {
+      ...base,
+      closeRequested: {
+        timestamp: now,
+        code: numberAt(params, "response.closeCode") ?? 1000,
+        reason: stringAt(params, "response.closeReason"),
+        initiated: stringAt(params, "response.closeInitiated") ?? "client",
+        accepted: booleanAt(params, "response.closeAccepted") ?? true
+      },
+      updatedAt: now
+    };
+  });
+}
+
+function reduceWebSocketClosing(
+  state: InspectorDataState,
+  server: ServerId,
+  params: Record<string, unknown>,
+  now: number
+): InspectorDataState {
+  return updateWebSocket(state, server, requestId(params), (existing) => {
+    const code = numberAt(params, "response.closeCode") ?? 1000;
+    const reason = stringAt(params, "response.closeReason");
+    return {
+      ...webSocketDefaults(existing, server, requestId(params), now),
+      status: { kind: "success", code },
+      closing: { timestamp: now, code, reason },
+      closeReason: reason,
+      endedAt: now,
       updatedAt: now
     };
   });
@@ -467,6 +588,7 @@ function headersFrom(headers: Record<string, unknown> | null): Header[] {
 
 function isLikelyStreamingRequest(record: RequestRecord): boolean {
   if (record.streamEvents.length > 0) return true;
+  if (record.responseType?.toLowerCase() === "eventsource") return true;
   return hasEventStreamHeader(record.responseHeaders) || hasEventStreamHeader(record.requestHeaders);
 }
 
@@ -484,17 +606,67 @@ function recordFromProtocolHeaders(headers: unknown): Record<string, unknown> | 
     : null;
 }
 
-function formatSseRaw(params: Record<string, unknown>): string {
-  const lines: string[] = [];
-  const eventName = stringAt(params, "eventName");
-  const eventId = stringAt(params, "eventId");
-  const data = stringAt(params, "data");
-  if (eventName) lines.push(`event: ${eventName}`);
-  if (eventId) lines.push(`id: ${eventId}`);
-  if (data) {
-    for (const line of data.split("\n")) lines.push(`data: ${line}`);
+interface ParsedSseRaw {
+  sawSseField: boolean;
+  eventName: string | null;
+  data: string | null;
+  lastEventId: string | null;
+  retryMillis: number | null;
+  comment: string | null;
+}
+
+function parseSseRaw(raw: string): ParsedSseRaw {
+  let sawSseField = false;
+  let eventName: string | null = null;
+  let lastEventId: string | null = null;
+  let retryMillis: number | null = null;
+  const comments: string[] = [];
+  const dataLines: string[] = [];
+
+  for (const line of raw.split(/\r?\n/u)) {
+    if (line.length === 0) continue;
+    if (line.startsWith(":")) {
+      sawSseField = true;
+      const comment = line.slice(1).trim();
+      if (comment.length > 0) comments.push(comment);
+      continue;
+    }
+
+    const separatorIndex = line.indexOf(":");
+    const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex);
+    const rawValue = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1);
+    const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
+
+    if (field === "event") {
+      sawSseField = true;
+      eventName = value;
+    } else if (field === "data") {
+      sawSseField = true;
+      dataLines.push(value);
+    } else if (field === "id") {
+      sawSseField = true;
+      lastEventId = value;
+    } else if (field === "retry") {
+      sawSseField = true;
+      const parsed = Number.parseInt(value, 10);
+      retryMillis = Number.isFinite(parsed) ? parsed : null;
+    }
   }
-  return lines.join("\n");
+
+  return {
+    sawSseField,
+    eventName,
+    data: dataLines.length === 0 ? (raw.length === 0 ? "" : null) : dataLines.join("\n"),
+    lastEventId,
+    retryMillis,
+    comment: comments.length === 0 ? null : comments.join("\n")
+  };
+}
+
+function numericEventSequence(eventId: string | null | undefined): number | null {
+  if (eventId == null || eventId.trim().length === 0) return null;
+  const parsed = Number.parseInt(eventId, 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function webSocketMethod(url: string | null): string {

@@ -3,6 +3,7 @@ import { memo } from "react";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord, ServerId } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
+import { serverHasSchemaWarning } from "../lib/schema";
 import { RecordList } from "./RecordList";
 import { ServerSelect } from "./ServerPicker";
 
@@ -59,6 +60,8 @@ export const Sidebar = memo(function Sidebar({
         )}
       </div>
 
+      {serverHasSchemaWarning(selectedServer) ? <SchemaWarning server={selectedServer} /> : null}
+
       <div className="filter-frame">
         <div className="search-row">
           <input
@@ -103,3 +106,21 @@ export const Sidebar = memo(function Sidebar({
     </aside>
   );
 });
+
+function SchemaWarning({ server }: { server: SnapOServer }): JSX.Element {
+  return (
+    <div className="schema-warning">
+      <div className="schema-warning-title">
+        {server.schemaVersion == null ? "Incompatible schema version" : `Incompatible schema version ${server.schemaVersion}`}
+      </div>
+      <div className="schema-warning-body">
+        {server.isSchemaOlderThanSupported
+          ? "This Android build is using an older schema than this Network Inspector supports."
+          : "This Android build may be newer than the Network Inspector understands."}
+      </div>
+      {server.isSchemaOlderThanSupported && server.schemaVersion == null ? (
+        <div className="schema-warning-body">Use Snap-O 0.19.0 to inspect this app.</div>
+      ) : null}
+    </div>
+  );
+}

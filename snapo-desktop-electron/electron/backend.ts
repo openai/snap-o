@@ -46,6 +46,7 @@ export class NetworkInspectorBackend {
   private readonly devices = new Map<string, Device>();
   private readonly streams = new Map<string, StreamSubscription>();
   private readonly pendingCommands = new Map<string, PendingCommand>();
+  private readonly inFlightBodyCommands = new Map<string, Promise<CdpMessage>>();
   private pollTimer: NodeJS.Timeout | null = null;
   private refreshInFlight: Promise<void> | null = null;
   private nextCommandId = 1;
@@ -88,9 +89,15 @@ export class NetworkInspectorBackend {
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
     const serverKey = toServerKey(input);
+    const includeRequestBody = input.includeRequestBody !== false;
+    const includeResponseBody = input.includeResponseBody !== false;
     const [requestBody, responseBody] = await Promise.allSettled([
-      this.sendNetworkCommand(serverKey, "Network.getRequestPostData", { requestId: input.requestId }),
-      this.sendNetworkCommand(serverKey, "Network.getResponseBody", { requestId: input.requestId })
+      includeRequestBody
+        ? this.sendNetworkBodyCommand(serverKey, input.requestId, "request", "Network.getRequestPostData")
+        : Promise.resolve(null),
+      includeResponseBody
+        ? this.sendNetworkBodyCommand(serverKey, input.requestId, "response", "Network.getResponseBody")
+        : Promise.resolve(null)
     ]);
 
     const requestResult = fulfilledResult(requestBody);
@@ -119,6 +126,7 @@ export class NetworkInspectorBackend {
       command.reject(new Error("Network inspector backend shut down"));
     }
     this.pendingCommands.clear();
+    this.inFlightBodyCommands.clear();
   }
 
   private ensureStarted(): void {
@@ -355,6 +363,23 @@ export class NetworkInspectorBackend {
     });
   }
 
+  private sendNetworkBodyCommand(
+    serverKey: string,
+    requestId: string,
+    kind: "request" | "response",
+    method: string
+  ): Promise<CdpMessage> {
+    const key = bodyCommandMapKey(serverKey, requestId, kind);
+    const existing = this.inFlightBodyCommands.get(key);
+    if (existing != null) return existing;
+
+    const command = this.sendNetworkCommand(serverKey, method, { requestId }).finally(() => {
+      this.inFlightBodyCommands.delete(key);
+    });
+    this.inFlightBodyCommands.set(key, command);
+    return command;
+  }
+
   private currentServers(): SnapOServer[] {
     return Array.from(this.servers.values())
       .map((state) => {
@@ -369,6 +394,10 @@ export class NetworkInspectorBackend {
           hasHello: state.hello != null,
           pid: state.hello?.pid ?? pidFromSocketName(state.socketName),
           schemaVersion: state.schemaVersion,
+          isSchemaNewerThanSupported:
+            state.schemaVersion != null && state.schemaVersion > SupportedSchemaVersion,
+          isSchemaOlderThanSupported:
+            state.hello != null && (state.schemaVersion == null || state.schemaVersion < SupportedSchemaVersion),
           features: state.features,
           appIconBase64: state.appIcon?.base64Data ?? null,
           packageName,
@@ -406,6 +435,10 @@ function commandMapKey(serverKey: string, commandId: number): string {
   return `${serverKey}:${commandId}`;
 }
 
+function bodyCommandMapKey(serverKey: string, requestId: string, kind: "request" | "response"): string {
+  return `${serverKey}:${kind}:${requestId}`;
+}
+
 function pidFromSocketName(socketName: string): number | null {
   const prefix = "snapo_server_";
   if (!socketName.startsWith(prefix)) return null;
@@ -429,3 +462,4 @@ function booleanField(record: Record<string, unknown> | undefined, field: string
 
 const SocketPollIntervalMs = 2_000;
 const BodyCommandTimeoutMs = 1_500;
+const SupportedSchemaVersion = 3;

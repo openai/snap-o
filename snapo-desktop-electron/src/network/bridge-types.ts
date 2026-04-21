@@ -8,6 +8,8 @@ export interface SnapOServer {
   hasHello: boolean;
   pid?: number | null;
   schemaVersion?: number | null;
+  isSchemaNewerThanSupported: boolean;
+  isSchemaOlderThanSupported: boolean;
   features: string[];
   appIconBase64?: string | null;
   packageName?: string | null;
@@ -37,6 +39,8 @@ export interface LoadBodiesInput {
   deviceId: string;
   socketName: string;
   requestId: string;
+  includeRequestBody?: boolean;
+  includeResponseBody?: boolean;
 }
 
 export interface StartStreamInput {

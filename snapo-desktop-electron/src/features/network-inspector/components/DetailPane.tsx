@@ -3,6 +3,7 @@ import type { InspectorRecord } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
 import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
 import { resolveDetailEmptyState } from "../lib/records";
+import { isUnsupportedLegacySchemaRequestSelection, unsupportedLegacySchemaMessage } from "../lib/schema";
 import { RequestDetail } from "./RequestDetail";
 import { WebSocketDetail } from "./WebSocketDetail";
 
@@ -24,6 +25,17 @@ export const DetailContent = memo(function DetailContent({
   if (record == null) {
     const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems });
     return <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs} />;
+  }
+
+  if (isUnsupportedLegacySchemaRequestSelection(record, selectedServer)) {
+    return (
+      <EmptyState
+        title="This app server uses an unsupported schema"
+        body={unsupportedLegacySchemaMessage(selectedServer)}
+        showDocsLink={false}
+        onOpenDocs={onOpenDocs}
+      />
+    );
   }
 
   if (record.kind === "websocket") return <WebSocketDetail record={record} uiState={uiState} />;

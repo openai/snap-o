@@ -3,7 +3,9 @@ import {
   serverMatches,
   type InspectorDataState,
   type InspectorRecord,
-  type ServerId
+  type RequestRecord,
+  type ServerId,
+  type WebSocketRecord
 } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
 
@@ -36,11 +38,45 @@ export function countRecordsForServer(records: InspectorRecord[], selectedServer
 }
 
 export function clearCompleted(state: InspectorDataState): InspectorDataState {
-  const requests = new Map(
-    [...state.requests.entries()].filter(([, request]) => request.status.kind === "pending" || request.streamEvents.length > 0)
-  );
-  const webSockets = new Map([...state.webSockets.entries()].filter(([, socket]) => socket.status.kind === "pending"));
+  const requests = new Map([...state.requests.entries()].filter(([, request]) => !isCompletedRequest(request)));
+  const webSockets = new Map([...state.webSockets.entries()].filter(([, socket]) => !isCompletedWebSocket(socket)));
   return { ...state, requests, webSockets };
+}
+
+export function isCompletedRecord(record: InspectorRecord): boolean {
+  return record.kind === "request" ? isCompletedRequest(record) : isCompletedWebSocket(record);
+}
+
+export function shouldRequestRequestBody(request: RequestRecord): boolean {
+  if (request.requestBody != null) return false;
+  if (request.requestHasPostData === false) return false;
+  return request.requestBodySize == null || request.requestBodySize !== 0;
+}
+
+export function shouldRequestResponseBody(request: RequestRecord): boolean {
+  if (request.responseBody != null) return false;
+  if (request.status.kind !== "success") return false;
+
+  if (isLikelyStreamingRequest(request)) {
+    if (request.streamClosed == null) return false;
+  } else if (request.endedAt == null) {
+    return false;
+  }
+
+  if (responseHasNoBody(request)) return false;
+  return request.encodedDataLength == null || request.encodedDataLength !== 0;
+}
+
+function isCompletedRequest(request: RequestRecord): boolean {
+  if (request.status.kind === "failure") return true;
+  if (request.streamClosed != null) return true;
+  if (request.streamEvents.length > 0) return false;
+  if (isLikelyStreamingRequest(request)) return false;
+  return request.status.kind === "success" && request.endedAt != null;
+}
+
+function isCompletedWebSocket(socket: WebSocketRecord): boolean {
+  return socket.failed != null || socket.cancelled != null || socket.closed != null || socket.closing != null;
 }
 
 export function pickSelectedServer(current: ServerId | null, servers: SnapOServer[]): ServerId | null {
@@ -49,6 +85,24 @@ export function pickSelectedServer(current: ServerId | null, servers: SnapOServe
     return current;
   }
   return { deviceId: servers[0].deviceId, socketName: servers[0].socketName };
+}
+
+export function mergeServersWithRetainedSelection(
+  activeServers: SnapOServer[],
+  currentServers: SnapOServer[],
+  selectedServer: ServerId | null
+): SnapOServer[] {
+  if (selectedServer == null || activeServers.some((server) => serverMatches(selectedServer, server))) {
+    return activeServers;
+  }
+
+  const retained = currentServers.find((server) => serverMatches(selectedServer, server));
+  if (retained == null) return activeServers;
+
+  return [...activeServers, { ...retained, isConnected: false }].sort((left, right) => {
+    const device = left.deviceId.localeCompare(right.deviceId);
+    return device !== 0 ? device : left.socketName.localeCompare(right.socketName);
+  });
 }
 
 export function serverModelFor(servers: SnapOServer[], selected: ServerId | null): SnapOServer | null {
@@ -88,6 +142,37 @@ export function splitUrl(url: string): { primary: string; secondary: string } {
 export function recordShowsActiveIndicator(record: InspectorRecord): boolean {
   if (record.kind === "websocket") return record.status.kind === "pending";
   return record.streamEvents.length > 0 && record.streamClosed == null;
+}
+
+function isLikelyStreamingRequest(request: RequestRecord): boolean {
+  if (request.streamEvents.length > 0) return true;
+  if (request.responseType?.toLowerCase() === "eventsource") return true;
+  return hasEventStreamHeader(request.responseHeaders) || hasEventStreamHeader(request.requestHeaders);
+}
+
+function responseHasNoBody(request: RequestRecord): boolean {
+  if (request.method.toUpperCase() === "HEAD") return true;
+  const status = request.status.kind === "success" ? request.status.code : null;
+  if (status != null) {
+    if (status >= 100 && status <= 199) return true;
+    if (status === 204 || status === 205 || status === 304) return true;
+  }
+  return contentLength(request.responseHeaders) === 0;
+}
+
+function hasEventStreamHeader(headers: RequestRecord["requestHeaders"]): boolean {
+  return headers.some((header) => {
+    const name = header.name.toLowerCase();
+    const value = header.value.toLowerCase();
+    return (name === "content-type" || name === "accept") && value.includes("text/event-stream");
+  });
+}
+
+function contentLength(headers: RequestRecord["responseHeaders"]): number | null {
+  const value = headers.find((header) => header.name.toLowerCase() === "content-length")?.value.trim();
+  if (value == null || value.length === 0) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function sidebarPlaceholderText(input: {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createNetworkClient, type NetworkClient } from "../../../network/client";
 import {
   applyRequestBodies,
@@ -16,9 +16,13 @@ import {
   clearCompleted,
   countRecordsForServer,
   filterRecords,
+  isCompletedRecord,
+  mergeServersWithRetainedSelection,
   pickSelectedServer,
   replacementCandidate,
   serverModelFor,
+  shouldRequestRequestBody,
+  shouldRequestResponseBody,
   sidebarPlaceholderText
 } from "../lib/records";
 
@@ -52,10 +56,16 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const client = useMemo(() => createNetworkClient(), []);
   const [state, setState] = useState<InspectorDataState>(() => createEmptyInspectorState());
   const [selectedServer, setSelectedServer] = useState<ServerId | null>(null);
+  const selectedServerRef = useRef<ServerId | null>(null);
+  const bodyLoadAttemptsRef = useRef<Set<string>>(new Set());
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const uiState = usePersistentInspectorUiState();
+
+  useEffect(() => {
+    selectedServerRef.current = selectedServer;
+  }, [selectedServer]);
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -67,11 +77,13 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   useEffect(() => {
     let disposed = false;
     const refresh = async () => {
-      const servers = await client.listServers();
+      const activeServers = await client.listServers();
       if (disposed) return;
 
-      setState((current) => (areServersEqual(current.servers, servers) ? current : { ...current, servers }));
-      setSelectedServer((current) => pickSelectedServer(current, servers));
+      setState((current) => {
+        const servers = mergeServersWithRetainedSelection(activeServers, current.servers, selectedServerRef.current);
+        return areServersEqual(current.servers, servers) ? current : { ...current, servers };
+      });
     };
 
     void refresh();
@@ -83,9 +95,18 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [client]);
 
   const selectedServerKey = serverKey(selectedServer);
+  const selectedServerModel = useMemo(() => serverModelFor(state.servers, selectedServer), [selectedServerKey, state.servers]);
+  const selectedServerConnectionKey =
+    selectedServerModel == null
+      ? selectedServerKey
+      : `${selectedServerKey}\u0000${selectedServerModel.isConnected}\u0000${selectedServerModel.hasHello}`;
 
   useEffect(() => {
-    if (selectedServer == null) return;
+    setSelectedServer((current) => pickSelectedServer(current, state.servers));
+  }, [state.servers]);
+
+  useEffect(() => {
+    if (selectedServer == null || selectedServerModel?.isConnected !== true) return;
     let streamId: string | null = null;
     let disposed = false;
     client
@@ -105,7 +126,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
       disposed = true;
       if (streamId != null) void client.stopStream(streamId);
     };
-  }, [client, selectedServerKey]);
+  }, [client, selectedServer, selectedServerConnectionKey]);
 
   const allRecords = useMemo(
     () => [...state.requests.values(), ...state.webSockets.values()],
@@ -135,57 +156,71 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     return visibleRecords.find((record) => recordId(record) === selectedRecordId) ?? null;
   }, [selectedRecordId, visibleRecords]);
 
-  const selectedRequestBodyLoad = useMemo(() => {
-    if (selectedRecord?.kind !== "request") return null;
-    if (selectedRecord.requestBody != null && selectedRecord.responseBody != null) return null;
-    const key = requestRecordKey(selectedRecord.server, selectedRecord.requestId);
-    const statusKey = requestStatusKey(selectedRecord.status);
-    const responseProgressKey =
-      selectedRecord.streamEvents.length > 0 ? selectedRecord.streamEvents.length : selectedRecord.endedAt ?? "";
-    return {
-      key,
-      deviceId: selectedRecord.server.deviceId,
-      socketName: selectedRecord.server.socketName,
-      requestId: selectedRecord.requestId,
-      loadKey: [key, statusKey, responseProgressKey].join("\u0000")
-    };
-  }, [selectedRecord]);
-
   useEffect(() => {
-    if (selectedRequestBodyLoad == null) return;
-    let disposed = false;
-    client
-      .loadBodies({
-        deviceId: selectedRequestBodyLoad.deviceId,
-        socketName: selectedRequestBodyLoad.socketName,
-        requestId: selectedRequestBodyLoad.requestId
-      })
-      .then((bodies) => {
-        if (disposed) return;
-        setState((current) => {
-          const currentRecord = current.requests.get(selectedRequestBodyLoad.key);
-          if (currentRecord == null) return current;
-          const requests = new Map(current.requests);
-          requests.set(selectedRequestBodyLoad.key, applyRequestBodies(currentRecord, bodies));
-          return { ...current, requests };
-        });
-      })
-      .catch(() => {
-        // Some requests legitimately have no body or cannot be read after completion.
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [
-    client,
-    selectedRequestBodyLoad?.deviceId,
-    selectedRequestBodyLoad?.key,
-    selectedRequestBodyLoad?.loadKey,
-    selectedRequestBodyLoad?.requestId,
-    selectedRequestBodyLoad?.socketName
-  ]);
+    const loads: Array<{
+      recordKey: string;
+      deviceId: string;
+      socketName: string;
+      requestId: string;
+      includeRequestBody: boolean;
+      includeResponseBody: boolean;
+    }> = [];
 
-  const selectedServerModel = useMemo(() => serverModelFor(state.servers, selectedServer), [selectedServerKey, state.servers]);
+    for (const request of state.requests.values()) {
+      const recordKey = requestRecordKey(request.server, request.requestId);
+      const requestAttemptKey = `${recordKey}\u0000request`;
+      const responseAttemptKey = `${recordKey}\u0000response`;
+
+      if (shouldRequestRequestBody(request) && !bodyLoadAttemptsRef.current.has(requestAttemptKey)) {
+        bodyLoadAttemptsRef.current.add(requestAttemptKey);
+        loads.push({
+          recordKey,
+          deviceId: request.server.deviceId,
+          socketName: request.server.socketName,
+          requestId: request.requestId,
+          includeRequestBody: true,
+          includeResponseBody: false
+        });
+      }
+
+      if (shouldRequestResponseBody(request) && !bodyLoadAttemptsRef.current.has(responseAttemptKey)) {
+        bodyLoadAttemptsRef.current.add(responseAttemptKey);
+        loads.push({
+          recordKey,
+          deviceId: request.server.deviceId,
+          socketName: request.server.socketName,
+          requestId: request.requestId,
+          includeRequestBody: false,
+          includeResponseBody: true
+        });
+      }
+    }
+
+    if (loads.length === 0) return;
+    for (const load of loads) {
+      client
+        .loadBodies({
+          deviceId: load.deviceId,
+          socketName: load.socketName,
+          requestId: load.requestId,
+          includeRequestBody: load.includeRequestBody,
+          includeResponseBody: load.includeResponseBody
+        })
+        .then((bodies) => {
+          setState((current) => {
+            const currentRecord = current.requests.get(load.recordKey);
+            if (currentRecord == null) return current;
+            const requests = new Map(current.requests);
+            requests.set(load.recordKey, applyRequestBodies(currentRecord, bodies));
+            return { ...current, requests };
+          });
+        })
+        .catch(() => {
+          // Some requests legitimately have no body or cannot be read after completion.
+        });
+    }
+  }, [client, state.requests]);
+
   const replacementServer = useMemo(
     () => replacementCandidate(state.servers, selectedServerModel),
     [selectedServerModel, state.servers]
@@ -200,10 +235,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
       }),
     [allRecords.length, selectedServerModel, serverRecordCount, visibleRecords.length]
   );
-  const hasClearableItems = useMemo(
-    () => allRecords.some((record) => record.status.kind !== "pending"),
-    [allRecords]
-  );
+  const hasClearableItems = useMemo(() => allRecords.some(isCompletedRecord), [allRecords]);
 
   const selectServer = useCallback((server: ServerId | null) => {
     setSelectedServer(server);
@@ -247,17 +279,6 @@ function serverKey(server: ServerId | null): string {
   return server == null ? "" : `${server.deviceId}\u0000${server.socketName}`;
 }
 
-function requestStatusKey(status: InspectorRecord["status"]): string {
-  switch (status.kind) {
-    case "success":
-      return `success:${status.code}`;
-    case "failure":
-      return `failure:${status.message ?? ""}`;
-    case "pending":
-      return "pending";
-  }
-}
-
 function areServersEqual(left: SnapOServer[], right: SnapOServer[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((server, index) => areServerModelsEqual(server, right[index]));
@@ -266,6 +287,7 @@ function areServersEqual(left: SnapOServer[], right: SnapOServer[]): boolean {
 function areServerModelsEqual(left: SnapOServer, right: SnapOServer | undefined): boolean {
   if (right == null) return false;
   return (
+    left.server === right.server &&
     left.deviceId === right.deviceId &&
     left.socketName === right.socketName &&
     left.displayName === right.displayName &&
@@ -274,6 +296,11 @@ function areServerModelsEqual(left: SnapOServer, right: SnapOServer | undefined)
     left.isConnected === right.isConnected &&
     left.hasHello === right.hasHello &&
     left.pid === right.pid &&
+    left.schemaVersion === right.schemaVersion &&
+    left.isSchemaNewerThanSupported === right.isSchemaNewerThanSupported &&
+    left.isSchemaOlderThanSupported === right.isSchemaOlderThanSupported &&
+    left.packageName === right.packageName &&
+    left.appName === right.appName &&
     areStringArraysEqual(left.features, right.features)
   );
 }

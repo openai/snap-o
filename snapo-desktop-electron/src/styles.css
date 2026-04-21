@@ -253,6 +253,29 @@ button:disabled {
   line-height: 16px;
 }
 
+.schema-warning {
+  margin: 8px 8px 0;
+  padding: 12px;
+  background: var(--warning-strong);
+  color: var(--on-primary);
+}
+
+.schema-warning-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.schema-warning-body {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.schema-warning-body + .schema-warning-body {
+  margin-top: 6px;
+}
+
 .filter-frame {
   display: flex;
   align-items: center;
@@ -829,12 +852,17 @@ pre {
 }
 
 .stream-event-metadata,
+.stream-closed-info,
 .close-details {
   margin-top: 6px;
   color: var(--on-surface-variant);
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 16px;
+}
+
+.stream-closed-info {
+  margin-top: 0;
 }
 
 .message-direction {
