@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NetworkInspectorBackend } from "./backend.js";
-import type { LoadBodiesInput, StartStreamInput } from "../src/network/bridge-types.js";
+import type { LoadBodiesInput, SaveFileInput, StartStreamInput } from "../src/network/bridge-types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,5 +58,19 @@ function installIpcHandlers(): void {
   );
   ipcMain.handle("network:stopStream", (_event, streamId: string) => backend.stopStream(streamId));
   ipcMain.handle("network:openExternal", (_event, url: string) => shell.openExternal(url));
+  ipcMain.handle("network:saveFile", async (_event, input: SaveFileInput) => {
+    const result = await dialog.showSaveDialog({
+      defaultPath: input.defaultPath,
+      filters: filtersForMimeType(input.mimeType)
+    });
+    if (result.canceled || result.filePath == null) return { saved: false };
+    await fs.writeFile(result.filePath, input.data, "utf8");
+    return { saved: true, path: result.filePath };
+  });
 }
 
+function filtersForMimeType(mimeType?: string | null): Electron.FileFilter[] {
+  if (mimeType === "application/json") return [{ name: "JSON", extensions: ["json"] }];
+  if (mimeType === "application/har+json") return [{ name: "HAR", extensions: ["har"] }];
+  return [{ name: "All Files", extensions: ["*"] }];
+}

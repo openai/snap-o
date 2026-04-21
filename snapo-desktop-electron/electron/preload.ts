@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   LoadBodiesInput,
+  SaveFileInput,
   SnapONetworkBridge,
   StartStreamInput,
   StreamEvent,
@@ -22,8 +23,8 @@ const api: SnapONetworkBridge = {
     ipcRenderer.on("network:status", listener);
     return () => ipcRenderer.removeListener("network:status", listener);
   },
-  openExternal: (url: string) => ipcRenderer.invoke("network:openExternal", url)
+  openExternal: (url: string) => ipcRenderer.invoke("network:openExternal", url),
+  saveFile: (input: SaveFileInput) => ipcRenderer.invoke("network:saveFile", input)
 };
 
 contextBridge.exposeInMainWorld("snapONetwork", api);
-

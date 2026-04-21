@@ -72,6 +72,18 @@ export interface SnapONetworkBridge {
   onEvent(callback: (event: StreamEvent) => void): () => void;
   onStatus(callback: (status: StreamStatus) => void): () => void;
   openExternal(url: string): Promise<void>;
+  saveFile(input: SaveFileInput): Promise<SaveFileResult>;
+}
+
+export interface SaveFileInput {
+  defaultPath: string;
+  data: string;
+  mimeType?: string | null;
+}
+
+export interface SaveFileResult {
+  saved: boolean;
+  path?: string | null;
 }
 
 declare global {

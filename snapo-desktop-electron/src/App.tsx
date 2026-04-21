@@ -1,6 +1,7 @@
-import { ArrowDownUp, ChevronDown, Copy, Inbox, Send, Trash2 } from "lucide-react";
+import { ArrowDownUp, Check, ChevronDown, Copy, Inbox, Send, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createNetworkClient } from "./network/client";
+import type { NetworkClient } from "./network/client";
 import {
   applyRequestBodies,
   createEmptyInspectorState,
@@ -13,11 +14,25 @@ import {
   type RequestRecord,
   type RequestStatus,
   type ServerId,
+  type WebSocketMessageRecord,
   type WebSocketRecord
 } from "./network/cdp";
 import type { SnapOServer } from "./network/bridge-types";
+import { buildHar, harFileName, makeCurlCommand, streamEventsRaw } from "./network/exporters";
+import {
+  bodyMetadata as payloadMetadata,
+  dataUrlForImage,
+  formatBytes,
+  isImagePayload,
+  makeBodyPayload,
+  parseJsonNode,
+  prettyJsonOrNull,
+  type BodyPayload,
+  type JsonNode
+} from "./network/payload";
 
 const docsUrl = "https://github.com/openai/snap-o/blob/main/docs/network-inspector.md";
+const inspectorUiStorageKey = "snapo.networkInspector.ui.v1";
 
 export function App(): JSX.Element {
   const client = useMemo(() => createNetworkClient(), []);
@@ -26,6 +41,7 @@ export function App(): JSX.Element {
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
+  const uiState = usePersistentInspectorUiState();
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -78,6 +94,8 @@ export function App(): JSX.Element {
   const visibleRecords = useMemo(() => {
     return collectRecords(state, selectedServer, searchText, sortNewestFirst);
   }, [state, selectedServer, searchText, sortNewestFirst]);
+
+  const allRecords = useMemo(() => [...state.requests.values(), ...state.webSockets.values()], [state]);
 
   const serverRecordCount = useMemo(() => {
     return collectRecords(state, selectedServer, "", sortNewestFirst).length;
@@ -133,9 +151,7 @@ export function App(): JSX.Element {
     filteredItems: visibleRecords.length,
     selectedServer: selectedServerModel
   });
-  const hasClearableItems = [...state.requests.values(), ...state.webSockets.values()].some(
-    (record) => record.status.kind !== "pending"
-  );
+  const hasClearableItems = allRecords.some((record) => record.status.kind !== "pending");
 
   return (
     <div className="app-shell">
@@ -203,9 +219,11 @@ export function App(): JSX.Element {
 
         <RecordList
           records={visibleRecords}
+          allRecords={allRecords}
           placeholder={sidebarPlaceholder}
           selectedRecordId={selectedRecordId}
           onSelect={setSelectedRecordId}
+          client={client}
         />
       </aside>
 
@@ -215,6 +233,7 @@ export function App(): JSX.Element {
           servers={state.servers}
           selectedServer={selectedServerModel}
           serverScopedItems={serverRecordCount}
+          uiState={uiState}
           onOpenDocs={() => void client.openExternal(docsUrl)}
         />
       </main>
@@ -275,10 +294,24 @@ function ServerAppIcon({ server }: { server: SnapOServer | null }): JSX.Element 
 
 function RecordList(props: {
   records: InspectorRecord[];
+  allRecords: InspectorRecord[];
   placeholder: string | null;
   selectedRecordId: string | null;
   onSelect: (id: string) => void;
+  client: NetworkClient;
 }): JSX.Element {
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  useEffect(() => {
+    if (menu == null) return;
+    const close = () => setMenu(null);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [menu]);
+
   if (props.placeholder != null) return <div className="sidebar-placeholder">{props.placeholder}</div>;
 
   return (
@@ -292,6 +325,15 @@ function RecordList(props: {
             type="button"
             className={`record-row ${props.selectedRecordId === id ? "selected" : ""}`}
             onClick={() => props.onSelect(id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              props.onSelect(id);
+              setMenu({
+                x: event.clientX,
+                y: event.clientY,
+                items: sidebarContextMenuItems(record, props.selectedRecordId, props.allRecords, props.client)
+              });
+            }}
           >
             <span className="record-main">
               <span className="record-primary">{path.primary}</span>
@@ -302,6 +344,7 @@ function RecordList(props: {
           </button>
         );
       })}
+      {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
   );
 }
@@ -311,6 +354,7 @@ function DetailContent(props: {
   servers: SnapOServer[];
   selectedServer: SnapOServer | null;
   serverScopedItems: number;
+  uiState: PersistentInspectorUiState;
   onOpenDocs: () => void;
 }): JSX.Element {
   if (props.record == null) {
@@ -320,11 +364,23 @@ function DetailContent(props: {
     );
   }
 
-  if (props.record.kind === "websocket") return <WebSocketDetail record={props.record} />;
-  return <RequestDetail record={props.record} />;
+  if (props.record.kind === "websocket") return <WebSocketDetail record={props.record} uiState={props.uiState} />;
+  return <RequestDetail record={props.record} uiState={props.uiState} />;
 }
 
-function RequestDetail({ record }: { record: RequestRecord }): JSX.Element {
+function RequestDetail({ record, uiState }: { record: RequestRecord; uiState: PersistentInspectorUiState }): JSX.Element {
+  const requestBody = makeBodyPayload({
+    body: record.requestBody,
+    headers: record.requestHeaders,
+    encoding: record.requestBodyEncoding
+  });
+  const responseBody = makeBodyPayload({
+    body: record.responseBody,
+    headers: record.responseHeaders,
+    base64Encoded: record.responseBodyBase64Encoded,
+    totalBytes: record.encodedDataLength
+  });
+  const prefix = `request:${recordId(record)}`;
   return (
     <div className="detail-scroll">
       <header className="detail-header">
@@ -340,47 +396,37 @@ function RequestDetail({ record }: { record: RequestRecord }): JSX.Element {
       </header>
 
       {record.requestHeaders.length === 0 ? null : (
-        <Section title="Request Headers">
+        <Section title="Request Headers" storageKey={`${prefix}:requestHeaders`} uiState={uiState}>
           <HeadersTable headers={record.requestHeaders} />
         </Section>
       )}
-      {hasBody(record.requestBody) ? (
-        <Section title="Request Body" meta={bodyMetadata(record.requestBody, record.requestBodyEncoding)}>
-          <BodyBlock body={record.requestBody} encoding={record.requestBodyEncoding} />
+      {requestBody == null ? null : (
+        <Section title="Request Body" meta={payloadMetadata(requestBody)} storageKey={`${prefix}:requestBody`} uiState={uiState}>
+          <BodySection payload={requestBody} storageKey={`${prefix}:requestBody:payload`} uiState={uiState} />
         </Section>
-      ) : null}
+      )}
       {record.status.kind === "pending" ? <div className="pending-response">Waiting for response...</div> : null}
       {record.responseHeaders.length === 0 ? null : (
-        <Section title="Response Headers">
+        <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
           <HeadersTable headers={record.responseHeaders} />
         </Section>
       )}
       {record.streamEvents.length > 0 ? (
-        <Section title="Server-Sent Events">
-          <div className="event-list">
-            {record.streamEvents.map((event) => (
-              <div className="event-row" key={event.sequence}>
-                <div className="event-meta">
-                  <span>#{event.sequence}</span>
-                  <span>{formatTime(event.timestamp)}</span>
-                  {event.eventName ? <span>{event.eventName}</span> : null}
-                </div>
-                <pre>{event.raw || event.data || "<empty>"}</pre>
-              </div>
-            ))}
-          </div>
+        <Section title="Server-Sent Events" storageKey={`${prefix}:stream`} uiState={uiState} trailing={<SseCopyAllButton events={record.streamEvents} />}>
+          <SseEventList events={record.streamEvents} storageKey={`${prefix}:stream`} uiState={uiState} />
         </Section>
       ) : null}
-      {hasBody(record.responseBody) ? (
-        <Section title="Response Body" meta={bodyMetadata(record.responseBody, record.responseBodyBase64Encoded ? "base64" : null)}>
-          <BodyBlock body={record.responseBody} base64Encoded={record.responseBodyBase64Encoded} />
+      {responseBody == null ? null : (
+        <Section title="Response Body" meta={payloadMetadata(responseBody)} storageKey={`${prefix}:responseBody`} uiState={uiState}>
+          <BodySection payload={responseBody} storageKey={`${prefix}:responseBody:payload`} uiState={uiState} />
         </Section>
-      ) : null}
+      )}
     </div>
   );
 }
 
-function WebSocketDetail({ record }: { record: WebSocketRecord }): JSX.Element {
+function WebSocketDetail({ record, uiState }: { record: WebSocketRecord; uiState: PersistentInspectorUiState }): JSX.Element {
+  const prefix = `websocket:${recordId(record)}`;
   return (
     <div className="detail-scroll">
       <header className="detail-header">
@@ -393,37 +439,30 @@ function WebSocketDetail({ record }: { record: WebSocketRecord }): JSX.Element {
           <span>{formatTiming(record.startedAt, record.endedAt, record.status)}</span>
         </div>
         <FailureMessage status={record.status} />
+        <WebSocketCloseDetails record={record} />
       </header>
       {record.requestHeaders.length === 0 ? null : (
-        <Section title="Request Headers">
+        <Section title="Request Headers" storageKey={`${prefix}:requestHeaders`} uiState={uiState}>
           <HeadersTable headers={record.requestHeaders} />
         </Section>
       )}
       {record.responseHeaders.length === 0 ? null : (
-        <Section title="Response Headers">
+        <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
           <HeadersTable headers={record.responseHeaders} />
         </Section>
       )}
-      <Section title="Messages">
+      <Section title="Messages" storageKey={`${prefix}:messages`} uiState={uiState}>
         {record.messages.length === 0 ? (
           <div className="messages-empty">No messages yet</div>
         ) : (
           <div className="event-list">
             {record.messages.map((message) => (
-              <div className="message-card" key={message.id}>
-                <div className="message-meta">
-                  {message.direction === "outgoing" ? (
-                    <Send size={20} className="message-direction outgoing" />
-                  ) : (
-                    <Inbox size={20} className="message-direction incoming" />
-                  )}
-                  <span>{message.payloadSize == null ? "" : formatBytes(message.payloadSize)}</span>
-                  <span>{message.enqueued === true ? "enqueued" : "immediate"}</span>
-                  <span>{formatTime(message.timestamp)}</span>
-                  <span>{message.opcode}</span>
-                </div>
-                <pre>{message.preview ?? "<binary or empty payload>"}</pre>
-              </div>
+              <WebSocketMessageCard
+                key={message.id}
+                message={message}
+                storageKey={`${prefix}:message:${message.id}`}
+                uiState={uiState}
+              />
             ))}
           </div>
         )}
@@ -432,15 +471,32 @@ function WebSocketDetail({ record }: { record: WebSocketRecord }): JSX.Element {
   );
 }
 
-function Section({ title, meta, children }: { title: string; meta?: string | null; children: React.ReactNode }): JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+function Section({
+  title,
+  meta,
+  storageKey,
+  uiState,
+  trailing,
+  children
+}: {
+  title: string;
+  meta?: string | null;
+  storageKey: string;
+  uiState: PersistentInspectorUiState;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
+}): JSX.Element {
+  const expanded = uiState.sectionExpanded(storageKey);
   return (
     <section className="detail-section">
-      <button className="section-header" type="button" onClick={() => setExpanded((value) => !value)}>
-        <span className={expanded ? "triangle expanded" : "triangle"} />
-        <span>{title}</span>
-        {meta == null ? null : <span className="section-meta">{meta}</span>}
-      </button>
+      <div className="section-header-row">
+        <button className="section-header" type="button" onClick={() => uiState.setSectionExpanded(storageKey, !expanded)}>
+          <span className={expanded ? "triangle expanded" : "triangle"} />
+          <span>{title}</span>
+          {meta == null ? null : <span className="section-meta">{meta}</span>}
+        </button>
+        {trailing}
+      </div>
       {expanded ? children : null}
     </section>
   );
@@ -460,25 +516,318 @@ function HeadersTable({ headers }: { headers: Array<{ name: string; value: strin
   );
 }
 
-function BodyBlock(props: {
-  body?: string | null;
-  encoding?: string | null;
-  base64Encoded?: boolean | null;
+function BodySection({ payload, storageKey, uiState }: {
+  payload: BodyPayload;
+  storageKey: string;
+  uiState: PersistentInspectorUiState;
 }): JSX.Element {
-  const body = props.body;
-  if (body == null || body.length === 0) return <div className="headers-empty">None</div>;
-  const pretty = prettyBody(body, props.base64Encoded);
+  if (isImagePayload(payload)) {
+    return <ImagePreview payload={payload} />;
+  }
   return (
-    <div className="body-block">
-      <div className="body-toolbar">
-        <span>{props.base64Encoded ? "Base64 encoded" : props.encoding ?? "Text"}</span>
-        <button className="inline-action" type="button" onClick={() => void navigator.clipboard.writeText(body)}>
-          <Copy size={14} />
-          Copy
-        </button>
-      </div>
-      <pre>{pretty}</pre>
+    <PayloadView
+      payload={payload}
+      storageKey={storageKey}
+      uiState={uiState}
+      prettyInitiallyExpanded
+    />
+  );
+}
+
+function PayloadView({
+  payload,
+  storageKey,
+  uiState,
+  showsToggle = true,
+  showsCopyButton = true,
+  prettyInitiallyExpanded = true
+}: {
+  payload: BodyPayload;
+  storageKey: string;
+  uiState: PersistentInspectorUiState;
+  showsToggle?: boolean;
+  showsCopyButton?: boolean;
+  prettyInitiallyExpanded?: boolean;
+}): JSX.Element {
+  const defaultPretty = payload.prettyText != null;
+  const pretty = uiState.prettyEnabled(storageKey, defaultPretty);
+  const displayText = pretty && payload.prettyText != null ? payload.prettyText : payload.rawText;
+  const jsonRoot = useMemo(
+    () => (pretty && payload.prettyText != null ? parseJsonNode(payload.prettyText) : null),
+    [payload.prettyText, pretty]
+  );
+  const copyFeedback = useCopyFeedback(displayText);
+  const hasToggle = showsToggle && payload.prettyText != null;
+  const hasCopy = showsCopyButton && displayText.length > 0;
+
+  return (
+    <div className="payload-card">
+      {hasToggle || hasCopy ? (
+        <div className="payload-controls">
+          {hasToggle ? (
+            <InlineTextToggle
+              label={pretty ? "PRETTY" : "RAW"}
+              onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
+            />
+          ) : null}
+          {hasCopy ? <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} /> : null}
+        </div>
+      ) : null}
+      {payload.prettyText == null && payload.isLikelyJson ? (
+        <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
+      ) : null}
+      {jsonRoot == null ? (
+        <pre>{displayText}</pre>
+      ) : (
+        <JsonOutline
+          node={jsonRoot}
+          storageKey={`${storageKey}:json`}
+          uiState={uiState}
+          initiallyExpanded={prettyInitiallyExpanded}
+        />
+      )}
     </div>
+  );
+}
+
+function JsonOutline({
+  node,
+  storageKey,
+  uiState,
+  depth = 0,
+  initiallyExpanded
+}: {
+  node: JsonNode;
+  storageKey: string;
+  uiState: PersistentInspectorUiState;
+  depth?: number;
+  initiallyExpanded: boolean;
+}): JSX.Element {
+  const expandable = node.children.length > 0;
+  const rowKey = `${storageKey}:${node.key}`;
+  const expanded = expandable ? uiState.jsonExpanded(rowKey, depth === 0 ? initiallyExpanded : false) : false;
+  return (
+    <div className="json-outline">
+      <div className="json-row" style={{ paddingLeft: `${depth * 14}px` }}>
+        {expandable ? (
+          <button
+            className="json-toggle"
+            type="button"
+            onClick={() => uiState.setJsonExpanded(rowKey, !expanded)}
+            aria-label={expanded ? "Collapse JSON node" : "Expand JSON node"}
+          >
+            <span className={expanded ? "triangle expanded" : "triangle"} />
+          </button>
+        ) : (
+          <span className="json-toggle-spacer" />
+        )}
+        <span className="json-key">{node.label}</span>
+        {node.valuePreview == null ? null : <span className="json-preview">{node.valuePreview}</span>}
+      </div>
+      {expanded
+        ? node.children.map((child) => (
+            <JsonOutline
+              key={child.key}
+              node={child}
+              storageKey={storageKey}
+              uiState={uiState}
+              depth={depth + 1}
+              initiallyExpanded={false}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
+function ImagePreview({ payload }: { payload: BodyPayload }): JSX.Element | null {
+  const dataUrl = dataUrlForImage(payload);
+  const copyFeedback = useCopyFeedback("image");
+  const saveFeedback = useCopyFeedback("save-image");
+  if (dataUrl == null) return null;
+  return (
+    <div className="image-preview-card">
+      <div className="image-preview-header">
+        <span>Image preview</span>
+        <span className="image-content-type">{payload.contentType?.toUpperCase() ?? ""}</span>
+      </div>
+      <div className="image-actions">
+        <InlineCopyButton
+          copied={copyFeedback.copied}
+          label="Copy Image"
+          onCopy={() => {
+            copyFeedback.copyWithoutClipboard();
+            void copyImageToClipboard(dataUrl, payload.contentType ?? "image/png");
+          }}
+        />
+        <InlineTextToggle
+          label={saveFeedback.copied ? "SAVED" : "SAVE AS..."}
+          onClick={() => {
+            saveFeedback.copyWithoutClipboard();
+            downloadDataUrl(dataUrl, imageFileName(payload.contentType));
+          }}
+        />
+      </div>
+      <img className="image-preview" src={dataUrl} alt="" />
+    </div>
+  );
+}
+
+function SseCopyAllButton({ events }: { events: RequestRecord["streamEvents"] }): JSX.Element {
+  const text = streamEventsRaw(events);
+  const copyFeedback = useCopyFeedback(text);
+  return (
+    <button className="inline-action section-action" type="button" onClick={copyFeedback.copy} disabled={events.length === 0}>
+      {copyFeedback.copied ? "Copied" : "Copy All"}
+    </button>
+  );
+}
+
+function SseEventList({
+  events,
+  storageKey,
+  uiState
+}: {
+  events: RequestRecord["streamEvents"];
+  storageKey: string;
+  uiState: PersistentInspectorUiState;
+}): JSX.Element {
+  if (events.length === 0) return <div className="messages-empty">Awaiting events...</div>;
+  return (
+    <div className="event-list">
+      {events.map((event) => (
+        <SseEventCard key={event.sequence} event={event} storageKey={`${storageKey}:event:${event.sequence}`} uiState={uiState} />
+      ))}
+    </div>
+  );
+}
+
+function SseEventCard({
+  event,
+  storageKey,
+  uiState
+}: {
+  event: RequestRecord["streamEvents"][number];
+  storageKey: string;
+  uiState: PersistentInspectorUiState;
+}): JSX.Element {
+  const rawText = event.data ?? event.raw;
+  const prettyText = prettyJsonOrNull(rawText);
+  const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
+  const displayText = pretty && prettyText != null ? prettyText : rawText;
+  const copyFeedback = useCopyFeedback(displayText);
+  const payload = makeBodyPayload({ body: rawText, headers: [] });
+  return (
+    <div className="event-row">
+      <div className="event-meta">
+        <span>#{event.sequence}</span>
+        <span>{formatTime(event.timestamp)}</span>
+        {event.eventName ? <span className="event-name">{event.eventName}</span> : null}
+        <span className="event-actions">
+          {prettyText == null ? null : (
+            <InlineTextToggle label={pretty ? "PRETTY" : "RAW"} onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)} />
+          )}
+          <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} />
+        </span>
+      </div>
+      {payload == null ? <pre>{event.raw || "<empty>"}</pre> : (
+        <PayloadView
+          payload={{ ...payload, prettyText, isLikelyJson: prettyText != null || payload.isLikelyJson }}
+          storageKey={`${storageKey}:payload`}
+          uiState={uiState}
+          showsToggle={false}
+          showsCopyButton={false}
+          prettyInitiallyExpanded={false}
+        />
+      )}
+      {event.eventId == null || event.eventId.length === 0 ? null : (
+        <div className="stream-event-metadata">Last-Event-ID: {event.eventId}</div>
+      )}
+    </div>
+  );
+}
+
+function WebSocketMessageCard({
+  message,
+  storageKey,
+  uiState
+}: {
+  message: WebSocketMessageRecord;
+  storageKey: string;
+  uiState: PersistentInspectorUiState;
+}): JSX.Element {
+  const preview = message.preview ?? "";
+  const prettyText = prettyJsonOrNull(preview);
+  const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
+  const displayText = pretty && prettyText != null ? prettyText : preview;
+  const copyFeedback = useCopyFeedback(displayText);
+  const payload = makeBodyPayload({ body: preview, headers: [] });
+  return (
+    <div className="message-card">
+      <div className="message-meta">
+        {message.direction === "outgoing" ? (
+          <Send size={20} className="message-direction outgoing" />
+        ) : (
+          <Inbox size={20} className="message-direction incoming" />
+        )}
+        {message.payloadSize == null ? null : <span>{formatBytes(message.payloadSize)}</span>}
+        {message.enqueued == null ? null : <span>{message.enqueued ? "enqueued" : "immediate"}</span>}
+        <span>{formatTime(message.timestamp)}</span>
+        <span className="message-opcode">{message.opcode}</span>
+        <span className="message-actions">
+          {prettyText == null ? null : (
+            <InlineTextToggle label={pretty ? "PRETTY" : "RAW"} onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)} />
+          )}
+          {displayText.length === 0 ? null : <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} />}
+        </span>
+      </div>
+      {payload == null ? null : (
+        <PayloadView
+          payload={{ ...payload, prettyText, isLikelyJson: prettyText != null || payload.isLikelyJson }}
+          storageKey={`${storageKey}:payload`}
+          uiState={uiState}
+          showsToggle={false}
+          showsCopyButton={false}
+          prettyInitiallyExpanded={false}
+        />
+      )}
+    </div>
+  );
+}
+
+function WebSocketCloseDetails({ record }: { record: WebSocketRecord }): JSX.Element | null {
+  if (record.status.kind !== "success" || record.endedAt == null) return null;
+  const reason = record.closeReason;
+  return (
+    <div className="close-details">
+      <div>Closed: {record.status.code}</div>
+      {reason == null || reason.length === 0 ? null : <div>Reason: {reason}</div>}
+    </div>
+  );
+}
+
+function InlineTextToggle({ label, onClick }: { label: string; onClick: () => void }): JSX.Element {
+  return (
+    <button className="inline-text-toggle" type="button" onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+function InlineCopyButton({
+  copied,
+  onCopy,
+  label = "Copy"
+}: {
+  copied: boolean;
+  onCopy: () => void;
+  label?: string;
+}): JSX.Element {
+  return (
+    <button className="inline-action" type="button" onClick={onCopy}>
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+      {copied ? "Copied" : label}
+    </button>
   );
 }
 
@@ -503,6 +852,204 @@ function StatusBadge({ record }: { record: InspectorRecord }): JSX.Element {
 function FailureMessage({ status }: { status: RequestStatus }): JSX.Element | null {
   if (status.kind !== "failure" || status.message == null || status.message.trim().length === 0) return null;
   return <div className="failure-message">Error: {status.message}</div>;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
+}
+
+interface ContextMenuItem {
+  label: string;
+  action: () => void;
+}
+
+function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose: () => void }): JSX.Element {
+  return (
+    <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
+      {menu.items.map((item) => (
+        <button
+          className="context-menu-item"
+          type="button"
+          key={item.label}
+          onClick={() => {
+            item.action();
+            onClose();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function sidebarContextMenuItems(
+  clicked: InspectorRecord,
+  selectedRecordId: string | null,
+  allRecords: InspectorRecord[],
+  client: NetworkClient
+): ContextMenuItem[] {
+  const exportRecords = contextMenuExportSelection(clicked, selectedRecordId, allRecords);
+  if (clicked.kind === "request") {
+    return [
+      { label: "Copy URL", action: () => void navigator.clipboard.writeText(clicked.url) },
+      { label: "Copy as cURL", action: () => void copyCurl(client, clicked) },
+      { label: "Export (sanitized)...", action: () => void exportAsHar(client, exportRecords) }
+    ];
+  }
+  return [{ label: "Export (sanitized)...", action: () => void exportAsHar(client, exportRecords) }];
+}
+
+function contextMenuExportSelection(
+  clicked: InspectorRecord,
+  selectedRecordId: string | null,
+  allRecords: InspectorRecord[]
+): InspectorRecord[] {
+  const selected = selectedRecordId == null ? null : allRecords.find((record) => recordId(record) === selectedRecordId) ?? null;
+  if (selected == null || selected.kind !== clicked.kind || recordId(selected) === recordId(clicked)) return [clicked];
+  return [selected, clicked];
+}
+
+async function copyCurl(client: NetworkClient, request: RequestRecord): Promise<void> {
+  let hydrated = request;
+  if (request.requestBody == null) {
+    try {
+      hydrated = applyRequestBodies(
+        request,
+        await client.loadBodies({
+          deviceId: request.server.deviceId,
+          socketName: request.server.socketName,
+          requestId: request.requestId
+        })
+      );
+    } catch {
+      hydrated = request;
+    }
+  }
+  await navigator.clipboard.writeText(makeCurlCommand(hydrated));
+}
+
+async function exportAsHar(client: NetworkClient, records: InspectorRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  const hydrated = await Promise.all(
+    records.map(async (record) => {
+      if (record.kind !== "request" || (record.requestBody != null && record.responseBody != null)) return record;
+      try {
+        const bodies = await client.loadBodies({
+          deviceId: record.server.deviceId,
+          socketName: record.server.socketName,
+          requestId: record.requestId
+        });
+        return applyRequestBodies(record, bodies);
+      } catch {
+        return record;
+      }
+    })
+  );
+  await client.saveFile({
+    defaultPath: harFileName(hydrated.length),
+    data: buildHar(hydrated),
+    mimeType: "application/har+json"
+  });
+}
+
+interface InspectorUiPreferences {
+  sections: Record<string, boolean>;
+  pretty: Record<string, boolean>;
+  json: Record<string, boolean>;
+}
+
+interface PersistentInspectorUiState {
+  sectionExpanded(key: string): boolean;
+  setSectionExpanded(key: string, value: boolean): void;
+  prettyEnabled(key: string, fallback: boolean): boolean;
+  setPrettyEnabled(key: string, value: boolean): void;
+  jsonExpanded(key: string, fallback: boolean): boolean;
+  setJsonExpanded(key: string, value: boolean): void;
+}
+
+function usePersistentInspectorUiState(): PersistentInspectorUiState {
+  const [prefs, setPrefs] = useState<InspectorUiPreferences>(loadInspectorUiPreferences);
+
+  useEffect(() => {
+    window.localStorage.setItem(inspectorUiStorageKey, JSON.stringify(prefs));
+  }, [prefs]);
+
+  return {
+    sectionExpanded: (key) => prefs.sections[key] ?? true,
+    setSectionExpanded: (key, value) => setPrefs((current) => ({ ...current, sections: { ...current.sections, [key]: value } })),
+    prettyEnabled: (key, fallback) => prefs.pretty[key] ?? fallback,
+    setPrettyEnabled: (key, value) => setPrefs((current) => ({ ...current, pretty: { ...current.pretty, [key]: value } })),
+    jsonExpanded: (key, fallback) => prefs.json[key] ?? fallback,
+    setJsonExpanded: (key, value) => setPrefs((current) => ({ ...current, json: { ...current.json, [key]: value } }))
+  };
+}
+
+function loadInspectorUiPreferences(): InspectorUiPreferences {
+  try {
+    const raw = window.localStorage.getItem(inspectorUiStorageKey);
+    if (raw == null) return emptyInspectorUiPreferences();
+    const parsed = JSON.parse(raw) as Partial<InspectorUiPreferences>;
+    return {
+      sections: parsed.sections ?? {},
+      pretty: parsed.pretty ?? {},
+      json: parsed.json ?? {}
+    };
+  } catch {
+    return emptyInspectorUiPreferences();
+  }
+}
+
+function emptyInspectorUiPreferences(): InspectorUiPreferences {
+  return { sections: {}, pretty: {}, json: {} };
+}
+
+function useCopyFeedback(text: string): { copied: boolean; copy: () => void; copyWithoutClipboard: () => void } {
+  const [token, setToken] = useState(0);
+  useEffect(() => {
+    if (token === 0) return;
+    const active = token;
+    const timer = window.setTimeout(() => {
+      setToken((current) => (current === active ? 0 : current));
+    }, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [token, text]);
+  return {
+    copied: token !== 0,
+    copy: () => {
+      void navigator.clipboard.writeText(text);
+      setToken((current) => current + 1);
+    },
+    copyWithoutClipboard: () => setToken((current) => current + 1)
+  };
+}
+
+async function copyImageToClipboard(dataUrl: string, mimeType: string): Promise<void> {
+  const clipboardItem = window.ClipboardItem;
+  if (clipboardItem == null) return;
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  await navigator.clipboard.write([new clipboardItem({ [mimeType]: blob })]);
+}
+
+function downloadDataUrl(dataUrl: string, fileName: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = dataUrl;
+  anchor.download = fileName;
+  anchor.style.display = "none";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+function imageFileName(contentType: string | null): string {
+  if (contentType?.startsWith("image/png") === true) return "image.png";
+  if (contentType?.startsWith("image/jpeg") === true || contentType?.startsWith("image/jpg") === true) return "image.jpg";
+  if (contentType?.startsWith("image/webp") === true) return "image.webp";
+  if (contentType?.startsWith("image/gif") === true) return "image.gif";
+  return "image";
 }
 
 function pickSelectedServer(current: ServerId | null, servers: SnapOServer[]): ServerId | null {
@@ -574,15 +1121,6 @@ function splitUrl(url: string): { primary: string; secondary: string } {
   }
 }
 
-function prettyBody(body: string, base64Encoded?: boolean | null): string {
-  if (base64Encoded) return body;
-  try {
-    return JSON.stringify(JSON.parse(body), null, 2);
-  } catch {
-    return body;
-  }
-}
-
 function formatTiming(startedAt: number, endedAt: number | undefined, status: RequestStatus): string {
   const startSegment = `Started ${formatRelative(startedAt)} at ${formatTimeWithMillis(startedAt)}`;
   if (status.kind === "pending" || endedAt == null) return startSegment;
@@ -628,23 +1166,6 @@ function formatRelative(value: number): string {
           ? [Math.floor(absoluteSeconds / 3600), "h"]
           : [Math.floor(absoluteSeconds / 86400), "d"];
   return isFuture ? `in ${amount}${unit}` : `${amount}${unit} ago`;
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function hasBody(value: string | null | undefined): value is string {
-  return value != null && value.length > 0;
-}
-
-function bodyMetadata(body: string | null | undefined, encoding: string | null | undefined): string | null {
-  if (!hasBody(body)) return null;
-  const bytes = new TextEncoder().encode(body).length;
-  const suffix = encoding == null || encoding.length === 0 ? "Text" : encoding;
-  return `${formatBytes(bytes)} • ${suffix}`;
 }
 
 function recordShowsActiveIndicator(record: InspectorRecord): boolean {

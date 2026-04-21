@@ -1,6 +1,8 @@
 import type {
   LoadBodiesInput,
   RequestBodies,
+  SaveFileInput,
+  SaveFileResult,
   SnapONetworkBridge,
   SnapOServer,
   StartStreamInput,
@@ -17,6 +19,7 @@ export interface NetworkClient {
   onEvent(callback: (event: StreamEvent) => void): () => void;
   onStatus(callback: (status: StreamStatus) => void): () => void;
   openExternal(url: string): Promise<void>;
+  saveFile(input: SaveFileInput): Promise<SaveFileResult>;
 }
 
 export function createNetworkClient(): NetworkClient {
@@ -55,6 +58,10 @@ class ElectronNetworkClient implements NetworkClient {
 
   openExternal(url: string): Promise<void> {
     return this.bridge.openExternal(url);
+  }
+
+  saveFile(input: SaveFileInput): Promise<SaveFileResult> {
+    return this.bridge.saveFile(input);
   }
 }
 
@@ -105,6 +112,20 @@ class HttpNetworkClient implements NetworkClient {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  async saveFile(input: SaveFileInput): Promise<SaveFileResult> {
+    const blob = new Blob([input.data], { type: input.mimeType ?? "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = input.defaultPath;
+    anchor.style.display = "none";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    return { saved: true };
+  }
+
   private ensureEventSource(): void {
     if (this.eventSource != null) return;
     this.eventSource = new EventSource("/api/network/events");
@@ -126,4 +147,3 @@ async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promi
   }
   return response.json() as Promise<T>;
 }
-
