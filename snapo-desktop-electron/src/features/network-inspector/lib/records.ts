@@ -15,7 +15,12 @@ export function collectRecords(
   searchText: string,
   newestFirst: boolean
 ): InspectorRecord[] {
-  return filterRecords([...state.requests.values(), ...state.webSockets.values()], selectedServer, searchText, newestFirst);
+  return filterRecords(
+    [...state.requests.values(), ...state.webSockets.values()],
+    selectedServer,
+    searchText,
+    newestFirst
+  );
 }
 
 export function filterRecords(
@@ -81,7 +86,10 @@ function isCompletedWebSocket(socket: WebSocketRecord): boolean {
 
 export function pickSelectedServer(current: ServerId | null, servers: SnapOServer[]): ServerId | null {
   if (servers.length === 0) return null;
-  if (current != null && servers.some((server) => server.deviceId === current.deviceId && server.socketName === current.socketName)) {
+  if (
+    current != null &&
+    servers.some((server) => server.deviceId === current.deviceId && server.socketName === current.socketName)
+  ) {
     return current;
   }
   return { deviceId: servers[0].deviceId, socketName: servers[0].socketName };
@@ -107,7 +115,9 @@ export function mergeServersWithRetainedSelection(
 
 export function serverModelFor(servers: SnapOServer[], selected: ServerId | null): SnapOServer | null {
   if (selected == null) return null;
-  return servers.find((server) => server.deviceId === selected.deviceId && server.socketName === selected.socketName) ?? null;
+  return (
+    servers.find((server) => server.deviceId === selected.deviceId && server.socketName === selected.socketName) ?? null
+  );
 }
 
 export function replacementCandidate(servers: SnapOServer[], selectedServer: SnapOServer | null): SnapOServer | null {
@@ -195,7 +205,8 @@ export function contextMenuExportSelection(
   selectedRecordId: string | null,
   allRecords: InspectorRecord[]
 ): InspectorRecord[] {
-  const selected = selectedRecordId == null ? null : allRecords.find((record) => recordId(record) === selectedRecordId) ?? null;
+  const selected =
+    selectedRecordId == null ? null : (allRecords.find((record) => recordId(record) === selectedRecordId) ?? null);
   if (selected == null || selected.kind !== clicked.kind || recordId(selected) === recordId(clicked)) return [clicked];
   return [selected, clicked];
 }

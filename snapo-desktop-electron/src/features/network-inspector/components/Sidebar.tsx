@@ -52,7 +52,11 @@ export const Sidebar = memo(function Sidebar({
       <div className="server-picker-frame">
         <ServerSelect servers={servers} selectedServer={selectedServer} onChange={onServerChange} />
         {replacementServer == null ? null : (
-          <button className="replacement-banner" type="button" onClick={() => onReplacementServerClick(replacementServer)}>
+          <button
+            className="replacement-banner"
+            type="button"
+            onClick={() => onReplacementServerClick(replacementServer)}
+          >
             <span>
               <span className="replacement-title">New process available</span>
               <span className="replacement-detail">
@@ -114,7 +118,9 @@ function SchemaWarning({ server }: { server: SnapOServer }): JSX.Element {
   return (
     <div className="schema-warning">
       <div className="schema-warning-title">
-        {server.schemaVersion == null ? "Incompatible schema version" : `Incompatible schema version ${server.schemaVersion}`}
+        {server.schemaVersion == null
+          ? "Incompatible schema version"
+          : `Incompatible schema version ${server.schemaVersion}`}
       </div>
       <div className="schema-warning-body">
         {server.isSchemaOlderThanSupported

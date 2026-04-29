@@ -36,7 +36,7 @@ export function makeBodyPayload(input: {
     prettyText,
     isLikelyJson: prettyText != null || isLikelyJson(rawText, contentType),
     contentType,
-    encoding: base64Encoded ? "base64" : input.encoding ?? null,
+    encoding: base64Encoded ? "base64" : (input.encoding ?? null),
     capturedBytes: bodyByteLength(rawText, base64Encoded),
     totalBytes: input.totalBytes ?? null,
     base64Encoded
@@ -110,7 +110,9 @@ function valueToNode(value: unknown, label: string, key: string, isRoot = false)
       label: isRoot ? "" : label,
       rawValue: value,
       type: "object",
-      children: entries.map(([childKey, childValue]) => valueToNode(childValue, childKey, `${key}.${escapeKey(childKey)}`))
+      children: entries.map(([childKey, childValue]) =>
+        valueToNode(childValue, childKey, `${key}.${escapeKey(childKey)}`)
+      )
     };
   }
   const type = primitiveType(value);

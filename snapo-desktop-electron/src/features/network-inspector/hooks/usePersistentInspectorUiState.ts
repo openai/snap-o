@@ -24,14 +24,19 @@ export function usePersistentInspectorUiState(): PersistentInspectorUiState {
     window.localStorage.setItem(inspectorUiStorageKey, JSON.stringify(prefs));
   }, [prefs]);
 
-  const sectionExpanded = useCallback((key: string, fallback = true) => prefs.sections[key] ?? fallback, [prefs.sections]);
+  const sectionExpanded = useCallback(
+    (key: string, fallback = true) => prefs.sections[key] ?? fallback,
+    [prefs.sections]
+  );
   const setSectionExpanded = useCallback(
-    (key: string, value: boolean) => setPrefs((current) => ({ ...current, sections: { ...current.sections, [key]: value } })),
+    (key: string, value: boolean) =>
+      setPrefs((current) => ({ ...current, sections: { ...current.sections, [key]: value } })),
     []
   );
   const prettyEnabled = useCallback((key: string, fallback: boolean) => prefs.pretty[key] ?? fallback, [prefs.pretty]);
   const setPrettyEnabled = useCallback(
-    (key: string, value: boolean) => setPrefs((current) => ({ ...current, pretty: { ...current.pretty, [key]: value } })),
+    (key: string, value: boolean) =>
+      setPrefs((current) => ({ ...current, pretty: { ...current.pretty, [key]: value } })),
     []
   );
   const jsonExpanded = useCallback((key: string, fallback: boolean) => prefs.json[key] ?? fallback, [prefs.json]);

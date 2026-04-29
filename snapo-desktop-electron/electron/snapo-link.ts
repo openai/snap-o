@@ -142,9 +142,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isHelloRecord(value: unknown): value is HelloRecord {
   if (!isRecord(value)) return false;
   return (
-    typeof value.packageName === "string" &&
-    typeof value.processName === "string" &&
-    typeof value.pid === "number"
+    typeof value.packageName === "string" && typeof value.processName === "string" && typeof value.pid === "number"
   );
 }
 

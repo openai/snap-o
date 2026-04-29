@@ -13,4 +13,3 @@
   },
   "include": ["electron/**/*.ts", "src/network/bridge-types.ts"]
 }
-

@@ -55,7 +55,10 @@ export function PayloadView({
     hasToggle || hasCopy ? (
       <>
         {hasToggle ? (
-          <InlineTextToggle label={pretty ? "PRETTY" : "RAW"} onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)} />
+          <InlineTextToggle
+            label={pretty ? "PRETTY" : "RAW"}
+            onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
+          />
         ) : null}
         {hasCopy ? <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} /> : null}
       </>
@@ -241,7 +244,8 @@ function JsonInlinePreview({ node }: { node: JsonNode }): JSX.Element {
 
 function inlinePreviewParts(node: JsonNode, maxLength: number): React.ReactNode {
   const fullText = inlinePreviewText(node);
-  if (fullText.length > maxLength) return <span className="json-punctuation">{`${fullText.slice(0, Math.max(0, maxLength - 3))}...`}</span>;
+  if (fullText.length > maxLength)
+    return <span className="json-punctuation">{`${fullText.slice(0, Math.max(0, maxLength - 3))}...`}</span>;
   return renderInlinePreviewNode(node);
 }
 

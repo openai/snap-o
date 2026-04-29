@@ -106,7 +106,7 @@ function requestToEntry(request: RequestRecord): HarEntry {
       redirectURL: headerValue(request.responseHeaders, "Location") ?? "",
       headersSize: -1,
       bodySize: responsePayload.size,
-      _error: request.status.kind === "failure" ? request.status.message ?? "failed" : undefined
+      _error: request.status.kind === "failure" ? (request.status.message ?? "failed") : undefined
     },
     cache: {},
     timings: {
@@ -149,7 +149,7 @@ function webSocketToEntry(webSocket: WebSocketRecord): HarEntry {
       redirectURL: "",
       headersSize: -1,
       bodySize: 0,
-      _error: webSocket.status.kind === "failure" ? webSocket.status.message ?? "failed" : undefined
+      _error: webSocket.status.kind === "failure" ? (webSocket.status.message ?? "failed") : undefined
     },
     cache: {},
     timings: {
@@ -176,8 +176,11 @@ function webSocketMessageToHar(message: WebSocketMessageRecord): HarWebSocketMes
 }
 
 function requestResponsePayload(request: RequestRecord): HarContent {
-  const bodyText = request.responseBody ?? (request.streamEvents.length > 0 ? streamEventsRaw(request.streamEvents) : null);
-  const mimeType = contentTypeFromHeaders(request.responseHeaders) ?? (request.streamEvents.length > 0 ? "text/event-stream" : "x-unknown");
+  const bodyText =
+    request.responseBody ?? (request.streamEvents.length > 0 ? streamEventsRaw(request.streamEvents) : null);
+  const mimeType =
+    contentTypeFromHeaders(request.responseHeaders) ??
+    (request.streamEvents.length > 0 ? "text/event-stream" : "x-unknown");
   const fromStreamEvents = request.responseBody == null && request.streamEvents.length > 0;
   const encoding = responseEncoding(mimeType, bodyText, fromStreamEvents, request);
   return {
@@ -307,7 +310,10 @@ function joinCurlParts(parts: string[]): string {
   let firstLine = `curl ${first}`;
   if (second != null) firstLine += ` ${second}`;
   if (remaining.length === 0) return firstLine;
-  return [`${firstLine} \\`, ...remaining.map((part, index) => `  ${part}${index === remaining.length - 1 ? "" : " \\"}`)].join("\n");
+  return [
+    `${firstLine} \\`,
+    ...remaining.map((part, index) => `  ${part}${index === remaining.length - 1 ? "" : " \\"}`)
+  ].join("\n");
 }
 
 function singleQuoted(value: string): string {

@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "tsc -p tsconfig.electron.json && vite build",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
     "start": "npm run build && electron ."
   },
@@ -21,11 +25,18 @@
     "vite": "^8.0.9"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "concurrently": "^8.2.2",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.5.0",
+    "prettier": "^3.8.3",
     "typescript": "^5.3.3",
+    "typescript-eslint": "^8.59.1",
     "wait-on": "^7.2.0"
   }
 }

@@ -55,7 +55,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  app.quit();
 });
 
 app.on("before-quit", () => {
@@ -65,9 +65,7 @@ app.on("before-quit", () => {
 function installIpcHandlers(): void {
   ipcMain.handle("network:listServers", () => backend.listServers());
   ipcMain.handle("network:loadBodies", (_event, input: LoadBodiesInput) => backend.loadBodies(input));
-  ipcMain.handle("network:startStream", (event, input: StartStreamInput) =>
-    backend.startStream(input, event.sender)
-  );
+  ipcMain.handle("network:startStream", (event, input: StartStreamInput) => backend.startStream(input, event.sender));
   ipcMain.handle("network:stopStream", (_event, streamId: string) => backend.stopStream(streamId));
   ipcMain.handle("network:openExternal", (_event, url: string) => shell.openExternal(url));
   ipcMain.handle("network:saveFile", async (_event, input: SaveFileInput) => {
@@ -82,81 +80,95 @@ function installIpcHandlers(): void {
 }
 
 function installApplicationMenu(): void {
-  const template: MenuItemConstructorOptions[] = [
-    ...(process.platform === "darwin"
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: "about" },
-              { type: "separator" },
-              { role: "services" },
-              { type: "separator" },
-              { role: "hide" },
-              { role: "hideOthers" },
-              { role: "unhide" },
-              { type: "separator" },
-              { role: "quit" }
-            ]
-          } satisfies MenuItemConstructorOptions
-        ]
-      : []),
-    {
-      label: "File",
-      submenu: [
-        {
-          label: "New Window",
-          accelerator: "CmdOrCtrl+N",
-          click: () => {
-            createWindow(BrowserWindow.getFocusedWindow() ?? undefined);
-          }
-        },
-        { type: "separator" },
-        {
-          label: "Close",
-          accelerator: "CmdOrCtrl+W",
-          click: () => {
-            BrowserWindow.getFocusedWindow()?.close();
-          }
-        }
-      ]
-    },
-    {
-      label: "Edit",
-      submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        ...(process.platform === "darwin"
-          ? [
-              { role: "pasteAndMatchStyle" },
-              { role: "delete" },
-              { role: "selectAll" },
-              { type: "separator" },
-              {
-                label: "Speech",
-                submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }]
-              }
-            ]
-          : [{ role: "delete" }, { type: "separator" }, { role: "selectAll" }])
-      ]
-    },
-    {
-      label: "Window",
-      submenu: [
-        { role: "minimize" },
-        { role: "zoom" },
-        ...(process.platform === "darwin"
-          ? [{ type: "separator" }, { role: "front" }]
-          : [{ role: "close" }])
-      ]
-    }
-  ];
+  const template: MenuItemConstructorOptions[] = [];
+  if (process.platform === "darwin") template.push(applicationMenu());
+  template.push(fileMenu(), editMenu(), windowMenu());
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function applicationMenu(): MenuItemConstructorOptions {
+  return {
+    label: app.name,
+    submenu: [
+      { role: "about" },
+      { type: "separator" },
+      { role: "services" },
+      { type: "separator" },
+      { role: "hide" },
+      { role: "hideOthers" },
+      { role: "unhide" },
+      { type: "separator" },
+      { role: "quit" }
+    ]
+  };
+}
+
+function fileMenu(): MenuItemConstructorOptions {
+  return {
+    label: "File",
+    submenu: [
+      {
+        label: "New Window",
+        accelerator: "CmdOrCtrl+N",
+        click: () => {
+          createWindow(BrowserWindow.getFocusedWindow() ?? undefined);
+        }
+      },
+      { type: "separator" },
+      {
+        label: "Close",
+        accelerator: "CmdOrCtrl+W",
+        click: () => {
+          BrowserWindow.getFocusedWindow()?.close();
+        }
+      }
+    ]
+  };
+}
+
+function editMenu(): MenuItemConstructorOptions {
+  const submenu: MenuItemConstructorOptions[] = [
+    { role: "undo" },
+    { role: "redo" },
+    { type: "separator" },
+    { role: "cut" },
+    { role: "copy" },
+    { role: "paste" }
+  ];
+
+  if (process.platform === "darwin") {
+    submenu.push(
+      { role: "pasteAndMatchStyle" },
+      { role: "delete" },
+      { role: "selectAll" },
+      { type: "separator" },
+      {
+        label: "Speech",
+        submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }]
+      }
+    );
+  } else {
+    submenu.push({ role: "delete" }, { type: "separator" }, { role: "selectAll" });
+  }
+
+  return {
+    label: "Edit",
+    submenu
+  };
+}
+
+function windowMenu(): MenuItemConstructorOptions {
+  const submenu: MenuItemConstructorOptions[] = [{ role: "minimize" }, { role: "zoom" }];
+  if (process.platform === "darwin") {
+    submenu.push({ type: "separator" }, { role: "front" });
+  } else {
+    submenu.push({ role: "close" });
+  }
+  return {
+    label: "Window",
+    submenu
+  };
 }
 
 function filtersForMimeType(mimeType?: string | null): Electron.FileFilter[] {

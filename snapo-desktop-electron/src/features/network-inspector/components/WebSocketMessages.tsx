@@ -37,9 +37,14 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
         <span className="message-opcode">{message.opcode}</span>
         <span className="message-actions">
           {prettyText == null ? null : (
-            <InlineTextToggle label={pretty ? "PRETTY" : "RAW"} onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)} />
+            <InlineTextToggle
+              label={pretty ? "PRETTY" : "RAW"}
+              onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
+            />
           )}
-          {displayText.length === 0 ? null : <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} />}
+          {displayText.length === 0 ? null : (
+            <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} />
+          )}
         </span>
       </div>
       {payload == null ? null : (

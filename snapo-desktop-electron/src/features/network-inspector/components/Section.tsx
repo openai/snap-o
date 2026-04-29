@@ -22,7 +22,11 @@ export function Section({
   return (
     <section className="detail-section">
       <div className="section-header-row">
-        <button className="section-header" type="button" onClick={() => uiState.setSectionExpanded(storageKey, !expanded)}>
+        <button
+          className="section-header"
+          type="button"
+          onClick={() => uiState.setSectionExpanded(storageKey, !expanded)}
+        >
           <span className={expanded ? "triangle expanded" : "triangle"} />
           <span>{title}</span>
           {meta == null ? null : <span className="section-meta">{meta}</span>}

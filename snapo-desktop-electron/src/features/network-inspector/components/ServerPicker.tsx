@@ -51,7 +51,9 @@ function ServerAppIcon({ server }: { server: SnapOServer | null }): JSX.Element 
   return (
     <span className="server-app-icon">
       {image == null || image.length === 0 ? null : <img src={`data:image/png;base64,${image}`} alt="" />}
-      {server == null ? null : <span className={`server-status-dot ${server.isConnected ? "connected" : "disconnected"}`} />}
+      {server == null ? null : (
+        <span className={`server-status-dot ${server.isConnected ? "connected" : "disconnected"}`} />
+      )}
     </span>
   );
 }

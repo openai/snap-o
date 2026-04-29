@@ -8,8 +8,8 @@ type LoadingFailedEvent = Partial<Protocol.Network.LoadingFailedEvent> & Record<
 type EventSourceMessageReceivedEvent = Partial<Protocol.Network.EventSourceMessageReceivedEvent> &
   Record<string, unknown>;
 type WebSocketCreatedEvent = Partial<Protocol.Network.WebSocketCreatedEvent> & Record<string, unknown>;
-type WebSocketHandshakeResponseReceivedEvent =
-  Partial<Protocol.Network.WebSocketHandshakeResponseReceivedEvent> & Record<string, unknown>;
+type WebSocketHandshakeResponseReceivedEvent = Partial<Protocol.Network.WebSocketHandshakeResponseReceivedEvent> &
+  Record<string, unknown>;
 type WebSocketFrameEvent =
   | (Partial<Protocol.Network.WebSocketFrameSentEvent> & Record<string, unknown>)
   | (Partial<Protocol.Network.WebSocketFrameReceivedEvent> & Record<string, unknown>);
@@ -151,11 +151,7 @@ export function createEmptyInspectorState(): InspectorDataState {
   };
 }
 
-export function reduceCdpMessage(
-  state: InspectorDataState,
-  server: ServerId,
-  message: CdpMessage
-): InspectorDataState {
+export function reduceCdpMessage(state: InspectorDataState, server: ServerId, message: CdpMessage): InspectorDataState {
   if (message.method == null || message.params == null) return state;
   const now = Date.now();
   switch (message.method) {
@@ -172,7 +168,12 @@ export function reduceCdpMessage(
     case "Network.webSocketCreated":
       return reduceWebSocketCreated(state, server, message.params as WebSocketCreatedEvent, now);
     case "Network.webSocketHandshakeResponseReceived":
-      return reduceWebSocketHandshakeResponse(state, server, message.params as WebSocketHandshakeResponseReceivedEvent, now);
+      return reduceWebSocketHandshakeResponse(
+        state,
+        server,
+        message.params as WebSocketHandshakeResponseReceivedEvent,
+        now
+      );
     case "Network.webSocketFrameSent":
       return appendWebSocketMessage(state, server, message.params as WebSocketFrameEvent, "outgoing", now);
     case "Network.webSocketFrameReceived":
@@ -220,7 +221,7 @@ function reduceResponseReceived(
     return {
       ...requestDefaults(existing, server, requestId(params), now),
       responseHeaders: headersFrom(recordFromProtocolHeaders(params.response?.headers)),
-      status: status == null ? existing?.status ?? { kind: "pending" } : { kind: "success", code: status },
+      status: status == null ? (existing?.status ?? { kind: "pending" }) : { kind: "success", code: status },
       endedAt: existing?.endedAt,
       encodedDataLength: params.response?.encodedDataLength ?? existing?.encodedDataLength,
       responseType: stringAt(params, "type") ?? existing?.responseType,
@@ -347,7 +348,7 @@ function reduceWebSocketHandshakeResponse(
     return {
       ...webSocketDefaults(existing, server, requestId(params), now),
       responseHeaders: headersFrom(recordFromProtocolHeaders(params.response?.headers)),
-      status: status == null ? existing?.status ?? { kind: "pending" } : { kind: "success", code: status },
+      status: status == null ? (existing?.status ?? { kind: "pending" }) : { kind: "success", code: status },
       opened: status == null ? existing?.opened : { timestamp: now, code: status },
       updatedAt: now
     };
@@ -695,11 +696,6 @@ function opcodeLabel(opcode: number | null): string {
 function wallTimeMs(params: Record<string, unknown>): number | undefined {
   const wallTime = numberAt(params, "wallTime");
   return wallTime == null ? undefined : Math.round(wallTime * 1000);
-}
-
-function timestampMs(params: Record<string, unknown>): number | undefined {
-  const timestamp = numberAt(params, "timestamp");
-  return timestamp == null ? undefined : Math.round(timestamp * 1000);
 }
 
 function stringAt(record: Record<string, unknown>, path: string): string | null {

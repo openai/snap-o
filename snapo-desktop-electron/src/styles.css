@@ -25,7 +25,13 @@
   --json-number: #2f6fae;
   --json-string: #b74840;
   --json-null: #8c7a72;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   background: var(--background);
   color: var(--on-surface);
 }

@@ -15,7 +15,12 @@ export const SseCopyAllButton = memo(function SseCopyAllButton({
   const text = streamEventsRaw(events);
   const copyFeedback = useCopyFeedback(text);
   return (
-    <button className="inline-action section-action" type="button" onClick={copyFeedback.copy} disabled={events.length === 0}>
+    <button
+      className="inline-action section-action"
+      type="button"
+      onClick={copyFeedback.copy}
+      disabled={events.length === 0}
+    >
       {copyFeedback.copied ? "Copied" : "Copy All"}
     </button>
   );
@@ -38,7 +43,12 @@ export const SseEventList = memo(function SseEventList({
         <div className="messages-empty">Awaiting events...</div>
       ) : (
         events.map((event) => (
-          <SseEventCard key={event.sequence} event={event} storageKey={`${storageKey}:event:${event.sequence}`} uiState={uiState} />
+          <SseEventCard
+            key={event.sequence}
+            event={event}
+            storageKey={`${storageKey}:event:${event.sequence}`}
+            uiState={uiState}
+          />
         ))
       )}
       {closed == null ? null : <StreamClosedInfo closed={closed} />}
@@ -70,7 +80,10 @@ const SseEventCard = memo(function SseEventCard({
         {event.eventName ? <span className="event-name">{event.eventName}</span> : null}
         <span className="event-actions">
           {prettyText == null ? null : (
-            <InlineTextToggle label={pretty ? "PRETTY" : "RAW"} onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)} />
+            <InlineTextToggle
+              label={pretty ? "PRETTY" : "RAW"}
+              onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
+            />
           )}
           <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} />
         </span>

@@ -18,7 +18,8 @@ export function downloadDataUrl(dataUrl: string, fileName: string): void {
 
 export function imageFileName(contentType: string | null): string {
   if (contentType?.startsWith("image/png") === true) return "image.png";
-  if (contentType?.startsWith("image/jpeg") === true || contentType?.startsWith("image/jpg") === true) return "image.jpg";
+  if (contentType?.startsWith("image/jpeg") === true || contentType?.startsWith("image/jpg") === true)
+    return "image.jpg";
   if (contentType?.startsWith("image/webp") === true) return "image.webp";
   if (contentType?.startsWith("image/gif") === true) return "image.gif";
   return "image";

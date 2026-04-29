@@ -334,11 +334,7 @@ export class NetworkInspectorBackend {
     }
   }
 
-  private sendNetworkCommand(
-    serverKey: string,
-    method: string,
-    params: Record<string, unknown>
-  ): Promise<CdpMessage> {
+  private sendNetworkCommand(serverKey: string, method: string, params: Record<string, unknown>): Promise<CdpMessage> {
     const state = this.servers.get(serverKey);
     if (state == null || !state.isConnected) {
       return Promise.reject(new Error(`Snap-O server is not connected: ${serverKey}`));
@@ -394,8 +390,7 @@ export class NetworkInspectorBackend {
           hasHello: state.hello != null,
           pid: state.hello?.pid ?? pidFromSocketName(state.socketName),
           schemaVersion: state.schemaVersion,
-          isSchemaNewerThanSupported:
-            state.schemaVersion != null && state.schemaVersion > SupportedSchemaVersion,
+          isSchemaNewerThanSupported: state.schemaVersion != null && state.schemaVersion > SupportedSchemaVersion,
           isSchemaOlderThanSupported:
             state.hello != null && (state.schemaVersion == null || state.schemaVersion < SupportedSchemaVersion),
           features: state.features,

@@ -24,7 +24,9 @@ export const DetailContent = memo(function DetailContent({
 }): JSX.Element {
   if (record == null) {
     const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems });
-    return <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs} />;
+    return (
+      <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs} />
+    );
   }
 
   if (isUnsupportedLegacySchemaRequestSelection(record, selectedServer)) {

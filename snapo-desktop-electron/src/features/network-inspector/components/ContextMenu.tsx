@@ -12,7 +12,11 @@ export interface ContextMenuItem {
 
 export function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose: () => void }): JSX.Element {
   return (
-    <div className="context-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
+    <div
+      className="context-menu"
+      style={{ left: menu.x, top: menu.y }}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       {menu.items.map((item) => (
         <button
           className="context-menu-item"

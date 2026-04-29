@@ -29,7 +29,12 @@ export const WebSocketDetail = memo(function WebSocketDetail({
         <WebSocketCloseDetails record={record} />
       </header>
       {record.requestHeaders.length === 0 ? null : (
-        <Section title="Request Headers" storageKey={`${prefix}:requestHeaders`} uiState={uiState} initiallyExpanded={false}>
+        <Section
+          title="Request Headers"
+          storageKey={`${prefix}:requestHeaders`}
+          uiState={uiState}
+          initiallyExpanded={false}
+        >
           <HeadersTable headers={record.requestHeaders} />
         </Section>
       )}

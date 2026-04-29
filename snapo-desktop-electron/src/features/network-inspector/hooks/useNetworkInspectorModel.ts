@@ -55,13 +55,18 @@ export interface NetworkInspectorModel {
 export function useNetworkInspectorModel(): NetworkInspectorModel {
   const client = useMemo(() => createNetworkClient(), []);
   const [state, setState] = useState<InspectorDataState>(() => createEmptyInspectorState());
-  const [selectedServer, setSelectedServer] = useState<ServerId | null>(null);
+  const [preferredServer, setPreferredServer] = useState<ServerId | null>(null);
   const selectedServerRef = useRef<ServerId | null>(null);
   const bodyLoadAttemptsRef = useRef<Set<string>>(new Set());
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const uiState = usePersistentInspectorUiState();
+
+  const selectedServer = useMemo(
+    () => pickSelectedServer(preferredServer, state.servers),
+    [preferredServer, state.servers]
+  );
 
   useEffect(() => {
     selectedServerRef.current = selectedServer;
@@ -95,18 +100,18 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [client]);
 
   const selectedServerKey = serverKey(selectedServer);
-  const selectedServerModel = useMemo(() => serverModelFor(state.servers, selectedServer), [selectedServerKey, state.servers]);
+  const selectedServerModel = useMemo(
+    () => serverModelFor(state.servers, selectedServer),
+    [selectedServer, state.servers]
+  );
+  const selectedServerIsConnected = selectedServerModel?.isConnected === true;
   const selectedServerConnectionKey =
     selectedServerModel == null
       ? selectedServerKey
       : `${selectedServerKey}\u0000${selectedServerModel.isConnected}\u0000${selectedServerModel.hasHello}`;
 
   useEffect(() => {
-    setSelectedServer((current) => pickSelectedServer(current, state.servers));
-  }, [state.servers]);
-
-  useEffect(() => {
-    if (selectedServer == null || selectedServerModel?.isConnected !== true) return;
+    if (selectedServer == null || !selectedServerIsConnected) return;
     let streamId: string | null = null;
     let disposed = false;
     client
@@ -126,7 +131,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
       disposed = true;
       if (streamId != null) void client.stopStream(streamId);
     };
-  }, [client, selectedServer, selectedServerConnectionKey]);
+  }, [client, selectedServer, selectedServerConnectionKey, selectedServerIsConnected]);
 
   const allRecords = useMemo(
     () => [...state.requests.values(), ...state.webSockets.values()],
@@ -135,21 +140,21 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
 
   const visibleRecords = useMemo(
     () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
-    [allRecords, searchText, selectedServerKey, sortNewestFirst]
+    [allRecords, searchText, selectedServer, sortNewestFirst]
   );
 
   const serverRecordCount = useMemo(
     () => countRecordsForServer(allRecords, selectedServer),
-    [allRecords, selectedServerKey]
+    [allRecords, selectedServer]
   );
 
-  useEffect(() => {
-    setSelectedRecordId((current) => {
-      if (visibleRecords.length === 0) return null;
-      if (current != null && visibleRecords.some((record) => recordId(record) === current)) return current;
-      return recordId(visibleRecords[0]);
-    });
-  }, [visibleRecords]);
+  const selectedRecordId = useMemo(() => {
+    if (visibleRecords.length === 0) return null;
+    if (preferredRecordId != null && visibleRecords.some((record) => recordId(record) === preferredRecordId)) {
+      return preferredRecordId;
+    }
+    return recordId(visibleRecords[0]);
+  }, [preferredRecordId, visibleRecords]);
 
   const selectedRecord = useMemo(() => {
     if (selectedRecordId == null) return null;
@@ -238,14 +243,14 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const hasClearableItems = useMemo(() => allRecords.some(isCompletedRecord), [allRecords]);
 
   const selectServer = useCallback((server: ServerId | null) => {
-    setSelectedServer(server);
-    setSelectedRecordId(null);
+    setPreferredServer(server);
+    setPreferredRecordId(null);
   }, []);
   const selectReplacementServer = useCallback(
     (server: SnapOServer) => selectServer({ deviceId: server.deviceId, socketName: server.socketName }),
     [selectServer]
   );
-  const selectRecord = useCallback((id: string) => setSelectedRecordId(id), []);
+  const selectRecord = useCallback((id: string) => setPreferredRecordId(id), []);
   const toggleSortOrder = useCallback(() => setSortNewestFirst((value) => !value), []);
   const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
   const openDocs = useCallback(() => void client.openExternal(docsUrl), [client]);
