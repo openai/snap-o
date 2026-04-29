@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
@@ -10,9 +10,13 @@ const preferredPort = Number.parseInt(process.env.SNAPO_ELECTRON_DEV_PORT ?? "51
 const rendererPort = await findAvailablePort(Number.isFinite(preferredPort) ? preferredPort : 5173);
 const rendererUrl = `http://${host}:${rendererPort}`;
 const electronMain = path.resolve("dist-electron/electron/main.js");
+const electronOutputDir = path.dirname(electronMain);
 const children = new Set();
+const expectedChildExits = new Set();
 let shuttingDown = false;
 let electronProcess = null;
+let electronRestartTimer = null;
+let electronWatcher = null;
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => shutdown(0));
@@ -26,16 +30,8 @@ try {
 
   await Promise.all([waitForHttp(rendererUrl), waitForFile(electronMain)]);
 
-  electronProcess = start("electron", ["."], {
-    env: {
-      ...process.env,
-      SNAPO_ELECTRON_DEV_SERVER_URL: rendererUrl
-    }
-  });
-
-  electronProcess.on("exit", (code, signal) => {
-    shutdown(code ?? (signal == null ? 0 : 1));
-  });
+  launchElectron();
+  watchElectronOutputs();
 } catch (error) {
   console.error("[dev]", error);
   shutdown(1);
@@ -50,7 +46,8 @@ function start(command, args, options = {}) {
   children.add(child);
   child.on("exit", (code) => {
     children.delete(child);
-    if (!shuttingDown && child !== electronProcess && code !== 0) {
+    const expectedExit = expectedChildExits.delete(child);
+    if (!shuttingDown && !expectedExit && child !== electronProcess && code !== 0) {
       shutdown(code ?? 1);
     }
   });
@@ -64,10 +61,49 @@ function start(command, args, options = {}) {
 function shutdown(code) {
   if (shuttingDown) return;
   shuttingDown = true;
+  if (electronRestartTimer != null) clearTimeout(electronRestartTimer);
+  electronWatcher?.close();
   for (const child of children) {
     child.kill("SIGTERM");
   }
   process.exitCode = code;
+}
+
+function launchElectron() {
+  electronProcess = start("electron", ["."], {
+    env: {
+      ...process.env,
+      SNAPO_ELECTRON_DEV_SERVER_URL: rendererUrl
+    }
+  });
+
+  const child = electronProcess;
+  child.on("exit", (code, signal) => {
+    if (shuttingDown) return;
+    if (child !== electronProcess) return;
+    shutdown(code ?? (signal == null ? 0 : 1));
+  });
+}
+
+function watchElectronOutputs() {
+  electronWatcher = watch(electronOutputDir, () => {
+    if (shuttingDown) return;
+    if (electronRestartTimer != null) clearTimeout(electronRestartTimer);
+    electronRestartTimer = setTimeout(restartElectron, 100);
+  });
+}
+
+function restartElectron() {
+  electronRestartTimer = null;
+  if (shuttingDown || electronProcess == null) return;
+
+  const previousProcess = electronProcess;
+  expectedChildExits.add(previousProcess);
+  electronProcess = null;
+  previousProcess.once("exit", () => {
+    if (!shuttingDown) launchElectron();
+  });
+  previousProcess.kill("SIGTERM");
 }
 
 async function findAvailablePort(startPort) {
