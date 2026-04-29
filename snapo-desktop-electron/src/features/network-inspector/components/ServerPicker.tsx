@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { SnapOServer } from "../../../network/bridge-types";
 import type { ServerId } from "../../../network/cdp";
 
@@ -11,12 +12,40 @@ export function ServerSelect({
   selectedServer: SnapOServer | null;
   onChange: (server: ServerId | null) => void;
 }): JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const menuId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setExpanded(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [expanded]);
+
   if (servers.length === 0) return <div className="no-servers-banner">No Apps Found</div>;
 
-  const value = selectedServer == null ? "" : serverOptionValue(selectedServer);
   return (
-    <div className="server-select">
-      <div className="server-picker-button" aria-hidden="true">
+    <div className="server-select" ref={rootRef}>
+      <button
+        className="server-picker-button"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={expanded}
+        aria-controls={menuId}
+        onClick={() => setExpanded((value) => !value)}
+      >
         <ServerAppIcon server={selectedServer} />
         <span className="server-picker-text">
           <span className="server-name">{selectedServer?.displayName ?? "Select an App"}</span>
@@ -24,24 +53,32 @@ export function ServerSelect({
             <span className="server-device">{selectedServer.deviceDisplayTitle}</span>
           )}
         </span>
-        <ChevronDown size={18} className="server-chevron" />
-      </div>
-      <select
-        className="server-picker-select"
-        aria-label="Select an App"
-        value={value}
-        onChange={(event) => {
-          const selected = servers.find((server) => serverOptionValue(server) === event.target.value);
-          onChange(selected == null ? null : { deviceId: selected.deviceId, socketName: selected.socketName });
-        }}
-      >
-        {selectedServer == null ? <option value="">Select an App</option> : null}
-        {servers.map((server) => (
-          <option key={`${server.deviceId}:${server.socketName}`} value={serverOptionValue(server)}>
-            {server.displayName} · {server.deviceDisplayTitle}
-          </option>
-        ))}
-      </select>
+        <ChevronDown size={18} className={expanded ? "server-chevron expanded" : "server-chevron"} />
+      </button>
+
+      {expanded ? (
+        <div className="server-picker-menu" id={menuId} role="menu" aria-label="Detected servers">
+          <div className="server-picker-menu-header">Detected servers</div>
+          {servers.map((server) => (
+            <button
+              className="server-picker-menu-item"
+              type="button"
+              role="menuitem"
+              key={`${server.deviceId}:${server.socketName}`}
+              onClick={() => {
+                onChange({ deviceId: server.deviceId, socketName: server.socketName });
+                setExpanded(false);
+              }}
+            >
+              <ServerAppIcon server={server} />
+              <span className="server-picker-menu-text">
+                <span className="server-picker-menu-name">{server.displayName}</span>
+                <span className="server-picker-menu-device">{server.deviceDisplayTitle}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -56,8 +93,4 @@ function ServerAppIcon({ server }: { server: SnapOServer | null }): JSX.Element 
       )}
     </span>
   );
-}
-
-function serverOptionValue(server: SnapOServer): string {
-  return `${server.deviceId}\u0000${server.socketName}`;
 }

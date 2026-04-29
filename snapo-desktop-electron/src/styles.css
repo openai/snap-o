@@ -2,6 +2,12 @@
   color-scheme: light dark;
   --primary: #111111;
   --on-primary: #ffffff;
+  --primary-container: #e6e6e6;
+  --on-primary-container: #111111;
+  --secondary: #2a2a2a;
+  --on-secondary: #ffffff;
+  --secondary-container: #ececec;
+  --on-secondary-container: #1b1b1b;
   --background: #f7f7f7;
   --on-background: #111111;
   --surface: #fdfdfd;
@@ -9,7 +15,10 @@
   --surface-variant: #f1f1f1;
   --on-surface-variant: #6b6b6b;
   --surface-bright: #ffffff;
+  --surface-dim: #eaeaea;
+  --surface-container-lowest: #ffffff;
   --surface-container-low: #f6f6f6;
+  --surface-container: #f0f0f0;
   --surface-container-high: #e8e8e8;
   --surface-container-highest: #e1e1e1;
   --outline: #d0d0d0;
@@ -17,10 +26,16 @@
   --success: #23a84a;
   --error: #d04a3c;
   --warning: #ff9b0d;
+  --warning-surface: #f7ebdd;
   --warning-strong: #f69e00;
+  --on-warning-strong: #ffffff;
   --info: #6f6f6f;
   --accent-blue: #2778db;
   --sidebar-selection: #bcd6ff;
+  --sidebar-surface: var(--surface);
+  --sidebar-min-width: 260px;
+  --detail-min-width: 360px;
+  --splitter-width: 12px;
   --json-key: #6e3a9c;
   --json-number: #2f6fae;
   --json-string: #b74840;
@@ -40,6 +55,12 @@
   :root {
     --primary: #ececec;
     --on-primary: #101010;
+    --primary-container: #1b1b1b;
+    --on-primary-container: #ececec;
+    --secondary: #e0e0e0;
+    --on-secondary: #111111;
+    --secondary-container: #262626;
+    --on-secondary-container: #e0e0e0;
     --background: #0f0f0f;
     --on-background: #f1f1f1;
     --surface: #111111;
@@ -47,7 +68,10 @@
     --surface-variant: #1c1c1c;
     --on-surface-variant: #b5b5b5;
     --surface-bright: #1a1a1a;
+    --surface-dim: #0b0b0b;
+    --surface-container-lowest: #0f0f0f;
     --surface-container-low: #141414;
+    --surface-container: #191919;
     --surface-container-high: #212121;
     --surface-container-highest: #2a2a2a;
     --outline: #3a3a3a;
@@ -55,10 +79,13 @@
     --success: #5bcf8b;
     --error: #ff7b6d;
     --warning: #f2b15a;
+    --warning-surface: #3a2a18;
     --warning-strong: #b86a00;
+    --on-warning-strong: #ffffff;
     --info: #b0b0b0;
     --accent-blue: #5aa4e8;
     --sidebar-selection: #2f4a72;
+    --sidebar-surface: var(--surface-container-highest);
     --json-key: #c38be8;
     --json-number: #89b7f2;
     --json-string: #ff8f7d;
@@ -72,7 +99,7 @@
 
 body {
   margin: 0;
-  min-width: 620px;
+  min-width: calc(var(--sidebar-min-width) + var(--splitter-width) + var(--detail-min-width));
   min-height: 520px;
   background: var(--background);
 }
@@ -90,31 +117,63 @@ button {
   border-radius: 0;
   background: transparent;
   color: inherit;
-  cursor: pointer;
   padding: 0;
-}
-
-button:disabled {
-  cursor: default;
 }
 
 .app-shell {
   height: 100vh;
   display: grid;
-  grid-template-columns: minmax(260px, 28vw) minmax(360px, 1fr);
+  grid-template-columns:
+    var(--sidebar-width, max(var(--sidebar-min-width), 28vw)) var(--splitter-width)
+    minmax(var(--detail-min-width), 1fr);
   overflow: hidden;
   background: var(--background);
 }
 
 .sidebar {
-  min-width: 0;
+  min-width: var(--sidebar-min-width);
   min-height: 0;
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface);
-  border-right: 1px solid var(--outline-variant);
+  background: var(--sidebar-surface);
+}
+
+.splitter {
+  position: relative;
+  width: var(--splitter-width);
+  min-width: var(--splitter-width);
+  background: var(--surface-bright);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.splitter::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--outline-variant);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.splitter:hover::before,
+.splitter:focus-visible::before,
+body.split-pane-resizing .splitter::before {
+  background: var(--outline);
+}
+
+.splitter:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+
+body.split-pane-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .server-picker-frame {
@@ -146,15 +205,70 @@ button:disabled {
   padding: 8px 12px;
   border: 1px solid var(--outline);
   background: var(--surface);
+  text-align: left;
 }
 
-.server-picker-select {
+.server-picker-menu {
   position: absolute;
-  inset: 0;
+  z-index: 20;
+  top: 100%;
+  left: 0;
   width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--outline);
+  background: var(--background);
+}
+
+.server-picker-menu-header {
+  padding: 8px 16px;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 500;
+}
+
+.server-picker-menu-item {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  color: var(--on-background);
+  text-align: left;
+}
+
+.server-picker-menu-item:hover,
+.server-picker-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  outline: none;
+}
+
+.server-picker-menu-text {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.server-picker-menu-name,
+.server-picker-menu-device {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-picker-menu-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+}
+
+.server-picker-menu-device {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .server-app-icon {
@@ -229,6 +343,11 @@ button:disabled {
   flex: 0 0 auto;
   margin-left: 10px;
   color: var(--on-surface-variant);
+  transition: transform 120ms ease;
+}
+
+.server-chevron.expanded {
+  transform: rotate(180deg);
 }
 
 .replacement-banner {
@@ -238,7 +357,7 @@ button:disabled {
   justify-content: space-between;
   padding: 8px 10px;
   background: var(--warning-strong);
-  color: var(--on-primary);
+  color: var(--on-warning-strong);
   text-align: left;
 }
 
@@ -263,7 +382,7 @@ button:disabled {
   margin: 8px 8px 0;
   padding: 12px;
   background: var(--warning-strong);
-  color: var(--on-primary);
+  color: var(--on-warning-strong);
 }
 
 .schema-warning-title {
@@ -431,7 +550,7 @@ button:disabled {
 }
 
 .detail-pane {
-  min-width: 0;
+  min-width: var(--detail-min-width);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -948,7 +1067,6 @@ pre {
 .context-menu-item:disabled {
   color: var(--on-surface-variant);
   opacity: 0.45;
-  cursor: default;
 }
 
 .context-menu-item:disabled:hover {

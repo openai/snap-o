@@ -1,12 +1,24 @@
+import type { CSSProperties } from "react";
 import { DetailContent } from "./components/DetailPane";
 import { Sidebar } from "./components/Sidebar";
 import { useNetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
+import { usePersistentSplitPane } from "./hooks/usePersistentSplitPane";
 
 export function NetworkInspectorApp(): JSX.Element {
   const model = useNetworkInspectorModel();
+  const {
+    containerRef,
+    sidebarWidth,
+    minSidebarWidth,
+    maxSidebarWidth,
+    beginResize,
+    continueResize,
+    endResize,
+    resizeWithKeyboard
+  } = usePersistentSplitPane();
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" ref={containerRef} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
       <Sidebar
         servers={model.servers}
         selectedServer={model.selectedServer}
@@ -25,6 +37,22 @@ export function NetworkInspectorApp(): JSX.Element {
         onToggleSortOrder={model.toggleSortOrder}
         onClearCompleted={model.clearCompletedRecords}
         onRecordSelect={model.selectRecord}
+      />
+
+      <div
+        className="splitter"
+        role="separator"
+        aria-label="Resize request list"
+        aria-orientation="vertical"
+        aria-valuemin={minSidebarWidth}
+        aria-valuemax={maxSidebarWidth}
+        aria-valuenow={sidebarWidth}
+        tabIndex={0}
+        onPointerDown={beginResize}
+        onPointerMove={continueResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onKeyDown={resizeWithKeyboard}
       />
 
       <main className="detail-pane">
