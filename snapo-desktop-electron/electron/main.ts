@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 const backend = new NetworkInspectorBackend();
 
 const NewWindowOffsetPx = 100;
+const SnapOCheckUpdatesUrl = "snapo://check-updates";
 
 function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   const parentBounds = parentWindow?.getBounds();
@@ -78,7 +79,7 @@ function installIpcHandlers(): void {
 function installApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [];
   if (process.platform === "darwin") template.push(applicationMenu());
-  template.push(fileMenu(), editMenu(), windowMenu());
+  template.push(fileMenu(), editMenu(), toolsMenu(), windowMenu());
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -151,6 +152,20 @@ function editMenu(): MenuItemConstructorOptions {
   return {
     label: "Edit",
     submenu
+  };
+}
+
+function toolsMenu(): MenuItemConstructorOptions {
+  return {
+    label: "Tools",
+    submenu: [
+      {
+        label: "Check for Updates...",
+        click: () => {
+          void shell.openExternal(SnapOCheckUpdatesUrl);
+        }
+      }
+    ]
   };
 }
 
