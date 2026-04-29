@@ -58,12 +58,25 @@ function EmptyState({
   return (
     <section className="empty-detail">
       <h1>{title}</h1>
-      <p>{body}</p>
+      <p>{emptyStateBody(body)}</p>
       {showDocsLink ? (
         <button className="text-button" type="button" onClick={onOpenDocs}>
           Read the developer guide
         </button>
       ) : null}
     </section>
+  );
+}
+
+function emptyStateBody(body: string): React.ReactNode {
+  const marker = "`com.openai.snapo`";
+  if (!body.includes(marker)) return body;
+  const [before, after] = body.split(marker, 2);
+  return (
+    <>
+      {before}
+      <code>com.openai.snapo</code>
+      {after}
+    </>
   );
 }

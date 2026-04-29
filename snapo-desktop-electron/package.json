@@ -1,6 +1,6 @@
 {
   "name": "snapo-desktop-electron",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "main": "dist-electron/electron/main.js",
@@ -19,6 +19,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "devtools-protocol": "^0.0.1617982",
     "electron": "^41.2.2",
+    "fast-xml-parser": "^5.7.2",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

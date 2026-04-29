@@ -3,6 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NetworkInspectorBackend } from "./backend.js";
+import { installStandardContextMenus } from "./context-menu.js";
+import { openHostUpdateUi, runStartupUpdateCheck } from "./updates.js";
+import { loadWindowState, trackWindowState } from "./window-state.js";
 import type { LoadBodiesInput, SaveFileInput, StartStreamInput } from "../src/network/bridge-types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10,22 +13,27 @@ const __dirname = path.dirname(__filename);
 const backend = new NetworkInspectorBackend();
 
 const NewWindowOffsetPx = 100;
-const SnapOCheckUpdatesUrl = "snapo://check-updates";
 const DockIconPath = path.join(app.getAppPath(), "resources/icons/network.png");
 
 function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
+  const windowState = loadWindowState();
   const parentBounds = parentWindow?.getBounds();
   const window = new BrowserWindow({
-    width: 1240,
-    height: 820,
+    width: windowState.width,
+    height: windowState.height,
     minWidth: 920,
     minHeight: 620,
-    ...(parentBounds == null
-      ? {}
-      : {
-          x: parentBounds.x + NewWindowOffsetPx,
-          y: parentBounds.y + NewWindowOffsetPx
-        }),
+    ...(parentBounds == null && windowState.x != null && windowState.y != null
+      ? {
+          x: windowState.x,
+          y: windowState.y
+        }
+      : parentBounds == null
+        ? {}
+        : {
+            x: parentBounds.x + NewWindowOffsetPx,
+            y: parentBounds.y + NewWindowOffsetPx
+          }),
     title: "Snap-O Network Inspector",
     backgroundColor: "#f6f7f9",
     webPreferences: {
@@ -35,6 +43,9 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
       sandbox: false
     }
   });
+  if (windowState.isMaximized) window.maximize();
+  trackWindowState(window);
+  installStandardContextMenus(window);
 
   const devServerUrl = process.env.SNAPO_ELECTRON_DEV_SERVER_URL;
   if (devServerUrl != null && devServerUrl.length > 0) {
@@ -51,6 +62,7 @@ app.whenReady().then(() => {
   installIpcHandlers();
   installApplicationMenu();
   createWindow();
+  void runStartupUpdateCheck();
 });
 
 app.on("window-all-closed", () => {
@@ -170,7 +182,7 @@ function toolsMenu(): MenuItemConstructorOptions {
       {
         label: "Check for Updates...",
         click: () => {
-          void shell.openExternal(SnapOCheckUpdatesUrl);
+          void openHostUpdateUi();
         }
       }
     ]

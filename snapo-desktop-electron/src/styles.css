@@ -1110,6 +1110,10 @@ pre {
   line-height: 18px;
 }
 
+.empty-detail code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
 .text-button {
   min-height: 32px;
   padding: 0 8px;
