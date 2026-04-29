@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,12 +9,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backend = new NetworkInspectorBackend();
 
-function createWindow(): void {
+const NewWindowOffsetPx = 100;
+
+function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
+  const parentBounds = parentWindow?.getBounds();
   const window = new BrowserWindow({
     width: 1240,
     height: 820,
     minWidth: 920,
     minHeight: 620,
+    ...(parentBounds == null
+      ? {}
+      : {
+          x: parentBounds.x + NewWindowOffsetPx,
+          y: parentBounds.y + NewWindowOffsetPx
+        }),
     title: "Snap-O Network Inspector",
     backgroundColor: "#f6f7f9",
     webPreferences: {
@@ -31,10 +40,13 @@ function createWindow(): void {
   } else {
     void window.loadFile(path.join(__dirname, "../../dist-renderer/index.html"));
   }
+
+  return window;
 }
 
 app.whenReady().then(() => {
   installIpcHandlers();
+  installApplicationMenu();
   createWindow();
 
   app.on("activate", () => {
@@ -67,6 +79,84 @@ function installIpcHandlers(): void {
     await fs.writeFile(result.filePath, input.data, "utf8");
     return { saved: true, path: result.filePath };
   });
+}
+
+function installApplicationMenu(): void {
+  const template: MenuItemConstructorOptions[] = [
+    ...(process.platform === "darwin"
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" },
+              { type: "separator" },
+              { role: "services" },
+              { type: "separator" },
+              { role: "hide" },
+              { role: "hideOthers" },
+              { role: "unhide" },
+              { type: "separator" },
+              { role: "quit" }
+            ]
+          } satisfies MenuItemConstructorOptions
+        ]
+      : []),
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "New Window",
+          accelerator: "CmdOrCtrl+N",
+          click: () => {
+            createWindow(BrowserWindow.getFocusedWindow() ?? undefined);
+          }
+        },
+        { type: "separator" },
+        {
+          label: "Close",
+          accelerator: "CmdOrCtrl+W",
+          click: () => {
+            BrowserWindow.getFocusedWindow()?.close();
+          }
+        }
+      ]
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        ...(process.platform === "darwin"
+          ? [
+              { role: "pasteAndMatchStyle" },
+              { role: "delete" },
+              { role: "selectAll" },
+              { type: "separator" },
+              {
+                label: "Speech",
+                submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }]
+              }
+            ]
+          : [{ role: "delete" }, { type: "separator" }, { role: "selectAll" }])
+      ]
+    },
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        ...(process.platform === "darwin"
+          ? [{ type: "separator" }, { role: "front" }]
+          : [{ role: "close" }])
+      ]
+    }
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function filtersForMimeType(mimeType?: string | null): Electron.FileFilter[] {
