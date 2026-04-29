@@ -328,7 +328,7 @@ body.split-pane-resizing {
   color: var(--on-surface);
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .server-device {
@@ -369,7 +369,7 @@ body.split-pane-resizing {
 .replacement-title {
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .replacement-detail {
@@ -389,7 +389,7 @@ body.split-pane-resizing {
   margin-bottom: 8px;
   font-size: 14px;
   line-height: 18px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .schema-warning-body {
@@ -426,7 +426,7 @@ body.split-pane-resizing {
   padding: 4px 6px;
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .search-row input::placeholder {
@@ -502,7 +502,7 @@ body.split-pane-resizing {
   color: var(--on-surface);
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .record-secondary {
@@ -580,7 +580,7 @@ body.split-pane-resizing {
   color: var(--on-surface);
   font-size: 14px;
   line-height: 18px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .title-row h1 {
@@ -656,7 +656,21 @@ body.split-pane-resizing {
   color: var(--on-surface);
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.section-triangle-slot {
+  width: 28px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  margin-right: 2px;
+}
+
+.section-triangle-slot .triangle {
+  margin-right: 0;
 }
 
 .triangle {
@@ -800,7 +814,7 @@ body.split-pane-resizing {
   color: var(--primary);
   font-size: 10px;
   line-height: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .inline-text-toggle:hover {
@@ -829,10 +843,6 @@ body.split-pane-resizing {
   font-size: 12px;
   line-height: 16px;
   overflow: hidden;
-}
-
-.json-row:hover {
-  background: var(--surface-container-high);
 }
 
 .json-row-with-trailing {
@@ -965,7 +975,7 @@ pre {
 
 .event-name {
   color: var(--on-surface);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .message-opcode {
@@ -1016,7 +1026,7 @@ pre {
   color: var(--on-surface);
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .image-content-type {

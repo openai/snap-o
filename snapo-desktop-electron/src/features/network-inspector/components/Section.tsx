@@ -27,7 +27,9 @@ export function Section({
           type="button"
           onClick={() => uiState.setSectionExpanded(storageKey, !expanded)}
         >
-          <span className={expanded ? "triangle expanded" : "triangle"} />
+          <span className="section-triangle-slot">
+            <span className={expanded ? "triangle expanded" : "triangle"} />
+          </span>
           <span>{title}</span>
           {meta == null ? null : <span className="section-meta">{meta}</span>}
         </button>

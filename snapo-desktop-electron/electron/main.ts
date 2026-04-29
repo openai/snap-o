@@ -11,6 +11,7 @@ const backend = new NetworkInspectorBackend();
 
 const NewWindowOffsetPx = 100;
 const SnapOCheckUpdatesUrl = "snapo://check-updates";
+const DockIconPath = path.join(app.getAppPath(), "resources/icons/network.png");
 
 function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   const parentBounds = parentWindow?.getBounds();
@@ -46,6 +47,7 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  installApplicationIcon();
   installIpcHandlers();
   installApplicationMenu();
   createWindow();
@@ -74,6 +76,12 @@ function installIpcHandlers(): void {
     await fs.writeFile(result.filePath, input.data, "utf8");
     return { saved: true, path: result.filePath };
   });
+}
+
+function installApplicationIcon(): void {
+  if (process.platform === "darwin" && app.dock != null) {
+    app.dock.setIcon(DockIconPath);
+  }
 }
 
 function installApplicationMenu(): void {
