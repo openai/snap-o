@@ -85,9 +85,18 @@ export function ServerSelect({
 
 function ServerAppIcon({ server }: { server: SnapOServer | null }): JSX.Element {
   const image = server?.appIconBase64;
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [image]);
+
+  const hasImage = image != null && image.length > 0 && !imageFailed;
   return (
-    <span className="server-app-icon">
-      {image == null || image.length === 0 ? null : <img src={`data:image/png;base64,${image}`} alt="" />}
+    <span className={hasImage ? "server-app-icon" : "server-app-icon placeholder"}>
+      {hasImage ? (
+        <img src={`data:image/png;base64,${image}`} alt="" onError={() => setImageFailed(true)} />
+      ) : null}
       {server == null ? null : (
         <span className={`server-status-dot ${server.isConnected ? "connected" : "disconnected"}`} />
       )}

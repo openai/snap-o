@@ -61,12 +61,13 @@ export function bodyMetadata(payload: BodyPayload): string | null {
   const parts: string[] = [];
   if (payload.capturedBytes > 0) {
     parts.push(`Captured ${formatBytes(payload.capturedBytes)}`);
-    if (payload.totalBytes != null && payload.totalBytes >= 0) parts.push(`of ${formatBytes(payload.totalBytes)}`);
+    if (payload.totalBytes != null && payload.totalBytes > payload.capturedBytes) {
+      parts.push(`of ${formatBytes(payload.totalBytes)}`);
+    }
   } else if (payload.totalBytes != null && payload.totalBytes >= 0) {
     parts.push(`Total ${formatBytes(payload.totalBytes)}`);
   }
-  parts.push("(complete)");
-  return parts.join(" ");
+  return parts.length === 0 ? null : parts.join(" ");
 }
 
 export function prettyJsonOrNull(text: string | null | undefined): string | null {

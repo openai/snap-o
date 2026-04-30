@@ -112,7 +112,9 @@ private fun metadataText(payload: NetworkInspectorRequestUiModel.BodyPayload): S
 
     if (payload.capturedBytes > 0) {
         parts += "Captured ${formatBytes(payload.capturedBytes)}"
-        totalBytes?.let { parts += "of ${formatBytes(it)}" }
+        totalBytes
+            ?.takeIf { it > payload.capturedBytes }
+            ?.let { parts += "of ${formatBytes(it)}" }
     } else if (totalBytes != null) {
         parts += "Total ${formatBytes(totalBytes)}"
     }
@@ -121,7 +123,6 @@ private fun metadataText(payload: NetworkInspectorRequestUiModel.BodyPayload): S
     if (truncated != null) {
         when {
             truncated > 0 -> parts += "(${formatBytes(truncated)} truncated)"
-            truncated == 0L && !payload.isPreview -> parts += "(complete)"
         }
     } else if (payload.isPreview) {
         parts += "(preview)"

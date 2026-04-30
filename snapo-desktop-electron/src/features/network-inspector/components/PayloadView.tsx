@@ -66,13 +66,19 @@ export function PayloadView({
 
   return (
     <div className="payload-card">
-      {jsonRoot == null && controls != null ? <div className="payload-controls">{controls}</div> : null}
       {payload.prettyText == null && payload.isLikelyJson ? (
         <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
       ) : null}
       <div className="payload-scroll">
         {jsonRoot == null ? (
-          <pre>{displayText}</pre>
+          controls == null ? (
+            <pre>{displayText}</pre>
+          ) : (
+            <div className="raw-payload-row">
+              <pre>{displayText}</pre>
+              <span className="raw-payload-controls">{controls}</span>
+            </div>
+          )
         ) : (
           <JsonOutline
             node={jsonRoot}

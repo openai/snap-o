@@ -1,4 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  shell,
+  systemPreferences,
+  type MenuItemConstructorOptions
+} from "electron";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +23,7 @@ const backend = new NetworkInspectorBackend();
 
 const NewWindowOffsetPx = 100;
 const DockIconPath = path.join(app.getAppPath(), "resources/icons/network.png");
+const IsDevelopment = (process.env.SNAPO_ELECTRON_DEV_SERVER_URL?.length ?? 0) > 0;
 
 function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   const windowState = loadWindowState();
@@ -35,7 +45,7 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
             y: parentBounds.y + NewWindowOffsetPx
           }),
     title: "Snap-O Network Inspector",
-    backgroundColor: "#f6f7f9",
+    backgroundColor: windowBackgroundColor(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -55,6 +65,13 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   }
 
   return window;
+}
+
+function windowBackgroundColor(): string {
+  if (process.platform === "darwin") {
+    return systemPreferences.getColor("window-background");
+  }
+  return "#f6f7f9";
 }
 
 app.whenReady().then(() => {
@@ -99,9 +116,26 @@ function installApplicationIcon(): void {
 function installApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [];
   if (process.platform === "darwin") template.push(applicationMenu());
-  template.push(fileMenu(), editMenu(), toolsMenu(), windowMenu());
+  template.push(fileMenu(), editMenu());
+  if (IsDevelopment) template.push(viewMenu());
+  template.push(toolsMenu(), windowMenu());
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function viewMenu(): MenuItemConstructorOptions {
+  return {
+    label: "View",
+    submenu: [
+      { role: "reload" },
+      { role: "forceReload" },
+      { role: "toggleDevTools" },
+      { type: "separator" },
+      { role: "resetZoom" },
+      { role: "zoomIn" },
+      { role: "zoomOut" }
+    ]
+  };
 }
 
 function applicationMenu(): MenuItemConstructorOptions {
@@ -137,11 +171,21 @@ function fileMenu(): MenuItemConstructorOptions {
         label: "Close",
         accelerator: "CmdOrCtrl+W",
         click: () => {
-          BrowserWindow.getFocusedWindow()?.close();
+          closeFocusedWindowOrDevTools();
         }
       }
     ]
   };
+}
+
+function closeFocusedWindowOrDevTools(): void {
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  if (focusedWindow == null) return;
+  if (focusedWindow.webContents.isDevToolsFocused()) {
+    focusedWindow.webContents.closeDevTools();
+    return;
+  }
+  focusedWindow.close();
 }
 
 function editMenu(): MenuItemConstructorOptions {

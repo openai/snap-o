@@ -32,10 +32,11 @@
   --info: #6f6f6f;
   --accent-blue: #2778db;
   --sidebar-selection: #bcd6ff;
-  --sidebar-surface: var(--surface);
+  --sidebar-surface: #f4f4f4;
   --sidebar-min-width: 260px;
   --detail-min-width: 360px;
-  --splitter-width: 12px;
+  --splitter-width: 1px;
+  --splitter-hit-width: 12px;
   --json-key: #6e3a9c;
   --json-number: #2f6fae;
   --json-string: #b74840;
@@ -142,9 +143,11 @@ button {
 
 .splitter {
   position: relative;
-  width: var(--splitter-width);
-  min-width: var(--splitter-width);
-  background: var(--surface-bright);
+  z-index: 1;
+  width: var(--splitter-hit-width);
+  min-width: var(--splitter-hit-width);
+  margin-left: calc((var(--splitter-width) - var(--splitter-hit-width)) / 2);
+  margin-right: calc((var(--splitter-width) - var(--splitter-hit-width)) / 2);
   cursor: col-resize;
   touch-action: none;
 }
@@ -204,7 +207,7 @@ body.split-pane-resizing {
   align-items: center;
   padding: 8px 12px;
   border: 1px solid var(--outline);
-  background: var(--surface);
+  background: var(--sidebar-surface);
   text-align: left;
 }
 
@@ -277,8 +280,11 @@ body.split-pane-resizing {
   height: 32px;
   flex: 0 0 32px;
   display: inline-flex;
-  background: var(--surface-container-high);
   overflow: hidden;
+}
+
+.server-app-icon.placeholder {
+  background: var(--surface-container-high);
 }
 
 .server-app-icon img {
@@ -561,7 +567,7 @@ body.split-pane-resizing {
 .detail-scroll {
   min-height: 100%;
   overflow: visible;
-  padding: 24px 24px 24px 16px;
+  padding: 16px;
 }
 
 .detail-header {
@@ -603,8 +609,8 @@ body.split-pane-resizing {
 }
 
 .status-label {
-  font-size: 10px;
-  line-height: 12px;
+  font-size: inherit;
+  line-height: inherit;
   font-weight: 500;
 }
 
@@ -660,12 +666,12 @@ body.split-pane-resizing {
 }
 
 .section-triangle-slot {
-  width: 28px;
+  width: 16px;
   height: 16px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex: 0 0 28px;
+  justify-content: flex-start;
+  flex: 0 0 16px;
   margin-right: 2px;
 }
 
@@ -705,7 +711,7 @@ body.split-pane-resizing {
   padding: 6px 0 8px;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  row-gap: 8px;
+  row-gap: 6px;
 }
 
 .header-row {
@@ -773,7 +779,6 @@ body.split-pane-resizing {
   overflow: auto;
 }
 
-.payload-controls,
 .body-toolbar {
   display: flex;
   align-items: center;
@@ -784,10 +789,6 @@ body.split-pane-resizing {
   font-size: 10px;
   line-height: 12px;
   font-weight: 500;
-}
-
-.payload-controls {
-  justify-content: flex-start;
 }
 
 .inline-action {
@@ -856,6 +857,25 @@ body.split-pane-resizing {
   align-items: center;
   gap: 6px;
   margin-left: 8px;
+}
+
+.raw-payload-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.raw-payload-row pre {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.raw-payload-controls {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .json-toggle {

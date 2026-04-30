@@ -16,7 +16,7 @@ const keyboardResizeStepPx = 16;
 
 export const minSidebarWidthPx = 260;
 export const minDetailPaneWidthPx = 360;
-export const splitterWidthPx = 12;
+export const splitterWidthPx = 1;
 
 export interface PersistentSplitPane {
   containerRef: RefObject<HTMLDivElement>;
