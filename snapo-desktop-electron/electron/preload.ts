@@ -9,6 +9,7 @@ import type {
 } from "../src/network/bridge-types.js";
 
 const api: SnapONetworkBridge = {
+  platform: process.platform,
   listServers: () => ipcRenderer.invoke("network:listServers"),
   loadBodies: (input: LoadBodiesInput) => ipcRenderer.invoke("network:loadBodies", input),
   startStream: (input: StartStreamInput) => ipcRenderer.invoke("network:startStream", input),

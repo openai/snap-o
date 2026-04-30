@@ -45,6 +45,12 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
             y: parentBounds.y + NewWindowOffsetPx
           }),
     title: "Snap-O Network Inspector",
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: { x: 16, y: 11 }
+        }
+      : {}),
     backgroundColor: windowBackgroundColor(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

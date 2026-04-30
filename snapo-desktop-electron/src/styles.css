@@ -105,6 +105,45 @@ body {
   background: var(--background);
 }
 
+.window-frame {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.window-titlebar {
+  display: none;
+}
+
+html[data-platform="darwin"] .window-frame {
+  grid-template-rows: 30px minmax(0, 1fr);
+}
+
+html[data-platform="darwin"] .window-titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--background);
+  -webkit-app-region: drag;
+}
+
+.window-titlebar-title {
+  min-width: 0;
+  justify-self: center;
+  overflow: hidden;
+  color: var(--on-surface);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 button,
 input,
 select {
@@ -122,7 +161,7 @@ button {
 }
 
 .app-shell {
-  height: 100vh;
+  min-height: 0;
   display: grid;
   grid-template-columns:
     var(--sidebar-width, max(var(--sidebar-min-width), 28vw)) var(--splitter-width)
@@ -134,7 +173,6 @@ button {
 .sidebar {
   min-width: var(--sidebar-min-width);
   min-height: 0;
-  height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -479,7 +517,7 @@ body.split-pane-resizing {
   grid-template-columns: minmax(0, 1fr) max-content max-content;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 5px 12px;
   text-align: left;
   background: transparent;
 }
@@ -670,7 +708,6 @@ body.split-pane-resizing {
   align-items: center;
   justify-content: flex-start;
   flex: 0 0 16px;
-  margin-right: 2px;
 }
 
 .section-triangle-slot .triangle {
@@ -801,7 +838,7 @@ body.split-pane-resizing {
   gap: 4px;
   min-height: 24px;
   padding: 0 4px;
-  color: var(--primary);
+  color: var(--on-surface-variant);
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
@@ -822,7 +859,7 @@ body.split-pane-resizing {
   align-items: center;
   min-height: 24px;
   padding: 0 4px;
-  color: var(--primary);
+  color: var(--on-surface-variant);
   font-size: 10px;
   line-height: 12px;
   font-weight: 500;

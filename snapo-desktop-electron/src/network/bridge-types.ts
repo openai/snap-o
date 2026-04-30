@@ -69,6 +69,7 @@ export interface StreamStatus {
 }
 
 export interface SnapONetworkBridge {
+  platform: NodeJS.Platform;
   listServers(): Promise<SnapOServer[]>;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
