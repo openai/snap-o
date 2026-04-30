@@ -815,9 +815,7 @@ body.split-pane-resizing {
 }
 
 .payload-scroll {
-  min-height: 0;
-  max-height: min(520px, calc(100vh - 220px));
-  overflow: auto;
+  overflow: visible;
 }
 
 .body-toolbar {
@@ -999,7 +997,7 @@ body.split-pane-resizing {
 pre {
   margin: 0;
   padding: 0;
-  overflow: auto;
+  overflow: visible;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--on-surface);

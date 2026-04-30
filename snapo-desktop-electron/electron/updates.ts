@@ -40,17 +40,46 @@ interface AppcastItem {
 
 type AutoCheckDecision = "enabled" | "disabled" | "promptHost";
 
-export async function runStartupUpdateCheck(): Promise<void> {
-  const decision = await autoCheckDecision();
-  if (decision === "disabled") return;
-  if (decision === "promptHost") {
-    await openHostUpdateUi();
-    return;
+type UpdateCheckSource = "auto" | "manual";
+
+export class UpdateController {
+  private checking = false;
+  private hasTriggeredUpdate = false;
+
+  constructor(private readonly onCheckingChange: () => void = () => {}) {}
+
+  get isChecking(): boolean {
+    return this.checking;
   }
 
-  const versionInfo = loadVersionInfo();
-  if (await updateIsAvailable(versionInfo)) {
-    await openHostUpdateUi();
+  async runStartupCheck(): Promise<void> {
+    const decision = await autoCheckDecision();
+    if (decision === "disabled") return;
+    if (decision === "promptHost") {
+      await openHostUpdateUi();
+      return;
+    }
+    await this.checkForUpdates("auto");
+  }
+
+  async checkForUpdates(source: UpdateCheckSource): Promise<void> {
+    if (this.checking) return;
+    this.setChecking(true);
+    try {
+      const versionInfo = loadVersionInfo();
+      if (!(await updateIsAvailable(versionInfo))) return;
+      if (source === "manual" || !this.hasTriggeredUpdate) {
+        this.hasTriggeredUpdate = true;
+        await openHostUpdateUi();
+      }
+    } finally {
+      this.setChecking(false);
+    }
+  }
+
+  private setChecking(value: boolean): void {
+    this.checking = value;
+    this.onCheckingChange();
   }
 }
 

@@ -1,7 +1,7 @@
 import { memo } from "react";
 import type { InspectorRecord } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
-import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
+import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { resolveDetailEmptyState } from "../lib/records";
 import { isUnsupportedLegacySchemaRequestSelection, unsupportedLegacySchemaMessage } from "../lib/schema";
 import { RequestDetail } from "./RequestDetail";
@@ -19,7 +19,7 @@ export const DetailContent = memo(function DetailContent({
   servers: SnapOServer[];
   selectedServer: SnapOServer | null;
   serverScopedItems: number;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
   onOpenDocs(): void;
 }): JSX.Element {
   if (record == null) {

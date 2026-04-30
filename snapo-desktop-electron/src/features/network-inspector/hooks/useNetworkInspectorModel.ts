@@ -11,7 +11,7 @@ import {
   type ServerId
 } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
-import { usePersistentInspectorUiState } from "./usePersistentInspectorUiState";
+import { useInspectorUiState } from "./useInspectorUiState";
 import {
   clearCompleted,
   countRecordsForServer,
@@ -30,7 +30,7 @@ const docsUrl = "https://github.com/openai/snap-o/blob/main/docs/network-inspect
 
 export interface NetworkInspectorModel {
   client: NetworkClient;
-  uiState: ReturnType<typeof usePersistentInspectorUiState>;
+  uiState: ReturnType<typeof useInspectorUiState>;
   servers: SnapOServer[];
   selectedServer: SnapOServer | null;
   selectedRecord: InspectorRecord | null;
@@ -61,7 +61,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
-  const uiState = usePersistentInspectorUiState();
+  const uiState = useInspectorUiState();
 
   const selectedServer = useMemo(
     () => pickSelectedServer(preferredServer, state.servers),

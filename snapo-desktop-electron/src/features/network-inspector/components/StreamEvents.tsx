@@ -3,7 +3,7 @@ import type { RequestRecord } from "../../../network/cdp";
 import { makeBodyPayload, prettyJsonOrNull } from "../../../network/payload";
 import { streamEventsRaw } from "../../../network/exporters";
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
-import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
+import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTime } from "../lib/format";
 import { InlineCopyButton, InlineTextToggle, PayloadView } from "./PayloadView";
 
@@ -35,7 +35,7 @@ export const SseEventList = memo(function SseEventList({
   events: RequestRecord["streamEvents"];
   closed?: RequestRecord["streamClosed"];
   storageKey: string;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
 }): JSX.Element {
   return (
     <div className="event-list">
@@ -63,7 +63,7 @@ const SseEventCard = memo(function SseEventCard({
 }: {
   event: RequestRecord["streamEvents"][number];
   storageKey: string;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
 }): JSX.Element {
   const rawText = event.data ?? event.raw;
   const prettyText = prettyJsonOrNull(rawText);

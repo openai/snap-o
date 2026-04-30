@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-const inspectorUiStorageKey = "snapo.networkInspector.ui.v1";
+import { useCallback, useMemo, useState } from "react";
 
 interface InspectorUiPreferences {
   sections: Record<string, boolean>;
@@ -8,7 +6,7 @@ interface InspectorUiPreferences {
   json: Record<string, boolean>;
 }
 
-export interface PersistentInspectorUiState {
+export interface InspectorUiState {
   sectionExpanded(key: string, fallback?: boolean): boolean;
   setSectionExpanded(key: string, value: boolean): void;
   prettyEnabled(key: string, fallback: boolean): boolean;
@@ -17,12 +15,8 @@ export interface PersistentInspectorUiState {
   setJsonExpanded(key: string, value: boolean): void;
 }
 
-export function usePersistentInspectorUiState(): PersistentInspectorUiState {
-  const [prefs, setPrefs] = useState<InspectorUiPreferences>(loadInspectorUiPreferences);
-
-  useEffect(() => {
-    window.localStorage.setItem(inspectorUiStorageKey, JSON.stringify(prefs));
-  }, [prefs]);
+export function useInspectorUiState(): InspectorUiState {
+  const [prefs, setPrefs] = useState<InspectorUiPreferences>(emptyInspectorUiPreferences);
 
   const sectionExpanded = useCallback(
     (key: string, fallback = true) => prefs.sections[key] ?? fallback,
@@ -56,21 +50,6 @@ export function usePersistentInspectorUiState(): PersistentInspectorUiState {
     }),
     [jsonExpanded, prettyEnabled, sectionExpanded, setJsonExpanded, setPrettyEnabled, setSectionExpanded]
   );
-}
-
-function loadInspectorUiPreferences(): InspectorUiPreferences {
-  try {
-    const raw = window.localStorage.getItem(inspectorUiStorageKey);
-    if (raw == null) return emptyInspectorUiPreferences();
-    const parsed = JSON.parse(raw) as Partial<InspectorUiPreferences>;
-    return {
-      sections: parsed.sections ?? {},
-      pretty: parsed.pretty ?? {},
-      json: parsed.json ?? {}
-    };
-  } catch {
-    return emptyInspectorUiPreferences();
-  }
 }
 
 function emptyInspectorUiPreferences(): InspectorUiPreferences {

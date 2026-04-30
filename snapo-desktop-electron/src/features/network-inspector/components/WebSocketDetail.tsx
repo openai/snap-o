@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { recordId, type WebSocketRecord } from "../../../network/cdp";
-import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
+import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTiming } from "../lib/format";
 import { HeadersTable, Section } from "./Section";
 import { FailureMessage, StatusBadge } from "./Status";
@@ -11,7 +11,7 @@ export const WebSocketDetail = memo(function WebSocketDetail({
   uiState
 }: {
   record: WebSocketRecord;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
 }): JSX.Element {
   const prefix = `websocket:${recordId(record)}`;
   return (

@@ -3,7 +3,7 @@ import { memo } from "react";
 import type { WebSocketMessageRecord } from "../../../network/cdp";
 import { formatBytes, makeBodyPayload, prettyJsonOrNull } from "../../../network/payload";
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
-import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
+import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTime } from "../lib/format";
 import { InlineCopyButton, InlineTextToggle, PayloadView } from "./PayloadView";
 
@@ -14,7 +14,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
 }: {
   message: WebSocketMessageRecord;
   storageKey: string;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
 }): JSX.Element {
   const preview = message.preview ?? "";
   const prettyText = prettyJsonOrNull(preview);

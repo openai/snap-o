@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
 import { makeBodyPayload } from "../../../network/payload";
-import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
+import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTiming } from "../lib/format";
 import { BodySection, payloadMetadata } from "./PayloadView";
 import { HeadersTable, Section } from "./Section";
@@ -13,7 +13,7 @@ export const RequestDetail = memo(function RequestDetail({
   uiState
 }: {
   record: RequestRecord;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
 }): JSX.Element {
   const isSseResponse = isLikelySseResponse(record);
   const requestBody = makeBodyPayload({

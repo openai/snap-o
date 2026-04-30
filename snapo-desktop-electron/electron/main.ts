@@ -13,13 +13,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NetworkInspectorBackend } from "./backend.js";
 import { installStandardContextMenus } from "./context-menu.js";
-import { openHostUpdateUi, runStartupUpdateCheck } from "./updates.js";
+import { UpdateController } from "./updates.js";
 import { loadWindowState, trackWindowState } from "./window-state.js";
 import type { LoadBodiesInput, SaveFileInput, StartStreamInput } from "../src/network/bridge-types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backend = new NetworkInspectorBackend();
+const updateController = new UpdateController(() => {
+  if (app.isReady()) installApplicationMenu();
+});
 
 const NewWindowOffsetPx = 100;
 const DockIconPath = path.join(app.getAppPath(), "resources/icons/network.png");
@@ -47,8 +50,7 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
     title: "Snap-O Network Inspector",
     ...(process.platform === "darwin"
       ? {
-          titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: { x: 16, y: 11 }
+          titleBarStyle: "hidden" as const
         }
       : {}),
     backgroundColor: windowBackgroundColor(),
@@ -88,7 +90,7 @@ app.whenReady().then(() => {
   installIpcHandlers();
   installApplicationMenu();
   createWindow();
-  void runStartupUpdateCheck();
+  void updateController.runStartupCheck();
 });
 
 app.on("window-all-closed", () => {
@@ -228,9 +230,10 @@ function toolsMenu(): MenuItemConstructorOptions {
     label: "Tools",
     submenu: [
       {
-        label: "Check for Updates...",
+        label: updateController.isChecking ? "Checking for Updates..." : "Check for Updates...",
+        enabled: !updateController.isChecking,
         click: () => {
-          void openHostUpdateUi();
+          void updateController.checkForUpdates("manual");
         }
       }
     ]

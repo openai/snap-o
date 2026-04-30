@@ -1,5 +1,5 @@
 import type { ClipboardEvent, ReactNode } from "react";
-import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
+import type { InspectorUiState } from "../hooks/useInspectorUiState";
 
 export function Section({
   title,
@@ -13,7 +13,7 @@ export function Section({
   title: string;
   meta?: string | null;
   storageKey: string;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
   initiallyExpanded?: boolean;
   trailing?: ReactNode;
   children: ReactNode;

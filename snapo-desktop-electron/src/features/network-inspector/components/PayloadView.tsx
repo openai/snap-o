@@ -9,7 +9,7 @@ import {
   type JsonNode
 } from "../../../network/payload";
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
-import type { PersistentInspectorUiState } from "../hooks/usePersistentInspectorUiState";
+import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { copyImageToClipboard, downloadDataUrl, imageFileName } from "../lib/imageActions";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 
@@ -20,7 +20,7 @@ export function BodySection({
 }: {
   payload: BodyPayload;
   storageKey: string;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
 }): JSX.Element {
   if (isImagePayload(payload)) return <ImagePreview payload={payload} />;
   return <PayloadView payload={payload} storageKey={storageKey} uiState={uiState} prettyInitiallyExpanded />;
@@ -37,7 +37,7 @@ export function PayloadView({
 }: {
   payload: BodyPayload;
   storageKey: string;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
   showsToggle?: boolean;
   showsCopyButton?: boolean;
   prettyInitiallyExpanded?: boolean;
@@ -141,7 +141,7 @@ function JsonOutline({
 }: {
   node: JsonNode;
   storageKey: string;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
   depth?: number;
   initiallyExpanded: boolean;
   trailing?: React.ReactNode;
@@ -337,36 +337,39 @@ function jsonContextMenuItems({
   descendantRowKeys: string[];
   expanded: boolean;
   expandable: boolean;
-  uiState: PersistentInspectorUiState;
+  uiState: InspectorUiState;
 }): ContextMenuItem[] {
-  const descendantsLabel = descendantRowKeys.length === 0 ? "children" : `${descendantRowKeys.length} children`;
-  return [
+  const hasCollapsibleChildren = descendantRowKeys.length > 0;
+  const showExpandAll =
+    expandable &&
+    (!expanded || descendantRowKeys.some((key) => !uiState.jsonExpanded(key, false)));
+  const items: ContextMenuItem[] = [
     {
-      label: expanded ? "Collapse" : "Expand",
-      disabled: !expandable,
-      action: () => uiState.setJsonExpanded(rowKey, !expanded)
-    },
-    {
-      label: `Expand ${descendantsLabel}`,
-      disabled: !expandable,
+      label: "Copy Value",
+      action: () => void navigator.clipboard.writeText(jsonNodeCopyText(node))
+    }
+  ];
+
+  if (showExpandAll) {
+    items.push({
+      label: "Expand All",
       action: () => {
         uiState.setJsonExpanded(rowKey, true);
         for (const key of descendantRowKeys) uiState.setJsonExpanded(key, true);
       }
-    },
-    {
-      label: `Collapse ${descendantsLabel}`,
-      disabled: !expandable,
+    });
+  }
+
+  if (expanded && hasCollapsibleChildren) {
+    items.push({
+      label: "Collapse Children",
       action: () => {
-        uiState.setJsonExpanded(rowKey, false);
         for (const key of descendantRowKeys) uiState.setJsonExpanded(key, false);
       }
-    },
-    {
-      label: "Copy value",
-      action: () => void navigator.clipboard.writeText(jsonNodeCopyText(node))
-    }
-  ];
+    });
+  }
+
+  return items;
 }
 
 function collectDescendantRowKeys(node: JsonNode, storageKey: string): string[] {
