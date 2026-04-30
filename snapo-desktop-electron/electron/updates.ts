@@ -41,6 +41,7 @@ interface AppcastItem {
 type AutoCheckDecision = "enabled" | "disabled" | "promptHost";
 
 type UpdateCheckSource = "auto" | "manual";
+export type UpdateCheckOutcome = "checking" | "upToDate" | "updateAvailable" | "error";
 
 export class UpdateController {
   private checking = false;
@@ -62,16 +63,18 @@ export class UpdateController {
     await this.checkForUpdates("auto");
   }
 
-  async checkForUpdates(source: UpdateCheckSource): Promise<void> {
-    if (this.checking) return;
+  async checkForUpdates(source: UpdateCheckSource): Promise<UpdateCheckOutcome> {
+    if (this.checking) return "checking";
     this.setChecking(true);
     try {
       const versionInfo = loadVersionInfo();
-      if (!(await updateIsAvailable(versionInfo))) return;
+      const outcome = await checkForUpdate(versionInfo);
+      if (outcome !== "updateAvailable") return outcome;
       if (source === "manual" || !this.hasTriggeredUpdate) {
         this.hasTriggeredUpdate = true;
         await openHostUpdateUi();
       }
+      return "updateAvailable";
     } finally {
       this.setChecking(false);
     }
@@ -85,6 +88,10 @@ export class UpdateController {
 
 export function openHostUpdateUi(): Promise<void> {
   return shell.openExternal(SnapOCheckUpdatesUrl);
+}
+
+export function currentVersionInfo(): VersionInfo {
+  return loadVersionInfo();
 }
 
 async function autoCheckDecision(): Promise<AutoCheckDecision> {
@@ -185,18 +192,18 @@ function readVersionFile(filePath: string): VersionInfo | null {
   }
 }
 
-async function updateIsAvailable(current: VersionInfo): Promise<boolean> {
+async function checkForUpdate(current: VersionInfo): Promise<Exclude<UpdateCheckOutcome, "checking">> {
   try {
     const response = await fetch(AppcastUrl, {
       headers: { Accept: "application/rss+xml, application/xml, text/xml" },
       signal: AbortSignal.timeout(10_000)
     });
-    if (!response.ok) return false;
+    if (!response.ok) return "error";
     const latest = pickLatest(parseAppcast(await response.text()));
-    if (latest == null) return false;
-    return isNewerVersion(latest, current) === true;
+    if (latest == null) return "error";
+    return isNewerVersion(latest, current) === true ? "updateAvailable" : "upToDate";
   } catch {
-    return false;
+    return "error";
   }
 }
 

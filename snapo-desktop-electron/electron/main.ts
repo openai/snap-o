@@ -13,9 +13,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NetworkInspectorBackend } from "./backend.js";
 import { installStandardContextMenus } from "./context-menu.js";
-import { UpdateController } from "./updates.js";
+import { currentVersionInfo, UpdateController, type UpdateCheckOutcome } from "./updates.js";
 import { loadWindowState, trackWindowState } from "./window-state.js";
-import type { LoadBodiesInput, SaveFileInput, StartStreamInput } from "../src/network/bridge-types.js";
+import type {
+  DebugInspectorPreset,
+  LoadBodiesInput,
+  SaveFileInput,
+  StartStreamInput
+} from "../src/network/bridge-types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +32,7 @@ const updateController = new UpdateController(() => {
 const NewWindowOffsetPx = 100;
 const DockIconPath = path.join(app.getAppPath(), "resources/icons/network.png");
 const IsDevelopment = (process.env.SNAPO_ELECTRON_DEV_SERVER_URL?.length ?? 0) > 0;
+let debugInspectorPreset: DebugInspectorPreset = "live";
 
 function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   const windowState = loadWindowState();
@@ -107,6 +113,7 @@ function installIpcHandlers(): void {
   ipcMain.handle("network:startStream", (event, input: StartStreamInput) => backend.startStream(input, event.sender));
   ipcMain.handle("network:stopStream", (_event, streamId: string) => backend.stopStream(streamId));
   ipcMain.handle("network:openExternal", (_event, url: string) => shell.openExternal(url));
+  ipcMain.handle("debug:inspectorPreset", () => debugInspectorPreset);
   ipcMain.handle("network:saveFile", async (_event, input: SaveFileInput) => {
     const result = await dialog.showSaveDialog({
       defaultPath: input.defaultPath,
@@ -129,6 +136,7 @@ function installApplicationMenu(): void {
   if (process.platform === "darwin") template.push(applicationMenu());
   template.push(fileMenu(), editMenu());
   if (IsDevelopment) template.push(viewMenu());
+  if (IsDevelopment) template.push(debugMenu());
   template.push(toolsMenu(), windowMenu());
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -147,6 +155,37 @@ function viewMenu(): MenuItemConstructorOptions {
       { role: "zoomOut" }
     ]
   };
+}
+
+function debugMenu(): MenuItemConstructorOptions {
+  return {
+    label: "Debug",
+    submenu: [
+      debugInspectorPresetMenuItem("Live server state", "live"),
+      { type: "separator" },
+      debugInspectorPresetMenuItem("Force older app schema", "schemaOlder"),
+      debugInspectorPresetMenuItem("Force newer app schema", "schemaNewer"),
+      debugInspectorPresetMenuItem("Hide network feature", "missingNetworkFeature"),
+      debugInspectorPresetMenuItem("Show replacement process", "replacementProcess")
+    ]
+  };
+}
+
+function debugInspectorPresetMenuItem(label: string, preset: DebugInspectorPreset): MenuItemConstructorOptions {
+  return {
+    label,
+    type: "radio",
+    checked: debugInspectorPreset === preset,
+    click: () => setDebugInspectorPreset(preset)
+  };
+}
+
+function setDebugInspectorPreset(preset: DebugInspectorPreset): void {
+  debugInspectorPreset = preset;
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("debug:inspectorPreset", preset);
+  }
+  installApplicationMenu();
 }
 
 function applicationMenu(): MenuItemConstructorOptions {
@@ -233,11 +272,40 @@ function toolsMenu(): MenuItemConstructorOptions {
         label: updateController.isChecking ? "Checking for Updates..." : "Check for Updates...",
         enabled: !updateController.isChecking,
         click: () => {
-          void updateController.checkForUpdates("manual");
+          void runManualUpdateCheck();
         }
       }
     ]
   };
+}
+
+async function runManualUpdateCheck(): Promise<void> {
+  const outcome = await updateController.checkForUpdates("manual");
+  if (outcome === "updateAvailable" || outcome === "checking") return;
+  await showManualUpdateResult(outcome);
+}
+
+function showManualUpdateResult(outcome: Exclude<UpdateCheckOutcome, "checking" | "updateAvailable">): Promise<number> {
+  const window = BrowserWindow.getFocusedWindow();
+  const versionInfo = currentVersionInfo();
+  const options =
+    outcome === "upToDate"
+      ? {
+          type: "info" as const,
+          title: "No Updates Available",
+          message: `Snap-O Network Inspector is up to date. (${versionInfo.version})`
+        }
+      : {
+          type: "warning" as const,
+          title: "Unable to Check for Updates",
+          message: "Snap-O Network Inspector could not check for updates right now."
+        };
+  const messageBoxOptions = {
+    ...options,
+    buttons: ["OK"]
+  };
+  const result = window == null ? dialog.showMessageBox(messageBoxOptions) : dialog.showMessageBox(window, messageBoxOptions);
+  return result.then((value) => value.response);
 }
 
 function windowMenu(): MenuItemConstructorOptions {

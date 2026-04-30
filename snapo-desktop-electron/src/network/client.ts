@@ -1,4 +1,5 @@
 import type {
+  DebugInspectorPreset,
   LoadBodiesInput,
   RequestBodies,
   SaveFileInput,
@@ -20,6 +21,8 @@ export interface NetworkClient {
   onStatus(callback: (status: StreamStatus) => void): () => void;
   openExternal(url: string): Promise<void>;
   saveFile(input: SaveFileInput): Promise<SaveFileResult>;
+  debugInspectorPreset(): Promise<DebugInspectorPreset>;
+  onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void;
 }
 
 export function createNetworkClient(): NetworkClient {
@@ -62,6 +65,14 @@ class ElectronNetworkClient implements NetworkClient {
 
   saveFile(input: SaveFileInput): Promise<SaveFileResult> {
     return this.bridge.saveFile(input);
+  }
+
+  debugInspectorPreset(): Promise<DebugInspectorPreset> {
+    return this.bridge.debugInspectorPreset?.() ?? Promise.resolve("live");
+  }
+
+  onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void {
+    return this.bridge.onDebugInspectorPreset?.(callback) ?? (() => {});
   }
 }
 
@@ -124,6 +135,15 @@ class HttpNetworkClient implements NetworkClient {
     anchor.remove();
     URL.revokeObjectURL(url);
     return { saved: true };
+  }
+
+  async debugInspectorPreset(): Promise<DebugInspectorPreset> {
+    return "live";
+  }
+
+  onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void {
+    void callback;
+    return () => {};
   }
 
   private ensureEventSource(): void {

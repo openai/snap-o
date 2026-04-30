@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  DebugInspectorPreset,
   LoadBodiesInput,
   SaveFileInput,
   SnapONetworkBridge,
@@ -25,7 +26,13 @@ const api: SnapONetworkBridge = {
     return () => ipcRenderer.removeListener("network:status", listener);
   },
   openExternal: (url: string) => ipcRenderer.invoke("network:openExternal", url),
-  saveFile: (input: SaveFileInput) => ipcRenderer.invoke("network:saveFile", input)
+  saveFile: (input: SaveFileInput) => ipcRenderer.invoke("network:saveFile", input),
+  debugInspectorPreset: () => ipcRenderer.invoke("debug:inspectorPreset"),
+  onDebugInspectorPreset: (callback: (preset: DebugInspectorPreset) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, preset: DebugInspectorPreset) => callback(preset);
+    ipcRenderer.on("debug:inspectorPreset", listener);
+    return () => ipcRenderer.removeListener("debug:inspectorPreset", listener);
+  }
 };
 
 contextBridge.exposeInMainWorld("snapONetwork", api);

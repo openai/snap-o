@@ -10,8 +10,9 @@ import {
   type InspectorRecord,
   type ServerId
 } from "../../../network/cdp";
-import type { SnapOServer } from "../../../network/bridge-types";
+import type { DebugInspectorPreset, SnapOServer } from "../../../network/bridge-types";
 import { useInspectorUiState } from "./useInspectorUiState";
+import { applyDebugInspectorPreset } from "../lib/debug";
 import {
   clearCompleted,
   countRecordsForServer,
@@ -61,6 +62,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
+  const [debugPreset, setDebugPreset] = useState<DebugInspectorPreset>("live");
   const uiState = useInspectorUiState();
 
   const selectedServer = useMemo(
@@ -77,6 +79,18 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
       setState((current) => reduceCdpMessage(current, event.server, event.message));
     });
     return unsubscribeEvent;
+  }, [client]);
+
+  useEffect(() => {
+    let disposed = false;
+    void client.debugInspectorPreset().then((preset) => {
+      if (!disposed) setDebugPreset(preset);
+    });
+    const unsubscribe = client.onDebugInspectorPreset(setDebugPreset);
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
   }, [client]);
 
   useEffect(() => {
@@ -100,9 +114,13 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [client]);
 
   const selectedServerKey = serverKey(selectedServer);
+  const displayServers = useMemo(
+    () => applyDebugInspectorPreset(state.servers, selectedServer, debugPreset),
+    [debugPreset, selectedServer, state.servers]
+  );
   const selectedServerModel = useMemo(
-    () => serverModelFor(state.servers, selectedServer),
-    [selectedServer, state.servers]
+    () => serverModelFor(displayServers, selectedServer),
+    [displayServers, selectedServer]
   );
   const selectedServerIsConnected = selectedServerModel?.isConnected === true;
   const selectedServerConnectionKey =
@@ -139,13 +157,16 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   );
 
   const visibleRecords = useMemo(
-    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
-    [allRecords, searchText, selectedServer, sortNewestFirst]
+    () =>
+      debugPreset === "missingNetworkFeature"
+        ? []
+        : filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
+    [allRecords, debugPreset, searchText, selectedServer, sortNewestFirst]
   );
 
   const serverRecordCount = useMemo(
-    () => countRecordsForServer(allRecords, selectedServer),
-    [allRecords, selectedServer]
+    () => (debugPreset === "missingNetworkFeature" ? 0 : countRecordsForServer(allRecords, selectedServer)),
+    [allRecords, debugPreset, selectedServer]
   );
 
   const selectedRecordId = useMemo(() => {
@@ -227,8 +248,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [client, state.requests]);
 
   const replacementServer = useMemo(
-    () => replacementCandidate(state.servers, selectedServerModel),
-    [selectedServerModel, state.servers]
+    () => replacementCandidate(displayServers, selectedServerModel),
+    [displayServers, selectedServerModel]
   );
   const sidebarPlaceholder = useMemo(
     () =>
@@ -258,7 +279,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   return {
     client,
     uiState,
-    servers: state.servers,
+    servers: displayServers,
     selectedServer: selectedServerModel,
     selectedRecord,
     selectedRecordId,

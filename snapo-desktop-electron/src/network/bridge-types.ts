@@ -78,6 +78,8 @@ export interface SnapONetworkBridge {
   onStatus(callback: (status: StreamStatus) => void): () => void;
   openExternal(url: string): Promise<void>;
   saveFile(input: SaveFileInput): Promise<SaveFileResult>;
+  debugInspectorPreset?(): Promise<DebugInspectorPreset>;
+  onDebugInspectorPreset?(callback: (preset: DebugInspectorPreset) => void): () => void;
 }
 
 export interface SaveFileInput {
@@ -90,6 +92,8 @@ export interface SaveFileResult {
   saved: boolean;
   path?: string | null;
 }
+
+export type DebugInspectorPreset = "live" | "schemaOlder" | "schemaNewer" | "missingNetworkFeature" | "replacementProcess";
 
 declare global {
   interface Window {
