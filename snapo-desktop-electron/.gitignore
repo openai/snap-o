@@ -1,4 +1,4 @@
 dist-electron/
 dist-renderer/
+build/
 node_modules/
-

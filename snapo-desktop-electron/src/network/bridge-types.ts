@@ -93,7 +93,12 @@ export interface SaveFileResult {
   path?: string | null;
 }
 
-export type DebugInspectorPreset = "live" | "schemaOlder" | "schemaNewer" | "missingNetworkFeature" | "replacementProcess";
+export type DebugInspectorPreset =
+  | "live"
+  | "schemaOlder"
+  | "schemaNewer"
+  | "missingNetworkFeature"
+  | "replacementProcess";
 
 declare global {
   interface Window {

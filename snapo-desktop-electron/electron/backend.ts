@@ -3,6 +3,7 @@ import type { WebContents } from "electron";
 import type { Duplex } from "node:stream";
 import { AdbClient, type Device } from "./adb.js";
 import { SnapOLinkConnection, type AppIconRecord, type HelloRecord, type SnapORecord } from "./snapo-link.js";
+import { parseSnapOSockets, pidFromSocketName } from "./server-utils.js";
 import type {
   CdpMessage,
   LoadBodiesInput,
@@ -411,17 +412,6 @@ export class NetworkInspectorBackend {
   }
 }
 
-function parseSnapOSockets(output: string): Set<string> {
-  const result = new Set<string>();
-  for (const rawLine of output.split(/\r?\n/)) {
-    const token = rawLine.trim().split(/\s+/).filter(Boolean).at(-1);
-    if (token != null && token.startsWith("@snapo_server_")) {
-      result.add(token.slice(1));
-    }
-  }
-  return result;
-}
-
 function toServerKey(input: { deviceId: string; socketName: string }): string {
   return `${input.deviceId}\u0000${input.socketName}`;
 }
@@ -432,13 +422,6 @@ function commandMapKey(serverKey: string, commandId: number): string {
 
 function bodyCommandMapKey(serverKey: string, requestId: string, kind: "request" | "response"): string {
   return `${serverKey}:${kind}:${requestId}`;
-}
-
-function pidFromSocketName(socketName: string): number | null {
-  const prefix = "snapo_server_";
-  if (!socketName.startsWith(prefix)) return null;
-  const suffix = socketName.slice(prefix.length);
-  return /^\d+$/.test(suffix) ? Number.parseInt(suffix, 10) : null;
 }
 
 function fulfilledResult<T>(result: PromiseSettledResult<T>): T | null {

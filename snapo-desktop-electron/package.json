@@ -12,7 +12,10 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "cli": "npm run build && ELECTRON_RUN_AS_NODE=1 electron dist-electron/electron/cli-entry.js",
+    "package:mac": "npm run build && node scripts/package-macos.mjs",
+    "package:mac:release": "npm run build && node scripts/package-macos.mjs release"
   },
   "dependencies": {
     "@devicefarmer/adbkit": "^3.3.8",

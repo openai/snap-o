@@ -304,7 +304,8 @@ function showManualUpdateResult(outcome: Exclude<UpdateCheckOutcome, "checking" 
     ...options,
     buttons: ["OK"]
   };
-  const result = window == null ? dialog.showMessageBox(messageBoxOptions) : dialog.showMessageBox(window, messageBoxOptions);
+  const result =
+    window == null ? dialog.showMessageBox(messageBoxOptions) : dialog.showMessageBox(window, messageBoxOptions);
   return result.then((value) => value.response);
 }
 

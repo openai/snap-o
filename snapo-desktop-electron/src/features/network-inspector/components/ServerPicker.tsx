@@ -90,9 +90,7 @@ function ServerAppIcon({ server }: { server: SnapOServer | null }): JSX.Element 
   const hasImage = image != null && image.length > 0 && failedImage !== image;
   return (
     <span className={hasImage ? "server-app-icon" : "server-app-icon placeholder"}>
-      {hasImage ? (
-        <img src={`data:image/png;base64,${image}`} alt="" onError={() => setFailedImage(image)} />
-      ) : null}
+      {hasImage ? <img src={`data:image/png;base64,${image}`} alt="" onError={() => setFailedImage(image)} /> : null}
       {server == null ? null : (
         <span className={`server-status-dot ${server.isConnected ? "connected" : "disconnected"}`} />
       )}

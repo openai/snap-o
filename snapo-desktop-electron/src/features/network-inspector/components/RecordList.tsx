@@ -52,10 +52,7 @@ export const RecordList = memo(function RecordList({
 
   return (
     <div className="record-list-frame">
-      <div
-        className="record-list"
-        onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}
-      >
+      <div className="record-list" onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}>
         {records.map((record) => {
           const id = recordId(record);
           return (

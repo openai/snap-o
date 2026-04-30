@@ -7,7 +7,7 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(
   {
-    ignores: ["dist-electron/**", "dist-renderer/**", "node_modules/**"]
+    ignores: ["build/**", "dist-electron/**", "dist-renderer/**", "node_modules/**"]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

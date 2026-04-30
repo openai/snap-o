@@ -221,8 +221,8 @@
 				files = (
 				);
 				inputPaths = (
-					"$(PROJECT_DIR)/../snapo-desktop-compose/build/compose/binaries/main/app/Snap-O Network Inspector.app",
-					"$(PROJECT_DIR)/../snapo-desktop-compose/build/compose/binaries/main-release/app/Snap-O Network Inspector.app",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main/app/Snap-O Network Inspector.app",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main-release/app/Snap-O Network Inspector.app",
 				);
 				name = "Embed Network Inspector Helper";
 				outputPaths = (
@@ -231,7 +231,7 @@
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -e\n\nHELPER_APP_NAME=\"Snap-O Network Inspector.app\"\nBASE_DIR=\"${PROJECT_DIR}/../snapo-desktop-compose/build/compose/binaries\"\nLAUNCHER_SOURCE=\"${BUILT_PRODUCTS_DIR}/snapo\"\n\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  SOURCE_APP=\"${BASE_DIR}/main-release/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"createReleaseDistributable\"\nelse\n  SOURCE_APP=\"${BASE_DIR}/main/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"createDistributable\"\nfi\n\nif [ ! -d \"${SOURCE_APP}\" ]; then\n  echo \"warning: Snap-O Network Inspector helper app not found at ${SOURCE_APP}.\"\n  echo \"warning: Build it with: (cd ../snapo-desktop-compose && ./gradlew ${BUILD_TASK})\"\n  exit 0\nfi\n\nif [ ! -x \"${LAUNCHER_SOURCE}\" ]; then\n  echo \"error: snapo launcher binary not found at ${LAUNCHER_SOURCE}.\" >&2\n  exit 1\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nDEST_APP=\"${DEST_DIR}/${HELPER_APP_NAME}\"\nLAUNCHER_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nLAUNCHER_PATH=\"${LAUNCHER_DIR}/snapo\"\n\nmkdir -p \"${DEST_DIR}\" \"${LAUNCHER_DIR}\"\n/bin/rm -rf \"${DEST_APP}\"\n/usr/bin/ditto \"${SOURCE_APP}\" \"${DEST_APP}\"\n/bin/rm -f \"${LAUNCHER_PATH}\"\n/usr/bin/ditto \"${LAUNCHER_SOURCE}\" \"${LAUNCHER_PATH}\"\n";
+				shellScript = "set -e\n\nHELPER_APP_NAME=\"Snap-O Network Inspector.app\"\nBASE_DIR=\"${PROJECT_DIR}/../snapo-desktop-electron/build/macos\"\nLAUNCHER_SOURCE=\"${BUILT_PRODUCTS_DIR}/snapo\"\n\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  SOURCE_APP=\"${BASE_DIR}/main-release/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"package:mac:release\"\nelse\n  SOURCE_APP=\"${BASE_DIR}/main/app/${HELPER_APP_NAME}\"\n  BUILD_TASK=\"package:mac\"\nfi\n\nif [ ! -d \"${SOURCE_APP}\" ]; then\n  echo \"warning: Snap-O Network Inspector helper app not found at ${SOURCE_APP}.\"\n  echo \"warning: Build it with: (cd ../snapo-desktop-electron && npm run ${BUILD_TASK})\"\n  exit 0\nfi\n\nif [ ! -x \"${LAUNCHER_SOURCE}\" ]; then\n  echo \"error: snapo launcher binary not found at ${LAUNCHER_SOURCE}.\" >&2\n  exit 1\nfi\n\nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nDEST_APP=\"${DEST_DIR}/${HELPER_APP_NAME}\"\nLAUNCHER_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nLAUNCHER_PATH=\"${LAUNCHER_DIR}/snapo\"\n\nmkdir -p \"${DEST_DIR}\" \"${LAUNCHER_DIR}\"\n/bin/rm -rf \"${DEST_APP}\"\n/usr/bin/ditto \"${SOURCE_APP}\" \"${DEST_APP}\"\n/bin/rm -f \"${LAUNCHER_PATH}\"\n/usr/bin/ditto \"${LAUNCHER_SOURCE}\" \"${LAUNCHER_PATH}\"\n";
 			showEnvVarsInLog = 0;
 		};
 			32F7D8A22F5B123400C0FFEE /* Build Network Inspector Helper */ = {
@@ -242,19 +242,21 @@
 				);
 				inputPaths = (
 					"$(PROJECT_DIR)/../VERSION",
-					"$(PROJECT_DIR)/../snapo-desktop-compose/build.gradle.kts",
-					"$(PROJECT_DIR)/../snapo-desktop-compose/settings.gradle.kts",
-					"$(PROJECT_DIR)/../snapo-desktop-compose/gradle/libs.versions.toml",
-					"$(PROJECT_DIR)/../snapo-desktop-compose/src",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/package.json",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/package-lock.json",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/scripts",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/electron",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/src",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/resources",
 				);
 				name = "Build Network Inspector Helper";
 				outputPaths = (
-					"$(PROJECT_DIR)/../snapo-desktop-compose/build/compose/binaries/main/app/Snap-O Network Inspector.app",
-					"$(PROJECT_DIR)/../snapo-desktop-compose/build/compose/binaries/main-release/app/Snap-O Network Inspector.app",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main/app/Snap-O Network Inspector.app",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main-release/app/Snap-O Network Inspector.app",
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -e\n\nCOMPOSE_DIR=\"${PROJECT_DIR}/../snapo-desktop-compose\"\n\nif [ ! -d \"${COMPOSE_DIR}\" ]; then\n  echo \"error: snapo-desktop-compose not found at ${COMPOSE_DIR}\" >&2\n  exit 1\nfi\n\nJAVA_HOME_17=\"${JAVA_HOME:-}\"\nif [ -n \"${JAVA_HOME_17}\" ]; then\n  if [ ! -x \"${JAVA_HOME_17}/bin/java\" ]; then\n    JAVA_HOME_17=\"\"\n  else\n    case \"$(\"${JAVA_HOME_17}/bin/java\" -version 2>&1 | /usr/bin/head -n 1)\" in\n      *\\\"17.*\\\"*) ;;\n      *) JAVA_HOME_17=\"\" ;;\n    esac\n  fi\nfi\nTEMURIN_17_HOME=\"/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home\"\nif [ -z \"${JAVA_HOME_17}\" ] && [ -x \"${TEMURIN_17_HOME}/bin/java\" ]; then\n  JAVA_HOME_17=\"${TEMURIN_17_HOME}\"\nfi\nif [ -z \"${JAVA_HOME_17}\" ]; then\n  JAVA_HOME_17=\"$(/usr/libexec/java_home -v 17 2>/dev/null || true)\"\nfi\nif [ -z \"${JAVA_HOME_17}\" ]; then\n  echo \"error: JDK 17 not found. Install Temurin 17 (or set JAVA_HOME) to build snapo-desktop-compose.\" >&2\n  exit 1\nfi\n\nexport JAVA_HOME=\"${JAVA_HOME_17}\"\nexport PATH=\"${JAVA_HOME}/bin:${PATH}\"\n\nTASK=\"createDistributable\"\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  TASK=\"createReleaseDistributable\"\nfi\n\n( cd \"${COMPOSE_DIR}\" && ./gradlew \"${TASK}\" )\n";
+				shellScript = "set -e\n\nELECTRON_DIR=\"${PROJECT_DIR}/../snapo-desktop-electron\"\n\nif [ ! -d \"${ELECTRON_DIR}\" ]; then\n  echo \"error: snapo-desktop-electron not found at ${ELECTRON_DIR}\" >&2\n  exit 1\nfi\n\nTASK=\"package:mac\"\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  TASK=\"package:mac:release\"\nfi\n\n( cd \"${ELECTRON_DIR}\" && npm ci && npm run \"${TASK}\" )\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

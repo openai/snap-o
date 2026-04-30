@@ -340,9 +340,7 @@ function jsonContextMenuItems({
   uiState: InspectorUiState;
 }): ContextMenuItem[] {
   const hasCollapsibleChildren = descendantRowKeys.length > 0;
-  const showExpandAll =
-    expandable &&
-    (!expanded || descendantRowKeys.some((key) => !uiState.jsonExpanded(key, false)));
+  const showExpandAll = expandable && (!expanded || descendantRowKeys.some((key) => !uiState.jsonExpanded(key, false)));
   const items: ContextMenuItem[] = [
     {
       label: "Copy Value",
