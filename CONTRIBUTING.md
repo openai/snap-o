@@ -21,6 +21,22 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 - Write clear, concise commit messages.
 - Include documentation updates when adding or changing functionality.
 
+### macOS Swift Tooling
+
+The macOS app pins SwiftFormat and SwiftLint in `snapo-app-mac/mise.toml`.
+Install the repo-owned tool versions once, then use the shared `mise` tasks so local checks match CI:
+
+```bash
+cd snapo-app-mac
+mise trust
+mise install
+mise run format
+mise run lint
+```
+
+To update the pinned tools intentionally, bump the versions in `snapo-app-mac/mise.toml`
+and rerun `mise install` plus `mise run lint`.
+
 ## Pull Requests
 
 1. Push your changes to your fork:

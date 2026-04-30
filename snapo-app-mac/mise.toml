@@ -1,0 +1,12 @@
+[tools]
+# SwiftFormat 0.61.x installs as an app bundle through mise's default macOS backend,
+# which does not expose a CLI binary for shims. Use the asdf backend for the CLI install.
+"asdf:swiftformat" = "0.61.1"
+swiftlint = "0.63.2"
+
+[tasks]
+format = "swiftformat . --config .swiftformat"
+lint = [
+  "swiftformat . --lint --config .swiftformat",
+  "swiftlint lint --strict --no-cache"
+]
