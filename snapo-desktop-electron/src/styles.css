@@ -447,7 +447,7 @@ body.split-pane-resizing {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 8px 0;
+  padding: 8px 8px 8px;
 }
 
 .search-row {
@@ -503,11 +503,31 @@ body.split-pane-resizing {
   color: rgba(107, 107, 107, 0.4);
 }
 
-.record-list {
+.record-list-frame {
+  position: relative;
   flex: 1;
   min-height: 0;
+}
+
+.record-list {
+  height: 100%;
   overflow: auto;
-  padding: 8px 0 12px;
+  padding: 0 0 12px;
+}
+
+.record-list-top-fade {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 auto;
+  height: 8px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--on-surface) 8%, transparent), transparent);
+  transition: opacity 120ms ease;
+}
+
+.record-list-top-fade.visible {
+  opacity: 1;
 }
 
 .record-row {

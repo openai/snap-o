@@ -1,4 +1,4 @@
-import { SortAsc, SortDesc, Trash2 } from "lucide-react";
+import { RefreshCw, SortAsc, SortDesc, Trash2 } from "lucide-react";
 import { memo } from "react";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord, ServerId } from "../../../network/cdp";
@@ -63,6 +63,7 @@ export const Sidebar = memo(function Sidebar({
                 {replacementServer.pid == null ? "Tap to switch process" : `PID ${replacementServer.pid}`}
               </span>
             </span>
+            <RefreshCw size={20} aria-hidden="true" />
           </button>
         )}
       </div>

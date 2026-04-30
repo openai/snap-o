@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState, type MouseEvent } from "react";
+import { memo, useCallback, useEffect, useState, type MouseEvent, type UIEvent } from "react";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type InspectorRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
@@ -22,6 +22,7 @@ export const RecordList = memo(function RecordList({
   client: NetworkClient;
 }): JSX.Element {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
   const handleContextMenu = useCallback(
     (record: InspectorRecord, event: MouseEvent) => {
       const id = recordId(record);
@@ -50,24 +51,34 @@ export const RecordList = memo(function RecordList({
   if (placeholder != null) return <div className="sidebar-placeholder">{placeholder}</div>;
 
   return (
-    <div className="record-list">
-      {records.map((record) => {
-        const id = recordId(record);
-        return (
-          <RecordRow
-            key={id}
-            id={id}
-            record={record}
-            selected={selectedRecordId === id}
-            onSelect={onSelect}
-            onContextMenu={handleContextMenu}
-          />
-        );
-      })}
+    <div className="record-list-frame">
+      <div
+        className="record-list"
+        onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}
+      >
+        {records.map((record) => {
+          const id = recordId(record);
+          return (
+            <RecordRow
+              key={id}
+              id={id}
+              record={record}
+              selected={selectedRecordId === id}
+              onSelect={onSelect}
+              onContextMenu={handleContextMenu}
+            />
+          );
+        })}
+      </div>
+      <div className={showTopFade ? "record-list-top-fade visible" : "record-list-top-fade"} />
       {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
   );
 });
+
+function handleRecordListScroll(event: UIEvent<HTMLDivElement>, setShowTopFade: (value: boolean) => void): void {
+  setShowTopFade(event.currentTarget.scrollTop > 0);
+}
 
 const RecordRow = memo(function RecordRow({
   id,
