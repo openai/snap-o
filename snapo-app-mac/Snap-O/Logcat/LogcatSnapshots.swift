@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - Core Value Types
 
-struct LogcatRange: Sendable, Hashable {
+struct LogcatRange: Hashable {
   var location: Int
   var length: Int
 
@@ -21,7 +21,7 @@ struct LogcatRange: Sendable, Hashable {
   }
 }
 
-struct LogcatColor: Sendable, Equatable {
+struct LogcatColor: Equatable {
   var red: Double
   var green: Double
   var blue: Double
@@ -66,36 +66,36 @@ struct LogcatColor: Sendable, Equatable {
 
 extension LogcatColor: Codable {}
 
-struct LogcatColorHighlight: Sendable, Equatable {
+struct LogcatColorHighlight: Equatable {
   let range: LogcatRange
   let color: LogcatColor
 }
 
 // MARK: - Filter Snapshots
 
-struct LogcatQuickFilterSnapshot: Sendable, Equatable {
+struct LogcatQuickFilterSnapshot: Equatable {
   var pattern: String
 }
 
-struct LogcatFilterClauseSnapshot: Sendable, Equatable {
+struct LogcatFilterClauseSnapshot: Equatable {
   let field: LogcatFilterField
   let pattern: String
   let isInverted: Bool
   let isCaseSensitive: Bool
 }
 
-struct LogcatFilterConditionSnapshot: Sendable, Equatable {
+struct LogcatFilterConditionSnapshot: Equatable {
   let clauses: [LogcatFilterClauseSnapshot]
 }
 
-struct LogcatFilterMatchSnapshot: Sendable, Equatable {
+struct LogcatFilterMatchSnapshot: Equatable {
   let isMatch: Bool
   let fieldRanges: [LogcatFilterField: [LogcatRange]]
 
   static let noMatch = LogcatFilterMatchSnapshot(isMatch: false, fieldRanges: [:])
 }
 
-struct LogcatFilterSnapshot: Sendable, Equatable {
+struct LogcatFilterSnapshot: Equatable {
   let id: UUID
   let action: LogcatFilterAction
   let isHighlightEnabled: Bool
@@ -103,7 +103,7 @@ struct LogcatFilterSnapshot: Sendable, Equatable {
   let conditions: [LogcatFilterConditionSnapshot]
 }
 
-struct LogcatFilterConfigurationSnapshot: Sendable, Equatable {
+struct LogcatFilterConfigurationSnapshot: Equatable {
   var filters: [[LogcatFilterSnapshot]]
   var quickFilter: LogcatQuickFilterSnapshot?
 
@@ -123,7 +123,7 @@ struct LogcatRegexCacheKey: Hashable {
 
 // MARK: - Rendered Payloads
 
-struct LogcatRenderedSnapshot: Sendable, Identifiable, Equatable {
+struct LogcatRenderedSnapshot: Identifiable, Equatable {
   let id: UUID
   let entry: LogcatEntry
   let rowHighlightColor: LogcatColor?
@@ -141,7 +141,7 @@ struct LogcatRenderedSnapshot: Sendable, Identifiable, Equatable {
   }
 }
 
-struct LogcatTabMetrics: Sendable, Equatable {
+struct LogcatTabMetrics: Equatable {
   var unreadDelta: Int
   var droppedEntries: Int
 
@@ -156,7 +156,7 @@ struct LogcatTabMetrics: Sendable, Equatable {
   static let empty = LogcatTabMetrics()
 }
 
-enum LogcatTabError: Sendable, Equatable {
+enum LogcatTabError: Equatable {
   case streamWarning(message: String)
   case regexFailure(pattern: String, message: String?)
   case backlogDropped(droppedCount: Int)
@@ -164,7 +164,7 @@ enum LogcatTabError: Sendable, Equatable {
   case stateInconsistency(message: String)
 }
 
-struct LogcatTabUpdate: Sendable, Equatable {
+struct LogcatTabUpdate: Equatable {
   var entryCount: Int
   var renderedEntries: [LogcatRenderedSnapshot]
   var metrics: LogcatTabMetrics
@@ -191,7 +191,7 @@ struct LogcatTabUpdate: Sendable, Equatable {
 
 // MARK: - Stream Events
 
-enum LogcatStreamEvent: Sendable, Equatable {
+enum LogcatStreamEvent: Equatable {
   case connected
   case disconnected(reason: String?)
   case reconnecting(attempt: Int, reason: String?)
@@ -199,7 +199,7 @@ enum LogcatStreamEvent: Sendable, Equatable {
   case stopped
 }
 
-enum LogcatEvent: Sendable, Equatable {
+enum LogcatEvent: Equatable {
   case entry(LogcatEntry)
   case stream(LogcatStreamEvent)
 }
