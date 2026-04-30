@@ -146,8 +146,7 @@ button {
   z-index: 1;
   width: var(--splitter-hit-width);
   min-width: var(--splitter-hit-width);
-  margin-left: calc((var(--splitter-width) - var(--splitter-hit-width)) / 2);
-  margin-right: calc((var(--splitter-width) - var(--splitter-hit-width)) / 2);
+  margin-right: calc(var(--splitter-width) - var(--splitter-hit-width));
   cursor: col-resize;
   touch-action: none;
 }
@@ -156,11 +155,10 @@ button {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
+  left: 0;
   width: 1px;
   background: var(--outline-variant);
   content: "";
-  transform: translateX(-50%);
 }
 
 .splitter:hover::before,
@@ -773,6 +771,12 @@ body.split-pane-resizing {
   gap: 6px;
 }
 
+.payload-view.embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .payload-scroll {
   min-height: 0;
   max-height: min(520px, calc(100vh - 220px));
@@ -805,6 +809,12 @@ body.split-pane-resizing {
 
 .inline-action:hover {
   background: var(--surface-container-high);
+}
+
+.inline-action-icon {
+  justify-content: center;
+  width: 24px;
+  padding: 0;
 }
 
 .inline-text-toggle {
@@ -968,11 +978,17 @@ pre {
   padding-bottom: 8px;
 }
 
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
 .event-meta,
 .message-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
   margin-bottom: 6px;
   color: var(--on-surface-variant);
   font-size: 10px;
@@ -983,6 +999,15 @@ pre {
 .event-meta,
 .message-meta {
   min-width: 0;
+}
+
+.event-meta {
+  gap: 12px;
+}
+
+.message-meta {
+  gap: 8px;
+  margin-bottom: 0;
 }
 
 .event-actions,
@@ -1018,6 +1043,9 @@ pre {
 
 .message-direction {
   flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 0 2px;
 }
 
 .message-direction.outgoing {

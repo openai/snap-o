@@ -85,7 +85,7 @@ const SseEventCard = memo(function SseEventCard({
               onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
             />
           )}
-          <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} />
+          <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} iconOnly />
         </span>
       </div>
       {payload == null ? (

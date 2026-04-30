@@ -32,7 +32,8 @@ export function PayloadView({
   uiState,
   showsToggle = true,
   showsCopyButton = true,
-  prettyInitiallyExpanded = true
+  prettyInitiallyExpanded = true,
+  embedded = false
 }: {
   payload: BodyPayload;
   storageKey: string;
@@ -40,6 +41,7 @@ export function PayloadView({
   showsToggle?: boolean;
   showsCopyButton?: boolean;
   prettyInitiallyExpanded?: boolean;
+  embedded?: boolean;
 }): JSX.Element {
   const defaultPretty = payload.prettyText != null;
   const pretty = uiState.prettyEnabled(storageKey, defaultPretty);
@@ -65,7 +67,7 @@ export function PayloadView({
     ) : null;
 
   return (
-    <div className="payload-card">
+    <div className={embedded ? "payload-view embedded" : "payload-card"}>
       {payload.prettyText == null && payload.isLikelyJson ? (
         <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
       ) : null}
@@ -104,16 +106,25 @@ export function InlineTextToggle({ label, onClick }: { label: string; onClick: (
 export function InlineCopyButton({
   copied,
   onCopy,
-  label = "Copy"
+  label = "Copy",
+  iconOnly = false
 }: {
   copied: boolean;
   onCopy: () => void;
   label?: string;
+  iconOnly?: boolean;
 }): JSX.Element {
+  const accessibleLabel = copied ? "Copied" : label;
   return (
-    <button className="inline-action" type="button" onClick={onCopy}>
+    <button
+      className={iconOnly ? "inline-action inline-action-icon" : "inline-action"}
+      type="button"
+      onClick={onCopy}
+      aria-label={iconOnly ? accessibleLabel : undefined}
+      title={iconOnly ? accessibleLabel : undefined}
+    >
       {copied ? <Check size={14} /> : <Copy size={14} />}
-      {copied ? "Copied" : label}
+      {iconOnly ? null : copied ? "Copied" : label}
     </button>
   );
 }

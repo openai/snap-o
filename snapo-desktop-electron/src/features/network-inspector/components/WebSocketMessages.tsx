@@ -27,9 +27,9 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
     <div className="message-card">
       <div className="message-meta">
         {message.direction === "outgoing" ? (
-          <Send size={16} className="message-direction outgoing" />
+          <Send size={10} className="message-direction outgoing" />
         ) : (
-          <Inbox size={16} className="message-direction incoming" />
+          <Inbox size={10} className="message-direction incoming" />
         )}
         {message.payloadSize == null ? null : <span>{formatBytes(message.payloadSize)}</span>}
         {message.enqueued == null ? null : <span>{message.enqueued ? "enqueued" : "immediate"}</span>}
@@ -43,7 +43,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
             />
           )}
           {displayText.length === 0 ? null : (
-            <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} />
+            <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} iconOnly />
           )}
         </span>
       </div>
@@ -55,6 +55,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
           showsToggle={false}
           showsCopyButton={false}
           prettyInitiallyExpanded={false}
+          embedded
         />
       )}
     </div>

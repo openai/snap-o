@@ -47,7 +47,7 @@ export const WebSocketDetail = memo(function WebSocketDetail({
         {record.messages.length === 0 ? (
           <div className="messages-empty">No messages yet</div>
         ) : (
-          <div className="event-list">
+          <div className="message-list">
             {record.messages.map((message) => (
               <WebSocketMessageCard
                 key={message.id}

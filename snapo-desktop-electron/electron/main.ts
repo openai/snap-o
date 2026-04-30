@@ -60,6 +60,9 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   const devServerUrl = process.env.SNAPO_ELECTRON_DEV_SERVER_URL;
   if (devServerUrl != null && devServerUrl.length > 0) {
     void window.loadURL(devServerUrl);
+    window.webContents.once("did-finish-load", () => {
+      window.webContents.openDevTools({ mode: "detach" });
+    });
   } else {
     void window.loadFile(path.join(__dirname, "../../dist-renderer/index.html"));
   }
@@ -156,6 +159,17 @@ function applicationMenu(): MenuItemConstructorOptions {
 }
 
 function fileMenu(): MenuItemConstructorOptions {
+  const closeItem: MenuItemConstructorOptions =
+    process.platform === "darwin"
+      ? { role: "close" }
+      : {
+          label: "Close",
+          accelerator: "CmdOrCtrl+W",
+          click: () => {
+            BrowserWindow.getFocusedWindow()?.close();
+          }
+        };
+
   return {
     label: "File",
     submenu: [
@@ -167,25 +181,9 @@ function fileMenu(): MenuItemConstructorOptions {
         }
       },
       { type: "separator" },
-      {
-        label: "Close",
-        accelerator: "CmdOrCtrl+W",
-        click: () => {
-          closeFocusedWindowOrDevTools();
-        }
-      }
+      closeItem
     ]
   };
-}
-
-function closeFocusedWindowOrDevTools(): void {
-  const focusedWindow = BrowserWindow.getFocusedWindow();
-  if (focusedWindow == null) return;
-  if (focusedWindow.webContents.isDevToolsFocused()) {
-    focusedWindow.webContents.closeDevTools();
-    return;
-  }
-  focusedWindow.close();
 }
 
 function editMenu(): MenuItemConstructorOptions {
