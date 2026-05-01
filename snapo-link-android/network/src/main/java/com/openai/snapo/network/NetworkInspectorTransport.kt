@@ -184,10 +184,10 @@ private class NetworkInspectorSession(
         while (!isClosed) {
             val line = runCatching { reader.readLine() }.getOrNull() ?: break
             decodeCommand(line)?.let { message ->
-                if (message.method == SnapOMethod.StartStream) {
-                    startStream()
-                } else {
-                    commandHandler(message)?.let(::send)
+                when (message.method) {
+                    SnapOMethod.StartStream -> startStream()
+                    SnapOMethod.StopStream -> stopStream()
+                    else -> commandHandler(message)?.let(::send)
                 }
             }
         }
@@ -244,12 +244,22 @@ private class NetworkInspectorSession(
     private suspend fun startStream() {
         if (streamStarted || isClosed) return
         streamStarted = true
-        snapshotProvider().forEach(::send)
-        send(
-            CdpMessage(
-                method = SnapOMethod.ReplayComplete,
-            )
+        for (message in snapshotProvider()) {
+            if (!send(message)) {
+                close()
+                return
+            }
+        }
+        val replayComplete = CdpMessage(
+            method = SnapOMethod.ReplayComplete,
         )
+        if (!send(replayComplete)) {
+            close()
+        }
+    }
+
+    private fun stopStream() {
+        streamStarted = false
     }
 
     private fun performClientHandshake(): Boolean {

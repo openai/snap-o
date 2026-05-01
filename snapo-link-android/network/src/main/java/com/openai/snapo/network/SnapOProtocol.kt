@@ -6,6 +6,7 @@ object SnapOMethod {
     const val AppInfo: String = "SnapO.appInfo"
     const val ReplayComplete: String = "SnapO.replayComplete"
     const val StartStream: String = "SnapO.startStream"
+    const val StopStream: String = "SnapO.stopStream"
 }
 
 @Serializable

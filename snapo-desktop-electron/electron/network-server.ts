@@ -63,6 +63,10 @@ export class NetworkServerConnection {
     this.sendCommand({ method: "SnapO.startStream" });
   }
 
+  stopStream(): void {
+    this.sendCommand({ method: "SnapO.stopStream" });
+  }
+
   private consume(text: string): void {
     for (const char of text) {
       if (char === "\n") {

@@ -68,7 +68,7 @@ export class NetworkInspectorBackend {
     const subscription: StreamSubscription = { streamId, serverKey, webContents };
     this.streams.set(streamId, subscription);
     webContents.once("destroyed", () => {
-      this.streams.delete(streamId);
+      this.removeStream(streamId);
     });
 
     state.connection.startStream();
@@ -82,7 +82,7 @@ export class NetworkInspectorBackend {
   }
 
   async stopStream(streamId: string): Promise<void> {
-    this.streams.delete(streamId);
+    this.removeStream(streamId);
   }
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
@@ -317,6 +317,21 @@ export class NetworkInspectorBackend {
       message
     };
     subscription.webContents.send("network:event", event);
+  }
+
+  private removeStream(streamId: string): void {
+    const subscription = this.streams.get(streamId);
+    if (subscription == null) return;
+    this.streams.delete(streamId);
+    if (this.hasStreamsForServer(subscription.serverKey)) return;
+    this.servers.get(subscription.serverKey)?.connection.stopStream();
+  }
+
+  private hasStreamsForServer(serverKey: string): boolean {
+    for (const subscription of this.streams.values()) {
+      if (subscription.serverKey === serverKey) return true;
+    }
+    return false;
   }
 
   private sendNetworkCommand(serverKey: string, method: string, params: Record<string, unknown>): Promise<CdpMessage> {

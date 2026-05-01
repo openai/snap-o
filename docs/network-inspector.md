@@ -163,6 +163,7 @@ The network inspector server is exposed as `snapo_network_$pid`.
 2. The server responds with `SnapO.appInfo`.
 3. Replay and live `Network.*` events do not begin until the client sends `SnapO.startStream`.
 4. The initial replay ends with `SnapO.replayComplete`; later `Network.*` messages are live traffic.
+5. A client can send `SnapO.stopStream` to pause delivery; the next `SnapO.startStream` begins a fresh replay.
 
 Network body commands use CDP-style messages such as `Network.getRequestPostData` and `Network.getResponseBody`.
 
