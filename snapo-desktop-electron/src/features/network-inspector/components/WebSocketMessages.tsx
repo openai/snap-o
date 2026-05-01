@@ -1,7 +1,7 @@
 import { Inbox, Send } from "lucide-react";
 import { memo } from "react";
 import type { WebSocketMessageRecord } from "../../../network/cdp";
-import { formatBytes, makeBodyPayload, prettyJsonOrNull } from "../../../network/payload";
+import { formatBytes, makeBodyPayload } from "../../../network/payload";
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTime } from "../lib/format";
@@ -17,11 +17,11 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
   uiState: InspectorUiState;
 }): JSX.Element {
   const preview = message.preview ?? "";
-  const prettyText = prettyJsonOrNull(preview);
+  const payload = makeBodyPayload({ body: preview, headers: [] });
+  const prettyText = payload?.prettyText ?? null;
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
   const displayText = pretty && prettyText != null ? prettyText : preview;
   const copyFeedback = useCopyFeedback(displayText);
-  const payload = makeBodyPayload({ body: preview, headers: [] });
 
   return (
     <div className="message-card">
@@ -49,7 +49,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
       </div>
       {payload == null ? null : (
         <PayloadView
-          payload={{ ...payload, prettyText, isLikelyJson: prettyText != null || payload.isLikelyJson }}
+          payload={payload}
           storageKey={storageKey}
           uiState={uiState}
           showsToggle={false}

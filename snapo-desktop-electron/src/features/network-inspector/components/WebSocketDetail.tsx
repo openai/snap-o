@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { recordId, type WebSocketRecord } from "../../../network/cdp";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
-import { formatTiming } from "../lib/format";
+import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
 import { HeadersTable, Section } from "./Section";
 import { FailureMessage, StatusBadge } from "./Status";
 import { WebSocketMessageCard } from "./WebSocketMessages";
@@ -14,6 +14,7 @@ export const WebSocketDetail = memo(function WebSocketDetail({
   uiState: InspectorUiState;
 }): JSX.Element {
   const prefix = `websocket:${recordId(record)}`;
+  const timingText = useAdaptiveTimingText(record.startedAt, record.endedAt, record.status);
   return (
     <div className="detail-scroll">
       <header className="detail-header">
@@ -23,7 +24,7 @@ export const WebSocketDetail = memo(function WebSocketDetail({
         </div>
         <div className="detail-meta">
           <StatusBadge record={record} />
-          <span>{formatTiming(record.startedAt, record.endedAt, record.status)}</span>
+          <span>{timingText}</span>
         </div>
         <FailureMessage status={record.status} />
         <WebSocketCloseDetails record={record} />

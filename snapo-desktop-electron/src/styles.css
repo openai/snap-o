@@ -916,6 +916,10 @@ body.split-pane-resizing {
   align-items: center;
 }
 
+.json-row-multiline {
+  align-items: flex-start;
+}
+
 .json-row-trailing {
   flex: 0 0 auto;
   display: inline-flex;
@@ -989,6 +993,11 @@ body.split-pane-resizing {
   white-space: nowrap;
 }
 
+.json-line .json-string-multiline {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .json-line > .json-key,
 .json-line > .json-punctuation {
   flex: 0 0 auto;
@@ -1004,6 +1013,23 @@ body.split-pane-resizing {
 
 .json-string {
   color: var(--json-string);
+}
+
+.json-string-expander-row {
+  min-height: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  width: 100%;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.json-string-expander {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .json-number-bool {

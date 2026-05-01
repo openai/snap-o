@@ -45,10 +45,13 @@ export function PayloadView({
 }): JSX.Element {
   const defaultPretty = payload.prettyText != null;
   const pretty = uiState.prettyEnabled(storageKey, defaultPretty);
-  const displayText = pretty && payload.prettyText != null ? payload.prettyText : payload.rawText;
+  const displayText = pretty && payload.prettyText != null ? payload.prettyText : payload.displayText;
   const jsonRoot = useMemo(
-    () => (pretty && payload.prettyText != null ? parseJsonNode(payload.prettyText) : null),
-    [payload.prettyText, pretty]
+    () =>
+      pretty && payload.jsonFormat === "single" && payload.prettyText != null
+        ? parseJsonNode(payload.prettyText)
+        : null,
+    [payload.jsonFormat, payload.prettyText, pretty]
   );
   const copyFeedback = useCopyFeedback(displayText);
   const hasToggle = showsToggle && payload.prettyText != null;
@@ -68,7 +71,7 @@ export function PayloadView({
 
   return (
     <div className={embedded ? "payload-view embedded" : "payload-card"}>
-      {payload.prettyText == null && payload.isLikelyJson ? (
+      {payload.jsonFormat === "invalid" ? (
         <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
       ) : null}
       <div className="payload-scroll">
@@ -150,6 +153,9 @@ function JsonOutline({
   const expandable = node.children.length > 0;
   const rowKey = `${storageKey}:${node.key}`;
   const expanded = expandable ? uiState.jsonExpanded(rowKey, depth === 0 ? initiallyExpanded : false) : false;
+  const stringValue = node.type === "string" ? String(node.rawValue) : null;
+  const stringIsCollapsible = stringValue != null && stringValue.split("\n").length > MaxCollapsedStringLines;
+  const [stringExpanded, setStringExpanded] = useState(false);
   const descendantRowKeys = useMemo(() => collectDescendantRowKeys(node, storageKey), [node, storageKey]);
   const closingSymbol = node.type === "array" ? "]" : "}";
 
@@ -167,7 +173,13 @@ function JsonOutline({
   return (
     <div className="json-outline">
       <div
-        className={trailing == null ? "json-row" : "json-row json-row-with-trailing"}
+        className={[
+          "json-row",
+          trailing == null ? "" : "json-row-with-trailing",
+          stringIsCollapsible ? "json-row-multiline" : ""
+        ]
+          .filter(Boolean)
+          .join(" ")}
         style={{ paddingLeft: `${depth * 14}px` }}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -197,9 +209,17 @@ function JsonOutline({
         ) : (
           <span className="json-toggle-spacer" />
         )}
-        <JsonNodeLine node={node} expanded={expanded} />
+        <JsonNodeLine node={node} expanded={expanded} stringExpanded={stringExpanded} />
         {trailing}
       </div>
+      {stringIsCollapsible ? (
+        <div className="json-string-expander-row" style={{ paddingLeft: `${depth * 14}px` }}>
+          <span className="json-toggle-spacer" />
+          <button className="json-string-expander" type="button" onClick={() => setStringExpanded((value) => !value)}>
+            {stringExpanded ? "See less" : "See more"}
+          </button>
+        </div>
+      ) : null}
       {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       {expanded ? (
         <>
@@ -223,7 +243,15 @@ function JsonOutline({
   );
 }
 
-function JsonNodeLine({ node, expanded }: { node: JsonNode; expanded: boolean }): JSX.Element {
+function JsonNodeLine({
+  node,
+  expanded,
+  stringExpanded
+}: {
+  node: JsonNode;
+  expanded: boolean;
+  stringExpanded: boolean;
+}): JSX.Element {
   return (
     <span className="json-line">
       {node.label.length === 0 ? null : (
@@ -232,12 +260,20 @@ function JsonNodeLine({ node, expanded }: { node: JsonNode; expanded: boolean })
           <span className="json-punctuation json-property-separator">:</span>
         </>
       )}
-      <JsonNodeValue node={node} expanded={expanded} />
+      <JsonNodeValue node={node} expanded={expanded} stringExpanded={stringExpanded} />
     </span>
   );
 }
 
-function JsonNodeValue({ node, expanded }: { node: JsonNode; expanded: boolean }): JSX.Element {
+function JsonNodeValue({
+  node,
+  expanded,
+  stringExpanded
+}: {
+  node: JsonNode;
+  expanded: boolean;
+  stringExpanded: boolean;
+}): JSX.Element {
   if (node.type === "object") {
     if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
     if (expanded) return <span className="json-punctuation">{"{"}</span>;
@@ -248,7 +284,15 @@ function JsonNodeValue({ node, expanded }: { node: JsonNode; expanded: boolean }
     if (expanded) return <span className="json-punctuation">[</span>;
     return <JsonInlinePreview node={node} />;
   }
-  if (node.type === "string") return <span className="json-string">{jsonQuoted(String(node.rawValue))}</span>;
+  if (node.type === "string") {
+    const value = String(node.rawValue);
+    const stringIsCollapsible = value.split("\n").length > MaxCollapsedStringLines;
+    return (
+      <span className={stringIsCollapsible ? "json-string json-string-multiline" : "json-string"}>
+        {jsonStringForDisplay(value, stringExpanded)}
+      </span>
+    );
+  }
   if (node.type === "number" || node.type === "boolean") {
     return <span className="json-number-bool">{String(node.rawValue)}</span>;
   }
@@ -322,6 +366,18 @@ function inlinePreviewText(node: JsonNode): string {
 
 function jsonQuoted(value: string): string {
   return JSON.stringify(value);
+}
+
+function jsonStringForDisplay(value: string, expanded: boolean): string {
+  const lines = value.split("\n");
+  const visibleLines =
+    lines.length <= MaxCollapsedStringLines || expanded ? lines : lines.slice(0, MaxCollapsedStringLines);
+  const suffix = lines.length <= MaxCollapsedStringLines || expanded ? [] : ["..."];
+  return `"${[...visibleLines.map(jsonStringLineForDisplay), ...suffix].join("\n")}"`;
+}
+
+function jsonStringLineForDisplay(value: string): string {
+  return jsonQuoted(value).slice(1, -1);
 }
 
 function jsonContextMenuItems({
@@ -418,3 +474,5 @@ function ImagePreview({ payload }: { payload: BodyPayload }): JSX.Element | null
     </div>
   );
 }
+
+const MaxCollapsedStringLines = 20;

@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { RequestRecord } from "../../../network/cdp";
-import { makeBodyPayload, prettyJsonOrNull } from "../../../network/payload";
+import { makeBodyPayload } from "../../../network/payload";
 import { streamEventsRaw } from "../../../network/exporters";
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
@@ -66,11 +66,11 @@ const SseEventCard = memo(function SseEventCard({
   uiState: InspectorUiState;
 }): JSX.Element {
   const rawText = event.data ?? event.raw;
-  const prettyText = prettyJsonOrNull(rawText);
+  const payload = makeBodyPayload({ body: rawText, headers: [] });
+  const prettyText = payload?.prettyText ?? null;
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
   const displayText = pretty && prettyText != null ? prettyText : rawText;
   const copyFeedback = useCopyFeedback(displayText);
-  const payload = makeBodyPayload({ body: rawText, headers: [] });
 
   return (
     <div className="event-row">
@@ -92,7 +92,7 @@ const SseEventCard = memo(function SseEventCard({
         <pre>{event.raw || "<empty>"}</pre>
       ) : (
         <PayloadView
-          payload={{ ...payload, prettyText, isLikelyJson: prettyText != null || payload.isLikelyJson }}
+          payload={payload}
           storageKey={storageKey}
           uiState={uiState}
           showsToggle={false}

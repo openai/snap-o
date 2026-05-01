@@ -8,10 +8,13 @@ export interface JsonNode {
   children: JsonNode[];
 }
 
+export type JsonFormat = "none" | "single" | "stream" | "invalid";
+
 export interface BodyPayload {
   rawText: string;
+  displayText: string;
   prettyText: string | null;
-  isLikelyJson: boolean;
+  jsonFormat: JsonFormat;
   contentType: string | null;
   encoding: string | null;
   capturedBytes: number;
@@ -21,6 +24,7 @@ export interface BodyPayload {
 
 export function makeBodyPayload(input: {
   body: string | null | undefined;
+  displayText?: string | null;
   headers: Header[];
   encoding?: string | null;
   base64Encoded?: boolean | null;
@@ -30,17 +34,42 @@ export function makeBodyPayload(input: {
   const contentType = contentTypeFromHeaders(input.headers);
   const base64Encoded = input.base64Encoded === true || input.encoding?.toLowerCase() === "base64";
   const rawText = input.body;
-  const prettyText = base64Encoded ? null : prettyJsonOrNull(rawText);
+  const displayText = input.displayText ?? rawText;
+  const json = base64Encoded && displayText === rawText ? noJson : inspectJson(displayText, contentType);
   return {
     rawText,
-    prettyText,
-    isLikelyJson: prettyText != null || isLikelyJson(rawText, contentType),
+    displayText,
+    prettyText: json.prettyText,
+    jsonFormat: json.format,
     contentType,
     encoding: base64Encoded ? "base64" : (input.encoding ?? null),
     capturedBytes: bodyByteLength(rawText, base64Encoded),
     totalBytes: input.totalBytes ?? null,
     base64Encoded
   };
+}
+
+export async function decodeRequestBodyForDisplay(input: {
+  body: string;
+  headers: Header[];
+  encoding?: string | null;
+}): Promise<string> {
+  if (input.encoding?.toLowerCase() !== "base64") return input.body;
+  if (!hasGzipContentEncoding(headerValue(input.headers, "content-encoding"))) return input.body;
+
+  const bytes = decodeBase64Bytes(input.body);
+  if (bytes == null || typeof DecompressionStream === "undefined") return input.body;
+
+  try {
+    const decompressed = await decompressGzip(bytes);
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(decompressed);
+    } catch {
+      return `Binary payload after gzip decompression (${formatBytes(decompressed.byteLength)}). Raw payload is shown below as captured.\n\n${input.body}`;
+    }
+  } catch {
+    return input.body;
+  }
 }
 
 export function contentTypeFromHeaders(headers: Header[]): string | null {
@@ -70,6 +99,25 @@ export function bodyMetadata(payload: BodyPayload): string | null {
   return parts.length === 0 ? null : parts.join(" ");
 }
 
+function headerValue(headers: Header[], name: string): string | null {
+  return headers.find((header) => header.name.toLowerCase() === name)?.value ?? null;
+}
+
+function hasGzipContentEncoding(value: string | null): boolean {
+  if (value == null || value.trim().length === 0) return false;
+  return value
+    .split(/[,\n]/u)
+    .map((token) => token.split(";")[0].trim().toLowerCase())
+    .some((token) => token === "gzip" || token === "x-gzip");
+}
+
+async function decompressGzip(bytes: Uint8Array): Promise<Uint8Array> {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const stream = new Blob([copy.buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
 export function prettyJsonOrNull(text: string | null | undefined): string | null {
   if (text == null || text.trim().length === 0) return null;
   try {
@@ -77,6 +125,42 @@ export function prettyJsonOrNull(text: string | null | undefined): string | null
   } catch {
     return null;
   }
+}
+
+interface JsonInspection {
+  format: JsonFormat;
+  prettyText: string | null;
+}
+
+const noJson: JsonInspection = {
+  format: "none",
+  prettyText: null
+};
+
+function inspectJson(text: string, contentType: string | null): JsonInspection {
+  const prettyText = prettyJsonOrNull(text);
+  if (prettyText != null) return { format: "single", prettyText };
+
+  const prettyStream = prettyJsonStreamOrNull(text);
+  if (prettyStream != null) return { format: "stream", prettyText: prettyStream };
+
+  return isLikelyJson(text, contentType) ? { format: "invalid", prettyText: null } : noJson;
+}
+
+function prettyJsonStreamOrNull(text: string): string | null {
+  const documents = text
+    .split(/\r?\n/u)
+    .map((document) => document.trim())
+    .filter((document) => document.length > 0);
+  if (documents.length < 2) return null;
+
+  const prettyDocuments: string[] = [];
+  for (const document of documents) {
+    const prettyDocument = prettyJsonOrNull(document);
+    if (prettyDocument == null) return null;
+    prettyDocuments.push(prettyDocument);
+  }
+  return prettyDocuments.join("\n");
 }
 
 export function parseJsonNode(text: string, rootKey = "root"): JsonNode | null {
@@ -149,5 +233,16 @@ function bodyByteLength(value: string, base64Encoded: boolean): number {
     return atob(value.replace(/\s+/gu, "")).length;
   } catch {
     return new TextEncoder().encode(value).byteLength;
+  }
+}
+
+function decodeBase64Bytes(value: string): Uint8Array | null {
+  try {
+    const binary = atob(value.replace(/\s+/gu, ""));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
   }
 }

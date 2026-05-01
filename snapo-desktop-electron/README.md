@@ -2,7 +2,7 @@
 
 This is the web-technology implementation of Snap-O's Network Inspector. The renderer is a React app with no direct Electron imports; desktop-specific behavior lives behind an Electron preload bridge so the same UI can later be hosted by a browser or MCP app transport.
 
-The Electron backend talks directly to the local ADB server and Snap-O link sockets. It does not shell out to the Compose desktop app or the `snapo` CLI.
+The Electron backend talks directly to the local ADB server and Snap-O link sockets. It does not shell out to another desktop helper or the `snapo` CLI.
 
 ## Requirements
 

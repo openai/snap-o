@@ -13,6 +13,7 @@ import type {
 } from "./bridge-types";
 
 export interface NetworkClient {
+  appVersion(): Promise<string>;
   listServers(): Promise<SnapOServer[]>;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
@@ -34,6 +35,10 @@ export function createNetworkClient(): NetworkClient {
 
 class ElectronNetworkClient implements NetworkClient {
   constructor(private readonly bridge: SnapONetworkBridge) {}
+
+  appVersion(): Promise<string> {
+    return this.bridge.appVersion();
+  }
 
   listServers(): Promise<SnapOServer[]> {
     return this.bridge.listServers();
@@ -80,6 +85,10 @@ class HttpNetworkClient implements NetworkClient {
   private eventSource: EventSource | null = null;
   private statusCallbacks = new Set<(status: StreamStatus) => void>();
   private eventCallbacks = new Set<(event: StreamEvent) => void>();
+
+  async appVersion(): Promise<string> {
+    return "web";
+  }
 
   async listServers(): Promise<SnapOServer[]> {
     return fetchJson("/api/network/servers");
