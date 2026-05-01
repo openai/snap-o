@@ -1,4 +1,5 @@
 --swiftversion 6.0
+--min-version 0.61.1
 --indent 2
 --maxwidth 140
 --linebreaks lf

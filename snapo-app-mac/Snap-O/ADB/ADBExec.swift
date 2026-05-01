@@ -2,7 +2,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 
-struct ADBForwardHandle: Sendable {
+struct ADBForwardHandle {
   fileprivate let deviceID: String
   fileprivate let localPort: UInt16
   fileprivate let remote: String
@@ -12,7 +12,7 @@ struct ADBForwardHandle: Sendable {
   }
 }
 
-struct ADBExec: Sendable {
+struct ADBExec {
   typealias PathResolver = @Sendable () async throws -> URL
   typealias ServerObserver = @Sendable () async -> Void
 

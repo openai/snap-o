@@ -3,18 +3,18 @@ import CoreGraphics
 import Foundation
 import ImageIO
 
-enum Media: Equatable, Sendable {
+enum Media: Equatable {
   case image(url: URL, data: MediaCommon)
   case video(url: URL, data: MediaCommon)
   case livePreview(data: MediaCommon)
 }
 
-struct MediaCommon: Equatable, Sendable {
+struct MediaCommon: Equatable {
   var capturedAt: Date
   var display: DisplayInfo
 }
 
-struct DisplayInfo: Equatable, Sendable {
+struct DisplayInfo: Equatable {
   let size: CGSize
   let densityScale: CGFloat?
   var aspectRatio: CGFloat {

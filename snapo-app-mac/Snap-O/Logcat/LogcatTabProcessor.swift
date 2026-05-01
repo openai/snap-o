@@ -4,7 +4,7 @@ actor LogcatTabProcessor {
   typealias QuickFilter = LogcatQuickFilterSnapshot
   typealias Configuration = LogcatFilterConfigurationSnapshot
 
-  enum Update: Sendable {
+  enum Update {
     case tabUpdate(LogcatTabUpdate)
   }
 

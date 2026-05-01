@@ -36,21 +36,7 @@ jobs:
                      CODE_SIGNING_REQUIRED=NO \
                      build
 
-  swiftlint:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/realm/swiftlint:0.63.2@sha256:8db376ff8a26e56fa506b56b8c70ea9c5583dc52d5746ce23b6c2c4d4ee00e31
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        with:
-          fetch-depth: 1
-      - name: SwiftLint
-        working-directory: snapo-app-mac
-        run: swiftlint --reporter github-actions-logging --strict
-
-  swiftformat:
+  style:
     runs-on: macos-15
 
     steps:
@@ -58,9 +44,17 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 1
-      - name: SwiftFormat version
+      - name: Set up mise
         working-directory: snapo-app-mac
-        run: swiftformat --version
-      - name: Run SwiftFormat (lint mode)
+        run: ./scripts/ci-install-mise.sh
+      - name: Install tools
         working-directory: snapo-app-mac
-        run: swiftformat . --lint --config .swiftformat --reporter github-actions-log
+        run: |
+          mise trust --quiet
+          mise install
+      - name: SwiftFormat
+        working-directory: snapo-app-mac
+        run: mise exec -- swiftformat . --lint --config .swiftformat --reporter github-actions-log
+      - name: SwiftLint
+        working-directory: snapo-app-mac
+        run: mise exec -- swiftlint lint --strict --no-cache --reporter github-actions-logging
