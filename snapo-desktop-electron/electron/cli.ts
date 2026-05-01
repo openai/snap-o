@@ -216,6 +216,7 @@ async function runNetworkShow(options: NetworkShowOptions): Promise<number> {
 }
 
 async function runSnapshotRequests(session: CliSession, outputMode: OutputMode): Promise<boolean> {
+  session.startStream();
   const startedAtMs = Date.now();
 
   while (Date.now() - startedAtMs < SnapshotMaxWaitMs) {
@@ -236,6 +237,7 @@ async function runSnapshotRequests(session: CliSession, outputMode: OutputMode):
 }
 
 async function runStreamingRequests(session: CliSession, outputMode: OutputMode): Promise<void> {
+  session.startStream();
   while (true) {
     const record = await session.nextRecord();
     if (record == null) return;
@@ -256,6 +258,7 @@ async function fetchRequestDetails(
   }
 
   try {
+    session.startStream();
     let commandId = 1;
     let pendingRequestBodyId: number | null = null;
     let pendingResponseBodyId: number | null = null;
@@ -1148,6 +1151,10 @@ class CliSession {
 
   sendCommand(message: CdpMessage): void {
     this.connection?.sendCommand(message);
+  }
+
+  startStream(): void {
+    this.connection?.startStream();
   }
 
   nextRecord(timeoutMs?: number): Promise<NetworkServerRecord | null> {

@@ -15,11 +15,13 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.ByteArrayOutputStream
 import java.io.Closeable
+import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
-import kotlin.coroutines.cancellation.CancellationException
 
 internal class NetworkInspectorTransport(
     private val app: Application,
@@ -70,6 +72,7 @@ internal class NetworkInspectorTransport(
 
     fun broadcast(message: CdpMessage) {
         snapshotSessions().forEach { session ->
+            if (!session.isStreaming()) return@forEach
             if (!session.send(message)) {
                 session.close()
             }
@@ -86,7 +89,7 @@ internal class NetworkInspectorTransport(
     private fun acceptSocketOrNull(server: LocalServerSocket): LocalSocket? =
         try {
             server.accept()
-        } catch (ce: CancellationException) {
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
             throw ce
         } catch (_: Throwable) {
             null
@@ -154,7 +157,7 @@ internal class NetworkInspectorTransport(
 }
 
 private class NetworkInspectorSession(
-    socket: LocalSocket,
+    private val socket: LocalSocket,
     private val appInfoProvider: () -> CdpMessage,
     private val snapshotProvider: suspend () -> List<CdpMessage>,
     private val commandHandler: suspend (CdpMessage) -> CdpMessage?,
@@ -171,32 +174,31 @@ private class NetworkInspectorSession(
     private var isClosed: Boolean = false
 
     suspend fun run() {
+        if (!performClientHandshake()) {
+            close()
+            return
+        }
         startWriter()
         send(appInfoProvider())
-        snapshotProvider().forEach(::send)
-        send(
-            CdpMessage(
-                method = SnapOMethod.ReplayComplete,
-            )
-        )
 
         while (!isClosed) {
             val line = runCatching { reader.readLine() }.getOrNull() ?: break
             decodeCommand(line)?.let { message ->
-                commandHandler(message)?.let(::send)
+                if (message.method == SnapOMethod.StartStream) {
+                    startStream()
+                } else {
+                    commandHandler(message)?.let(::send)
+                }
             }
         }
     }
 
+    fun isStreaming(): Boolean = streamStarted
+
     fun send(message: CdpMessage): Boolean {
         if (isClosed) return false
         val result = outgoing.trySend(message)
-        if (result.isSuccess) return true
-        if (result.isClosed) return false
-        scope.launch {
-            runCatching { outgoing.send(message) }
-        }
-        return true
+        return result.isSuccess
     }
 
     fun close() {
@@ -238,6 +240,55 @@ private class NetworkInspectorSession(
             ProtocolJson.decodeFromString(CdpMessage.serializer(), line)
         }.getOrNull()
     }
+
+    private suspend fun startStream() {
+        if (streamStarted || isClosed) return
+        streamStarted = true
+        snapshotProvider().forEach(::send)
+        send(
+            CdpMessage(
+                method = SnapOMethod.ReplayComplete,
+            )
+        )
+    }
+
+    private fun performClientHandshake(): Boolean {
+        return try {
+            readClientHello() == ClientHelloToken
+        } catch (_: SocketTimeoutException) {
+            false
+        } catch (_: IOException) {
+            false
+        }
+    }
+
+    private fun readClientHello(): String {
+        socket.soTimeout = ClientHelloTimeoutMs
+        val input = socket.inputStream
+        val buffer = ByteArrayOutputStream()
+        try {
+            while (buffer.size() <= ClientHelloMaxBytes) {
+                val value = input.read()
+                if (value == -1) {
+                    throw IOException("client handshake closed without data")
+                }
+                if (value == '\n'.code) {
+                    val raw = buffer.toString(StandardCharsets.UTF_8.name())
+                    return raw.trimEnd('\r')
+                }
+                buffer.write(value)
+            }
+            throw IOException("client handshake exceeded $ClientHelloMaxBytes bytes")
+        } finally {
+            socket.soTimeout = 0
+        }
+    }
+
+    @Volatile
+    private var streamStarted: Boolean = false
 }
 
 private const val OutgoingQueueCapacity = 512
+private const val ClientHelloToken = "HelloSnapO"
+private const val ClientHelloTimeoutMs = 1_000
+private const val ClientHelloMaxBytes = 4 * 1024

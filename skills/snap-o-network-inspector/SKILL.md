@@ -111,4 +111,5 @@ If an expected request is absent:
 - `--json` emits NDJSON, so use `jq` line-by-line.
 - `network requests` emits Chrome DevTools Protocol (CDP)-style event records (for example, top-level `method` + `params`).
 - Use `--no-stream` when you want a one-shot buffered snapshot.
+- The Android transport admits clients with `HelloSnapO`, returns `SnapO.appInfo`, and starts replay/live delivery only after `SnapO.startStream`.
 - Use `jq 'keys'` on a sample line if fields differ across Snap-O versions.

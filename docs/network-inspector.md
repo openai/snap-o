@@ -155,6 +155,17 @@ Customize the provider only if you need to adjust behavior. Override its metadat
 
 Snap-O Network Inspector transport on Android uses an app-local abstract Unix domain socket and depends on Android app sandbox + SELinux isolation. Under the current verified platform assumptions for this project, other apps cannot connect to the inspector server socket.
 
+## Transport protocol note
+
+The network inspector server is exposed as `snapo_network_$pid`.
+
+1. A client must first send `HelloSnapO\n`.
+2. The server responds with `SnapO.appInfo`.
+3. Replay and live `Network.*` events do not begin until the client sends `SnapO.startStream`.
+4. The initial replay ends with `SnapO.replayComplete`; later `Network.*` messages are live traffic.
+
+Network body commands use CDP-style messages such as `Network.getRequestPostData` and `Network.getResponseBody`.
+
 ## 6. Verify the connection
 
 1. Install your debug build on a device or emulator.

@@ -46,6 +46,7 @@ export class NetworkServerConnection {
     this.stream.on("close", () => {
       if (!this.stopped) this.onClose(null);
     });
+    this.stream.write("HelloSnapO\n", "utf8");
   }
 
   stop(): void {
@@ -56,6 +57,10 @@ export class NetworkServerConnection {
   sendCommand(message: CdpMessage): void {
     if (this.stream.destroyed) return;
     this.stream.write(`${JSON.stringify(message)}\n`, "utf8");
+  }
+
+  startStream(): void {
+    this.sendCommand({ method: "SnapO.startStream" });
   }
 
   private consume(text: string): void {

@@ -23,8 +23,6 @@ interface ServerState {
   deviceDisplayTitle: string;
   appInfo: SnapOAppInfoParams | null;
   packageNameHint: string | null;
-  pendingInitialMessages: CdpMessage[];
-  initialStreamStarted: boolean;
   isConnected: boolean;
 }
 
@@ -73,11 +71,7 @@ export class NetworkInspectorBackend {
       this.streams.delete(streamId);
     });
 
-    for (const message of state.pendingInitialMessages) {
-      this.sendNetworkEvent(subscription, state, message);
-    }
-    state.pendingInitialMessages = [];
-    state.initialStreamStarted = true;
+    state.connection.startStream();
 
     this.sendStatus(webContents, {
       streamId,
@@ -216,8 +210,6 @@ export class NetworkInspectorBackend {
       deviceDisplayTitle: device.displayTitle,
       appInfo: null,
       packageNameHint: null,
-      pendingInitialMessages: [],
-      initialStreamStarted: false,
       isConnected: true
     };
     this.servers.set(key, state);
@@ -308,9 +300,6 @@ export class NetworkInspectorBackend {
 
     const state = this.servers.get(serverKey);
     if (state == null) return;
-    if (!state.initialStreamStarted) {
-      state.pendingInitialMessages.push(message);
-    }
     for (const subscription of this.streams.values()) {
       if (subscription.serverKey !== serverKey) continue;
       if (subscription.webContents.isDestroyed()) continue;

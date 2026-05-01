@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 object SnapOMethod {
     const val AppInfo: String = "SnapO.appInfo"
     const val ReplayComplete: String = "SnapO.replayComplete"
+    const val StartStream: String = "SnapO.startStream"
 }
 
 @Serializable
