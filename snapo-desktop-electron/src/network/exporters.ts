@@ -40,7 +40,7 @@ export function streamEventsRaw(events: StreamEventRecord[]): string {
   return events.map((event) => event.raw.replace(/\n+$/u, "") + "\n\n").join("");
 }
 
-export function buildHar(records: InspectorRecord[]): string {
+export function buildHar(records: InspectorRecord[], creatorVersion: string): string {
   const entries = records
     .map((record) => (record.kind === "request" ? requestToEntry(record) : webSocketToEntry(record)))
     .sort((a, b) => a.startedDateTime.localeCompare(b.startedDateTime));
@@ -50,7 +50,7 @@ export function buildHar(records: InspectorRecord[]): string {
         version: "1.2",
         creator: {
           name: "Snap-O",
-          version: "electron"
+          version: creatorVersion
         },
         pages: [],
         entries

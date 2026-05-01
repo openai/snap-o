@@ -1,8 +1,8 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
-import { makeBodyPayload } from "../../../network/payload";
+import { decodeRequestBodyForDisplay, makeBodyPayload } from "../../../network/payload";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
-import { formatTiming } from "../lib/format";
+import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
 import { BodySection, payloadMetadata } from "./PayloadView";
 import { HeadersTable, Section } from "./Section";
 import { FailureMessage, StatusBadge } from "./Status";
@@ -16,8 +16,10 @@ export const RequestDetail = memo(function RequestDetail({
   uiState: InspectorUiState;
 }): JSX.Element {
   const isSseResponse = isLikelySseResponse(record);
+  const requestBodyDisplayText = useRequestBodyDisplayText(record);
   const requestBody = makeBodyPayload({
     body: record.requestBody,
+    displayText: requestBodyDisplayText,
     headers: record.requestHeaders,
     encoding: record.requestBodyEncoding
   });
@@ -30,6 +32,7 @@ export const RequestDetail = memo(function RequestDetail({
         totalBytes: record.encodedDataLength
       });
   const prefix = `request:${recordId(record)}`;
+  const timingText = useAdaptiveTimingText(record.startedAt, record.endedAt, record.status);
 
   return (
     <div className="detail-scroll">
@@ -40,7 +43,7 @@ export const RequestDetail = memo(function RequestDetail({
         </div>
         <div className="detail-meta">
           <StatusBadge record={record} />
-          <span>{formatTiming(record.startedAt, record.endedAt, record.status)}</span>
+          <span>{timingText}</span>
         </div>
         <FailureMessage status={record.status} />
       </header>
@@ -101,6 +104,51 @@ export const RequestDetail = memo(function RequestDetail({
   );
 });
 
+function useRequestBodyDisplayText(record: RequestRecord): string | null {
+  const contentEncoding = requestHeaderValue(record.requestHeaders, "content-encoding");
+  const [decodedBody, setDecodedBody] = useState<{
+    body: string;
+    encoding: string | null | undefined;
+    contentEncoding: string | null;
+    displayText: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const body = record.requestBody;
+    if (body == null) return;
+
+    let disposed = false;
+    void decodeRequestBodyForDisplay({
+      body,
+      headers: record.requestHeaders,
+      encoding: record.requestBodyEncoding
+    }).then((decoded) => {
+      if (!disposed) {
+        setDecodedBody({
+          body,
+          encoding: record.requestBodyEncoding,
+          contentEncoding,
+          displayText: decoded
+        });
+      }
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [contentEncoding, record.requestBody, record.requestBodyEncoding, record.requestHeaders]);
+
+  if (record.requestBody == null) return null;
+  if (
+    decodedBody?.body === record.requestBody &&
+    decodedBody.encoding === record.requestBodyEncoding &&
+    decodedBody.contentEncoding === contentEncoding
+  ) {
+    return decodedBody.displayText;
+  }
+  return record.requestBody;
+}
+
 function isLikelySseResponse(record: RequestRecord): boolean {
   if (record.streamEvents.length > 0) return true;
   if (record.responseType?.toLowerCase() === "eventsource") return true;
@@ -113,4 +161,8 @@ function hasEventStreamHeader(headers: Header[]): boolean {
     const value = header.value.toLowerCase();
     return (name === "content-type" || name === "accept") && value.includes("text/event-stream");
   });
+}
+
+function requestHeaderValue(headers: Header[], name: string): string | null {
+  return headers.find((header) => header.name.toLowerCase() === name)?.value ?? null;
 }

@@ -92,11 +92,11 @@ Running these tools launches Snap-O (or brings it to the foreground) and immedia
 
 There is currently no support for choosing a specific device/emulator when starting Snap-O in this way.
 
-## Why not Compose Multiplatform?
+## Why Electron for the Network Inspector?
 
-The Network Inspector is now written with Compose Multiplatform, and that's working quite well.
+The Network Inspector is implemented with Electron. A web-based UI is easier to embed across more environments, and modern AI tools are especially effective at writing and iterating on web-based code. That makes Electron a practical fit for the inspector while keeping the UI portable beyond the macOS helper app.
 
-The screenshot tool uses SwiftUI because it delivers a better macOS experience for video playback today. Snap-O uses AVKit because it gives a polished video player on macOS and keeps the download small. VLC-based playback felt clunky and the viewing experience suffered. When Compose Multiplatform offers a better video playback experience, we'd like to move everything to Compose Multiplatform.
+The screenshot tool remains in SwiftUI because it delivers a better macOS experience for video playback today. Snap-O uses AVKit because it gives a polished video player on macOS and keeps the download small. VLC-based playback felt clunky and the viewing experience suffered.
 
 ## Alternatives
 

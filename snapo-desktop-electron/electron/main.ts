@@ -148,6 +148,7 @@ app.on("child-process-gone", (_event, details) => {
 });
 
 function installIpcHandlers(): void {
+  ipcMain.handle("app:version", () => currentVersionInfo().version);
   ipcMain.handle("network:listServers", () => backend.listServers());
   ipcMain.handle("network:loadBodies", (_event, input: LoadBodiesInput) => backend.loadBodies(input));
   ipcMain.handle("network:startStream", (event, input: StartStreamInput) => backend.startStream(input, event.sender));

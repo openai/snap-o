@@ -1,7 +1,12 @@
 import type { RequestStatus } from "../../../network/cdp";
 
-export function formatTiming(startedAt: number, endedAt: number | undefined, status: RequestStatus): string {
-  const startSegment = `Started ${formatRelative(startedAt)} at ${formatTimeWithMillis(startedAt)}`;
+export function formatTiming(
+  startedAt: number,
+  endedAt: number | undefined,
+  status: RequestStatus,
+  now = Date.now()
+): string {
+  const startSegment = `Started ${formatRelative(startedAt, now)} at ${formatTimeWithMillis(startedAt)}`;
   if (status.kind === "pending" || endedAt == null) return startSegment;
   return `${formatDuration(Math.max(0, endedAt - startedAt))} total • ${startSegment}`;
 }
@@ -31,8 +36,8 @@ function formatTimeWithMillis(value: number): string {
   return `${hours}:${minutes}:${seconds}.${millis}`;
 }
 
-function formatRelative(value: number): string {
-  const seconds = Math.round((Date.now() - value) / 1000);
+function formatRelative(value: number, now: number): string {
+  const seconds = Math.round((now - value) / 1000);
   if (seconds === 0) return "just now";
   const absoluteSeconds = Math.abs(seconds);
   const isFuture = seconds < 0;

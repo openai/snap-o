@@ -470,13 +470,13 @@ internal fun sidebarContextMenuItems(
                     ?.let { NetworkInspectorRequestUiModel.from(it) }
                 if (model != null) NetworkInspectorCopyExporter.copyCurl(model)
             },
-            ContextMenuItem("Export (sanitized)...") {
+            ContextMenuItem("Export HAR (sanitized)...") {
                 exportSidebarSelectionAsHar(store = store, selection = exportSelection)
             },
         )
 
         is NetworkInspectorListItemUiModel.Kind.WebSocket -> listOf(
-            ContextMenuItem("Export (sanitized)...") {
+            ContextMenuItem("Export HAR (sanitized)...") {
                 exportSidebarSelectionAsHar(store = store, selection = exportSelection)
             },
         )

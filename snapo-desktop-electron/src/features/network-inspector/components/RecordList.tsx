@@ -121,6 +121,6 @@ function sidebarContextMenuItems(
   if (clicked.kind === "request") {
     items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked) });
   }
-  items.push({ label: "Export (sanitized)...", action: () => void exportAsHar(client, exportRecords) });
+  items.push({ label: "Export HAR (sanitized)...", action: () => void exportAsHar(client, exportRecords) });
   return items;
 }

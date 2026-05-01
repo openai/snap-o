@@ -11,6 +11,7 @@ import type {
 
 const api: SnapONetworkBridge = {
   platform: process.platform,
+  appVersion: () => ipcRenderer.invoke("app:version"),
   listServers: () => ipcRenderer.invoke("network:listServers"),
   loadBodies: (input: LoadBodiesInput) => ipcRenderer.invoke("network:loadBodies", input),
   startStream: (input: StartStreamInput) => ipcRenderer.invoke("network:startStream", input),
