@@ -20,7 +20,7 @@ https://openai.github.io/snap-o/
 
 ## Current Command Surface (from `snapo` help)
 
-- `snapo network list`: lists available Snap-O link servers.
+- `snapo network list`: lists available Snap-O Network Inspector servers.
 - `snapo network requests`: emits CDP network events for a server.
 - `snapo network show`: shows full details for a request id (headers + request/response bodies).
 

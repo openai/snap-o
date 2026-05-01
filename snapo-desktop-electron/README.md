@@ -2,7 +2,7 @@
 
 This is the web-technology implementation of Snap-O's Network Inspector. The renderer is a React app with no direct Electron imports; desktop-specific behavior lives behind an Electron preload bridge so the same UI can later be hosted by a browser or MCP app transport.
 
-The Electron backend talks directly to the local ADB server and Snap-O link sockets. It does not shell out to another desktop helper or the `snapo` CLI.
+The Electron backend talks directly to the local ADB server and Snap-O network sockets. It does not shell out to another desktop helper or the `snapo` CLI.
 
 ## Requirements
 
@@ -42,11 +42,11 @@ The packaged helper app can also run the existing Snap-O CLI commands instead of
 snapo network list
 snapo network list --json
 snapo network list --no-app-info
-snapo network requests -e -n snapo_server_12345
-snapo network requests -s emulator-5554 -n snapo_server_12345 --json
+snapo network requests -e -n snapo_network_12345
+snapo network requests -s emulator-5554 -n snapo_network_12345 --json
 snapo network requests -d --no-stream
-snapo network show -e -n snapo_server_12345 -r <requestId>
-snapo network show -s emulator-5554 -n snapo_server_12345 -r <requestId> --json
+snapo network show -e -n snapo_network_12345 -r <requestId>
+snapo network show -s emulator-5554 -n snapo_network_12345 -r <requestId> --json
 ```
 
 For local development, use Electron's Node mode so the CLI runs without launching the desktop app:

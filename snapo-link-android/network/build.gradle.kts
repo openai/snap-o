@@ -9,7 +9,6 @@ android {
 }
 
 dependencies {
-    implementation(project(":link-core"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.serialization.json)

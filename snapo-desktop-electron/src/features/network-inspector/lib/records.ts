@@ -261,7 +261,7 @@ export function sidebarPlaceholderText(input: {
 }): string | null {
   if (input.totalItems === 0) return "No activity yet";
   if (input.serverScopedItems === 0) {
-    if (input.selectedServer == null || !input.selectedServer.hasHello) return "Waiting for connection...";
+    if (input.selectedServer == null || !input.selectedServer.hasAppInfo) return "Waiting for connection...";
     return "No activity for this app yet";
   }
   if (input.filteredItems === 0) return "No matches";
@@ -291,24 +291,12 @@ export function resolveDetailEmptyState(input: {
       showDocsLink: true
     };
   }
-  if (
-    input.selectedServer != null &&
-    input.serverScopedItems === 0 &&
-    input.selectedServer.hasHello &&
-    !input.selectedServer.features.includes("network")
-  ) {
-    return {
-      title: `Network Inspector in ${input.selectedServer.displayName} not found`,
-      body: "The server is connected, but the network feature is either not installed or not enabled.",
-      showDocsLink: true
-    };
-  }
   if (input.serverScopedItems === 0) {
-    const waitingForConnection = input.selectedServer == null || !input.selectedServer.hasHello;
+    const waitingForConnection = input.selectedServer == null || !input.selectedServer.hasAppInfo;
     if (waitingForConnection) {
       return {
         title: "Waiting for connection...",
-        body: "Snap-O is waiting for the app to accept the link connection.",
+        body: "Snap-O is waiting for the app to publish its network server metadata.",
         showDocsLink: false
       };
     }

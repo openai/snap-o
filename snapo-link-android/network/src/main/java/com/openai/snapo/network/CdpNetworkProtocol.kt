@@ -1,4 +1,4 @@
-package com.openai.snapo.link.core
+package com.openai.snapo.network
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement

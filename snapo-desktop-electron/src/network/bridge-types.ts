@@ -5,12 +5,11 @@ export interface SnapOServer {
   deviceDisplayTitle: string;
   displayName: string;
   isConnected: boolean;
-  hasHello: boolean;
+  hasAppInfo: boolean;
   pid?: number | null;
-  schemaVersion?: number | null;
-  isSchemaNewerThanSupported: boolean;
-  isSchemaOlderThanSupported: boolean;
-  features: string[];
+  protocolVersion?: number | null;
+  isProtocolNewerThanSupported: boolean;
+  isProtocolOlderThanSupported: boolean;
   appIconBase64?: string | null;
   packageName?: string | null;
   appName?: string | null;
@@ -94,12 +93,7 @@ export interface SaveFileResult {
   path?: string | null;
 }
 
-export type DebugInspectorPreset =
-  | "live"
-  | "schemaOlder"
-  | "schemaNewer"
-  | "missingNetworkFeature"
-  | "replacementProcess";
+export type DebugInspectorPreset = "live" | "protocolOlder" | "protocolNewer" | "replacementProcess";
 
 declare global {
   interface Window {

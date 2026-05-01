@@ -3,7 +3,6 @@ package com.openai.snapo.network.httpurlconnection
 import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
-import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.network.Header
 import com.openai.snapo.network.NetworkEventRecord
 import com.openai.snapo.network.NetworkInspector
@@ -58,12 +57,11 @@ class SnapOHttpUrlInterceptor @JvmOverloads constructor(
     }
 
     internal fun publish(builder: () -> NetworkEventRecord) {
-        if (!SnapOLink.isEnabled()) return
-        val feature = NetworkInspector.getOrNull() ?: return
+        val server = NetworkInspector.getOrNull() ?: return
         val record = builder()
         scope.launch {
             try {
-                feature.publish(record)
+                server.publish(record)
             } catch (_: Throwable) {
             }
         }
@@ -77,11 +75,10 @@ class SnapOHttpUrlInterceptor @JvmOverloads constructor(
         bodyTruncatedBytes: Long?,
         bodySize: Long?,
     ) {
-        if (!SnapOLink.isEnabled()) return
-        val feature = NetworkInspector.getOrNull() ?: return
+        val server = NetworkInspector.getOrNull() ?: return
         scope.launch {
             try {
-                feature.updateLatestResponseBody(
+                server.updateLatestResponseBody(
                     requestId = requestId,
                     bodyPreview = bodyPreview,
                     body = body,

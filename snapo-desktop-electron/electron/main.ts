@@ -232,9 +232,8 @@ function debugMenu(): MenuItemConstructorOptions {
     submenu: [
       debugInspectorPresetMenuItem("Live server state", "live"),
       { type: "separator" },
-      debugInspectorPresetMenuItem("Force older app schema", "schemaOlder"),
-      debugInspectorPresetMenuItem("Force newer app schema", "schemaNewer"),
-      debugInspectorPresetMenuItem("Hide network feature", "missingNetworkFeature"),
+      debugInspectorPresetMenuItem("Force older app protocol", "protocolOlder"),
+      debugInspectorPresetMenuItem("Force newer app protocol", "protocolNewer"),
       debugInspectorPresetMenuItem("Show replacement process", "replacementProcess")
     ]
   };

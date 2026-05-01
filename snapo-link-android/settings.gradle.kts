@@ -21,7 +21,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "snapo-link-android"
-include(":link-core")
 include(":network")
 include(":network-okhttp3")
 include(":network-okhttp3-noop")

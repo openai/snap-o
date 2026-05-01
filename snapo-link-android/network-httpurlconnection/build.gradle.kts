@@ -8,7 +8,6 @@ android {
 }
 
 dependencies {
-    api(project(":link-core"))
     implementation(project(":network"))
     implementation(libs.kotlinx.coroutines.core)
 }

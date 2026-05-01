@@ -1,6 +1,6 @@
 import type { DebugInspectorPreset, SnapOServer } from "../../../network/bridge-types";
 
-const supportedSchemaVersion = 3;
+const supportedProtocolVersion = 1;
 
 export function applyDebugInspectorPreset(
   servers: SnapOServer[],
@@ -15,27 +15,20 @@ export function applyDebugInspectorPreset(
   const current = servers[selectedIndex];
   const nextServers = [...servers];
   switch (preset) {
-    case "schemaOlder":
+    case "protocolOlder":
       nextServers[selectedIndex] = {
         ...current,
-        schemaVersion: supportedSchemaVersion - 1,
-        isSchemaNewerThanSupported: false,
-        isSchemaOlderThanSupported: true
+        protocolVersion: supportedProtocolVersion - 1,
+        isProtocolNewerThanSupported: false,
+        isProtocolOlderThanSupported: true
       };
       return nextServers;
-    case "schemaNewer":
+    case "protocolNewer":
       nextServers[selectedIndex] = {
         ...current,
-        schemaVersion: supportedSchemaVersion + 1,
-        isSchemaNewerThanSupported: true,
-        isSchemaOlderThanSupported: false
-      };
-      return nextServers;
-    case "missingNetworkFeature":
-      nextServers[selectedIndex] = {
-        ...current,
-        hasHello: true,
-        features: current.features.filter((feature) => feature !== "network")
+        protocolVersion: supportedProtocolVersion + 1,
+        isProtocolNewerThanSupported: true,
+        isProtocolOlderThanSupported: false
       };
       return nextServers;
     case "replacementProcess":
