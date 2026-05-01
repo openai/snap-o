@@ -47,8 +47,11 @@ export function PayloadView({
   const pretty = uiState.prettyEnabled(storageKey, defaultPretty);
   const displayText = pretty && payload.prettyText != null ? payload.prettyText : payload.displayText;
   const jsonRoot = useMemo(
-    () => (pretty && payload.prettyText != null ? parseJsonNode(payload.prettyText) : null),
-    [payload.prettyText, pretty]
+    () =>
+      pretty && payload.jsonFormat === "single" && payload.prettyText != null
+        ? parseJsonNode(payload.prettyText)
+        : null,
+    [payload.jsonFormat, payload.prettyText, pretty]
   );
   const copyFeedback = useCopyFeedback(displayText);
   const hasToggle = showsToggle && payload.prettyText != null;
@@ -68,7 +71,7 @@ export function PayloadView({
 
   return (
     <div className={embedded ? "payload-view embedded" : "payload-card"}>
-      {payload.prettyText == null && payload.isLikelyJson ? (
+      {payload.jsonFormat === "invalid" ? (
         <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
       ) : null}
       <div className="payload-scroll">

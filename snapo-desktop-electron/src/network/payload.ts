@@ -8,11 +8,13 @@ export interface JsonNode {
   children: JsonNode[];
 }
 
+export type JsonFormat = "none" | "single" | "stream" | "invalid";
+
 export interface BodyPayload {
   rawText: string;
   displayText: string;
   prettyText: string | null;
-  isLikelyJson: boolean;
+  jsonFormat: JsonFormat;
   contentType: string | null;
   encoding: string | null;
   capturedBytes: number;
@@ -33,12 +35,12 @@ export function makeBodyPayload(input: {
   const base64Encoded = input.base64Encoded === true || input.encoding?.toLowerCase() === "base64";
   const rawText = input.body;
   const displayText = input.displayText ?? rawText;
-  const prettyText = base64Encoded && displayText === rawText ? null : prettyJsonOrNull(displayText);
+  const json = base64Encoded && displayText === rawText ? noJson : inspectJson(displayText, contentType);
   return {
     rawText,
     displayText,
-    prettyText,
-    isLikelyJson: prettyText != null || isLikelyJson(displayText, contentType),
+    prettyText: json.prettyText,
+    jsonFormat: json.format,
     contentType,
     encoding: base64Encoded ? "base64" : (input.encoding ?? null),
     capturedBytes: bodyByteLength(rawText, base64Encoded),
@@ -123,6 +125,42 @@ export function prettyJsonOrNull(text: string | null | undefined): string | null
   } catch {
     return null;
   }
+}
+
+interface JsonInspection {
+  format: JsonFormat;
+  prettyText: string | null;
+}
+
+const noJson: JsonInspection = {
+  format: "none",
+  prettyText: null
+};
+
+function inspectJson(text: string, contentType: string | null): JsonInspection {
+  const prettyText = prettyJsonOrNull(text);
+  if (prettyText != null) return { format: "single", prettyText };
+
+  const prettyStream = prettyJsonStreamOrNull(text);
+  if (prettyStream != null) return { format: "stream", prettyText: prettyStream };
+
+  return isLikelyJson(text, contentType) ? { format: "invalid", prettyText: null } : noJson;
+}
+
+function prettyJsonStreamOrNull(text: string): string | null {
+  const documents = text
+    .split(/\r?\n/u)
+    .map((document) => document.trim())
+    .filter((document) => document.length > 0);
+  if (documents.length < 2) return null;
+
+  const prettyDocuments: string[] = [];
+  for (const document of documents) {
+    const prettyDocument = prettyJsonOrNull(document);
+    if (prettyDocument == null) return null;
+    prettyDocuments.push(prettyDocument);
+  }
+  return prettyDocuments.join("\n");
 }
 
 export function parseJsonNode(text: string, rootKey = "root"): JsonNode | null {
