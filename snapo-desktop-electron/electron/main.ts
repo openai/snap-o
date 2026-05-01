@@ -9,6 +9,7 @@ import {
   type MenuItemConstructorOptions
 } from "electron";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NetworkInspectorBackend } from "./backend.js";
@@ -33,8 +34,18 @@ const NewWindowOffsetPx = 100;
 const DockIconPath = path.join(app.getAppPath(), "resources/icons/network.png");
 const IsDevelopment = (process.env.SNAPO_ELECTRON_DEV_SERVER_URL?.length ?? 0) > 0;
 let debugInspectorPreset: DebugInspectorPreset = "live";
+let logFilePath: string | null = null;
+
+process.on("uncaughtExceptionMonitor", (error) => {
+  logEvent("uncaughtException", serializeUnknown(error));
+});
+
+process.on("unhandledRejection", (reason) => {
+  logEvent("unhandledRejection", serializeUnknown(reason));
+});
 
 function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
+  const createdAtMs = Date.now();
   const windowState = loadWindowState();
   const parentBounds = parentWindow?.getBounds();
   const window = new BrowserWindow({
@@ -54,6 +65,7 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
             y: parentBounds.y + NewWindowOffsetPx
           }),
     title: "Snap-O Network Inspector",
+    show: false,
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hidden" as const
@@ -70,6 +82,15 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   if (windowState.isMaximized) window.maximize();
   trackWindowState(window);
   installStandardContextMenus(window);
+  logEvent("windowCreated");
+
+  window.once("ready-to-show", () => {
+    logEvent("windowReadyToShow", { elapsedMs: Date.now() - createdAtMs });
+    window.show();
+  });
+  window.webContents.once("did-finish-load", () => {
+    logEvent("rendererDidFinishLoad", { elapsedMs: Date.now() - createdAtMs });
+  });
 
   const devServerUrl = process.env.SNAPO_ELECTRON_DEV_SERVER_URL;
   if (devServerUrl != null && devServerUrl.length > 0) {
@@ -92,6 +113,12 @@ function windowBackgroundColor(): string {
 }
 
 app.whenReady().then(() => {
+  initializeLogging();
+  logEvent("appReady", {
+    appPath: app.getAppPath(),
+    execPath: process.execPath,
+    isPackaged: app.isPackaged
+  });
   installApplicationIcon();
   installIpcHandlers();
   installApplicationMenu();
@@ -100,11 +127,24 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  logEvent("windowAllClosed");
   app.quit();
 });
 
 app.on("before-quit", () => {
+  logEvent("beforeQuit");
   backend.shutdown();
+});
+
+app.on("render-process-gone", (_event, webContents, details) => {
+  logEvent("renderProcessGone", {
+    webContentsId: webContents.id,
+    ...details
+  });
+});
+
+app.on("child-process-gone", (_event, details) => {
+  logEvent("childProcessGone", details);
 });
 
 function installIpcHandlers(): void {
@@ -129,6 +169,34 @@ function installApplicationIcon(): void {
   if (process.platform === "darwin" && app.dock != null) {
     app.dock.setIcon(DockIconPath);
   }
+}
+
+function initializeLogging(): void {
+  app.setAppLogsPath();
+  logFilePath = path.join(app.getPath("logs"), "main.log");
+}
+
+function logEvent(event: string, details?: unknown): void {
+  const line = `${new Date().toISOString()} ${event}${details == null ? "" : ` ${JSON.stringify(details)}`}\n`;
+  process.stderr.write(line);
+  if (logFilePath == null) return;
+  try {
+    fsSync.mkdirSync(path.dirname(logFilePath), { recursive: true });
+    fsSync.appendFileSync(logFilePath, line, "utf8");
+  } catch {
+    // Logging should never interfere with app startup or shutdown.
+  }
+}
+
+function serializeUnknown(value: unknown): unknown {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack
+    };
+  }
+  return value;
 }
 
 function installApplicationMenu(): void {

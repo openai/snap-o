@@ -1,9 +1,11 @@
 import AppKit
+import OSLog
 
 @MainActor
 enum NetworkInspectorHelperLauncher {
   private static let helperAppName = "Snap-O Network Inspector"
   private static let helperRelativePath = "Contents/Helpers/\(helperAppName).app"
+  private nonisolated static let logger = Logger(subsystem: "com.openai.snapo", category: "NetworkInspectorHelper")
 
   static func open() {
     guard let helperURL = helperAppURL() else {
@@ -14,7 +16,10 @@ enum NetworkInspectorHelperLauncher {
     let configuration = NSWorkspace.OpenConfiguration()
     configuration.activates = true
     NSWorkspace.shared.openApplication(at: helperURL, configuration: configuration) { _, error in
-      guard error != nil else { return }
+      guard let error else { return }
+      logger.error(
+        "Failed to launch helper at \(helperURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+      )
       Task { @MainActor in
         showLaunchFailedAlert()
       }

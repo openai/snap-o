@@ -256,7 +256,7 @@
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -e\n\nELECTRON_DIR=\"${PROJECT_DIR}/../snapo-desktop-electron\"\n\nif [ ! -d \"${ELECTRON_DIR}\" ]; then\n  echo \"error: snapo-desktop-electron not found at ${ELECTRON_DIR}\" >&2\n  exit 1\nfi\n\nTASK=\"package:mac\"\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  TASK=\"package:mac:release\"\nfi\n\n( cd \"${ELECTRON_DIR}\" && npm ci && npm run \"${TASK}\" )\n";
+				shellScript = "set -e\n\nELECTRON_DIR=\"${PROJECT_DIR}/../snapo-desktop-electron\"\n\nif [ ! -d \"${ELECTRON_DIR}\" ]; then\n  echo \"error: snapo-desktop-electron not found at ${ELECTRON_DIR}\" >&2\n  exit 1\nfi\n\nif [ -s \"${HOME}/.nvm/nvm.sh\" ]; then\n  . \"${HOME}/.nvm/nvm.sh\"\nfi\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\n\nif ! command -v npm >/dev/null 2>&1; then\n  echo \"error: npm not found. Install Node.js or make npm available to Xcode build scripts.\" >&2\n  exit 1\nfi\n\nTASK=\"package:mac\"\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  TASK=\"package:mac:release\"\nfi\n\n( cd \"${ELECTRON_DIR}\" && npm ci && npm run \"${TASK}\" )\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

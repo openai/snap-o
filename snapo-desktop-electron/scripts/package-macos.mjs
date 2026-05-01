@@ -23,7 +23,11 @@ const versionInfo = await readVersionInfo(path.join(repoRoot, "VERSION"));
 await ensureBuiltArtifacts();
 await fs.rm(outputDir, { recursive: true, force: true });
 await fs.mkdir(outputDir, { recursive: true });
-await fs.cp(sourceElectronApp, appBundle, { recursive: true, dereference: false });
+await fs.cp(sourceElectronApp, appBundle, {
+  recursive: true,
+  dereference: false,
+  verbatimSymlinks: true
+});
 
 await rebrandBundle();
 await copyAppPayload();
@@ -98,7 +102,11 @@ async function copyDependencyClosure(name, fromDir, copied) {
   copied.add(packageDir);
 
   const relativePackageDir = path.relative(projectDir, packageDir);
-  await fs.cp(packageDir, path.join(bundledAppDir, relativePackageDir), { recursive: true, dereference: false });
+  await fs.cp(packageDir, path.join(bundledAppDir, relativePackageDir), {
+    recursive: true,
+    dereference: false,
+    verbatimSymlinks: true
+  });
 
   const packageJsonPath = path.join(packageDir, "package.json");
   const dependencyPackageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
