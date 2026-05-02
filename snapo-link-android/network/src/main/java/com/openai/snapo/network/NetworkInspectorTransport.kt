@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.BufferedWriter
@@ -72,15 +74,14 @@ internal class NetworkInspectorTransport(
 
     fun broadcast(message: CdpMessage) {
         snapshotSessions().forEach { session ->
-            if (!session.isStreaming()) return@forEach
-            if (!session.send(message)) {
+            if (!session.queueLive(message)) {
                 session.close()
             }
         }
     }
 
     private suspend fun acceptLoop(server: LocalServerSocket) {
-        while (acceptJob?.isActive != false) {
+        while (currentCoroutineContext().isActive) {
             val socket = acceptSocketOrNull(server) ?: continue
             scope.launch(Dispatchers.IO) { handleAcceptedSocket(socket) }
         }
@@ -165,10 +166,14 @@ private class NetworkInspectorSession(
 ) {
     private val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8))
     private val reader = BufferedReader(InputStreamReader(socket.inputStream, StandardCharsets.UTF_8))
-    private val outgoing = Channel<CdpMessage>(capacity = OutgoingQueueCapacity)
+    private val outgoing = Channel<CdpMessage>(capacity = SessionQueueCapacity)
+    private val operations = Channel<SessionOperation>(capacity = SessionQueueCapacity)
 
     @Volatile
     private var writerJob: Job? = null
+
+    @Volatile
+    private var processorJob: Job? = null
 
     @Volatile
     private var isClosed: Boolean = false
@@ -179,26 +184,20 @@ private class NetworkInspectorSession(
             return
         }
         startWriter()
-        send(appInfoProvider())
+        startProcessor()
+        sendWithBackpressure(appInfoProvider())
 
         while (!isClosed) {
             val line = runCatching { reader.readLine() }.getOrNull() ?: break
-            decodeCommand(line)?.let { message ->
-                when (message.method) {
-                    SnapOMethod.StartStream -> startStream()
-                    SnapOMethod.StopStream -> stopStream()
-                    else -> commandHandler(message)?.let(::send)
-                }
-            }
+            decodeCommand(line)?.let { handleCommand(it) }
         }
     }
 
-    fun isStreaming(): Boolean = streamStarted
-
-    fun send(message: CdpMessage): Boolean {
+    fun queueLive(message: CdpMessage): Boolean {
         if (isClosed) return false
-        val result = outgoing.trySend(message)
-        return result.isSuccess
+        val result = operations.trySend(SessionOperation.Live(message))
+        // Live events are best-effort under pressure; replay and control messages backpressure instead.
+        return !result.isClosed
     }
 
     fun close() {
@@ -206,7 +205,10 @@ private class NetworkInspectorSession(
         isClosed = true
         writerJob?.cancel()
         writerJob = null
+        processorJob?.cancel()
+        processorJob = null
         outgoing.close()
+        operations.close()
         runCatching { writer.close() }
         runCatching { reader.close() }
     }
@@ -218,6 +220,30 @@ private class NetworkInspectorSession(
                 if (!writeLine(message)) {
                     close()
                     return@launch
+                }
+            }
+        }
+    }
+
+    private fun startProcessor() {
+        if (processorJob != null || isClosed) return
+        processorJob = scope.launch {
+            var streamStarted = false
+            for (operation in operations) {
+                when (operation) {
+                    SessionOperation.StartStream -> {
+                        if (streamStarted) continue
+                        replaySnapshot()
+                        if (isClosed) return@launch
+                        streamStarted = true
+                    }
+
+                    SessionOperation.StopStream -> streamStarted = false
+                    is SessionOperation.Live -> {
+                        if (streamStarted) {
+                            sendWithBackpressure(operation.message)
+                        }
+                    }
                 }
             }
         }
@@ -241,25 +267,32 @@ private class NetworkInspectorSession(
         }.getOrNull()
     }
 
-    private suspend fun startStream() {
-        if (streamStarted || isClosed) return
-        streamStarted = true
+    private suspend fun handleCommand(message: CdpMessage) {
+        when (message.method) {
+            SnapOMethod.StartStream -> queueControl(SessionOperation.StartStream)
+            SnapOMethod.StopStream -> queueControl(SessionOperation.StopStream)
+            else -> commandHandler(message)?.let { sendWithBackpressure(it) }
+        }
+    }
+
+    private suspend fun replaySnapshot() {
         for (message in snapshotProvider()) {
-            if (!send(message)) {
-                close()
-                return
-            }
+            sendWithBackpressure(message)
         }
         val replayComplete = CdpMessage(
             method = SnapOMethod.ReplayComplete,
         )
-        if (!send(replayComplete)) {
-            close()
-        }
+        sendWithBackpressure(replayComplete)
     }
 
-    private fun stopStream() {
-        streamStarted = false
+    private suspend fun queueControl(operation: SessionOperation) {
+        if (isClosed) return
+        runCatching { operations.send(operation) }
+    }
+
+    private suspend fun sendWithBackpressure(message: CdpMessage) {
+        if (isClosed) return
+        runCatching { outgoing.send(message) }
     }
 
     private fun performClientHandshake(): Boolean {
@@ -294,11 +327,14 @@ private class NetworkInspectorSession(
         }
     }
 
-    @Volatile
-    private var streamStarted: Boolean = false
+    private sealed interface SessionOperation {
+        object StartStream : SessionOperation
+        object StopStream : SessionOperation
+        data class Live(val message: CdpMessage) : SessionOperation
+    }
 }
 
-private const val OutgoingQueueCapacity = 512
+private const val SessionQueueCapacity = 512
 private const val ClientHelloToken = "HelloSnapO"
 private const val ClientHelloTimeoutMs = 1_000
 private const val ClientHelloMaxBytes = 4 * 1024
