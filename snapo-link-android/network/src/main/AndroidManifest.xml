@@ -14,6 +14,12 @@
                 android:name="snapo.main_process_only"
                 android:value="true" />
             <meta-data
+                android:name="snapo.mode_label"
+                android:value="safe" />
+            <meta-data
+                android:name="snapo.allow_release"
+                android:value="false" />
+            <meta-data
                 android:name="snapo.buffer_window_ms"
                 android:value="300000" />
             <meta-data

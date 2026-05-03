@@ -125,34 +125,47 @@ val connection = URL("https://example.com").openConnection() as HttpURLConnectio
 val intercepted = SnapOHttpUrlInterceptor().intercept(connection)
 ```
 
-## 5. Optional: SnapOInitProvider configuration
+## 5. Optional: SnapONetworkInitProvider configuration
 
-Debug builds start the link server automatically—most apps do not need any extra setup, via a `SnapOInitProvider` ContentProvider.
+Debug builds start the network inspector server automatically, so most apps do not need any extra setup. This is handled by a `SnapONetworkInitProvider` ContentProvider.
 
 Customize the provider only if you need to adjust behavior. Override its metadata in your manifest:
 
 ```xml
 <provider
-    android:name="com.openai.snapo.link.core.SnapOInitProvider"
-    android:authorities="${applicationId}.snapo-init"
+    android:name="com.openai.snapo.network.SnapONetworkInitProvider"
+    android:authorities="${applicationId}.snapo-network-init"
     android:exported="false">
-    <!-- Override to not autostart the Snap-O Link Server. -->
+    <!-- Override to not autostart the Network Inspector server. -->
     <meta-data android:name="snapo.auto_init" android:value="false" />
-    <!-- Override to not start the server on non-debuggable builds builds. -->
+    <!-- Override to allow the server on non-debuggable builds. -->
     <meta-data android:name="snapo.allow_release" android:value="true" />
 </provider>
 ```
 
-- `snapo.auto_init` whether the server automatically runs on startup, or you call `SnapOLinkServer.start()` manually. (default: true)
+- `snapo.auto_init` whether the server automatically runs on startup, or you call `NetworkInspector.initialize(...)` manually. (default: true)
 - `snapo.allow_release` keeps the inspector available outside debug builds. (default: false)
-- `snapo.main_process_only` whether SnapOInitProvider only runs on the main process. (default: true)
+- `snapo.main_process_only` whether `SnapONetworkInitProvider` only runs on the main process. (default: true)
+- `snapo.mode_label` label reported to Snap-O clients with app metadata. (default: `safe`)
 - `snapo.buffer_window_ms` increases the rolling window of captured events. (default: 300000)
 - `snapo.max_events` the max number of events that can stay in the buffer. (default: 10000)
 - `snapo.max_bytes` the max number of bytes that can stay in the buffer. (default: 16777216)
 
 ## Security model note
 
-Snap-O Link transport on Android uses an app-local abstract Unix domain socket and depends on Android app sandbox + SELinux isolation. Under the current verified platform assumptions for this project, other apps cannot connect to the Snap-O Link server socket.
+Snap-O Network Inspector transport on Android uses an app-local abstract Unix domain socket and depends on Android app sandbox + SELinux isolation. Under the current verified platform assumptions for this project, other apps cannot connect to the inspector server socket.
+
+## Transport protocol note
+
+The network inspector server is exposed as `snapo_network_$pid`.
+
+1. A client must first send `HelloSnapO\n`.
+2. The server responds with `SnapO.appInfo`.
+3. Replay and live `Network.*` events do not begin until the client sends `SnapO.startStream`.
+4. The initial replay ends with `SnapO.replayComplete`; later `Network.*` messages are live traffic.
+5. A client can send `SnapO.stopStream` to pause delivery; the next `SnapO.startStream` begins a fresh replay.
+
+Network body commands use CDP-style messages such as `Network.getRequestPostData` and `Network.getResponseBody`.
 
 ## 6. Verify the connection
 
@@ -160,4 +173,4 @@ Snap-O Link transport on Android uses an app-local abstract Unix domain socket a
 2. Launch Snap-O on macOS and connect to the device.
 3. Trigger a request in-app; it should appear in the Network Inspector sidebar.
 
-If nothing shows up, confirm the dependencies are present in the variant you installed and that the link icon in Snap-O indicates an active session.
+If nothing shows up, confirm the dependencies are present in the variant you installed and that Snap-O indicates an active Network Inspector session.

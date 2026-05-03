@@ -20,7 +20,7 @@ https://openai.github.io/snap-o/
 
 ## Current Command Surface (from `snapo` help)
 
-- `snapo network list`: lists available Snap-O link servers.
+- `snapo network list`: lists available Snap-O Network Inspector servers.
 - `snapo network requests`: emits CDP network events for a server.
 - `snapo network show`: shows full details for a request id (headers + request/response bodies).
 
@@ -111,4 +111,5 @@ If an expected request is absent:
 - `--json` emits NDJSON, so use `jq` line-by-line.
 - `network requests` emits Chrome DevTools Protocol (CDP)-style event records (for example, top-level `method` + `params`).
 - Use `--no-stream` when you want a one-shot buffered snapshot.
+- The Android transport admits clients with `HelloSnapO`, returns `SnapO.appInfo`, and gates replay/live delivery with `SnapO.startStream` / `SnapO.stopStream`.
 - Use `jq 'keys'` on a sample line if fields differ across Snap-O versions.

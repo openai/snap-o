@@ -420,26 +420,26 @@ body.split-pane-resizing {
   line-height: 16px;
 }
 
-.schema-warning {
+.protocol-warning {
   margin: 8px 8px 0;
   padding: 12px;
   background: var(--warning-strong);
   color: var(--on-warning-strong);
 }
 
-.schema-warning-title {
+.protocol-warning-title {
   margin-bottom: 8px;
   font-size: 14px;
   line-height: 18px;
   font-weight: 500;
 }
 
-.schema-warning-body {
+.protocol-warning-body {
   font-size: 13px;
   line-height: 18px;
 }
 
-.schema-warning-body + .schema-warning-body {
+.protocol-warning-body + .protocol-warning-body {
   margin-top: 6px;
 }
 

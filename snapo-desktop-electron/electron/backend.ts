@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import type { Duplex } from "node:stream";
 import { AdbClient, type Device } from "./adb.js";
-import { SnapOLinkConnection, type AppIconRecord, type HelloRecord, type SnapORecord } from "./snapo-link.js";
-import { parseSnapOSockets, pidFromSocketName } from "./server-utils.js";
+import { NetworkServerConnection, type NetworkServerRecord, type SnapOAppInfoParams } from "./network-server.js";
+import { parseNetworkSockets, pidFromSocketName } from "./server-utils.js";
 import type {
   CdpMessage,
   LoadBodiesInput,
@@ -19,13 +19,10 @@ interface ServerState {
   key: string;
   deviceId: string;
   socketName: string;
-  connection: SnapOLinkConnection;
+  connection: NetworkServerConnection;
   deviceDisplayTitle: string;
-  hello: HelloRecord | null;
-  appIcon: AppIconRecord | null;
+  appInfo: SnapOAppInfoParams | null;
   packageNameHint: string | null;
-  features: string[];
-  schemaVersion: number | null;
   isConnected: boolean;
 }
 
@@ -44,7 +41,6 @@ interface PendingCommand {
 export class NetworkInspectorBackend {
   private readonly adb = new AdbClient();
   private readonly servers = new Map<string, ServerState>();
-  private readonly devices = new Map<string, Device>();
   private readonly streams = new Map<string, StreamSubscription>();
   private readonly pendingCommands = new Map<string, PendingCommand>();
   private readonly inFlightBodyCommands = new Map<string, Promise<CdpMessage>>();
@@ -72,10 +68,11 @@ export class NetworkInspectorBackend {
     const subscription: StreamSubscription = { streamId, serverKey, webContents };
     this.streams.set(streamId, subscription);
     webContents.once("destroyed", () => {
-      this.streams.delete(streamId);
+      this.removeStream(streamId);
     });
 
-    state.connection.sendFeatureOpened("network");
+    state.connection.startStream();
+
     this.sendStatus(webContents, {
       streamId,
       state: "started",
@@ -85,7 +82,7 @@ export class NetworkInspectorBackend {
   }
 
   async stopStream(streamId: string): Promise<void> {
-    this.streams.delete(streamId);
+    this.removeStream(streamId);
   }
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
@@ -152,13 +149,7 @@ export class NetworkInspectorBackend {
       devices = await this.adb.devicesList();
     } catch {
       this.removeAllServers();
-      this.devices.clear();
       return;
-    }
-
-    this.devices.clear();
-    for (const device of devices) {
-      this.devices.set(device.id, device);
     }
 
     const seenServerKeys = new Set<string>();
@@ -166,7 +157,7 @@ export class NetworkInspectorBackend {
       devices.map(async (device) => {
         let sockets: Set<string>;
         try {
-          sockets = parseSnapOSockets(await this.adb.listUnixSockets(device.id));
+          sockets = parseNetworkSockets(await this.adb.listUnixSockets(device.id));
         } catch {
           sockets = new Set();
         }
@@ -202,7 +193,7 @@ export class NetworkInspectorBackend {
       return;
     }
 
-    const connection = new SnapOLinkConnection(
+    const connection = new NetworkServerConnection(
       stream,
       (record) => this.handleRecord(key, record),
       () => {
@@ -217,11 +208,8 @@ export class NetworkInspectorBackend {
       socketName,
       connection,
       deviceDisplayTitle: device.displayTitle,
-      hello: null,
-      appIcon: null,
+      appInfo: null,
       packageNameHint: null,
-      features: [],
-      schemaVersion: null,
       isConnected: true
     };
     this.servers.set(key, state);
@@ -280,24 +268,16 @@ export class NetworkInspectorBackend {
         state.packageNameHint = candidate;
       }
     } catch {
-      // Package name hints are nice-to-have; Hello will provide canonical metadata once connected.
+      // Package name hints are nice-to-have; app info will provide canonical metadata once connected.
     }
   }
 
-  private handleRecord(serverKey: string, record: SnapORecord): void {
+  private handleRecord(serverKey: string, record: NetworkServerRecord): void {
     const state = this.servers.get(serverKey);
     if (state == null) return;
 
-    if (record.kind === "hello") {
-      state.hello = record.value;
-      state.schemaVersion = record.value.schemaVersion ?? null;
-      state.features = record.value.features?.map((feature) => feature.id) ?? [];
-      return;
-    }
-
-    if (record.kind === "appIcon") {
-      if (state.hello?.packageName != null && state.hello.packageName !== record.value.packageName) return;
-      state.appIcon = record.value;
+    if (record.kind === "appInfo") {
+      state.appInfo = record.value;
       return;
     }
 
@@ -323,16 +303,35 @@ export class NetworkInspectorBackend {
     for (const subscription of this.streams.values()) {
       if (subscription.serverKey !== serverKey) continue;
       if (subscription.webContents.isDestroyed()) continue;
-      const event: StreamEvent = {
-        streamId: subscription.streamId,
-        server: {
-          deviceId: state.deviceId,
-          socketName: state.socketName
-        },
-        message
-      };
-      subscription.webContents.send("network:event", event);
+      this.sendNetworkEvent(subscription, state, message);
     }
+  }
+
+  private sendNetworkEvent(subscription: StreamSubscription, state: ServerState, message: CdpMessage): void {
+    const event: StreamEvent = {
+      streamId: subscription.streamId,
+      server: {
+        deviceId: state.deviceId,
+        socketName: state.socketName
+      },
+      message
+    };
+    subscription.webContents.send("network:event", event);
+  }
+
+  private removeStream(streamId: string): void {
+    const subscription = this.streams.get(streamId);
+    if (subscription == null) return;
+    this.streams.delete(streamId);
+    if (this.hasStreamsForServer(subscription.serverKey)) return;
+    this.servers.get(subscription.serverKey)?.connection.stopStream();
+  }
+
+  private hasStreamsForServer(serverKey: string): boolean {
+    for (const subscription of this.streams.values()) {
+      if (subscription.serverKey === serverKey) return true;
+    }
+    return false;
   }
 
   private sendNetworkCommand(serverKey: string, method: string, params: Record<string, unknown>): Promise<CdpMessage> {
@@ -356,7 +355,7 @@ export class NetworkInspectorBackend {
       }, BodyCommandTimeoutMs);
 
       this.pendingCommands.set(key, { resolve, reject, timeout });
-      state.connection.sendFeatureCommand("network", message);
+      state.connection.sendCommand(message);
     });
   }
 
@@ -380,7 +379,8 @@ export class NetworkInspectorBackend {
   private currentServers(): SnapOServer[] {
     return Array.from(this.servers.values())
       .map((state) => {
-        const packageName = state.hello?.packageName ?? state.packageNameHint;
+        const packageName = state.appInfo?.packageName ?? state.packageNameHint;
+        const protocolVersion = state.appInfo?.protocolVersion ?? null;
         return {
           server: `${state.deviceId}:${state.socketName}`,
           deviceId: state.deviceId,
@@ -388,16 +388,15 @@ export class NetworkInspectorBackend {
           deviceDisplayTitle: state.deviceDisplayTitle,
           displayName: packageName ?? state.socketName,
           isConnected: state.isConnected,
-          hasHello: state.hello != null,
-          pid: state.hello?.pid ?? pidFromSocketName(state.socketName),
-          schemaVersion: state.schemaVersion,
-          isSchemaNewerThanSupported: state.schemaVersion != null && state.schemaVersion > SupportedSchemaVersion,
-          isSchemaOlderThanSupported:
-            state.hello != null && (state.schemaVersion == null || state.schemaVersion < SupportedSchemaVersion),
-          features: state.features,
-          appIconBase64: state.appIcon?.base64Data ?? null,
+          hasAppInfo: state.appInfo != null,
+          pid: state.appInfo?.pid ?? pidFromSocketName(state.socketName),
+          protocolVersion,
+          isProtocolNewerThanSupported: protocolVersion != null && protocolVersion > SupportedProtocolVersion,
+          isProtocolOlderThanSupported:
+            state.appInfo != null && (protocolVersion == null || protocolVersion < SupportedProtocolVersion),
+          appIconBase64: state.appInfo?.icon?.base64Data ?? null,
           packageName,
-          appName: packageName
+          appName: state.appInfo?.processName.trim() || null
         };
       })
       .sort((a, b) => {
@@ -440,4 +439,4 @@ function booleanField(record: Record<string, unknown> | undefined, field: string
 
 const SocketPollIntervalMs = 2_000;
 const BodyCommandTimeoutMs = 1_500;
-const SupportedSchemaVersion = 3;
+const SupportedProtocolVersion = 1;

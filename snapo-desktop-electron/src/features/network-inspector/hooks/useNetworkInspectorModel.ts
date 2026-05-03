@@ -126,7 +126,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const selectedServerConnectionKey =
     selectedServerModel == null
       ? selectedServerKey
-      : `${selectedServerKey}\u0000${selectedServerModel.isConnected}\u0000${selectedServerModel.hasHello}`;
+      : `${selectedServerKey}\u0000${selectedServerModel.isConnected}\u0000${selectedServerModel.hasAppInfo}`;
 
   useEffect(() => {
     if (selectedServer == null || !selectedServerIsConnected) return;
@@ -157,16 +157,13 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   );
 
   const visibleRecords = useMemo(
-    () =>
-      debugPreset === "missingNetworkFeature"
-        ? []
-        : filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
-    [allRecords, debugPreset, searchText, selectedServer, sortNewestFirst]
+    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
+    [allRecords, searchText, selectedServer, sortNewestFirst]
   );
 
   const serverRecordCount = useMemo(
-    () => (debugPreset === "missingNetworkFeature" ? 0 : countRecordsForServer(allRecords, selectedServer)),
-    [allRecords, debugPreset, selectedServer]
+    () => countRecordsForServer(allRecords, selectedServer),
+    [allRecords, selectedServer]
   );
 
   const selectedRecordId = useMemo(() => {
@@ -320,18 +317,12 @@ function areServerModelsEqual(left: SnapOServer, right: SnapOServer | undefined)
     left.deviceDisplayTitle === right.deviceDisplayTitle &&
     left.appIconBase64 === right.appIconBase64 &&
     left.isConnected === right.isConnected &&
-    left.hasHello === right.hasHello &&
+    left.hasAppInfo === right.hasAppInfo &&
     left.pid === right.pid &&
-    left.schemaVersion === right.schemaVersion &&
-    left.isSchemaNewerThanSupported === right.isSchemaNewerThanSupported &&
-    left.isSchemaOlderThanSupported === right.isSchemaOlderThanSupported &&
+    left.protocolVersion === right.protocolVersion &&
+    left.isProtocolNewerThanSupported === right.isProtocolNewerThanSupported &&
+    left.isProtocolOlderThanSupported === right.isProtocolOlderThanSupported &&
     left.packageName === right.packageName &&
-    left.appName === right.appName &&
-    areStringArraysEqual(left.features, right.features)
+    left.appName === right.appName
   );
-}
-
-function areStringArraysEqual(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
 }

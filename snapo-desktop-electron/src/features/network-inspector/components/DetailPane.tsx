@@ -3,7 +3,7 @@ import type { InspectorRecord } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { resolveDetailEmptyState } from "../lib/records";
-import { isUnsupportedLegacySchemaRequestSelection, unsupportedLegacySchemaMessage } from "../lib/schema";
+import { isUnsupportedLegacyProtocolRequestSelection, unsupportedLegacyProtocolMessage } from "../lib/protocol";
 import { RequestDetail } from "./RequestDetail";
 import { WebSocketDetail } from "./WebSocketDetail";
 
@@ -29,11 +29,11 @@ export const DetailContent = memo(function DetailContent({
     );
   }
 
-  if (isUnsupportedLegacySchemaRequestSelection(record, selectedServer)) {
+  if (isUnsupportedLegacyProtocolRequestSelection(record, selectedServer)) {
     return (
       <EmptyState
-        title="This app server uses an unsupported schema"
-        body={unsupportedLegacySchemaMessage(selectedServer)}
+        title="This app server uses an unsupported protocol"
+        body={unsupportedLegacyProtocolMessage(selectedServer)}
         showDocsLink={false}
         onOpenDocs={onOpenDocs}
       />

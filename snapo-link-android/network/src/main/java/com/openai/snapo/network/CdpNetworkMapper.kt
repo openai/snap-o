@@ -1,24 +1,5 @@
 package com.openai.snapo.network
 
-import com.openai.snapo.link.core.CdpEventSourceMessageReceivedParams
-import com.openai.snapo.link.core.CdpLoadingFailedParams
-import com.openai.snapo.link.core.CdpLoadingFinishedParams
-import com.openai.snapo.link.core.CdpMessage
-import com.openai.snapo.link.core.CdpNetworkMethod
-import com.openai.snapo.link.core.CdpRequestData
-import com.openai.snapo.link.core.CdpRequestWillBeSentParams
-import com.openai.snapo.link.core.CdpResponseData
-import com.openai.snapo.link.core.CdpResponseReceivedParams
-import com.openai.snapo.link.core.CdpWebSocketClosedParams
-import com.openai.snapo.link.core.CdpWebSocketCreatedParams
-import com.openai.snapo.link.core.CdpWebSocketFrame
-import com.openai.snapo.link.core.CdpWebSocketFrameErrorParams
-import com.openai.snapo.link.core.CdpWebSocketFrameReceivedParams
-import com.openai.snapo.link.core.CdpWebSocketFrameSentParams
-import com.openai.snapo.link.core.CdpWebSocketHandshakeResponse
-import com.openai.snapo.link.core.CdpWebSocketHandshakeResponseReceivedParams
-import com.openai.snapo.link.core.Ndjson
-
 @Suppress("CyclomaticComplexMethod")
 internal fun NetworkEventRecord.toCdpMessage(requestUrl: String?): CdpMessage {
     return when (this) {
@@ -43,7 +24,7 @@ internal fun NetworkEventRecord.toCdpMessage(requestUrl: String?): CdpMessage {
 private fun RequestWillBeSent.toCdpRequestWillBeSent(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.RequestWillBeSent,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpRequestWillBeSentParams.serializer(),
             CdpRequestWillBeSentParams(
                 requestId = id,
@@ -65,7 +46,7 @@ private fun RequestWillBeSent.toCdpRequestWillBeSent(): CdpMessage {
 private fun ResponseReceived.toCdpResponseReceived(requestUrl: String?): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.ResponseReceived,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpResponseReceivedParams.serializer(),
             CdpResponseReceivedParams(
                 requestId = id,
@@ -87,7 +68,7 @@ private fun ResponseReceived.toCdpResponseReceived(requestUrl: String?): CdpMess
 private fun RequestFailed.toCdpLoadingFailed(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.LoadingFailed,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpLoadingFailedParams.serializer(),
             CdpLoadingFailedParams(
                 requestId = id,
@@ -102,7 +83,7 @@ private fun RequestFailed.toCdpLoadingFailed(): CdpMessage {
 private fun ResponseFinished.toCdpLoadingFinished(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.LoadingFinished,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpLoadingFinishedParams.serializer(),
             CdpLoadingFinishedParams(
                 requestId = id,
@@ -116,7 +97,7 @@ private fun ResponseFinished.toCdpLoadingFinished(): CdpMessage {
 private fun ResponseStreamEvent.toCdpEventSourceMessageReceived(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.EventSourceMessageReceived,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpEventSourceMessageReceivedParams.serializer(),
             CdpEventSourceMessageReceivedParams(
                 requestId = id,
@@ -133,7 +114,7 @@ private fun ResponseStreamClosed.toCdpStreamClosed(): CdpMessage {
     return if (reason == "completed") {
         CdpMessage(
             method = CdpNetworkMethod.LoadingFinished,
-            params = Ndjson.encodeToJsonElement(
+            params = ProtocolJson.encodeToJsonElement(
                 CdpLoadingFinishedParams.serializer(),
                 CdpLoadingFinishedParams(
                     requestId = id,
@@ -145,7 +126,7 @@ private fun ResponseStreamClosed.toCdpStreamClosed(): CdpMessage {
     } else {
         CdpMessage(
             method = CdpNetworkMethod.LoadingFailed,
-            params = Ndjson.encodeToJsonElement(
+            params = ProtocolJson.encodeToJsonElement(
                 CdpLoadingFailedParams.serializer(),
                 CdpLoadingFailedParams(
                     requestId = id,
@@ -161,7 +142,7 @@ private fun ResponseStreamClosed.toCdpStreamClosed(): CdpMessage {
 private fun WebSocketWillOpen.toCdpWebSocketCreated(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketCreated,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketCreatedParams.serializer(),
             CdpWebSocketCreatedParams(
                 requestId = id,
@@ -177,7 +158,7 @@ private fun WebSocketWillOpen.toCdpWebSocketCreated(): CdpMessage {
 private fun WebSocketOpened.toCdpWebSocketOpened(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketHandshakeResponseReceived,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketHandshakeResponseReceivedParams.serializer(),
             CdpWebSocketHandshakeResponseReceivedParams(
                 requestId = id,
@@ -194,7 +175,7 @@ private fun WebSocketOpened.toCdpWebSocketOpened(): CdpMessage {
 private fun WebSocketMessageSent.toCdpWebSocketMessageSent(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketFrameSent,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketFrameSentParams.serializer(),
             CdpWebSocketFrameSentParams(
                 requestId = id,
@@ -214,7 +195,7 @@ private fun WebSocketMessageSent.toCdpWebSocketMessageSent(): CdpMessage {
 private fun WebSocketMessageReceived.toCdpWebSocketMessageReceived(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketFrameReceived,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketFrameReceivedParams.serializer(),
             CdpWebSocketFrameReceivedParams(
                 requestId = id,
@@ -233,7 +214,7 @@ private fun WebSocketMessageReceived.toCdpWebSocketMessageReceived(): CdpMessage
 private fun WebSocketClosing.toCdpWebSocketClosing(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketFrameReceived,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketFrameReceivedParams.serializer(),
             CdpWebSocketFrameReceivedParams(
                 requestId = id,
@@ -253,7 +234,7 @@ private fun WebSocketClosing.toCdpWebSocketClosing(): CdpMessage {
 private fun WebSocketCloseRequested.toCdpWebSocketCloseRequested(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketFrameSent,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketFrameSentParams.serializer(),
             CdpWebSocketFrameSentParams(
                 requestId = id,
@@ -275,7 +256,7 @@ private fun WebSocketCloseRequested.toCdpWebSocketCloseRequested(): CdpMessage {
 private fun WebSocketClosed.toCdpWebSocketClosed(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketClosed,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketClosedParams.serializer(),
             CdpWebSocketClosedParams(
                 requestId = id,
@@ -290,7 +271,7 @@ private fun WebSocketClosed.toCdpWebSocketClosed(): CdpMessage {
 private fun WebSocketFailed.toCdpWebSocketFailed(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketFrameError,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketFrameErrorParams.serializer(),
             CdpWebSocketFrameErrorParams(
                 requestId = id,
@@ -304,7 +285,7 @@ private fun WebSocketFailed.toCdpWebSocketFailed(): CdpMessage {
 private fun WebSocketCancelled.toCdpWebSocketCancelled(): CdpMessage {
     return CdpMessage(
         method = CdpNetworkMethod.WebSocketClosed,
-        params = Ndjson.encodeToJsonElement(
+        params = ProtocolJson.encodeToJsonElement(
             CdpWebSocketClosedParams.serializer(),
             CdpWebSocketClosedParams(
                 requestId = id,

@@ -3,7 +3,6 @@ package com.openai.snapo.network.okhttp3
 import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
-import com.openai.snapo.link.core.SnapOLink
 import com.openai.snapo.network.NetworkEventRecord
 import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.RequestFailed
@@ -282,12 +281,11 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
     }
 
     private inline fun publish(crossinline builder: () -> NetworkEventRecord) {
-        if (!SnapOLink.isEnabled()) return
-        val feature = NetworkInspector.getOrNull() ?: return
+        val server = NetworkInspector.getOrNull() ?: return
         val record = builder()
         scope.launch {
             try {
-                feature.publish(record)
+                server.publish(record)
             } catch (_: Throwable) {
             }
         }

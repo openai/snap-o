@@ -1,4 +1,4 @@
-package com.openai.snapo.link.core
+package com.openai.snapo.network
 
 import android.app.Application
 import android.content.pm.PackageManager
@@ -14,7 +14,7 @@ import java.io.ByteArrayOutputStream
 
 internal class AppIconProvider(private val app: Application) {
 
-    fun loadAppIcon(): AppIcon? {
+    fun loadAppIcon(): SnapOAppIcon? {
         val drawable = try {
             app.packageManager.getApplicationIcon(app.applicationInfo)
         } catch (_: PackageManager.NameNotFoundException) {
@@ -43,8 +43,7 @@ internal class AppIconProvider(private val app: Application) {
                 }
                 val encoded = Base64.encodeToString(pngData, Base64.NO_WRAP)
 
-                AppIcon(
-                    packageName = app.packageName,
+                SnapOAppIcon(
                     width = TARGET_ICON_SIZE,
                     height = TARGET_ICON_SIZE,
                     base64Data = encoded,

@@ -1,7 +1,7 @@
 import { gunzipSync } from "node:zlib";
 import { AdbClient, type Device } from "./adb.js";
-import { SnapOLinkConnection, type HelloRecord, type SnapORecord } from "./snapo-link.js";
-import { parseSnapOSockets, pidFromSocketName } from "./server-utils.js";
+import { NetworkServerConnection, type NetworkServerRecord, type SnapOAppInfoParams } from "./network-server.js";
+import { parseNetworkSockets, pidFromSocketName } from "./server-utils.js";
 import type { CdpMessage } from "../src/network/bridge-types.js";
 
 type OutputMode = "human" | "json";
@@ -68,12 +68,10 @@ type FetchRequestDetailsResult =
   | { kind: "missingBody"; message: string }
   | { kind: "failure"; message: string };
 
-const NetworkFeatureId = "network";
-const SnapshotQuietPeriodMs = 300;
 const SnapshotMaxWaitMs = 5_000;
 const CommandResponseTimeoutMs = 500;
 const CommandAttemptLimit = 3;
-const HelloWaitTimeoutMs = 1_200;
+const AppInfoWaitTimeoutMs = 1_200;
 const RedactedValue = "[REDACTED]";
 const RequestHeaderNames = new Set(["authorization", "cookie"]);
 const ResponseHeaderNames = new Set(["set-cookie"]);
@@ -135,7 +133,7 @@ async function runNetworkList(options: CliOptions & { includeAppInfo: boolean })
   const adb = new AdbClient();
   const discovery = await discoverServers(adb, options);
   if (discovery.kind === "failure") return fail(discovery.message);
-  if (discovery.servers.length === 0) return fail("No Snap-O link servers found");
+  if (discovery.servers.length === 0) return fail("No Snap-O network servers found");
 
   const appInfoByServer = options.includeAppInfo
     ? await Promise.all(
@@ -175,7 +173,7 @@ async function runNetworkRequests(options: NetworkRequestsOptions): Promise<numb
     const outputMode: OutputMode = options.json ? "json" : "human";
     if (options.noStream) {
       const completed = await runSnapshotRequests(session, outputMode);
-      if (!completed) return fail(`Timed out waiting for handshake from ${serverIdentifier(resolved.server)}`);
+      if (!completed) return fail(`Timed out waiting for snapshot from ${serverIdentifier(resolved.server)}`);
     } else {
       await runStreamingRequests(session, outputMode);
     }
@@ -218,46 +216,31 @@ async function runNetworkShow(options: NetworkShowOptions): Promise<number> {
 }
 
 async function runSnapshotRequests(session: CliSession, outputMode: OutputMode): Promise<boolean> {
-  let featureOpenedAtMs: number | null = null;
-  let lastNetworkEventMs: number | null = null;
+  session.startStream();
   const startedAtMs = Date.now();
 
-  while (true) {
-    const now = Date.now();
-    if (featureOpenedAtMs == null && now - startedAtMs >= SnapshotMaxWaitMs) return false;
-    const waitMs = snapshotWaitMs(now, featureOpenedAtMs, lastNetworkEventMs);
-    const record = await session.nextRecord(waitMs);
+  while (Date.now() - startedAtMs < SnapshotMaxWaitMs) {
+    const remainingMs = SnapshotMaxWaitMs - (Date.now() - startedAtMs);
+    const record = await session.nextRecord(Math.min(250, Math.max(1, remainingMs)));
     if (record == null) {
-      if (session.closed) return featureOpenedAtMs != null;
-      if (featureOpenedAtMs == null) continue;
-      const resolvedLastNetworkAt = lastNetworkEventMs ?? featureOpenedAtMs;
-      const quietForMs = now - resolvedLastNetworkAt;
-      const elapsedMs = now - featureOpenedAtMs;
-      if (quietForMs >= SnapshotQuietPeriodMs || elapsedMs >= SnapshotMaxWaitMs) return true;
+      if (session.closed) return false;
       continue;
-    }
-
-    if (record.kind === "hello" && featureOpenedAtMs == null) {
-      session.sendFeatureOpened(NetworkFeatureId);
-      featureOpenedAtMs = Date.now();
     }
 
     if (record.kind === "network") {
       emitNetworkEvent(sanitizeMessage(record.value), outputMode);
-      lastNetworkEventMs = Date.now();
     }
+    if (record.kind === "replayComplete") return true;
   }
+
+  return false;
 }
 
 async function runStreamingRequests(session: CliSession, outputMode: OutputMode): Promise<void> {
-  let featureOpened = false;
+  session.startStream();
   while (true) {
     const record = await session.nextRecord();
     if (record == null) return;
-    if (record.kind === "hello" && !featureOpened) {
-      session.sendFeatureOpened(NetworkFeatureId);
-      featureOpened = true;
-    }
     if (record.kind === "network") {
       emitNetworkEvent(sanitizeMessage(record.value), outputMode);
     }
@@ -275,7 +258,7 @@ async function fetchRequestDetails(
   }
 
   try {
-    let featureOpened = false;
+    session.startStream();
     let commandId = 1;
     let pendingRequestBodyId: number | null = null;
     let pendingResponseBodyId: number | null = null;
@@ -293,19 +276,8 @@ async function fetchRequestDetails(
     while (true) {
       const record = await session.nextRecord(CommandResponseTimeoutMs);
       if (record == null) {
-        if (!featureOpened) {
-          if (Date.now() - startedAtMs >= SnapshotMaxWaitMs) {
-            return { kind: "failure", message: `Timed out waiting for handshake from ${serverIdentifier(server)}` };
-          }
-          continue;
-        }
         pendingRequestBodyId = null;
         pendingResponseBodyId = null;
-      } else if (record.kind === "hello") {
-        if (!featureOpened) {
-          session.sendFeatureOpened(NetworkFeatureId);
-          featureOpened = true;
-        }
       } else if (record.kind === "network") {
         const message = record.value;
         details = updateRequestDetailsSnapshot(details, message, requestId);
@@ -355,7 +327,6 @@ async function fetchRequestDetails(
 
       if (
         shouldSendRequestBodyCommand(
-          featureOpened,
           details.requestSeen && details.requestHasPostData,
           requestBodyResolved,
           pendingRequestBodyId,
@@ -364,7 +335,7 @@ async function fetchRequestDetails(
       ) {
         pendingRequestBodyId = commandId;
         requestBodyAttempts += 1;
-        session.sendFeatureCommand({
+        session.sendCommand({
           id: commandId,
           method: "Network.getRequestPostData",
           params: { requestId }
@@ -374,7 +345,6 @@ async function fetchRequestDetails(
 
       if (
         shouldSendResponseBodyCommand(
-          featureOpened,
           details.responseSeen && details.responseTerminal && !responseShouldNotHaveBody(details),
           responseBodyResolved,
           pendingResponseBodyId,
@@ -383,7 +353,7 @@ async function fetchRequestDetails(
       ) {
         pendingResponseBodyId = commandId;
         responseBodyAttempts += 1;
-        session.sendFeatureCommand({
+        session.sendCommand({
           id: commandId,
           method: "Network.getResponseBody",
           params: { requestId }
@@ -451,7 +421,7 @@ async function discoverServers(
   const servers: ServerRef[] = [];
   for (const deviceId of selectedDeviceIds.deviceIds) {
     try {
-      const sockets = parseSnapOSockets(await adb.listUnixSockets(deviceId));
+      const sockets = parseNetworkSockets(await adb.listUnixSockets(deviceId));
       for (const socketName of sockets) servers.push({ deviceId, socketName });
     } catch {
       // A device may disappear while we are listing sockets; omit it from this snapshot.
@@ -466,21 +436,21 @@ async function discoverServers(
 }
 
 async function resolveServerAppInfo(adb: AdbClient, server: ServerRef): Promise<ServerAppInfo> {
-  const [hint, hello] = await Promise.all([packageNameHint(adb, server), fetchHello(adb, server)]);
+  const [hint, appInfo] = await Promise.all([packageNameHint(adb, server), fetchAppInfo(adb, server)]);
   return {
-    packageName: hello?.packageName ?? hint,
-    appName: hello?.processName?.trim() || null
+    packageName: appInfo?.packageName ?? hint,
+    appName: appInfo?.processName.trim() || null
   };
 }
 
-async function fetchHello(adb: AdbClient, server: ServerRef): Promise<HelloRecord | null> {
+async function fetchAppInfo(adb: AdbClient, server: ServerRef): Promise<SnapOAppInfoParams | null> {
   const session = await CliSession.open(adb, server);
   if (session == null) return null;
   try {
     while (true) {
-      const record = await session.nextRecord(HelloWaitTimeoutMs);
+      const record = await session.nextRecord(AppInfoWaitTimeoutMs);
       if (record == null) return null;
-      if (record.kind === "hello") return record.value;
+      if (record.kind === "appInfo") return record.value;
     }
   } finally {
     session.close();
@@ -517,7 +487,7 @@ async function resolveServer(
   const discovery = await discoverServers(adb, selection);
   if (discovery.kind === "failure") return discovery;
   if (discovery.servers.length === 0) {
-    return { kind: "failure", message: "No Snap-O link servers found for selected device(s)" };
+    return { kind: "failure", message: "No Snap-O network servers found for selected device(s)" };
   }
 
   if (socketName == null) {
@@ -541,7 +511,7 @@ async function resolveServer(
 
   const matches = discovery.servers.filter((server) => server.socketName === socketName);
   if (matches.length === 0) {
-    return { kind: "failure", message: `No Snap-O link server named '${socketName}' found` };
+    return { kind: "failure", message: `No Snap-O network server named '${socketName}' found` };
   }
   if (matches.length > 1) {
     return {
@@ -757,30 +727,23 @@ function updateRequestDetailsSnapshot(
 }
 
 function shouldSendRequestBodyCommand(
-  featureOpened: boolean,
   canRequestBody: boolean,
   requestBodyResolved: boolean,
   pendingRequestBodyId: number | null,
   requestBodyAttempts: number
 ): boolean {
   return (
-    featureOpened &&
-    canRequestBody &&
-    !requestBodyResolved &&
-    pendingRequestBodyId == null &&
-    requestBodyAttempts < CommandAttemptLimit
+    canRequestBody && !requestBodyResolved && pendingRequestBodyId == null && requestBodyAttempts < CommandAttemptLimit
   );
 }
 
 function shouldSendResponseBodyCommand(
-  featureOpened: boolean,
   canRequestBody: boolean,
   responseBodyResolved: boolean,
   pendingResponseBodyId: number | null,
   responseBodyAttempts: number
 ): boolean {
   return (
-    featureOpened &&
     canRequestBody &&
     !responseBodyResolved &&
     pendingResponseBodyId == null &&
@@ -813,16 +776,6 @@ function responseIsDefinedAsBodyless(
   if (responseStatus >= 100 && responseStatus <= 199) return true;
   if (responseStatus === 204 || responseStatus === 205 || responseStatus === 304) return true;
   return responseContentLength === 0;
-}
-
-function snapshotWaitMs(nowMs: number, openedAtMs: number | null, lastNetworkAtMs: number | null): number {
-  if (openedAtMs == null) return 250;
-  const elapsedSinceOpen = nowMs - openedAtMs;
-  if (elapsedSinceOpen >= SnapshotMaxWaitMs) return 1;
-  const quietRemaining =
-    lastNetworkAtMs == null ? SnapshotQuietPeriodMs : Math.max(1, SnapshotQuietPeriodMs - (nowMs - lastNetworkAtMs));
-  const maxRemaining = Math.max(1, SnapshotMaxWaitMs - elapsedSinceOpen);
-  return Math.min(quietRemaining, maxRemaining);
 }
 
 function sanitizeMessage(message: CdpMessage): CdpMessage {
@@ -1127,13 +1080,13 @@ Usage:
   snapo network <command> [options]
 
 Commands:
-  list       List available Snap-O link servers
+  list       List available Snap-O network servers
   requests   Emit CDP network events for a server
   show       Show details for a request id`);
 }
 
 function printNetworkListHelp(): void {
-  console.log(`List available Snap-O link servers
+  console.log(`List available Snap-O network servers
 
 Usage:
   snapo network list [-s <serial> | -d | -e] [--json] [--no-app-info]`);
@@ -1170,16 +1123,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 class CliSession {
-  private readonly records: SnapORecord[] = [];
-  private readonly waiters: Array<(record: SnapORecord | null) => void> = [];
-  private connection: SnapOLinkConnection | null = null;
+  private readonly records: NetworkServerRecord[] = [];
+  private readonly waiters: Array<(record: NetworkServerRecord | null) => void> = [];
+  private connection: NetworkServerConnection | null = null;
   private isClosed = false;
 
   static async open(adb: AdbClient, server: ServerRef): Promise<CliSession | null> {
     const session = new CliSession();
     try {
       const stream = await adb.openLocalAbstract(server.deviceId, server.socketName);
-      session.connection = new SnapOLinkConnection(
+      session.connection = new NetworkServerConnection(
         stream,
         (record) => session.pushRecord(record),
         () => session.close()
@@ -1196,22 +1149,22 @@ class CliSession {
     return this.isClosed;
   }
 
-  sendFeatureOpened(feature: string): void {
-    this.connection?.sendFeatureOpened(feature);
+  sendCommand(message: CdpMessage): void {
+    this.connection?.sendCommand(message);
   }
 
-  sendFeatureCommand(message: CdpMessage): void {
-    this.connection?.sendFeatureCommand(NetworkFeatureId, message);
+  startStream(): void {
+    this.connection?.startStream();
   }
 
-  nextRecord(timeoutMs?: number): Promise<SnapORecord | null> {
+  nextRecord(timeoutMs?: number): Promise<NetworkServerRecord | null> {
     const next = this.records.shift();
     if (next != null) return Promise.resolve(next);
     if (this.isClosed) return Promise.resolve(null);
 
     return new Promise((resolve) => {
       let timeout: NodeJS.Timeout | null = null;
-      const waiter = (record: SnapORecord | null): void => {
+      const waiter = (record: NetworkServerRecord | null): void => {
         if (timeout != null) clearTimeout(timeout);
         resolve(record);
       };
@@ -1234,7 +1187,7 @@ class CliSession {
     for (const waiter of this.waiters.splice(0)) waiter(null);
   }
 
-  private pushRecord(record: SnapORecord): void {
+  private pushRecord(record: NetworkServerRecord): void {
     const waiter = this.waiters.shift();
     if (waiter != null) {
       waiter(record);

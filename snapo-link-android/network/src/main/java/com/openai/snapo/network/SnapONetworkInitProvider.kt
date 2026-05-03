@@ -1,6 +1,7 @@
 package com.openai.snapo.network
 
 import android.app.ActivityManager
+import android.app.Application
 import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
@@ -14,13 +15,15 @@ import androidx.core.content.ContentProviderCompat
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Auto-initializes the NetworkInspector feature very early in app startup.
+ * Auto-initializes the Network Inspector server very early in app startup.
  *
  * Reads configuration from this provider’s <meta-data> in the merged manifest.
  *
  * Manifest keys (all optional):
  *  - snapo.auto_init (boolean)        default: true
  *  - snapo.main_process_only (boolean)default: true
+ *  - snapo.mode_label (string)        default: "safe"
+ *  - snapo.allow_release (boolean)    default: false
  *  - snapo.buffer_window_ms (long)    default: 300000 (5 minutes)
  *  - snapo.max_events (int)           default: 10000
  *  - snapo.max_bytes (long)           default: 16777216 (16 MB)
@@ -45,14 +48,18 @@ class SnapONetworkInitProvider : ContentProvider() {
         val bufferMs = readLong(meta, "snapo.buffer_window_ms", 300_000L)
         val maxEvents = readInt(meta, "snapo.max_events", 10_000)
         val maxBytes = readLong(meta, "snapo.max_bytes", 16L * 1024 * 1024)
+        val modeLabel = meta?.getString("snapo.mode_label") ?: "safe"
+        val allowRelease = meta?.getBoolean("snapo.allow_release", false) ?: false
 
         val networkConfig = NetworkInspectorConfig(
             bufferWindow = bufferMs.milliseconds,
             maxBufferedEvents = maxEvents,
             maxBufferedBytes = maxBytes,
+            modeLabel = modeLabel,
+            allowRelease = allowRelease,
         )
 
-        NetworkInspector.initialize(networkConfig)
+        NetworkInspector.initialize(ctx.applicationContext as Application, networkConfig)
         return true
     }
 
