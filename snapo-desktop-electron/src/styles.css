@@ -243,7 +243,7 @@ body.split-pane-resizing {
   align-items: center;
   padding: 8px 12px;
   border: 1px solid var(--outline);
-  background: var(--sidebar-surface);
+  background: var(--surface-bright);
   text-align: left;
 }
 
