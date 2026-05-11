@@ -3,6 +3,7 @@ import Sparkle
 import SwiftUI
 
 @Observable
+@MainActor
 final class CheckForUpdatesViewModel {
   @ObservationIgnored private var bag = Set<AnyCancellable>()
   var canCheckForUpdates = false
@@ -15,6 +16,7 @@ final class CheckForUpdatesViewModel {
   }
 }
 
+@MainActor
 struct CheckForUpdatesView: View {
   @State private var viewModel: CheckForUpdatesViewModel
   private let updater: SPUUpdater
