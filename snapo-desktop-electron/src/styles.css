@@ -224,7 +224,7 @@ body.split-pane-resizing {
 
 .no-servers-banner {
   width: 100%;
-  background: var(--surface-variant);
+  border: 1px solid var(--outline);
   color: var(--on-surface-variant);
   padding: 12px;
   font-size: 13px;
@@ -1254,10 +1254,4 @@ pre {
 
 .text-button:hover {
   background: var(--surface-container-low);
-}
-
-@media (max-width: 760px) {
-  .app-shell {
-    grid-template-columns: 260px minmax(360px, 1fr);
-  }
 }
