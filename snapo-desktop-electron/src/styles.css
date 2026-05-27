@@ -1,22 +1,23 @@
 :root {
   color-scheme: light dark;
-  --primary: #111111;
-  --on-primary: #ffffff;
+
+  --primary: #111;
+  --on-primary: #fff;
   --primary-container: #e6e6e6;
-  --on-primary-container: #111111;
+  --on-primary-container: #111;
   --secondary: #2a2a2a;
-  --on-secondary: #ffffff;
+  --on-secondary: #fff;
   --secondary-container: #ececec;
   --on-secondary-container: #1b1b1b;
   --background: #f7f7f7;
-  --on-background: #111111;
+  --on-background: #111;
   --surface: #fdfdfd;
   --on-surface: #151515;
   --surface-variant: #f1f1f1;
   --on-surface-variant: #6b6b6b;
-  --surface-bright: #ffffff;
+  --surface-bright: #fff;
   --surface-dim: #eaeaea;
-  --surface-container-lowest: #ffffff;
+  --surface-container-lowest: #fff;
   --surface-container-low: #f6f6f6;
   --surface-container: #f0f0f0;
   --surface-container-high: #e8e8e8;
@@ -28,7 +29,7 @@
   --warning: #ff9b0d;
   --warning-surface: #f7ebdd;
   --warning-strong: #f69e00;
-  --on-warning-strong: #ffffff;
+  --on-warning-strong: #fff;
   --info: #6f6f6f;
   --accent-blue: #2778db;
   --sidebar-selection: #bcd6ff;
@@ -41,6 +42,7 @@
   --json-number: #2f6fae;
   --json-string: #b74840;
   --json-null: #8c7a72;
+
   font-family:
     ui-sans-serif,
     system-ui,
@@ -59,12 +61,12 @@
     --primary-container: #1b1b1b;
     --on-primary-container: #ececec;
     --secondary: #e0e0e0;
-    --on-secondary: #111111;
+    --on-secondary: #111;
     --secondary-container: #262626;
     --on-secondary-container: #e0e0e0;
     --background: #0f0f0f;
     --on-background: #f1f1f1;
-    --surface: #111111;
+    --surface: #111;
     --on-surface: #f1f1f1;
     --surface-variant: #1c1c1c;
     --on-surface-variant: #b5b5b5;
@@ -82,7 +84,7 @@
     --warning: #f2b15a;
     --warning-surface: #3a2a18;
     --warning-strong: #b86a00;
-    --on-warning-strong: #ffffff;
+    --on-warning-strong: #fff;
     --info: #b0b0b0;
     --accent-blue: #5aa4e8;
     --sidebar-selection: #2f4a72;
@@ -224,7 +226,7 @@ body.split-pane-resizing {
 
 .no-servers-banner {
   width: 100%;
-  background: var(--surface-variant);
+  border: 1px solid var(--outline);
   color: var(--on-surface-variant);
   padding: 12px;
   font-size: 13px;
@@ -415,7 +417,7 @@ body.split-pane-resizing {
 }
 
 .replacement-detail {
-  color: rgba(255, 255, 255, 0.85);
+  color: rgb(255 255 255 / 85%);
   font-size: 12px;
   line-height: 16px;
 }
@@ -447,7 +449,7 @@ body.split-pane-resizing {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 8px 8px;
+  padding: 8px;
 }
 
 .search-row {
@@ -491,16 +493,16 @@ body.split-pane-resizing {
   color: var(--on-surface-variant);
 }
 
+.toolbar-icon-button:disabled {
+  color: rgb(107 107 107 / 40%);
+}
+
 .toolbar-icon-button:hover:not(:disabled) {
   background: var(--surface-container-high);
 }
 
 .toolbar-icon-button:active:not(:disabled) {
   background: var(--surface-container-highest);
-}
-
-.toolbar-icon-button:disabled {
-  color: rgba(107, 107, 107, 0.4);
 }
 
 .record-list-frame {
@@ -577,7 +579,7 @@ body.split-pane-resizing {
 .record-method,
 .row-status {
   color: var(--on-surface-variant);
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 10px;
   line-height: 12px;
   font-weight: 500;
@@ -614,8 +616,7 @@ body.split-pane-resizing {
 .detail-pane {
   min-width: var(--detail-min-width);
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden auto;
   background: var(--surface-bright);
   scrollbar-gutter: stable;
 }
@@ -730,10 +731,6 @@ body.split-pane-resizing {
   flex: 0 0 16px;
 }
 
-.section-triangle-slot .triangle {
-  margin-right: 0;
-}
-
 .triangle {
   width: 0;
   height: 0;
@@ -746,6 +743,10 @@ body.split-pane-resizing {
 
 .triangle.expanded {
   transform: rotate(90deg);
+}
+
+.section-triangle-slot .triangle {
+  margin-right: 0;
 }
 
 .section-meta {
@@ -905,7 +906,7 @@ body.split-pane-resizing {
   width: 100%;
   min-width: 0;
   color: var(--on-surface);
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 16px;
   overflow: hidden;
@@ -932,6 +933,18 @@ body.split-pane-resizing {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+}
+
+pre {
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--on-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .raw-payload-row pre {
@@ -998,13 +1011,13 @@ body.split-pane-resizing {
   overflow-wrap: anywhere;
 }
 
+.json-punctuation {
+  color: var(--on-surface);
+}
+
 .json-line > .json-key,
 .json-line > .json-punctuation {
   flex: 0 0 auto;
-}
-
-.json-punctuation {
-  color: var(--on-surface);
 }
 
 .json-property-separator {
@@ -1040,18 +1053,6 @@ body.split-pane-resizing {
   color: var(--json-null);
 }
 
-pre {
-  margin: 0;
-  padding: 0;
-  overflow: visible;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--on-surface);
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 16px;
-}
-
 .event-list {
   display: flex;
   flex-direction: column;
@@ -1070,16 +1071,12 @@ pre {
 .message-meta {
   display: flex;
   align-items: center;
+  min-width: 0;
   margin-bottom: 6px;
   color: var(--on-surface-variant);
   font-size: 10px;
   line-height: 12px;
   font-weight: 500;
-}
-
-.event-meta,
-.message-meta {
-  min-width: 0;
 }
 
 .event-meta {
@@ -1105,7 +1102,7 @@ pre {
 }
 
 .message-opcode {
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 .stream-event-metadata,
@@ -1113,7 +1110,7 @@ pre {
 .close-details {
   margin-top: 6px;
   color: var(--on-surface-variant);
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 16px;
 }
@@ -1184,7 +1181,7 @@ pre {
   padding: 4px 0;
   border: 1px solid var(--outline);
   background: var(--surface-bright);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
 }
 
 .context-menu-item {
@@ -1240,7 +1237,7 @@ pre {
 }
 
 .empty-detail code {
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 .text-button {
@@ -1254,10 +1251,4 @@ pre {
 
 .text-button:hover {
   background: var(--surface-container-low);
-}
-
-@media (max-width: 760px) {
-  .app-shell {
-    grid-template-columns: 260px minmax(360px, 1fr);
-  }
 }
