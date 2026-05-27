@@ -21,9 +21,6 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    env:
-      NPM_CONFIG_FOREGROUND_SCRIPTS: "true"
-      NPM_CONFIG_TIMING: "true"
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -35,33 +32,7 @@ jobs:
           cache-dependency-path: snapo-desktop-electron/package-lock.json
       - name: Install dependencies
         working-directory: snapo-desktop-electron
-        env:
-          NPM_CONFIG_LOGS_DIR: ${{ runner.temp }}/npm-logs
-        run: |
-          mkdir -p "$NPM_CONFIG_LOGS_DIR"
-          npm ci
-      - name: Dump latest npm debug log on failure
-        if: failure()
-        env:
-          NPM_CONFIG_LOGS_DIR: ${{ runner.temp }}/npm-logs
-        run: |
-          latest_log="$(find "$NPM_CONFIG_LOGS_DIR" -maxdepth 1 -type f | sort | tail -n 1)"
-          if [[ -z "$latest_log" ]]; then
-            echo "No npm debug log found in $NPM_CONFIG_LOGS_DIR"
-            exit 0
-          fi
-
-          echo "Latest npm debug log: $latest_log"
-          echo "::group::Latest npm debug log"
-          tail -n 200 "$latest_log"
-          echo "::endgroup::"
-      - name: Upload npm diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: electron-npm-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          if-no-files-found: warn
-          path: ${{ runner.temp }}/npm-logs
+        run: npm ci
       - name: Check formatting
         working-directory: snapo-desktop-electron
         run: npm run format:check
