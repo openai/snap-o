@@ -18,19 +18,6 @@ SNAPO_BIN=/Applications/Snap-O.app/Contents/MacOS/snapo
 If Snap-O is not installed at that path, recommend installing it from:
 https://openai.github.io/snap-o/
 
-## Optional CLI Capabilities
-
-Before using optional arguments, inspect the installed Snap-O binary once per session:
-
-```bash
-SNAPO_REQUESTS_HELP="$("$SNAPO_BIN" network requests --help)"
-SNAPO_SHOW_HELP="$("$SNAPO_BIN" network show --help)"
-```
-
-Use `network requests --filter` only when `SNAPO_REQUESTS_HELP` includes `--filter`. Use `network requests --sanitize` or `network show --sanitize` only when the corresponding help output includes `--sanitize`.
-
-When `network requests --filter` is unavailable, fetch unfiltered NDJSON and apply the narrowest useful `jq` selection. When `--sanitize` is unavailable, omit it and report that HAR-equivalent header removal is unavailable in the installed Snap-O version. The CLI still replaces sensitive header values with `[REDACTED]`.
-
 ## Current Command Surface (from `snapo` help)
 
 - `snapo network list`: lists available Snap-O Network Inspector servers.
@@ -60,20 +47,20 @@ Optional flags:
 3. Pull captured events.
 
 ```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '<url-filter>' --sanitize --no-stream --json
+"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '<url-filter>' --no-stream --json
 ```
 
 `--filter` uses the same case-insensitive URL search syntax as the Network Inspector search bar. Separate terms require every included term, prefix a term with `-` to exclude it, and use quotes or backslash escapes for whitespace.
 
-`network requests` always replaces request `Authorization` and `Cookie` values and response `Set-Cookie` values with `[REDACTED]`. Add `--sanitize` to remove those headers entirely, matching HAR export. `--sanitize` does not remove URL query values or request and response bodies.
+`network requests` always replaces request `Authorization` and `Cookie` values and response `Set-Cookie` values with `[REDACTED]`.
 
 4. Inspect a single request deeply.
 
 ```bash
-"$SNAPO_BIN" network show -s <serial> -n <socket_name> -r <request_id> --sanitize --json
+"$SNAPO_BIN" network show -s <serial> -n <socket_name> -r <request_id> --json
 ```
 
-Use `network show` only when the task requires full request or response details. Its output can include URL query values and request or response bodies even with `--sanitize`.
+Use `network show` only when the task requires full request or response details. Its output can include URL query values and request or response bodies.
 
 5. Re-check command help if output shape differs.
 
@@ -97,13 +84,13 @@ List request start events with compact fields:
 Filter by endpoint substring:
 
 ```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '/api/const' --sanitize --no-stream --json
+"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '/api/const' --no-stream --json
 ```
 
 Get the most recent started request id:
 
 ```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '/api/const' --sanitize --no-stream --json \
+"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '/api/const' --no-stream --json \
   | jq -r 'select(.method=="Network.requestWillBeSent") | .params.requestId' \
   | tail -n 1
 ```
@@ -111,7 +98,7 @@ Get the most recent started request id:
 Then fetch full details:
 
 ```bash
-"$SNAPO_BIN" network show -s <serial> -n <socket_name> -r <request_id> --sanitize --json
+"$SNAPO_BIN" network show -s <serial> -n <socket_name> -r <request_id> --json
 ```
 
 ## Missing Request Troubleshooting
@@ -129,6 +116,6 @@ If an expected request is absent:
 - `--json` emits NDJSON, so use `jq` line-by-line.
 - `network requests` emits Chrome DevTools Protocol (CDP)-style event records (for example, top-level `method` + `params`).
 - Use `--no-stream` when you want a one-shot buffered snapshot.
-- Prefer `--filter` and `--sanitize` before piping output to `jq`. Use `jq` to select the fields needed for the result.
+- Prefer `--filter` before piping output to `jq`. Use `jq` to select the fields needed for the result.
 - The Android transport admits clients with `HelloSnapO`, returns `SnapO.appInfo`, and gates replay/live delivery with `SnapO.startStream` / `SnapO.stopStream`.
 - Use `jq 'keys'` on a sample line if fields differ across Snap-O versions.

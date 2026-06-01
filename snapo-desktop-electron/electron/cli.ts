@@ -4,7 +4,6 @@ import { NetworkEventFilter } from "./network-event-filter.js";
 import { NetworkServerConnection, type NetworkServerRecord, type SnapOAppInfoParams } from "./network-server.js";
 import { parseNetworkSockets, pidFromSocketName } from "./server-utils.js";
 import type { CdpMessage } from "../src/network/bridge-types.js";
-import { sanitizeCdpMessage, sanitizeStringHeaders } from "../src/network/sanitization.js";
 
 type OutputMode = "human" | "json";
 
@@ -32,13 +31,11 @@ interface NetworkRequestsOptions extends CliOptions {
   socketName: string | null;
   noStream: boolean;
   filter: string;
-  sanitize: boolean;
 }
 
 interface NetworkShowOptions extends CliOptions {
   socketName: string | null;
   requestId: string | null;
-  sanitize: boolean;
 }
 
 interface RequestDetailsSnapshot {
@@ -77,6 +74,10 @@ const SnapshotMaxWaitMs = 5_000;
 const CommandResponseTimeoutMs = 500;
 const CommandAttemptLimit = 3;
 const AppInfoWaitTimeoutMs = 1_200;
+const RedactedValue = "[REDACTED]";
+const RequestHeaderNames = new Set(["authorization", "cookie"]);
+const ResponseHeaderNames = new Set(["set-cookie"]);
+
 export async function runCli(args: string[]): Promise<number> {
   if (args.length === 0 || isHelpFlag(args[0])) {
     printRootHelp();
@@ -196,32 +197,30 @@ async function runNetworkShow(options: NetworkShowOptions): Promise<number> {
   const result = await fetchRequestDetails(adb, resolved.server, options.requestId);
   if (result.kind !== "success") return fail(result.message);
 
-  const line = {
-    server: serverIdentifier(resolved.server),
-    requestId: options.requestId,
-    requestMethod: result.requestMethod,
-    requestUrl: result.requestUrl,
-    requestHeaders: options.sanitize
-      ? sanitizeStringHeaders(result.requestHeaders, "request", "drop")
-      : result.requestHeaders,
-    requestBodyEncoding: result.requestBodyEncoding,
-    requestBody: result.requestBody,
-    responseStatus: result.responseStatus,
-    responseUrl: result.responseUrl,
-    responseHeaders: options.sanitize
-      ? sanitizeStringHeaders(result.responseHeaders, "response", "drop")
-      : result.responseHeaders,
-    responseBody: result.responseBody,
-    responseBodyBase64Encoded: result.responseBodyBase64Encoded
-  };
-  emitRequestDetails(line, options.json ? "json" : "human");
+  emitRequestDetails(
+    {
+      server: serverIdentifier(resolved.server),
+      requestId: options.requestId,
+      requestMethod: result.requestMethod,
+      requestUrl: result.requestUrl,
+      requestHeaders: result.requestHeaders,
+      requestBodyEncoding: result.requestBodyEncoding,
+      requestBody: result.requestBody,
+      responseStatus: result.responseStatus,
+      responseUrl: result.responseUrl,
+      responseHeaders: result.responseHeaders,
+      responseBody: result.responseBody,
+      responseBodyBase64Encoded: result.responseBodyBase64Encoded
+    },
+    options.json ? "json" : "human"
+  );
   return 0;
 }
 
 async function runSnapshotRequests(
   session: CliSession,
   outputMode: OutputMode,
-  options: Pick<NetworkRequestsOptions, "filter" | "sanitize">
+  options: Pick<NetworkRequestsOptions, "filter">
 ): Promise<boolean> {
   session.startStream();
   const startedAtMs = Date.now();
@@ -236,7 +235,7 @@ async function runSnapshotRequests(
     }
 
     if (record.kind === "network") {
-      emitFilteredNetworkEvent(record.value, filter, options.sanitize, outputMode);
+      emitFilteredNetworkEvent(record.value, filter, outputMode);
     }
     if (record.kind === "replayComplete") return true;
   }
@@ -247,7 +246,7 @@ async function runSnapshotRequests(
 async function runStreamingRequests(
   session: CliSession,
   outputMode: OutputMode,
-  options: Pick<NetworkRequestsOptions, "filter" | "sanitize">
+  options: Pick<NetworkRequestsOptions, "filter">
 ): Promise<void> {
   session.startStream();
   const filter = new NetworkEventFilter(options.filter);
@@ -255,7 +254,7 @@ async function runStreamingRequests(
     const record = await session.nextRecord();
     if (record == null) return;
     if (record.kind === "network") {
-      emitFilteredNetworkEvent(record.value, filter, options.sanitize, outputMode);
+      emitFilteredNetworkEvent(record.value, filter, outputMode);
     }
   }
 }
@@ -604,28 +603,22 @@ function parseNetworkRequestsOptions(args: string[]): NetworkRequestsOptions {
   const parsed = parseCommonOptions(
     args,
     new Set(["-n", "--socket", "--filter"]),
-    new Set(["--json", "--no-stream", "--sanitize"])
+    new Set(["--json", "--no-stream"])
   );
   return {
     ...parsed.common,
     socketName: parsed.values.get("--socket") ?? null,
     noStream: parsed.flags.has("--no-stream"),
-    filter: parsed.values.get("--filter") ?? "",
-    sanitize: parsed.flags.has("--sanitize")
+    filter: parsed.values.get("--filter") ?? ""
   };
 }
 
 function parseNetworkShowOptions(args: string[]): NetworkShowOptions {
-  const parsed = parseCommonOptions(
-    args,
-    new Set(["-n", "--socket", "-r", "--request-id"]),
-    new Set(["--json", "--sanitize"])
-  );
+  const parsed = parseCommonOptions(args, new Set(["-n", "--socket", "-r", "--request-id"]), new Set(["--json"]));
   return {
     ...parsed.common,
     socketName: parsed.values.get("--socket") ?? null,
-    requestId: parsed.values.get("--request-id") ?? null,
-    sanitize: parsed.flags.has("--sanitize")
+    requestId: parsed.values.get("--request-id") ?? null
   };
 }
 
@@ -729,7 +722,7 @@ function updateRequestDetailsSnapshot(
         requestHasPostData: booleanAt(message.params, "request.hasPostData") ?? false,
         requestMethod: stringAt(message.params, "request.method"),
         requestUrl: stringAt(message.params, "request.url"),
-        requestHeaders: sanitizeStringHeaders(headersAt(message.params, "request.headers"), "request", "redact"),
+        requestHeaders: redactHeaderMap(headersAt(message.params, "request.headers"), RequestHeaderNames),
         requestBodyEncoding: stringAt(message.params, "request.postDataEncoding")
       };
     case "Network.responseReceived":
@@ -739,7 +732,7 @@ function updateRequestDetailsSnapshot(
         responseSeen: true,
         responseStatus: numberAt(message.params, "response.status"),
         responseUrl: stringAt(message.params, "response.url"),
-        responseHeaders: sanitizeStringHeaders(headersAt(message.params, "response.headers"), "response", "redact")
+        responseHeaders: redactHeaderMap(headersAt(message.params, "response.headers"), ResponseHeaderNames)
       };
     case "Network.loadingFinished":
       if (stringAt(message.params, "requestId") !== requestId) return current;
@@ -808,6 +801,74 @@ function responseIsDefinedAsBodyless(
   return responseContentLength === 0;
 }
 
+function sanitizeMessage(message: CdpMessage): CdpMessage {
+  if (message.method == null || message.params == null) return message;
+  let params = message.params;
+  switch (message.method) {
+    case "Network.requestWillBeSent":
+      params = redactHeadersAtPath(params, ["request", "headers"], RequestHeaderNames);
+      break;
+    case "Network.responseReceived":
+      params = redactHeadersAtPath(params, ["response", "headers"], ResponseHeaderNames);
+      break;
+    case "Network.webSocketCreated":
+      params = redactHeadersAtPath(params, ["headers"], RequestHeaderNames);
+      break;
+    case "Network.webSocketHandshakeResponseReceived":
+      params = redactHeadersAtPath(params, ["response", "headers"], ResponseHeaderNames);
+      break;
+    default:
+      return message;
+  }
+  return params === message.params ? message : { ...message, params };
+}
+
+function redactHeadersAtPath(
+  root: Record<string, unknown>,
+  path: string[],
+  sensitiveHeaderNames: Set<string>
+): Record<string, unknown> {
+  if (path.length === 0) {
+    return redactUnknownHeaderRecord(root, sensitiveHeaderNames);
+  }
+  const [key, ...rest] = path;
+  const child = root[key];
+  if (!isRecord(child)) return root;
+  const next = redactHeadersAtPath(child, rest, sensitiveHeaderNames);
+  return next === child ? root : { ...root, [key]: next };
+}
+
+function redactHeaderMap(headers: Record<string, string>, sensitiveHeaderNames: Set<string>): Record<string, string> {
+  const updated: Record<string, string> = {};
+  let changed = false;
+  for (const [name, value] of Object.entries(headers)) {
+    if (sensitiveHeaderNames.has(name.toLowerCase())) {
+      updated[name] = RedactedValue;
+      changed = true;
+    } else {
+      updated[name] = value;
+    }
+  }
+  return changed ? updated : headers;
+}
+
+function redactUnknownHeaderRecord(
+  headers: Record<string, unknown>,
+  sensitiveHeaderNames: Set<string>
+): Record<string, unknown> {
+  const updated: Record<string, unknown> = {};
+  let changed = false;
+  for (const [name, value] of Object.entries(headers)) {
+    if (sensitiveHeaderNames.has(name.toLowerCase())) {
+      updated[name] = RedactedValue;
+      changed = true;
+    } else {
+      updated[name] = value;
+    }
+  }
+  return changed ? updated : headers;
+}
+
 function emitServerListHuman(servers: ServerRef[], appInfoByServer: Map<string, ServerAppInfo> | null): void {
   const byDevice = new Map<string, ServerRef[]>();
   for (const server of servers) {
@@ -841,11 +902,10 @@ function emitNetworkEvent(message: CdpMessage, outputMode: OutputMode): void {
 function emitFilteredNetworkEvent(
   message: CdpMessage,
   filter: NetworkEventFilter,
-  sanitize: boolean,
   outputMode: OutputMode
 ): void {
   if (!filter.matches(message)) return;
-  emitNetworkEvent(sanitizeCdpMessage(message, sanitize ? "drop" : "redact"), outputMode);
+  emitNetworkEvent(sanitizeMessage(message), outputMode);
 }
 
 function emitRequestDetails(
@@ -1068,21 +1128,17 @@ function printNetworkRequestsHelp(): void {
   console.log(`Emit CDP network events for a server
 
 Usage:
-  snapo network requests [-s <serial> | -d | -e] [-n <socket>] [--filter <text>] [--sanitize] [--json] [--no-stream]
+  snapo network requests [-s <serial> | -d | -e] [-n <socket>] [--filter <text>] [--json] [--no-stream]
 
 Options:
-  --filter <text>  Filter URLs using the Network Inspector search-bar syntax
-  --sanitize       Remove the sensitive headers omitted by HAR export`);
+  --filter <text>  Filter URLs using the Network Inspector search-bar syntax`);
 }
 
 function printNetworkShowHelp(): void {
   console.log(`Show details for a request id
 
 Usage:
-  snapo network show [-s <serial> | -d | -e] [-n <socket>] -r <request-id> [--sanitize] [--json]
-
-Options:
-  --sanitize       Remove the sensitive headers omitted by HAR export`);
+  snapo network show [-s <serial> | -d | -e] [-n <socket>] -r <request-id> [--json]`);
 }
 
 function isHelpFlag(value: string | undefined): boolean {
@@ -1176,4 +1232,4 @@ class CliSession {
   }
 }
 
-const KnownFlags = new Set(["--json", "--no-app-info", "--no-stream", "--sanitize"]);
+const KnownFlags = new Set(["--json", "--no-app-info", "--no-stream"]);

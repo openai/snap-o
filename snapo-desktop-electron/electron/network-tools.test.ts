@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NetworkEventFilter } from "./network-event-filter.js";
-import { sanitizeCdpMessage, sanitizeStringHeaders } from "../src/network/sanitization.js";
 import { matchesUrlFilterText } from "../src/network/url-filter.js";
 
 test("matchesUrlFilterText uses the Network Inspector search syntax", () => {
@@ -36,79 +35,4 @@ test("NetworkEventFilter keeps lifecycle events for matched request IDs", () => 
     false
   );
   assert.equal(filter.matches({ method: "Network.loadingFinished", params: { requestId: "sentinel" } }), false);
-});
-
-test("sanitizeCdpMessage redacts sensitive header values by default", () => {
-  const message = {
-    method: "Network.requestWillBeSent",
-    params: {
-      request: {
-        headers: {
-          Authorization: "Bearer secret",
-          Cookie: "session=secret",
-          Accept: "application/json"
-        }
-      }
-    }
-  };
-
-  assert.deepEqual(sanitizeCdpMessage(message, "redact"), {
-    method: "Network.requestWillBeSent",
-    params: {
-      request: {
-        headers: {
-          Authorization: "[REDACTED]",
-          Cookie: "[REDACTED]",
-          Accept: "application/json"
-        }
-      }
-    }
-  });
-  assert.equal(message.params.request.headers.Authorization, "Bearer secret");
-});
-
-test("sanitizeCdpMessage drops the sensitive headers omitted by HAR export", () => {
-  assert.deepEqual(
-    sanitizeCdpMessage(
-      {
-        method: "Network.responseReceived",
-        params: {
-          response: {
-            headers: {
-              "Set-Cookie": "session=secret",
-              "Content-Type": "application/json"
-            }
-          }
-        }
-      },
-      "drop"
-    ),
-    {
-      method: "Network.responseReceived",
-      params: {
-        response: {
-          headers: {
-            "Content-Type": "application/json"
-          }
-        }
-      }
-    }
-  );
-});
-
-test("sanitizeStringHeaders applies the same case-insensitive header policy", () => {
-  assert.deepEqual(
-    sanitizeStringHeaders(
-      {
-        authorization: "Bearer secret",
-        COOKIE: "session=secret",
-        Accept: "application/json"
-      },
-      "request",
-      "drop"
-    ),
-    {
-      Accept: "application/json"
-    }
-  );
 });
