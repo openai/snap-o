@@ -47,14 +47,20 @@ Optional flags:
 3. Pull captured events.
 
 ```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --no-stream --json
+"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '<url-filter>' --no-stream --json
 ```
+
+`--filter` uses the same case-insensitive URL search syntax as the Network Inspector search bar. Separate terms require every included term, prefix a term with `-` to exclude it, and use quotes or backslash escapes for whitespace.
+
+`network requests` always replaces request `Authorization` and `Cookie` values and response `Set-Cookie` values with `[REDACTED]`.
 
 4. Inspect a single request deeply.
 
 ```bash
 "$SNAPO_BIN" network show -s <serial> -n <socket_name> -r <request_id> --json
 ```
+
+Use `network show` only when the task requires full request or response details. Its output can include URL query values and request or response bodies.
 
 5. Re-check command help if output shape differs.
 
@@ -78,8 +84,7 @@ List request start events with compact fields:
 Filter by endpoint substring:
 
 ```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --no-stream --json \
-  | jq -rc 'select(((.params.request.url // .requestUrl // "") | contains("/api/const")))'
+"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '/api/const' --no-stream --json
 ```
 
 Get the most recent started request id:

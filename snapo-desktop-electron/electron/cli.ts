@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { AdbClient, type Device } from "./adb.js";
+import { NetworkEventFilter } from "./network-event-filter.js";
 import { NetworkServerConnection, type NetworkServerRecord, type SnapOAppInfoParams } from "./network-server.js";
 import { parseNetworkSockets, pidFromSocketName } from "./server-utils.js";
 import type { CdpMessage } from "../src/network/bridge-types.js";
@@ -29,6 +30,7 @@ interface CliOptions extends DeviceSelectionOptions {
 interface NetworkRequestsOptions extends CliOptions {
   socketName: string | null;
   noStream: boolean;
+  filter: string;
 }
 
 interface NetworkShowOptions extends CliOptions {
@@ -172,10 +174,10 @@ async function runNetworkRequests(options: NetworkRequestsOptions): Promise<numb
   try {
     const outputMode: OutputMode = options.json ? "json" : "human";
     if (options.noStream) {
-      const completed = await runSnapshotRequests(session, outputMode);
+      const completed = await runSnapshotRequests(session, outputMode, options);
       if (!completed) return fail(`Timed out waiting for snapshot from ${serverIdentifier(resolved.server)}`);
     } else {
-      await runStreamingRequests(session, outputMode);
+      await runStreamingRequests(session, outputMode, options);
     }
     return 0;
   } finally {
@@ -215,9 +217,14 @@ async function runNetworkShow(options: NetworkShowOptions): Promise<number> {
   return 0;
 }
 
-async function runSnapshotRequests(session: CliSession, outputMode: OutputMode): Promise<boolean> {
+async function runSnapshotRequests(
+  session: CliSession,
+  outputMode: OutputMode,
+  options: Pick<NetworkRequestsOptions, "filter">
+): Promise<boolean> {
   session.startStream();
   const startedAtMs = Date.now();
+  const filter = new NetworkEventFilter(options.filter);
 
   while (Date.now() - startedAtMs < SnapshotMaxWaitMs) {
     const remainingMs = SnapshotMaxWaitMs - (Date.now() - startedAtMs);
@@ -228,7 +235,7 @@ async function runSnapshotRequests(session: CliSession, outputMode: OutputMode):
     }
 
     if (record.kind === "network") {
-      emitNetworkEvent(sanitizeMessage(record.value), outputMode);
+      emitFilteredNetworkEvent(record.value, filter, outputMode);
     }
     if (record.kind === "replayComplete") return true;
   }
@@ -236,13 +243,18 @@ async function runSnapshotRequests(session: CliSession, outputMode: OutputMode):
   return false;
 }
 
-async function runStreamingRequests(session: CliSession, outputMode: OutputMode): Promise<void> {
+async function runStreamingRequests(
+  session: CliSession,
+  outputMode: OutputMode,
+  options: Pick<NetworkRequestsOptions, "filter">
+): Promise<void> {
   session.startStream();
+  const filter = new NetworkEventFilter(options.filter);
   while (true) {
     const record = await session.nextRecord();
     if (record == null) return;
     if (record.kind === "network") {
-      emitNetworkEvent(sanitizeMessage(record.value), outputMode);
+      emitFilteredNetworkEvent(record.value, filter, outputMode);
     }
   }
 }
@@ -588,11 +600,12 @@ function parseNetworkListOptions(args: string[]): CliOptions & { includeAppInfo:
 }
 
 function parseNetworkRequestsOptions(args: string[]): NetworkRequestsOptions {
-  const parsed = parseCommonOptions(args, new Set(["-n", "--socket"]), new Set(["--json", "--no-stream"]));
+  const parsed = parseCommonOptions(args, new Set(["-n", "--socket", "--filter"]), new Set(["--json", "--no-stream"]));
   return {
     ...parsed.common,
     socketName: parsed.values.get("--socket") ?? null,
-    noStream: parsed.flags.has("--no-stream")
+    noStream: parsed.flags.has("--no-stream"),
+    filter: parsed.values.get("--filter") ?? ""
   };
 }
 
@@ -663,8 +676,14 @@ function parseCommonOptions(
 
 function nextOptionValue(args: string[], index: number, option: string): string {
   const value = args[index + 1];
-  if (value == null || value.startsWith("-")) throw new Error(`Missing value for ${option}`);
+  if (value == null || isRecognizedOption(value)) throw new Error(`Missing value for ${option}`);
   return value;
+}
+
+function isRecognizedOption(value: string): boolean {
+  return (
+    value.startsWith("--") || value === "-d" || value === "-e" || value === "-s" || value === "-n" || value === "-r"
+  );
 }
 
 function emptyRequestDetailsSnapshot(): RequestDetailsSnapshot {
@@ -874,6 +893,11 @@ function emitNetworkEvent(message: CdpMessage, outputMode: OutputMode): void {
     return;
   }
   console.log(formatNetworkEventLine(message));
+}
+
+function emitFilteredNetworkEvent(message: CdpMessage, filter: NetworkEventFilter, outputMode: OutputMode): void {
+  if (!filter.matches(message)) return;
+  emitNetworkEvent(sanitizeMessage(message), outputMode);
 }
 
 function emitRequestDetails(
@@ -1096,7 +1120,10 @@ function printNetworkRequestsHelp(): void {
   console.log(`Emit CDP network events for a server
 
 Usage:
-  snapo network requests [-s <serial> | -d | -e] [-n <socket>] [--json] [--no-stream]`);
+  snapo network requests [-s <serial> | -d | -e] [-n <socket>] [--filter <text>] [--json] [--no-stream]
+
+Options:
+  --filter <text>  Filter URLs using the Network Inspector search-bar syntax`);
 }
 
 function printNetworkShowHelp(): void {
