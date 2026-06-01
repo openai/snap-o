@@ -45,9 +45,15 @@ snapo network list --no-app-info
 snapo network requests -e -n snapo_network_12345
 snapo network requests -s emulator-5554 -n snapo_network_12345 --json
 snapo network requests -d --no-stream
+snapo network requests -e --filter 'backend-api -sentinel' --sanitize --json --no-stream
 snapo network show -e -n snapo_network_12345 -r <requestId>
 snapo network show -s emulator-5554 -n snapo_network_12345 -r <requestId> --json
+snapo network show -e -n snapo_network_12345 -r <requestId> --sanitize --json
 ```
+
+`network requests --filter <text>` uses the same case-insensitive URL search syntax as the Network Inspector search bar. Separate terms require every included term, prefix a term with `-` to exclude it, and use quotes or backslash escapes for whitespace.
+
+The CLI always replaces request `Authorization` and `Cookie` values and response `Set-Cookie` values with `[REDACTED]`. Add `--sanitize` to `network requests` or `network show` to remove those headers entirely, matching HAR export. `--sanitize` does not remove URL query values or request and response bodies.
 
 For local development, use Electron's Node mode so the CLI runs without launching the desktop app:
 

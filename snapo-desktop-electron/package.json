@@ -13,6 +13,7 @@
     "lint:fix": "eslint . --fix && npm run lint:css:fix",
     "lint:css": "stylelint \"src/**/*.css\"",
     "lint:css:fix": "stylelint \"src/**/*.css\" --fix",
+    "test": "tsc -p tsconfig.electron.json && node --test dist-electron/electron/*.test.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
     "start": "npm run build && electron .",
     "cli": "npm run build && ELECTRON_RUN_AS_NODE=1 electron dist-electron/electron/cli-entry.js",

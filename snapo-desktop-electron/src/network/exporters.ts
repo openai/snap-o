@@ -7,6 +7,7 @@ import type {
   WebSocketMessageRecord,
   WebSocketRecord
 } from "./cdp";
+import { isSensitiveHeader } from "./sanitization";
 
 export function makeCurlCommand(request: RequestRecord): string {
   const warnings: string[] = [];
@@ -236,8 +237,7 @@ function toHarHeaders(headers: Header[], context: "request" | "response"): HarHe
 }
 
 function shouldDropHeader(name: string, context: "request" | "response"): boolean {
-  if (context === "request") return equalsHeader(name, "Authorization") || equalsHeader(name, "Cookie");
-  return equalsHeader(name, "Set-Cookie");
+  return isSensitiveHeader(name, context);
 }
 
 function headerValue(headers: Header[], name: string): string | null {
