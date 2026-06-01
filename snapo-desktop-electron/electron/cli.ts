@@ -600,11 +600,7 @@ function parseNetworkListOptions(args: string[]): CliOptions & { includeAppInfo:
 }
 
 function parseNetworkRequestsOptions(args: string[]): NetworkRequestsOptions {
-  const parsed = parseCommonOptions(
-    args,
-    new Set(["-n", "--socket", "--filter"]),
-    new Set(["--json", "--no-stream"])
-  );
+  const parsed = parseCommonOptions(args, new Set(["-n", "--socket", "--filter"]), new Set(["--json", "--no-stream"]));
   return {
     ...parsed.common,
     socketName: parsed.values.get("--socket") ?? null,
@@ -899,11 +895,7 @@ function emitNetworkEvent(message: CdpMessage, outputMode: OutputMode): void {
   console.log(formatNetworkEventLine(message));
 }
 
-function emitFilteredNetworkEvent(
-  message: CdpMessage,
-  filter: NetworkEventFilter,
-  outputMode: OutputMode
-): void {
+function emitFilteredNetworkEvent(message: CdpMessage, filter: NetworkEventFilter, outputMode: OutputMode): void {
   if (!filter.matches(message)) return;
   emitNetworkEvent(sanitizeMessage(message), outputMode);
 }
