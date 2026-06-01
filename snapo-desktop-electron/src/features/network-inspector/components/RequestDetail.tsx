@@ -6,15 +6,18 @@ import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
 import { BodySection, payloadMetadata } from "./PayloadView";
 import { HeadersTable, Section } from "./Section";
+import { HighlightText } from "./SearchHighlight";
 import { FailureMessage, StatusBadge } from "./Status";
 import { SseCopyAllButton, SseEventList } from "./StreamEvents";
 
 export const RequestDetail = memo(function RequestDetail({
   record,
-  uiState
+  uiState,
+  searchText
 }: {
   record: RequestRecord;
   uiState: InspectorUiState;
+  searchText: string;
 }): JSX.Element {
   const isSseResponse = isLikelyStreamingRequest(record);
   const requestBodyDisplayText = useRequestBodyDisplayText(record);
@@ -39,14 +42,18 @@ export const RequestDetail = memo(function RequestDetail({
     <div className="detail-scroll">
       <header className="detail-header">
         <div className="title-row">
-          <span className="detail-method">{record.method}</span>
-          <h1>{record.url}</h1>
+          <span className="detail-method">
+            <HighlightText text={record.method} searchText={searchText} />
+          </span>
+          <h1>
+            <HighlightText text={record.url} searchText={searchText} />
+          </h1>
         </div>
         <div className="detail-meta">
-          <StatusBadge record={record} />
+          <StatusBadge record={record} searchText={searchText} />
           <span>{timingText}</span>
         </div>
-        <FailureMessage status={record.status} />
+        <FailureMessage status={record.status} searchText={searchText} />
       </header>
 
       {record.requestHeaders.length === 0 ? null : (
@@ -56,7 +63,7 @@ export const RequestDetail = memo(function RequestDetail({
           uiState={uiState}
           initiallyExpanded={false}
         >
-          <HeadersTable headers={record.requestHeaders} />
+          <HeadersTable headers={record.requestHeaders} searchText={searchText} />
         </Section>
       )}
       {requestBody == null ? null : (
@@ -67,13 +74,18 @@ export const RequestDetail = memo(function RequestDetail({
           uiState={uiState}
           initiallyExpanded={false}
         >
-          <BodySection payload={requestBody} storageKey={`${prefix}:requestBody:payload`} uiState={uiState} />
+          <BodySection
+            payload={requestBody}
+            storageKey={`${prefix}:requestBody:payload`}
+            uiState={uiState}
+            searchText={searchText}
+          />
         </Section>
       )}
       {record.status.kind === "pending" ? <div className="pending-response">Waiting for response...</div> : null}
       {record.responseHeaders.length === 0 ? null : (
         <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
-          <HeadersTable headers={record.responseHeaders} />
+          <HeadersTable headers={record.responseHeaders} searchText={searchText} />
         </Section>
       )}
       {isSseResponse ? (
@@ -88,6 +100,7 @@ export const RequestDetail = memo(function RequestDetail({
             closed={record.streamClosed}
             storageKey={`${prefix}:stream`}
             uiState={uiState}
+            searchText={searchText}
           />
         </Section>
       ) : null}
@@ -98,7 +111,12 @@ export const RequestDetail = memo(function RequestDetail({
           storageKey={`${prefix}:responseBody`}
           uiState={uiState}
         >
-          <BodySection payload={responseBody} storageKey={`${prefix}:responseBody:payload`} uiState={uiState} />
+          <BodySection
+            payload={responseBody}
+            storageKey={`${prefix}:responseBody:payload`}
+            uiState={uiState}
+            searchText={searchText}
+          />
         </Section>
       )}
     </div>

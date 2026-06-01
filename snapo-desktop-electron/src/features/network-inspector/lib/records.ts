@@ -1,5 +1,6 @@
 import {
   recordId,
+  requestRecordKey,
   serverMatches,
   type InspectorDataState,
   type InspectorRecord,
@@ -9,7 +10,7 @@ import {
 } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
-import { matchesUrlFilterText } from "../../../network/url-filter";
+import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
 export function collectRecords(
   state: InspectorDataState,
@@ -29,11 +30,20 @@ export function filterRecords(
   records: InspectorRecord[],
   selectedServer: ServerId | null,
   searchText: string,
-  newestFirst: boolean
+  newestFirst: boolean,
+  requestBodyDisplayTextByRecordKey?: ReadonlyMap<string, string>
 ): InspectorRecord[] {
+  const searchQuery = parseNetworkSearchQuery(searchText);
   const filteredRecords = records
     .filter((record) => serverMatches(selectedServer, record.server))
-    .filter((record) => matchesUrlFilterText(record.url, searchText))
+    .filter((record) =>
+      matchesNetworkSearch(record, searchQuery, {
+        requestBodyDisplayText:
+          record.kind === "request"
+            ? requestBodyDisplayTextByRecordKey?.get(requestRecordKey(record.server, record.requestId))
+            : null
+      })
+    )
     .sort((a, b) => a.startedAt - b.startedAt);
   if (newestFirst) filteredRecords.reverse();
   return filteredRecords;

@@ -32,6 +32,7 @@
   --on-warning-strong: #fff;
   --info: #6f6f6f;
   --accent-blue: #2778db;
+  --search-highlight: #fff2a8;
   --sidebar-selection: #bcd6ff;
   --sidebar-surface: #f4f4f4;
   --sidebar-min-width: 260px;
@@ -87,6 +88,7 @@
     --on-warning-strong: #fff;
     --info: #b0b0b0;
     --accent-blue: #5aa4e8;
+    --search-highlight: #5f5119;
     --sidebar-selection: #2f4a72;
     --sidebar-surface: var(--surface-container-highest);
     --json-key: #c38be8;
@@ -476,6 +478,12 @@ body.split-pane-resizing {
 .search-row input::placeholder {
   color: var(--on-surface-variant);
   opacity: 1;
+}
+
+.search-highlight {
+  border-radius: 2px;
+  background: var(--search-highlight);
+  color: inherit;
 }
 
 .toolbar-action-group {

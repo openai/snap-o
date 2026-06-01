@@ -75,8 +75,8 @@ export const Sidebar = memo(function Sidebar({
           <input
             value={searchText}
             onChange={(event) => onSearchTextChange(event.target.value)}
-            placeholder="Filter by URL"
-            aria-label="Filter by URL"
+            placeholder="Filter by keyword"
+            aria-label="Filter by keyword"
           />
         </div>
 
@@ -110,6 +110,7 @@ export const Sidebar = memo(function Sidebar({
         selectedRecordId={selectedRecordId}
         onSelect={onRecordSelect}
         client={client}
+        searchText={searchText}
       />
     </aside>
   );

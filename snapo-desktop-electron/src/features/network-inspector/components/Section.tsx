@@ -1,5 +1,6 @@
 import type { ClipboardEvent, ReactNode } from "react";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
+import { HighlightText } from "./SearchHighlight";
 
 export function Section({
   title,
@@ -45,14 +46,18 @@ interface HeaderRow {
   value: string;
 }
 
-export function HeadersTable({ headers }: { headers: HeaderRow[] }): JSX.Element {
+export function HeadersTable({ headers, searchText = "" }: { headers: HeaderRow[]; searchText?: string }): JSX.Element {
   if (headers.length === 0) return <div className="headers-empty">None</div>;
   return (
     <div className="headers-grid" onCopy={(event) => copyHeaders(event, headers)}>
       {headers.map((header, index) => (
         <div className="header-row" data-header-index={index} key={`${header.name}:${index}`}>
-          <span className="header-name">{header.name}:</span>
-          <span className="header-value">{header.value}</span>
+          <span className="header-name">
+            <HighlightText text={`${header.name}:`} searchText={searchText} />
+          </span>
+          <span className="header-value">
+            <HighlightText text={header.value} searchText={searchText} />
+          </span>
         </div>
       ))}
     </div>

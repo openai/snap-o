@@ -8,9 +8,11 @@ import {
   requestRecordKey,
   type InspectorDataState,
   type InspectorRecord,
+  type RequestRecord,
   type ServerId
 } from "../../../network/cdp";
 import type { DebugInspectorPreset, SnapOServer } from "../../../network/bridge-types";
+import { decodeRequestBodyForDisplay } from "../../../network/payload";
 import { useInspectorUiState } from "./useInspectorUiState";
 import { applyDebugInspectorPreset } from "../lib/debug";
 import {
@@ -28,6 +30,16 @@ import {
 } from "../lib/records";
 
 const docsUrl = "https://github.com/openai/snap-o/blob/main/docs/network-inspector.md";
+
+interface DecodedRequestBodyKey {
+  body: string;
+  encoding: string | null | undefined;
+  contentEncoding: string | null;
+}
+
+interface DecodedRequestBodyEntry extends DecodedRequestBodyKey {
+  displayText: string;
+}
 
 export interface NetworkInspectorModel {
   client: NetworkClient;
@@ -59,6 +71,10 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const [preferredServer, setPreferredServer] = useState<ServerId | null>(null);
   const selectedServerRef = useRef<ServerId | null>(null);
   const bodyLoadAttemptsRef = useRef<Set<string>>(new Set());
+  const decodedRequestBodyKeysRef = useRef<Map<string, DecodedRequestBodyKey>>(new Map());
+  const [decodedRequestBodies, setDecodedRequestBodies] = useState<Map<string, DecodedRequestBodyEntry>>(
+    () => new Map()
+  );
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
@@ -156,9 +172,65 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     [state.requests, state.webSockets]
   );
 
+  useEffect(() => {
+    const activeDecodedKeys = new Set<string>();
+
+    for (const request of state.requests.values()) {
+      if (request.requestBody == null || !shouldDecodeRequestBodyForSearch(request)) continue;
+
+      const recordKey = requestRecordKey(request.server, request.requestId);
+      activeDecodedKeys.add(recordKey);
+      const decodeKey = {
+        body: request.requestBody,
+        encoding: request.requestBodyEncoding,
+        contentEncoding: requestHeaderValue(request.requestHeaders, "content-encoding")
+      };
+
+      if (decodedRequestBodyKeyEquals(decodedRequestBodyKeysRef.current.get(recordKey), decodeKey)) continue;
+
+      decodedRequestBodyKeysRef.current.set(recordKey, decodeKey);
+      void decodeRequestBodyForDisplay({
+        body: request.requestBody,
+        headers: request.requestHeaders,
+        encoding: request.requestBodyEncoding
+      }).then((displayText) => {
+        if (!decodedRequestBodyKeyEquals(decodedRequestBodyKeysRef.current.get(recordKey), decodeKey)) return;
+        setDecodedRequestBodies((current) => {
+          if (current.get(recordKey)?.displayText === displayText) return current;
+          const next = new Map(current);
+          next.set(recordKey, { ...decodeKey, displayText });
+          return next;
+        });
+      });
+    }
+
+    for (const recordKey of decodedRequestBodyKeysRef.current.keys()) {
+      if (activeDecodedKeys.has(recordKey)) continue;
+      decodedRequestBodyKeysRef.current.delete(recordKey);
+    }
+  }, [state.requests]);
+
+  const requestBodyDisplayTextByRecordKey = useMemo(() => {
+    const displayTextByRecordKey = new Map<string, string>();
+    for (const request of state.requests.values()) {
+      if (request.requestBody == null || !shouldDecodeRequestBodyForSearch(request)) continue;
+      const recordKey = requestRecordKey(request.server, request.requestId);
+      const decodeKey = {
+        body: request.requestBody,
+        encoding: request.requestBodyEncoding,
+        contentEncoding: requestHeaderValue(request.requestHeaders, "content-encoding")
+      };
+      const decoded = decodedRequestBodies.get(recordKey);
+      if (decoded != null && decodedRequestBodyKeyEquals(decoded, decodeKey)) {
+        displayTextByRecordKey.set(recordKey, decoded.displayText);
+      }
+    }
+    return displayTextByRecordKey;
+  }, [decodedRequestBodies, state.requests]);
+
   const visibleRecords = useMemo(
-    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
-    [allRecords, searchText, selectedServer, sortNewestFirst]
+    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst, requestBodyDisplayTextByRecordKey),
+    [allRecords, requestBodyDisplayTextByRecordKey, searchText, selectedServer, sortNewestFirst]
   );
 
   const serverRecordCount = useMemo(
@@ -270,7 +342,11 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   );
   const selectRecord = useCallback((id: string) => setPreferredRecordId(id), []);
   const toggleSortOrder = useCallback(() => setSortNewestFirst((value) => !value), []);
-  const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
+  const clearCompletedRecords = useCallback(() => {
+    decodedRequestBodyKeysRef.current.clear();
+    setDecodedRequestBodies(new Map());
+    setState(clearCompleted);
+  }, []);
   const openDocs = useCallback(() => void client.openExternal(docsUrl), [client]);
 
   return {
@@ -300,6 +376,34 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
 
 function serverKey(server: ServerId | null): string {
   return server == null ? "" : `${server.deviceId}\u0000${server.socketName}`;
+}
+
+function shouldDecodeRequestBodyForSearch(request: RequestRecord): boolean {
+  return (
+    request.requestBodyEncoding?.toLowerCase() === "base64" &&
+    hasGzipContentEncoding(requestHeaderValue(request.requestHeaders, "content-encoding"))
+  );
+}
+
+function requestHeaderValue(headers: RequestRecord["requestHeaders"], name: string): string | null {
+  return headers.find((header) => header.name.toLowerCase() === name)?.value ?? null;
+}
+
+function hasGzipContentEncoding(value: string | null): boolean {
+  if (value == null || value.trim().length === 0) return false;
+  return value
+    .split(/[,\n]/u)
+    .map((token) => token.split(";")[0].trim().toLowerCase())
+    .includes("gzip");
+}
+
+function decodedRequestBodyKeyEquals(left: DecodedRequestBodyKey | undefined, right: DecodedRequestBodyKey): boolean {
+  return (
+    left != null &&
+    left.body === right.body &&
+    left.encoding === right.encoding &&
+    left.contentEncoding === right.contentEncoding
+  );
 }
 
 function areServersEqual(left: SnapOServer[], right: SnapOServer[]): boolean {

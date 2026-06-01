@@ -6,15 +6,18 @@ import { useCopyFeedback } from "../hooks/useCopyFeedback";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTime } from "../lib/format";
 import { InlineCopyButton, InlineTextToggle, PayloadView } from "./PayloadView";
+import { HighlightText } from "./SearchHighlight";
 
 export const WebSocketMessageCard = memo(function WebSocketMessageCard({
   message,
   storageKey,
-  uiState
+  uiState,
+  searchText
 }: {
   message: WebSocketMessageRecord;
   storageKey: string;
   uiState: InspectorUiState;
+  searchText: string;
 }): JSX.Element {
   const preview = message.preview ?? "";
   const payload = makeBodyPayload({ body: preview, headers: [] });
@@ -31,10 +34,20 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
         ) : (
           <Inbox size={10} className="message-direction incoming" />
         )}
-        {message.payloadSize == null ? null : <span>{formatBytes(message.payloadSize)}</span>}
-        {message.enqueued == null ? null : <span>{message.enqueued ? "enqueued" : "immediate"}</span>}
+        {message.payloadSize == null ? null : (
+          <span>
+            <HighlightText text={formatBytes(message.payloadSize)} searchText={searchText} />
+          </span>
+        )}
+        {message.enqueued == null ? null : (
+          <span>
+            <HighlightText text={message.enqueued ? "enqueued" : "immediate"} searchText={searchText} />
+          </span>
+        )}
         <span>{formatTime(message.timestamp)}</span>
-        <span className="message-opcode">{message.opcode}</span>
+        <span className="message-opcode">
+          <HighlightText text={message.opcode} searchText={searchText} />
+        </span>
         <span className="message-actions">
           {prettyText == null ? null : (
             <InlineTextToggle
@@ -56,6 +69,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
           showsCopyButton={false}
           prettyInitiallyExpanded={false}
           embedded
+          searchText={searchText}
         />
       )}
     </div>

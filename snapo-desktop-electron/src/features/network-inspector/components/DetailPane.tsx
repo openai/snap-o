@@ -12,6 +12,7 @@ export const DetailContent = memo(function DetailContent({
   servers,
   selectedServer,
   serverScopedItems,
+  searchText,
   uiState,
   onOpenDocs
 }: {
@@ -19,6 +20,7 @@ export const DetailContent = memo(function DetailContent({
   servers: SnapOServer[];
   selectedServer: SnapOServer | null;
   serverScopedItems: number;
+  searchText: string;
   uiState: InspectorUiState;
   onOpenDocs(): void;
 }): JSX.Element {
@@ -40,8 +42,8 @@ export const DetailContent = memo(function DetailContent({
     );
   }
 
-  if (record.kind === "websocket") return <WebSocketDetail record={record} uiState={uiState} />;
-  return <RequestDetail record={record} uiState={uiState} />;
+  if (record.kind === "websocket") return <WebSocketDetail record={record} uiState={uiState} searchText={searchText} />;
+  return <RequestDetail record={record} uiState={uiState} searchText={searchText} />;
 });
 
 function EmptyState({
