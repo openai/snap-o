@@ -90,7 +90,7 @@ Filter by endpoint substring:
 Get the most recent started request id:
 
 ```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '/api/const' --no-stream --json \
+"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --no-stream --json \
   | jq -r 'select(.method=="Network.requestWillBeSent") | .params.requestId' \
   | tail -n 1
 ```
@@ -116,6 +116,5 @@ If an expected request is absent:
 - `--json` emits NDJSON, so use `jq` line-by-line.
 - `network requests` emits Chrome DevTools Protocol (CDP)-style event records (for example, top-level `method` + `params`).
 - Use `--no-stream` when you want a one-shot buffered snapshot.
-- Prefer `--filter` before piping output to `jq`. Use `jq` to select the fields needed for the result.
 - The Android transport admits clients with `HelloSnapO`, returns `SnapO.appInfo`, and gates replay/live delivery with `SnapO.startStream` / `SnapO.stopStream`.
 - Use `jq 'keys'` on a sample line if fields differ across Snap-O versions.
