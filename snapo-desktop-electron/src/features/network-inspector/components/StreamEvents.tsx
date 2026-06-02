@@ -106,12 +106,10 @@ const SseEventCard = memo(function SseEventCard({
 });
 
 function SseEventMetadata({ event }: { event: RequestRecord["streamEvents"][number] }): JSX.Element | null {
-  if (event.comment == null && event.eventId == null && event.lastEventId == null && event.retryMillis == null)
-    return null;
+  if (event.comment == null && event.lastEventId == null && event.retryMillis == null) return null;
   return (
     <div className="stream-event-metadata">
       {event.comment == null ? null : <div>Comment: {event.comment}</div>}
-      {event.eventId == null ? null : <div>Event-ID: {event.eventId}</div>}
       {event.lastEventId == null ? null : <div>Last-Event-ID: {event.lastEventId}</div>}
       {event.retryMillis == null ? null : <div>Retry: {event.retryMillis} ms</div>}
     </div>

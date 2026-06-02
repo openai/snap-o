@@ -38,11 +38,9 @@ export function searchDocumentForRecord(
     for (const event of record.streamEvents) {
       parts.push(
         event.eventName ?? "",
-        event.eventId ?? "",
         event.lastEventId ?? "",
         event.comment ?? "",
-        event.data ?? "",
-        event.raw,
+        event.data ?? event.raw,
         event.retryMillis == null ? "" : String(event.retryMillis)
       );
     }
@@ -74,7 +72,6 @@ export function searchDocumentForRecord(
     if (record.closing != null) parts.push(String(record.closing.code), record.closing.reason ?? "");
     if (record.closed != null) parts.push(String(record.closed.code), record.closed.reason ?? "");
     if (record.failed != null) parts.push(record.failed.message ?? "");
-    if (record.closeReason != null) parts.push(record.closeReason);
   }
 
   return { parts };
