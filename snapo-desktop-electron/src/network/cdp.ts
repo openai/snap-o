@@ -1,5 +1,6 @@
 import type { CdpMessage, RequestBodies, SnapOServer } from "./bridge-types";
 import type { Protocol } from "devtools-protocol";
+import { isLikelyStreamingRequest } from "./request-classification";
 
 type RequestWillBeSentEvent = Partial<Protocol.Network.RequestWillBeSentEvent> & Record<string, unknown>;
 type ResponseReceivedEvent = Partial<Protocol.Network.ResponseReceivedEvent> & Record<string, unknown>;
@@ -45,6 +46,7 @@ export interface RequestRecord {
   responseBody?: string | null;
   responseBodyBase64Encoded?: boolean | null;
   responseType?: string | null;
+  hasReceivedResponse?: boolean;
   streamEvents: StreamEventRecord[];
   streamClosed?: StreamClosedRecord;
   updatedAt: number;
@@ -225,6 +227,7 @@ function reduceResponseReceived(
       endedAt: existing?.endedAt,
       encodedDataLength: params.response?.encodedDataLength ?? existing?.encodedDataLength,
       responseType: stringAt(params, "type") ?? existing?.responseType,
+      hasReceivedResponse: true,
       updatedAt: now
     };
   });
@@ -585,20 +588,6 @@ function headersFrom(headers: Record<string, unknown> | null): Header[] {
       .split("\n")
       .map((line) => ({ name, value: line }))
   );
-}
-
-function isLikelyStreamingRequest(record: RequestRecord): boolean {
-  if (record.streamEvents.length > 0) return true;
-  if (record.responseType?.toLowerCase() === "eventsource") return true;
-  return hasEventStreamHeader(record.responseHeaders) || hasEventStreamHeader(record.requestHeaders);
-}
-
-function hasEventStreamHeader(headers: Header[]): boolean {
-  return headers.some((header) => {
-    const name = header.name.toLowerCase();
-    const value = header.value.toLowerCase();
-    return (name === "content-type" || name === "accept") && value.includes("text/event-stream");
-  });
 }
 
 function recordFromProtocolHeaders(headers: unknown): Record<string, unknown> | null {
