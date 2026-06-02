@@ -10,31 +10,20 @@ import { statusDisplayName } from "./format";
 
 export type NetworkSearchQuery = KeywordSearchQuery;
 
-export interface NetworkSearchContext {
-  requestBodyDisplayText?: string | null;
-}
-
 export function parseNetworkSearchQuery(searchText: string): NetworkSearchQuery {
   return parseKeywordSearchQuery(searchText);
 }
 
-export function matchesNetworkSearch(
-  record: InspectorRecord,
-  query: NetworkSearchQuery,
-  context: NetworkSearchContext = {}
-): boolean {
-  return matchesKeywordSearchDocument(searchDocumentForRecord(record, context), query);
+export function matchesNetworkSearch(record: InspectorRecord, query: NetworkSearchQuery): boolean {
+  return matchesKeywordSearchDocument(searchDocumentForRecord(record), query);
 }
 
-export function searchDocumentForRecord(
-  record: InspectorRecord,
-  context: NetworkSearchContext = {}
-): KeywordSearchDocument {
+export function searchDocumentForRecord(record: InspectorRecord): KeywordSearchDocument {
   const parts = [record.url, record.method, statusSearchText(record.status)];
   parts.push(...headersSearchText(record.requestHeaders), ...headersSearchText(record.responseHeaders));
 
   if (record.kind === "request") {
-    parts.push(context.requestBodyDisplayText ?? record.requestBody ?? "", record.responseBody ?? "");
+    parts.push(record.requestBody ?? "", record.responseBody ?? "");
     for (const event of record.streamEvents) {
       parts.push(
         event.eventName ?? "",

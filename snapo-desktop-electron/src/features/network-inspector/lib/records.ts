@@ -1,6 +1,5 @@
 import {
   recordId,
-  requestRecordKey,
   serverMatches,
   type InspectorDataState,
   type InspectorRecord,
@@ -30,20 +29,12 @@ export function filterRecords(
   records: InspectorRecord[],
   selectedServer: ServerId | null,
   searchText: string,
-  newestFirst: boolean,
-  requestBodyDisplayTextByRecordKey?: ReadonlyMap<string, string>
+  newestFirst: boolean
 ): InspectorRecord[] {
   const searchQuery = parseNetworkSearchQuery(searchText);
   const filteredRecords = records
     .filter((record) => serverMatches(selectedServer, record.server))
-    .filter((record) =>
-      matchesNetworkSearch(record, searchQuery, {
-        requestBodyDisplayText:
-          record.kind === "request"
-            ? requestBodyDisplayTextByRecordKey?.get(requestRecordKey(record.server, record.requestId))
-            : null
-      })
-    )
+    .filter((record) => matchesNetworkSearch(record, searchQuery))
     .sort((a, b) => a.startedAt - b.startedAt);
   if (newestFirst) filteredRecords.reverse();
   return filteredRecords;
