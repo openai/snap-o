@@ -25,6 +25,8 @@ npm run build
 npm run start
 ```
 
+Local `npm run start` and `npm run dev` builds expose **View > Toggle Developer Tools**.
+
 ## Package macOS helper
 
 ```bash
