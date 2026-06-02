@@ -3,6 +3,7 @@ import { DetailContent } from "./components/DetailPane";
 import { Sidebar } from "./components/Sidebar";
 import { useNetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
 import { usePersistentSplitPane } from "./hooks/usePersistentSplitPane";
+import { useSearchHighlights } from "./hooks/useSearchHighlights";
 
 export function NetworkInspectorApp(): JSX.Element {
   const model = useNetworkInspectorModel();
@@ -16,6 +17,7 @@ export function NetworkInspectorApp(): JSX.Element {
     endResize,
     resizeWithKeyboard
   } = usePersistentSplitPane();
+  useSearchHighlights(containerRef, model.searchText);
 
   return (
     <div className="app-shell" ref={containerRef} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>

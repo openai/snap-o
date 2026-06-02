@@ -9,7 +9,7 @@ import {
 } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
-import { matchesUrlFilterText } from "../../../network/url-filter";
+import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
 export function collectRecords(
   state: InspectorDataState,
@@ -31,9 +31,10 @@ export function filterRecords(
   searchText: string,
   newestFirst: boolean
 ): InspectorRecord[] {
+  const searchQuery = parseNetworkSearchQuery(searchText);
   const filteredRecords = records
     .filter((record) => serverMatches(selectedServer, record.server))
-    .filter((record) => matchesUrlFilterText(record.url, searchText))
+    .filter((record) => matchesNetworkSearch(record, searchQuery))
     .sort((a, b) => a.startedAt - b.startedAt);
   if (newestFirst) filteredRecords.reverse();
   return filteredRecords;

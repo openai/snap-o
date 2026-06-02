@@ -31,8 +31,12 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
         ) : (
           <Inbox size={10} className="message-direction incoming" />
         )}
-        {message.payloadSize == null ? null : <span>{formatBytes(message.payloadSize)}</span>}
-        {message.enqueued == null ? null : <span>{message.enqueued ? "enqueued" : "immediate"}</span>}
+        {message.payloadSize == null ? null : (
+          <span className="message-payload-size">{formatBytes(message.payloadSize)}</span>
+        )}
+        {message.enqueued == null ? null : (
+          <span className="message-enqueue-state">{message.enqueued ? "enqueued" : "immediate"}</span>
+        )}
         <span>{formatTime(message.timestamp)}</span>
         <span className="message-opcode">{message.opcode}</span>
         <span className="message-actions">
