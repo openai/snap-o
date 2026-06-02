@@ -8,6 +8,7 @@ import {
   type WebSocketRecord
 } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
+import { isLikelyStreamingRequest } from "../../../network/request-classification";
 import { matchesUrlFilterText } from "../../../network/url-filter";
 
 export function collectRecords(
@@ -154,12 +155,6 @@ export function recordShowsActiveIndicator(record: InspectorRecord): boolean {
   return record.streamEvents.length > 0 && record.streamClosed == null;
 }
 
-function isLikelyStreamingRequest(request: RequestRecord): boolean {
-  if (request.streamEvents.length > 0) return true;
-  if (request.responseType?.toLowerCase() === "eventsource") return true;
-  return hasEventStreamHeader(request.responseHeaders) || hasEventStreamHeader(request.requestHeaders);
-}
-
 function responseHasNoBody(request: RequestRecord): boolean {
   if (request.method.toUpperCase() === "HEAD") return true;
   const status = request.status.kind === "success" ? request.status.code : null;
@@ -168,14 +163,6 @@ function responseHasNoBody(request: RequestRecord): boolean {
     if (status === 204 || status === 205 || status === 304) return true;
   }
   return contentLength(request.responseHeaders) === 0;
-}
-
-function hasEventStreamHeader(headers: RequestRecord["requestHeaders"]): boolean {
-  return headers.some((header) => {
-    const name = header.name.toLowerCase();
-    const value = header.value.toLowerCase();
-    return (name === "content-type" || name === "accept") && value.includes("text/event-stream");
-  });
 }
 
 function contentLength(headers: RequestRecord["responseHeaders"]): number | null {

@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
 import { decodeRequestBodyForDisplay, makeBodyPayload } from "../../../network/payload";
+import { isLikelyStreamingRequest } from "../../../network/request-classification";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
 import { BodySection, payloadMetadata } from "./PayloadView";
@@ -15,7 +16,7 @@ export const RequestDetail = memo(function RequestDetail({
   record: RequestRecord;
   uiState: InspectorUiState;
 }): JSX.Element {
-  const isSseResponse = isLikelySseResponse(record);
+  const isSseResponse = isLikelyStreamingRequest(record);
   const requestBodyDisplayText = useRequestBodyDisplayText(record);
   const requestBody = makeBodyPayload({
     body: record.requestBody,
@@ -147,20 +148,6 @@ function useRequestBodyDisplayText(record: RequestRecord): string | null {
     return decodedBody.displayText;
   }
   return record.requestBody;
-}
-
-function isLikelySseResponse(record: RequestRecord): boolean {
-  if (record.streamEvents.length > 0) return true;
-  if (record.responseType?.toLowerCase() === "eventsource") return true;
-  return hasEventStreamHeader(record.responseHeaders) || hasEventStreamHeader(record.requestHeaders);
-}
-
-function hasEventStreamHeader(headers: Header[]): boolean {
-  return headers.some((header) => {
-    const name = header.name.toLowerCase();
-    const value = header.value.toLowerCase();
-    return (name === "content-type" || name === "accept") && value.includes("text/event-stream");
-  });
 }
 
 function requestHeaderValue(headers: Header[], name: string): string | null {
