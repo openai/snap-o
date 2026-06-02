@@ -32,7 +32,7 @@ const updateController = new UpdateController(() => {
 
 const NewWindowOffsetPx = 100;
 const DockIconPath = path.join(app.getAppPath(), "resources/icons/network.png");
-const IsDevelopment = (process.env.SNAPO_ELECTRON_DEV_SERVER_URL?.length ?? 0) > 0;
+const IsDevelopment = !app.isPackaged;
 let debugInspectorPreset: DebugInspectorPreset = "live";
 let logFilePath: string | null = null;
 
@@ -95,9 +95,6 @@ function createWindow(parentWindow?: BrowserWindow): BrowserWindow {
   const devServerUrl = process.env.SNAPO_ELECTRON_DEV_SERVER_URL;
   if (devServerUrl != null && devServerUrl.length > 0) {
     void window.loadURL(devServerUrl);
-    window.webContents.once("did-finish-load", () => {
-      window.webContents.openDevTools({ mode: "detach" });
-    });
   } else {
     void window.loadFile(path.join(__dirname, "../../dist-renderer/index.html"));
   }
