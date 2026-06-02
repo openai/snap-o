@@ -23,11 +23,7 @@ const versionInfo = await readVersionInfo(path.join(repoRoot, "VERSION"));
 await ensureBuiltArtifacts();
 await fs.rm(outputDir, { recursive: true, force: true });
 await fs.mkdir(outputDir, { recursive: true });
-await fs.cp(sourceElectronApp, appBundle, {
-  recursive: true,
-  dereference: false,
-  verbatimSymlinks: true
-});
+execFileSync("/usr/bin/ditto", [sourceElectronApp, appBundle], { stdio: "inherit" });
 
 await rebrandBundle();
 await copyAppPayload();
