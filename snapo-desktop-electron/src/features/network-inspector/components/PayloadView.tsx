@@ -12,29 +12,18 @@ import { useCopyFeedback } from "../hooks/useCopyFeedback";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { copyImageToClipboard, downloadDataUrl, imageFileName } from "../lib/imageActions";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
-import { HighlightText } from "./SearchHighlight";
 
 export function BodySection({
   payload,
   storageKey,
-  uiState,
-  searchText = ""
+  uiState
 }: {
   payload: BodyPayload;
   storageKey: string;
   uiState: InspectorUiState;
-  searchText?: string;
 }): JSX.Element {
   if (isImagePayload(payload)) return <ImagePreview payload={payload} />;
-  return (
-    <PayloadView
-      payload={payload}
-      storageKey={storageKey}
-      uiState={uiState}
-      prettyInitiallyExpanded
-      searchText={searchText}
-    />
-  );
+  return <PayloadView payload={payload} storageKey={storageKey} uiState={uiState} prettyInitiallyExpanded />;
 }
 
 export function PayloadView({
@@ -44,8 +33,7 @@ export function PayloadView({
   showsToggle = true,
   showsCopyButton = true,
   prettyInitiallyExpanded = true,
-  embedded = false,
-  searchText = ""
+  embedded = false
 }: {
   payload: BodyPayload;
   storageKey: string;
@@ -54,7 +42,6 @@ export function PayloadView({
   showsCopyButton?: boolean;
   prettyInitiallyExpanded?: boolean;
   embedded?: boolean;
-  searchText?: string;
 }): JSX.Element {
   const defaultPretty = payload.prettyText != null;
   const pretty = uiState.prettyEnabled(storageKey, defaultPretty);
@@ -90,14 +77,10 @@ export function PayloadView({
       <div className="payload-scroll">
         {jsonRoot == null ? (
           controls == null ? (
-            <pre>
-              <HighlightText text={displayText} searchText={searchText} />
-            </pre>
+            <pre>{displayText}</pre>
           ) : (
             <div className="raw-payload-row">
-              <pre>
-                <HighlightText text={displayText} searchText={searchText} />
-              </pre>
+              <pre>{displayText}</pre>
               <span className="raw-payload-controls">{controls}</span>
             </div>
           )
@@ -108,7 +91,6 @@ export function PayloadView({
             uiState={uiState}
             initiallyExpanded={prettyInitiallyExpanded}
             trailing={controls == null ? null : <span className="json-row-trailing">{controls}</span>}
-            searchText={searchText}
           />
         )}
       </div>
@@ -158,8 +140,7 @@ function JsonOutline({
   uiState,
   depth = 0,
   initiallyExpanded,
-  trailing,
-  searchText = ""
+  trailing
 }: {
   node: JsonNode;
   storageKey: string;
@@ -167,7 +148,6 @@ function JsonOutline({
   depth?: number;
   initiallyExpanded: boolean;
   trailing?: React.ReactNode;
-  searchText?: string;
 }): JSX.Element {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const expandable = node.children.length > 0;
@@ -229,7 +209,7 @@ function JsonOutline({
         ) : (
           <span className="json-toggle-spacer" />
         )}
-        <JsonNodeLine node={node} expanded={expanded} stringExpanded={stringExpanded} searchText={searchText} />
+        <JsonNodeLine node={node} expanded={expanded} stringExpanded={stringExpanded} />
         {trailing}
       </div>
       {stringIsCollapsible ? (
@@ -251,7 +231,6 @@ function JsonOutline({
               uiState={uiState}
               depth={depth + 1}
               initiallyExpanded={false}
-              searchText={searchText}
             />
           ))}
           <div className="json-row json-closing-row" style={{ paddingLeft: `${depth * 14}px` }}>
@@ -267,25 +246,21 @@ function JsonOutline({
 function JsonNodeLine({
   node,
   expanded,
-  stringExpanded,
-  searchText
+  stringExpanded
 }: {
   node: JsonNode;
   expanded: boolean;
   stringExpanded: boolean;
-  searchText: string;
 }): JSX.Element {
   return (
     <span className="json-line">
       {node.label.length === 0 ? null : (
         <>
-          <span className="json-key">
-            <HighlightText text={node.label} searchText={searchText} />
-          </span>
+          <span className="json-key">{node.label}</span>
           <span className="json-punctuation json-property-separator">:</span>
         </>
       )}
-      <JsonNodeValue node={node} expanded={expanded} stringExpanded={stringExpanded} searchText={searchText} />
+      <JsonNodeValue node={node} expanded={expanded} stringExpanded={stringExpanded} />
     </span>
   );
 }
@@ -293,63 +268,49 @@ function JsonNodeLine({
 function JsonNodeValue({
   node,
   expanded,
-  stringExpanded,
-  searchText
+  stringExpanded
 }: {
   node: JsonNode;
   expanded: boolean;
   stringExpanded: boolean;
-  searchText: string;
 }): JSX.Element {
   if (node.type === "object") {
     if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
     if (expanded) return <span className="json-punctuation">{"{"}</span>;
-    return <JsonInlinePreview node={node} searchText={searchText} />;
+    return <JsonInlinePreview node={node} />;
   }
   if (node.type === "array") {
     if (node.children.length === 0) return <span className="json-punctuation">[ ]</span>;
     if (expanded) return <span className="json-punctuation">[</span>;
-    return <JsonInlinePreview node={node} searchText={searchText} />;
+    return <JsonInlinePreview node={node} />;
   }
   if (node.type === "string") {
     const value = String(node.rawValue);
     const stringIsCollapsible = value.split("\n").length > MaxCollapsedStringLines;
     return (
       <span className={stringIsCollapsible ? "json-string json-string-multiline" : "json-string"}>
-        <HighlightText text={jsonStringForDisplay(value, stringExpanded)} searchText={searchText} />
+        {jsonStringForDisplay(value, stringExpanded)}
       </span>
     );
   }
   if (node.type === "number" || node.type === "boolean") {
-    return (
-      <span className="json-number-bool">
-        <HighlightText text={String(node.rawValue)} searchText={searchText} />
-      </span>
-    );
+    return <span className="json-number-bool">{String(node.rawValue)}</span>;
   }
-  return (
-    <span className="json-null">
-      <HighlightText text="null" searchText={searchText} />
-    </span>
-  );
+  return <span className="json-null">null</span>;
 }
 
-function JsonInlinePreview({ node, searchText }: { node: JsonNode; searchText: string }): JSX.Element {
-  return <span className="json-preview">{inlinePreviewParts(node, 120, searchText)}</span>;
+function JsonInlinePreview({ node }: { node: JsonNode }): JSX.Element {
+  return <span className="json-preview">{inlinePreviewParts(node, 120)}</span>;
 }
 
-function inlinePreviewParts(node: JsonNode, maxLength: number, searchText: string): React.ReactNode {
+function inlinePreviewParts(node: JsonNode, maxLength: number): React.ReactNode {
   const fullText = inlinePreviewText(node);
   if (fullText.length > maxLength)
-    return (
-      <span className="json-punctuation">
-        <HighlightText text={`${fullText.slice(0, Math.max(0, maxLength - 3))}...`} searchText={searchText} />
-      </span>
-    );
-  return renderInlinePreviewNode(node, searchText);
+    return <span className="json-punctuation">{`${fullText.slice(0, Math.max(0, maxLength - 3))}...`}</span>;
+  return renderInlinePreviewNode(node);
 }
 
-function renderInlinePreviewNode(node: JsonNode, searchText: string): React.ReactNode {
+function renderInlinePreviewNode(node: JsonNode): React.ReactNode {
   if (node.type === "object") {
     if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
     return (
@@ -358,11 +319,9 @@ function renderInlinePreviewNode(node: JsonNode, searchText: string): React.Reac
         {node.children.map((child, index) => (
           <span key={child.key}>
             {index === 0 ? null : <span className="json-punctuation">, </span>}
-            <span className="json-key">
-              <HighlightText text={jsonQuoted(child.label)} searchText={searchText} />
-            </span>
+            <span className="json-key">{jsonQuoted(child.label)}</span>
             <span className="json-punctuation">: </span>
-            {renderInlinePreviewNode(child, searchText)}
+            {renderInlinePreviewNode(child)}
           </span>
         ))}
         <span className="json-punctuation">{" }"}</span>
@@ -377,31 +336,18 @@ function renderInlinePreviewNode(node: JsonNode, searchText: string): React.Reac
         {node.children.map((child, index) => (
           <span key={child.key}>
             {index === 0 ? null : <span className="json-punctuation">, </span>}
-            {renderInlinePreviewNode(child, searchText)}
+            {renderInlinePreviewNode(child)}
           </span>
         ))}
         <span className="json-punctuation"> ]</span>
       </>
     );
   }
-  if (node.type === "string")
-    return (
-      <span className="json-string">
-        <HighlightText text={jsonQuoted(String(node.rawValue))} searchText={searchText} />
-      </span>
-    );
+  if (node.type === "string") return <span className="json-string">{jsonQuoted(String(node.rawValue))}</span>;
   if (node.type === "number" || node.type === "boolean") {
-    return (
-      <span className="json-number-bool">
-        <HighlightText text={String(node.rawValue)} searchText={searchText} />
-      </span>
-    );
+    return <span className="json-number-bool">{String(node.rawValue)}</span>;
   }
-  return (
-    <span className="json-null">
-      <HighlightText text="null" searchText={searchText} />
-    </span>
-  );
+  return <span className="json-null">null</span>;
 }
 
 function inlinePreviewText(node: JsonNode): string {

@@ -110,7 +110,6 @@ export const Sidebar = memo(function Sidebar({
         selectedRecordId={selectedRecordId}
         onSelect={onRecordSelect}
         client={client}
-        searchText={searchText}
       />
     </aside>
   );

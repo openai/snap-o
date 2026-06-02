@@ -480,12 +480,6 @@ body.split-pane-resizing {
   opacity: 1;
 }
 
-.search-highlight {
-  border-radius: 2px;
-  background: var(--search-highlight);
-  color: inherit;
-}
-
 .toolbar-action-group {
   display: flex;
   align-items: center;

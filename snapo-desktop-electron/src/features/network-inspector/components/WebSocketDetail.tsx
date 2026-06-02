@@ -3,18 +3,15 @@ import { recordId, type WebSocketRecord } from "../../../network/cdp";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
 import { HeadersTable, Section } from "./Section";
-import { HighlightText } from "./SearchHighlight";
 import { FailureMessage, StatusBadge } from "./Status";
 import { WebSocketMessageCard } from "./WebSocketMessages";
 
 export const WebSocketDetail = memo(function WebSocketDetail({
   record,
-  uiState,
-  searchText
+  uiState
 }: {
   record: WebSocketRecord;
   uiState: InspectorUiState;
-  searchText: string;
 }): JSX.Element {
   const prefix = `websocket:${recordId(record)}`;
   const timingText = useAdaptiveTimingText(record.startedAt, record.endedAt, record.status);
@@ -22,19 +19,15 @@ export const WebSocketDetail = memo(function WebSocketDetail({
     <div className="detail-scroll">
       <header className="detail-header">
         <div className="title-row">
-          <span className="detail-method">
-            <HighlightText text={record.method} searchText={searchText} />
-          </span>
-          <h1>
-            <HighlightText text={record.url} searchText={searchText} />
-          </h1>
+          <span className="detail-method">{record.method}</span>
+          <h1>{record.url}</h1>
         </div>
         <div className="detail-meta">
-          <StatusBadge record={record} searchText={searchText} />
+          <StatusBadge record={record} />
           <span>{timingText}</span>
         </div>
-        <FailureMessage status={record.status} searchText={searchText} />
-        <WebSocketCloseDetails record={record} searchText={searchText} />
+        <FailureMessage status={record.status} />
+        <WebSocketCloseDetails record={record} />
       </header>
       {record.requestHeaders.length === 0 ? null : (
         <Section
@@ -43,12 +36,12 @@ export const WebSocketDetail = memo(function WebSocketDetail({
           uiState={uiState}
           initiallyExpanded={false}
         >
-          <HeadersTable headers={record.requestHeaders} searchText={searchText} />
+          <HeadersTable headers={record.requestHeaders} />
         </Section>
       )}
       {record.responseHeaders.length === 0 ? null : (
         <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
-          <HeadersTable headers={record.responseHeaders} searchText={searchText} />
+          <HeadersTable headers={record.responseHeaders} />
         </Section>
       )}
       <Section title="Messages" storageKey={`${prefix}:messages`} uiState={uiState}>
@@ -62,7 +55,6 @@ export const WebSocketDetail = memo(function WebSocketDetail({
                 message={message}
                 storageKey={`${prefix}:message:${message.id}`}
                 uiState={uiState}
-                searchText={searchText}
               />
             ))}
           </div>
@@ -72,13 +64,7 @@ export const WebSocketDetail = memo(function WebSocketDetail({
   );
 });
 
-function WebSocketCloseDetails({
-  record,
-  searchText
-}: {
-  record: WebSocketRecord;
-  searchText: string;
-}): JSX.Element | null {
+function WebSocketCloseDetails({ record }: { record: WebSocketRecord }): JSX.Element | null {
   const closeRequested = record.closeRequested;
   const closing = record.closing;
   const closed = record.closed;
@@ -89,42 +75,24 @@ function WebSocketCloseDetails({
       {closeRequested == null ? null : (
         <>
           <div>
-            <HighlightText
-              text={`Close requested: ${closeRequested.code} • ${capitalize(closeRequested.initiated)} • ${
-                closeRequested.accepted ? "accepted" : "not accepted"
-              }`}
-              searchText={searchText}
-            />
+            Close requested: {closeRequested.code} • {capitalize(closeRequested.initiated)} •{" "}
+            {closeRequested.accepted ? "accepted" : "not accepted"}
           </div>
           {closeRequested.reason == null || closeRequested.reason.length === 0 ? null : (
-            <div>
-              <HighlightText text={`Reason: ${closeRequested.reason}`} searchText={searchText} />
-            </div>
+            <div>Reason: {closeRequested.reason}</div>
           )}
         </>
       )}
       {closing == null ? null : (
         <>
-          <div>
-            <HighlightText text={`Closing handshake: ${closing.code}`} searchText={searchText} />
-          </div>
-          {closing.reason == null || closing.reason.length === 0 ? null : (
-            <div>
-              <HighlightText text={`Reason: ${closing.reason}`} searchText={searchText} />
-            </div>
-          )}
+          <div>Closing handshake: {closing.code}</div>
+          {closing.reason == null || closing.reason.length === 0 ? null : <div>Reason: {closing.reason}</div>}
         </>
       )}
       {closed == null ? null : (
         <>
-          <div>
-            <HighlightText text={`Closed: ${closed.code}`} searchText={searchText} />
-          </div>
-          {closed.reason == null || closed.reason.length === 0 ? null : (
-            <div>
-              <HighlightText text={`Reason: ${closed.reason}`} searchText={searchText} />
-            </div>
-          )}
+          <div>Closed: {closed.code}</div>
+          {closed.reason == null || closed.reason.length === 0 ? null : <div>Reason: {closed.reason}</div>}
         </>
       )}
     </div>

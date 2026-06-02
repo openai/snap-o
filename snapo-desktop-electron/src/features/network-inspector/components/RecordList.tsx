@@ -5,7 +5,6 @@ import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./Cont
 import { StatusView } from "./Status";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
 import { contextMenuExportSelection, splitUrl } from "../lib/records";
-import { HighlightText } from "./SearchHighlight";
 
 export const RecordList = memo(function RecordList({
   records,
@@ -13,8 +12,7 @@ export const RecordList = memo(function RecordList({
   placeholder,
   selectedRecordId,
   onSelect,
-  client,
-  searchText
+  client
 }: {
   records: InspectorRecord[];
   allRecords: InspectorRecord[];
@@ -22,7 +20,6 @@ export const RecordList = memo(function RecordList({
   selectedRecordId: string | null;
   onSelect(id: string): void;
   client: NetworkClient;
-  searchText: string;
 }): JSX.Element {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
@@ -66,7 +63,6 @@ export const RecordList = memo(function RecordList({
               selected={selectedRecordId === id}
               onSelect={onSelect}
               onContextMenu={handleContextMenu}
-              searchText={searchText}
             />
           );
         })}
@@ -86,15 +82,13 @@ const RecordRow = memo(function RecordRow({
   record,
   selected,
   onSelect,
-  onContextMenu,
-  searchText
+  onContextMenu
 }: {
   id: string;
   record: InspectorRecord;
   selected: boolean;
   onSelect(id: string): void;
   onContextMenu(record: InspectorRecord, event: MouseEvent): void;
-  searchText: string;
 }): JSX.Element {
   const path = splitUrl(record.url);
   return (
@@ -105,17 +99,11 @@ const RecordRow = memo(function RecordRow({
       onContextMenu={(event) => onContextMenu(record, event)}
     >
       <span className="record-main">
-        <span className="record-primary">
-          <HighlightText text={path.primary} searchText={searchText} />
-        </span>
-        <span className="record-secondary">
-          <HighlightText text={path.secondary} searchText={searchText} />
-        </span>
+        <span className="record-primary">{path.primary}</span>
+        <span className="record-secondary">{path.secondary}</span>
       </span>
-      <span className="record-method">
-        <HighlightText text={record.method} searchText={searchText} />
-      </span>
-      <StatusView record={record} searchText={searchText} />
+      <span className="record-method">{record.method}</span>
+      <StatusView record={record} />
     </button>
   );
 });
