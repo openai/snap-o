@@ -33,6 +33,11 @@ jobs:
       - name: Install dependencies
         working-directory: snapo-desktop-electron
         run: |
+          if grep -q 'socket-firewall-registry\.gateway\.' package-lock.json; then
+            echo "::error::package-lock.json contains an internal npm registry URL"
+            exit 1
+          fi
+
           set +e
           set -o pipefail
           npm ci --foreground-scripts --timing --loglevel verbose 2>&1 | tee "${RUNNER_TEMP}/npm-ci.log"
