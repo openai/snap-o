@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - 'snapo-app-mac/**'
+      - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
     branches:
@@ -14,6 +15,7 @@ on:
       - master
     paths:
       - 'snapo-app-mac/**'
+      - '.github/workflows/mac.yml'
       - 'VERSION'
 
 jobs:
@@ -22,10 +24,40 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: snapo-desktop-electron/package-lock.json
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.1.1'
+      - name: Prefer setup-node in Xcode helper build phase
+        run: |
+          set -euo pipefail
+          SNAPO_NODE_BIN_DIR=$(dirname "$(command -v node)")
+          echo "SNAPO_NODE_BIN_DIR=${SNAPO_NODE_BIN_DIR}" >> "$GITHUB_ENV"
+
+          PROJECT_FILE="snapo-app-mac/Snap-O.xcodeproj/project.pbxproj"
+          OLD='export PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"'
+          NEW='export PATH=\"${SNAPO_NODE_BIN_DIR}:${PATH}:/opt/homebrew/bin:/usr/local/bin\"'
+
+          if ! grep -Fq "$OLD" "$PROJECT_FILE"; then
+            echo "Expected Xcode helper PATH line not found in ${PROJECT_FILE}" >&2
+            exit 1
+          fi
+
+          ruby -e '
+            path, old, replacement = ARGV
+            text = File.read(path)
+            count = text.scan(old).length
+            abort "Expected exactly one Xcode helper PATH line, found #{count}" unless count == 1
+            File.write(path, text.sub(old, replacement))
+          ' "$PROJECT_FILE" "$OLD" "$NEW"
+
+          grep -Fq "$NEW" "$PROJECT_FILE"
       - name: Build Snap-O
         working-directory: snapo-app-mac
         run: |
