@@ -37,25 +37,7 @@ jobs:
             echo "::error::package-lock.json contains an internal npm registry URL"
             exit 1
           fi
-
-          set +e
-          set -o pipefail
-          npm ci --foreground-scripts --timing --loglevel verbose 2>&1 | tee "${RUNNER_TEMP}/npm-ci.log"
-          status=${PIPESTATUS[0]}
-          set -e
-
-          if (( status != 0 )); then
-            echo "::group::npm debug logs"
-            for log in "${HOME}"/.npm/_logs/*-debug-0.log; do
-              if [[ -f "${log}" ]]; then
-                echo "===== ${log} ====="
-                cat "${log}"
-              fi
-            done
-            echo "::endgroup::"
-          fi
-
-          exit "${status}"
+          npm ci
       - name: Check formatting
         working-directory: snapo-desktop-electron
         run: npm run format:check
