@@ -6,7 +6,7 @@ The Electron backend talks directly to the local ADB server and Snap-O network s
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.12+
 - A running local ADB server
 - A connected Android app with the Snap-O network dependencies
 
