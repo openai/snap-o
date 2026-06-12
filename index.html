@@ -17,35 +17,61 @@
       content="Capture screenshots and recordings, and inspect Android app network traffic on macOS."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="assets/snapo-banner.jpg" />
+    <meta property="og:image" content="assets/banner.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/png" href="assets/icon-64.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
-    />
-
     <style>
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
+      }
+
       :root {
         color-scheme: light;
         --bg: #ffffff;
-        --surface: #ffffff;
         --ink: #0a0a0a;
-        --muted: #5f5f5f;
-        --line: #d8d8d8;
-        --accent: #00e85f;
-        --radius: 2px;
-        --maxw: 1240px;
+        --muted: #545454;
+        --line: #d4d4d4;
+        --accent: #a7bf4d;
+        --accent-hover: #b7cf5d;
+        --accent-strong: #4f7626;
+        --maxw: 1200px;
       }
       * {
         box-sizing: border-box;
       }
+      ::selection {
+        color: var(--ink);
+        background: #dce7b2;
+      }
       body {
         margin: 0;
-        font: 15px/1.52 "IBM Plex Sans", "Neue Haas Grotesk Text Pro",
-          "Helvetica Neue", sans-serif;
+        font: 16px/1.55 "OpenAI Sans", Arial, sans-serif;
+        font-feature-settings: "liga" on, "calt" on;
         color: var(--ink);
         background: var(--bg);
         -webkit-font-smoothing: antialiased;
@@ -53,105 +79,103 @@
       a {
         color: inherit;
       }
+      a:focus-visible {
+        outline: 2px solid var(--accent-strong);
+        outline-offset: 4px;
+      }
 
       .wrap {
         max-width: var(--maxw);
         margin-inline: auto;
-        padding-inline: clamp(16px, 3.2vw, 40px);
+        padding-inline: clamp(20px, 3.2vw, 40px);
       }
 
       .hero {
-        padding-block: clamp(34px, 6vw, 72px) clamp(28px, 5vw, 50px);
+        padding-block: clamp(44px, 6vw, 76px) clamp(48px, 6vw, 72px);
       }
       .hero-grid {
         display: grid;
-        gap: clamp(20px, 3vw, 34px);
-        grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-        align-items: start;
-      }
-
-      .kicker {
-        margin: 0.9rem 0 0;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        font-size: 0.68rem;
-        color: var(--muted);
+        gap: clamp(36px, 5vw, 72px);
+        grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+        align-items: center;
       }
 
       h1 {
-        margin: 0.5rem 0 0;
-        font-size: clamp(2.15rem, 7vw, 5rem);
-        line-height: 0.95;
-        letter-spacing: -0.03em;
+        margin: 0;
+        font-size: clamp(3rem, 6vw, 4.75rem);
+        line-height: 0.92;
+        letter-spacing: -0.045em;
         font-weight: 600;
+        text-wrap: balance;
       }
       .lead {
-        margin: 1.1rem 0 0;
+        margin: 1.35rem 0 0;
         color: var(--muted);
-        max-width: 60ch;
+        max-width: 48ch;
+        font-size: clamp(1.04rem, 1.5vw, 1.16rem);
+        text-wrap: pretty;
       }
 
       .cta {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 20px;
+        align-items: center;
+        gap: 14px 20px;
+        margin-top: 26px;
       }
       .btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 42px;
-        padding: 0 14px;
-        border-radius: var(--radius);
-        border: 1px solid;
+        min-height: 46px;
+        padding: 0 18px;
+        border: 1px solid var(--ink);
+        border-radius: 3px;
         text-decoration: none;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
         font-weight: 600;
-        font-size: 0.7rem;
+        font-size: 0.9rem;
         transition: color 140ms ease, background-color 140ms ease,
           border-color 140ms ease;
       }
       .btn.primary {
-        color: #0a0a0a;
-        background: #ffffff;
-        border-color: #0a0a0a;
+        color: #ffffff;
+        background: var(--ink);
+        border-color: var(--ink);
       }
       .btn.primary:hover,
       .btn.primary:focus-visible {
-        color: #ffffff;
-        background: #000000;
-        border-color: #000000;
-      }
-      .btn.secondary {
         color: var(--ink);
-        background: #ffffff;
-        border-color: var(--line);
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
       }
-      .btn.secondary:hover,
-      .btn.secondary:focus-visible {
-        border-color: #0a0a0a;
+      .secondary-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        font-weight: 500;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
+      }
+      .secondary-link:hover {
+        color: var(--accent-strong);
       }
 
       .note {
-        margin: 14px 0 0;
+        margin: 16px 0 0;
         color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 0.66rem;
+        font-size: 0.8rem;
       }
       .note code {
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-family: "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
         font-size: 0.95em;
       }
 
       .demo {
         margin: 0;
         border: 1px solid var(--line);
-        border-radius: var(--radius);
         overflow: hidden;
-        background: #f4f4f4;
+        background: #050b12;
       }
       .demo img {
         display: block;
@@ -160,108 +184,105 @@
       }
 
       .section {
-        padding-block: clamp(20px, 3vw, 34px);
+        padding-block: clamp(28px, 4vw, 48px);
       }
       .section-features {
-        padding-top: 2px;
-        padding-bottom: clamp(28px, 3.4vw, 40px);
+        padding-top: 0;
       }
-      .section-readme {
-        padding-top: 6px;
+      .section-features .wrap {
+        border-top: 1px solid var(--line);
       }
-      .section-label {
-        margin: 0 0 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.14em;
-        font-size: 0.68rem;
-        color: var(--muted);
-      }
-
-      .feature-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-      }
-      .feature-item {
+      .product-section {
         display: grid;
-        grid-template-columns: 52px minmax(0, 1fr);
+        grid-template-columns: minmax(200px, 0.58fr) minmax(0, 1.42fr);
         align-items: start;
-        gap: 12px;
-        padding: 14px 0 16px;
+        gap: clamp(24px, 5vw, 72px);
+        padding: 28px 0 34px;
         border-bottom: 1px solid var(--line);
       }
-      .feature-item:last-child {
+      .product-section:last-child {
         border-bottom: 0;
       }
-      .feature-index {
-        margin: 3px 0 0;
-        font: 500 0.67rem/1.2 "IBM Plex Mono", ui-monospace, monospace;
-        color: var(--muted);
-        letter-spacing: 0.1em;
-      }
-      .feature-title {
+      .product-title {
         margin: 0;
-        font-size: clamp(0.98rem, 1.8vw, 1.12rem);
-        letter-spacing: -0.01em;
-        line-height: 1.28;
+        font-size: clamp(1.3rem, 2.2vw, 1.7rem);
+        letter-spacing: -0.02em;
+        line-height: 1.2;
         font-weight: 600;
+        text-wrap: balance;
       }
-      .feature-copy {
-        margin: 4px 0 0;
-        color: var(--muted);
-      }
-
-      .readme-copy {
+      .product-copy {
         margin: 0;
         color: var(--muted);
-        max-width: 62ch;
+        max-width: 68ch;
+        text-wrap: pretty;
       }
-      .readme-card {
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        background: var(--surface);
-        padding: 16px;
-      }
-      .text-link {
+      .section-link {
         display: inline-flex;
         margin-top: 14px;
-        text-decoration: none;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        font-size: 0.68rem;
+        color: var(--accent-strong);
         font-weight: 600;
-        border-bottom: 1px solid var(--accent);
-        padding-bottom: 2px;
-        color: #0b8f42;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
       }
-      .text-link:hover,
-      .text-link:focus-visible {
+      .section-link:hover,
+      .section-link:focus-visible {
         color: var(--ink);
-        border-bottom-color: var(--ink);
       }
-
       footer {
-        margin-top: 14px;
+        margin-top: 4px;
       }
       .footer-row {
-        min-height: 48px;
+        min-height: 72px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 10px 16px;
         flex-wrap: wrap;
+        border-top: 1px solid var(--line);
       }
       .footer-copy {
         margin: 0;
         color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        font-size: 0.64rem;
+        font-size: 0.78rem;
       }
 
-      @media (max-width: 980px) {
+      @media (max-width: 860px) {
         .hero-grid {
           grid-template-columns: 1fr;
+        }
+        .demo {
+          max-width: 720px;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .hero {
+          padding-block: 40px 48px;
+        }
+        .product-section {
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+      }
+
+      @media (max-width: 440px) {
+        .cta {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .btn {
+          width: 100%;
+        }
+        .secondary-link {
+          justify-content: center;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .btn {
+          transition: none;
         }
       }
     </style>
@@ -272,9 +293,8 @@
         <div class="wrap hero-grid">
           <div>
             <h1>Snap-O</h1>
-            <p class="kicker">Android Inspection System</p>
             <p class="lead">
-              A fast, tidy macOS App for Android developers: capture
+              A fast, tidy macOS app for Android developers: capture
               screenshots and recordings, and inspect network traffic from
               Android devices and emulators.
             </p>
@@ -282,90 +302,53 @@
               <a class="btn primary" href="https://github.com/openai/snap-o/releases/latest">
                 Download for macOS
               </a>
-              <a class="btn secondary" href="https://github.com/openai/snap-o">
+              <a class="secondary-link" href="https://github.com/openai/snap-o">
                 View on GitHub
               </a>
             </div>
             <p class="note">
-              Requires macOS 15+ and <code>adb</code> from Android Platform
-              Tools.
+              Requires macOS 15+ and Android Platform Tools (<code>adb</code>).
             </p>
           </div>
 
           <figure class="demo">
             <img
-              src="assets/snapo-banner.jpg"
-              alt="Snap-O: Android inspection system for macOS"
+              src="assets/banner.webp"
+              width="1280"
+              height="721"
+              fetchpriority="high"
+              alt="Snap-O interface with a green robot above Earth and the words Fast, Focused, Effortless"
             />
           </figure>
         </div>
       </section>
 
-      <section class="section section-features">
+      <div class="section section-features">
         <div class="wrap">
-          <p class="section-label">Top-Level Features</p>
-          <ol class="feature-list">
-            <li class="feature-item">
-              <p class="feature-index">01</p>
-              <div>
-                <h3 class="feature-title">Network Inspector (Alpha)</h3>
-                <p class="feature-copy">
-                  Mirror app traffic into the macOS client, inspect requests
-                  and responses, and explore payloads with collapsible JSON
-                  pretty printing.
-                </p>
-              </div>
-            </li>
-            <li class="feature-item">
-              <p class="feature-index">02</p>
-              <div>
-                <h3 class="feature-title">Screen capture</h3>
-                <p class="feature-copy">
-                  Grab screenshots and recordings quickly, preview recordings
-                  instantly, and scrub frame-by-frame when checking animations
-                  or UI flow.
-                </p>
-              </div>
-            </li>
-            <li class="feature-item">
-              <p class="feature-index">03</p>
-              <div>
-                <h3 class="feature-title">Drag and drop without saving</h3>
-                <p class="feature-copy">
-                  Drop captures directly into pull requests, chat, and docs
-                  without the usual save-first friction.
-                </p>
-              </div>
-            </li>
-            <li class="feature-item">
-              <p class="feature-index">04</p>
-              <div>
-                <h3 class="feature-title">Multi-device and quick controls</h3>
-                <p class="feature-copy">
-                  Works across connected devices and emulators, with direct
-                  keyboard shortcuts and Android Studio External Tools
-                  integration.
-                </p>
-              </div>
-            </li>
-          </ol>
-        </div>
-      </section>
+          <section class="product-section">
+            <h2 class="product-title">Network Inspector</h2>
+            <div>
+              <p class="product-copy">
+                Inspect HTTP and HTTPS requests, responses, JSON payloads,
+                Server-Sent Events, and WebSocket messages from Android apps.
+              </p>
+              <a class="section-link" href="network-inspector.html">
+                Set up Network Inspector
+              </a>
+            </div>
+          </section>
 
-      <section class="section section-readme">
-        <div class="wrap">
-          <div class="readme-card">
-            <p class="section-label">Learn More</p>
-            <p class="readme-copy">
-              See setup notes, shortcuts, Android Studio External Tools, and
-              project status.
+          <section class="product-section">
+            <h2 class="product-title">Screen capture</h2>
+            <p class="product-copy">
+              Capture, review, and share without first saving files to disk.
+              Recordings open for immediate playback and frame-by-frame
+              inspection, then simply drag and drop screenshots or clips into
+              pull requests, chats, or docs.
             </p>
-            <a class="text-link" href="https://github.com/openai/snap-o#readme">
-              View Readme ->
-            </a>
-          </div>
+          </section>
         </div>
-      </section>
+      </div>
     </main>
 
     <footer>
