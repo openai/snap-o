@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Network Inspector guide · Snap-O</title>
+    <meta
+      name="description"
+      content="Add Snap-O Network Inspector to an Android app using OkHttp, Ktor, or HttpURLConnection."
+    />
+    <link rel="icon" type="image/png" href="assets/icon-64.png" />
+    <style>
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
+      }
+
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --ink: #0b0c0b;
+        --muted: #565a55;
+        --line: #d8dbd4;
+        --navy: #071321;
+        --lime: #a7bf4d;
+        --green: #486e23;
+        --maxw: 1200px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--bg);
+        font: 16px/1.6 "OpenAI Sans", Arial, sans-serif;
+        font-feature-settings: "liga" on, "calt" on;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      ::selection {
+        color: var(--ink);
+        background: #dce7b2;
+      }
+
+      a {
+        color: inherit;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
+      }
+
+      a:hover {
+        color: var(--green);
+      }
+
+      a:focus-visible,
+      button:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 4px;
+      }
+
+      .wrap {
+        width: min(100%, var(--maxw));
+        margin-inline: auto;
+        padding-inline: clamp(20px, 4vw, 48px);
+      }
+
+      .guide-hero {
+        padding-block: clamp(42px, 6vw, 72px) clamp(54px, 7vw, 82px);
+      }
+
+      .hero-copy {
+        max-width: 760px;
+      }
+
+      .back-link {
+        display: inline-flex;
+        margin-bottom: clamp(46px, 7vw, 78px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        text-decoration: none;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 2.25rem;
+        line-height: 1.17;
+        letter-spacing: -0.025em;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .lead {
+        max-width: 58ch;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: clamp(1.04rem, 1.5vw, 1.16rem);
+        line-height: 1.55;
+        text-wrap: pretty;
+      }
+
+      .guide-layout {
+        padding-bottom: 48px;
+      }
+
+      article {
+        max-width: 860px;
+      }
+
+      .guide-layout > *,
+      article {
+        min-width: 0;
+      }
+
+      .guide-section {
+        scroll-margin-top: 96px;
+        padding-block: 28px 64px;
+        border-top: 1px solid var(--line);
+      }
+
+      .guide-section + .guide-section {
+        padding-top: 34px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+        letter-spacing: 0;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+      .section-heading {
+        position: relative;
+        margin-bottom: 10px;
+        padding-left: 44px;
+      }
+
+      .section-heading h2 {
+        min-height: 27px;
+        display: flex;
+        align-items: center;
+      }
+
+      .section-heading .step {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .quick-jump {
+        display: none;
+      }
+
+      @media (min-width: 1280px) {
+        .quick-jump {
+          position: fixed;
+          z-index: 10;
+          top: 96px;
+          right: clamp(32px, 4vw, 56px);
+          display: block;
+          width: 200px;
+          max-height: calc(100vh - 120px);
+          overflow-y: auto;
+        }
+
+        .quick-jump-list {
+          position: relative;
+          margin: 0;
+          padding: 0 0 0 14px;
+          list-style: none;
+          border-left: 2px solid #eceee9;
+        }
+
+        .quick-jump-list li + li {
+          margin-top: 12px;
+        }
+
+        .quick-jump-link {
+          position: relative;
+          display: block;
+          color: #777c76;
+          font-size: 0.875rem;
+          line-height: 1.4;
+          text-decoration: none;
+          transition: color 140ms ease;
+        }
+
+        .quick-jump-link::before {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: -16px;
+          width: 2px;
+          content: "";
+          background: transparent;
+        }
+
+        .quick-jump-link:hover {
+          color: var(--ink);
+        }
+
+        .quick-jump-link[aria-current="location"] {
+          color: var(--ink);
+          font-weight: 500;
+        }
+
+        .quick-jump-link[aria-current="location"]::before {
+          background: var(--ink);
+        }
+      }
+
+      .section-body {
+        min-width: 0;
+        padding-left: 44px;
+      }
+
+      h3 {
+        margin: 36px 0 10px;
+        font-size: 1.15rem;
+        line-height: 1.35;
+        letter-spacing: -0.015em;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      p + p {
+        margin-top: 14px;
+      }
+
+      .prose {
+        color: var(--muted);
+        text-wrap: pretty;
+      }
+
+      .notice {
+        margin: 26px 0;
+        padding: 2px 0 2px 18px;
+        border-left: 3px solid var(--lime);
+        color: var(--muted);
+      }
+
+      .notice strong {
+        color: var(--ink);
+      }
+
+      .code-block {
+        max-width: 100%;
+        margin: 22px 0 0;
+        overflow: hidden;
+        color: #eef3ed;
+        background: var(--navy);
+        border-radius: 6px;
+      }
+
+      .code-head {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding-inline: 16px 10px;
+        color: #aeb9c2;
+        border-bottom: 1px solid #263342;
+        font: 500 0.72rem/1 "SF Mono", Consolas, "Liberation Mono",
+          ui-monospace, monospace;
+      }
+
+      .code-muted {
+        color: #7f8d99;
+      }
+
+      .code-emphasis {
+        color: #f4f7f2;
+        font-weight: 500;
+      }
+
+      .copy-button {
+        min-height: 30px;
+        padding: 0 8px;
+        color: #d8dfd6;
+        background: transparent;
+        border: 1px solid #42505d;
+        border-radius: 3px;
+        font: inherit;
+      }
+
+      .copy-button:hover {
+        color: var(--navy);
+        background: var(--lime);
+        border-color: var(--lime);
+      }
+
+      pre {
+        margin: 0;
+        padding: 20px;
+        overflow-x: auto;
+        font: 0.84rem/1.7 "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+        tab-size: 2;
+      }
+
+      code {
+        font-family: "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+      }
+
+      :not(pre) > code {
+        padding: 0.12em 0.35em;
+        color: #243218;
+        background: #e8eddf;
+        border-radius: 3px;
+        font-size: 0.88em;
+      }
+
+      details {
+        border-top: 1px solid var(--line);
+      }
+
+      details:last-of-type {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .dependency-options {
+        margin-top: 24px;
+      }
+
+      summary {
+        padding-block: 17px;
+        font-weight: 600;
+      }
+
+      .details-body {
+        padding: 0 0 26px;
+      }
+
+      .details-body .code-block {
+        margin-bottom: 4px;
+      }
+
+      .verify-list,
+      .check-list {
+        margin: 24px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .verify-list {
+        counter-reset: verify;
+      }
+
+      .verify-list li {
+        counter-increment: verify;
+        display: grid;
+        grid-template-columns: 27px minmax(0, 1fr);
+        gap: 14px;
+        padding-block: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .verify-list li::before {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        content: counter(verify);
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        box-sizing: border-box;
+      }
+
+      .check-list li {
+        position: relative;
+        padding: 10px 0 10px 24px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .check-list li::before {
+        content: "";
+        position: absolute;
+        top: 1.25rem;
+        left: 2px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--lime);
+      }
+
+      .reference-link {
+        display: inline-flex;
+        margin-top: 22px;
+        color: var(--green);
+        font-weight: 600;
+      }
+
+      footer {
+        padding-bottom: 30px;
+      }
+
+      .footer-row {
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        font-size: 0.8rem;
+      }
+
+      @media (max-width: 520px) {
+        .guide-hero {
+          padding-block: 34px 50px;
+        }
+
+        h1 {
+          font-size: 1.875rem;
+          line-height: 1.2;
+        }
+
+        .guide-section {
+          padding-bottom: 52px;
+        }
+
+        .guide-section + .guide-section {
+          padding-top: 46px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <section class="guide-hero">
+        <div class="wrap">
+          <div class="hero-copy">
+            <a class="back-link" href="index.html">Snap-O</a>
+            <h1>Network Inspector</h1>
+            <p class="lead">
+              Capture HTTP and HTTPS requests from an Android app in Snap-O,
+              including response bodies, Server-Sent Events, and WebSocket
+              messages. Works with OkHttp, Ktor's OkHttp engine, and
+              HttpURLConnection.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div class="wrap guide-layout">
+        <article>
+          <section class="guide-section" id="jitpack">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">1</span>
+              <h2>Add JitPack to Gradle</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Snap-O publishes its Android libraries through JitPack. Add the
+              repository to your dependency sources once.
+            </p>
+
+            <div class="code-block">
+              <div class="code-head">
+                <span>settings.gradle.kts</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code><span class="code-muted">dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()</span>
+<span class="code-emphasis">        maven { url = uri("https://jitpack.io") }</span>
+<span class="code-muted">    }
+}</span></code></pre>
+            </div>
+            </div>
+          </section>
+
+          <section class="guide-section" id="install">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">2</span>
+              <h2>Add the Android dependency</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Choose the dependency that matches your network client. Use the
+              real interceptor in debug builds and its no-op counterpart in
+              release builds.
+            </p>
+            <div class="dependency-options">
+              <details>
+                <summary>OkHttp or Ktor</summary>
+                <div class="details-body">
+                  <p class="prose">
+                    Use the OkHttp interceptor for OkHttp directly or through
+                    Ktor's OkHttp engine.
+                  </p>
+                  <div class="code-block">
+                    <div class="code-head">
+                      <span>app/build.gradle.kts</span>
+                      <button class="copy-button" type="button">Copy</button>
+                    </div>
+                    <pre><code>dependencies {
+    debugImplementation("com.github.openai.snap-o:network-okhttp3:2.0.1")
+    releaseImplementation("com.github.openai.snap-o:network-okhttp3-noop:2.0.1")
+}</code></pre>
+                  </div>
+                </div>
+              </details>
+
+              <details>
+                <summary>HttpURLConnection</summary>
+                <div class="details-body">
+                  <p class="prose">
+                    Use the HttpURLConnection interceptor on Android 7.0
+                    (API 24) or newer.
+                  </p>
+                  <div class="code-block">
+                    <div class="code-head">
+                      <span>app/build.gradle.kts</span>
+                      <button class="copy-button" type="button">Copy</button>
+                    </div>
+                    <pre><code>dependencies {
+    debugImplementation("com.github.openai.snap-o:network-httpurlconnection:2.0.1")
+    releaseImplementation("com.github.openai.snap-o:network-httpurlconnection-noop:2.0.1")
+}</code></pre>
+                  </div>
+                </div>
+              </details>
+            </div>
+            </div>
+          </section>
+
+          <section class="guide-section" id="connect">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">3</span>
+              <h2>Add request interceptors</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Add the interceptor once when the client is created. Every
+              request made by that client can then be replayed or streamed to
+              Snap-O.
+            </p>
+
+            <h3>OkHttp</h3>
+            <div class="code-block">
+              <div class="code-head">
+                <span>Kotlin</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code>import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
+
+val client = OkHttpClient.Builder()
+    .addInterceptor(SnapOOkHttpInterceptor())
+    .build()</code></pre>
+            </div>
+
+            <div class="notice">
+              Requests are buffered on the device for up to five minutes by
+              default, so Snap-O can open after the app starts and still show
+              recent traffic.
+            </div>
+
+            <details>
+              <summary>Ktor with the OkHttp engine</summary>
+              <div class="details-body">
+                <p class="prose">
+                  Attach the same interceptor through Ktor's OkHttp engine.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>Kotlin</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code>import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
+
+val client = HttpClient(OkHttp) {
+    engine {
+        addInterceptor(SnapOOkHttpInterceptor())
+    }
+}</code></pre>
+                </div>
+              </div>
+            </details>
+
+            <details>
+              <summary>HttpURLConnection</summary>
+              <div class="details-body">
+                <p class="prose">
+                  Open the connection through the Snap-O interceptor. Response
+                  details are captured when your app reads the response code or
+                  response stream.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>Kotlin</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code>import com.openai.snapo.network.httpurlconnection.SnapOHttpUrlInterceptor
+
+val interceptor = SnapOHttpUrlInterceptor()
+val connection = interceptor.open(URL("https://example.com"))
+
+connection.connect()
+connection.inputStream.use { body -&gt;
+    // Read the response.
+}
+connection.disconnect()</code></pre>
+                </div>
+              </div>
+            </details>
+
+            <details>
+              <summary>WebSockets</summary>
+              <div class="details-body">
+                <p class="prose">
+                  Create WebSockets through the wrapped factory. Regular HTTP
+                  calls can continue using the original client.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>Kotlin · OkHttp</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code>import com.openai.snapo.network.okhttp3.withSnapOInterceptor
+
+val webSocketFactory = client.withSnapOInterceptor()
+val webSocket = webSocketFactory.newWebSocket(request, listener)</code></pre>
+                </div>
+                <p class="prose">
+                  For Ktor, assign
+                  <code>okHttpClient.withSnapOInterceptor()</code> to the
+                  engine's <code>webSocketFactory</code> and install Ktor's
+                  <code>WebSockets</code> plugin.
+                </p>
+              </div>
+            </details>
+            </div>
+          </section>
+
+          <section class="guide-section" id="verify">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">4</span>
+              <h2>Verify the connection</h2>
+            </div>
+            <div class="section-body">
+            <ol class="verify-list">
+              <li><span>Install and launch the debug build on an authorized Android device or emulator.</span></li>
+              <li><span>Open Snap-O on macOS and select the connected device.</span></li>
+              <li><span>Open <strong>Tools → Network Inspector</strong>, use the toolbar network icon, or press <strong>⌘⌥I</strong>.</span></li>
+              <li><span>Select the app process if prompted, then trigger a request in the Android app.</span></li>
+              <li><span>Open the request to inspect headers, bodies, timing, SSE, or WebSocket messages.</span></li>
+            </ol>
+            <p class="notice">
+              If the Android app restarts, Snap-O may offer a newer process in
+              the inspector sidebar. Switch to it to continue with live traffic.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="troubleshoot">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">5</span>
+              <h2>Troubleshooting</h2>
+            </div>
+            <div class="section-body">
+            <ul class="check-list">
+              <li>Confirm the device is online and authorized in <code>adb devices</code>.</li>
+              <li>Confirm the installed variant includes the debug interceptor, not the no-op release artifact.</li>
+              <li>Make sure the request uses the exact OkHttp client, Ktor engine, or HttpURLConnection wrapper you configured.</li>
+              <li>Keep the Android app process running and select the newest process after an app restart.</li>
+              <li>Update the Snap-O desktop app and Android dependency together if a protocol mismatch appears.</li>
+              <li>Large or old bodies may be unavailable after the five-minute, 10,000-event, or 16 MB replay limits are reached.</li>
+            </ul>
+            </div>
+          </section>
+
+          <section class="guide-section" id="advanced">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">6</span>
+              <h2>Advanced setup</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Debug builds initialize the on-device server automatically through
+              <code>SnapONetworkInitProvider</code>. Most apps should keep the
+              defaults.
+            </p>
+
+            <details>
+              <summary>Provider configuration</summary>
+              <div class="details-body">
+                <p class="prose">
+                  The provider supports automatic initialization, main-process
+                  filtering, a mode label, and replay limits. Manifest overrides
+                  must use Android manifest-merger directives because the library
+                  already declares these metadata entries.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>AndroidManifest.xml</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code>&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"&gt;
+
+    &lt;application&gt;
+        &lt;provider
+            android:name="com.openai.snapo.network.SnapONetworkInitProvider"
+            android:authorities="${applicationId}.snapo-network-init"
+            android:exported="false"&gt;
+            &lt;meta-data
+                android:name="snapo.auto_init"
+                android:value="false"
+                tools:replace="android:value" /&gt;
+        &lt;/provider&gt;
+    &lt;/application&gt;
+&lt;/manifest&gt;</code></pre>
+                </div>
+              </div>
+            </details>
+
+            <details>
+              <summary>Manual initialization</summary>
+              <div class="details-body">
+                <p class="prose">
+                  If automatic initialization is disabled, initialize the
+                  inspector from your application process with a custom
+                  <code>NetworkInspectorConfig</code>.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>Kotlin</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code>import com.openai.snapo.network.NetworkInspector
+import com.openai.snapo.network.NetworkInspectorConfig
+
+NetworkInspector.initialize(
+    application,
+    NetworkInspectorConfig(),
+)</code></pre>
+                </div>
+              </div>
+            </details>
+
+            <a
+              class="reference-link"
+              href="https://github.com/openai/snap-o/blob/main/docs/network-inspector.md"
+            >
+              Read the protocol and security reference on GitHub
+            </a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="quick-jump" aria-label="On this page">
+          <nav>
+            <ol class="quick-jump-list">
+              <li><a class="quick-jump-link" href="#jitpack">Add JitPack to Gradle</a></li>
+              <li><a class="quick-jump-link" href="#install">Add the Android dependency</a></li>
+              <li><a class="quick-jump-link" href="#connect">Add request interceptors</a></li>
+              <li><a class="quick-jump-link" href="#verify">Verify the connection</a></li>
+              <li><a class="quick-jump-link" href="#troubleshoot">Troubleshooting</a></li>
+              <li><a class="quick-jump-link" href="#advanced">Advanced setup</a></li>
+            </ol>
+          </nav>
+        </aside>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap footer-row">
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+      </div>
+    </footer>
+
+    <script>
+      for (const button of document.querySelectorAll(".copy-button")) {
+        button.addEventListener("click", async () => {
+          const code = button.closest(".code-block").querySelector("code").innerText;
+          await navigator.clipboard.writeText(code);
+          button.textContent = "Copied";
+          window.setTimeout(() => {
+            button.textContent = "Copy";
+          }, 1400);
+        });
+      }
+
+      const sections = [...document.querySelectorAll(".guide-section")];
+      const jumpLinks = [...document.querySelectorAll(".quick-jump-link")];
+
+      if ("IntersectionObserver" in window && jumpLinks.length > 0) {
+        const setCurrentSection = (id) => {
+          for (const link of jumpLinks) {
+            if (link.hash === `#${id}`) {
+              link.setAttribute("aria-current", "location");
+            } else {
+              link.removeAttribute("aria-current");
+            }
+          }
+        };
+
+        const sectionObserver = new IntersectionObserver(
+          (entries) => {
+            const visibleSection = entries
+              .filter((entry) => entry.isIntersecting)
+              .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+
+            if (visibleSection) {
+              setCurrentSection(visibleSection.target.id);
+            }
+          },
+          { rootMargin: "-18% 0px -68%", threshold: 0 },
+        );
+
+        for (const section of sections) {
+          sectionObserver.observe(section);
+        }
+
+        setCurrentSection(sections[0].id);
+      }
+
+      document.getElementById("year").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
