@@ -12,12 +12,12 @@ It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
 
 ## Top-Level Features
 
-- **Network Inspector (Alpha):** Mirror app traffic into the macOS client, inspect requests and responses, and explore payloads with collapsible JSON pretty printing. Start with the [Network Inspector (Alpha) guide](docs/network-inspector.md).
+- **Network Inspector (Alpha):** Mirror app traffic into the macOS client, inspect requests and responses, and explore payloads with collapsible JSON pretty printing. Start with the [Network Inspector (Alpha) guide](https://openai.github.io/snap-o/network-inspector.html).
 - **Screen Capture:** Grab screenshots and screen recordings quickly, preview recordings instantly, and drag captures directly into PRs, chat, and docs without save-first friction.
 
 ## Network Inspector (Alpha)
 
-Curious about mirroring app traffic into the macOS client? Check the [Network Inspector (Alpha) guide](docs/network-inspector.md) for setup steps, dependency coordinates, and configuration tips.
+Curious about mirroring app traffic into the macOS client? Check the [Network Inspector (Alpha) guide](https://openai.github.io/snap-o/network-inspector.html) for setup steps, dependency coordinates, and configuration tips.
 
 Snap-O can replay network requests that happened before you opened Snap-O, so you do not miss early events, and includes collapsible JSON pretty printing.
 

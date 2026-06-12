@@ -27,7 +27,7 @@ import {
   sidebarPlaceholderText
 } from "../lib/records";
 
-const docsUrl = "https://github.com/openai/snap-o/blob/main/docs/network-inspector.md";
+const docsUrl = "https://openai.github.io/snap-o/network-inspector.html";
 
 export interface NetworkInspectorModel {
   client: NetworkClient;
