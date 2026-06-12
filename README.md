@@ -1,7 +1,7 @@
 [![download](https://img.shields.io/github/v/release/openai/snap-o?label=download&color=brightgreen)](https://github.com/openai/snap-o/releases/latest)
 
 <p>
-  <img src=".github/banner.jpg" width="640" alt="Snap-O: Android inspection system for macOS">
+  <img src=".github/banner.webp" width="640" alt="Snap-O: Fast. Focused. Effortless.">
 </p>
 
 # Snap-O: Android Inspection System
