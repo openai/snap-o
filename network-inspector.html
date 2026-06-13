@@ -47,8 +47,8 @@
         --muted: #565a55;
         --line: #d8dbd4;
         --navy: #071321;
-        --lime: #a7bf4d;
-        --green: #486e23;
+        --lime: #23b515;
+        --green: #18820f;
         --maxw: 1200px;
       }
 
@@ -71,7 +71,7 @@
 
       ::selection {
         color: var(--ink);
-        background: #dce7b2;
+        background: rgba(35, 181, 21, 0.18);
       }
 
       a {
@@ -318,13 +318,57 @@
           ui-monospace, monospace;
       }
 
-      .code-muted {
-        color: #7f8d99;
+      .syntax-code .code-line {
+        display: block;
       }
 
-      .code-emphasis {
-        color: #f4f7f2;
+      .syntax-code .code-line-muted {
+        opacity: 0.48;
+      }
+
+      .syntax-code .code-line-emphasis {
         font-weight: 500;
+      }
+
+      .syntax-code .token.keyword,
+      .syntax-code .token.boolean,
+      .syntax-code .token.builtin {
+        color: #d2a8ff;
+      }
+
+      .syntax-code .token.function,
+      .syntax-code .token.attr-name {
+        color: #9dd8ff;
+      }
+
+      .syntax-code .token.class-name,
+      .syntax-code .token.constant,
+      .syntax-code .token.tag {
+        color: #f2cc60;
+      }
+
+      .syntax-code .token.string,
+      .syntax-code .token.attr-value {
+        color: var(--lime);
+      }
+
+      .syntax-code .token.number {
+        color: #ffb86b;
+      }
+
+      .syntax-code .token.operator,
+      .syntax-code .token.annotation,
+      .syntax-code .token.symbol {
+        color: #ff9b8f;
+      }
+
+      .syntax-code .token.punctuation {
+        color: #aeb9c2;
+      }
+
+      .syntax-code .token.comment {
+        color: #8b98a5;
+        font-style: italic;
       }
 
       .copy-button {
@@ -359,8 +403,8 @@
 
       :not(pre) > code {
         padding: 0.12em 0.35em;
-        color: #243218;
-        background: #e8eddf;
+        color: var(--green);
+        background: rgba(35, 181, 21, 0.08);
         border-radius: 3px;
         font-size: 0.88em;
       }
@@ -388,6 +432,43 @@
 
       .details-body .code-block {
         margin-bottom: 4px;
+      }
+
+      .table-scroll {
+        max-width: 100%;
+        margin-top: 20px;
+        overflow-x: auto;
+      }
+
+      .config-table {
+        width: 100%;
+        min-width: 680px;
+        border-collapse: collapse;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: left;
+      }
+
+      .config-table th,
+      .config-table td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      .config-table th {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .config-table th:first-child,
+      .config-table td:first-child {
+        padding-left: 0;
+      }
+
+      .config-table th:last-child,
+      .config-table td:last-child {
+        padding-right: 0;
       }
 
       .verify-list,
@@ -444,13 +525,6 @@
         height: 7px;
         border-radius: 50%;
         background: var(--lime);
-      }
-
-      .reference-link {
-        display: inline-flex;
-        margin-top: 22px;
-        color: var(--green);
-        font-weight: 600;
       }
 
       footer {
@@ -530,13 +604,13 @@
                 <span>settings.gradle.kts</span>
                 <button class="copy-button" type="button">Copy</button>
               </div>
-              <pre><code><span class="code-muted">dependencyResolutionManagement {
+              <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="5">dependencyResolutionManagement {
     repositories {
         google()
-        mavenCentral()</span>
-<span class="code-emphasis">        maven { url = uri("https://jitpack.io") }</span>
-<span class="code-muted">    }
-}</span></code></pre>
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}</code></pre>
             </div>
             </div>
           </section>
@@ -550,7 +624,8 @@
             <p class="prose">
               Choose the dependency that matches your network client. Use the
               real interceptor in debug builds and its no-op counterpart in
-              release builds.
+              release builds. The no-op artifact preserves the same API while
+              passing traffic through without starting the Snap-O server.
             </p>
             <div class="dependency-options">
               <details>
@@ -565,7 +640,7 @@
                       <span>app/build.gradle.kts</span>
                       <button class="copy-button" type="button">Copy</button>
                     </div>
-                    <pre><code>dependencies {
+                    <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
     debugImplementation("com.github.openai.snap-o:network-okhttp3:2.0.1")
     releaseImplementation("com.github.openai.snap-o:network-okhttp3-noop:2.0.1")
 }</code></pre>
@@ -585,7 +660,7 @@
                       <span>app/build.gradle.kts</span>
                       <button class="copy-button" type="button">Copy</button>
                     </div>
-                    <pre><code>dependencies {
+                    <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
     debugImplementation("com.github.openai.snap-o:network-httpurlconnection:2.0.1")
     releaseImplementation("com.github.openai.snap-o:network-httpurlconnection-noop:2.0.1")
 }</code></pre>
@@ -603,9 +678,9 @@
             </div>
             <div class="section-body">
             <p class="prose">
-              Add the interceptor once when the client is created. Every
-              request made by that client can then be replayed or streamed to
-              Snap-O.
+              Add the interceptor once when the client is created. Requests
+              made by that client can then be captured and made available to
+              Snap-O. WebSockets require the wrapped factory shown below.
             </p>
 
             <h3>OkHttp</h3>
@@ -614,7 +689,7 @@
                 <span>Kotlin</span>
                 <button class="copy-button" type="button">Copy</button>
               </div>
-              <pre><code>import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
+              <pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 
 val client = OkHttpClient.Builder()
     .addInterceptor(SnapOOkHttpInterceptor())
@@ -638,11 +713,30 @@ val client = OkHttpClient.Builder()
                     <span>Kotlin</span>
                     <button class="copy-button" type="button">Copy</button>
                   </div>
-                  <pre><code>import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
+                  <pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 
 val client = HttpClient(OkHttp) {
     engine {
         addInterceptor(SnapOOkHttpInterceptor())
+    }
+}</code></pre>
+                </div>
+                <p class="prose">
+                  If your app already builds an OkHttp client, pass that client
+                  to Ktor instead.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>Kotlin · preconfigured client</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code class="syntax-code" data-language="kotlin">val okHttpClient = OkHttpClient.Builder()
+    .addInterceptor(SnapOOkHttpInterceptor())
+    .build()
+
+val client = HttpClient(OkHttp) {
+    engine {
+        preconfigured = okHttpClient
     }
 }</code></pre>
                 </div>
@@ -662,7 +756,7 @@ val client = HttpClient(OkHttp) {
                     <span>Kotlin</span>
                     <button class="copy-button" type="button">Copy</button>
                   </div>
-                  <pre><code>import com.openai.snapo.network.httpurlconnection.SnapOHttpUrlInterceptor
+                  <pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.network.httpurlconnection.SnapOHttpUrlInterceptor
 
 val interceptor = SnapOHttpUrlInterceptor()
 val connection = interceptor.open(URL("https://example.com"))
@@ -672,6 +766,18 @@ connection.inputStream.use { body -&gt;
     // Read the response.
 }
 connection.disconnect()</code></pre>
+                </div>
+                <p class="prose">
+                  You can also wrap a connection created elsewhere.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>Kotlin · existing connection</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code class="syntax-code" data-language="kotlin">val existing = URL("https://example.com")
+    .openConnection() as HttpURLConnection
+val connection = SnapOHttpUrlInterceptor().intercept(existing)</code></pre>
                 </div>
               </div>
             </details>
@@ -688,17 +794,33 @@ connection.disconnect()</code></pre>
                     <span>Kotlin · OkHttp</span>
                     <button class="copy-button" type="button">Copy</button>
                   </div>
-                  <pre><code>import com.openai.snapo.network.okhttp3.withSnapOInterceptor
+                  <pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 
 val webSocketFactory = client.withSnapOInterceptor()
 val webSocket = webSocketFactory.newWebSocket(request, listener)</code></pre>
                 </div>
                 <p class="prose">
-                  For Ktor, assign
-                  <code>okHttpClient.withSnapOInterceptor()</code> to the
-                  engine's <code>webSocketFactory</code> and install Ktor's
+                  For Ktor, use the same preconfigured OkHttp client for HTTP
+                  traffic, wrap its WebSocket factory, and install Ktor's
                   <code>WebSockets</code> plugin.
                 </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>Kotlin · Ktor WebSockets</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code class="syntax-code" data-language="kotlin">val okHttpClient = OkHttpClient.Builder()
+    .addInterceptor(SnapOOkHttpInterceptor())
+    .build()
+
+val client = HttpClient(OkHttp) {
+    engine {
+        preconfigured = okHttpClient
+        webSocketFactory = okHttpClient.withSnapOInterceptor()
+    }
+    install(WebSockets)
+}</code></pre>
+                </div>
               </div>
             </details>
             </div>
@@ -736,7 +858,8 @@ val webSocket = webSocketFactory.newWebSocket(request, listener)</code></pre>
               <li>Make sure the request uses the exact OkHttp client, Ktor engine, or HttpURLConnection wrapper you configured.</li>
               <li>Keep the Android app process running and select the newest process after an app restart.</li>
               <li>Update the Snap-O desktop app and Android dependency together if a protocol mismatch appears.</li>
-              <li>Large or old bodies may be unavailable after the five-minute, 10,000-event, or 16 MB replay limits are reached.</li>
+              <li>The replay buffer retains up to five minutes, 10,000 events, or 16 MiB of total event data, whichever limit is reached first.</li>
+              <li>Individual request and response bodies are captured up to 5 MiB by default; larger bodies are truncated.</li>
             </ul>
             </div>
           </section>
@@ -767,7 +890,7 @@ val webSocket = webSocketFactory.newWebSocket(request, listener)</code></pre>
                     <span>AndroidManifest.xml</span>
                     <button class="copy-button" type="button">Copy</button>
                   </div>
-                  <pre><code>&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
+                  <pre><code class="syntax-code" data-language="xml">&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"&gt;
 
     &lt;application&gt;
@@ -782,6 +905,54 @@ val webSocket = webSocketFactory.newWebSocket(request, listener)</code></pre>
         &lt;/provider&gt;
     &lt;/application&gt;
 &lt;/manifest&gt;</code></pre>
+                </div>
+                <div class="table-scroll">
+                  <table class="config-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Metadata key</th>
+                        <th scope="col">Default</th>
+                        <th scope="col">Purpose</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><code>snapo.auto_init</code></td>
+                        <td><code>true</code></td>
+                        <td>Starts the inspector during app initialization.</td>
+                      </tr>
+                      <tr>
+                        <td><code>snapo.main_process_only</code></td>
+                        <td><code>true</code></td>
+                        <td>Restricts automatic initialization to the app's main process.</td>
+                      </tr>
+                      <tr>
+                        <td><code>snapo.mode_label</code></td>
+                        <td><code>safe</code></td>
+                        <td>Reports a custom mode label to Snap-O clients.</td>
+                      </tr>
+                      <tr>
+                        <td><code>snapo.allow_release</code></td>
+                        <td><code>false</code></td>
+                        <td>Allows the server in a non-debuggable build. Enable only intentionally.</td>
+                      </tr>
+                      <tr>
+                        <td><code>snapo.buffer_window_ms</code></td>
+                        <td><code>300000</code></td>
+                        <td>Sets the rolling replay window in milliseconds.</td>
+                      </tr>
+                      <tr>
+                        <td><code>snapo.max_events</code></td>
+                        <td><code>10000</code></td>
+                        <td>Caps the number of events retained for replay.</td>
+                      </tr>
+                      <tr>
+                        <td><code>snapo.max_bytes</code></td>
+                        <td><code>16777216</code></td>
+                        <td>Caps total retained event data at 16 MiB.</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </details>
@@ -799,23 +970,23 @@ val webSocket = webSocketFactory.newWebSocket(request, listener)</code></pre>
                     <span>Kotlin</span>
                     <button class="copy-button" type="button">Copy</button>
                   </div>
-                  <pre><code>import com.openai.snapo.network.NetworkInspector
+                  <pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.NetworkInspectorConfig
+import kotlin.time.Duration.Companion.minutes
 
 NetworkInspector.initialize(
     application,
-    NetworkInspectorConfig(),
+    NetworkInspectorConfig(
+        bufferWindow = 10.minutes,
+        maxBufferedEvents = 20_000,
+        maxBufferedBytes = 32L * 1024 * 1024,
+        modeLabel = "debug",
+    ),
 )</code></pre>
                 </div>
               </div>
             </details>
 
-            <a
-              class="reference-link"
-              href="https://github.com/openai/snap-o/blob/main/docs/network-inspector.md"
-            >
-              Read the protocol and security reference on GitHub
-            </a>
             </div>
           </section>
         </article>
@@ -843,10 +1014,65 @@ NetworkInspector.initialize(
     </footer>
 
     <script>
+      window.Prism = { manual: true };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-kotlin.min.js"></script>
+    <script>
+      const escapeHtml = (value) =>
+        value.replace(
+          /[&<>"']/g,
+          (character) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            })[character],
+        );
+
+      if (window.Prism?.languages.kotlin) {
+        Prism.languages.insertBefore("kotlin", "function", {
+          "class-name": /\b[A-Z][A-Za-z0-9_]*\b/,
+        });
+      }
+
+      for (const code of document.querySelectorAll(".syntax-code")) {
+        const source = code.textContent;
+        const language = code.dataset.language;
+        const emphasisLines = new Set(
+          (code.dataset.emphasisLines || "")
+            .split(",")
+            .filter(Boolean)
+            .map(Number),
+        );
+        const grammar = window.Prism?.languages[language];
+        const highlightedCode = grammar
+          ? Prism.highlight(source, grammar, language)
+          : escapeHtml(source);
+
+        code.dataset.copyText = source;
+        if (emphasisLines.size === 0) {
+          code.innerHTML = highlightedCode;
+          continue;
+        }
+
+        code.innerHTML = highlightedCode
+          .split("\n")
+          .map((line, index) => {
+            const emphasisClass = emphasisLines.has(index + 1)
+              ? "code-line-emphasis"
+              : "code-line-muted";
+            return `<span class="code-line ${emphasisClass}">${line}</span>`;
+          })
+          .join("");
+      }
+
       for (const button of document.querySelectorAll(".copy-button")) {
         button.addEventListener("click", async () => {
-          const code = button.closest(".code-block").querySelector("code").innerText;
-          await navigator.clipboard.writeText(code);
+          const code = button.closest(".code-block").querySelector("code");
+          await navigator.clipboard.writeText(code.dataset.copyText || code.innerText);
           button.textContent = "Copied";
           window.setTimeout(() => {
             button.textContent = "Copy";
