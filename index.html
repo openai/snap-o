@@ -56,9 +56,9 @@
         --ink: #0a0a0a;
         --muted: #545454;
         --line: #d4d4d4;
-        --accent: #a7bf4d;
-        --accent-hover: #b7cf5d;
-        --accent-strong: #4f7626;
+        --accent: #23b515;
+        --accent-hover: #23b515;
+        --accent-strong: #18820f;
         --maxw: 1200px;
       }
       * {
@@ -66,7 +66,7 @@
       }
       ::selection {
         color: var(--ink);
-        background: #dce7b2;
+        background: rgba(35, 181, 21, 0.18);
       }
       body {
         margin: 0;
@@ -102,14 +102,20 @@
 
       h1 {
         margin: 0;
-        font-size: clamp(3rem, 6vw, 4.75rem);
-        line-height: 0.92;
+        font-size: clamp(2.5rem, 5vw, 4rem);
+        line-height: 0.95;
         letter-spacing: -0.045em;
         font-weight: 600;
         text-wrap: balance;
       }
+      .subtitle {
+        margin: 0.7rem 0 0;
+        color: var(--ink);
+        font-size: 1rem;
+        font-weight: 400;
+      }
       .lead {
-        margin: 1.35rem 0 0;
+        margin: 1rem 0 0;
         color: var(--muted);
         max-width: 48ch;
         font-size: clamp(1.04rem, 1.5vw, 1.16rem);
@@ -205,9 +211,9 @@
       }
       .product-title {
         margin: 0;
-        font-size: clamp(1.3rem, 2.2vw, 1.7rem);
-        letter-spacing: -0.02em;
-        line-height: 1.2;
+        font-size: 1.25rem;
+        letter-spacing: 0;
+        line-height: 1.5;
         font-weight: 600;
         text-wrap: balance;
       }
@@ -293,6 +299,7 @@
         <div class="wrap hero-grid">
           <div>
             <h1>Snap-O</h1>
+            <p class="subtitle">Android Inspection System</p>
             <p class="lead">
               A fast, tidy macOS app for Android developers: capture
               screenshots and recordings, and inspect network traffic from
