@@ -5,8 +5,6 @@ struct CaptureToolbar: ToolbarContent {
   @Bindable var controller: CaptureWindowController
   @Environment(AppSettings.self)
   private var settings
-  @Environment(\.openWindow)
-  private var openWindow
 
   var body: some ToolbarContent {
     if controller.isRecording {
@@ -27,7 +25,10 @@ struct CaptureToolbar: ToolbarContent {
         canStartLivePreviewNow: controller.canStartLivePreviewNow
       )
     }
-    ToolbarItemGroup(placement: .primaryAction) {
+    ToolbarItem(placement: .automatic) {
+      Spacer()
+    }
+    ToolbarItemGroup(placement: .automatic) {
       toolControls()
     }
   }
@@ -70,7 +71,6 @@ struct CaptureToolbar: ToolbarContent {
     .disabled(controller.isStoppingLivePreview)
   }
 
-  @ViewBuilder
   private func toolControls() -> some View {
     Button {
       NetworkInspectorHelperLauncher.open()
@@ -80,14 +80,6 @@ struct CaptureToolbar: ToolbarContent {
     }
     .controlSize(.large)
     .help("Network Inspector (⌘⌥I)")
-    Button {
-      openWindow(id: LogcatWindowID.main)
-    } label: {
-      Label("Logcat Viewer", systemImage: "list.bullet.rectangle")
-        .labelStyle(.iconOnly)
-    }
-    .controlSize(.large)
-    .help("Logcat Viewer (⌘⌥L)")
   }
 }
 
