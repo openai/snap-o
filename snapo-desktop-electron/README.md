@@ -36,6 +36,8 @@ npm run package:mac:release
 
 Those commands emit helper app bundles under `build/macos/main/app/` and `build/macos/main-release/app/`, matching the shape consumed by the host macOS app build.
 
+The host macOS Xcode target invokes a Makefile target on each build and reruns packaging only when the helper is missing or Electron/package inputs are newer. Dependency install is also timestamp-based, so unchanged local Run builds do not rerun `npm ci`.
+
 ## CLI
 
 The packaged helper app can also run the existing Snap-O CLI commands instead of opening a window:
