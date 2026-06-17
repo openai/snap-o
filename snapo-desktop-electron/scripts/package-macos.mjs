@@ -65,11 +65,12 @@ if (packagedPaths.length !== 1) {
   throw new Error(`Expected one packaged app directory, received ${packagedPaths.length}`);
 }
 
+const stagedAppBundle = path.join(packagedPaths[0], appBundleName);
+await restoreElectronHelperNames(stagedAppBundle);
+await validatePackagedBundle(stagedAppBundle);
 await fs.mkdir(outputDir, { recursive: true });
-await fs.rename(path.join(packagedPaths[0], appBundleName), appBundle);
+await fs.rename(stagedAppBundle, appBundle);
 await fs.rm(packagerOutputDir, { recursive: true, force: true });
-await restoreElectronHelperNames();
-await validatePackagedBundle();
 
 console.log(appBundle);
 
@@ -91,8 +92,8 @@ async function writePackagedPackageJson({ buildPath }) {
   await fs.writeFile(path.join(buildPath, "package.json"), `${JSON.stringify(packagedPackageJson, null, 2)}\n`, "utf8");
 }
 
-async function restoreElectronHelperNames() {
-  const frameworksDir = path.join(appBundle, "Contents", "Frameworks");
+async function restoreElectronHelperNames(bundlePath) {
+  const frameworksDir = path.join(bundlePath, "Contents", "Frameworks");
   for (const suffix of ["", " (GPU)", " (Plugin)", " (Renderer)"]) {
     const packagedName = `${appName} Helper${suffix}`;
     const electronName = `Electron Helper${suffix}`;
@@ -112,14 +113,14 @@ async function restoreElectronHelperNames() {
   }
 }
 
-async function validatePackagedBundle() {
-  const frameworksDir = path.join(appBundle, "Contents", "Frameworks");
+async function validatePackagedBundle(bundlePath) {
+  const frameworksDir = path.join(bundlePath, "Contents", "Frameworks");
   const helperApps = (await fs.readdir(frameworksDir, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory() && entry.name.endsWith(".app"))
     .map((entry) => path.join(frameworksDir, entry.name));
   if (helperApps.length === 0) throw new Error(`No helper app bundles found in ${frameworksDir}`);
 
-  for (const bundle of [appBundle, ...helperApps]) {
+  for (const bundle of [bundlePath, ...helperApps]) {
     const executable = readPlistValue(bundle, "CFBundleExecutable");
     if (executable.length === 0 || path.basename(executable) !== executable) {
       throw new Error(`Invalid CFBundleExecutable in ${bundle}`);
@@ -138,14 +139,14 @@ async function validatePackagedBundle() {
   }
 
   const bundledPackageJson = JSON.parse(
-    await fs.readFile(path.join(appBundle, "Contents/Resources/app/package.json"), "utf8")
+    await fs.readFile(path.join(bundlePath, "Contents/Resources/app/package.json"), "utf8")
   );
   if (bundledPackageJson.version !== versionInfo.version) {
     throw new Error(`Packaged app version does not match ${versionFile}`);
   }
 
   for (const dependency of ["@devicefarmer/adbkit", "fast-xml-parser"]) {
-    await fs.access(path.join(appBundle, "Contents/Resources/app/node_modules", dependency, "package.json"));
+    await fs.access(path.join(bundlePath, "Contents/Resources/app/node_modules", dependency, "package.json"));
   }
 }
 
