@@ -3,6 +3,12 @@ import Foundation
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+  func applicationWillFinishLaunching(_ notification: Notification) {
+    UserDefaults.standard.register(defaults: [
+      "NSInitialToolTipDelay": 500
+    ])
+  }
+
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     true
   }

@@ -63,9 +63,12 @@ struct CaptureWindow: View {
       Task { await handle(command, controller: controller) }
     }
     .focusedSceneValue(\.captureController, controller)
-    .navigationTitle(controller.navigationTitle)
     .background(
       WindowSizingController(displayInfo: controller.displayInfoForSizing)
+        .frame(width: 0, height: 0)
+    )
+    .background(
+      WindowTitleController(title: controller.navigationTitle)
         .frame(width: 0, height: 0)
     )
     .background(
@@ -80,15 +83,21 @@ struct CaptureWindow: View {
       if !controller.isRecording, let progress = controller.captureProgressText {
         let isCaptureInFlight = controller.isProcessing || controller.isRecording
 
-        ToolbarItem(placement: .status) {
+        if #available(macOS 26.0, *) {
+          ToolbarSpacer(.fixed, placement: .principal)
+        } else {
+          ToolbarItem(placement: .principal) {
+            Spacer()
+              .frame(width: 8)
+          }
+        }
+
+        ToolbarItemGroup(placement: .principal) {
           Text(progress)
             .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-            .background(
-              Capsule()
-                .fill(.ultraThinMaterial)
-            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .fixedSize()
             .opacity(isCaptureInFlight ? 0.45 : 1)
             .allowsHitTesting(!isCaptureInFlight)
             .onHover { hovering in

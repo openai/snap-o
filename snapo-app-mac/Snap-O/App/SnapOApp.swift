@@ -57,6 +57,7 @@ struct SnapOApp: App {
     }
     .environment(settings)
     .defaultSize(width: 480, height: 480)
+    .windowToolbarStyle(.expanded)
     .handlesExternalEvents(matching: Set(["record", "capture", "livepreview"]))
     .commands {
       SnapOCommands(
