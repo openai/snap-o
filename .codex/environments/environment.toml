@@ -13,3 +13,8 @@ cd $CODEX_WORKTREE_PATH/snapo-desktop-electron
 npm install
 npm run dev
 '''
+
+[[actions]]
+name = "Open Xcode"
+icon = "tool"
+command = "open snapo-app-mac/Snap-O.xcodeproj"
