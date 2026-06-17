@@ -216,13 +216,12 @@
 /* Begin PBXShellScriptBuildPhase section */
 			32F7D8A12F5B123400C0FFEE /* Embed Network Inspector Helper */ = {
 				isa = PBXShellScriptBuildPhase;
-				alwaysOutOfDate = 1;
 				buildActionMask = 2147483647;
 				files = (
 				);
 				inputPaths = (
-					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main/app/Snap-O Network Inspector.app",
-					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main-release/app/Snap-O Network Inspector.app",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/$(SNAPO_NETWORK_INSPECTOR_HELPER_VARIANT)/app/Snap-O Network Inspector.app",
+					"$(BUILT_PRODUCTS_DIR)/snapo",
 				);
 				name = "Embed Network Inspector Helper";
 				outputPaths = (
@@ -251,12 +250,11 @@
 				);
 				name = "Build Network Inspector Helper";
 				outputPaths = (
-					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main/app/Snap-O Network Inspector.app",
-					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/main-release/app/Snap-O Network Inspector.app",
+					"$(PROJECT_DIR)/../snapo-desktop-electron/build/macos/$(SNAPO_NETWORK_INSPECTOR_HELPER_VARIANT)/app/Snap-O Network Inspector.app",
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -e\n\nELECTRON_DIR=\"${PROJECT_DIR}/../snapo-desktop-electron\"\n\nif [ ! -d \"${ELECTRON_DIR}\" ]; then\n  echo \"error: snapo-desktop-electron not found at ${ELECTRON_DIR}\" >&2\n  exit 1\nfi\n\nif [ -s \"${HOME}/.nvm/nvm.sh\" ]; then\n  . \"${HOME}/.nvm/nvm.sh\"\nfi\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\n\nif ! command -v npm >/dev/null 2>&1; then\n  echo \"error: npm not found. Install Node.js or make npm available to Xcode build scripts.\" >&2\n  exit 1\nfi\n\nTASK=\"package:mac\"\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  TASK=\"package:mac:release\"\nfi\n\n( cd \"${ELECTRON_DIR}\" && npm ci && npm run \"${TASK}\" )\n";
+				shellScript = "set -e\n\nELECTRON_DIR=\"${PROJECT_DIR}/../snapo-desktop-electron\"\n\nif [ ! -d \"${ELECTRON_DIR}\" ]; then\n  echo \"error: snapo-desktop-electron not found at ${ELECTRON_DIR}\" >&2\n  exit 1\nfi\n\nif [ -s \"${HOME}/.nvm/nvm.sh\" ]; then\n  . \"${HOME}/.nvm/nvm.sh\"\nfi\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\n\nif ! command -v npm >/dev/null 2>&1; then\n  echo \"error: npm not found. Install Node.js or make npm available to Xcode build scripts.\" >&2\n  exit 1\nfi\n\nMAKE_TARGET=\"package-mac-if-needed\"\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  MAKE_TARGET=\"package-mac-release-if-needed\"\nfi\n\n( cd \"${ELECTRON_DIR}\" && make \"${MAKE_TARGET}\" )\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -447,6 +445,7 @@
 				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				SNAPO_NETWORK_INSPECTOR_HELPER_VARIANT = main;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited) PERF_TRACING";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
@@ -491,6 +490,7 @@
 				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				SNAPO_NETWORK_INSPECTOR_HELPER_VARIANT = "main-release";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 			};
