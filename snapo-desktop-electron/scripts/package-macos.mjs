@@ -9,7 +9,9 @@ import { parseVersionInfo } from "./version-info.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(projectDir, "..");
-const buildVariant = process.argv[2] === "release" ? "main-release" : "main";
+const isRelease = process.argv[2] === "release";
+const buildVariant = isRelease ? "main-release" : "main";
+const targetArch = isRelease ? "arm64" : process.arch;
 const variantDir = path.join(projectDir, "build/macos", buildVariant);
 const packagerOutputDir = path.join(variantDir, ".packager");
 const outputDir = path.join(variantDir, "app");
@@ -40,7 +42,7 @@ const packagedPaths = await packager({
   out: packagerOutputDir,
   overwrite: true,
   platform: "darwin",
-  arch: process.arch,
+  arch: targetArch,
   electronVersion: electronPackageJson.version,
   name: appName,
   executableName: appName,
