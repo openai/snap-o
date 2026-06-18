@@ -1,3 +1,7 @@
+[plugins]
+# Pin the executable asdf installer independently from the SwiftFormat release.
+"asdf:swiftformat" = "https://github.com/mise-plugins/mise-swiftformat.git#f958ffabfe286d5f350e712cc55441cc9587483c"
+
 [tools]
 # SwiftFormat 0.61.x installs as an app bundle through mise's default macOS backend,
 # which does not expose a CLI binary for shims. Use the asdf backend for the CLI install.
