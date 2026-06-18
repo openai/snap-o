@@ -40,7 +40,7 @@ const packagedPaths = await packager({
   out: packagerOutputDir,
   overwrite: true,
   platform: "darwin",
-  arch: "universal",
+  arch: process.arch,
   electronVersion: electronPackageJson.version,
   name: appName,
   executableName: appName,
