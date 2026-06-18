@@ -30,7 +30,8 @@ actor CaptureService {
       for device in deviceTracker.latestDevices {
         group.addTask {
           do {
-            return (device, try await .success(self.captureScreenshot(for: device)))
+            let capture = try await self.captureScreenshot(for: device)
+            return (device, .success(capture))
           } catch {
             return (device, .failure(error))
           }
