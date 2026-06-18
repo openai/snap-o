@@ -7,7 +7,7 @@ actor CaptureService {
   private let fileStore: FileStore
   private let deviceTracker: DeviceTracker
 
-  private var preloadedTask: Task<([CaptureMedia], Error?), Error>?
+  private var preloadedTask: Task<ScreenshotCaptureResult, Error>?
   private var didLogPreloadStart = false
   private var lastCaptureTimestamp: Date? // Keeps filenames unique when captures share a real timestamp.
   private var showTouchesOverrides: [String: Task<Bool?, Never>] = [:]
@@ -22,10 +22,32 @@ actor CaptureService {
     self.deviceTracker = deviceTracker
   }
 
-  func captureScreenshots() async -> ([CaptureMedia], Error?) {
-    await collectMedia(for: deviceTracker.latestDevices) { device in
-      try await self.captureScreenshot(for: device)
+  func captureScreenshots() async -> ScreenshotCaptureResult {
+    var media: [CaptureMedia] = []
+    var failures: [CaptureFailure] = []
+
+    await withTaskGroup(of: (Device, Result<CaptureMedia, Error>).self) { group in
+      for device in deviceTracker.latestDevices {
+        group.addTask {
+          do {
+            return (device, try await .success(self.captureScreenshot(for: device)))
+          } catch {
+            return (device, .failure(error))
+          }
+        }
+      }
+
+      for await (device, result) in group {
+        switch result {
+        case .success(let capture):
+          media.append(capture)
+        case .failure(let error):
+          failures.append(CaptureFailure(device: device, error: error))
+        }
+      }
     }
+
+    return ScreenshotCaptureResult(media: media, failures: failures)
   }
 
   private func captureScreenshot(for device: Device) async throws -> CaptureMedia {
@@ -191,8 +213,8 @@ actor CaptureService {
     guard let task = preloadedTask else { return [] }
     preloadedTask = nil
     do {
-      let (media, _) = try await task.value
-      let fresh = media.filter { Date().timeIntervalSince($0.media.capturedAt) <= 1 }
+      let result = try await task.value
+      let fresh = result.media.filter { Date().timeIntervalSince($0.media.capturedAt) <= 1 }
       if fresh.isEmpty { return [] }
       Perf.step(.appFirstSnapshot, "return media")
       return fresh

@@ -20,6 +20,7 @@ struct ADBExec {
   private let notifyServerAvailable: ServerObserver
 
   private static let serverLauncher = ADBServerLauncher()
+  private static let screenshotTimeout: TimeInterval = 10
 
   // MARK: - Public entry points
 
@@ -29,7 +30,17 @@ struct ADBExec {
   }
 
   func screencapPNG(deviceID: String) async throws -> Data {
-    try await runShellData(deviceID: deviceID, command: "screencap -p 2>/dev/null")
+    do {
+      return try await runShellData(
+        deviceID: deviceID,
+        command: "screencap -p 2>/dev/null",
+        ioTimeout: Self.screenshotTimeout
+      )
+    } catch ADBError.requestTimedOut {
+      throw ADBError.requestTimedOut(
+        "Screenshot capture timed out after \(Int(Self.screenshotTimeout)) seconds"
+      )
+    }
   }
 
   func startScreenrecord(
@@ -266,8 +277,12 @@ struct ADBExec {
 
   // MARK: - Private helpers
 
-  private func runShellData(deviceID: String, command: String) async throws -> Data {
-    try await withConnection { connection in
+  private func runShellData(
+    deviceID: String,
+    command: String,
+    ioTimeout: TimeInterval? = nil
+  ) async throws -> Data {
+    try await withConnection(ioTimeout: ioTimeout) { connection in
       try connection.sendTransport(to: deviceID)
       try connection.sendShell(command)
       return try connection.readToEnd()
@@ -284,9 +299,10 @@ struct ADBExec {
 
   private func withConnection<T: Sendable>(
     maxAttempts: Int = 3,
+    ioTimeout: TimeInterval? = nil,
     _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
   ) async throws -> T {
-    try await runWithRetry(maxAttempts: maxAttempts) { connection in
+    try await runWithRetry(maxAttempts: maxAttempts, ioTimeout: ioTimeout) { connection in
       defer { connection.close() }
       return try body(connection)
     }
@@ -294,6 +310,7 @@ struct ADBExec {
 
   private func runWithRetry<T: Sendable>(
     maxAttempts: Int,
+    ioTimeout: TimeInterval? = nil,
     _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
   ) async throws -> T {
     var lastError: Error?
@@ -303,7 +320,7 @@ struct ADBExec {
       try await ADBExec.serverLauncher.waitForOngoingRestart()
 
       do {
-        let connection = try ADBSocketConnection()
+        let connection = try ADBSocketConnection(ioTimeout: ioTimeout)
         do {
           let value = try await operation(connection)
           await notifyServerAvailable()

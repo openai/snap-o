@@ -17,6 +17,7 @@ final class CaptureWindowController {
   private(set) var isDeviceListInitialized: Bool = false
   private(set) var isProcessing: Bool = false
   private(set) var lastError: String?
+  private(set) var screenshotFailures: [CaptureFailure] = []
   private(set) var mode: CaptureWindowMode
 
   private var knownDevices: [Device] = []
@@ -74,6 +75,11 @@ final class CaptureWindowController {
 
   func hasAlternativeMedia() -> Bool {
     snapshotController.hasAlternativeMedia
+  }
+
+  func dismissScreenshotFailures() {
+    screenshotFailures = []
+    lastError = nil
   }
 
   var hasDevices: Bool {
@@ -170,6 +176,7 @@ final class CaptureWindowController {
     guard canCaptureNow else { return }
     isProcessing = true
     lastError = nil
+    screenshotFailures = []
     if pendingPreferredDeviceID == nil {
       pendingPreferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
     }
@@ -181,9 +188,9 @@ final class CaptureWindowController {
 
     let screenshotMode = PreparingScreenshotMode(
       captureService: captureService
-    ) { [weak self] media, error in
+    ) { [weak self] result in
       guard let self else { return }
-      applyCaptureResults(newMedia: media, encounteredError: error)
+      applyScreenshotCaptureResult(result)
     }
     mode = .preparingScreenshot(screenshotMode)
     screenshotMode.start()
@@ -194,6 +201,7 @@ final class CaptureWindowController {
     let devices = knownDevices
     isProcessing = true
     lastError = nil
+    screenshotFailures = []
     pendingPreferredDeviceID = currentCapture?.device.id
     mediaDisplayMode.updateMediaList(
       [],
@@ -238,6 +246,7 @@ final class CaptureWindowController {
 
     isProcessing = true
     lastError = nil
+    screenshotFailures = []
 
     await recordingMode.finish(using: devices)
   }
@@ -246,6 +255,7 @@ final class CaptureWindowController {
     guard canStartLivePreviewNow else { return }
     isProcessing = true
     lastError = nil
+    screenshotFailures = []
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices.first?.id
     pendingPreferredDeviceID = preferredDeviceID
 
@@ -368,6 +378,17 @@ final class CaptureWindowController {
       shouldSort: false
     )
     mode = .displaying(mediaDisplayMode)
+  }
+
+  private func applyScreenshotCaptureResult(_ result: ScreenshotCaptureResult) {
+    screenshotFailures = result.failures.sorted {
+      $0.device.displayTitle.localizedCaseInsensitiveCompare($1.device.displayTitle) == .orderedAscending
+    }
+    let error = result.failures.first?.error
+    applyCaptureResults(newMedia: result.media, encounteredError: error)
+    if !result.failures.isEmpty {
+      lastError = result.failures.map(\.message).joined(separator: "\n")
+    }
   }
 
   private func applyCaptureResults(

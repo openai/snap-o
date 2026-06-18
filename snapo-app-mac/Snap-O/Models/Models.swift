@@ -22,6 +22,7 @@ public enum ADBError: Error, LocalizedError {
   case notRecording
   case serverUnavailable(String?)
   case protocolFailure(String)
+  case requestTimedOut(String)
 
   public var errorDescription: String? {
     switch self {
@@ -35,6 +36,8 @@ public enum ADBError: Error, LocalizedError {
       "Could not connect to the adb server: \(message ?? "<unknown>")"
     case .protocolFailure(let message):
       "ADB protocol error: \(message)"
+    case .requestTimedOut(let message):
+      message
     }
   }
 }
