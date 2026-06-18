@@ -1,6 +1,6 @@
 {
   "name": "snapo-desktop-electron",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "main": "dist-electron/electron/main.js",
