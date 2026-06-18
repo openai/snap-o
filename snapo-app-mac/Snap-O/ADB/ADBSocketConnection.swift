@@ -35,19 +35,11 @@ final class ADBSocketConnection {
   }
 
   private let socketDescriptor: Int32
+  private let closeLock = NSLock()
   private var isClosed = false
 
-  init(ioTimeout: TimeInterval? = nil) throws {
-    let descriptor = try Self.openSocket()
-    do {
-      if let ioTimeout {
-        try Self.setIOTimeout(ioTimeout, on: descriptor)
-      }
-      socketDescriptor = descriptor
-    } catch {
-      Darwin.close(descriptor)
-      throw error
-    }
+  init() throws {
+    socketDescriptor = try Self.openSocket()
   }
 
   deinit {
@@ -55,8 +47,12 @@ final class ADBSocketConnection {
   }
 
   func close() {
-    guard !isClosed else { return }
+    closeLock.lock()
+    let shouldClose = !isClosed
     isClosed = true
+    closeLock.unlock()
+
+    guard shouldClose else { return }
     shutdown(socketDescriptor, SHUT_RDWR)
     Darwin.close(socketDescriptor)
   }
@@ -326,9 +322,6 @@ final class ADBSocketConnection {
   }
 
   private static func makeSocketError(_ code: Int32, context: String) -> ADBError {
-    if code == EAGAIN || code == EWOULDBLOCK {
-      return ADBError.requestTimedOut("ADB request timed out while waiting to \(context)")
-    }
     let message = String(cString: strerror(code))
     return ADBError.serverUnavailable("\(context) failed: \(message)")
   }
@@ -365,29 +358,6 @@ private extension ADBSocketConnection {
     }
 
     return descriptor
-  }
-
-  static func setIOTimeout(_ timeout: TimeInterval, on descriptor: Int32) throws {
-    let seconds = floor(timeout)
-    var value = timeval(
-      tv_sec: Int(seconds),
-      tv_usec: Int32((timeout - seconds) * 1_000_000)
-    )
-
-    for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
-      let result = withUnsafePointer(to: &value) {
-        setsockopt(
-          descriptor,
-          SOL_SOCKET,
-          option,
-          $0,
-          socklen_t(MemoryLayout<timeval>.size)
-        )
-      }
-      guard result == 0 else {
-        throw makeSocketError(errno, context: "configure socket timeout")
-      }
-    }
   }
 
   static func asciiData(_ value: String, label: String) throws -> Data {
