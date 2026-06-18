@@ -6,11 +6,11 @@ import Observation
 final class PreparingScreenshotMode {
   @ObservationIgnored private var task: Task<Void, Never>?
   private let captureService: CaptureService
-  private let completion: @MainActor ([CaptureMedia], Error?) -> Void
+  private let completion: @MainActor (ScreenshotCaptureResult) -> Void
 
   init(
     captureService: CaptureService,
-    completion: @escaping @MainActor ([CaptureMedia], Error?) -> Void
+    completion: @escaping @MainActor (ScreenshotCaptureResult) -> Void
   ) {
     self.captureService = captureService
     self.completion = completion
@@ -19,8 +19,8 @@ final class PreparingScreenshotMode {
   func start() {
     task = Task { [weak self] in
       guard let self else { return }
-      let (media, error) = await captureService.captureScreenshots()
-      completion(media, error)
+      let result = await captureService.captureScreenshots()
+      completion(result)
     }
   }
 

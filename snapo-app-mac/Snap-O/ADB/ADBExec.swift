@@ -305,7 +305,11 @@ struct ADBExec {
       do {
         let connection = try ADBSocketConnection()
         do {
-          let value = try await operation(connection)
+          let value = try await withTaskCancellationHandler {
+            try await operation(connection)
+          } onCancel: {
+            connection.close()
+          }
           await notifyServerAvailable()
           return value
         } catch {
@@ -313,6 +317,7 @@ struct ADBExec {
           throw error
         }
       } catch {
+        if Task.isCancelled { throw CancellationError() }
         let normalized = normalize(error)
         lastError = normalized
 

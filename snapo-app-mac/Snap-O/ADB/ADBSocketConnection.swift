@@ -35,6 +35,7 @@ final class ADBSocketConnection {
   }
 
   private let socketDescriptor: Int32
+  private let closeLock = NSLock()
   private var isClosed = false
 
   init() throws {
@@ -46,8 +47,12 @@ final class ADBSocketConnection {
   }
 
   func close() {
-    guard !isClosed else { return }
+    closeLock.lock()
+    let shouldClose = !isClosed
     isClosed = true
+    closeLock.unlock()
+
+    guard shouldClose else { return }
     shutdown(socketDescriptor, SHUT_RDWR)
     Darwin.close(socketDescriptor)
   }
