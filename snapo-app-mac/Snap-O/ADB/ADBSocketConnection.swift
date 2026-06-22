@@ -8,6 +8,7 @@ final class ADBSocketConnection {
     case transport(deviceID: String)
     case shell(command: String)
     case exec(command: String)
+    case localAbstract(name: String)
     case sync
 
     fileprivate var rawValue: String {
@@ -22,6 +23,8 @@ final class ADBSocketConnection {
         "shell:\(command)"
       case .exec(let command):
         "exec:\(command)"
+      case .localAbstract(let name):
+        "localabstract:\(name)"
       case .sync:
         "sync:"
       }
@@ -37,6 +40,8 @@ final class ADBSocketConnection {
   private let socketDescriptor: Int32
   private let closeLock = NSLock()
   private var isClosed = false
+  private var lineBuffer = Data()
+  private var isSkippingOversizedLine = false
 
   init() throws {
     socketDescriptor = try Self.openSocket()
@@ -73,8 +78,16 @@ final class ADBSocketConnection {
     try send(.shell(command: command))
   }
 
+  func sendLocalAbstract(_ name: String) throws {
+    try send(.localAbstract(name: name))
+  }
+
   func sendSync() throws {
     try send(.sync)
+  }
+
+  func writeLine(_ value: String) throws {
+    try writeFully(Data("\(value)\n".utf8))
   }
 
   func sendHostCommand(_ command: String, expectsResponse: Bool) throws -> String? {
@@ -233,20 +246,49 @@ final class ADBSocketConnection {
     }
   }
 
-  func readLine() throws -> String? {
-    var collected = Data()
-    var scratch = [UInt8](repeating: 0, count: 256)
-
+  func readLine(maxLength: Int? = nil) throws -> String? {
     while true {
-      let size = try readOnce(into: &scratch)
-      if size == 0 { return collected.stringByTrimmingNewlines() }
-
-      if let newline = scratch[..<size].firstIndex(of: UInt8(ascii: "\n")) {
-        collected.append(contentsOf: scratch[..<newline])
-        return collected.stringByTrimmingNewlines()
+      if isSkippingOversizedLine {
+        if let newline = lineBuffer.firstIndex(of: UInt8(ascii: "\n")) {
+          lineBuffer.removeSubrange(...newline)
+          isSkippingOversizedLine = false
+          continue
+        }
+        lineBuffer.removeAll(keepingCapacity: true)
       }
 
-      collected.append(contentsOf: scratch[..<size])
+      if let newline = lineBuffer.firstIndex(of: UInt8(ascii: "\n")) {
+        let line = Data(lineBuffer[..<newline])
+        lineBuffer.removeSubrange(...newline)
+        if let maxLength, line.count > maxLength {
+          continue
+        }
+        return line.stringByTrimmingNewlines()
+      }
+
+      if let maxLength, lineBuffer.count > maxLength {
+        lineBuffer.removeAll(keepingCapacity: true)
+        isSkippingOversizedLine = true
+        continue
+      }
+
+      var scratch = [UInt8](repeating: 0, count: Constants.bufferSize)
+      let size = try readOnce(into: &scratch)
+      if size == 0 {
+        if isSkippingOversizedLine {
+          lineBuffer.removeAll(keepingCapacity: false)
+          isSkippingOversizedLine = false
+          return nil
+        }
+        guard !lineBuffer.isEmpty else { return nil }
+        let finalLine = lineBuffer
+        lineBuffer.removeAll(keepingCapacity: false)
+        if let maxLength, finalLine.count > maxLength {
+          return nil
+        }
+        return finalLine.stringByTrimmingNewlines()
+      }
+      lineBuffer.append(contentsOf: scratch[..<size])
     }
   }
 

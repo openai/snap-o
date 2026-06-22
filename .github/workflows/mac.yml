@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - 'snapo-app-mac/**'
+      - 'snapo-network-inspector-web/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
@@ -15,6 +16,7 @@ on:
       - master
     paths:
       - 'snapo-app-mac/**'
+      - 'snapo-network-inspector-web/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
 
@@ -22,6 +24,33 @@ permissions:
   contents: read
 
 jobs:
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: snapo-network-inspector-web/package-lock.json
+      - name: Install dependencies
+        working-directory: snapo-network-inspector-web
+        run: npm ci
+      - name: Check formatting
+        working-directory: snapo-network-inspector-web
+        run: npm run format:check
+      - name: Lint
+        working-directory: snapo-network-inspector-web
+        run: npm run lint
+      - name: Typecheck
+        working-directory: snapo-network-inspector-web
+        run: npm run typecheck
+      - name: Build
+        working-directory: snapo-network-inspector-web
+        run: npm run build
+
   build:
     runs-on: macos-26
 
@@ -32,12 +61,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: snapo-desktop-electron/package-lock.json
+          cache-dependency-path: snapo-network-inspector-web/package-lock.json
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.1.1'
-      - name: Prefer setup-node in Xcode helper build phase
+      - name: Prefer setup-node in Xcode web UI build phase
         run: |
           set -euo pipefail
           SNAPO_NODE_BIN_DIR=$(dirname "$(command -v node)")
