@@ -18,13 +18,14 @@ SNAPO_BIN=/Applications/Snap-O.app/Contents/MacOS/snapo
 If Snap-O is not installed at that path, recommend installing it from:
 https://openai.github.io/snap-o/
 
-## Current Command Surface (from `snapo` help)
+## Current Command Surface
 
 - `snapo network list`: lists available Snap-O Network Inspector servers.
 - `snapo network requests`: emits CDP network events for a server.
-- `snapo network show`: shows full details for a request id (headers + request/response bodies).
+- `snapo network show`: shows full details for a request id, including headers and bodies.
 
 Useful global selectors:
+
 - `-s`, `--serial`: use a specific device serial.
 - `-d`: use the single connected USB device.
 - `-e`: use the single connected emulator.
@@ -37,12 +38,9 @@ Useful global selectors:
 "$SNAPO_BIN" network list --json
 ```
 
-Optional flags:
-- `--no-app-info`: skip package/app metadata lookup for faster listing.
+Use `--no-app-info` to skip package and app metadata lookup.
 
-2. Pick a target serial and socket.
-- If multiple devices are connected, ask which device/emulator to inspect.
-- If multiple sockets exist, select `-n <socket_name>` explicitly.
+2. Pick a target serial and socket. If multiple devices or sockets are available, select them explicitly.
 
 3. Pull captured events.
 
@@ -50,19 +48,19 @@ Optional flags:
 "$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '<url-filter>' --no-stream --json
 ```
 
-`--filter` uses the same case-insensitive URL search syntax as the Network Inspector search bar. Separate terms require every included term, prefix a term with `-` to exclude it, and use quotes or backslash escapes for whitespace.
+`--filter` uses the same case-insensitive URL syntax as the Network Inspector search bar. Separate terms must all match, a term prefixed with `-` is excluded, and quotes or backslashes can escape whitespace.
 
-`network requests` always replaces request `Authorization` and `Cookie` values and response `Set-Cookie` values with `[REDACTED]`.
+`network requests` replaces request `Authorization` and `Cookie` values and response `Set-Cookie` values with `[REDACTED]`.
 
-4. Inspect a single request deeply.
+4. Inspect one request deeply when full request or response details are required.
 
 ```bash
 "$SNAPO_BIN" network show -s <serial> -n <socket_name> -r <request_id> --json
 ```
 
-Use `network show` only when the task requires full request or response details. Its output can include URL query values and request or response bodies.
+This output can contain URL query values and request or response bodies.
 
-5. Re-check command help if output shape differs.
+5. Re-check command help if output differs.
 
 ```bash
 "$SNAPO_BIN" --help
@@ -72,49 +70,9 @@ Use `network show` only when the task requires full request or response details.
 "$SNAPO_BIN" network show --help
 ```
 
-## Common Fetch Recipes
-
-List request start events with compact fields:
-
-```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --no-stream --json \
-  | jq -rc 'select(.method=="Network.requestWillBeSent") | {requestId:.params.requestId, method:.params.request.method, url:.params.request.url}'
-```
-
-Filter by endpoint substring:
-
-```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '/api/const' --no-stream --json
-```
-
-Get the most recent started request id:
-
-```bash
-"$SNAPO_BIN" network requests -s <serial> -n <socket_name> --no-stream --json \
-  | jq -r 'select(.method=="Network.requestWillBeSent") | .params.requestId' \
-  | tail -n 1
-```
-
-Then fetch full details:
-
-```bash
-"$SNAPO_BIN" network show -s <serial> -n <socket_name> -r <request_id> --json
-```
-
-## Missing Request Troubleshooting
-
-If an expected request is absent:
-
-1. Verify device selection (`-s`, `-d`, or `-e`).
-2. Verify socket selection (`-n`) and avoid relying on implicit socket selection.
-3. Confirm the request path actually executed.
-4. Confirm that code path uses an HTTP client with Snap-O interception enabled.
-5. If there are multiple clients, inspect alternate/non-default client wiring.
-
 ## Output Notes
 
-- `--json` emits NDJSON, so use `jq` line-by-line.
-- `network requests` emits Chrome DevTools Protocol (CDP)-style event records (for example, top-level `method` + `params`).
-- Use `--no-stream` when you want a one-shot buffered snapshot.
-- The Android transport admits clients with `HelloSnapO`, returns `SnapO.appInfo`, and gates replay/live delivery with `SnapO.startStream` / `SnapO.stopStream`.
-- Use `jq 'keys'` on a sample line if fields differ across Snap-O versions.
+- `--json` emits NDJSON, so process it line by line.
+- `network requests` emits Chrome DevTools Protocol-style records with top-level `method` and `params` fields.
+- Use `--no-stream` for a one-shot buffered snapshot.
+- The Android transport admits clients with `HelloSnapO`, returns `SnapO.appInfo`, and gates delivery with `SnapO.startStream` and `SnapO.stopStream`.

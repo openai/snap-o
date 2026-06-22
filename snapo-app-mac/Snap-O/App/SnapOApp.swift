@@ -43,21 +43,29 @@ struct SnapOApp: App {
   }
 
   var body: some Scene {
-    WindowGroup {
-      CaptureWindow(
-        captureService: captureService,
-        deviceTracker: deviceTracker,
-        fileStore: fileStore,
-        adbService: adbService
-      )
-      .handlesExternalEvents(
-        preferring: Set(["record", "capture", "livepreview", "check-updates", "check-for-updates"]),
-        allowing: Set(["*"])
-      )
-    }
+    WindowGroup(
+      id: WorkspaceWindowID.main,
+      for: WorkspaceWindowConfiguration.self,
+      content: { configuration in
+        CaptureWindow(
+          captureService: captureService,
+          deviceTracker: deviceTracker,
+          fileStore: fileStore,
+          adbService: adbService,
+          initialWorkspace: configuration.wrappedValue.workspace
+        )
+        .handlesExternalEvents(
+          preferring: Set(["record", "capture", "livepreview", "check-updates", "check-for-updates"]),
+          allowing: Set(["*"])
+        )
+      },
+      defaultValue: {
+        WorkspaceWindowConfiguration(workspace: .persisted())
+      }
+    )
     .environment(settings)
+    .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 480, height: 480)
-    .windowToolbarStyle(.expanded)
     .handlesExternalEvents(matching: Set(["record", "capture", "livepreview"]))
     .commands {
       SnapOCommands(

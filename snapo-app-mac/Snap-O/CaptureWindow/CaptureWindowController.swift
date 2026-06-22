@@ -73,6 +73,15 @@ final class CaptureWindowController {
     snapshotController.selectPreviousMedia()
   }
 
+  func selectDevice(id: String) {
+    guard selectedDeviceID != id else { return }
+    pendingPreferredDeviceID = id
+    mediaDisplayMode.updateLastViewedDeviceID(id)
+    if let media = mediaList.first(where: { $0.device.id == id }) {
+      mediaDisplayMode.selectMedia(id: media.id)
+    }
+  }
+
   func hasAlternativeMedia() -> Bool {
     snapshotController.hasAlternativeMedia
   }
@@ -121,6 +130,10 @@ final class CaptureWindowController {
 
   var selectedMediaID: CaptureMedia.ID? {
     mediaDisplayMode.selectedMediaID
+  }
+
+  var selectedDeviceID: String? {
+    currentCapture?.device.id ?? lastViewedDeviceID
   }
 
   var currentCaptureViewID: UUID? {

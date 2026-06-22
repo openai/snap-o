@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Observation
 import SwiftUI
@@ -6,36 +7,251 @@ private struct CaptureControllerKey: FocusedValueKey {
   typealias Value = CaptureWindowController
 }
 
+private struct WorkspaceControllerKey: FocusedValueKey {
+  typealias Value = WorkspaceLayoutController
+}
+
+private struct CaptureWorkspaceMetrics: Equatable {
+  let previewHeight: CGFloat
+}
+
+private struct CaptureWorkspaceMetricsKey: PreferenceKey {
+  static let defaultValue: CaptureWorkspaceMetrics? = nil
+
+  static func reduce(
+    value: inout CaptureWorkspaceMetrics?,
+    nextValue: () -> CaptureWorkspaceMetrics?
+  ) {
+    value = nextValue() ?? value
+  }
+}
+
 extension FocusedValues {
   var captureController: CaptureWindowController? {
     get { self[CaptureControllerKey.self] }
     set { self[CaptureControllerKey.self] = newValue }
   }
+
+  var workspaceController: WorkspaceLayoutController? {
+    get { self[WorkspaceControllerKey.self] }
+    set { self[WorkspaceControllerKey.self] = newValue }
+  }
 }
 
 struct CaptureWindow: View {
+  @Environment(\.colorScheme)
+  private var colorScheme
+
   @State private var controller: CaptureWindowController
+  @State private var workspace: WorkspaceLayoutController
+  @State private var networkSession: NetworkInspectorSession
+  @State private var presentedLayout: WorkspaceLayout
+  @State private var splitDragOrigin: CGFloat?
 
   init(
     captureService: CaptureService,
     deviceTracker: DeviceTracker,
     fileStore: FileStore,
-    adbService: ADBService
+    adbService: ADBService,
+    initialWorkspace: WorkspaceLayoutSnapshot? = nil
   ) {
-    _controller = State(
-      initialValue: CaptureWindowController(
-        captureService: captureService,
-        deviceTracker: deviceTracker,
-        fileStore: fileStore,
-        adbService: adbService
-      )
+    let captureController = CaptureWindowController(
+      captureService: captureService,
+      deviceTracker: deviceTracker,
+      fileStore: fileStore,
+      adbService: adbService
     )
+    let workspace = WorkspaceLayoutController(snapshot: initialWorkspace)
+    _controller = State(initialValue: captureController)
+    _workspace = State(initialValue: workspace)
+    _networkSession = State(initialValue: NetworkInspectorSession(deviceTracker: deviceTracker))
+    _presentedLayout = State(initialValue: workspace.layout)
   }
 
   var body: some View {
     @Bindable var controller = controller
+    workspaceContent(controller: controller)
+      .task {
+        await controller.start()
+      }
+      .task(id: workspace.showsNetwork) {
+        guard workspace.showsNetwork else {
+          // Hiding the pane is a layout change, not a session boundary. Preserve its streams and history until the window closes.
+          return
+        }
+        networkSession.startIfNeeded()
+      }
+      .onDisappear {
+        controller.tearDown()
+        Task { await networkSession.stop() }
+      }
+      .focusedSceneValue(\.captureController, controller)
+      .focusedSceneValue(\.workspaceController, workspace)
+      .background(
+        WindowSizingController(
+          displayInfo: controller.displayInfoForSizing,
+          layout: workspace.layout,
+          capturePaneWidth: workspace.capturePaneWidth
+        ) { width in
+          workspace.resizeCapturePane(to: width)
+          workspace.persistCapturePaneWidth()
+        } layoutWillApply: { layout in
+          presentedLayout = layout
+        }
+        .frame(width: 0, height: 0)
+      )
+      .background(
+        WindowLevelController(
+          shouldFloat: controller.isRecording || controller.isLivePreviewActive
+        )
+        .frame(width: 0, height: 0)
+      )
+      .background(
+        WindowCommandRegistration { command in
+          workspace.revealCapture()
+          Task { await handle(command, controller: controller) }
+        }
+        .frame(width: 0, height: 0)
+      )
+  }
+
+  private var navigationTitle: String {
+    switch presentedLayout {
+    case .capture:
+      controller.navigationTitle
+    case .network:
+      "Snap-O"
+    case .both:
+      "Snap-O"
+    }
+  }
+
+  private func workspaceContent(controller: CaptureWindowController) -> some View {
+    GeometryReader { geometry in
+      let titlebarHeight = WindowChromeMetrics.titlebarHeight
+      let captureWidth = presentedLayout.showsCapture
+        ? capturePaneWidth(totalWidth: geometry.size.width)
+        : 0
+
+      VStack(spacing: 0) {
+        CaptureToolbar(
+          controller: controller,
+          workspace: workspace,
+          presentedLayout: presentedLayout,
+          networkModel: networkSession.model,
+          capturePaneWidth: captureWidth,
+          titlebarHeight: titlebarHeight
+        )
+
+        captureWorkspace(
+          controller: controller,
+          captureWidth: captureWidth
+        )
+      }
+      .background(networkSidebarBackground, ignoresSafeAreaEdges: [])
+      .overlayPreferenceValue(CaptureWorkspaceMetricsKey.self) { metrics in
+        if presentedLayout == .both,
+           let metrics {
+          workspaceSplitter(
+            totalWidth: geometry.size.width,
+            previewHeight: metrics.previewHeight,
+            aspectRatio: controller.displayInfoForSizing?.aspectRatio
+          )
+          .frame(width: 1)
+          .frame(maxHeight: .infinity)
+          .offset(x: captureWidth - 0.5)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+      }
+      .background(
+        WindowChromeController(
+          title: navigationTitle,
+          dividerX: presentedLayout == .both ? captureWidth : nil
+        )
+        .frame(width: 0, height: 0)
+      )
+      .ignoresSafeArea(.container, edges: .top)
+    }
+  }
+
+  private func capturePaneWidth(totalWidth: CGFloat) -> CGFloat {
+    presentedLayout.showsNetwork ? constrainedCaptureWidth(totalWidth: totalWidth) : totalWidth
+  }
+
+  private func captureWorkspace(
+    controller: CaptureWindowController,
+    captureWidth: CGFloat
+  ) -> some View {
+    GeometryReader { geometry in
+      let previewHeight = geometry.size.height
+
+      ZStack(alignment: .topLeading) {
+        HStack(alignment: .top, spacing: 0) {
+          if presentedLayout.showsCapture {
+            capturePane(controller: controller)
+              .frame(width: presentedLayout.showsNetwork ? captureWidth : geometry.size.width)
+              .frame(height: previewHeight)
+          }
+
+          if presentedLayout.showsNetwork {
+            if let networkModel = networkSession.model {
+              NetworkInspectorWebView(model: networkModel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .windowBackgroundColor))
+            } else {
+              ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .windowBackgroundColor))
+            }
+          }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      }
+      .preference(
+        key: CaptureWorkspaceMetricsKey.self,
+        value: CaptureWorkspaceMetrics(previewHeight: previewHeight)
+      )
+    }
+  }
+
+  private func capturePane(controller: CaptureWindowController) -> some View {
+    captureSurface(controller: controller)
+      .background(captureAreaBackground)
+  }
+
+  private func captureSurface(controller: CaptureWindowController) -> some View {
+    Group {
+      if presentedLayout.showsNetwork, let displayInfo = controller.displayInfoForSizing {
+        ZStack {
+          captureLetterboxBackground
+          captureContent(controller: controller)
+            .aspectRatio(displayInfo.aspectRatio, contentMode: .fit)
+        }
+      } else {
+        captureContent(controller: controller)
+      }
+    }
+  }
+
+  private var captureAreaBackground: Color {
+    Color(nsColor: .windowBackgroundColor)
+  }
+
+  private var captureLetterboxBackground: Color {
+    Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+  }
+
+  private var networkSidebarBackground: Color {
+    if colorScheme == .dark {
+      Color(red: 42.0 / 255.0, green: 42.0 / 255.0, blue: 42.0 / 255.0)
+    } else {
+      Color(red: 244.0 / 255.0, green: 244.0 / 255.0, blue: 244.0 / 255.0)
+    }
+  }
+
+  private func captureContent(controller: CaptureWindowController) -> some View {
     ZStack {
-      Color.black.ignoresSafeArea()
+      Color.black
 
       if controller.currentCapture != nil {
         CaptureSnapshotView(
@@ -69,64 +285,55 @@ struct CaptureWindow: View {
         .padding(.top, 12)
       }
     }
-    .task { await controller.start() }
-    .onDisappear { controller.tearDown() }
-    .onReceive(NotificationCenter.default.publisher(for: .snapoCommandRequested)) { notification in
-      guard let command = notification.object as? SnapOCommand else { return }
-      Task { await handle(command, controller: controller) }
-    }
-    .focusedSceneValue(\.captureController, controller)
-    .background(
-      WindowSizingController(displayInfo: controller.displayInfoForSizing)
-        .frame(width: 0, height: 0)
-    )
-    .background(
-      WindowTitleController(title: controller.navigationTitle)
-        .frame(width: 0, height: 0)
-    )
-    .background(
-      WindowLevelController(
-        shouldFloat: controller.isRecording || controller.isLivePreviewActive
-      )
-      .frame(width: 0, height: 0)
-    )
-    .toolbar {
-      CaptureToolbar(controller: controller)
+    .clipped()
+  }
 
-      if !controller.isRecording, let progress = controller.captureProgressText {
-        let isCaptureInFlight = controller.isProcessing || controller.isRecording
-
-        if #available(macOS 26.0, *) {
-          ToolbarSpacer(.fixed, placement: .principal)
-        } else {
-          ToolbarItem(placement: .principal) {
-            Spacer()
-              .frame(width: 8)
+  private func workspaceSplitter(
+    totalWidth: CGFloat,
+    previewHeight: CGFloat,
+    aspectRatio: CGFloat?
+  ) -> some View {
+    Color.clear
+      .frame(width: 1)
+      .overlay {
+        WorkspaceSplitterArea(
+          dragChanged: { translation in
+            if splitDragOrigin == nil {
+              splitDragOrigin = workspace.capturePaneWidth
+            }
+            let origin = splitDragOrigin ?? workspace.capturePaneWidth
+            workspace.resizeCapturePane(
+              to: constrainedCaptureWidth(
+                origin + translation,
+                totalWidth: totalWidth
+              )
+            )
+          },
+          dragEnded: {
+            splitDragOrigin = nil
+            workspace.persistCapturePaneWidth()
+          },
+          doubleClicked: {
+            guard let aspectRatio, aspectRatio > 0 else { return }
+            workspace.resizeCapturePane(
+              to: constrainedCaptureWidth(
+                previewHeight * aspectRatio,
+                totalWidth: totalWidth
+              )
+            )
+            workspace.persistCapturePaneWidth()
           }
-        }
-
-        ToolbarItemGroup(placement: .principal) {
-          Text(progress)
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .fixedSize()
-            .opacity(isCaptureInFlight ? 0.45 : 1)
-            .allowsHitTesting(!isCaptureInFlight)
-            .onHover { hovering in
-              guard !isCaptureInFlight else {
-                if !hovering { controller.setProgressHovering(false) }
-                return
-              }
-              controller.setProgressHovering(hovering)
-            }
-            .onChange(of: isCaptureInFlight) {
-              guard isCaptureInFlight else { return }
-              controller.setProgressHovering(false)
-            }
-        }
+        )
+        .frame(width: 9)
       }
-    }
+  }
+
+  private func constrainedCaptureWidth(totalWidth: CGFloat) -> CGFloat {
+    constrainedCaptureWidth(workspace.capturePaneWidth, totalWidth: totalWidth)
+  }
+
+  private func constrainedCaptureWidth(_ width: CGFloat, totalWidth: CGFloat) -> CGFloat {
+    min(max(width, 260), max(totalWidth - 720, 260))
   }
 
   private func handle(_ command: SnapOCommand, controller: CaptureWindowController) async {
@@ -198,5 +405,88 @@ private struct ScreenshotFailureBanner: View {
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     }
     .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+  }
+}
+
+private struct WorkspaceSplitterArea: NSViewRepresentable {
+  let dragChanged: (CGFloat) -> Void
+  let dragEnded: () -> Void
+  let doubleClicked: () -> Void
+
+  func makeNSView(context: Context) -> WorkspaceSplitterNSView {
+    WorkspaceSplitterNSView(
+      dragChanged: dragChanged,
+      dragEnded: dragEnded,
+      doubleClicked: doubleClicked
+    )
+  }
+
+  func updateNSView(_ nsView: WorkspaceSplitterNSView, context: Context) {
+    nsView.dragChanged = dragChanged
+    nsView.dragEnded = dragEnded
+    nsView.doubleClicked = doubleClicked
+    nsView.window?.invalidateCursorRects(for: nsView)
+  }
+}
+
+private final class WorkspaceSplitterNSView: NSView {
+  var dragChanged: (CGFloat) -> Void
+  var dragEnded: () -> Void
+  var doubleClicked: () -> Void
+
+  private var dragOriginX: CGFloat?
+
+  init(
+    dragChanged: @escaping (CGFloat) -> Void,
+    dragEnded: @escaping () -> Void,
+    doubleClicked: @escaping () -> Void
+  ) {
+    self.dragChanged = dragChanged
+    self.dragEnded = dragEnded
+    self.doubleClicked = doubleClicked
+    super.init(frame: .zero)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    nil
+  }
+
+  override func resetCursorRects() {
+    super.resetCursorRects()
+    addCursorRect(bounds, cursor: .resizeLeftRight)
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    window?.invalidateCursorRects(for: self)
+  }
+
+  override var mouseDownCanMoveWindow: Bool {
+    false
+  }
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+    true
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    if event.clickCount == 2 {
+      dragOriginX = nil
+      doubleClicked()
+    } else {
+      dragOriginX = event.locationInWindow.x
+    }
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    guard let dragOriginX else { return }
+    dragChanged(event.locationInWindow.x - dragOriginX)
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    guard dragOriginX != nil else { return }
+    dragOriginX = nil
+    dragEnded()
   }
 }

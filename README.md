@@ -92,9 +92,25 @@ Running these tools launches Snap-O (or brings it to the foreground) and immedia
 
 There is currently no support for choosing a specific device/emulator when starting Snap-O in this way.
 
-## Why Electron for the Network Inspector?
+### Command Line Network Inspector
 
-The Network Inspector is implemented with Electron. A web-based UI is easier to embed across more environments, and modern AI tools are especially effective at writing and iterating on web-based code. That makes Electron a practical fit for the inspector while keeping the UI portable beyond the macOS helper app.
+Snap-O bundles a native command-line client at:
+
+```bash
+/Applications/Snap-O.app/Contents/MacOS/snapo
+```
+
+It talks directly to the host computer's existing ADB server and does not require the Snap-O app to be running.
+
+```bash
+snapo network list --json
+snapo network requests -s <serial> -n <socket> --no-stream --json
+snapo network show -s <serial> -n <socket> -r <request-id> --json
+```
+
+## Why a web UI for the Network Inspector?
+
+The Network Inspector uses a React UI hosted in the macOS app's system WebKit runtime. Native Swift code handles ADB and network transport through the host computer's existing ADB server, so the distribution does not include Chromium, Node.js, or another ADB executable. The same UI can also run in a browser through its HTTP transport.
 
 The screenshot tool remains in SwiftUI because it delivers a better macOS experience for video playback today. Snap-O uses AVKit because it gives a polished video player on macOS and keeps the download small. VLC-based playback felt clunky and the viewing experience suffered.
 

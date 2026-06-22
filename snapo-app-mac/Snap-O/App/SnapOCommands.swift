@@ -7,12 +7,25 @@ struct SnapOCommands: Commands {
   private var openWindow
   @FocusedValue(\.captureController)
   var captureController: CaptureWindowController?
+  @FocusedValue(\.workspaceController)
+  var workspaceController: WorkspaceLayoutController?
 
   let settings: AppSettings
   let adbService: ADBService
   let updaterController: SPUStandardUpdaterController
 
   var body: some Commands {
+    CommandGroup(replacing: .newItem) {
+      Button("New Window") {
+        let workspace = workspaceController?.snapshot ?? .persisted()
+        openWindow(
+          id: WorkspaceWindowID.main,
+          value: WorkspaceWindowConfiguration(workspace: workspace)
+        )
+      }
+      .keyboardShortcut("n")
+    }
+
     CommandGroup(after: .appInfo) {
       CheckForUpdatesView(updater: updaterController.updater)
     }
@@ -20,6 +33,7 @@ struct SnapOCommands: Commands {
       Divider()
 
       Button("New Screenshot") {
+        workspaceController?.revealCapture()
         Task { await captureController?.captureScreenshots() }
       }
       .keyboardShortcut("r")
@@ -32,6 +46,7 @@ struct SnapOCommands: Commands {
         .keyboardShortcut(.escape, modifiers: [])
       } else {
         Button("Start Screen Recording") {
+          workspaceController?.revealCapture()
           Task { await captureController?.startRecording() }
         }
         .keyboardShortcut("r", modifiers: [.command, .shift])
@@ -46,6 +61,7 @@ struct SnapOCommands: Commands {
         .disabled(captureController?.isStoppingLivePreview == true)
       } else {
         Button("Start Live Preview") {
+          workspaceController?.revealCapture()
           Task { await captureController?.startLivePreview() }
         }
         .keyboardShortcut("l", modifiers: [.command, .shift])
@@ -112,10 +128,14 @@ struct SnapOCommands: Commands {
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }
     CommandMenu("Tools") {
-      Button("Network Inspector (Alpha)") {
-        NetworkInspectorHelperLauncher.open()
+      Button(workspaceController?.showsNetwork == true ? "Hide Network Inspector" : "Show Network Inspector") {
+        workspaceController?.toggleNetwork()
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
+
+      Button(workspaceController?.showsCapture == true ? "Hide Capture" : "Show Capture") {
+        workspaceController?.toggleCapture()
+      }
 
       Button("Logcat Viewer") {
         openWindow(id: LogcatWindowID.main)
