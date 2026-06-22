@@ -9,7 +9,7 @@ script = ""
 name = "Electron"
 icon = "run"
 command = '''
-cd $CODEX_WORKTREE_PATH/snapo-desktop-electron
+cd snapo-desktop-electron
 npm install
 npm run dev
 '''
