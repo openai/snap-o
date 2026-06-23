@@ -6,15 +6,6 @@ name = "snap-o"
 script = ""
 
 [[actions]]
-name = "Electron"
-icon = "run"
-command = '''
-cd snapo-desktop-electron
-npm install
-npm run dev
-'''
-
-[[actions]]
 name = "Open Xcode"
 icon = "tool"
 command = "open snapo-app-mac/Snap-O.xcodeproj"
