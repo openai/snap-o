@@ -52,7 +52,7 @@ export const Sidebar = memo(function Sidebar({
   const sortLabel = sortNewestFirst ? "newest first" : "oldest first";
 
   return (
-    <aside className="sidebar">
+    <aside className={showsInlineToolbar ? "sidebar" : "sidebar sidebar-without-inline-toolbar"}>
       {showsServerPicker || replacementServer != null ? (
         <div className="server-picker-frame">
           {showsServerPicker ? (
