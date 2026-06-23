@@ -6,6 +6,20 @@ name = "snap-o"
 script = ""
 
 [[actions]]
+name = "Run Snap-O"
+icon = "run"
+command = '''
+set -e
+cd snapo-app-mac
+xcodebuild -project Snap-O.xcodeproj \
+  -scheme Snap-O \
+  -configuration Debug \
+  -derivedDataPath DerivedData \
+  build
+open DerivedData/Build/Products/Debug/Snap-O.app
+'''
+
+[[actions]]
 name = "Open Xcode"
 icon = "tool"
 command = "open snapo-app-mac/Snap-O.xcodeproj"
