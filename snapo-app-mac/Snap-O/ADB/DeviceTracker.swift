@@ -75,7 +75,8 @@ final class DeviceTracker: @unchecked Sendable {
     while !Task.isCancelled {
       let exec = await adbService.exec()
       guard let (handle, stream) = try? await exec.trackDevices() else {
-        if hasSeenFirstMessage { broadcast([]) }
+        if Task.isCancelled { break }
+        await handleTrackingInterruption()
         await pause()
         continue
       }
@@ -88,14 +89,21 @@ final class DeviceTracker: @unchecked Sendable {
           let devices = await parseDevices(from: payload, exec: exec)
           broadcast(devices)
         }
+        if Task.isCancelled { break }
+        await handleTrackingInterruption()
         await pause()
       } catch is CancellationError {
         break
       } catch {
-        if hasSeenFirstMessage { broadcast([]) }
+        await handleTrackingInterruption()
         await pause()
       }
     }
+  }
+
+  private func handleTrackingInterruption() async {
+    await infoCache.removeAll()
+    if hasSeenFirstMessage { broadcast([]) }
   }
 
   // MARK: - Device parsing
@@ -105,10 +113,18 @@ final class DeviceTracker: @unchecked Sendable {
       .split(separator: "\n", omittingEmptySubsequences: true)
       .compactMap(parseDeviceRow)
 
+    let activeDeviceIDs = Set(parsed.map(\.id))
+    await infoCache.retain(deviceIDs: activeDeviceIDs)
+
     return await withTaskGroup(of: Device?.self) { group in
       for (id, fields) in parsed {
         group.addTask {
-          let info = await self.deviceInfo(for: id, fallbackModel: fields["model"], exec: exec)
+          let info = await self.deviceInfo(
+            for: id,
+            transportID: fields["transport_id"],
+            fallbackModel: fields["model"],
+            exec: exec
+          )
           return Device(
             id: id,
             model: info.model,
@@ -159,8 +175,13 @@ final class DeviceTracker: @unchecked Sendable {
     return (id, fields)
   }
 
-  private func deviceInfo(for id: String, fallbackModel: String?, exec: ADBExec) async -> DeviceInfo {
-    if let cached = await infoCache.value(for: id) {
+  private func deviceInfo(
+    for id: String,
+    transportID: String?,
+    fallbackModel: String?,
+    exec: ADBExec
+  ) async -> DeviceInfo {
+    if let cached = await infoCache.value(for: id, transportID: transportID) {
       return cached
     }
 
@@ -184,7 +205,7 @@ final class DeviceTracker: @unchecked Sendable {
       manufacturer: manufacturer,
       avdName: avdName
     )
-    await infoCache.set(info, for: id)
+    await infoCache.set(info, for: id, transportID: transportID)
     return info
   }
 
@@ -199,14 +220,31 @@ final class DeviceTracker: @unchecked Sendable {
   }
 
   private actor DeviceInfoCache {
-    private var storage: [String: DeviceInfo] = [:]
-
-    func value(for deviceID: String) -> DeviceInfo? {
-      storage[deviceID]
+    /// ADB can reuse an emulator serial, but each connection gets a new transport ID.
+    private struct Entry {
+      let transportID: String?
+      let info: DeviceInfo
     }
 
-    func set(_ info: DeviceInfo, for deviceID: String) {
-      storage[deviceID] = info
+    private var storage: [String: Entry] = [:]
+
+    func value(for deviceID: String, transportID: String?) -> DeviceInfo? {
+      guard let entry = storage[deviceID], entry.transportID == transportID else {
+        return nil
+      }
+      return entry.info
+    }
+
+    func set(_ info: DeviceInfo, for deviceID: String, transportID: String?) {
+      storage[deviceID] = Entry(transportID: transportID, info: info)
+    }
+
+    func retain(deviceIDs: Set<String>) {
+      storage = storage.filter { deviceIDs.contains($0.key) }
+    }
+
+    func removeAll() {
+      storage.removeAll()
     }
   }
 

@@ -124,6 +124,8 @@ struct WindowChromeController: NSViewRepresentable {
 }
 
 private final class WindowTitleOverlayView: NSView {
+  private static let horizontalPadding: CGFloat = 8
+
   var title = "" {
     didSet {
       needsDisplay = true
@@ -154,23 +156,45 @@ private final class WindowTitleOverlayView: NSView {
 
     let contentLeft = overlayX(forContentX: contentView.bounds.minX, contentView: contentView)
     let contentRight = overlayX(forContentX: contentView.bounds.maxX, contentView: contentView)
-    let centerX = networkLeadingX.map {
-      (overlayX(forContentX: $0, contentView: contentView) + contentRight) / 2
-    } ?? ((contentLeft + contentRight) / 2)
+    let leadingX: CGFloat
+    let centerX: CGFloat
+    if let networkLeadingX {
+      let networkLeft = overlayX(forContentX: networkLeadingX, contentView: contentView)
+      leadingX = networkLeft + Self.horizontalPadding
+      centerX = (networkLeft + contentRight) / 2
+    } else {
+      leadingX = max(contentLeft, windowControlsTrailingX) + Self.horizontalPadding
+      centerX = (contentLeft + contentRight) / 2
+    }
+
+    let trailingX = contentRight - Self.horizontalPadding
+    let availableWidth = trailingX - leadingX
+    guard availableWidth > 0 else { return }
+
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.alignment = .center
+    paragraphStyle.lineBreakMode = .byTruncatingTail
 
     let attributedTitle = NSAttributedString(
       string: title,
       attributes: [
         .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold),
-        .foregroundColor: NSColor.labelColor
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraphStyle
       ]
     )
     let titleSize = attributedTitle.size()
+    let titleWidth = min(titleSize.width, availableWidth)
+    let centeredX = centerX - (titleWidth / 2)
+    let titleX = min(max(centeredX, leadingX), trailingX - titleWidth)
     attributedTitle.draw(
-      at: NSPoint(
-        x: centerX - (titleSize.width / 2),
-        y: (WindowChromeMetrics.titlebarHeight - titleSize.height) / 2
-      )
+      with: NSRect(
+        x: titleX,
+        y: (WindowChromeMetrics.titlebarHeight - titleSize.height) / 2,
+        width: titleWidth,
+        height: titleSize.height
+      ),
+      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]
     )
   }
 
@@ -181,6 +205,19 @@ private final class WindowTitleOverlayView: NSView {
   private func overlayX(forContentX contentX: CGFloat, contentView: NSView) -> CGFloat {
     let pointInWindow = contentView.convert(NSPoint(x: contentX, y: 0), to: nil)
     return convert(pointInWindow, from: nil).x
+  }
+
+  private var windowControlsTrailingX: CGFloat {
+    guard let zoomButton = window?.standardWindowButton(.zoomButton),
+          let buttonContainer = zoomButton.superview
+    else {
+      return bounds.minX
+    }
+
+    return convert(
+      NSPoint(x: zoomButton.frame.maxX, y: zoomButton.frame.midY),
+      from: buttonContainer
+    ).x
   }
 }
 
