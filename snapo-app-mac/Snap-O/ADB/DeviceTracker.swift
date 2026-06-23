@@ -113,7 +113,7 @@ final class DeviceTracker: @unchecked Sendable {
       .split(separator: "\n", omittingEmptySubsequences: true)
       .compactMap(parseDeviceRow)
 
-    let activeDeviceIDs = Set(parsed.map { $0.id })
+    let activeDeviceIDs = Set(parsed.map(\.id))
     await infoCache.retain(deviceIDs: activeDeviceIDs)
 
     return await withTaskGroup(of: Device?.self) { group in
@@ -220,7 +220,7 @@ final class DeviceTracker: @unchecked Sendable {
   }
 
   private actor DeviceInfoCache {
-    // ADB can reuse an emulator serial, but each connection gets a new transport ID.
+    /// ADB can reuse an emulator serial, but each connection gets a new transport ID.
     private struct Entry {
       let transportID: String?
       let info: DeviceInfo
