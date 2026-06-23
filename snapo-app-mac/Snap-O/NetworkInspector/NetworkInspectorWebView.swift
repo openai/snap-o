@@ -37,13 +37,18 @@ final class NetworkInspectorWebViewModel: NSObject, WKNavigationDelegate {
   let webView: WKWebView
   private(set) var servers: [NetworkInspectorServer] = []
   private(set) var selectedServer: NetworkInspectorServer?
+  private(set) var searchText = ""
+  private(set) var sortNewestFirst = false
+  private(set) var hasClearableItems = false
+  private(set) var selectedRecordKind: String?
+  private(set) var hasVisibleRecords = false
 
   @ObservationIgnored private let embeddedHTML: String?
   @ObservationIgnored private let developmentURL: URL?
   @ObservationIgnored private let bridge: NetworkInspectorWebBridge
   @ObservationIgnored private var outputTask: Task<Void, Never>?
   @ObservationIgnored private var recoveryTask: Task<Void, Never>?
-  private var isPageReady = false
+  private(set) var isPageReady = false
 
   init(service: NetworkInspectorService) {
     let configuration = WKWebViewConfiguration()
@@ -70,6 +75,11 @@ final class NetworkInspectorWebViewModel: NSObject, WKNavigationDelegate {
           $0.deviceId == selection.deviceId && $0.socketName == selection.socketName
         }
       }
+      self?.searchText = state.searchText
+      self?.sortNewestFirst = state.sortNewestFirst
+      self?.hasClearableItems = state.hasClearableItems
+      self?.selectedRecordKind = state.selectedRecordKind
+      self?.hasVisibleRecords = state.hasVisibleRecords
     }
     webView.navigationDelegate = self
     loadInspector()
@@ -143,6 +153,33 @@ final class NetworkInspectorWebViewModel: NSObject, WKNavigationDelegate {
       eventName: "network:selected-server",
       payload: NetworkServerReference(deviceId: server.deviceId, socketName: server.socketName)
     )
+  }
+
+  func setSearchText(_ searchText: String) {
+    self.searchText = searchText
+    dispatch(eventName: "network:search-text", payload: searchText)
+  }
+
+  func setSortNewestFirst(_ sortNewestFirst: Bool) {
+    self.sortNewestFirst = sortNewestFirst
+    dispatch(eventName: "network:sort-newest-first", payload: sortNewestFirst)
+  }
+
+  func clearCompletedRecords() {
+    hasClearableItems = false
+    dispatch(eventName: "network:clear-completed", payload: true)
+  }
+
+  func copySelectedURL() {
+    dispatch(eventName: "network:copy-selected-url", payload: true)
+  }
+
+  func copySelectedCurl() {
+    dispatch(eventName: "network:copy-selected-curl", payload: true)
+  }
+
+  func exportVisibleRecordsAsHar() {
+    dispatch(eventName: "network:export-visible-har", payload: true)
   }
 
   private func loadInspector() {
@@ -307,6 +344,12 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
       let input = try Self.decode(StreamIdentifier.self, from: payload)
       await service.stopStream(input.streamId)
       return nil
+    case "copyText":
+      let input = try Self.decode(ClipboardText.self, from: payload)
+      let pasteboard = NSPasteboard.general
+      pasteboard.clearContents()
+      pasteboard.setString(input.text, forType: .string)
+      return nil
     case "openExternal":
       let input = try Self.decode(ExternalURL.self, from: payload)
       guard let url = URL(string: input.url),
@@ -374,5 +417,9 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   private struct ExternalURL: Decodable {
     let url: String
+  }
+
+  private struct ClipboardText: Decodable {
+    let text: String
   }
 }

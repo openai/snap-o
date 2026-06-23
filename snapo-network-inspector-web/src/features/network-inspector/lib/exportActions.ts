@@ -18,7 +18,7 @@ export async function copyCurl(client: NetworkClient, request: RequestRecord): P
       hydrated = request;
     }
   }
-  await navigator.clipboard.writeText(makeCurlCommand(hydrated));
+  await client.copyText(makeCurlCommand(hydrated));
 }
 
 export async function exportAsHar(client: NetworkClient, records: InspectorRecord[]): Promise<void> {

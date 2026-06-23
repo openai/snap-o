@@ -129,6 +129,11 @@ struct NetworkInspectorServer: Codable {
 struct NetworkInspectorNativeState: Codable {
   let servers: [NetworkInspectorServer]
   let selectedServer: NetworkServerReference?
+  let searchText: String
+  let sortNewestFirst: Bool
+  let hasClearableItems: Bool
+  let selectedRecordKind: String?
+  let hasVisibleRecords: Bool
 }
 
 struct NetworkLoadBodiesInput: Codable {
