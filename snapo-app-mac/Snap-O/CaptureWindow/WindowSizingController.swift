@@ -187,11 +187,14 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-      guard currentLayout == .capture else { return frameSize }
+      let width = max(frameSize.width, sender.minSize.width)
+      guard currentLayout == .capture else {
+        return NSSize(width: width, height: frameSize.height)
+      }
       let aspect = max(currentAspect, 0.0001)
       return NSSize(
-        width: frameSize.width,
-        height: (WindowChromeMetrics.totalToolbarHeight + (frameSize.width / aspect)).rounded()
+        width: width,
+        height: (WindowChromeMetrics.totalToolbarHeight + (width / aspect)).rounded()
       )
     }
 
@@ -506,7 +509,7 @@ struct WindowSizingController: NSViewRepresentable {
     private func constrained(_ frame: NSRect, for window: NSWindow) -> NSRect {
       guard let screen = window.screen ?? NSScreen.main else { return frame }
       let visibleFrame = screen.visibleFrame
-      let width = min(frame.width, visibleFrame.width)
+      let width = min(max(frame.width, window.minSize.width), visibleFrame.width)
       let height = min(frame.height, visibleFrame.height)
       let x = min(max(frame.minX, visibleFrame.minX), visibleFrame.maxX - width)
       let y = min(max(frame.minY, visibleFrame.minY), visibleFrame.maxY - height)
