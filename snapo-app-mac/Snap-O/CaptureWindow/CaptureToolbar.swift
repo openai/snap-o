@@ -74,6 +74,7 @@ struct CaptureToolbar: View {
         .padding(.trailing, presentedLayout.showsCapture ? 64 : 12)
         .frame(maxWidth: .infinity)
         .offset(y: titlebarHeight / 2)
+        .animation(.easeOut(duration: 0.16), value: isNetworkSearchPresented)
       }
 
       if presentedLayout.showsCapture {
@@ -392,12 +393,15 @@ private struct NetworkInspectorToolbarControls: View {
         ) {
           isSearchPresented = false
         }
-        .frame(width: 220, height: 28)
-        .transition(.move(edge: .trailing).combined(with: .opacity))
+        .transition(
+          .modifier(
+            active: NetworkInspectorSearchTransition(progress: 0),
+            identity: NetworkInspectorSearchTransition(progress: 1)
+          )
+        )
       }
     }
     .disabled(!model.isPageReady)
-    .animation(.easeOut(duration: 0.16), value: isSearchPresented)
     .onAppear {
       if !model.searchText.isEmpty {
         isSearchPresented = true
@@ -408,6 +412,17 @@ private struct NetworkInspectorToolbarControls: View {
         isSearchPresented = true
       }
     }
+  }
+}
+
+private struct NetworkInspectorSearchTransition: ViewModifier {
+  let progress: CGFloat
+
+  func body(content: Content) -> some View {
+    content
+      .frame(width: 220 * progress, height: 28, alignment: .leading)
+      .clipped()
+      .opacity(progress)
   }
 }
 
