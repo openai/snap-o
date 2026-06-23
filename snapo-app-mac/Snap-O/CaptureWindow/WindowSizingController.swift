@@ -256,10 +256,12 @@ struct WindowSizingController: NSViewRepresentable {
       case (.both, .capture):
         if let displayInfo {
           updateAspect(for: displayInfo)
-          let previewSize = fittedCapturePreviewSize(
-            paneWidth: actualCapturePaneWidth(totalWidth: currentContentSize.width),
-            paneHeight: currentContentSize.height,
-            aspectRatio: displayInfo.aspectRatio
+          let previewSize = captureContentSizeRespectingMinimum(
+            fittedCapturePreviewSize(
+              paneWidth: actualCapturePaneWidth(totalWidth: currentContentSize.width),
+              paneHeight: currentContentSize.height,
+              aspectRatio: displayInfo.aspectRatio
+            )
           )
           synchronizeCapturePaneWidth(previewSize.width)
           setContentSize(
@@ -452,6 +454,15 @@ struct WindowSizingController: NSViewRepresentable {
 
     private func minimumCaptureContentSize(for contentSize: CGSize) -> CGSize {
       let scale = max(minimumCaptureEdge / contentSize.width, minimumCaptureEdge / contentSize.height)
+      return CGSize(width: contentSize.width * scale, height: contentSize.height * scale)
+    }
+
+    private func captureContentSizeRespectingMinimum(_ contentSize: CGSize) -> CGSize {
+      let scale = max(
+        minimumCaptureEdge / contentSize.width,
+        minimumCaptureEdge / contentSize.height,
+        1
+      )
       return CGSize(width: contentSize.width * scale, height: contentSize.height * scale)
     }
 
