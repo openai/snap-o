@@ -465,6 +465,11 @@ body.split-pane-resizing {
   min-height: 0;
 }
 
+.sidebar-without-inline-toolbar > .server-picker-frame + .record-list-frame,
+.sidebar-without-inline-toolbar > .protocol-warning + .record-list-frame {
+  margin-top: 8px;
+}
+
 .record-list {
   height: 100%;
   overflow: auto;
