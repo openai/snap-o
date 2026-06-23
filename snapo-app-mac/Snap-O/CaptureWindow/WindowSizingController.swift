@@ -254,17 +254,30 @@ struct WindowSizingController: NSViewRepresentable {
         )
 
       case (.both, .capture):
-        let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
-        let networkWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
-        synchronizeCapturePaneWidth(captureWidth)
         if let displayInfo {
           updateAspect(for: displayInfo)
+          let previewSize = fittedCapturePreviewSize(
+            paneWidth: actualCapturePaneWidth(totalWidth: currentContentSize.width),
+            paneHeight: currentContentSize.height,
+            aspectRatio: displayInfo.aspectRatio
+          )
+          synchronizeCapturePaneWidth(previewSize.width)
+          setContentSize(
+            previewSize,
+            for: window,
+            anchor: .leading,
+            relativeTo: snapshot.frame
+          )
+        } else {
+          let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
+          let networkWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
+          synchronizeCapturePaneWidth(captureWidth)
+          adjustWorkspaceEdges(
+            trailingBy: -(Constants.dividerWidth + networkWidth),
+            relativeTo: snapshot.frame,
+            for: window
+          )
         }
-        adjustWorkspaceEdges(
-          trailingBy: -(Constants.dividerWidth + networkWidth),
-          relativeTo: snapshot.frame,
-          for: window
-        )
 
       case (.network, .both):
         let captureWidth = max(currentCapturePaneWidth, 260)
@@ -461,6 +474,16 @@ struct WindowSizingController: NSViewRepresentable {
         max(currentCapturePaneWidth, 260),
         max(totalWidth - Constants.minimumNetworkContentSize.width, 260)
       )
+    }
+
+    private func fittedCapturePreviewSize(
+      paneWidth: CGFloat,
+      paneHeight: CGFloat,
+      aspectRatio: CGFloat
+    ) -> CGSize {
+      let aspectRatio = max(aspectRatio, 0.0001)
+      let width = min(paneWidth, paneHeight * aspectRatio)
+      return CGSize(width: width, height: width / aspectRatio)
     }
 
     private func rememberPaneSizesForCurrentLayout(window: NSWindow) {
