@@ -4,6 +4,7 @@ import SwiftUI
 
 private enum CaptureToolbarStyle {
   static let iconFont = Font.system(size: 17, weight: .medium)
+  static let singleControlSize: CGFloat = 36
 }
 
 struct CaptureToolbar: View {
@@ -18,6 +19,7 @@ struct CaptureToolbar: View {
 
   @Environment(AppSettings.self)
   private var settings
+  @State private var isNetworkSearchPresented = false
 
   var body: some View {
     ZStack {
@@ -55,15 +57,24 @@ struct CaptureToolbar: View {
             captureToggle()
           }
           if let networkModel {
+            NetworkInspectorToolbarControls(
+              model: networkModel,
+              isSearchPresented: $isNetworkSearchPresented
+            )
             NetworkInspectorServerPicker(model: networkModel)
+              .padding(.leading, 4)
           }
           Spacer()
+          if let networkModel {
+            NetworkInspectorExportMenu(model: networkModel)
+          }
         }
         .frame(height: Self.height)
         .padding(.leading, presentedLayout.showsCapture ? capturePaneWidth + 12 : 12)
-        .padding(.trailing, 64)
+        .padding(.trailing, presentedLayout.showsCapture ? 64 : 12)
         .frame(maxWidth: .infinity)
         .offset(y: titlebarHeight / 2)
+        .animation(.easeOut(duration: 0.16), value: isNetworkSearchPresented)
       }
 
       if presentedLayout.showsCapture {
@@ -160,7 +171,7 @@ struct CaptureToolbar: View {
     }
     .help(workspace.showsCapture ? "Hide Capture" : "Show Capture")
     .controlSize(.extraLarge)
-    .snapOToolbarGroupStyle()
+    .snapOToolbarSingleControlStyle()
   }
 
   private func networkToggle() -> some View {
@@ -172,13 +183,16 @@ struct CaptureToolbar: View {
     }
     .help(workspace.showsNetwork ? "Hide Network Inspector (⌘⌥I)" : "Show Network Inspector (⌘⌥I)")
     .controlSize(.extraLarge)
-    .snapOToolbarGroupStyle()
+    .snapOToolbarSingleControlStyle()
   }
 
   private func toggleIcon(_ systemName: String) -> some View {
     Image(systemName: systemName)
       .font(CaptureToolbarStyle.iconFont)
-      .frame(width: 34, height: 32)
+      .frame(
+        width: CaptureToolbarStyle.singleControlSize,
+        height: CaptureToolbarStyle.singleControlSize
+      )
   }
 
   private func captureProgress(_ progress: String) -> some View {
@@ -203,6 +217,286 @@ struct CaptureToolbar: View {
         guard isCaptureInFlight else { return }
         controller.setProgressHovering(false)
       }
+  }
+}
+
+private struct NetworkInspectorExportMenu: View {
+  @Bindable var model: NetworkInspectorWebViewModel
+  @State private var menuPresenter = NetworkInspectorExportMenuPresenter()
+
+  var body: some View {
+    Button {
+      menuPresenter.present(model: model)
+    } label: {
+      Image(systemName: "square.and.arrow.up")
+        .font(CaptureToolbarStyle.iconFont)
+        .frame(
+          width: CaptureToolbarStyle.singleControlSize,
+          height: CaptureToolbarStyle.singleControlSize
+        )
+        .accessibilityLabel("Export")
+        .background {
+          NetworkInspectorExportMenuAnchor(presenter: menuPresenter)
+            .allowsHitTesting(false)
+        }
+    }
+    .help("Export requests")
+    .disabled(!model.isPageReady || (model.selectedRecordKind == nil && !model.hasVisibleRecords))
+    .controlSize(.extraLarge)
+    .snapOToolbarSingleControlStyle()
+  }
+}
+
+private struct NetworkInspectorExportMenuAnchor: NSViewRepresentable {
+  let presenter: NetworkInspectorExportMenuPresenter
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    presenter.anchorView = view
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    presenter.anchorView = nsView
+  }
+}
+
+@MainActor
+private final class NetworkInspectorExportMenuPresenter: NSObject {
+  weak var anchorView: NSView?
+  private var model: NetworkInspectorWebViewModel?
+
+  func present(model: NetworkInspectorWebViewModel) {
+    guard let anchorView, anchorView.window != nil else { return }
+    self.model = model
+
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    menu.addItem(
+      menuItem(
+        title: "Export HAR (sanitized)…",
+        systemImage: "doc.badge.arrow.up",
+        action: #selector(exportHar),
+        isEnabled: model.hasVisibleRecords
+      )
+    )
+    menu.addItem(.separator())
+    menu.addItem(
+      menuItem(
+        title: "Copy URL",
+        systemImage: "link",
+        action: #selector(copyURL),
+        isEnabled: model.selectedRecordKind != nil
+      )
+    )
+    menu.addItem(
+      menuItem(
+        title: "Copy as CURL",
+        systemImage: "terminal",
+        action: #selector(copyCurl),
+        isEnabled: model.selectedRecordKind == "request"
+      )
+    )
+
+    menu.popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: anchorView)
+    self.model = nil
+  }
+
+  private func menuItem(
+    title: String,
+    systemImage: String,
+    action: Selector,
+    isEnabled: Bool
+  ) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+    item.target = self
+    item.image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
+    item.isEnabled = isEnabled
+    return item
+  }
+
+  @objc
+  private func exportHar() {
+    model?.exportVisibleRecordsAsHar()
+  }
+
+  @objc
+  private func copyURL() {
+    model?.copySelectedURL()
+  }
+
+  @objc
+  private func copyCurl() {
+    model?.copySelectedCurl()
+  }
+}
+
+private struct NetworkInspectorToolbarControls: View {
+  @Bindable var model: NetworkInspectorWebViewModel
+  @Binding var isSearchPresented: Bool
+
+  private var sortHelp: String {
+    model.sortNewestFirst
+      ? "Sorted newest first. Show oldest first"
+      : "Sorted oldest first. Show newest first"
+  }
+
+  var body: some View {
+    HStack(spacing: 8) {
+      HStack(spacing: 0) {
+        Button {
+          model.clearCompletedRecords()
+        } label: {
+          Label("Clear Completed Requests", systemImage: "trash")
+            .labelStyle(.iconOnly)
+            .font(.system(size: 15, weight: .medium))
+            .frame(width: 34, height: 32)
+        }
+        .help("Clear completed requests")
+        .disabled(!model.hasClearableItems)
+
+        Button {
+          model.setSortNewestFirst(!model.sortNewestFirst)
+        } label: {
+          Label(
+            model.sortNewestFirst ? "Newest First" : "Oldest First",
+            systemImage: model.sortNewestFirst ? "arrow.down" : "arrow.up"
+          )
+          .labelStyle(.iconOnly)
+          .font(.system(size: 15, weight: .medium))
+          .frame(width: 34, height: 32)
+        }
+        .help(sortHelp)
+
+        if !isSearchPresented {
+          Button {
+            isSearchPresented = true
+          } label: {
+            Label("Filter Requests", systemImage: "magnifyingglass")
+              .labelStyle(.iconOnly)
+              .font(.system(size: 15, weight: .medium))
+              .frame(width: 34, height: 32)
+          }
+          .help("Filter requests (⌘F)")
+          .keyboardShortcut("f", modifiers: .command)
+          .transition(.opacity)
+        }
+      }
+      .snapOToolbarGroupStyle()
+
+      if isSearchPresented {
+        NetworkInspectorSearchField(
+          text: Binding(
+            get: { model.searchText },
+            set: { model.setSearchText($0) }
+          )
+        ) {
+          isSearchPresented = false
+        }
+        .transition(
+          .modifier(
+            active: NetworkInspectorSearchTransition(progress: 0),
+            identity: NetworkInspectorSearchTransition(progress: 1)
+          )
+        )
+      }
+    }
+    .disabled(!model.isPageReady)
+    .onAppear {
+      if !model.searchText.isEmpty {
+        isSearchPresented = true
+      }
+    }
+    .onChange(of: model.searchText) {
+      if !model.searchText.isEmpty {
+        isSearchPresented = true
+      }
+    }
+  }
+}
+
+private struct NetworkInspectorSearchTransition: ViewModifier {
+  let progress: CGFloat
+
+  func body(content: Content) -> some View {
+    content
+      .frame(width: 220 * progress, height: 28, alignment: .leading)
+      .clipped()
+      .opacity(progress)
+  }
+}
+
+private struct NetworkInspectorSearchField: NSViewRepresentable {
+  @Binding var text: String
+  let dismiss: () -> Void
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(text: $text, dismiss: dismiss)
+  }
+
+  func makeNSView(context: Context) -> FocusedSearchField {
+    let searchField = FocusedSearchField(string: text)
+    searchField.placeholderString = "Filter requests"
+    searchField.sendsSearchStringImmediately = true
+    searchField.sendsWholeSearchString = true
+    searchField.delegate = context.coordinator
+    searchField.bezelStyle = .roundedBezel
+    searchField.controlSize = .large
+    return searchField
+  }
+
+  func updateNSView(_ nsView: FocusedSearchField, context: Context) {
+    context.coordinator.text = $text
+    context.coordinator.dismiss = dismiss
+    if nsView.stringValue != text {
+      nsView.stringValue = text
+    }
+  }
+
+  final class Coordinator: NSObject, NSSearchFieldDelegate {
+    var text: Binding<String>
+    var dismiss: () -> Void
+
+    init(text: Binding<String>, dismiss: @escaping () -> Void) {
+      self.text = text
+      self.dismiss = dismiss
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSSearchField else { return }
+      text.wrappedValue = field.stringValue
+    }
+
+    func control(
+      _ control: NSControl,
+      textView: NSTextView,
+      doCommandBy commandSelector: Selector
+    ) -> Bool {
+      guard commandSelector == #selector(NSResponder.cancelOperation(_:)),
+            let field = control as? NSSearchField
+      else {
+        return false
+      }
+
+      if field.stringValue.isEmpty {
+        dismiss()
+      } else {
+        field.stringValue = ""
+        text.wrappedValue = ""
+      }
+      return true
+    }
+  }
+}
+
+private final class FocusedSearchField: NSSearchField {
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    guard window != nil else { return }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      window?.makeFirstResponder(self)
+    }
   }
 }
 
@@ -502,6 +796,18 @@ private extension View {
       buttonStyle(.glass)
     } else {
       buttonStyle(.borderless)
+    }
+  }
+
+  @ViewBuilder
+  func snapOToolbarSingleControlStyle() -> some View {
+    if #available(macOS 26.0, *) {
+      buttonStyle(.borderless)
+        .glassEffect(in: Circle())
+    } else {
+      buttonStyle(.borderless)
+        .background(Color(nsColor: .windowBackgroundColor), in: Circle())
+        .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
     }
   }
 

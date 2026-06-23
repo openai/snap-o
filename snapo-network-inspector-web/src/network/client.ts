@@ -21,6 +21,7 @@ export interface NetworkClient {
   stopStream(streamId: string): Promise<void>;
   onEvent(callback: (event: StreamEvent) => void): () => void;
   onStatus(callback: (status: StreamStatus) => void): () => void;
+  copyText(text: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   saveFile(input: SaveFileInput): Promise<SaveFileResult>;
   debugInspectorPreset(): Promise<DebugInspectorPreset>;
@@ -29,6 +30,12 @@ export interface NetworkClient {
   onPreferredDevice(callback: (deviceId: string) => void): () => void;
   nativeInspectorStateChanged(state: NativeInspectorState): void;
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void;
+  onNativeSearchText(callback: (searchText: string) => void): () => void;
+  onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void;
+  onNativeClearCompleted(callback: () => void): () => void;
+  onNativeCopySelectedUrl(callback: () => void): () => void;
+  onNativeCopySelectedCurl(callback: () => void): () => void;
+  onNativeExportVisibleHar(callback: () => void): () => void;
 }
 
 export function createNetworkClient(): NetworkClient {
@@ -78,6 +85,10 @@ class WebKitNetworkClient implements NetworkClient {
     return listenWebKitEvent<StreamStatus>("network:status", callback);
   }
 
+  copyText(text: string): Promise<void> {
+    return this.invoke<void>("copyText", { text });
+  }
+
   openExternal(url: string): Promise<void> {
     return this.invoke<void>("openExternal", { url });
   }
@@ -108,6 +119,30 @@ class WebKitNetworkClient implements NetworkClient {
 
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void {
     return listenWebKitEvent<StartStreamInput>("network:selected-server", callback);
+  }
+
+  onNativeSearchText(callback: (searchText: string) => void): () => void {
+    return listenWebKitEvent<string>("network:search-text", callback);
+  }
+
+  onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void {
+    return listenWebKitEvent<boolean>("network:sort-newest-first", callback);
+  }
+
+  onNativeClearCompleted(callback: () => void): () => void {
+    return listenWebKitEvent<boolean>("network:clear-completed", callback);
+  }
+
+  onNativeCopySelectedUrl(callback: () => void): () => void {
+    return listenWebKitEvent<boolean>("network:copy-selected-url", callback);
+  }
+
+  onNativeCopySelectedCurl(callback: () => void): () => void {
+    return listenWebKitEvent<boolean>("network:copy-selected-curl", callback);
+  }
+
+  onNativeExportVisibleHar(callback: () => void): () => void {
+    return listenWebKitEvent<boolean>("network:export-visible-har", callback);
   }
 
   private async invoke<T>(command: string, payload?: unknown): Promise<T> {
@@ -172,6 +207,10 @@ class HttpNetworkClient implements NetworkClient {
     return () => this.statusCallbacks.delete(callback);
   }
 
+  copyText(text: string): Promise<void> {
+    return navigator.clipboard.writeText(text);
+  }
+
   async openExternal(url: string): Promise<void> {
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -224,6 +263,36 @@ class HttpNetworkClient implements NetworkClient {
   }
 
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeSearchText(callback: (searchText: string) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeClearCompleted(callback: () => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeCopySelectedUrl(callback: () => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeCopySelectedCurl(callback: () => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeExportVisibleHar(callback: () => void): () => void {
     void callback;
     return () => {};
   }

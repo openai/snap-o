@@ -13,6 +13,7 @@ import {
 import type { DebugInspectorPreset, SnapOServer } from "../../../network/bridge-types";
 import { useInspectorUiState } from "./useInspectorUiState";
 import { applyDebugInspectorPreset } from "../lib/debug";
+import { copyCurl, exportAsHar } from "../lib/exportActions";
 import {
   clearCompleted,
   countRecordsForServer,
@@ -66,6 +67,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const [debugPreset, setDebugPreset] = useState<DebugInspectorPreset>("live");
   const uiState = useInspectorUiState();
+  const toggleSortOrder = useCallback(() => setSortNewestFirst((value) => !value), []);
+  const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
 
   const selectedServer = useMemo(
     () => pickSelectedServer(preferredServer, state.servers),
@@ -91,6 +94,9 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   );
 
   useEffect(() => client.onNativeSelectedServer(selectServer), [client, selectServer]);
+  useEffect(() => client.onNativeSearchText(setSearchText), [client]);
+  useEffect(() => client.onNativeSortOrder(setSortNewestFirst), [client]);
+  useEffect(() => client.onNativeClearCompleted(clearCompletedRecords), [clearCompletedRecords, client]);
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -145,15 +151,6 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     [displayServers, selectedServer]
   );
 
-  useEffect(() => {
-    client.nativeInspectorStateChanged({
-      servers: displayServers,
-      selectedServer:
-        selectedServerModel == null
-          ? null
-          : { deviceId: selectedServerModel.deviceId, socketName: selectedServerModel.socketName }
-    });
-  }, [client, displayServers, selectedServerModel]);
   const selectedServerIsConnected = selectedServerModel?.isConnected === true;
   const selectedServerConnectionKey =
     selectedServerModel == null
@@ -291,14 +288,60 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     [allRecords.length, selectedServerModel, serverRecordCount, visibleRecords.length]
   );
   const hasClearableItems = useMemo(() => allRecords.some(isCompletedRecord), [allRecords]);
+  const selectedRecordKind = selectedRecord?.kind ?? null;
+  const hasVisibleRecords = visibleRecords.length > 0;
+
+  useEffect(
+    () =>
+      client.onNativeCopySelectedUrl(() => {
+        if (selectedRecord != null) void client.copyText(selectedRecord.url);
+      }),
+    [client, selectedRecord]
+  );
+  useEffect(
+    () =>
+      client.onNativeCopySelectedCurl(() => {
+        if (selectedRecord?.kind === "request") void copyCurl(client, selectedRecord);
+      }),
+    [client, selectedRecord]
+  );
+  useEffect(
+    () =>
+      client.onNativeExportVisibleHar(() => {
+        void exportAsHar(client, visibleRecords);
+      }),
+    [client, visibleRecords]
+  );
+
+  useEffect(() => {
+    client.nativeInspectorStateChanged({
+      servers: displayServers,
+      selectedServer:
+        selectedServerModel == null
+          ? null
+          : { deviceId: selectedServerModel.deviceId, socketName: selectedServerModel.socketName },
+      searchText,
+      sortNewestFirst,
+      hasClearableItems,
+      selectedRecordKind,
+      hasVisibleRecords
+    });
+  }, [
+    client,
+    displayServers,
+    hasClearableItems,
+    hasVisibleRecords,
+    searchText,
+    selectedRecordKind,
+    selectedServerModel,
+    sortNewestFirst
+  ]);
 
   const selectReplacementServer = useCallback(
     (server: SnapOServer) => selectServer({ deviceId: server.deviceId, socketName: server.socketName }),
     [selectServer]
   );
   const selectRecord = useCallback((id: string) => setPreferredRecordId(id), []);
-  const toggleSortOrder = useCallback(() => setSortNewestFirst((value) => !value), []);
-  const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
   const openDocs = useCallback(() => void client.openExternal(docsUrl), [client]);
 
   return {

@@ -101,10 +101,23 @@ struct SnapOCommands: Commands {
     if let captureController {
       CommandGroup(replacing: .pasteboard) {
         Button("Copy") {
-          captureController.copyCurrentImage()
+          let copiedFocusedContent = NSApp.sendAction(
+            #selector(NSText.copy(_:)),
+            to: nil,
+            from: nil
+          )
+          if !copiedFocusedContent {
+            captureController.copyCurrentImage()
+          }
         }
         .keyboardShortcut("c")
-        .disabled(captureController.currentCapture?.media.isImage != true)
+
+        Divider()
+
+        Button("Select All") {
+          NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: nil)
+        }
+        .keyboardShortcut("a")
       }
       CommandGroup(replacing: .undoRedo) {}
     }
