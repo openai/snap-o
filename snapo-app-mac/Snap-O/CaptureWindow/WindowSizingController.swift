@@ -11,10 +11,28 @@ struct WindowSizingController: NSViewRepresentable {
   let capturePaneWidthChanged: @MainActor (CGFloat) -> Void
   let layoutWillApply: @MainActor (WorkspaceLayout) -> Void
 
-  private static let minimumCaptureEdge: CGFloat = 240
+  static let minimumCaptureEdge: CGFloat = 240
+  static let minimumCapturePaneEdge: CGFloat = 260
+
+  static func minimumCaptureContentSize(aspectRatio: CGFloat?) -> CGSize {
+    guard let aspectRatio, aspectRatio > 0 else {
+      return CGSize(width: minimumCaptureEdge, height: minimumCaptureEdge)
+    }
+    return CGSize(
+      width: minimumCaptureEdge * max(aspectRatio, 1),
+      height: minimumCaptureEdge * max(1 / aspectRatio, 1)
+    )
+  }
+
+  static func minimumCapturePaneWidth(aspectRatio: CGFloat?) -> CGFloat {
+    max(
+      minimumCapturePaneEdge,
+      minimumCaptureContentSize(aspectRatio: aspectRatio).width
+    )
+  }
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(minimumCaptureEdge: Self.minimumCaptureEdge)
+    Coordinator()
   }
 
   func makeNSView(context: Context) -> NSView {
@@ -66,7 +84,6 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     private weak var window: NSWindow?
-    private let minimumCaptureEdge: CGFloat
     private var currentAspect: CGFloat = 1
     private var currentLayout: WorkspaceLayout?
     private var currentDisplayInfo: DisplayInfo?
@@ -79,10 +96,6 @@ struct WindowSizingController: NSViewRepresentable {
     private var layoutWillApply: (@MainActor (WorkspaceLayout) -> Void)?
     private var transitionGeneration = 0
     private var isApplyingLayoutTransition = false
-
-    init(minimumCaptureEdge: CGFloat) {
-      self.minimumCaptureEdge = minimumCaptureEdge
-    }
 
     func attach(to window: NSWindow) {
       guard self.window !== window else { return }
@@ -123,8 +136,10 @@ struct WindowSizingController: NSViewRepresentable {
 
       if currentLayout == nil {
         currentLayout = layout
+        currentDisplayInfo = displayInfo
         applyMinimumSize(layout: layout, displayInfo: displayInfo, to: window)
         applyInitialFrame(for: layout, displayInfo: displayInfo, to: window)
+        ensureMinimumBothContentSize(displayInfo: displayInfo, window: window)
         synchronizeCapturePaneWidthIfNeeded(for: layout, window: window)
       } else if layoutChanged, let previousLayout {
         let snapshot = LayoutSnapshot(
@@ -159,6 +174,7 @@ struct WindowSizingController: NSViewRepresentable {
             snapshot: snapshot,
             window: window
           )
+          ensureMinimumBothContentSize(displayInfo: displayInfo, window: window)
 
           DispatchQueue.main.async { [weak self, weak window] in
             guard
@@ -181,6 +197,7 @@ struct WindowSizingController: NSViewRepresentable {
         synchronizeCapturePaneWidthIfNeeded(for: layout, window: window)
       } else {
         applyMinimumSize(layout: layout, displayInfo: displayInfo, to: window)
+        ensureMinimumBothContentSize(displayInfo: displayInfo, window: window)
       }
 
       currentDisplayInfo = displayInfo
@@ -257,20 +274,40 @@ struct WindowSizingController: NSViewRepresentable {
         )
 
       case (.both, .capture):
-        let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
-        let networkWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
-        synchronizeCapturePaneWidth(captureWidth)
         if let displayInfo {
           updateAspect(for: displayInfo)
+          let previewSize = captureContentSizeRespectingMinimum(
+            fittedCapturePreviewSize(
+              paneWidth: actualCapturePaneWidth(totalWidth: currentContentSize.width),
+              paneHeight: currentContentSize.height,
+              aspectRatio: displayInfo.aspectRatio
+            )
+          )
+          synchronizeCapturePaneWidth(previewSize.width)
+          setContentSize(
+            previewSize,
+            for: window,
+            anchor: .leading,
+            relativeTo: snapshot.frame
+          )
+        } else {
+          let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
+          let networkWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
+          synchronizeCapturePaneWidth(captureWidth)
+          adjustWorkspaceEdges(
+            trailingBy: -(Constants.dividerWidth + networkWidth),
+            relativeTo: snapshot.frame,
+            for: window
+          )
         }
-        adjustWorkspaceEdges(
-          trailingBy: -(Constants.dividerWidth + networkWidth),
-          relativeTo: snapshot.frame,
-          for: window
-        )
 
       case (.network, .both):
-        let captureWidth = max(currentCapturePaneWidth, 260)
+        let captureWidth = max(
+          currentCapturePaneWidth,
+          WindowSizingController.minimumCapturePaneWidth(
+            aspectRatio: displayInfo?.aspectRatio
+          )
+        )
         adjustWorkspaceEdges(
           trailingBy: captureWidth + Constants.dividerWidth,
           relativeTo: snapshot.frame,
@@ -297,7 +334,12 @@ struct WindowSizingController: NSViewRepresentable {
 
       case (.network, .capture):
         setCaptureContentWidth(
-          max(currentCapturePaneWidth, 260),
+          max(
+            currentCapturePaneWidth,
+            WindowSizingController.minimumCapturePaneWidth(
+              aspectRatio: displayInfo?.aspectRatio
+            )
+          ),
           displayInfo: displayInfo,
           window: window,
           anchor: .trailing,
@@ -336,20 +378,49 @@ struct WindowSizingController: NSViewRepresentable {
     ) {
       switch layout {
       case .capture:
-        guard let displayInfo else {
-          window.contentMinSize = sizeIncludingWindowChrome(
-            CGSize(width: minimumCaptureEdge, height: minimumCaptureEdge)
-          )
-          return
-        }
         window.contentMinSize = sizeIncludingWindowChrome(
-          minimumCaptureContentSize(for: scaledContentSize(for: displayInfo))
+          WindowSizingController.minimumCaptureContentSize(
+            aspectRatio: displayInfo?.aspectRatio
+          )
         )
       case .network:
         window.contentMinSize = sizeIncludingWindowChrome(Constants.minimumNetworkContentSize)
       case .both:
-        window.contentMinSize = sizeIncludingWindowChrome(Constants.minimumBothContentSize)
+        window.contentMinSize = sizeIncludingWindowChrome(
+          minimumBothContentSize(displayInfo: displayInfo)
+        )
       }
+    }
+
+    private func minimumBothContentSize(displayInfo: DisplayInfo?) -> CGSize {
+      let captureSize = WindowSizingController.minimumCaptureContentSize(
+        aspectRatio: displayInfo?.aspectRatio
+      )
+      let captureWidth = WindowSizingController.minimumCapturePaneWidth(
+        aspectRatio: displayInfo?.aspectRatio
+      )
+      return CGSize(
+        width: max(
+          Constants.minimumBothContentSize.width,
+          captureWidth + Constants.dividerWidth + Constants.minimumNetworkContentSize.width
+        ),
+        height: max(Constants.minimumBothContentSize.height, captureSize.height)
+      )
+    }
+
+    private func ensureMinimumBothContentSize(
+      displayInfo: DisplayInfo?,
+      window: NSWindow
+    ) {
+      guard currentLayout == .both else { return }
+      let minimumSize = minimumBothContentSize(displayInfo: displayInfo)
+      let currentSize = workspaceContentSize(for: window)
+      let targetSize = CGSize(
+        width: max(currentSize.width, minimumSize.width),
+        height: max(currentSize.height, minimumSize.height)
+      )
+      guard targetSize != currentSize else { return }
+      setContentSize(targetSize, for: window, anchor: .leading)
     }
 
     private func sizeCaptureWindow(
@@ -434,14 +505,20 @@ struct WindowSizingController: NSViewRepresentable {
       }
       width = width.rounded()
       var height = width / display.aspectRatio
+      let minimumCaptureEdge = WindowSizingController.minimumCaptureEdge
       let scale = max(minimumCaptureEdge / width, minimumCaptureEdge / height, 1)
       width *= scale
       height *= scale
       return CGSize(width: width.rounded(), height: height.rounded())
     }
 
-    private func minimumCaptureContentSize(for contentSize: CGSize) -> CGSize {
-      let scale = max(minimumCaptureEdge / contentSize.width, minimumCaptureEdge / contentSize.height)
+    private func captureContentSizeRespectingMinimum(_ contentSize: CGSize) -> CGSize {
+      let minimumCaptureEdge = WindowSizingController.minimumCaptureEdge
+      let scale = max(
+        minimumCaptureEdge / contentSize.width,
+        minimumCaptureEdge / contentSize.height,
+        1
+      )
       return CGSize(width: contentSize.width * scale, height: contentSize.height * scale)
     }
 
@@ -460,10 +537,23 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     private func actualCapturePaneWidth(totalWidth: CGFloat) -> CGFloat {
-      min(
-        max(currentCapturePaneWidth, 260),
-        max(totalWidth - Constants.minimumNetworkContentSize.width, 260)
+      let minimumWidth = WindowSizingController.minimumCapturePaneWidth(
+        aspectRatio: currentDisplayInfo?.aspectRatio
       )
+      return min(
+        max(currentCapturePaneWidth, minimumWidth),
+        max(totalWidth - Constants.minimumNetworkContentSize.width, minimumWidth)
+      )
+    }
+
+    private func fittedCapturePreviewSize(
+      paneWidth: CGFloat,
+      paneHeight: CGFloat,
+      aspectRatio: CGFloat
+    ) -> CGSize {
+      let aspectRatio = max(aspectRatio, 0.0001)
+      let width = min(paneWidth, paneHeight * aspectRatio)
+      return CGSize(width: width, height: width / aspectRatio)
     }
 
     private func rememberPaneSizesForCurrentLayout(window: NSWindow) {
@@ -496,7 +586,12 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     private func synchronizeCapturePaneWidth(_ width: CGFloat) {
-      let width = max(width.rounded(), 260)
+      let width = max(
+        width.rounded(),
+        WindowSizingController.minimumCapturePaneWidth(
+          aspectRatio: currentDisplayInfo?.aspectRatio
+        )
+      )
       currentCapturePaneWidth = width
       guard abs(pendingCapturePaneWidth - width) > 0.5 else { return }
       pendingCapturePaneWidth = width
