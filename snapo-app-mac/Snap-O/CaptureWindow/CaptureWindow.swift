@@ -130,7 +130,10 @@ struct CaptureWindow: View {
     GeometryReader { geometry in
       let titlebarHeight = WindowChromeMetrics.titlebarHeight
       let captureWidth = presentedLayout.showsCapture
-        ? capturePaneWidth(totalWidth: geometry.size.width)
+        ? capturePaneWidth(
+          totalWidth: geometry.size.width,
+          aspectRatio: controller.displayInfoForSizing?.aspectRatio
+        )
         : 0
 
       VStack(spacing: 0) {
@@ -174,8 +177,10 @@ struct CaptureWindow: View {
     }
   }
 
-  private func capturePaneWidth(totalWidth: CGFloat) -> CGFloat {
-    presentedLayout.showsNetwork ? constrainedCaptureWidth(totalWidth: totalWidth) : totalWidth
+  private func capturePaneWidth(totalWidth: CGFloat, aspectRatio: CGFloat?) -> CGFloat {
+    presentedLayout.showsNetwork
+      ? constrainedCaptureWidth(totalWidth: totalWidth, aspectRatio: aspectRatio)
+      : totalWidth
   }
 
   private func captureWorkspace(
@@ -305,7 +310,8 @@ struct CaptureWindow: View {
             workspace.resizeCapturePane(
               to: constrainedCaptureWidth(
                 origin + translation,
-                totalWidth: totalWidth
+                totalWidth: totalWidth,
+                aspectRatio: aspectRatio
               )
             )
           },
@@ -318,7 +324,8 @@ struct CaptureWindow: View {
             workspace.resizeCapturePane(
               to: constrainedCaptureWidth(
                 previewHeight * aspectRatio,
-                totalWidth: totalWidth
+                totalWidth: totalWidth,
+                aspectRatio: aspectRatio
               )
             )
             workspace.persistCapturePaneWidth()
@@ -328,12 +335,29 @@ struct CaptureWindow: View {
       }
   }
 
-  private func constrainedCaptureWidth(totalWidth: CGFloat) -> CGFloat {
-    constrainedCaptureWidth(workspace.capturePaneWidth, totalWidth: totalWidth)
+  private func constrainedCaptureWidth(
+    totalWidth: CGFloat,
+    aspectRatio: CGFloat?
+  ) -> CGFloat {
+    constrainedCaptureWidth(
+      workspace.capturePaneWidth,
+      totalWidth: totalWidth,
+      aspectRatio: aspectRatio
+    )
   }
 
-  private func constrainedCaptureWidth(_ width: CGFloat, totalWidth: CGFloat) -> CGFloat {
-    min(max(width, 260), max(totalWidth - 720, 260))
+  private func constrainedCaptureWidth(
+    _ width: CGFloat,
+    totalWidth: CGFloat,
+    aspectRatio: CGFloat?
+  ) -> CGFloat {
+    let minimumWidth = WindowSizingController.minimumCapturePaneWidth(
+      aspectRatio: aspectRatio
+    )
+    return min(
+      max(width, minimumWidth),
+      max(totalWidth - 720, minimumWidth)
+    )
   }
 
   private func handle(_ command: SnapOCommand, controller: CaptureWindowController) async {
