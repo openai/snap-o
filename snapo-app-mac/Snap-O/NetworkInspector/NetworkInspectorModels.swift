@@ -174,6 +174,11 @@ struct NetworkSaveFileInput: Codable {
   let data: String
   let mimeType: String?
   let encoding: String?
+  let directoryKind: NetworkSaveDirectoryKind?
+}
+
+enum NetworkSaveDirectoryKind: String, Codable {
+  case har
 }
 
 struct NetworkSaveFileResult: Codable {

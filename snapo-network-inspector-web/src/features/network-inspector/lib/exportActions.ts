@@ -42,6 +42,7 @@ export async function exportAsHar(client: NetworkClient, records: InspectorRecor
   await client.saveFile({
     defaultPath: harFileName(hydrated.length),
     data: buildHar(hydrated, appVersion),
-    mimeType: "application/har+json"
+    mimeType: "application/har+json",
+    directoryKind: "har"
   });
 }

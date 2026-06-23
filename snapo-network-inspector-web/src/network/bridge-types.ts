@@ -82,6 +82,7 @@ export interface SaveFileInput {
   data: string;
   mimeType?: string | null;
   encoding?: "utf8" | "base64";
+  directoryKind?: "har";
 }
 
 export interface SaveFileResult {

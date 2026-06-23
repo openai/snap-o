@@ -390,17 +390,24 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     }
 
     let panel = NSSavePanel()
+    panel.canCreateDirectories = true
     panel.nameFieldStringValue = input.defaultPath
+    if input.directoryKind == .har {
+      panel.directoryURL = SaveLocation.defaultHARExportDirectory()
+    }
     guard panel.runModal() == .OK, let url = panel.url else {
       return NetworkSaveFileResult(saved: false, path: nil)
     }
     try data.write(to: url, options: .atomic)
+    if input.directoryKind == .har {
+      SaveLocation.setLastHARExportDirectoryURL(url.deletingLastPathComponent())
+    }
     return NetworkSaveFileResult(saved: true, path: url.path)
   }
 
   static func jsonObject(_ value: some Encodable) throws -> Any {
     let data = try JSONEncoder().encode(value)
-    return try JSONSerialization.jsonObject(with: data)
+    return try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
   }
 
   private static func decode<T: Decodable>(_ type: T.Type, from payload: Any?) throws -> T {
