@@ -6,12 +6,17 @@ name = "snap-o"
 script = ""
 
 [[actions]]
-name = "Electron"
+name = "Run Snap-O"
 icon = "run"
 command = '''
-cd $CODEX_WORKTREE_PATH/snapo-desktop-electron
-npm install
-npm run dev
+set -e
+cd snapo-app-mac
+xcodebuild -project Snap-O.xcodeproj \
+  -scheme Snap-O \
+  -configuration Debug \
+  -derivedDataPath DerivedData \
+  build
+open DerivedData/Build/Products/Debug/Snap-O.app
 '''
 
 [[actions]]
