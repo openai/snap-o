@@ -75,7 +75,8 @@ final class DeviceTracker: @unchecked Sendable {
     while !Task.isCancelled {
       let exec = await adbService.exec()
       guard let (handle, stream) = try? await exec.trackDevices() else {
-        if hasSeenFirstMessage { broadcast([]) }
+        if Task.isCancelled { break }
+        await handleTrackingInterruption()
         await pause()
         continue
       }
@@ -88,14 +89,21 @@ final class DeviceTracker: @unchecked Sendable {
           let devices = await parseDevices(from: payload, exec: exec)
           broadcast(devices)
         }
+        if Task.isCancelled { break }
+        await handleTrackingInterruption()
         await pause()
       } catch is CancellationError {
         break
       } catch {
-        if hasSeenFirstMessage { broadcast([]) }
+        await handleTrackingInterruption()
         await pause()
       }
     }
+  }
+
+  private func handleTrackingInterruption() async {
+    await infoCache.removeAll()
+    if hasSeenFirstMessage { broadcast([]) }
   }
 
   // MARK: - Device parsing
@@ -233,6 +241,10 @@ final class DeviceTracker: @unchecked Sendable {
 
     func retain(deviceIDs: Set<String>) {
       storage = storage.filter { deviceIDs.contains($0.key) }
+    }
+
+    func removeAll() {
+      storage.removeAll()
     }
   }
 
