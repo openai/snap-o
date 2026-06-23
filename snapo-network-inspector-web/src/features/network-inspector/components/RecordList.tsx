@@ -115,9 +115,7 @@ function sidebarContextMenuItems(
   client: NetworkClient
 ): ContextMenuItem[] {
   const exportRecords = contextMenuExportSelection(clicked, selectedRecordId, allRecords);
-  const items: ContextMenuItem[] = [
-    { label: "Copy URL", action: () => void navigator.clipboard.writeText(clicked.url) }
-  ];
+  const items: ContextMenuItem[] = [{ label: "Copy URL", action: () => void client.copyText(clicked.url) }];
   if (clicked.kind === "request") {
     items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked) });
   }

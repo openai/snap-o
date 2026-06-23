@@ -20,6 +20,7 @@ export const Sidebar = memo(function Sidebar({
   selectedRecordId,
   client,
   showsServerPicker,
+  showsInlineToolbar,
   onServerChange,
   onReplacementServerClick,
   onSearchTextChange,
@@ -39,6 +40,7 @@ export const Sidebar = memo(function Sidebar({
   selectedRecordId: string | null;
   client: NetworkClient;
   showsServerPicker: boolean;
+  showsInlineToolbar: boolean;
   onServerChange(server: ServerId | null): void;
   onReplacementServerClick(server: SnapOServer): void;
   onSearchTextChange(value: string): void;
@@ -76,38 +78,40 @@ export const Sidebar = memo(function Sidebar({
 
       {serverHasProtocolWarning(selectedServer) ? <ProtocolWarning server={selectedServer} /> : null}
 
-      <div className="filter-frame">
-        <div className="search-row">
-          <input
-            value={searchText}
-            onChange={(event) => onSearchTextChange(event.target.value)}
-            placeholder="Filter by keyword"
-            aria-label="Filter by keyword"
-          />
-        </div>
+      {showsInlineToolbar ? (
+        <div className="filter-frame">
+          <div className="search-row">
+            <input
+              value={searchText}
+              onChange={(event) => onSearchTextChange(event.target.value)}
+              placeholder="Filter by keyword"
+              aria-label="Filter by keyword"
+            />
+          </div>
 
-        <div className="toolbar-action-group">
-          <button
-            className="toolbar-icon-button"
-            type="button"
-            title={`Sorted ${sortLabel}`}
-            aria-label={`Sorted ${sortLabel}. Toggle sort order`}
-            onClick={onToggleSortOrder}
-          >
-            <SortIcon size={16} />
-          </button>
-          <button
-            className="toolbar-icon-button"
-            type="button"
-            title="Clear completed"
-            aria-label="Clear completed"
-            disabled={!hasClearableItems}
-            onClick={onClearCompleted}
-          >
-            <Trash2 size={16} />
-          </button>
+          <div className="toolbar-action-group">
+            <button
+              className="toolbar-icon-button"
+              type="button"
+              title={`Sorted ${sortLabel}`}
+              aria-label={`Sorted ${sortLabel}. Toggle sort order`}
+              onClick={onToggleSortOrder}
+            >
+              <SortIcon size={16} />
+            </button>
+            <button
+              className="toolbar-icon-button"
+              type="button"
+              title="Clear completed"
+              aria-label="Clear completed"
+              disabled={!hasClearableItems}
+              onClick={onClearCompleted}
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <RecordList
         records={records}

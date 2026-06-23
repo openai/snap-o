@@ -34,6 +34,7 @@ export function NetworkInspectorApp(): JSX.Element {
         selectedRecordId={model.selectedRecordId}
         client={model.client}
         showsServerPicker={!model.client.usesNativeServerPicker}
+        showsInlineToolbar={!model.client.usesNativeServerPicker}
         onServerChange={model.selectServer}
         onReplacementServerClick={model.selectReplacementServer}
         onSearchTextChange={model.setSearchText}

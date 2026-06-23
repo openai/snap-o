@@ -18,6 +18,11 @@ export interface SnapOServer {
 export interface NativeInspectorState {
   servers: SnapOServer[];
   selectedServer: StartStreamInput | null;
+  searchText: string;
+  sortNewestFirst: boolean;
+  hasClearableItems: boolean;
+  selectedRecordKind: "request" | "websocket" | null;
+  hasVisibleRecords: boolean;
 }
 
 export interface CdpMessage {
@@ -77,6 +82,7 @@ export interface SaveFileInput {
   data: string;
   mimeType?: string | null;
   encoding?: "utf8" | "base64";
+  directoryKind?: "har";
 }
 
 export interface SaveFileResult {

@@ -18,7 +18,7 @@ export async function copyCurl(client: NetworkClient, request: RequestRecord): P
       hydrated = request;
     }
   }
-  await navigator.clipboard.writeText(makeCurlCommand(hydrated));
+  await client.copyText(makeCurlCommand(hydrated));
 }
 
 export async function exportAsHar(client: NetworkClient, records: InspectorRecord[]): Promise<void> {
@@ -42,6 +42,7 @@ export async function exportAsHar(client: NetworkClient, records: InspectorRecor
   await client.saveFile({
     defaultPath: harFileName(hydrated.length),
     data: buildHar(hydrated, appVersion),
-    mimeType: "application/har+json"
+    mimeType: "application/har+json",
+    directoryKind: "har"
   });
 }
