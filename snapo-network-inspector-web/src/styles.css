@@ -101,15 +101,22 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: calc(var(--sidebar-min-width) + var(--splitter-width) + var(--detail-min-width));
-  min-height: 520px;
   background: var(--background);
 }
 
 .window-frame {
-  height: 100vh;
+  height: 100%;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
