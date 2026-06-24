@@ -9,7 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 // No-op implementation for release builds
-class SnapOHttpUrlInterceptor(
+class SnapOHttpUrlInterceptor @JvmOverloads constructor(
     private val responseBodyPreviewBytes: Int = 0,
     private val textBodyMaxBytes: Int = 0,
     private val binaryBodyMaxBytes: Int = 0,
