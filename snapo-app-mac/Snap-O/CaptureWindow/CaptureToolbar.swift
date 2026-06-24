@@ -271,6 +271,7 @@ struct CaptureToolbar: View {
     .help(workspace.showsCapture ? "Hide Capture" : "Show Capture")
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
+    .disabled(!workspace.canToggleCapture)
   }
 
   private func networkToggle() -> some View {
@@ -283,6 +284,7 @@ struct CaptureToolbar: View {
     .help(workspace.showsNetwork ? "Hide Network Inspector (⌘⌥I)" : "Show Network Inspector (⌘⌥I)")
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
+    .disabled(!workspace.canToggleNetwork)
   }
 
   private func toggleIcon(_ systemName: String) -> some View {

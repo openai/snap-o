@@ -71,6 +71,14 @@ final class WorkspaceLayoutController {
     return showsNetwork ? .network : .capture
   }
 
+  var canToggleCapture: Bool {
+    !showsCapture || showsNetwork
+  }
+
+  var canToggleNetwork: Bool {
+    !showsNetwork || showsCapture
+  }
+
   init(snapshot: WorkspaceLayoutSnapshot? = nil) {
     let snapshot = snapshot ?? .persisted()
     showsCapture = snapshot.showsCapture || !snapshot.showsNetwork
@@ -107,14 +115,14 @@ final class WorkspaceLayoutController {
   }
 
   func setCaptureVisible(_ visible: Bool) {
+    guard visible || showsNetwork else { return }
     showsCapture = visible
-    if !showsCapture, !showsNetwork { showsNetwork = true }
     persistVisibility()
   }
 
   func setNetworkVisible(_ visible: Bool) {
+    guard visible || showsCapture else { return }
     showsNetwork = visible
-    if !showsCapture, !showsNetwork { showsCapture = true }
     persistVisibility()
   }
 
