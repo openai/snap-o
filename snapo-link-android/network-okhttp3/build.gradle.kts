@@ -4,6 +4,8 @@ plugins {
     id("snapo.detekt")
 }
 
+description = "OkHttp integration for intercepting network requests with Snap-O."
+
 android {
     namespace = "com.openai.snapo.network.okhttp3"
 }

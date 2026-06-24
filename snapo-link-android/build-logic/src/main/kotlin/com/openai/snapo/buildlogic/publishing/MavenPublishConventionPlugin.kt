@@ -31,7 +31,7 @@ class MavenPublishConventionPlugin : Plugin<Project> {
 
                 pom {
                     name.set("Snap-O ${target.name}")
-                    description.set("Android network inspection integration for Snap-O.")
+                    description.set(target.provider { target.description })
                     inceptionYear.set("2025")
                     url.set("https://github.com/openai/snap-o")
 
