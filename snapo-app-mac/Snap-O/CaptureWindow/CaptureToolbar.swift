@@ -17,15 +17,15 @@ struct CaptureToolbar: View {
   let capturePaneWidth: CGFloat
   let titlebarHeight: CGFloat
 
+  @Environment(\.colorScheme)
+  private var colorScheme
   @Environment(AppSettings.self)
   private var settings
   @State private var isNetworkSearchPresented = false
 
   var body: some View {
     ZStack {
-      Color(nsColor: .windowBackgroundColor)
-        .contentShape(Rectangle())
-        .gesture(WindowDragGesture())
+      chromeBackground
 
       if presentedLayout.showsCapture {
         HStack(spacing: 15) {
@@ -91,7 +91,7 @@ struct CaptureToolbar: View {
     .frame(height: titlebarHeight + Self.height)
     .overlay(alignment: .bottom) {
       Rectangle()
-        .fill(Color(nsColor: .separatorColor).opacity(0.55))
+        .fill(Color(nsColor: .separatorColor))
         .frame(height: 0.5)
         .allowsHitTesting(false)
     }
@@ -99,6 +99,33 @@ struct CaptureToolbar: View {
 
   private var controlsCenterY: CGFloat {
     titlebarHeight + (Self.height / 2)
+  }
+
+  private var chromeBackground: some View {
+    GeometryReader { geometry in
+      HStack(spacing: 0) {
+        if presentedLayout.showsCapture {
+          captureChromeBackground
+            .frame(width: presentedLayout.showsNetwork ? capturePaneWidth : geometry.size.width)
+        }
+
+        if presentedLayout.showsNetwork {
+          Color(nsColor: .windowBackgroundColor)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+      .contentShape(Rectangle())
+      .gesture(WindowDragGesture())
+    }
+  }
+
+  private var captureChromeBackground: Color {
+    if colorScheme == .dark {
+      Color(red: 42.0 / 255.0, green: 42.0 / 255.0, blue: 42.0 / 255.0)
+    } else {
+      Color(red: 244.0 / 255.0, green: 244.0 / 255.0, blue: 244.0 / 255.0)
+    }
   }
 
   @ViewBuilder

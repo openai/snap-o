@@ -34,7 +34,7 @@
   --accent-blue: #2778db;
   --search-highlight: #fff2a8;
   --sidebar-selection: #bcd6ff;
-  --sidebar-surface: #f4f4f4;
+  --sidebar-surface: var(--surface-bright);
   --sidebar-min-width: 260px;
   --detail-min-width: 360px;
   --splitter-width: 0px;
@@ -90,7 +90,6 @@
     --accent-blue: #5aa4e8;
     --search-highlight: #5f5119;
     --sidebar-selection: #2f4a72;
-    --sidebar-surface: var(--surface-container-highest);
     --json-key: #c38be8;
     --json-number: #89b7f2;
     --json-string: #ff8f7d;
@@ -159,6 +158,16 @@ button {
   margin-right: calc(var(--splitter-width) - var(--splitter-hit-width));
   cursor: col-resize;
   touch-action: none;
+}
+
+.splitter::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1px;
+  background: var(--outline-variant);
+  content: "";
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .splitter:focus-visible {

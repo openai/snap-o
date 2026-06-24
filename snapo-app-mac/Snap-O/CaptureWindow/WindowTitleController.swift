@@ -241,14 +241,22 @@ private final class WindowDividerOverlayView: NSView {
     }
 
     let scale = window?.backingScaleFactor ?? 2
-    let width = 1 / scale
+    let width: CGFloat = 1
     let pointInWindow = contentView.convert(NSPoint(x: dividerX, y: 0), to: nil)
     let pointInOverlay = convert(pointInWindow, from: nil)
     let alignedX = (pointInOverlay.x * scale).rounded() / scale
 
-    NSColor.labelColor.withAlphaComponent(0.18).setFill()
+    NSColor.windowBackgroundColor.setFill()
     NSRect(
-      x: alignedX - (width / 2),
+      x: alignedX - width,
+      y: 0,
+      width: width,
+      height: bounds.height
+    ).fill()
+
+    NSColor.separatorColor.setFill()
+    NSRect(
+      x: alignedX,
       y: 0,
       width: width,
       height: bounds.height
