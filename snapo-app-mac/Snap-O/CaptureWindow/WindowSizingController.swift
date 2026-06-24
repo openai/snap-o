@@ -373,9 +373,12 @@ struct WindowSizingController: NSViewRepresentable {
             aspectRatio: displayInfo?.aspectRatio
           )
         )
-        targetFrame = frameByAdjustingWorkspaceEdges(
-          leadingBy: -(captureWidth + Constants.dividerWidth),
-          relativeTo: snapshot.frame
+        targetFrame = constrained(
+          frameByAdjustingWorkspaceEdges(
+            leadingBy: -(captureWidth + Constants.dividerWidth),
+            relativeTo: snapshot.frame
+          ),
+          for: window
         )
 
       case (.both, .network):
