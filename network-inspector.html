@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Network Inspector guide · Snap-O</title>
+    <title>Network Inspector Guide · Snap-O</title>
     <meta
       name="description"
       content="Add Snap-O Network Inspector to an Android app using OkHttp, Ktor, or HttpURLConnection."
@@ -322,6 +322,10 @@
         display: block;
       }
 
+      .syntax-code .code-line:empty::before {
+        content: "\00a0";
+      }
+
       .syntax-code .code-line-muted {
         opacity: 0.48;
       }
@@ -419,6 +423,40 @@
 
       .dependency-options {
         margin-top: 24px;
+      }
+
+      .dependency-format-tabs {
+        display: flex;
+        gap: 22px;
+        margin-top: 22px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .dependency-format-tab {
+        margin: 0 0 -1px;
+        padding: 0 0 9px;
+        color: var(--muted);
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        font: 500 0.86rem/1.4 "OpenAI Sans", Arial, sans-serif;
+      }
+
+      .dependency-format-tab:hover {
+        color: var(--ink);
+      }
+
+      .dependency-format-tab[aria-selected="true"] {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+      .dependency-format-panel[hidden] {
+        display: none;
+      }
+
+      .dependency-format-panel .code-block {
+        margin-top: 18px;
       }
 
       summary {
@@ -575,9 +613,9 @@
         <div class="wrap">
           <div class="hero-copy">
             <a class="back-link" href="index.html">Snap-O</a>
-            <h1>Network Inspector</h1>
+            <h1>Network Inspector Guide</h1>
             <p class="lead">
-              Capture HTTP and HTTPS requests from an Android app in Snap-O,
+              Capture network requests from an Android app with Snap-O,
               including response bodies, Server-Sent Events, and WebSocket
               messages. Works with OkHttp, Ktor's OkHttp engine, and
               HttpURLConnection.
@@ -588,15 +626,17 @@
 
       <div class="wrap guide-layout">
         <article>
-          <section class="guide-section" id="jitpack">
+          <section class="guide-section" id="maven-central">
             <div class="section-heading">
               <span class="step" aria-hidden="true">1</span>
-              <h2>Add JitPack to Gradle</h2>
+              <h2>Use Maven Central</h2>
             </div>
             <div class="section-body">
             <p class="prose">
-              Snap-O publishes its Android libraries through JitPack. Add the
-              repository to your dependency sources once.
+              Snap-O publishes Android libraries version 3.1.1 and newer to
+              Maven Central. Most Android projects already include
+              <code>mavenCentral()</code>; add it to your dependency sources if
+              yours does not.
             </p>
 
             <div class="code-block">
@@ -604,11 +644,10 @@
                 <span>settings.gradle.kts</span>
                 <button class="copy-button" type="button">Copy</button>
               </div>
-              <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="5">dependencyResolutionManagement {
+              <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="4">dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") }
     }
 }</code></pre>
             </div>
@@ -635,15 +674,45 @@
                     Use the OkHttp interceptor for OkHttp directly or through
                     Ktor's OkHttp engine.
                   </p>
-                  <div class="code-block">
-                    <div class="code-head">
-                      <span>app/build.gradle.kts</span>
-                      <button class="copy-button" type="button">Copy</button>
-                    </div>
-                    <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
-    debugImplementation("com.github.openai.snap-o:network-okhttp3:2.0.1")
-    releaseImplementation("com.github.openai.snap-o:network-okhttp3-noop:2.0.1")
+                  <div class="dependency-format-tabs" role="tablist" aria-label="OkHttp dependency format">
+                    <button class="dependency-format-tab" id="okhttp-catalog-tab" type="button" role="tab" aria-selected="true" aria-controls="okhttp-catalog-panel">Version catalog</button>
+                    <button class="dependency-format-tab" id="okhttp-direct-tab" type="button" role="tab" aria-selected="false" aria-controls="okhttp-direct-panel" tabindex="-1">Direct dependency</button>
+                  </div>
+                  <div class="dependency-format-panel" id="okhttp-direct-panel" role="tabpanel" aria-labelledby="okhttp-direct-tab" hidden>
+                    <div class="code-block">
+                      <div class="code-head">
+                        <span>app/build.gradle.kts</span>
+                        <button class="copy-button" type="button">Copy</button>
+                      </div>
+                      <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
+    debugImplementation("com.openai.snapo:network-okhttp3:3.1.1")
+    releaseImplementation("com.openai.snapo:network-okhttp3-noop:3.1.1")
 }</code></pre>
+                    </div>
+                  </div>
+                  <div class="dependency-format-panel" id="okhttp-catalog-panel" role="tabpanel" aria-labelledby="okhttp-catalog-tab">
+                    <div class="code-block">
+                      <div class="code-head">
+                        <span>gradle/libs.versions.toml</span>
+                        <button class="copy-button" type="button">Copy</button>
+                      </div>
+                      <pre><code class="syntax-code" data-language="toml" data-emphasis-lines="2,5,6">[versions]
+snapo = "3.1.1"
+
+[libraries]
+snapo-okhttp3 = { module = "com.openai.snapo:network-okhttp3", version.ref = "snapo" }
+snapo-okhttp3-noop = { module = "com.openai.snapo:network-okhttp3-noop", version.ref = "snapo" }</code></pre>
+                    </div>
+                    <div class="code-block">
+                      <div class="code-head">
+                        <span>app/build.gradle.kts</span>
+                        <button class="copy-button" type="button">Copy</button>
+                      </div>
+                      <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
+    debugImplementation(libs.snapo.okhttp3)
+    releaseImplementation(libs.snapo.okhttp3.noop)
+}</code></pre>
+                    </div>
                   </div>
                 </div>
               </details>
@@ -655,15 +724,45 @@
                     Use the HttpURLConnection interceptor on Android 7.0
                     (API 24) or newer.
                   </p>
-                  <div class="code-block">
-                    <div class="code-head">
-                      <span>app/build.gradle.kts</span>
-                      <button class="copy-button" type="button">Copy</button>
-                    </div>
-                    <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
-    debugImplementation("com.github.openai.snap-o:network-httpurlconnection:2.0.1")
-    releaseImplementation("com.github.openai.snap-o:network-httpurlconnection-noop:2.0.1")
+                  <div class="dependency-format-tabs" role="tablist" aria-label="HttpURLConnection dependency format">
+                    <button class="dependency-format-tab" id="httpurlconnection-catalog-tab" type="button" role="tab" aria-selected="true" aria-controls="httpurlconnection-catalog-panel">Version catalog</button>
+                    <button class="dependency-format-tab" id="httpurlconnection-direct-tab" type="button" role="tab" aria-selected="false" aria-controls="httpurlconnection-direct-panel" tabindex="-1">Direct dependency</button>
+                  </div>
+                  <div class="dependency-format-panel" id="httpurlconnection-direct-panel" role="tabpanel" aria-labelledby="httpurlconnection-direct-tab" hidden>
+                    <div class="code-block">
+                      <div class="code-head">
+                        <span>app/build.gradle.kts</span>
+                        <button class="copy-button" type="button">Copy</button>
+                      </div>
+                      <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
+    debugImplementation("com.openai.snapo:network-httpurlconnection:3.1.1")
+    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:3.1.1")
 }</code></pre>
+                    </div>
+                  </div>
+                  <div class="dependency-format-panel" id="httpurlconnection-catalog-panel" role="tabpanel" aria-labelledby="httpurlconnection-catalog-tab">
+                    <div class="code-block">
+                      <div class="code-head">
+                        <span>gradle/libs.versions.toml</span>
+                        <button class="copy-button" type="button">Copy</button>
+                      </div>
+                      <pre><code class="syntax-code" data-language="toml" data-emphasis-lines="2,5,6">[versions]
+snapo = "3.1.1"
+
+[libraries]
+snapo-httpurlconnection = { module = "com.openai.snapo:network-httpurlconnection", version.ref = "snapo" }
+snapo-httpurlconnection-noop = { module = "com.openai.snapo:network-httpurlconnection-noop", version.ref = "snapo" }</code></pre>
+                    </div>
+                    <div class="code-block">
+                      <div class="code-head">
+                        <span>app/build.gradle.kts</span>
+                        <button class="copy-button" type="button">Copy</button>
+                      </div>
+                      <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
+    debugImplementation(libs.snapo.httpurlconnection)
+    releaseImplementation(libs.snapo.httpurlconnection.noop)
+}</code></pre>
+                    </div>
                   </div>
                 </div>
               </details>
@@ -994,7 +1093,7 @@ NetworkInspector.initialize(
         <aside class="quick-jump" aria-label="On this page">
           <nav>
             <ol class="quick-jump-list">
-              <li><a class="quick-jump-link" href="#jitpack">Add JitPack to Gradle</a></li>
+              <li><a class="quick-jump-link" href="#maven-central">Use Maven Central</a></li>
               <li><a class="quick-jump-link" href="#install">Add the Android dependency</a></li>
               <li><a class="quick-jump-link" href="#connect">Add request interceptors</a></li>
               <li><a class="quick-jump-link" href="#verify">Verify the connection</a></li>
@@ -1018,6 +1117,7 @@ NetworkInspector.initialize(
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-kotlin.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-toml.min.js"></script>
     <script>
       const escapeHtml = (value) =>
         value.replace(
@@ -1077,6 +1177,46 @@ NetworkInspector.initialize(
           window.setTimeout(() => {
             button.textContent = "Copy";
           }, 1400);
+        });
+      }
+
+      for (const tablist of document.querySelectorAll(".dependency-format-tabs")) {
+        const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+
+        const activateTab = (activeTab, moveFocus = false) => {
+          for (const tab of tabs) {
+            const isActive = tab === activeTab;
+            const panel = document.getElementById(tab.getAttribute("aria-controls"));
+            tab.setAttribute("aria-selected", String(isActive));
+            tab.tabIndex = isActive ? 0 : -1;
+            panel.hidden = !isActive;
+          }
+
+          if (moveFocus) {
+            activeTab.focus();
+          }
+        };
+
+        tabs.forEach((tab, index) => {
+          tab.addEventListener("click", () => activateTab(tab));
+          tab.addEventListener("keydown", (event) => {
+            let nextIndex;
+
+            if (event.key === "ArrowRight") {
+              nextIndex = (index + 1) % tabs.length;
+            } else if (event.key === "ArrowLeft") {
+              nextIndex = (index - 1 + tabs.length) % tabs.length;
+            } else if (event.key === "Home") {
+              nextIndex = 0;
+            } else if (event.key === "End") {
+              nextIndex = tabs.length - 1;
+            } else {
+              return;
+            }
+
+            event.preventDefault();
+            activateTab(tabs[nextIndex], true);
+          });
         });
       }
 
