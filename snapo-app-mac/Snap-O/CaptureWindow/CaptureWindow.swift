@@ -213,10 +213,9 @@ struct CaptureWindow: View {
             previewHeight: metrics.previewHeight,
             aspectRatio: controller.displayInfoForSizing?.aspectRatio
           )
-          .frame(width: 1)
-          .frame(maxHeight: .infinity)
+          .frame(width: 1, height: metrics.previewHeight)
           .offset(x: captureWidth - 0.5)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
       }
       .background(
