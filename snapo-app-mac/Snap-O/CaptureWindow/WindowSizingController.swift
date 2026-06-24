@@ -15,7 +15,8 @@ struct WorkspaceLayoutTransition: Equatable {
   let finalWindowWidth: CGFloat
   let initialCapturePaneWidth: CGFloat
   let finalCapturePaneWidth: CGFloat
-  let networkPaneWidth: CGFloat
+  let initialNetworkPaneWidth: CGFloat
+  let finalNetworkPaneWidth: CGFloat
 
   func progress(windowWidth: CGFloat) -> CGFloat {
     let distance = finalWindowWidth - initialWindowWidth
@@ -27,6 +28,12 @@ struct WorkspaceLayoutTransition: Equatable {
     let progress = progress(windowWidth: windowWidth)
     return initialCapturePaneWidth
       + ((finalCapturePaneWidth - initialCapturePaneWidth) * progress)
+  }
+
+  func networkPaneWidth(windowWidth: CGFloat) -> CGFloat {
+    let progress = progress(windowWidth: windowWidth)
+    return initialNetworkPaneWidth
+      + ((finalNetworkPaneWidth - initialNetworkPaneWidth) * progress)
   }
 }
 
@@ -192,8 +199,9 @@ struct WindowSizingController: NSViewRepresentable {
         let transition = workspaceTransition(
           from: previousLayout,
           to: layout,
-          workspaceSize: snapshot.workspaceSize,
-          displayInfo: displayInfo
+          snapshot: snapshot,
+          displayInfo: displayInfo,
+          window: window
         )
 
         currentLayout = layout
@@ -334,9 +342,10 @@ struct WindowSizingController: NSViewRepresentable {
       case (.capture, .both):
         let captureWidth = currentContentSize.width
         synchronizeCapturePaneWidth(captureWidth)
-        targetFrame = frameByAdjustingWorkspaceEdges(
-          trailingBy: Constants.dividerWidth + rememberedNetworkPaneWidth,
-          relativeTo: snapshot.frame
+        targetFrame = captureRevealTargetFrame(
+          networkWidth: rememberedNetworkPaneWidth,
+          relativeTo: snapshot.frame,
+          window: window
         )
 
       case (.both, .capture):
@@ -373,12 +382,10 @@ struct WindowSizingController: NSViewRepresentable {
             aspectRatio: displayInfo?.aspectRatio
           )
         )
-        targetFrame = constrained(
-          frameByAdjustingWorkspaceEdges(
-            leadingBy: -(captureWidth + Constants.dividerWidth),
-            relativeTo: snapshot.frame
-          ),
-          for: window
+        targetFrame = networkRevealTargetFrame(
+          captureWidth: captureWidth,
+          relativeTo: snapshot.frame,
+          window: window
         )
 
       case (.both, .network):
@@ -439,12 +446,15 @@ struct WindowSizingController: NSViewRepresentable {
     private func workspaceTransition(
       from previousLayout: WorkspaceLayout,
       to layout: WorkspaceLayout,
-      workspaceSize: CGSize,
-      displayInfo: DisplayInfo?
+      snapshot: LayoutSnapshot,
+      displayInfo: DisplayInfo?,
+      window: NSWindow
     ) -> WorkspaceLayoutTransition? {
+      let workspaceSize = snapshot.workspaceSize
       let initialCaptureWidth: CGFloat
       let finalCaptureWidth: CGFloat
-      let networkWidth: CGFloat
+      let initialNetworkWidth: CGFloat
+      let finalNetworkWidth: CGFloat
       let finalWindowWidth: CGFloat
       let pane: WorkspaceLayoutTransition.Pane
 
@@ -452,9 +462,21 @@ struct WindowSizingController: NSViewRepresentable {
       case (.capture, .both):
         pane = .network
         initialCaptureWidth = workspaceSize.width
-        finalCaptureWidth = initialCaptureWidth
-        networkWidth = rememberedNetworkPaneWidth
-        finalWindowWidth = finalCaptureWidth + Constants.dividerWidth + networkWidth
+        initialNetworkWidth = rememberedNetworkPaneWidth
+        finalWindowWidth = captureRevealTargetFrame(
+          networkWidth: initialNetworkWidth,
+          relativeTo: snapshot.frame,
+          window: window
+        ).width
+        finalCaptureWidth = constrainedCapturePaneWidth(
+          initialCaptureWidth,
+          totalWidth: finalWindowWidth,
+          displayInfo: displayInfo
+        )
+        finalNetworkWidth = max(
+          finalWindowWidth - finalCaptureWidth - Constants.dividerWidth,
+          0
+        )
       case (.both, .capture):
         pane = .network
         initialCaptureWidth = actualCapturePaneWidth(totalWidth: workspaceSize.width)
@@ -462,7 +484,8 @@ struct WindowSizingController: NSViewRepresentable {
           workspaceSize: workspaceSize,
           displayInfo: displayInfo
         )?.width ?? initialCaptureWidth
-        networkWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
+        initialNetworkWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
+        finalNetworkWidth = initialNetworkWidth
         finalWindowWidth = finalCaptureWidth
       case (.network, .both):
         pane = .capture
@@ -472,15 +495,28 @@ struct WindowSizingController: NSViewRepresentable {
             aspectRatio: displayInfo?.aspectRatio
           )
         )
-        finalCaptureWidth = initialCaptureWidth
-        networkWidth = workspaceSize.width
-        finalWindowWidth = finalCaptureWidth + Constants.dividerWidth + networkWidth
+        initialNetworkWidth = workspaceSize.width
+        finalWindowWidth = networkRevealTargetFrame(
+          captureWidth: initialCaptureWidth,
+          relativeTo: snapshot.frame,
+          window: window
+        ).width
+        finalCaptureWidth = constrainedCapturePaneWidth(
+          initialCaptureWidth,
+          totalWidth: finalWindowWidth,
+          displayInfo: displayInfo
+        )
+        finalNetworkWidth = max(
+          finalWindowWidth - finalCaptureWidth - Constants.dividerWidth,
+          0
+        )
       case (.both, .network):
         pane = .capture
         initialCaptureWidth = actualCapturePaneWidth(totalWidth: workspaceSize.width)
         finalCaptureWidth = initialCaptureWidth
-        networkWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
-        finalWindowWidth = networkWidth
+        initialNetworkWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
+        finalNetworkWidth = initialNetworkWidth
+        finalWindowWidth = finalNetworkWidth
       default:
         return nil
       }
@@ -493,7 +529,8 @@ struct WindowSizingController: NSViewRepresentable {
         finalWindowWidth: finalWindowWidth,
         initialCapturePaneWidth: initialCaptureWidth,
         finalCapturePaneWidth: finalCaptureWidth,
-        networkPaneWidth: networkWidth
+        initialNetworkPaneWidth: initialNetworkWidth,
+        finalNetworkPaneWidth: finalNetworkWidth
       )
     }
 
@@ -523,6 +560,48 @@ struct WindowSizingController: NSViewRepresentable {
         y: frame.minY,
         width: maxX - minX,
         height: frame.height
+      )
+    }
+
+    private func networkRevealTargetFrame(
+      captureWidth: CGFloat,
+      relativeTo frame: NSRect,
+      window: NSWindow
+    ) -> NSRect {
+      constrained(
+        frameByAdjustingWorkspaceEdges(
+          leadingBy: -(captureWidth + Constants.dividerWidth),
+          relativeTo: frame
+        ),
+        for: window
+      )
+    }
+
+    private func captureRevealTargetFrame(
+      networkWidth: CGFloat,
+      relativeTo frame: NSRect,
+      window: NSWindow
+    ) -> NSRect {
+      constrained(
+        frameByAdjustingWorkspaceEdges(
+          trailingBy: Constants.dividerWidth + networkWidth,
+          relativeTo: frame
+        ),
+        for: window
+      )
+    }
+
+    private func constrainedCapturePaneWidth(
+      _ width: CGFloat,
+      totalWidth: CGFloat,
+      displayInfo: DisplayInfo?
+    ) -> CGFloat {
+      let minimumWidth = WindowSizingController.minimumCapturePaneWidth(
+        aspectRatio: displayInfo?.aspectRatio
+      )
+      return min(
+        max(width, minimumWidth),
+        max(totalWidth - Constants.minimumNetworkContentSize.width, minimumWidth)
       )
     }
 

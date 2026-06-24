@@ -249,7 +249,7 @@ struct CaptureWindow: View {
     layout: WorkspaceLayout
   ) -> CGFloat {
     if let layoutTransition {
-      return layoutTransition.networkPaneWidth
+      return layoutTransition.networkPaneWidth(windowWidth: totalWidth)
     }
     return layout.showsCapture
       ? max(totalWidth - captureWidth - 1, 0)
