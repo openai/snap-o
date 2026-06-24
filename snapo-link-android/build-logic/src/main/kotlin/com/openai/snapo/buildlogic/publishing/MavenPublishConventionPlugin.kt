@@ -7,6 +7,7 @@ import com.vanniktech.maven.publish.SourcesJar
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.register
 
 class MavenPublishConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
@@ -55,6 +56,18 @@ class MavenPublishConventionPlugin : Plugin<Project> {
                         developerConnection.set("scm:git:ssh://git@github.com/openai/snap-o.git")
                     }
                 }
+            }
+
+            target.tasks.register("assembleMavenCentralPublication") {
+                group = "publishing"
+                description = "Assembles the release artifacts and metadata published to Maven Central."
+                dependsOn(
+                    "bundleReleaseAar",
+                    "emptyJavadocJar",
+                    "sourceReleaseJar",
+                    "generateMetadataFileForMavenPublication",
+                    "generatePomFileForMavenPublication",
+                )
             }
         }
     }
