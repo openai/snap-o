@@ -13,7 +13,7 @@ fun WebSocket.Factory.withSnapOInterceptor(
     dispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
 ): WebSocket.Factory = this
 
-class SnapOInterceptorWebSocketFactory(
+class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
     private val delegate: WebSocket.Factory,
     textPreviewChars: Int = 0,
     binaryPreviewBytes: Int = 0,

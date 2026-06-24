@@ -24,6 +24,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import java.io.Closeable
 import java.util.ArrayList
 import java.util.UUID
 import kotlin.math.min
@@ -47,7 +48,7 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
     private val textPreviewChars: Int = DefaultTextPreviewChars,
     private val binaryPreviewBytes: Int = DefaultBinaryPreviewBytes,
     dispatcher: CoroutineDispatcher = DefaultDispatcher,
-) : WebSocket.Factory {
+) : WebSocket.Factory, Closeable {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
@@ -70,6 +71,10 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
         val realWebSocket = delegate.newWebSocket(request, interceptingListener)
         return InterceptedWebSocket(webSocketId, realWebSocket)
             .also { interceptingListener.interceptedWebSocket = it }
+    }
+
+    override fun close() {
+        scope.cancel()
     }
 
     private inline fun publish(crossinline builder: () -> NetworkEventRecord) {
