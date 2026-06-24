@@ -51,7 +51,6 @@ struct CaptureToolbar: View {
     ZStack {
       Color.clear
         .contentShape(Rectangle())
-        .gesture(WindowDragGesture())
 
       if presentedLayout.showsCapture {
         captureToolbarPane

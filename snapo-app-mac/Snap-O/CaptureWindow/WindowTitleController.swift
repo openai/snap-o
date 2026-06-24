@@ -78,7 +78,6 @@ struct WindowChromeController: NSViewRepresentable {
 
     private func applyChrome(to window: NSWindow) {
       window.title = title
-      window.isMovableByWindowBackground = false
       window.collectionBehavior.insert(.fullScreenPrimary)
     }
 
