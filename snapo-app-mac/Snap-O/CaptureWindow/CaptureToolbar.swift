@@ -7,6 +7,28 @@ private enum CaptureToolbarStyle {
   static let singleControlSize: CGFloat = 36
 }
 
+private final class CaptureToolbarBackgroundView: NSVisualEffectView {
+  override init(frame frameRect: NSRect) {
+    super.init(frame: frameRect)
+    material = .headerView
+    blendingMode = .behindWindow
+    state = .followsWindowActiveState
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    nil
+  }
+}
+
+private struct CaptureToolbarBackground: NSViewRepresentable {
+  func makeNSView(context: Context) -> CaptureToolbarBackgroundView {
+    CaptureToolbarBackgroundView(frame: .zero)
+  }
+
+  func updateNSView(_ nsView: CaptureToolbarBackgroundView, context: Context) {}
+}
+
 struct CaptureToolbar: View {
   static let height: CGFloat = 52
 
@@ -15,6 +37,10 @@ struct CaptureToolbar: View {
   let presentedLayout: WorkspaceLayout
   let networkModel: NetworkInspectorWebViewModel?
   let capturePaneWidth: CGFloat
+  let networkPaneWidth: CGFloat
+  let capturePaneVisibleWidth: CGFloat
+  let networkPaneVisibleWidth: CGFloat
+  let transitioningPane: WorkspaceLayoutTransition.Pane?
   let titlebarHeight: CGFloat
 
   @Environment(AppSettings.self)
@@ -23,26 +49,69 @@ struct CaptureToolbar: View {
 
   var body: some View {
     ZStack {
-      Color(nsColor: .windowBackgroundColor)
+      Color.clear
         .contentShape(Rectangle())
-        .gesture(WindowDragGesture())
 
       if presentedLayout.showsCapture {
-        HStack(spacing: 15) {
-          captureControls()
-
-          if !controller.isRecording, let progress = controller.captureProgressText {
-            captureProgress(progress)
-          }
-        }
-        .controlSize(.extraLarge)
-        .snapOToolbarControlStyle()
-        .position(x: capturePaneWidth / 2, y: controlsCenterY)
+        captureToolbarPane
+          .frame(width: capturePaneWidth, height: toolbarHeight)
+          .frame(width: capturePaneVisibleWidth, height: toolbarHeight, alignment: .leading)
+          .clipped()
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .zIndex(paneZIndex(.capture))
       }
+
+      if presentedLayout.showsNetwork {
+        networkToolbarPane
+          .frame(width: networkPaneWidth, height: toolbarHeight)
+          .frame(width: networkPaneVisibleWidth, height: toolbarHeight, alignment: .trailing)
+          .clipped()
+          .frame(maxWidth: .infinity, alignment: .trailing)
+          .zIndex(paneZIndex(.network))
+      }
+    }
+    .simultaneousGesture(WindowDragGesture())
+    .frame(height: toolbarHeight)
+    .overlay(alignment: .bottom) {
+      Divider()
+    }
+  }
+
+  private var toolbarHeight: CGFloat {
+    titlebarHeight + Self.height
+  }
+
+  private var captureVisibility: CGFloat {
+    guard capturePaneWidth > 0 else { return 0 }
+    return min(max(capturePaneVisibleWidth / capturePaneWidth, 0), 1)
+  }
+
+  private var networkVisibility: CGFloat {
+    guard networkPaneWidth > 0 else { return 0 }
+    return min(max(networkPaneVisibleWidth / networkPaneWidth, 0), 1)
+  }
+
+  private var captureToolbarPane: some View {
+    ZStack {
+      CaptureToolbarBackground()
+
+      HStack(spacing: 15) {
+        captureControls()
+
+        if !controller.isRecording, let progress = controller.captureProgressText {
+          captureProgress(progress)
+        }
+      }
+      .controlSize(.extraLarge)
+      .snapOToolbarControlStyle()
+      .frame(height: Self.height)
+      .offset(y: titlebarHeight / 2)
 
       if presentedLayout == .both {
         HStack {
           captureToggle()
+            .opacity(networkVisibility)
+            .allowsHitTesting(networkVisibility > 0.5)
           Spacer()
         }
         .frame(height: Self.height)
@@ -51,12 +120,29 @@ struct CaptureToolbar: View {
         .offset(y: titlebarHeight / 2)
       }
 
-      if presentedLayout.showsNetwork {
-        HStack(spacing: 8) {
-          if !presentedLayout.showsCapture {
-            captureToggle()
-          }
-          if let networkModel {
+      if presentedLayout.showsCapture {
+        HStack {
+          Spacer()
+          networkToggle()
+            .opacity(1 - networkVisibility)
+            .allowsHitTesting(networkVisibility < 0.5)
+        }
+        .frame(height: Self.height)
+        .padding(.trailing, 12)
+        .offset(y: titlebarHeight / 2)
+      }
+    }
+  }
+
+  private var networkToolbarPane: some View {
+    ZStack {
+      Color(nsColor: .textBackgroundColor)
+
+      HStack(spacing: 0) {
+        captureToggleSlot
+
+        if let networkModel {
+          HStack(spacing: 8) {
             NetworkInspectorToolbarControls(
               model: networkModel,
               isSearchPresented: $isNetworkSearchPresented
@@ -64,41 +150,54 @@ struct CaptureToolbar: View {
             NetworkInspectorServerPicker(model: networkModel)
               .padding(.leading, 4)
           }
-          Spacer()
-          if let networkModel {
-            NetworkInspectorExportMenu(model: networkModel)
-          }
         }
-        .frame(height: Self.height)
-        .padding(.leading, presentedLayout.showsCapture ? capturePaneWidth + 12 : 12)
-        .padding(.trailing, presentedLayout.showsCapture ? 64 : 12)
-        .frame(maxWidth: .infinity)
-        .offset(y: titlebarHeight / 2)
-        .animation(.easeOut(duration: 0.16), value: isNetworkSearchPresented)
-      }
 
-      if presentedLayout.showsCapture {
-        HStack {
-          Spacer()
-          networkToggle()
+        Spacer()
+
+        if let networkModel {
+          NetworkInspectorExportMenu(model: networkModel)
         }
-        .frame(height: Self.height)
-        .padding(.trailing, 12)
-        .frame(maxWidth: .infinity)
-        .offset(y: titlebarHeight / 2)
+
+        networkToggleSlot
       }
-    }
-    .frame(height: titlebarHeight + Self.height)
-    .overlay(alignment: .bottom) {
-      Rectangle()
-        .fill(Color(nsColor: .separatorColor).opacity(0.55))
-        .frame(height: 0.5)
-        .allowsHitTesting(false)
+      .frame(height: Self.height)
+      .padding(.horizontal, 12)
+      .offset(y: titlebarHeight / 2)
+      .animation(.easeOut(duration: 0.16), value: isNetworkSearchPresented)
     }
   }
 
-  private var controlsCenterY: CGFloat {
-    titlebarHeight + (Self.height / 2)
+  private var captureToggleSlot: some View {
+    let visibility = 1 - captureVisibility
+    let width = (CaptureToolbarStyle.singleControlSize + 8) * visibility
+
+    return captureToggle()
+      .opacity(visibility)
+      .allowsHitTesting(visibility > 0.5)
+      .frame(
+        width: CaptureToolbarStyle.singleControlSize,
+        height: CaptureToolbarStyle.singleControlSize
+      )
+      .frame(width: width, alignment: .leading)
+  }
+
+  private var networkToggleSlot: some View {
+    let visibility = min(captureVisibility, networkVisibility)
+    let width = (CaptureToolbarStyle.singleControlSize + 8) * captureVisibility
+
+    return networkToggle()
+      .opacity(visibility)
+      .allowsHitTesting(visibility > 0.5)
+      .frame(
+        width: CaptureToolbarStyle.singleControlSize,
+        height: CaptureToolbarStyle.singleControlSize
+      )
+      .frame(width: width, alignment: .trailing)
+  }
+
+  private func paneZIndex(_ pane: WorkspaceLayoutTransition.Pane) -> Double {
+    guard let transitioningPane else { return 0 }
+    return transitioningPane == pane ? 0 : 1
   }
 
   @ViewBuilder

@@ -15,6 +15,15 @@ private struct CaptureWorkspaceMetrics: Equatable {
   let previewHeight: CGFloat
 }
 
+private struct WorkspacePanePresentation {
+  let layout: WorkspaceLayout
+  let captureWidth: CGFloat
+  let networkWidth: CGFloat
+  let captureVisibleWidth: CGFloat
+  let networkVisibleWidth: CGFloat
+  let transitioningPane: WorkspaceLayoutTransition.Pane?
+}
+
 private struct CaptureWorkspaceMetricsKey: PreferenceKey {
   static let defaultValue: CaptureWorkspaceMetrics? = nil
 
@@ -46,6 +55,7 @@ struct CaptureWindow: View {
   @State private var workspace: WorkspaceLayoutController
   @State private var networkSession: NetworkInspectorSession
   @State private var presentedLayout: WorkspaceLayout
+  @State private var layoutTransition: WorkspaceLayoutTransition?
   @State private var splitDragOrigin: CGFloat?
 
   init(
@@ -66,6 +76,7 @@ struct CaptureWindow: View {
     _workspace = State(initialValue: workspace)
     _networkSession = State(initialValue: NetworkInspectorSession(deviceTracker: deviceTracker))
     _presentedLayout = State(initialValue: workspace.layout)
+    _layoutTransition = State(initialValue: nil)
   }
 
   var body: some View {
@@ -95,8 +106,14 @@ struct CaptureWindow: View {
         ) { width in
           workspace.resizeCapturePane(to: width)
           workspace.persistCapturePaneWidth()
-        } layoutWillApply: { layout in
-          presentedLayout = layout
+        } presentationChanged: { event in
+          switch event {
+          case .transitionWillBegin(let transition):
+            layoutTransition = transition
+          case .layoutDidApply(let layout):
+            presentedLayout = layout
+            layoutTransition = nil
+          }
         }
         .frame(width: 0, height: 0)
       )
@@ -115,8 +132,8 @@ struct CaptureWindow: View {
       )
   }
 
-  private var navigationTitle: String {
-    switch presentedLayout {
+  private func navigationTitle(for layout: WorkspaceLayout) -> String {
+    switch layout {
     case .capture:
       controller.navigationTitle
     case .network:
@@ -129,31 +146,67 @@ struct CaptureWindow: View {
   private func workspaceContent(controller: CaptureWindowController) -> some View {
     GeometryReader { geometry in
       let titlebarHeight = WindowChromeMetrics.titlebarHeight
-      let captureWidth = presentedLayout.showsCapture
+      let displayedLayout = layoutTransition == nil ? presentedLayout : .both
+      let captureWidth = displayedLayout.showsCapture
         ? capturePaneWidth(
           totalWidth: geometry.size.width,
+          layout: displayedLayout,
           aspectRatio: controller.displayInfoForSizing?.aspectRatio
         )
         : 0
+      let networkWidth = displayedLayout.showsNetwork
+        ? networkPaneWidth(
+          totalWidth: geometry.size.width,
+          captureWidth: captureWidth,
+          layout: displayedLayout
+        )
+        : 0
+      let captureVisibleWidth = visibleCapturePaneWidth(
+        totalWidth: geometry.size.width,
+        captureWidth: captureWidth
+      )
+      let networkVisibleWidth = visibleNetworkPaneWidth(
+        totalWidth: geometry.size.width,
+        networkWidth: networkWidth
+      )
+      let dividerX = workspaceDividerX(
+        totalWidth: geometry.size.width,
+        captureWidth: captureWidth,
+        networkWidth: networkWidth,
+        layout: displayedLayout
+      )
+      let panePresentation = WorkspacePanePresentation(
+        layout: displayedLayout,
+        captureWidth: captureWidth,
+        networkWidth: networkWidth,
+        captureVisibleWidth: captureVisibleWidth,
+        networkVisibleWidth: networkVisibleWidth,
+        transitioningPane: layoutTransition?.pane
+      )
 
       VStack(spacing: 0) {
         CaptureToolbar(
           controller: controller,
           workspace: workspace,
-          presentedLayout: presentedLayout,
+          presentedLayout: displayedLayout,
           networkModel: networkSession.model,
           capturePaneWidth: captureWidth,
+          networkPaneWidth: networkWidth,
+          capturePaneVisibleWidth: captureVisibleWidth,
+          networkPaneVisibleWidth: networkVisibleWidth,
+          transitioningPane: layoutTransition?.pane,
           titlebarHeight: titlebarHeight
         )
 
         captureWorkspace(
           controller: controller,
-          captureWidth: captureWidth
+          presentation: panePresentation
         )
       }
       .background(networkSidebarBackground, ignoresSafeAreaEdges: [])
       .overlayPreferenceValue(CaptureWorkspaceMetricsKey.self) { metrics in
-        if presentedLayout == .both,
+        if displayedLayout == .both,
+           layoutTransition == nil,
            let metrics {
           workspaceSplitter(
             totalWidth: geometry.size.width,
@@ -168,8 +221,8 @@ struct CaptureWindow: View {
       }
       .background(
         WindowChromeController(
-          title: navigationTitle,
-          dividerX: presentedLayout == .both ? captureWidth : nil
+          title: navigationTitle(for: displayedLayout),
+          dividerX: dividerX
         )
         .frame(width: 0, height: 0)
       )
@@ -177,40 +230,121 @@ struct CaptureWindow: View {
     }
   }
 
-  private func capturePaneWidth(totalWidth: CGFloat, aspectRatio: CGFloat?) -> CGFloat {
-    presentedLayout.showsNetwork
+  private func capturePaneWidth(
+    totalWidth: CGFloat,
+    layout: WorkspaceLayout,
+    aspectRatio: CGFloat?
+  ) -> CGFloat {
+    if let layoutTransition {
+      return layoutTransition.capturePaneWidth(windowWidth: totalWidth)
+    }
+    return layout.showsNetwork
       ? constrainedCaptureWidth(totalWidth: totalWidth, aspectRatio: aspectRatio)
       : totalWidth
   }
 
+  private func networkPaneWidth(
+    totalWidth: CGFloat,
+    captureWidth: CGFloat,
+    layout: WorkspaceLayout
+  ) -> CGFloat {
+    if let layoutTransition {
+      return layoutTransition.networkPaneWidth(windowWidth: totalWidth)
+    }
+    return layout.showsCapture
+      ? max(totalWidth - captureWidth - 1, 0)
+      : totalWidth
+  }
+
+  private func workspaceDividerX(
+    totalWidth: CGFloat,
+    captureWidth: CGFloat,
+    networkWidth: CGFloat,
+    layout: WorkspaceLayout
+  ) -> CGFloat? {
+    guard layout == .both else { return nil }
+    if layoutTransition?.pane == .capture {
+      return totalWidth - networkWidth
+    }
+    return captureWidth
+  }
+
+  private func visibleCapturePaneWidth(
+    totalWidth: CGFloat,
+    captureWidth: CGFloat
+  ) -> CGFloat {
+    guard let layoutTransition, layoutTransition.pane == .capture else {
+      return captureWidth
+    }
+    let progress = layoutTransition.progress(windowWidth: totalWidth)
+    let visibility = layoutTransition.toLayout.showsCapture ? progress : 1 - progress
+    return captureWidth * visibility
+  }
+
+  private func visibleNetworkPaneWidth(
+    totalWidth: CGFloat,
+    networkWidth: CGFloat
+  ) -> CGFloat {
+    guard let layoutTransition, layoutTransition.pane == .network else {
+      return networkWidth
+    }
+    let progress = layoutTransition.progress(windowWidth: totalWidth)
+    let visibility = layoutTransition.toLayout.showsNetwork ? progress : 1 - progress
+    return networkWidth * visibility
+  }
+
   private func captureWorkspace(
     controller: CaptureWindowController,
-    captureWidth: CGFloat
+    presentation: WorkspacePanePresentation
   ) -> some View {
     GeometryReader { geometry in
       let previewHeight = geometry.size.height
 
       ZStack(alignment: .topLeading) {
-        HStack(alignment: .top, spacing: 0) {
-          if presentedLayout.showsCapture {
-            capturePane(controller: controller)
-              .frame(width: presentedLayout.showsNetwork ? captureWidth : geometry.size.width)
-              .frame(height: previewHeight)
-          }
+        if presentation.layout.showsCapture {
+          capturePane(controller: controller, layout: presentation.layout)
+            .frame(width: presentation.captureWidth, height: previewHeight)
+            .frame(
+              width: presentation.captureVisibleWidth,
+              height: previewHeight,
+              alignment: .leading
+            )
+            .clipped()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .zIndex(presentation.transitioningPane == .network ? 1 : 0)
+        }
 
-          if presentedLayout.showsNetwork {
+        if presentation.layout.showsNetwork {
+          Group {
             if let networkModel = networkSession.model {
               NetworkInspectorWebView(model: networkModel)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
             } else {
               ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
             }
           }
+          .frame(width: presentation.networkWidth, height: previewHeight)
+          .background(Color(nsColor: .windowBackgroundColor))
+          .frame(
+            width: presentation.networkVisibleWidth,
+            height: previewHeight,
+            alignment: .trailing
+          )
+          .clipped()
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+          .zIndex(presentation.transitioningPane == .capture ? 1 : 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+        if presentation.layout == .both, presentation.transitioningPane != .capture {
+          LinearGradient(
+            colors: [.black.opacity(0.04), .clear],
+            startPoint: .leading,
+            endPoint: .trailing
+          )
+          .frame(width: 8, height: previewHeight)
+          .offset(x: presentation.captureWidth)
+          .zIndex(2)
+          .allowsHitTesting(false)
+        }
       }
       .preference(
         key: CaptureWorkspaceMetricsKey.self,
@@ -219,14 +353,20 @@ struct CaptureWindow: View {
     }
   }
 
-  private func capturePane(controller: CaptureWindowController) -> some View {
-    captureSurface(controller: controller)
+  private func capturePane(
+    controller: CaptureWindowController,
+    layout: WorkspaceLayout
+  ) -> some View {
+    captureSurface(controller: controller, layout: layout)
       .background(captureAreaBackground)
   }
 
-  private func captureSurface(controller: CaptureWindowController) -> some View {
+  private func captureSurface(
+    controller: CaptureWindowController,
+    layout: WorkspaceLayout
+  ) -> some View {
     Group {
-      if presentedLayout.showsNetwork, let displayInfo = controller.displayInfoForSizing {
+      if layout.showsNetwork, let displayInfo = controller.displayInfoForSizing {
         ZStack {
           captureLetterboxBackground
           captureContent(controller: controller)
