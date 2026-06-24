@@ -199,15 +199,15 @@ struct CaptureWindow: View {
           }
 
           if presentedLayout.showsNetwork {
-            if let networkModel = networkSession.model {
-              NetworkInspectorWebView(model: networkModel)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
-            } else {
-              ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
+            Group {
+              if let networkModel = networkSession.model {
+                NetworkInspectorWebView(model: networkModel)
+              } else {
+                ProgressView()
+              }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

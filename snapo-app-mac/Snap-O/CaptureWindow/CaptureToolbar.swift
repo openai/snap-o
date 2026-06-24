@@ -7,6 +7,28 @@ private enum CaptureToolbarStyle {
   static let singleControlSize: CGFloat = 36
 }
 
+private final class CaptureToolbarBackgroundView: NSVisualEffectView {
+  override init(frame frameRect: NSRect) {
+    super.init(frame: frameRect)
+    material = .headerView
+    blendingMode = .behindWindow
+    state = .followsWindowActiveState
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    nil
+  }
+}
+
+private struct CaptureToolbarBackground: NSViewRepresentable {
+  func makeNSView(context: Context) -> CaptureToolbarBackgroundView {
+    CaptureToolbarBackgroundView(frame: .zero)
+  }
+
+  func updateNSView(_ nsView: CaptureToolbarBackgroundView, context: Context) {}
+}
+
 struct CaptureToolbar: View {
   static let height: CGFloat = 52
 
@@ -17,8 +39,6 @@ struct CaptureToolbar: View {
   let capturePaneWidth: CGFloat
   let titlebarHeight: CGFloat
 
-  @Environment(\.colorScheme)
-  private var colorScheme
   @Environment(AppSettings.self)
   private var settings
   @State private var isNetworkSearchPresented = false
@@ -89,12 +109,6 @@ struct CaptureToolbar: View {
       }
     }
     .frame(height: titlebarHeight + Self.height)
-    .overlay(alignment: .bottom) {
-      Rectangle()
-        .fill(Color(nsColor: .separatorColor))
-        .frame(height: 0.5)
-        .allowsHitTesting(false)
-    }
   }
 
   private var controlsCenterY: CGFloat {
@@ -102,29 +116,29 @@ struct CaptureToolbar: View {
   }
 
   private var chromeBackground: some View {
-    GeometryReader { geometry in
+    ZStack {
       HStack(spacing: 0) {
         if presentedLayout.showsCapture {
-          captureChromeBackground
-            .frame(width: presentedLayout.showsNetwork ? capturePaneWidth : geometry.size.width)
+          CaptureToolbarBackground()
+            .frame(width: presentedLayout.showsNetwork ? capturePaneWidth : nil)
+            .frame(maxWidth: presentedLayout.showsNetwork ? nil : .infinity)
         }
 
         if presentedLayout.showsNetwork {
-          Color(nsColor: .windowBackgroundColor)
+          Color(nsColor: .textBackgroundColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-      .contentShape(Rectangle())
-      .gesture(WindowDragGesture())
-    }
-  }
+        .allowsHitTesting(false)
 
-  private var captureChromeBackground: Color {
-    if colorScheme == .dark {
-      Color(red: 42.0 / 255.0, green: 42.0 / 255.0, blue: 42.0 / 255.0)
-    } else {
-      Color(red: 244.0 / 255.0, green: 244.0 / 255.0, blue: 244.0 / 255.0)
+      Color.clear
+        .contentShape(Rectangle())
+        .gesture(WindowDragGesture())
+    }
+    .frame(height: titlebarHeight + Self.height)
+    .overlay(alignment: .bottom) {
+      Divider()
     }
   }
 

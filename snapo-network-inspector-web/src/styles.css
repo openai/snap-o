@@ -586,7 +586,6 @@ body.split-pane-resizing {
   min-height: 0;
   overflow: hidden auto;
   background: var(--surface-bright);
-  scrollbar-gutter: stable;
 }
 
 .detail-scroll {
