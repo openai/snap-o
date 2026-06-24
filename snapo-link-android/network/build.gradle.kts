@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlinx.serialization)
 }
 
+description = "Shared Android components used by Snap-O network inspection integrations."
+
 android {
     namespace = "com.openai.snapo.network"
 }
