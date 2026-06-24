@@ -26,6 +26,10 @@ gradlePlugin {
             id = "snapo.maven.publish"
             implementationClass = "com.openai.snapo.buildlogic.publishing.MavenPublishConventionPlugin"
         }
+        register("snapoMavenReleaseValidation") {
+            id = "snapo.maven.release-validation"
+            implementationClass = "com.openai.snapo.buildlogic.publishing.MavenCentralReleaseValidationPlugin"
+        }
         register("snapoDetekt") {
             id = "snapo.detekt"
             implementationClass = "com.openai.snapo.buildlogic.quality.DetektConventionPlugin"
