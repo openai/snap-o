@@ -1,5 +1,6 @@
 plugins {
     id("snapo.android.library")
+    id("snapo.maven.publish")
     id("snapo.detekt")
 }
 
@@ -8,7 +9,7 @@ android {
 }
 
 dependencies {
-    implementation(platform(libs.okhttp3.bom))
-    implementation(libs.okhttp3.okhttp)
-    implementation(libs.kotlinx.coroutines.core)
+    api(platform(libs.okhttp3.bom))
+    api(libs.okhttp3.okhttp)
+    api(libs.kotlinx.coroutines.core)
 }

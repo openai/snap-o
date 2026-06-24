@@ -1,5 +1,6 @@
 plugins {
     id("snapo.android.library")
+    id("snapo.maven.publish")
     id("snapo.detekt")
 }
 
@@ -8,5 +9,5 @@ android {
 }
 
 dependencies {
-    implementation(libs.kotlinx.coroutines.core)
+    api(libs.kotlinx.coroutines.core)
 }
