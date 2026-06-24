@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 @Serializable
-data class CdpMessage(
+internal data class CdpMessage(
     val id: Int? = null,
     val method: String? = null,
     val params: JsonElement? = null,
@@ -13,13 +13,13 @@ data class CdpMessage(
 )
 
 @Serializable
-data class CdpError(
+internal data class CdpError(
     val code: Int,
     val message: String,
     val data: JsonElement? = null,
 )
 
-object CdpNetworkMethod {
+internal object CdpNetworkMethod {
     const val RequestWillBeSent: String = "Network.requestWillBeSent"
     const val ResponseReceived: String = "Network.responseReceived"
     const val LoadingFinished: String = "Network.loadingFinished"
@@ -38,7 +38,7 @@ object CdpNetworkMethod {
 }
 
 @Serializable
-data class CdpRequestWillBeSentParams(
+internal data class CdpRequestWillBeSentParams(
     val requestId: String,
     val wallTime: Double? = null,
     val timestamp: Double? = null,
@@ -46,7 +46,7 @@ data class CdpRequestWillBeSentParams(
 )
 
 @Serializable
-data class CdpRequestData(
+internal data class CdpRequestData(
     val url: String,
     val method: String,
     val headers: Map<String, String> = emptyMap(),
@@ -56,7 +56,7 @@ data class CdpRequestData(
 )
 
 @Serializable
-data class CdpResponseReceivedParams(
+internal data class CdpResponseReceivedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val type: String? = null,
@@ -64,7 +64,7 @@ data class CdpResponseReceivedParams(
 )
 
 @Serializable
-data class CdpResponseData(
+internal data class CdpResponseData(
     val url: String? = null,
     val status: Int,
     val headers: Map<String, String> = emptyMap(),
@@ -74,14 +74,14 @@ data class CdpResponseData(
 )
 
 @Serializable
-data class CdpLoadingFinishedParams(
+internal data class CdpLoadingFinishedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val encodedDataLength: Double? = null,
 )
 
 @Serializable
-data class CdpLoadingFailedParams(
+internal data class CdpLoadingFailedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val type: String? = null,
@@ -89,7 +89,7 @@ data class CdpLoadingFailedParams(
 )
 
 @Serializable
-data class CdpEventSourceMessageReceivedParams(
+internal data class CdpEventSourceMessageReceivedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val eventName: String? = null,
@@ -98,7 +98,7 @@ data class CdpEventSourceMessageReceivedParams(
 )
 
 @Serializable
-data class CdpWebSocketCreatedParams(
+internal data class CdpWebSocketCreatedParams(
     val requestId: String,
     val url: String,
     val headers: Map<String, String> = emptyMap(),
@@ -107,34 +107,34 @@ data class CdpWebSocketCreatedParams(
 )
 
 @Serializable
-data class CdpWebSocketHandshakeResponseReceivedParams(
+internal data class CdpWebSocketHandshakeResponseReceivedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val response: CdpWebSocketHandshakeResponse,
 )
 
 @Serializable
-data class CdpWebSocketHandshakeResponse(
+internal data class CdpWebSocketHandshakeResponse(
     val status: Int,
     val headers: Map<String, String> = emptyMap(),
 )
 
 @Serializable
-data class CdpWebSocketFrameSentParams(
+internal data class CdpWebSocketFrameSentParams(
     val requestId: String,
     val timestamp: Double? = null,
     val response: CdpWebSocketFrame,
 )
 
 @Serializable
-data class CdpWebSocketFrameReceivedParams(
+internal data class CdpWebSocketFrameReceivedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val response: CdpWebSocketFrame,
 )
 
 @Serializable
-data class CdpWebSocketFrame(
+internal data class CdpWebSocketFrame(
     val opcode: Int,
     val mask: Boolean,
     val payloadData: String,
@@ -147,7 +147,7 @@ data class CdpWebSocketFrame(
 )
 
 @Serializable
-data class CdpWebSocketClosedParams(
+internal data class CdpWebSocketClosedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val code: Int? = null,
@@ -155,29 +155,29 @@ data class CdpWebSocketClosedParams(
 )
 
 @Serializable
-data class CdpWebSocketFrameErrorParams(
+internal data class CdpWebSocketFrameErrorParams(
     val requestId: String,
     val timestamp: Double? = null,
     val errorMessage: String? = null,
 )
 
 @Serializable
-data class CdpGetRequestPostDataParams(
+internal data class CdpGetRequestPostDataParams(
     val requestId: String,
 )
 
 @Serializable
-data class CdpGetRequestPostDataResult(
+internal data class CdpGetRequestPostDataResult(
     val postData: String,
 )
 
 @Serializable
-data class CdpGetResponseBodyParams(
+internal data class CdpGetResponseBodyParams(
     val requestId: String,
 )
 
 @Serializable
-data class CdpGetResponseBodyResult(
+internal data class CdpGetResponseBodyResult(
     val body: String,
     val base64Encoded: Boolean,
 )

@@ -1,5 +1,6 @@
 plugins {
     id("snapo.android.library")
+    id("snapo.maven.publish")
     id("snapo.detekt")
     alias(libs.plugins.kotlinx.serialization)
 }
