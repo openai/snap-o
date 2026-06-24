@@ -211,6 +211,17 @@ struct CaptureWindow: View {
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+        if presentedLayout == .both {
+          LinearGradient(
+            colors: [.black.opacity(0.04), .clear],
+            startPoint: .leading,
+            endPoint: .trailing
+          )
+          .frame(width: 8, height: previewHeight)
+          .offset(x: captureWidth)
+          .allowsHitTesting(false)
+        }
       }
       .preference(
         key: CaptureWorkspaceMetricsKey.self,
