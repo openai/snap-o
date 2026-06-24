@@ -70,6 +70,7 @@ struct CaptureToolbar: View {
           .zIndex(paneZIndex(.network))
       }
     }
+    .simultaneousGesture(WindowDragGesture())
     .frame(height: toolbarHeight)
     .overlay(alignment: .bottom) {
       Divider()
