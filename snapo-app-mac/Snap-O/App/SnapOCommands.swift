@@ -145,10 +145,13 @@ struct SnapOCommands: Commands {
         workspaceController?.toggleNetwork()
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
+      .disabled(workspaceController?.canToggleNetwork != true)
 
       Button(workspaceController?.showsCapture == true ? "Hide Capture" : "Show Capture") {
         workspaceController?.toggleCapture()
       }
+      .keyboardShortcut("c", modifiers: [.command, .option])
+      .disabled(workspaceController?.canToggleCapture != true)
 
       Button("Logcat Viewer") {
         openWindow(id: LogcatWindowID.main)

@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationWillFinishLaunching(_ notification: Notification) {
+    NSWindow.allowsAutomaticWindowTabbing = false
     UserDefaults.standard.register(defaults: [
       "NSInitialToolTipDelay": 500
     ])
