@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SnapODeviceClient
 
 actor ADBService {
   private struct PromptState {
@@ -53,8 +54,8 @@ actor ADBService {
     }
   }
 
-  func exec() -> ADBExec {
-    ADBExec(
+  func exec() -> ADBClient {
+    ADBClient(
       pathResolver: { [weak self] in
         guard let self else { throw ADBError.adbNotFound }
         return try await pathForServerRestart()

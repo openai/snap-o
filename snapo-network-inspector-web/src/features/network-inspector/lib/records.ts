@@ -178,7 +178,9 @@ export function sidebarPlaceholderText(input: {
   serverScopedItems: number;
   filteredItems: number;
   selectedServer: SnapOServer | null;
+  streamIsRetrying?: boolean;
 }): string | null {
+  if (input.streamIsRetrying === true && input.serverScopedItems === 0) return "Reconnecting to network stream...";
   if (input.totalItems === 0) return "No activity yet";
   if (input.serverScopedItems === 0) {
     if (input.selectedServer == null || !input.selectedServer.hasAppInfo) return "Waiting for connection...";
@@ -203,12 +205,20 @@ export function resolveDetailEmptyState(input: {
   servers: SnapOServer[];
   selectedServer: SnapOServer | null;
   serverScopedItems: number;
+  streamIsRetrying?: boolean;
 }): { title: string; body: string; showDocsLink: boolean } {
   if (input.servers.length === 0) {
     return {
       title: "No compatible apps detected",
       body: "Apps must include the `com.openai.snapo` dependencies to appear here.",
       showDocsLink: true
+    };
+  }
+  if (input.streamIsRetrying === true && input.serverScopedItems === 0) {
+    return {
+      title: "Reconnecting...",
+      body: "Snap-O will resume capturing requests when the network stream is available.",
+      showDocsLink: false
     };
   }
   if (input.serverScopedItems === 0) {

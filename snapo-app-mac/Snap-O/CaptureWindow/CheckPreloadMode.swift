@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SnapODeviceClient
 
 @Observable
 @MainActor
@@ -10,14 +11,17 @@ final class CheckPreloadMode {
   }
 
   @ObservationIgnored private var task: Task<Void, Never>?
-  private let captureService: CaptureService
+  private let screenshotService: ScreenshotService
+  private let devices: [Device]
   private let completion: @MainActor (Outcome) -> Void
 
   init(
-    captureService: CaptureService,
+    screenshotService: ScreenshotService,
+    devices: [Device],
     completion: @escaping @MainActor (Outcome) -> Void
   ) {
-    self.captureService = captureService
+    self.screenshotService = screenshotService
+    self.devices = devices
     self.completion = completion
   }
 
@@ -25,8 +29,10 @@ final class CheckPreloadMode {
     task = Task { [weak self] in
       guard let self else { return }
       if let media = await loadPreloadedScreenshots() {
+        guard !Task.isCancelled else { return }
         completion(.found(media))
       } else {
+        guard !Task.isCancelled else { return }
         completion(.missing)
       }
     }
@@ -34,13 +40,15 @@ final class CheckPreloadMode {
 
   func cancel() {
     task?.cancel()
+    task = nil
   }
 
   private func loadPreloadedScreenshots() async -> [CaptureMedia]? {
+    await screenshotService.preload(for: devices)
     Perf.step(.appFirstSnapshot, "Starting initial preview load")
     Perf.step(.appFirstSnapshot, "consume preloaded screenshot")
 
-    let preloaded = await captureService.consumeAllPreloadedScreenshots()
+    let preloaded = await screenshotService.consumePreloaded()
     guard !preloaded.isEmpty else {
       Perf.step(.appFirstSnapshot, "Preload missing; refreshing preview")
       return nil

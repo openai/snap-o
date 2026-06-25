@@ -1,4 +1,5 @@
 import Foundation
+import SnapODeviceClient
 
 extension Device {
   /// Primary display name prefers vendor model when available.

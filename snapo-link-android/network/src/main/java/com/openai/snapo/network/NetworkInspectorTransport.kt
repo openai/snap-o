@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -25,10 +26,15 @@ import java.io.OutputStreamWriter
 import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 
+internal data class NetworkReplaySnapshot(
+    val messages: List<CdpMessage>,
+    val watermark: Long,
+)
+
 internal class NetworkInspectorTransport(
     private val app: Application,
     private val config: NetworkInspectorConfig,
-    private val snapshotProvider: suspend () -> List<CdpMessage>,
+    private val snapshotProvider: suspend () -> NetworkReplaySnapshot,
     private val commandHandler: suspend (CdpMessage) -> CdpMessage?,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val appIconProvider: AppIconProvider = AppIconProvider(app),
@@ -160,7 +166,7 @@ internal class NetworkInspectorTransport(
 private class NetworkInspectorSession(
     private val socket: LocalSocket,
     private val appInfoProvider: () -> CdpMessage,
-    private val snapshotProvider: suspend () -> List<CdpMessage>,
+    private val snapshotProvider: suspend () -> NetworkReplaySnapshot,
     private val commandHandler: suspend (CdpMessage) -> CdpMessage?,
     private val scope: CoroutineScope,
 ) {
@@ -195,9 +201,7 @@ private class NetworkInspectorSession(
 
     fun queueLive(message: CdpMessage): Boolean {
         if (isClosed) return false
-        val result = operations.trySend(SessionOperation.Live(message))
-        // Live events are best-effort under pressure; replay and control messages backpressure instead.
-        return !result.isClosed
+        return operations.trySendSuccessfully(SessionOperation.Live(message))
     }
 
     fun close() {
@@ -229,18 +233,26 @@ private class NetworkInspectorSession(
         if (processorJob != null || isClosed) return
         processorJob = scope.launch {
             var streamStarted = false
+            var replayWatermark: Long? = null
             for (operation in operations) {
                 when (operation) {
                     SessionOperation.StartStream -> {
                         if (streamStarted) continue
-                        replaySnapshot()
+                        replayWatermark = replaySnapshot()
                         if (isClosed) return@launch
                         streamStarted = true
                     }
 
-                    SessionOperation.StopStream -> streamStarted = false
+                    SessionOperation.StopStream -> {
+                        streamStarted = false
+                        replayWatermark = null
+                    }
+
                     is SessionOperation.Live -> {
-                        if (streamStarted) {
+                        val watermark = replayWatermark
+                        if (streamStarted &&
+                            (watermark == null || shouldDeliverAfterReplay(operation.message, watermark))
+                        ) {
                             sendWithBackpressure(operation.message)
                         }
                     }
@@ -275,14 +287,20 @@ private class NetworkInspectorSession(
         }
     }
 
-    private suspend fun replaySnapshot() {
-        for (message in snapshotProvider()) {
-            sendWithBackpressure(message)
+    private suspend fun replaySnapshot(): Long {
+        val snapshot = snapshotProvider()
+        for (message in snapshot.messages) {
+            if (!sendWithBackpressure(message)) return snapshot.watermark
         }
         val replayComplete = CdpMessage(
             method = SnapOMethod.ReplayComplete,
+            params = ProtocolJson.encodeToJsonElement(
+                SnapOReplayCompleteParams.serializer(),
+                SnapOReplayCompleteParams(watermark = snapshot.watermark),
+            ),
         )
         sendWithBackpressure(replayComplete)
+        return snapshot.watermark
     }
 
     private suspend fun queueControl(operation: SessionOperation) {
@@ -290,9 +308,16 @@ private class NetworkInspectorSession(
         runCatching { operations.send(operation) }
     }
 
-    private suspend fun sendWithBackpressure(message: CdpMessage) {
-        if (isClosed) return
-        runCatching { outgoing.send(message) }
+    private suspend fun sendWithBackpressure(message: CdpMessage): Boolean {
+        if (isClosed) return false
+        return runCatching { outgoing.send(message) }
+            .fold(
+                onSuccess = { true },
+                onFailure = {
+                    close()
+                    false
+                },
+            )
     }
 
     private fun performClientHandshake(): Boolean {
@@ -338,3 +363,9 @@ private const val SessionQueueCapacity = 512
 private const val ClientHelloToken = "HelloSnapO"
 private const val ClientHelloTimeoutMs = 1_000
 private const val ClientHelloMaxBytes = 4 * 1024
+
+internal fun <T> SendChannel<T>.trySendSuccessfully(element: T): Boolean =
+    trySend(element).isSuccess
+
+internal fun shouldDeliverAfterReplay(message: CdpMessage, watermark: Long): Boolean =
+    message.snapoSequence?.let { sequence -> sequence > watermark } ?: true

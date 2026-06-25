@@ -30,6 +30,7 @@ class NetworkInspectorServer internal constructor(
     private val config: NetworkInspectorConfig = NetworkInspectorConfig(),
 ) {
     private val bufferLock = Mutex()
+    private val publishLock = Mutex()
     private val eventBuffer = EventBuffer(config)
     private val transport = NetworkInspectorTransport(
         app = app,
@@ -54,17 +55,21 @@ class NetworkInspectorServer internal constructor(
     }
 
     suspend fun publish(record: NetworkEventRecord) {
-        val wireMessage = bufferLock.withLock {
-            eventBuffer.append(record)
-            val snapshot = eventBuffer.snapshot()
-            val wireRecord = record.withoutInlineBodyPayloads()
-            val requestUrl = when (wireRecord) {
-                is ResponseReceived -> latestRequestUrl(snapshot, wireRecord.id)
-                else -> null
+        publishLock.withLock {
+            val wireMessage = bufferLock.withLock {
+                val snapoSequence = eventBuffer.append(record)
+                val snapshot = eventBuffer.snapshot()
+                val wireRecord = record.withoutInlineBodyPayloads()
+                val requestUrl = when (wireRecord) {
+                    is ResponseReceived -> latestRequestUrl(snapshot, wireRecord.id)
+                    else -> null
+                }
+                wireRecord.toCdpMessage(requestUrl = requestUrl).copy(
+                    snapoSequence = snapoSequence,
+                )
             }
-            wireRecord.toCdpMessage(requestUrl = requestUrl)
+            transport.broadcast(wireMessage)
         }
-        transport.broadcast(wireMessage)
     }
 
     suspend fun updateLatestResponseBody(
@@ -87,20 +92,29 @@ class NetworkInspectorServer internal constructor(
         }
     }
 
-    private suspend fun snapshotMessages(): List<CdpMessage> {
-        val snapshot = bufferLock.withLock { eventBuffer.snapshot() }
+    private suspend fun snapshotMessages(): NetworkReplaySnapshot {
+        val snapshot = bufferLock.withLock { eventBuffer.sequencedSnapshot() }
         val requestUrls = HashMap<String, String>()
-        return snapshot.map { record ->
-            if (record is RequestWillBeSent) {
-                requestUrls[record.id] = record.url
+        val messages = snapshot.records
+            .sortedBy(SequencedNetworkEvent::snapoSequence)
+            .map { sequencedRecord ->
+                val record = sequencedRecord.record
+                if (record is RequestWillBeSent) {
+                    requestUrls[record.id] = record.url
+                }
+                val wireRecord = record.withoutInlineBodyPayloads()
+                val requestUrl = when (wireRecord) {
+                    is ResponseReceived -> requestUrls[wireRecord.id]
+                    else -> null
+                }
+                wireRecord.toCdpMessage(requestUrl = requestUrl).copy(
+                    snapoSequence = sequencedRecord.snapoSequence,
+                )
             }
-            val wireRecord = record.withoutInlineBodyPayloads()
-            val requestUrl = when (wireRecord) {
-                is ResponseReceived -> requestUrls[wireRecord.id]
-                else -> null
-            }
-            wireRecord.toCdpMessage(requestUrl = requestUrl)
-        }
+        return NetworkReplaySnapshot(
+            messages = messages,
+            watermark = snapshot.watermark,
+        )
     }
 
     private suspend fun handleCommand(message: CdpMessage): CdpMessage? {

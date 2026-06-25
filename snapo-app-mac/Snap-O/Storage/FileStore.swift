@@ -2,15 +2,15 @@ import Foundation
 
 private let log = SnapOLog.storage
 
-actor FileStore {
-  private nonisolated let baseDir: URL
+final class FileStore: Sendable {
+  private let baseDir: URL
 
   init() {
     baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("Snap-O", isDirectory: true)
     purgeExistingFiles()
   }
 
-  nonisolated func purgeExistingFiles() {
+  func purgeExistingFiles() {
     do {
       if FileManager.default.fileExists(atPath: baseDir.path) {
         try FileManager.default.removeItem(at: baseDir)
@@ -20,30 +20,34 @@ actor FileStore {
     }
   }
 
-  nonisolated func makePreviewDestination(deviceID: String, kind: MediaSaveKind) -> URL {
-    makeDestination(prefix: deviceID, date: Date(), kind: kind)
+  func makePreviewDestination(
+    deviceID: String,
+    capturedAt: Date,
+    kind: MediaSaveKind
+  ) -> URL {
+    makeDestination(prefix: deviceID, date: capturedAt, kind: kind)
   }
 
-  nonisolated func makeDragDestination(capturedAt: Date, kind: MediaSaveKind) -> URL {
+  func makeDragDestination(capturedAt: Date, kind: MediaSaveKind) -> URL {
     makeDestination(prefix: "Snap-O", date: capturedAt, kind: kind)
   }
 
-  private nonisolated func makeDestination(prefix: String, date: Date, kind: MediaSaveKind) -> URL {
+  private func makeDestination(prefix: String, date: Date, kind: MediaSaveKind) -> URL {
     try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
 
-    let timestamp = Self.tsFormatter.string(from: date)
+    let timestamp = Self.timestamp(from: date)
     let fileExtension = kind.fileExtension
 
     let safePrefix = Self.sanitizeFilenameComponent(prefix)
     return baseDir.appendingPathComponent("\(safePrefix) \(timestamp).\(fileExtension)")
   }
 
-  private static let tsFormatter: DateFormatter = {
+  private static func timestamp(from date: Date) -> String {
     let formatter = DateFormatter()
     formatter.locale = .init(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-    return formatter
-  }()
+    return formatter.string(from: date)
+  }
 
   // MARK: - Filename sanitization
 

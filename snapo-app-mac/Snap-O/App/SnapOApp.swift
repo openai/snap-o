@@ -5,41 +5,18 @@ struct SnapOApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self)
   var appDelegate
 
-  private let adbService: ADBService
-  private let deviceTracker: DeviceTracker
-  private let fileStore: FileStore
-  private let captureService: CaptureService
+  private let runtime: AppRuntime
   private let settings = AppSettings.shared
   private let updateCoordinator = UpdateCoordinator.shared
 
   init() {
     Perf.start(.appFirstSnapshot, name: "App Start → First Snapshot")
-
-    adbService = ADBService()
-    let deviceTracker = DeviceTracker(adbService: adbService)
-    self.deviceTracker = deviceTracker
-    fileStore = FileStore()
-    let captureService = CaptureService(
-      adb: adbService,
-      fileStore: fileStore,
-      deviceTracker: deviceTracker
-    )
-    self.captureService = captureService
-
-    Task.detached(priority: .userInitiated) {
-      Perf.step(.appFirstSnapshot, "services start")
-      deviceTracker.startTracking()
-
-      Task {
-        Perf.step(.appFirstSnapshot, "start preload task")
-        let stream = deviceTracker.deviceStream()
-        Perf.step(.appFirstSnapshot, "query device stream")
-        for await devices in stream where !devices.isEmpty {
-          await captureService.preloadScreenshots()
-          break
-        }
-      }
+    let runtime = AppRuntime()
+    self.runtime = runtime
+    appDelegate.prepareForTermination = {
+      await runtime.shutdown()
     }
+    runtime.start()
   }
 
   var body: some Scene {
@@ -48,10 +25,10 @@ struct SnapOApp: App {
       for: WorkspaceWindowConfiguration.self,
       content: { configuration in
         CaptureWindow(
-          captureService: captureService,
-          deviceTracker: deviceTracker,
-          fileStore: fileStore,
-          adbService: adbService,
+          captureServices: runtime.captureServices,
+          deviceTracker: runtime.deviceTracker,
+          fileStore: runtime.fileStore,
+          adbService: runtime.adbService,
           initialWorkspace: configuration.wrappedValue.workspace
         )
         .handlesExternalEvents(
@@ -70,13 +47,13 @@ struct SnapOApp: App {
     .commands {
       SnapOCommands(
         settings: settings,
-        adbService: adbService,
+        adbService: runtime.adbService,
         updaterController: updateCoordinator.updaterController
       )
     }
 
     Window("Logcat Viewer", id: LogcatWindowID.main) {
-      LogcatWindowRoot(adbService: adbService, deviceTracker: deviceTracker)
+      LogcatWindowRoot(adbService: runtime.adbService, deviceTracker: runtime.deviceTracker)
     }
     .defaultSize(width: 1000, height: 600)
     .handlesExternalEvents(matching: Set(["logcat"]))

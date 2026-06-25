@@ -66,6 +66,7 @@ export function NetworkInspectorApp(): JSX.Element {
           servers={model.servers}
           selectedServer={model.selectedServer}
           serverScopedItems={model.serverRecordCount}
+          streamIsRetrying={model.streamIsRetrying}
           uiState={model.uiState}
           onOpenDocs={model.openDocs}
         />

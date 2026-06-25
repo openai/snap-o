@@ -29,4 +29,9 @@ data class SnapOAppIcon(
     val base64Data: String,
 )
 
+@Serializable
+internal data class SnapOReplayCompleteParams(
+    val watermark: Long? = null,
+)
+
 internal const val NetworkProtocolVersion: Int = 1

@@ -1,15 +1,6 @@
 import AppKit
-import Combine
 import Observation
 import SwiftUI
-
-private struct CaptureControllerKey: FocusedValueKey {
-  typealias Value = CaptureWindowController
-}
-
-private struct WorkspaceControllerKey: FocusedValueKey {
-  typealias Value = WorkspaceLayoutController
-}
 
 private struct CaptureWorkspaceMetrics: Equatable {
   let previewHeight: CGFloat
@@ -35,18 +26,6 @@ private struct CaptureWorkspaceMetricsKey: PreferenceKey {
   }
 }
 
-extension FocusedValues {
-  var captureController: CaptureWindowController? {
-    get { self[CaptureControllerKey.self] }
-    set { self[CaptureControllerKey.self] = newValue }
-  }
-
-  var workspaceController: WorkspaceLayoutController? {
-    get { self[WorkspaceControllerKey.self] }
-    set { self[WorkspaceControllerKey.self] = newValue }
-  }
-}
-
 struct CaptureWindow: View {
   @Environment(\.colorScheme)
   private var colorScheme
@@ -59,14 +38,14 @@ struct CaptureWindow: View {
   @State private var splitDragOrigin: CGFloat?
 
   init(
-    captureService: CaptureService,
+    captureServices: CaptureServices,
     deviceTracker: DeviceTracker,
     fileStore: FileStore,
     adbService: ADBService,
     initialWorkspace: WorkspaceLayoutSnapshot? = nil
   ) {
     let captureController = CaptureWindowController(
-      captureService: captureService,
+      captureServices: captureServices,
       deviceTracker: deviceTracker,
       fileStore: fileStore,
       adbService: adbService
@@ -74,7 +53,12 @@ struct CaptureWindow: View {
     let workspace = WorkspaceLayoutController(snapshot: initialWorkspace)
     _controller = State(initialValue: captureController)
     _workspace = State(initialValue: workspace)
-    _networkSession = State(initialValue: NetworkInspectorSession(deviceTracker: deviceTracker))
+    _networkSession = State(
+      initialValue: NetworkInspectorSession(
+        adbService: adbService,
+        deviceTracker: deviceTracker
+      )
+    )
     _presentedLayout = State(initialValue: workspace.layout)
     _layoutTransition = State(initialValue: nil)
   }
@@ -93,8 +77,10 @@ struct CaptureWindow: View {
         networkSession.startIfNeeded()
       }
       .onDisappear {
-        controller.tearDown()
-        Task { await networkSession.stop() }
+        Task {
+          await controller.tearDown()
+          await networkSession.stop()
+        }
       }
       .focusedSceneValue(\.captureController, controller)
       .focusedSceneValue(\.workspaceController, workspace)
@@ -511,145 +497,5 @@ struct CaptureWindow: View {
       guard controller.canStartLivePreviewNow else { return }
       await controller.startLivePreview()
     }
-  }
-}
-
-private struct ScreenshotFailureBanner: View {
-  let failures: [CaptureFailure]
-  let successfulCaptureCount: Int
-  let onDismiss: () -> Void
-
-  private var title: String {
-    let total = successfulCaptureCount + failures.count
-    if total == 1 { return "Screenshot failed" }
-    return "\(failures.count) of \(total) screenshots failed"
-  }
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 8) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .font(.system(size: 14))
-        .foregroundStyle(.orange)
-        .padding(.top, 1)
-
-      VStack(alignment: .leading, spacing: 3) {
-        Text(title)
-          .font(.subheadline.weight(.semibold))
-
-        ForEach(failures, id: \.device.id) { failure in
-          Text(failure.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
-
-      Spacer(minLength: 0)
-
-      Button(action: onDismiss) {
-        Image(systemName: "xmark.circle.fill")
-          .font(.system(size: 14))
-          .symbolRenderingMode(.hierarchical)
-          .frame(width: 18, height: 18)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-      .help("Dismiss")
-    }
-    .padding(12)
-    .frame(maxWidth: 460, alignment: .leading)
-    .background(
-      Color(nsColor: .controlBackgroundColor),
-      in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: 8, style: .continuous)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    }
-    .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
-  }
-}
-
-private struct WorkspaceSplitterArea: NSViewRepresentable {
-  let dragChanged: (CGFloat) -> Void
-  let dragEnded: () -> Void
-  let doubleClicked: () -> Void
-
-  func makeNSView(context: Context) -> WorkspaceSplitterNSView {
-    WorkspaceSplitterNSView(
-      dragChanged: dragChanged,
-      dragEnded: dragEnded,
-      doubleClicked: doubleClicked
-    )
-  }
-
-  func updateNSView(_ nsView: WorkspaceSplitterNSView, context: Context) {
-    nsView.dragChanged = dragChanged
-    nsView.dragEnded = dragEnded
-    nsView.doubleClicked = doubleClicked
-    nsView.window?.invalidateCursorRects(for: nsView)
-  }
-}
-
-private final class WorkspaceSplitterNSView: NSView {
-  var dragChanged: (CGFloat) -> Void
-  var dragEnded: () -> Void
-  var doubleClicked: () -> Void
-
-  private var dragOriginX: CGFloat?
-
-  init(
-    dragChanged: @escaping (CGFloat) -> Void,
-    dragEnded: @escaping () -> Void,
-    doubleClicked: @escaping () -> Void
-  ) {
-    self.dragChanged = dragChanged
-    self.dragEnded = dragEnded
-    self.doubleClicked = doubleClicked
-    super.init(frame: .zero)
-  }
-
-  @available(*, unavailable)
-  required init?(coder: NSCoder) {
-    nil
-  }
-
-  override func resetCursorRects() {
-    super.resetCursorRects()
-    addCursorRect(bounds, cursor: .resizeLeftRight)
-  }
-
-  override func viewDidMoveToWindow() {
-    super.viewDidMoveToWindow()
-    window?.invalidateCursorRects(for: self)
-  }
-
-  override var mouseDownCanMoveWindow: Bool {
-    false
-  }
-
-  override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-    true
-  }
-
-  override func mouseDown(with event: NSEvent) {
-    if event.clickCount == 2 {
-      dragOriginX = nil
-      doubleClicked()
-    } else {
-      dragOriginX = event.locationInWindow.x
-    }
-  }
-
-  override func mouseDragged(with event: NSEvent) {
-    guard let dragOriginX else { return }
-    dragChanged(event.locationInWindow.x - dragOriginX)
-  }
-
-  override func mouseUp(with event: NSEvent) {
-    guard dragOriginX != nil else { return }
-    dragOriginX = nil
-    dragEnded()
   }
 }

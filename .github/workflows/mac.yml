@@ -8,6 +8,7 @@ on:
     paths:
       - 'snapo-app-mac/**'
       - 'snapo-network-inspector-web/**'
+      - 'contracts/network/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
@@ -17,6 +18,7 @@ on:
     paths:
       - 'snapo-app-mac/**'
       - 'snapo-network-inspector-web/**'
+      - 'contracts/network/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
 
@@ -47,6 +49,9 @@ jobs:
       - name: Typecheck
         working-directory: snapo-network-inspector-web
         run: npm run typecheck
+      - name: Test
+        working-directory: snapo-network-inspector-web
+        run: npm test
       - name: Build
         working-directory: snapo-network-inspector-web
         run: npm run build
@@ -66,30 +71,14 @@ jobs:
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.1.1'
-      - name: Prefer setup-node in Xcode web UI build phase
+      - name: Expose setup-node to the Xcode web UI build phase
         run: |
           set -euo pipefail
           SNAPO_NODE_BIN_DIR=$(dirname "$(command -v node)")
           echo "SNAPO_NODE_BIN_DIR=${SNAPO_NODE_BIN_DIR}" >> "$GITHUB_ENV"
-
-          PROJECT_FILE="snapo-app-mac/Snap-O.xcodeproj/project.pbxproj"
-          OLD='export PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"'
-          NEW='export PATH=\"${SNAPO_NODE_BIN_DIR}:${PATH}:/opt/homebrew/bin:/usr/local/bin\"'
-
-          if ! grep -Fq "$OLD" "$PROJECT_FILE"; then
-            echo "Expected Xcode helper PATH line not found in ${PROJECT_FILE}" >&2
-            exit 1
-          fi
-
-          ruby -e '
-            path, old, replacement = ARGV
-            text = File.read(path)
-            count = text.scan(old).length
-            abort "Expected exactly one Xcode helper PATH line, found #{count}" unless count == 1
-            File.write(path, text.sub(old, replacement))
-          ' "$PROJECT_FILE" "$OLD" "$NEW"
-
-          grep -Fq "$NEW" "$PROJECT_FILE"
+      - name: Test shared device client
+        working-directory: snapo-app-mac/SnapODeviceClient
+        run: swift test
       - name: Build Snap-O
         working-directory: snapo-app-mac
         run: |

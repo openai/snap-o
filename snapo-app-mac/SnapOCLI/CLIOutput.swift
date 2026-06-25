@@ -1,5 +1,6 @@
 import Compression
 import Foundation
+import SnapODeviceClient
 
 enum CLIOutputMode {
   case human

@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import SnapODeviceClient
 
 actor LogcatService {
   private final class DeviceState: @unchecked Sendable {
@@ -40,10 +41,11 @@ actor LogcatService {
     guard !isStarted else { return }
     isStarted = true
 
-    await updateDevices(deviceTracker.latestDevices)
+    let latestDevices = await deviceTracker.latestDevices
+    await updateDevices(latestDevices)
 
     deviceStreamTask = Task.detached(priority: .utility) { [deviceTracker] in
-      let stream = deviceTracker.deviceStream()
+      let stream = await deviceTracker.deviceStream()
       for await snapshot in stream {
         await self.updateDevices(snapshot)
       }

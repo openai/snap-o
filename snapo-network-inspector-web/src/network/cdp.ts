@@ -37,6 +37,7 @@ export interface RequestRecord {
   responseHeaders: Header[];
   status: RequestStatus;
   startedAt: number;
+  startedAtMonotonic?: number;
   endedAt?: number;
   encodedDataLength?: number;
   requestHasPostData?: boolean | null;
@@ -48,6 +49,7 @@ export interface RequestRecord {
   responseType?: string | null;
   hasReceivedResponse?: boolean;
   streamEvents: StreamEventRecord[];
+  streamEventCount: number;
   streamClosed?: StreamClosedRecord;
   updatedAt: number;
 }
@@ -62,8 +64,10 @@ export interface WebSocketRecord {
   responseHeaders: Header[];
   status: RequestStatus;
   startedAt: number;
+  startedAtMonotonic?: number;
   endedAt?: number;
   messages: WebSocketMessageRecord[];
+  messageCount: number;
   opened?: WebSocketOpenedRecord | null;
   closeRequested?: WebSocketCloseRequestedRecord | null;
   closing?: WebSocketCloseRecord | null;
@@ -136,78 +140,133 @@ export interface InspectorDataState {
   servers: SnapOServer[];
   requests: Map<string, RequestRecord>;
   webSockets: Map<string, WebSocketRecord>;
+  latestSequenceByServer: Map<string, number>;
 }
 
 export interface ServerId {
   deviceId: string;
   socketName: string;
+  instanceId?: string | null;
 }
 
 export type InspectorRecord = RequestRecord | WebSocketRecord;
+
+export const inspectorRetentionLimits = {
+  records: 2_000,
+  streamEventsPerRequest: 1_000,
+  webSocketMessagesPerSocket: 2_000
+} as const;
 
 export function createEmptyInspectorState(): InspectorDataState {
   return {
     servers: [],
     requests: new Map(),
-    webSockets: new Map()
+    webSockets: new Map(),
+    latestSequenceByServer: new Map()
   };
 }
 
-export function reduceCdpMessage(state: InspectorDataState, server: ServerId, message: CdpMessage): InspectorDataState {
+export function reduceCdpMessage(
+  state: InspectorDataState,
+  server: ServerId,
+  message: CdpMessage,
+  receivedAt = Date.now()
+): InspectorDataState {
   if (message.method == null || message.params == null) return state;
-  const now = Date.now();
+  const sequencedState = acceptSequence(state, server, message.snapoSequence);
+  if (sequencedState == null) return state;
+
+  let reduced: InspectorDataState;
   switch (message.method) {
     case "Network.requestWillBeSent":
-      return reduceRequestWillBeSent(state, server, message.params as RequestWillBeSentEvent, now);
+      reduced = reduceRequestWillBeSent(sequencedState, server, message.params as RequestWillBeSentEvent, receivedAt);
+      break;
     case "Network.responseReceived":
-      return reduceResponseReceived(state, server, message.params as ResponseReceivedEvent, now);
+      reduced = reduceResponseReceived(sequencedState, server, message.params as ResponseReceivedEvent, receivedAt);
+      break;
     case "Network.loadingFinished":
-      return reduceLoadingFinished(state, server, message.params as LoadingFinishedEvent, now);
+      reduced = reduceLoadingFinished(sequencedState, server, message.params as LoadingFinishedEvent, receivedAt);
+      break;
     case "Network.loadingFailed":
-      return reduceLoadingFailed(state, server, message.params as LoadingFailedEvent, now);
+      reduced = reduceLoadingFailed(sequencedState, server, message.params as LoadingFailedEvent, receivedAt);
+      break;
     case "Network.eventSourceMessageReceived":
-      return reduceEventSourceMessage(state, server, message.params as EventSourceMessageReceivedEvent, now);
+      reduced = reduceEventSourceMessage(
+        sequencedState,
+        server,
+        message.params as EventSourceMessageReceivedEvent,
+        receivedAt
+      );
+      break;
     case "Network.webSocketCreated":
-      return reduceWebSocketCreated(state, server, message.params as WebSocketCreatedEvent, now);
+      reduced = reduceWebSocketCreated(sequencedState, server, message.params as WebSocketCreatedEvent, receivedAt);
+      break;
     case "Network.webSocketHandshakeResponseReceived":
-      return reduceWebSocketHandshakeResponse(
-        state,
+      reduced = reduceWebSocketHandshakeResponse(
+        sequencedState,
         server,
         message.params as WebSocketHandshakeResponseReceivedEvent,
-        now
+        receivedAt
       );
+      break;
     case "Network.webSocketFrameSent":
-      return appendWebSocketMessage(state, server, message.params as WebSocketFrameEvent, "outgoing", now);
+      reduced = appendWebSocketMessage(
+        sequencedState,
+        server,
+        message.params as WebSocketFrameEvent,
+        "outgoing",
+        receivedAt
+      );
+      break;
     case "Network.webSocketFrameReceived":
-      return appendWebSocketMessage(state, server, message.params as WebSocketFrameEvent, "incoming", now);
+      reduced = appendWebSocketMessage(
+        sequencedState,
+        server,
+        message.params as WebSocketFrameEvent,
+        "incoming",
+        receivedAt
+      );
+      break;
     case "Network.webSocketClosed":
-      return reduceWebSocketClosed(state, server, message.params as WebSocketClosedEvent, now);
+      reduced = reduceWebSocketClosed(sequencedState, server, message.params as WebSocketClosedEvent, receivedAt);
+      break;
     case "Network.webSocketFrameError":
-      return reduceWebSocketFrameError(state, server, message.params as WebSocketFrameErrorEvent, now);
+      reduced = reduceWebSocketFrameError(
+        sequencedState,
+        server,
+        message.params as WebSocketFrameErrorEvent,
+        receivedAt
+      );
+      break;
     default:
       return state;
   }
+
+  return enforceInspectorRetention(reduced);
 }
 
 function reduceRequestWillBeSent(
   state: InspectorDataState,
   server: ServerId,
   params: RequestWillBeSentEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateRequest(state, server, requestId(params), (existing) => {
     const hasPostData = booleanAt(params, "request.hasPostData") ?? false;
     const postDataLength = numberAt(params, "request.postDataLength");
+    const startedAt = wallTimeMs(params) ?? existing?.startedAt ?? receivedAt;
+    const startedAtMonotonic = monotonicTime(params) ?? existing?.startedAtMonotonic;
     return {
-      ...requestDefaults(existing, server, requestId(params), now),
+      ...requestDefaults(existing, server, requestId(params), receivedAt),
       method: params.request?.method ?? existing?.method ?? "?",
       url: params.request?.url ?? existing?.url ?? `Request ${requestId(params)}`,
       requestHeaders: headersFrom(recordFromProtocolHeaders(params.request?.headers)),
       requestHasPostData: hasPostData,
       requestBodySize: postDataLength ?? (hasPostData ? -1 : 0),
       requestBodyEncoding: stringAt(params, "request.postDataEncoding") ?? existing?.requestBodyEncoding,
-      startedAt: wallTimeMs(params) ?? existing?.startedAt ?? now,
-      updatedAt: now
+      startedAt,
+      startedAtMonotonic,
+      updatedAt: startedAt
     };
   });
 }
@@ -216,19 +275,21 @@ function reduceResponseReceived(
   state: InspectorDataState,
   server: ServerId,
   params: ResponseReceivedEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateRequest(state, server, requestId(params), (existing) => {
+    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     const status = params.response?.status;
     return {
-      ...requestDefaults(existing, server, requestId(params), now),
+      ...base,
       responseHeaders: headersFrom(recordFromProtocolHeaders(params.response?.headers)),
       status: status == null ? (existing?.status ?? { kind: "pending" }) : { kind: "success", code: status },
       endedAt: existing?.endedAt,
       encodedDataLength: params.response?.encodedDataLength ?? existing?.encodedDataLength,
       responseType: stringAt(params, "type") ?? existing?.responseType,
       hasReceivedResponse: true,
-      updatedAt: now
+      updatedAt: eventAt
     };
   });
 }
@@ -237,26 +298,27 @@ function reduceLoadingFinished(
   state: InspectorDataState,
   server: ServerId,
   params: LoadingFinishedEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateRequest(state, server, requestId(params), (existing) => {
-    const base = requestDefaults(existing, server, requestId(params), now);
+    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     const encodedDataLength = params.encodedDataLength ?? existing?.encodedDataLength;
     const status = base.status.kind === "success" ? base.status : { kind: "success" as const, code: 200 };
     return {
       ...base,
       status,
-      endedAt: now,
+      endedAt: eventAt,
       encodedDataLength,
       streamClosed: isLikelyStreamingRequest(base)
         ? {
-            timestamp: now,
+            timestamp: eventAt,
             reason: "completed",
-            totalEvents: base.streamEvents.length,
+            totalEvents: base.streamEventCount,
             totalBytes: encodedDataLength
           }
         : base.streamClosed,
-      updatedAt: now
+      updatedAt: eventAt
     };
   });
 }
@@ -265,10 +327,11 @@ function reduceLoadingFailed(
   state: InspectorDataState,
   server: ServerId,
   params: LoadingFailedEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateRequest(state, server, requestId(params), (existing) => {
-    const base = requestDefaults(existing, server, requestId(params), now);
+    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     const message = params.errorText ?? stringAt(params, "type");
     const isStreamFailure = isLikelyStreamingRequest(base) || stringAt(params, "type")?.toLowerCase() === "eventsource";
     return {
@@ -277,17 +340,17 @@ function reduceLoadingFailed(
         kind: "failure",
         message
       },
-      endedAt: now,
+      endedAt: eventAt,
       streamClosed: isStreamFailure
         ? {
-            timestamp: now,
+            timestamp: eventAt,
             reason: "error",
             message,
-            totalEvents: base.streamEvents.length,
+            totalEvents: base.streamEventCount,
             totalBytes: 0
           }
         : base.streamClosed,
-      updatedAt: now
+      updatedAt: eventAt
     };
   });
 }
@@ -296,17 +359,18 @@ function reduceEventSourceMessage(
   state: InspectorDataState,
   server: ServerId,
   params: EventSourceMessageReceivedEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateRequest(state, server, requestId(params), (existing) => {
-    const base = requestDefaults(existing, server, requestId(params), now);
+    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     const raw = stringAt(params, "data") ?? "";
     const parsed = parseSseRaw(raw);
     const eventName = parsed.eventName ?? (parsed.sawSseField ? null : params.eventName);
     const data = parsed.data ?? (parsed.sawSseField ? null : params.data);
     const nextEvent: StreamEventRecord = {
-      sequence: numericEventSequence(params.eventId) ?? base.streamEvents.length + 1,
-      timestamp: now,
+      sequence: numericEventSequence(params.eventId) ?? base.streamEventCount + 1,
+      timestamp: eventAt,
       eventName,
       eventId: params.eventId,
       lastEventId: parsed.lastEventId,
@@ -318,8 +382,9 @@ function reduceEventSourceMessage(
     return {
       ...base,
       status: { kind: "pending" },
-      streamEvents: [...base.streamEvents, nextEvent],
-      updatedAt: now
+      streamEvents: retainNewest([...base.streamEvents, nextEvent], inspectorRetentionLimits.streamEventsPerRequest),
+      streamEventCount: base.streamEventCount + 1,
+      updatedAt: eventAt
     };
   });
 }
@@ -328,32 +393,38 @@ function reduceWebSocketCreated(
   state: InspectorDataState,
   server: ServerId,
   params: WebSocketCreatedEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => ({
-    ...webSocketDefaults(existing, server, requestId(params), now),
-    method: webSocketMethod(params.url ?? null),
-    url: params.url ?? existing?.url ?? `websocket://${requestId(params)}`,
-    requestHeaders: headersFrom(recordFromProtocolHeaders(plainObjectAt(params, "headers"))),
-    startedAt: wallTimeMs(params) ?? existing?.startedAt ?? now,
-    updatedAt: now
-  }));
+  return updateWebSocket(state, server, requestId(params), (existing) => {
+    const startedAt = wallTimeMs(params) ?? existing?.startedAt ?? receivedAt;
+    return {
+      ...webSocketDefaults(existing, server, requestId(params), receivedAt),
+      method: webSocketMethod(params.url ?? null),
+      url: params.url ?? existing?.url ?? `websocket://${requestId(params)}`,
+      requestHeaders: headersFrom(recordFromProtocolHeaders(plainObjectAt(params, "headers"))),
+      startedAt,
+      startedAtMonotonic: monotonicTime(params) ?? existing?.startedAtMonotonic,
+      updatedAt: startedAt
+    };
+  });
 }
 
 function reduceWebSocketHandshakeResponse(
   state: InspectorDataState,
   server: ServerId,
   params: WebSocketHandshakeResponseReceivedEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateWebSocket(state, server, requestId(params), (existing) => {
+    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     const status = params.response?.status;
     return {
-      ...webSocketDefaults(existing, server, requestId(params), now),
+      ...base,
       responseHeaders: headersFrom(recordFromProtocolHeaders(params.response?.headers)),
       status: status == null ? (existing?.status ?? { kind: "pending" }) : { kind: "success", code: status },
-      opened: status == null ? existing?.opened : { timestamp: now, code: status },
-      updatedAt: now
+      opened: status == null ? existing?.opened : { timestamp: eventAt, code: status },
+      updatedAt: eventAt
     };
   });
 }
@@ -362,28 +433,29 @@ function reduceWebSocketClosed(
   state: InspectorDataState,
   server: ServerId,
   params: WebSocketClosedEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateWebSocket(state, server, requestId(params), (existing) => {
     const code = numberAt(params, "code");
     const reason = stringAt(params, "reason");
-    const base = webSocketDefaults(existing, server, requestId(params), now);
+    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     if (reason?.toLowerCase() === "cancelled" && code == null) {
       return {
         ...base,
         status: { kind: "failure", message: "Cancelled" },
-        cancelled: { timestamp: now },
-        endedAt: now,
-        updatedAt: now
+        cancelled: { timestamp: eventAt },
+        endedAt: eventAt,
+        updatedAt: eventAt
       };
     }
     return {
       ...base,
       status: { kind: "success", code: code ?? 1000 },
-      closed: { timestamp: now, code: code ?? 1000, reason },
+      closed: { timestamp: eventAt, code: code ?? 1000, reason },
       closeReason: reason,
-      endedAt: now,
-      updatedAt: now
+      endedAt: eventAt,
+      updatedAt: eventAt
     };
   });
 }
@@ -392,15 +464,19 @@ function reduceWebSocketFrameError(
   state: InspectorDataState,
   server: ServerId,
   params: WebSocketFrameErrorEvent,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => ({
-    ...webSocketDefaults(existing, server, requestId(params), now),
-    status: { kind: "failure", message: params.errorMessage },
-    failed: { timestamp: now, message: params.errorMessage },
-    endedAt: now,
-    updatedAt: now
-  }));
+  return updateWebSocket(state, server, requestId(params), (existing) => {
+    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
+    return {
+      ...base,
+      status: { kind: "failure", message: params.errorMessage },
+      failed: { timestamp: eventAt, message: params.errorMessage },
+      endedAt: eventAt,
+      updatedAt: eventAt
+    };
+  });
 }
 
 export function applyRequestBodies(record: RequestRecord, bodies: RequestBodies): RequestRecord {
@@ -418,15 +494,79 @@ export function recordId(record: InspectorRecord): string {
 }
 
 export function requestRecordKey(server: ServerId, requestId: string): string {
-  return `${server.deviceId}\u0000${server.socketName}\u0000request\u0000${requestId}`;
+  return `${serverDataKey(server)}\u0000request\u0000${requestId}`;
 }
 
 export function webSocketRecordKey(server: ServerId, socketId: string): string {
-  return `${server.deviceId}\u0000${server.socketName}\u0000websocket\u0000${socketId}`;
+  return `${serverDataKey(server)}\u0000websocket\u0000${socketId}`;
 }
 
 export function serverMatches(a: ServerId | null, b: ServerId): boolean {
   return a == null || (a.deviceId === b.deviceId && a.socketName === b.socketName);
+}
+
+function acceptSequence(
+  state: InspectorDataState,
+  server: ServerId,
+  sequence: number | undefined
+): InspectorDataState | null {
+  if (sequence == null || !Number.isSafeInteger(sequence)) return state;
+
+  const key = serverSequenceKey(server);
+  const latest = state.latestSequenceByServer.get(key);
+  if (latest != null && sequence <= latest) return null;
+
+  const latestSequenceByServer = new Map(state.latestSequenceByServer);
+  latestSequenceByServer.set(key, sequence);
+  return { ...state, latestSequenceByServer };
+}
+
+export function enforceInspectorRetention(
+  state: InspectorDataState,
+  maxRecords: number = inspectorRetentionLimits.records
+): InspectorDataState {
+  const overflow = state.requests.size + state.webSockets.size - maxRecords;
+  if (overflow <= 0) return state;
+
+  const candidates: Array<{
+    key: string;
+    kind: InspectorRecord["kind"];
+    completed: boolean;
+    updatedAt: number;
+  }> = [
+    ...[...state.requests.entries()].map(([key, record]) => ({
+      key,
+      kind: record.kind,
+      completed: record.endedAt != null || record.status.kind === "failure",
+      updatedAt: record.updatedAt
+    })),
+    ...[...state.webSockets.entries()].map(([key, record]) => ({
+      key,
+      kind: record.kind,
+      completed: record.endedAt != null || record.status.kind === "failure",
+      updatedAt: record.updatedAt
+    }))
+  ].sort((left, right) => {
+    if (left.completed !== right.completed) return left.completed ? -1 : 1;
+    if (left.updatedAt !== right.updatedAt) return left.updatedAt - right.updatedAt;
+    return left.key.localeCompare(right.key);
+  });
+
+  const requests = new Map(state.requests);
+  const webSockets = new Map(state.webSockets);
+  for (const candidate of candidates.slice(0, overflow)) {
+    if (candidate.kind === "request") requests.delete(candidate.key);
+    else webSockets.delete(candidate.key);
+  }
+  return { ...state, requests, webSockets };
+}
+
+function serverSequenceKey(server: ServerId): string {
+  return serverDataKey(server);
+}
+
+function serverDataKey(server: ServerId): string {
+  return `${server.deviceId}\u0000${server.socketName}\u0000${server.instanceId ?? ""}`;
 }
 
 function updateRequest(
@@ -473,9 +613,22 @@ function requestDefaults(
       status: { kind: "pending" },
       startedAt: now,
       streamEvents: [],
+      streamEventCount: 0,
       updatedAt: now
     }
   );
+}
+
+function eventTimeMs(
+  params: Record<string, unknown>,
+  record: Pick<RequestRecord | WebSocketRecord, "startedAt" | "startedAtMonotonic">,
+  fallback: number
+): number {
+  const timestamp = monotonicTime(params);
+  if (timestamp != null && record.startedAtMonotonic != null) {
+    return Math.round(record.startedAt + (timestamp - record.startedAtMonotonic) * 1_000);
+  }
+  return wallTimeMs(params) ?? fallback;
 }
 
 function webSocketDefaults(
@@ -496,6 +649,7 @@ function webSocketDefaults(
       status: { kind: "pending" },
       startedAt: now,
       messages: [],
+      messageCount: 0,
       updatedAt: now
     }
   );
@@ -506,31 +660,36 @@ function appendWebSocketMessage(
   server: ServerId,
   params: Record<string, unknown>,
   direction: "outgoing" | "incoming",
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   const opcode = numberAt(params, "response.opcode");
   const closeCode = numberAt(params, "response.closeCode");
   if (opcode === 8 && closeCode != null) {
     return direction === "outgoing"
-      ? reduceWebSocketCloseRequested(state, server, params, now)
-      : reduceWebSocketClosing(state, server, params, now);
+      ? reduceWebSocketCloseRequested(state, server, params, receivedAt)
+      : reduceWebSocketClosing(state, server, params, receivedAt);
   }
 
   return updateWebSocket(state, server, requestId(params), (existing) => {
-    const base = webSocketDefaults(existing, server, requestId(params), now);
+    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     const message: WebSocketMessageRecord = {
-      id: `${base.socketId}:${base.messages.length + 1}`,
+      id: `${base.socketId}:${base.messageCount + 1}`,
       direction,
       opcode: opcodeLabel(opcode),
       preview: stringAt(params, "response.payloadData"),
       payloadSize: numberAt(params, "response.payloadSize"),
-      timestamp: now,
+      timestamp: eventAt,
       enqueued: booleanAt(params, "response.enqueued")
     };
     return {
       ...base,
-      messages: [...base.messages, message].sort((left, right) => left.timestamp - right.timestamp),
-      updatedAt: now
+      messages: retainNewest(
+        [...base.messages, message].sort((left, right) => left.timestamp - right.timestamp),
+        inspectorRetentionLimits.webSocketMessagesPerSocket
+      ),
+      messageCount: base.messageCount + 1,
+      updatedAt: eventAt
     };
   });
 }
@@ -539,20 +698,21 @@ function reduceWebSocketCloseRequested(
   state: InspectorDataState,
   server: ServerId,
   params: Record<string, unknown>,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateWebSocket(state, server, requestId(params), (existing) => {
-    const base = webSocketDefaults(existing, server, requestId(params), now);
+    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     return {
       ...base,
       closeRequested: {
-        timestamp: now,
+        timestamp: eventAt,
         code: numberAt(params, "response.closeCode") ?? 1000,
         reason: stringAt(params, "response.closeReason"),
         initiated: stringAt(params, "response.closeInitiated") ?? "client",
         accepted: booleanAt(params, "response.closeAccepted") ?? true
       },
-      updatedAt: now
+      updatedAt: eventAt
     };
   });
 }
@@ -561,18 +721,20 @@ function reduceWebSocketClosing(
   state: InspectorDataState,
   server: ServerId,
   params: Record<string, unknown>,
-  now: number
+  receivedAt: number
 ): InspectorDataState {
   return updateWebSocket(state, server, requestId(params), (existing) => {
     const code = numberAt(params, "response.closeCode") ?? 1000;
     const reason = stringAt(params, "response.closeReason");
+    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const eventAt = eventTimeMs(params, base, receivedAt);
     return {
-      ...webSocketDefaults(existing, server, requestId(params), now),
+      ...base,
       status: { kind: "success", code },
-      closing: { timestamp: now, code, reason },
+      closing: { timestamp: eventAt, code, reason },
       closeReason: reason,
-      endedAt: now,
-      updatedAt: now
+      endedAt: eventAt,
+      updatedAt: eventAt
     };
   });
 }
@@ -685,6 +847,14 @@ function opcodeLabel(opcode: number | null): string {
 function wallTimeMs(params: Record<string, unknown>): number | undefined {
   const wallTime = numberAt(params, "wallTime");
   return wallTime == null ? undefined : Math.round(wallTime * 1000);
+}
+
+function monotonicTime(params: Record<string, unknown>): number | undefined {
+  return numberAt(params, "timestamp") ?? undefined;
+}
+
+function retainNewest<T>(values: T[], limit: number): T[] {
+  return values.length <= limit ? values : values.slice(values.length - limit);
 }
 
 function stringAt(record: Record<string, unknown>, path: string): string | null {

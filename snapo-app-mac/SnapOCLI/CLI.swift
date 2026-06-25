@@ -1,7 +1,8 @@
 import Foundation
+import SnapODeviceClient
 
 struct CLI {
-  private let adb = CLIADBClient()
+  private let adb = ADBClient()
 
   func run(arguments: [String]) async -> Int {
     guard let command = arguments.first else {
@@ -63,7 +64,7 @@ struct CLI {
   }
 
   private func list(_ options: NetworkListOptions) async throws -> Int {
-    let servers = try discoverServers(selection: options.common.selection)
+    let servers = try await discoverServers(selection: options.common.selection)
     guard !servers.isEmpty else { return fail("No Snap-O network servers found") }
 
     var appInfo: [CLIServerReference: CLIServerAppInfo] = [:]
@@ -84,7 +85,7 @@ struct CLI {
         try CLIOutput.printJSON(
           ServerListLine(
             server: server.identifier,
-            deviceId: server.deviceID,
+            deviceId: server.deviceId,
             socketName: server.socketName,
             packageName: info?.packageName,
             appName: info?.appName
@@ -94,9 +95,9 @@ struct CLI {
       return 0
     }
 
-    for deviceID in Set(servers.map(\.deviceID)).sorted() {
+    for deviceID in Set(servers.map(\.deviceId)).sorted() {
       CLIOutput.line("\(deviceID):")
-      for server in servers.filter({ $0.deviceID == deviceID }).sorted(by: serverSort) {
+      for server in servers.filter({ $0.deviceId == deviceID }).sorted(by: serverSort) {
         if options.includeAppInfo {
           CLIOutput.line("    \(server.socketName)  pkg:\(appInfo[server]?.packageName ?? "unknown")")
         } else {
@@ -115,13 +116,13 @@ struct CLI {
 
     let session: CLISession
     do {
-      session = try CLISession.open(server)
+      session = try await CLISession.open(server, using: adb)
     } catch {
       return fail("Failed to connect to \(server.identifier)")
     }
 
     do {
-      try session.startStream()
+      try await session.startStream()
       var filter = NetworkEventFilter(options.filter)
       let mode: CLIOutputMode = options.common.json ? .json : .human
 
@@ -131,7 +132,7 @@ struct CLI {
         return completed ? 0 : fail("Timed out waiting for snapshot from \(server.identifier)")
       }
 
-      while let record = await session.nextRecord() {
+      while let record = try await session.nextRecord() {
         if case .network(let message) = record, filter.matches(message) {
           try CLIOutput.emitNetworkEvent(message, mode: mode)
         }
@@ -154,7 +155,11 @@ struct CLI {
       selection: options.common.selection
     ) else { return 1 }
 
-    let result = await RequestDetailsFetcher(server: server, requestID: requestID).fetch()
+    let result = await RequestDetailsFetcher(
+      adb: adb,
+      server: server,
+      requestID: requestID
+    ).fetch()
     switch result {
     case .failure(let message), .missingBody(let message):
       return fail(message)
@@ -179,7 +184,7 @@ struct CLI {
     while clock.now < deadline {
       let remaining = clock.now.duration(to: deadline)
       let timeout = min(remaining, .milliseconds(250))
-      guard let record = await session.nextRecord(timeout: timeout) else {
+      guard let record = try await session.nextRecord(timeout: timeout) else {
         if await session.isClosed() { return false }
         continue
       }
@@ -195,22 +200,17 @@ struct CLI {
     return false
   }
 
-  private func discoverServers(selection: DeviceSelectionOptions) throws -> [CLIServerReference] {
-    let devices: [CLIDevice]
+  private func discoverServers(selection: DeviceSelectionOptions) async throws -> [CLIServerReference] {
+    let connectedDeviceIDs: [String]
     do {
-      devices = try adb.devices()
+      connectedDeviceIDs = try await adb.connectedDeviceIDs()
     } catch {
       throw CLIExecutionError("Failed to list adb devices")
     }
-    guard !devices.isEmpty else { throw CLIExecutionError("No connected devices found") }
+    guard !connectedDeviceIDs.isEmpty else { throw CLIExecutionError("No connected devices found") }
 
-    let deviceIDs = try resolveDeviceIDs(devices.map(\.id), selection: selection)
-    var servers: [CLIServerReference] = []
-    for deviceID in deviceIDs {
-      guard let sockets = try? adb.networkSocketNames(deviceID: deviceID) else { continue }
-      servers += sockets.map { CLIServerReference(deviceID: deviceID, socketName: $0) }
-    }
-    return servers.sorted(by: serverSort)
+    let deviceIDs = try resolveDeviceIDs(connectedDeviceIDs, selection: selection)
+    return await NetworkServerDiscovery.discover(on: deviceIDs, using: adb)
   }
 
   private func resolveDeviceIDs(
@@ -253,7 +253,7 @@ struct CLI {
     socketArgument: String?,
     selection: DeviceSelectionOptions
   ) async throws -> CLIServerReference? {
-    let servers = try discoverServers(selection: selection)
+    let servers = try await discoverServers(selection: selection)
     guard !servers.isEmpty else {
       CLIOutput.error("No Snap-O network servers found for selected device(s)")
       return nil
@@ -288,7 +288,7 @@ struct CLI {
   }
 
   private func resolveAppInfo(server: CLIServerReference) async -> CLIServerAppInfo {
-    async let packageHint = Task.detached { adb.packageNameHint(for: server) }.value
+    async let packageHint = NetworkServerDiscovery.packageNameHint(for: server, using: adb)
     let appInfo = await fetchAppInfo(server: server)
     let fallbackPackageName = await packageHint
     let appName = appInfo?.processName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -299,8 +299,8 @@ struct CLI {
   }
 
   private func fetchAppInfo(server: CLIServerReference) async -> NetworkAppInfo? {
-    guard let session = try? CLISession.open(server) else { return nil }
-    while let record = await session.nextRecord(timeout: .milliseconds(1200)) {
+    guard let session = try? await CLISession.open(server, using: adb) else { return nil }
+    while let record = try? await session.nextRecord(timeout: .milliseconds(1200)) {
       if case .appInfo(let info) = record {
         await session.close()
         return info
@@ -317,7 +317,7 @@ struct CLI {
     ) { group in
       for server in servers {
         group.addTask {
-          await (server, Task.detached { adb.packageNameHint(for: server) }.value)
+          await (server, NetworkServerDiscovery.packageNameHint(for: server, using: adb))
         }
       }
       var packages: [CLIServerReference: String] = [:]
@@ -338,7 +338,7 @@ struct CLI {
     let deviceID = String(value[..<slash]).trimmingCharacters(in: .whitespacesAndNewlines)
     let socketName = String(value[value.index(after: slash)...]).trimmingCharacters(in: .whitespacesAndNewlines)
     guard !deviceID.isEmpty, !socketName.isEmpty else { return nil }
-    return CLIServerReference(deviceID: deviceID, socketName: socketName)
+    return CLIServerReference(deviceId: deviceID, socketName: socketName)
   }
 
   private func emitHumanDetails(_ details: RequestDetailsLine) {
@@ -368,7 +368,7 @@ struct CLI {
   }
 
   private func serverSort(_ left: CLIServerReference, _ right: CLIServerReference) -> Bool {
-    if left.deviceID != right.deviceID { return left.deviceID < right.deviceID }
+    if left.deviceId != right.deviceId { return left.deviceId < right.deviceId }
     return left.socketName < right.socketName
   }
 
