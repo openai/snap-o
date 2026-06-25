@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import SnapODeviceClient
 import SwiftUI
 
 struct LogcatNavigationSideBar: View {

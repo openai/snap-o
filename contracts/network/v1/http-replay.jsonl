@@ -1,0 +1,5 @@
+{"method":"SnapO.appInfo","params":{"protocolVersion":1,"packageName":"com.example.app","processName":"com.example.app","pid":42,"serverStartWallMs":1710000000000,"serverStartMonoNs":100000000000,"mode":"safe"}}
+{"method":"Network.requestWillBeSent","snapoSequence":1,"params":{"requestId":"request-1","wallTime":1710000000,"timestamp":100,"request":{"url":"https://example.test/items","method":"GET","headers":{},"hasPostData":false}}}
+{"method":"Network.responseReceived","snapoSequence":2,"params":{"requestId":"request-1","timestamp":100.1,"type":"XHR","response":{"url":"https://example.test/items","status":200,"headers":{"content-type":"application/json"},"mimeType":"application/json","encodedDataLength":12}}}
+{"method":"Network.loadingFinished","snapoSequence":3,"params":{"requestId":"request-1","timestamp":100.25,"encodedDataLength":12}}
+{"method":"SnapO.replayComplete","params":{"watermark":3}}

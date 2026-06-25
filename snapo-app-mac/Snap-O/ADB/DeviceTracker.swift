@@ -1,20 +1,15 @@
 import Foundation
+import SnapODeviceClient
 
 private let log = SnapOLog.tracker
 
-final class DeviceTracker: @unchecked Sendable {
+actor DeviceTracker {
   private let adbService: ADBService
   private let infoCache = DeviceInfoCache()
 
   private var trackTask: Task<Void, Never>?
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
-  private let lock = NSLock()
-  private var _latestDevices: [Device] = []
-  var latestDevices: [Device] {
-    lock.lock()
-    defer { lock.unlock() }
-    return _latestDevices
-  }
+  private(set) var latestDevices: [Device] = []
 
   private var hasSeenFirstMessage: Bool = false
 
@@ -27,15 +22,13 @@ final class DeviceTracker: @unchecked Sendable {
   func deviceStream() -> AsyncStream<[Device]> {
     let id = UUID()
     return AsyncStream { continuation in
-      lock.lock()
       continuations[id] = continuation
-      lock.unlock()
       if self.hasSeenFirstMessage {
         continuation.yield(self.latestDevices)
       }
 
       continuation.onTermination = { [weak self] _ in
-        self?.removeContinuation(id)
+        Task { await self?.removeContinuation(id) }
       }
     }
   }
@@ -43,24 +36,32 @@ final class DeviceTracker: @unchecked Sendable {
   // MARK: - Tracking
 
   func startTracking() {
-    trackTask?.cancel()
+    guard trackTask == nil else { return }
     trackTask = Task { [weak self] in
       await self?.trackLoop()
     }
   }
 
+  func stopTracking() async {
+    let task = trackTask
+    task?.cancel()
+    trackTask = nil
+    let activeContinuations = Array(continuations.values)
+    continuations.removeAll()
+    for continuation in activeContinuations {
+      continuation.finish()
+    }
+    await task?.value
+  }
+
   private func removeContinuation(_ id: UUID) {
-    lock.lock()
-    defer { lock.unlock() }
     continuations.removeValue(forKey: id)
   }
 
   private func broadcast(_ devices: [Device]) {
-    lock.lock()
-    _latestDevices = devices
+    latestDevices = devices
     hasSeenFirstMessage = true
     let snapshot = Array(continuations.values)
-    lock.unlock()
     for continuation in snapshot {
       continuation.yield(devices)
     }
@@ -87,6 +88,7 @@ final class DeviceTracker: @unchecked Sendable {
         for try await payload in stream {
           if Task.isCancelled { break }
           let devices = await parseDevices(from: payload, exec: exec)
+          if Task.isCancelled { break }
           broadcast(devices)
         }
         if Task.isCancelled { break }
@@ -108,7 +110,7 @@ final class DeviceTracker: @unchecked Sendable {
 
   // MARK: - Device parsing
 
-  private func parseDevices(from payload: String, exec: ADBExec) async -> [Device] {
+  private func parseDevices(from payload: String, exec: ADBClient) async -> [Device] {
     let parsed = payload
       .split(separator: "\n", omittingEmptySubsequences: true)
       .compactMap(parseDeviceRow)
@@ -116,30 +118,34 @@ final class DeviceTracker: @unchecked Sendable {
     let activeDeviceIDs = Set(parsed.map(\.id))
     await infoCache.retain(deviceIDs: activeDeviceIDs)
 
-    return await withTaskGroup(of: Device?.self) { group in
-      for (id, fields) in parsed {
+    return await withTaskGroup(of: (Int, Device)?.self) { group in
+      for (index, element) in parsed.enumerated() {
         group.addTask {
+          let (id, fields) = element
           let info = await self.deviceInfo(
             for: id,
             transportID: fields["transport_id"],
             fallbackModel: fields["model"],
             exec: exec
           )
-          return Device(
-            id: id,
-            model: info.model,
-            androidVersion: info.version,
-            vendorModel: info.vendorModel,
-            manufacturer: info.manufacturer,
-            avdName: info.avdName
+          return (
+            index,
+            Device(
+              id: id,
+              model: info.model,
+              androidVersion: info.version,
+              vendorModel: info.vendorModel,
+              manufacturer: info.manufacturer,
+              avdName: info.avdName
+            )
           )
         }
       }
-      var out: [Device] = []
-      for await device in group {
-        if let device { out.append(device) }
+      var out: [(Int, Device)] = []
+      for await indexedDevice in group {
+        if let indexedDevice { out.append(indexedDevice) }
       }
-      return out
+      return out.sorted { $0.0 < $1.0 }.map(\.1)
     }
   }
 
@@ -179,7 +185,7 @@ final class DeviceTracker: @unchecked Sendable {
     for id: String,
     transportID: String?,
     fallbackModel: String?,
-    exec: ADBExec
+    exec: ADBClient
   ) async -> DeviceInfo {
     if let cached = await infoCache.value(for: id, transportID: transportID) {
       return cached

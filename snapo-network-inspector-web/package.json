@@ -17,7 +17,8 @@
     "lint:fix": "eslint . --fix && npm run lint:css:fix",
     "lint:css": "stylelint \"src/**/*.css\"",
     "lint:css:fix": "stylelint \"src/**/*.css\" --fix",
-    "test": "npm run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "npm run dev"
   },
@@ -40,6 +41,7 @@
     "stylelint-config-standard": "^39.0.1",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.59.1",
-    "vite": "^8.0.9"
+    "vite": "^8.0.9",
+    "vitest": "^4.1.9"
   }
 }

@@ -1,17 +1,17 @@
 import Foundation
+import SnapODeviceClient
 
 actor NetworkInspectorService {
+  private static let maximumBufferedOutputs = 4096
+
   private struct ServerState {
     let reference: NetworkServerReference
-    let connection: NetworkInspectorConnection
+    let connectionID: UUID
+    let session: NetworkSession
+    let recordTask: Task<Void, Never>
     var deviceDisplayTitle: String
     var appInfo: NetworkAppInfo?
     var packageNameHint: String?
-  }
-
-  private struct PendingCommandKey: Hashable {
-    let serverKey: String
-    let id: Int
   }
 
   private struct RefreshFlight {
@@ -19,90 +19,154 @@ actor NetworkInspectorService {
     let task: Task<Void, Never>
   }
 
-  private static let supportedProtocolVersion = 1
+  private struct StreamStartFlight {
+    let id: UUID
+    let connectionID: UUID
+    let task: Task<Void, Error>
+  }
 
+  private let adbService: ADBService
   private let deviceTracker: DeviceTracker
+
   private var servers: [String: ServerState] = [:]
   private var streams: [String: String] = [:]
-  private var pendingCommands: [
-    PendingCommandKey: CheckedContinuation<NetworkCDPMessage, Error>
-  ] = [:]
+  private var activeStreamConnections: [String: UUID] = [:]
+  private var streamStartFlights: [String: StreamStartFlight] = [:]
   private var outputContinuations: [UUID: AsyncStream<NetworkInspectorOutput>.Continuation] = [:]
   private var refreshFlight: RefreshFlight?
-  private var nextCommandID = 1
+  private var isStopped = false
 
-  init(deviceTracker: DeviceTracker) {
+  init(adbService: ADBService, deviceTracker: DeviceTracker) {
+    self.adbService = adbService
     self.deviceTracker = deviceTracker
   }
 
   func outputStream() -> AsyncStream<NetworkInspectorOutput> {
     let id = UUID()
-    let (stream, continuation) = AsyncStream<NetworkInspectorOutput>.makeStream()
-    outputContinuations[id] = continuation
-    continuation.onTermination = { [weak self] _ in
-      Task { await self?.removeOutputContinuation(id) }
+    return AsyncStream(bufferingPolicy: .bufferingOldest(Self.maximumBufferedOutputs)) { continuation in
+      if isStopped {
+        continuation.finish()
+        return
+      }
+      outputContinuations[id] = continuation
+      continuation.onTermination = { [weak self] _ in
+        Task { await self?.removeOutputContinuation(id) }
+      }
     }
-    return stream
   }
 
   func listServers() async -> [NetworkInspectorServer] {
+    guard !isStopped else { return [] }
     await refresh()
     return currentServers()
   }
 
   func startStream(_ reference: NetworkServerReference) async throws -> NetworkStreamStarted {
     await refresh()
-    guard let state = servers[reference.key] else {
+    guard !isStopped, let state = servers[reference.key] else {
       throw NetworkInspectorError.serverNotConnected(reference)
-    }
-
-    if !streams.values.contains(reference.key) {
-      try state.connection.startStream()
     }
 
     let streamID = UUID().uuidString
     streams[streamID] = reference.key
-    emit(
-      .status(
-        NetworkStreamStatus(
-          streamId: streamID,
-          state: "started",
-          message: "Connected to \(reference.deviceId)/\(reference.socketName)",
-          code: nil,
-          signal: nil
+
+    let startFlight: StreamStartFlight?
+    if activeStreamConnections[reference.key] == state.connectionID {
+      startFlight = nil
+    } else if let flight = streamStartFlights[reference.key],
+              flight.connectionID == state.connectionID {
+      startFlight = flight
+    } else {
+      streamStartFlights.removeValue(forKey: reference.key)?.task.cancel()
+      let flight = StreamStartFlight(
+        id: UUID(),
+        connectionID: state.connectionID,
+        task: Task {
+          try await state.session.send(method: SnapONetworkProtocol.Method.startStream)
+        }
+      )
+      streamStartFlights[reference.key] = flight
+      startFlight = flight
+    }
+
+    do {
+      if let startFlight {
+        try await startFlight.task.value
+        completeStartFlight(startFlight, serverKey: reference.key)
+      }
+      guard !isStopped,
+            servers[reference.key]?.connectionID == state.connectionID,
+            streams[streamID] == reference.key else {
+        throw NetworkInspectorError.serverNotConnected(reference)
+      }
+
+      emit(
+        .status(
+          NetworkStreamStatus(
+            streamId: streamID,
+            state: "started",
+            message: "Connected to \(reference.identifier)",
+            code: nil,
+            signal: nil
+          )
         )
       )
-    )
-    return NetworkStreamStarted(streamId: streamID)
+      return NetworkStreamStarted(streamId: streamID)
+    } catch {
+      rollBackStreamStart(
+        streamID: streamID,
+        serverKey: reference.key,
+        startFlight: startFlight
+      )
+      throw error
+    }
   }
 
-  func stopStream(_ streamID: String) {
+  func stopStream(_ streamID: String) async {
     guard let key = streams.removeValue(forKey: streamID) else { return }
-    guard !streams.values.contains(key) else { return }
-    try? servers[key]?.connection.stopStream()
+    guard !streams.values.contains(key), let session = servers[key]?.session else { return }
+    activeStreamConnections.removeValue(forKey: key)
+    streamStartFlights.removeValue(forKey: key)?.task.cancel()
+    try? await session.send(method: SnapONetworkProtocol.Method.stopStream)
   }
 
-  func stopAllStreams() {
+  func stopAllStreams() async {
     let serverKeys = Set(streams.values)
     streams.removeAll()
+    activeStreamConnections.removeAll()
+    let startFlights = Array(streamStartFlights.values)
+    streamStartFlights.removeAll()
+    for flight in startFlights {
+      flight.task.cancel()
+    }
     for serverKey in serverKeys {
-      try? servers[serverKey]?.connection.stopStream()
+      guard let session = servers[serverKey]?.session else { continue }
+      try? await session.send(method: SnapONetworkProtocol.Method.stopStream)
     }
   }
 
   func loadBodies(_ input: NetworkLoadBodiesInput) async -> NetworkRequestBodies {
     let reference = NetworkServerReference(deviceId: input.deviceId, socketName: input.socketName)
+    if let requestedInstanceID = input.serverInstanceId,
+       requestedInstanceID != Self.instanceID(for: servers[reference.key]?.appInfo) {
+      return NetworkRequestBodies(
+        requestId: input.requestId,
+        requestBody: nil,
+        responseBody: nil,
+        responseBodyBase64Encoded: nil
+      )
+    }
 
-    async let requestMessage: NetworkCDPMessage? = optionalCommand(
+    async let requestMessage = optionalCommand(
       enabled: input.includeRequestBody ?? true,
       serverKey: reference.key,
-      method: "Network.getRequestPostData",
+      method: SnapONetworkProtocol.Method.getRequestPostData,
       requestID: input.requestId
     )
-    async let responseMessage: NetworkCDPMessage? = optionalCommand(
+    async let responseMessage = optionalCommand(
       enabled: input.includeResponseBody ?? true,
       serverKey: reference.key,
-      method: "Network.getResponseBody",
+      method: SnapONetworkProtocol.Method.getResponseBody,
       requestID: input.requestId
     )
 
@@ -115,19 +179,35 @@ actor NetworkInspectorService {
     )
   }
 
-  func stop() {
+  func stop() async {
+    guard !isStopped else { return }
+    isStopped = true
     refreshFlight?.task.cancel()
     refreshFlight = nil
-    let connections = servers.values.map(\.connection)
-    servers.removeAll()
     streams.removeAll()
-    for connection in connections {
-      connection.close()
+    activeStreamConnections.removeAll()
+    let startFlights = Array(streamStartFlights.values)
+    streamStartFlights.removeAll()
+    for flight in startFlights {
+      flight.task.cancel()
     }
-    for continuation in pendingCommands.values {
-      continuation.resume(throwing: NetworkInspectorError.serverDisconnected)
+
+    let activeServers = Array(servers.values)
+    servers.removeAll()
+    for state in activeServers {
+      state.recordTask.cancel()
+      await state.session.close()
     }
-    pendingCommands.removeAll()
+
+    let continuations = Array(outputContinuations.values)
+    outputContinuations.removeAll()
+    for continuation in continuations {
+      continuation.finish()
+    }
+  }
+
+  func isRunning() -> Bool {
+    !isStopped
   }
 
   private func optionalCommand(
@@ -136,55 +216,16 @@ actor NetworkInspectorService {
     method: String,
     requestID: String
   ) async -> NetworkCDPMessage? {
-    guard enabled else { return nil }
-    return try? await sendCommand(
-      serverKey: serverKey,
+    guard enabled, let session = servers[serverKey]?.session else { return nil }
+    return try? await session.command(
       method: method,
-      params: ["requestId": .string(requestID)]
+      params: ["requestId": .string(requestID)],
+      timeout: .milliseconds(1500)
     )
   }
 
-  private func sendCommand(
-    serverKey: String,
-    method: String,
-    params: [String: JSONValue]
-  ) async throws -> NetworkCDPMessage {
-    guard let connection = servers[serverKey]?.connection else {
-      let parts = serverKey.split(separator: "\0", omittingEmptySubsequences: false)
-      let reference = NetworkServerReference(
-        deviceId: parts.first.map(String.init) ?? "unknown",
-        socketName: parts.dropFirst().first.map(String.init) ?? "unknown"
-      )
-      throw NetworkInspectorError.serverNotConnected(reference)
-    }
-
-    let id = nextCommandID
-    nextCommandID += 1
-    let pendingKey = PendingCommandKey(serverKey: serverKey, id: id)
-
-    return try await withCheckedThrowingContinuation { continuation in
-      pendingCommands[pendingKey] = continuation
-      do {
-        try connection.send(NetworkCDPMessage(id: id, method: method, params: params))
-      } catch {
-        pendingCommands.removeValue(forKey: pendingKey)
-        continuation.resume(throwing: error)
-        return
-      }
-
-      Task { [weak self] in
-        try? await Task.sleep(for: .milliseconds(1500))
-        await self?.timeoutCommand(pendingKey, method: method)
-      }
-    }
-  }
-
-  private func timeoutCommand(_ key: PendingCommandKey, method: String) {
-    guard let continuation = pendingCommands.removeValue(forKey: key) else { return }
-    continuation.resume(throwing: NetworkInspectorError.timedOut(method))
-  }
-
   private func refresh() async {
+    guard !isStopped else { return }
     if let refreshFlight {
       await refreshFlight.task.value
       return
@@ -192,8 +233,7 @@ actor NetworkInspectorService {
 
     let id = UUID()
     let task = Task<Void, Never> { [weak self] in
-      guard let self else { return }
-      await refreshNow()
+      await self?.refreshNow()
     }
     refreshFlight = RefreshFlight(id: id, task: task)
     await task.value
@@ -203,60 +243,73 @@ actor NetworkInspectorService {
   }
 
   private func refreshNow() async {
-    let devices = deviceTracker.latestDevices
-    var seenKeys = Set<String>()
+    let devices = await deviceTracker.latestDevices
+    let adb = await adbService.exec()
+    let references = await NetworkServerDiscovery.discover(
+      on: devices.map(\.id),
+      using: adb
+    )
+    guard !Task.isCancelled, !isStopped else { return }
 
-    for device in devices {
-      let socketNames = await (try? networkSocketNames(deviceID: device.id)) ?? []
-      guard !Task.isCancelled else { return }
-      for socketName in socketNames {
-        let reference = NetworkServerReference(deviceId: device.id, socketName: socketName)
-        seenKeys.insert(reference.key)
+    let devicesByID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
+    let seenKeys = Set(references.map(\.key))
+    for reference in references {
+      guard let device = devicesByID[reference.deviceId] else { continue }
 
-        if var state = servers[reference.key] {
-          state.deviceDisplayTitle = device.displayTitle
-          servers[reference.key] = state
-          continue
-        }
-
-        await connect(device: device, reference: reference)
-        guard !Task.isCancelled else { return }
+      if var state = servers[reference.key] {
+        state.deviceDisplayTitle = device.displayTitle
+        servers[reference.key] = state
+      } else {
+        await connect(device: device, reference: reference, using: adb)
       }
+      guard !Task.isCancelled, !isStopped else { return }
     }
 
     let removedKeys = servers.keys.filter { !seenKeys.contains($0) }
     for key in removedKeys {
-      removeServer(key, message: nil)
+      await removeServer(key, message: nil)
     }
   }
 
-  private func connect(device: Device, reference: NetworkServerReference) async {
+  private func connect(
+    device: Device,
+    reference: NetworkServerReference,
+    using adb: ADBClient
+  ) async {
     do {
-      let socket = try await Task.detached(priority: .userInitiated) {
-        let socket = try ADBSocketConnection()
-        try socket.sendTransport(to: reference.deviceId)
-        try socket.sendLocalAbstract(reference.socketName)
-        return socket
-      }.value
-      guard !Task.isCancelled else {
-        socket.close()
+      let session = try await NetworkSession.connect(
+        to: reference,
+        using: adb,
+        defaultCommandTimeout: .milliseconds(1500)
+      )
+      guard !Task.isCancelled, !isStopped else {
+        await session.close()
         return
       }
 
-      let connection = try NetworkInspectorConnection(
-        socket: socket,
-        serverKey: reference.key
-      ) { [weak self] event in
-        Task { await self?.handleConnectionEvent(event) }
+      let connectionID = UUID()
+      let recordTask = Task { [weak self] in
+        let records = await session.records()
+        for await record in records {
+          guard !Task.isCancelled else { return }
+          await self?.handleRecord(
+            serverKey: reference.key,
+            connectionID: connectionID,
+            record: record
+          )
+        }
+        await self?.sessionDidEnd(serverKey: reference.key, connectionID: connectionID)
       }
       servers[reference.key] = ServerState(
         reference: reference,
-        connection: connection,
+        connectionID: connectionID,
+        session: session,
+        recordTask: recordTask,
         deviceDisplayTitle: device.displayTitle,
         appInfo: nil,
         packageNameHint: nil
       )
-      populatePackageNameHint(reference: reference, connection: connection)
+      populatePackageNameHint(reference: reference, connectionID: connectionID, using: adb)
     } catch {
       return
     }
@@ -264,19 +317,21 @@ actor NetworkInspectorService {
 
   private func populatePackageNameHint(
     reference: NetworkServerReference,
-    connection: NetworkInspectorConnection
+    connectionID: UUID,
+    using adb: ADBClient
   ) {
-    Task { [weak self, weak connection] in
-      guard let packageName = await self?.packageNameHint(reference: reference),
-            let self,
-            let connection
+    Task { [weak self] in
+      guard let packageName = await NetworkServerDiscovery.packageNameHint(
+        for: reference,
+        using: adb
+      )
       else {
         return
       }
-      await setPackageNameHint(
+      await self?.setPackageNameHint(
         packageName,
         reference: reference,
-        connection: connection
+        connectionID: connectionID
       )
     }
   }
@@ -284,88 +339,53 @@ actor NetworkInspectorService {
   private func setPackageNameHint(
     _ packageName: String,
     reference: NetworkServerReference,
-    connection: NetworkInspectorConnection
+    connectionID: UUID
   ) {
-    guard var state = servers[reference.key], state.connection === connection else { return }
+    guard var state = servers[reference.key], state.connectionID == connectionID else { return }
     state.packageNameHint = packageName
     servers[reference.key] = state
   }
 
-  private func networkSocketNames(deviceID: String) async throws -> [String] {
-    let output = try await shell(deviceID: deviceID, command: "cat /proc/net/unix")
-    return Array(
-      Set(
-        output
-          .split(separator: "\n")
-          .compactMap { $0.split(whereSeparator: \.isWhitespace).last }
-          .compactMap { token -> String? in
-            let name = String(token)
-            guard name.hasPrefix("@snapo_network_") else { return nil }
-            return String(name.dropFirst())
-          }
-      )
-    ).sorted()
-  }
+  private func handleRecord(
+    serverKey: String,
+    connectionID: UUID,
+    record: NetworkServerRecord
+  ) {
+    guard var state = servers[serverKey], state.connectionID == connectionID else { return }
 
-  private func packageNameHint(reference: NetworkServerReference) async -> String? {
-    guard let pid = Self.pid(socketName: reference.socketName) else { return nil }
-    guard let output = try? await shell(
-      deviceID: reference.deviceId,
-      command: "cat /proc/\(pid)/cmdline 2>/dev/null"
-    ) else {
-      return nil
-    }
-    return output
-      .split { $0 == "\0" || $0 == "\n" || $0 == "\r" }
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .first { !$0.isEmpty }
-  }
-
-  private func shell(deviceID: String, command: String) async throws -> String {
-    try await Task.detached(priority: .utility) {
-      let socket = try ADBSocketConnection()
-      try socket.sendTransport(to: deviceID)
-      try socket.sendShell(command)
-      let data = try socket.readToEnd()
-      return String(bytes: data, encoding: .utf8) ?? ""
-    }.value
-  }
-
-  private func handleConnectionEvent(_ event: NetworkInspectorConnectionEvent) {
-    switch event {
-    case .closed(let serverKey, let message):
-      removeServer(serverKey, message: message)
-    case .record(let serverKey, let record):
-      handleRecord(serverKey: serverKey, record: record)
-    }
-  }
-
-  private func handleRecord(serverKey: String, record: NetworkServerRecord) {
     switch record {
     case .appInfo(let info):
-      guard var state = servers[serverKey] else { return }
       state.appInfo = info
       servers[serverKey] = state
     case .network(let message):
-      if message.method == nil, let id = message.id {
-        let key = PendingCommandKey(serverKey: serverKey, id: id)
-        if let continuation = pendingCommands.removeValue(forKey: key) {
-          continuation.resume(returning: message)
-          return
-        }
-      }
-      guard let server = servers[serverKey]?.reference else { return }
       for (streamID, key) in streams where key == serverKey {
-        emit(.event(NetworkStreamEvent(streamId: streamID, server: server, message: message)))
+        emit(
+          .event(
+            NetworkStreamEvent(
+              streamId: streamID,
+              server: state.reference,
+              serverInstanceId: Self.instanceID(for: state.appInfo),
+              message: message
+            )
+          )
+        )
       }
     case .replayComplete, .unknown:
       break
     }
   }
 
-  private func removeServer(_ key: String, message: String?) {
+  private func sessionDidEnd(serverKey: String, connectionID: UUID) async {
+    guard servers[serverKey]?.connectionID == connectionID else { return }
+    await removeServer(serverKey, message: nil)
+  }
+
+  private func removeServer(_ key: String, message: String?) async {
     guard let state = servers.removeValue(forKey: key) else { return }
-    state.connection.close()
+    activeStreamConnections.removeValue(forKey: key)
+    streamStartFlights.removeValue(forKey: key)?.task.cancel()
+    state.recordTask.cancel()
+    await state.session.close()
 
     let removedStreams = streams.filter { $0.value == key }.map(\.key)
     for streamID in removedStreams {
@@ -375,18 +395,11 @@ actor NetworkInspectorService {
           NetworkStreamStatus(
             streamId: streamID,
             state: "exit",
-            message: message ?? "Disconnected from \(state.reference.deviceId)/\(state.reference.socketName)",
+            message: message ?? "Disconnected from \(state.reference.identifier)",
             code: nil,
             signal: nil
           )
         )
-      )
-    }
-
-    let pendingKeys = pendingCommands.keys.filter { $0.serverKey == key }
-    for pendingKey in pendingKeys {
-      pendingCommands.removeValue(forKey: pendingKey)?.resume(
-        throwing: NetworkInspectorError.serverDisconnected
       )
     }
   }
@@ -404,17 +417,20 @@ actor NetworkInspectorService {
           displayName: packageName ?? state.reference.socketName,
           isConnected: true,
           hasAppInfo: state.appInfo != nil,
-          pid: state.appInfo?.pid ?? Self.pid(socketName: state.reference.socketName),
+          pid: state.appInfo?.pid ?? NetworkServerDiscovery.pid(
+            inSocketName: state.reference.socketName
+          ),
           protocolVersion: protocolVersion,
           isProtocolNewerThanSupported: protocolVersion.map {
-            $0 > Self.supportedProtocolVersion
+            $0 > SnapONetworkProtocol.supportedVersion
           } ?? false,
           isProtocolOlderThanSupported: state.appInfo != nil && (
-            protocolVersion.map { $0 < Self.supportedProtocolVersion } ?? true
+            protocolVersion.map { $0 < SnapONetworkProtocol.supportedVersion } ?? true
           ),
           appIconBase64: state.appInfo?.icon?.base64Data,
           packageName: packageName,
-          appName: state.appInfo?.processName.trimmingCharacters(in: .whitespacesAndNewlines)
+          appName: state.appInfo?.processName.trimmingCharacters(in: .whitespacesAndNewlines),
+          instanceId: Self.instanceID(for: state.appInfo)
         )
       }
       .sorted {
@@ -424,8 +440,38 @@ actor NetworkInspectorService {
   }
 
   private func emit(_ output: NetworkInspectorOutput) {
-    for continuation in outputContinuations.values {
-      continuation.yield(output)
+    var overflowedContinuationIDs: [UUID] = []
+    for (id, continuation) in outputContinuations {
+      if case .dropped = continuation.yield(output) {
+        overflowedContinuationIDs.append(id)
+      }
+    }
+    for id in overflowedContinuationIDs {
+      // Stream termination is an explicit recovery signal to the host model.
+      // Continuing after dropping an event would leave the web state incomplete.
+      outputContinuations.removeValue(forKey: id)?.finish()
+    }
+  }
+
+  private func completeStartFlight(_ flight: StreamStartFlight, serverKey: String) {
+    guard streamStartFlights[serverKey]?.id == flight.id else { return }
+    streamStartFlights.removeValue(forKey: serverKey)
+    guard servers[serverKey]?.connectionID == flight.connectionID,
+          streams.values.contains(serverKey) else { return }
+    activeStreamConnections[serverKey] = flight.connectionID
+  }
+
+  private func rollBackStreamStart(
+    streamID: String,
+    serverKey: String,
+    startFlight: StreamStartFlight?
+  ) {
+    streams.removeValue(forKey: streamID)
+    if let startFlight, streamStartFlights[serverKey]?.id == startFlight.id {
+      streamStartFlights.removeValue(forKey: serverKey)
+    }
+    if !streams.values.contains(serverKey) {
+      activeStreamConnections.removeValue(forKey: serverKey)
     }
   }
 
@@ -433,8 +479,8 @@ actor NetworkInspectorService {
     outputContinuations.removeValue(forKey: id)
   }
 
-  private static func pid(socketName: String) -> Int? {
-    guard socketName.hasPrefix("snapo_network_") else { return nil }
-    return Int(socketName.dropFirst("snapo_network_".count))
+  private static func instanceID(for appInfo: NetworkAppInfo?) -> String? {
+    guard let appInfo else { return nil }
+    return "\(appInfo.serverStartWallMs):\(appInfo.serverStartMonoNs)"
   }
 }

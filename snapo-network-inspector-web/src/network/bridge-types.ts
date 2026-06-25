@@ -7,6 +7,7 @@ export interface SnapOServer {
   isConnected: boolean;
   hasAppInfo: boolean;
   pid?: number | null;
+  instanceId?: string | null;
   protocolVersion?: number | null;
   isProtocolNewerThanSupported: boolean;
   isProtocolOlderThanSupported: boolean;
@@ -27,6 +28,7 @@ export interface NativeInspectorState {
 
 export interface CdpMessage {
   id?: number;
+  snapoSequence?: number;
   method?: string;
   params?: Record<string, unknown>;
   result?: Record<string, unknown>;
@@ -47,6 +49,7 @@ export interface RequestBodies {
 export interface LoadBodiesInput {
   deviceId: string;
   socketName: string;
+  serverInstanceId?: string | null;
   requestId: string;
   includeRequestBody?: boolean;
   includeResponseBody?: boolean;
@@ -64,6 +67,7 @@ export interface StreamStarted {
 export interface StreamEvent {
   streamId: string;
   server: StartStreamInput;
+  serverInstanceId?: string | null;
   message: CdpMessage;
 }
 

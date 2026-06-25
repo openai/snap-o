@@ -9,10 +9,8 @@
 /* Begin PBXBuildFile section */
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
-		A10000202F5B123400C0FFEE /* ADBSocketConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000102F5B123400C0FFEE /* ADBSocketConnection.swift */; };
-		A10000212F5B123400C0FFEE /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000112F5B123400C0FFEE /* Models.swift */; };
-		A10000222F5B123400C0FFEE /* NetworkInspectorModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000122F5B123400C0FFEE /* NetworkInspectorModels.swift */; };
-		A10000232F5B123400C0FFEE /* NetworkInspectorConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000132F5B123400C0FFEE /* NetworkInspectorConnection.swift */; };
+		D20000042F70000100C0FFEE /* SnapODeviceClient in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* SnapODeviceClient */; };
+		D20000052F70000100C0FFEE /* SnapODeviceClient in Frameworks */ = {isa = PBXBuildFile; productRef = D20000032F70000100C0FFEE /* SnapODeviceClient */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,10 +29,6 @@
 		32AECEFC2E56725E00AA18F0 /* Signing.xcconfig.sample */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.xcconfig.sample; sourceTree = "<group>"; };
 		32D6DEB12E395E0B001A7DEE /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 		A10000012F5B123400C0FFEE /* snapo */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = snapo; sourceTree = BUILT_PRODUCTS_DIR; };
-		A10000102F5B123400C0FFEE /* ADBSocketConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/ADB/ADBSocketConnection.swift"; sourceTree = SOURCE_ROOT; };
-		A10000112F5B123400C0FFEE /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Models/Models.swift"; sourceTree = SOURCE_ROOT; };
-		A10000122F5B123400C0FFEE /* NetworkInspectorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/NetworkInspector/NetworkInspectorModels.swift"; sourceTree = SOURCE_ROOT; };
-		A10000132F5B123400C0FFEE /* NetworkInspectorConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/NetworkInspector/NetworkInspectorConnection.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -70,6 +64,7 @@
 			files = (
 				32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */,
 				32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */,
+				D20000042F70000100C0FFEE /* SnapODeviceClient in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +72,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D20000052F70000100C0FFEE /* SnapODeviceClient in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -88,7 +84,6 @@
 			children = (
 				3234F4532E2EC5030057AE77 /* Snap-O */,
 				A10000022F5B123400C0FFEE /* SnapOCLI */,
-				A10000142F5B123400C0FFEE /* Shared CLI Sources */,
 				32D6DEB02E395E0A001A7DEE /* Frameworks */,
 				3234F4522E2EC5030057AE77 /* Products */,
 			);
@@ -121,17 +116,6 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		A10000142F5B123400C0FFEE /* Shared CLI Sources */ = {
-			isa = PBXGroup;
-			children = (
-				A10000102F5B123400C0FFEE /* ADBSocketConnection.swift */,
-				A10000112F5B123400C0FFEE /* Models.swift */,
-				A10000122F5B123400C0FFEE /* NetworkInspectorModels.swift */,
-				A10000132F5B123400C0FFEE /* NetworkInspectorConnection.swift */,
-			);
-			name = "Shared CLI Sources";
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -156,6 +140,7 @@
 			name = "Snap-O";
 			packageProductDependencies = (
 				32C837092E6A5AD10003BDFA /* Sparkle */,
+				D20000022F70000100C0FFEE /* SnapODeviceClient */,
 			);
 			productName = "Snap-O";
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
@@ -177,6 +162,7 @@
 			);
 			name = snapo;
 			packageProductDependencies = (
+				D20000032F70000100C0FFEE /* SnapODeviceClient */,
 			);
 			productName = snapo;
 			productReference = A10000012F5B123400C0FFEE /* snapo */;
@@ -211,6 +197,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */,
+				D20000012F70000100C0FFEE /* XCLocalSwiftPackageReference "SnapODeviceClient" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3234F4522E2EC5030057AE77 /* Products */;
@@ -234,6 +221,30 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		32F7D8A12F5B123400C0FFEE /* Build Network Inspector Web UI */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/../snapo-network-inspector-web/index.html",
+				"$(PROJECT_DIR)/../snapo-network-inspector-web/package.json",
+				"$(PROJECT_DIR)/../snapo-network-inspector-web/package-lock.json",
+				"$(PROJECT_DIR)/../snapo-network-inspector-web/src",
+				"$(PROJECT_DIR)/../snapo-network-inspector-web/tsconfig.json",
+				"$(PROJECT_DIR)/../snapo-network-inspector-web/vite.config.ts",
+			);
+			name = "Build Network Inspector Web UI";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/NetworkInspector",
+				"$(DERIVED_FILE_DIR)/snapo-network-inspector.sha256",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PROJECT_DIR}/scripts/build-network-inspector.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -251,29 +262,6 @@
 			shellScript = "set -e\n\nCLI_SOURCE=\"${BUILT_PRODUCTS_DIR}/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -x \"${CLI_SOURCE}\" ]; then\n  echo \"error: native snapo CLI not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		32F7D8A12F5B123400C0FFEE /* Build Network Inspector Web UI */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-					"$(PROJECT_DIR)/../snapo-network-inspector-web/index.html",
-					"$(PROJECT_DIR)/../snapo-network-inspector-web/package.json",
-					"$(PROJECT_DIR)/../snapo-network-inspector-web/package-lock.json",
-					"$(PROJECT_DIR)/../snapo-network-inspector-web/src",
-					"$(PROJECT_DIR)/../snapo-network-inspector-web/tsconfig.json",
-					"$(PROJECT_DIR)/../snapo-network-inspector-web/vite.config.ts",
-			);
-			name = "Build Network Inspector Web UI";
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/NetworkInspector",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-				shellScript = "set -e\n\nWEB_DIR=\"${PROJECT_DIR}/../snapo-network-inspector-web\"\nWEB_SOURCE=\"${WEB_DIR}/dist-renderer\"\nWEB_DEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/NetworkInspector\"\nLEGACY_HELPER=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers/Snap-O Network Inspector.app\"\n\nif [ -s \"${HOME}/.nvm/nvm.sh\" ]; then\n  . \"${HOME}/.nvm/nvm.sh\"\nfi\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\n\nif ! command -v npm >/dev/null 2>&1; then\n  echo \"error: npm not found. Install Node.js or make npm available to Xcode build scripts.\" >&2\n  exit 1\nfi\n\n( cd \"${WEB_DIR}\" && npm ci --registry=https://openai.firewall.socket.dev/npm/ && npm run build:frontend )\n\nif [ ! -f \"${WEB_SOURCE}/index.html\" ]; then\n  echo \"error: Network Inspector web bundle not found at ${WEB_SOURCE}.\" >&2\n  exit 1\nfi\n\n/bin/rm -rf \"${WEB_DEST}\" \"${LEGACY_HELPER}\"\n/bin/mkdir -p \"$(/usr/bin/dirname \"${WEB_DEST}\")\"\n/usr/bin/ditto \"${WEB_SOURCE}\" \"${WEB_DEST}\"\n";
-			showEnvVarsInLog = 0;
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -288,10 +276,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10000202F5B123400C0FFEE /* ADBSocketConnection.swift in Sources */,
-				A10000212F5B123400C0FFEE /* Models.swift in Sources */,
-				A10000222F5B123400C0FFEE /* NetworkInspectorModels.swift in Sources */,
-				A10000232F5B123400C0FFEE /* NetworkInspectorConnection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -583,6 +567,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		D20000012F70000100C0FFEE /* XCLocalSwiftPackageReference "SnapODeviceClient" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = SnapODeviceClient;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -599,6 +590,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		D20000022F70000100C0FFEE /* SnapODeviceClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D20000012F70000100C0FFEE /* XCLocalSwiftPackageReference "SnapODeviceClient" */;
+			productName = SnapODeviceClient;
+		};
+		D20000032F70000100C0FFEE /* SnapODeviceClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D20000012F70000100C0FFEE /* XCLocalSwiftPackageReference "SnapODeviceClient" */;
+			productName = SnapODeviceClient;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

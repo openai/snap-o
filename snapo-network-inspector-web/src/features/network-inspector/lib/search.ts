@@ -23,7 +23,7 @@ export function searchDocumentForRecord(record: InspectorRecord): KeywordSearchD
   parts.push(...headersSearchText(record.requestHeaders), ...headersSearchText(record.responseHeaders));
 
   if (record.kind === "request") {
-    parts.push(record.requestBody ?? "", record.responseBody ?? "");
+    // HTTP bodies hydrate only on selection, so indexing them would make results cache-dependent.
     for (const event of record.streamEvents) {
       parts.push(
         event.eventName ?? "",

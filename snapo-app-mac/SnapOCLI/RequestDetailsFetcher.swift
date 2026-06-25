@@ -1,4 +1,5 @@
 import Foundation
+import SnapODeviceClient
 
 struct RequestDetailsLine: Encodable {
   let server: String
@@ -70,16 +71,17 @@ private struct RequestDetailsSnapshot {
 struct RequestDetailsFetcher {
   private static let attemptLimit = 3
 
+  let adb: ADBClient
   let server: CLIServerReference
   let requestID: String
 
   func fetch() async -> RequestDetailsResult {
-    guard let session = try? CLISession.open(server) else {
+    guard let session = try? await CLISession.open(server, using: adb) else {
       return .failure("Failed to connect to \(server.identifier)")
     }
 
     do {
-      try session.startStream()
+      try await session.startStream()
       let result = try await fetch(using: session)
       await session.close()
       return result
@@ -93,9 +95,6 @@ struct RequestDetailsFetcher {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: .seconds(5))
     var details = RequestDetailsSnapshot()
-    var nextCommandID = 1
-    var pendingRequestBodyID: Int?
-    var pendingResponseBodyID: Int?
     var requestBodyAttempts = 0
     var responseBodyAttempts = 0
     var requestBody: String?
@@ -106,13 +105,8 @@ struct RequestDetailsFetcher {
     var responseBodyResolved = false
 
     while clock.now < deadline {
-      let record = await session.nextRecord(timeout: .milliseconds(500))
-      if record == nil {
-        // Preserve the Electron CLI's retry behavior: a 500 ms quiet period expires the current command attempt. If slow
-        // body reads become a problem, retain all outstanding command IDs and accept late replies instead of changing retries.
-        pendingRequestBodyID = nil
-        pendingResponseBodyID = nil
-      } else if case .network(let message) = record {
+      let record = try await session.nextRecord(timeout: .milliseconds(500))
+      if case .network(let message) = record {
         details.update(message, requestID: requestID)
         requestBodyEncoding = requestBodyEncoding ?? details.requestBodyEncoding
 
@@ -128,69 +122,63 @@ struct RequestDetailsFetcher {
             details.loadingFailedMessage ?? "Request failed before receiving a response for \(requestID)"
           )
         }
-
-        if let id = message.id, message.method == nil {
-          if id == pendingRequestBodyID {
-            pendingRequestBodyID = nil
-            requestBody = message.result?["postData"]?.stringValue
-            requestBodyResolved = true
-          } else if id == pendingResponseBodyID {
-            pendingResponseBodyID = nil
-            if let error = message.error {
-              if let failure = details.loadingFailedMessage, !failure.isEmpty {
-                return .failure(failure)
-              }
-              if error.message.lowercased().contains("no response body captured") {
-                return .missingBody(error.message)
-              }
-              return .failure(error.message)
-            }
-            guard let body = message.result?["body"]?.stringValue,
-                  let encoded = message.result?["base64Encoded"]?.boolValue else {
-              return .failure("Malformed response for Network.getResponseBody")
-            }
-            responseBody = body
-            responseBodyBase64Encoded = encoded
-            responseBodyResolved = true
-          }
-        }
       }
 
       if details.requestSeen,
          details.requestHasPostData,
          !requestBodyResolved,
-         pendingRequestBodyID == nil,
          requestBodyAttempts < Self.attemptLimit {
-        pendingRequestBodyID = nextCommandID
         requestBodyAttempts += 1
-        try session.send(bodyCommand(id: nextCommandID, method: "Network.getRequestPostData"))
-        nextCommandID += 1
+        do {
+          let message = try await session.command(
+            method: SnapONetworkProtocol.Method.getRequestPostData,
+            params: ["requestId": .string(requestID)],
+            timeout: .milliseconds(500)
+          )
+          requestBody = message.result?["postData"]?.stringValue
+          requestBodyResolved = true
+        } catch NetworkSessionError.commandTimedOut {
+          if requestBodyAttempts >= Self.attemptLimit {
+            requestBodyResolved = true
+          }
+        }
       }
 
       if details.responseSeen,
          details.responseTerminal,
          !details.responseHasNoBody,
          !responseBodyResolved,
-         pendingResponseBodyID == nil,
          responseBodyAttempts < Self.attemptLimit {
-        pendingResponseBodyID = nextCommandID
         responseBodyAttempts += 1
-        try session.send(bodyCommand(id: nextCommandID, method: "Network.getResponseBody"))
-        nextCommandID += 1
-      }
-
-      if !requestBodyResolved,
-         requestBodyAttempts >= Self.attemptLimit,
-         pendingRequestBodyID == nil {
-        requestBodyResolved = true
-      }
-
-      if !responseBodyResolved,
-         responseBodyAttempts >= Self.attemptLimit,
-         pendingResponseBodyID == nil {
-        return .failure(
-          "Timed out waiting for Network.getResponseBody for \(requestID) on \(server.identifier)"
-        )
+        do {
+          let message = try await session.command(
+            method: SnapONetworkProtocol.Method.getResponseBody,
+            params: ["requestId": .string(requestID)],
+            timeout: .milliseconds(500)
+          )
+          if let error = message.error {
+            if let failure = details.loadingFailedMessage, !failure.isEmpty {
+              return .failure(failure)
+            }
+            if error.message.lowercased().contains("no response body captured") {
+              return .missingBody(error.message)
+            }
+            return .failure(error.message)
+          }
+          guard let body = message.result?["body"]?.stringValue,
+                let encoded = message.result?["base64Encoded"]?.boolValue else {
+            return .failure("Malformed response for Network.getResponseBody")
+          }
+          responseBody = body
+          responseBodyBase64Encoded = encoded
+          responseBodyResolved = true
+        } catch NetworkSessionError.commandTimedOut {
+          if responseBodyAttempts >= Self.attemptLimit {
+            return .failure(
+              "Timed out waiting for Network.getResponseBody for \(requestID) on \(server.identifier)"
+            )
+          }
+        }
       }
 
       if requestBodyResolved, responseBodyResolved {
@@ -214,14 +202,6 @@ struct RequestDetailsFetcher {
     }
 
     return .failure("Timed out waiting for network lifecycle for \(requestID) on \(server.identifier)")
-  }
-
-  private func bodyCommand(id: Int, method: String) -> NetworkCDPMessage {
-    NetworkCDPMessage(
-      id: id,
-      method: method,
-      params: ["requestId": .string(requestID)]
-    )
   }
 }
 

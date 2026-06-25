@@ -14,6 +14,7 @@ export const DetailContent = memo(function DetailContent({
   servers,
   selectedServer,
   serverScopedItems,
+  streamIsRetrying,
   uiState,
   onOpenDocs
 }: {
@@ -22,11 +23,12 @@ export const DetailContent = memo(function DetailContent({
   servers: SnapOServer[];
   selectedServer: SnapOServer | null;
   serverScopedItems: number;
+  streamIsRetrying: boolean;
   uiState: InspectorUiState;
   onOpenDocs(): void;
 }): JSX.Element {
   if (record == null) {
-    const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems });
+    const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems, streamIsRetrying });
     return (
       <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs} />
     );

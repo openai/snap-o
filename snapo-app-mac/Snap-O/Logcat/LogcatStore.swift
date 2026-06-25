@@ -1,6 +1,7 @@
 @preconcurrency import Dispatch
 import Foundation
 import Observation
+import SnapODeviceClient
 
 actor LogcatStreamRouter {
   private var processors: [LogcatTabProcessor] = []
@@ -191,7 +192,7 @@ final class LogcatStore {
       adbService: adbService,
       deviceTracker: deviceTracker
     )
-    devices = deviceTracker.latestDevices
+    devices = []
 
     restoreTabsFromPreferences()
   }
@@ -202,7 +203,7 @@ final class LogcatStore {
     deviceStreamTask?.cancel()
     let tracker = deviceTracker
     deviceStreamTask = Task(priority: .utility) { [weak self] in
-      let stream = tracker.deviceStream()
+      let stream = await tracker.deviceStream()
       for await devices in stream {
         if Task.isCancelled { break }
         guard let self else { return }

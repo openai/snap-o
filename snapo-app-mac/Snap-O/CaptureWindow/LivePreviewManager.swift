@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SnapODeviceClient
 
 @MainActor
 final class LivePreviewManager {
@@ -7,8 +8,9 @@ final class LivePreviewManager {
     case unknownDevice
   }
 
-  private let captureService: CaptureService
+  private let livePreviewService: LivePreviewService
   private let adbService: ADBService
+  private let options: LivePreviewOptions
   private let mediaDidChange: @MainActor ([CaptureMedia]) -> Void
   private let pointerInjector: LivePreviewPointerInjector
 
@@ -17,61 +19,90 @@ final class LivePreviewManager {
   private var mediaByDeviceID: [String: CaptureMedia] = [:]
   private var captureIDs: [String: UUID] = [:]
   private var lastDisplayInfo: [String: DisplayInfo] = [:]
+  private var activeOperations: [UUID: LivePreviewOperationHandle] = [:]
+  private var inFlightRendererRequestIDs: Set<UUID> = []
+  private var isStopped = false
 
   init(
-    captureService: CaptureService,
+    livePreviewService: LivePreviewService,
     adbService: ADBService,
+    options: LivePreviewOptions,
     mediaDidChange: @escaping @MainActor ([CaptureMedia]) -> Void
   ) {
-    self.captureService = captureService
+    self.livePreviewService = livePreviewService
     self.adbService = adbService
+    self.options = options
     self.mediaDidChange = mediaDidChange
     pointerInjector = LivePreviewPointerInjector(adb: adbService)
   }
 
   func start(with devices: [Device]) async {
+    guard !isStopped else { return }
     updateDeviceOrder(with: devices)
     await syncDevices(with: devices, requireRefresh: true)
   }
 
   func updateDevices(_ devices: [Device]) async {
+    guard !isStopped else { return }
     updateDeviceOrder(with: devices)
     await syncDevices(with: devices, requireRefresh: false)
   }
 
   func makeRenderer(for deviceID: String) async throws -> LivePreviewRenderer {
+    guard !isStopped else { throw CancellationError() }
+    let requestID = UUID()
+    inFlightRendererRequestIDs.insert(requestID)
+    defer { inFlightRendererRequestIDs.remove(requestID) }
+
     guard let device = deviceInfo[deviceID] else {
       throw LivePreviewError.unknownDevice
     }
 
     if lastDisplayInfo[deviceID] == nil {
       let fetched = await fetchDisplayInfos(for: [device])
+      guard !isStopped,
+            !Task.isCancelled,
+            deviceInfo[deviceID] != nil
+      else { throw CancellationError() }
       if let info = fetched[deviceID] {
         lastDisplayInfo[deviceID] = info
         rebuildMedia()
       }
     }
 
-    let session = try await captureService.startLivePreview(for: deviceID)
+    let operation = try await livePreviewService.start(
+      for: deviceID,
+      options: options
+    )
+    guard !isStopped,
+          !Task.isCancelled,
+          deviceInfo[deviceID] != nil
+    else {
+      _ = await livePreviewService.stop(operation)
+      throw CancellationError()
+    }
+    activeOperations[operation.id] = operation
+
     let renderer = LivePreviewRenderer(
-      session: session,
-      deviceID: deviceID
+      operation: operation
     ) { [weak self] action, source, location in
       Task { await self?.sendPointerEvent(deviceID: deviceID, action: action, source: source, location: location) }
     }
 
+    let session = operation.session
     Task.detached(priority: .userInitiated) { [weak self] in
       guard let self else { return }
       do {
         let media = try await session.waitUntilReady()
         await MainActor.run {
-          if let latestDevice = self.deviceInfo[deviceID] {
+          if !self.isStopped,
+             self.activeOperations[operation.id] != nil,
+             let latestDevice = self.deviceInfo[deviceID] {
             self.storeMedia(media, for: latestDevice)
           }
         }
       } catch {
-        if error is CancellationError { return }
-        await MainActor.run {
+        if !(error is CancellationError) {
           SnapOLog.ui.error(
             "Live preview failed for \(deviceID, privacy: .private): \(error.localizedDescription, privacy: .public)"
           )
@@ -83,20 +114,39 @@ final class LivePreviewManager {
   }
 
   func stopRenderer(_ renderer: LivePreviewRenderer) async {
-    _ = await captureService.stopLivePreview(session: renderer.session)
+    activeOperations.removeValue(forKey: renderer.operation.id)
+    _ = await livePreviewService.stop(renderer.operation)
   }
 
-  func stop() {
+  func stop() async {
+    guard !isStopped else { return }
+    isStopped = true
+    let operations = Array(activeOperations.values)
+    activeOperations.removeAll()
     mediaByDeviceID.removeAll()
     captureIDs.removeAll()
     lastDisplayInfo.removeAll()
     notifyMediaChanged()
+
+    for operation in operations {
+      _ = await livePreviewService.stop(operation)
+    }
+    while !inFlightRendererRequestIDs.isEmpty {
+      await Task.yield()
+    }
   }
 
   // MARK: - Device + Media Management
 
   private func syncDevices(with devices: [Device], requireRefresh: Bool) async {
     let currentIDs = Set(devices.map(\.id))
+    let removedOperations = activeOperations.values.filter { !currentIDs.contains($0.deviceID) }
+    for operation in removedOperations {
+      activeOperations.removeValue(forKey: operation.id)
+      _ = await livePreviewService.stop(operation)
+    }
+
+    guard !isStopped else { return }
 
     for id in Array(deviceInfo.keys) where !currentIDs.contains(id) {
       deviceInfo.removeValue(forKey: id)
@@ -120,6 +170,7 @@ final class LivePreviewManager {
 
     if !devicesToFetch.isEmpty {
       let fetched = await fetchDisplayInfos(for: devicesToFetch)
+      guard !isStopped else { return }
       for (id, info) in fetched {
         lastDisplayInfo[id] = info
       }
@@ -175,7 +226,8 @@ final class LivePreviewManager {
             async let densityTask = try? await exec.displayDensity(deviceID: device.id)
             let sizeString = try await exec.displaySize(deviceID: device.id)
             guard let size = parseDisplaySize(sizeString) else { return nil }
-            let density = await densityTask
+            let densityValue = await densityTask
+            let density = densityValue.map { CGFloat($0) }
             return (device.id, DisplayInfo(size: size, densityScale: density))
           } catch {
             await MainActor.run {

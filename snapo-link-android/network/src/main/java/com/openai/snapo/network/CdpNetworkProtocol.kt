@@ -10,6 +10,7 @@ internal data class CdpMessage(
     val params: JsonElement? = null,
     val result: JsonElement? = null,
     val error: CdpError? = null,
+    val snapoSequence: Long? = null,
 )
 
 @Serializable

@@ -1,10 +1,21 @@
 package com.openai.snapo.network
 
 import java.util.ArrayList
+import java.util.IdentityHashMap
 
 internal data class CapturedBody(
     val body: String,
     val encoding: String?,
+)
+
+internal data class SequencedNetworkEvent(
+    val snapoSequence: Long,
+    val record: NetworkEventRecord,
+)
+
+internal data class EventBufferSnapshot(
+    val records: List<SequencedNetworkEvent>,
+    val watermark: Long,
 )
 
 internal class EventBuffer(
@@ -12,14 +23,18 @@ internal class EventBuffer(
 ) {
 
     private val records: MutableList<NetworkEventRecord> = ArrayList()
+    private val sequenceByRecord = IdentityHashMap<NetworkEventRecord, Long>()
+    private var latestSequence: Long = 0L
     private var approxBytes: Long = 0L
     private val requestBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val responseBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val openWebSockets: MutableSet<String> = mutableSetOf()
     private val activeResponseStreams: MutableSet<String> = mutableSetOf()
 
-    fun append(record: NetworkEventRecord) {
+    fun append(record: NetworkEventRecord): Long {
         val normalizedRecord = normalizeRecord(record)
+        val sequence = ++latestSequence
+        sequenceByRecord[normalizedRecord] = sequence
         insertSorted(normalizedRecord)
         approxBytes += estimateSize(normalizedRecord)
         updateWebSocketStateOnAdd(normalizedRecord)
@@ -27,9 +42,20 @@ internal class EventBuffer(
         evictExpiredIfNeeded(normalizedRecord)
         trimToByteLimit()
         trimToCountLimit()
+        return sequence
     }
 
     fun snapshot(): List<NetworkEventRecord> = ArrayList(records)
+
+    fun sequencedSnapshot(): EventBufferSnapshot = EventBufferSnapshot(
+        records = records.map { record ->
+            SequencedNetworkEvent(
+                snapoSequence = checkNotNull(sequenceByRecord[record]),
+                record = record,
+            )
+        },
+        watermark = latestSequence,
+    )
 
     fun findRequestBody(requestId: String): CapturedBody? = requestBodiesById[requestId]
 
@@ -52,7 +78,10 @@ internal class EventBuffer(
         val index = records.indexOfLast { candidate ->
             (candidate as? ResponseReceived)?.id == requestId
         }
-        if (index < 0) return !body.isNullOrEmpty() && hasRelatedRecords
+        if (index < 0) {
+            trimToByteLimit()
+            return !body.isNullOrEmpty() && hasRelatedRecords
+        }
         val existing = records[index] as? ResponseReceived ?: return false
         val updated = existing.copy(
             bodyPreview = bodyPreview,
@@ -61,9 +90,12 @@ internal class EventBuffer(
             bodyTruncatedBytes = bodyTruncatedBytes,
             bodySize = bodySize ?: existing.bodySize,
         )
+        val sequence = checkNotNull(sequenceByRecord.remove(existing))
         records[index] = updated
+        sequenceByRecord[updated] = sequence
         subtractApproxBytes(existing)
         approxBytes += estimateSize(updated)
+        trimToByteLimit()
         return true
     }
 
@@ -141,22 +173,25 @@ internal class EventBuffer(
     }
 
     private fun evictFirstEligible(): Boolean {
-        val iterator = records.iterator()
-        var evicted = false
-        while (iterator.hasNext() && !evicted) {
-            val record = iterator.next()
-            val shouldRemove = when (record) {
-                is RequestWillBeSent -> evictRequestTerminal(record)
-                is WebSocketWillOpen -> evictWebSocketConversation(record)
-                is WebSocketOpened -> evictWebSocketConversation(record)
-                else -> true
-            }
-            if (shouldRemove) {
-                removeRecord(iterator, record)
-                evicted = true
+        val record = oldestCompletedConversation() ?: records.firstOrNull() ?: return false
+        return removeConversation(record)
+    }
+
+    private fun oldestCompletedConversation(): NetworkEventRecord? {
+        val completedRequestIds = completedRequestIds()
+        return records.firstOrNull { record ->
+            when (record) {
+                is PerRequestRecord -> completedRequestIds.contains(record.id)
+                is PerWebSocketRecord -> !openWebSockets.contains(record.id)
             }
         }
-        return evicted
+    }
+
+    private fun removeConversation(record: NetworkEventRecord): Boolean {
+        return when (record) {
+            is PerRequestRecord -> removeRequestConversation(record.id)
+            is PerWebSocketRecord -> removeWebSocketConversation(record.id)
+        }
     }
 
     private fun updateWebSocketStateOnAdd(record: NetworkEventRecord) {
@@ -166,14 +201,6 @@ internal class EventBuffer(
             is WebSocketClosed -> openWebSockets.remove(record.id)
             is WebSocketFailed -> openWebSockets.remove(record.id)
             is WebSocketCancelled -> openWebSockets.remove(record.id)
-            else -> Unit
-        }
-    }
-
-    private fun updateWebSocketStateOnRemove(record: NetworkEventRecord) {
-        when (record) {
-            is WebSocketWillOpen -> openWebSockets.remove(record.id)
-            is WebSocketOpened -> openWebSockets.remove(record.id)
             else -> Unit
         }
     }
@@ -188,81 +215,66 @@ internal class EventBuffer(
         }
     }
 
-    private fun updateStreamStateOnRemove(record: NetworkEventRecord) {
+    private fun updateConversationStateOnRemove(record: NetworkEventRecord) {
         when (record) {
-            is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
-            is ResponseFinished -> activeResponseStreams.remove(record.id)
-            is RequestFailed -> activeResponseStreams.remove(record.id)
-            else -> Unit
+            is PerRequestRecord -> {
+                val hasRemainingRecords = records.any { candidate ->
+                    (candidate as? PerRequestRecord)?.id == record.id
+                }
+                if (!hasRemainingRecords) {
+                    activeResponseStreams.remove(record.id)
+                }
+            }
+
+            is PerWebSocketRecord -> {
+                val hasRemainingRecords = records.any { candidate ->
+                    candidate.perWebSocketRecord()?.id == record.id
+                }
+                if (!hasRemainingRecords) {
+                    openWebSockets.remove(record.id)
+                }
+            }
         }
     }
 
-    private fun evictRequestTerminal(head: RequestWillBeSent): Boolean {
-        return records.indexOfFirst { candidate ->
-            candidate !== head && when (candidate) {
-                is ResponseReceived -> candidate.id == head.id && !activeResponseStreams.contains(
-                    head.id
-                )
+    private fun completedRequestIds(): Set<String> {
+        return records.mapNotNullTo(mutableSetOf()) { candidate ->
+            when (candidate) {
+                is ResponseReceived ->
+                    candidate.id.takeUnless(activeResponseStreams::contains)
 
-                is ResponseFinished -> candidate.id == head.id
-                is RequestFailed -> candidate.id == head.id
-                is ResponseStreamClosed -> candidate.id == head.id
-                else -> false
+                is ResponseFinished -> candidate.id
+                is RequestFailed -> candidate.id
+                is ResponseStreamClosed -> candidate.id
+                else -> null
             }
         }
-            .takeIf { it >= 0 }
-            ?.let { index ->
-                val candidate = records.removeAt(index)
-                onRecordRemoved(candidate)
-                removeAdditionalRequestRecords(head.id)
-                true
-            }
-            ?: false
     }
 
-    private fun evictWebSocketConversation(head: NetworkEventRecord): Boolean {
-        val wsHead = head.perWebSocketRecord() ?: return false
-        if (openWebSockets.contains(wsHead.id)) {
-            return false
+    private fun removeRequestConversation(requestId: String): Boolean {
+        return removeRecords { candidate ->
+            (candidate as? PerRequestRecord)?.id == requestId
         }
+    }
+
+    private fun removeWebSocketConversation(webSocketId: String): Boolean {
+        return removeRecords { candidate ->
+            candidate.perWebSocketRecord()?.id == webSocketId
+        }
+    }
+
+    private inline fun removeRecords(predicate: (NetworkEventRecord) -> Boolean): Boolean {
         val iterator = records.iterator()
         var removedAny = false
         while (iterator.hasNext()) {
-            val candidate = iterator.next()
-            val perSocket = candidate.perWebSocketRecord()
-            val shouldRemove = perSocket != null && perSocket.id == wsHead.id && candidate !== head
-            if (shouldRemove) {
+            val record = iterator.next()
+            if (predicate(record)) {
                 iterator.remove()
-                onRecordRemoved(candidate)
+                onRecordRemoved(record)
                 removedAny = true
             }
         }
         return removedAny
-    }
-
-    private fun removeAdditionalRequestRecords(requestId: String) {
-        val iterator = records.iterator()
-        while (iterator.hasNext()) {
-            val record = iterator.next()
-            when (record) {
-                is ResponseReceived -> if (record.id == requestId) {
-                    iterator.remove()
-                    onRecordRemoved(record)
-                }
-
-                is ResponseFinished -> if (record.id == requestId) {
-                    iterator.remove()
-                    onRecordRemoved(record)
-                }
-
-                is ResponseStreamEvent -> if (record.id == requestId) {
-                    iterator.remove()
-                    onRecordRemoved(record)
-                }
-
-                else -> Unit
-            }
-        }
     }
 
     private fun evictExpiredRecords(cutoff: Long) {
@@ -278,15 +290,10 @@ internal class EventBuffer(
         }
     }
 
-    private fun removeRecord(iterator: MutableIterator<NetworkEventRecord>, record: NetworkEventRecord) {
-        iterator.remove()
-        onRecordRemoved(record)
-    }
-
     private fun onRecordRemoved(record: NetworkEventRecord) {
+        sequenceByRecord.remove(record)
         subtractApproxBytes(record)
-        updateWebSocketStateOnRemove(record)
-        updateStreamStateOnRemove(record)
+        updateConversationStateOnRemove(record)
         maybeEvictBodiesFor(record)
     }
 
