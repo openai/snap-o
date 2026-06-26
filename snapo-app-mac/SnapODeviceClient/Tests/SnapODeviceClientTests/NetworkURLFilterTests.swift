@@ -15,7 +15,13 @@ struct NetworkURLFilterTests {
 
     for testCase in contract.cases {
       let tokens = NetworkURLFilter.parseTokens(testCase.searchText)
-      #expect(tokens == testCase.tokens, "Unexpected tokens for \(testCase.id)")
+      #expect(
+        tokens == URLFilterTokens(
+          includes: testCase.tokens.includes,
+          excludes: testCase.tokens.excludes
+        ),
+        "Unexpected tokens for \(testCase.id)"
+      )
 
       for match in testCase.matches {
         let result = NetworkURLFilter.matches(url: match.url, tokens: tokens)
@@ -42,8 +48,13 @@ private struct URLFilterContract: Decodable {
 private struct URLFilterContractCase: Decodable {
   let id: String
   let searchText: String
-  let tokens: URLFilterTokens
+  let tokens: URLFilterContractTokens
   let matches: [URLFilterContractMatch]
+}
+
+private struct URLFilterContractTokens: Decodable {
+  let includes: [String]
+  let excludes: [String]
 }
 
 private struct URLFilterContractMatch: Decodable {
