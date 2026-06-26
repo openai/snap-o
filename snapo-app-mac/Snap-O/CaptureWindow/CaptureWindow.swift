@@ -389,7 +389,7 @@ struct CaptureWindow: View {
           fileStore: controller.fileStore,
           livePreviewHost: controller
         )
-      } else if controller.isLivePreviewActive {
+      } else if controller.isLivePreviewActive, controller.hasDevices {
         EmptyView()
       } else if controller.isDeviceListInitialized {
         IdleOverlayView(
