@@ -52,8 +52,9 @@ internal class NetworkInspectorTransport(
     private val sessionsGuard = Any()
     private val sessions = LinkedHashSet<NetworkInspectorSession>()
 
-    @Volatile
-    private var latestAppIcon: SnapOAppIcon? = null
+    private val appIcon: SnapOAppIcon? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        appIconProvider.loadAppIcon()
+    }
 
     fun start(): Boolean {
         if (server != null) return true
@@ -64,7 +65,6 @@ internal class NetworkInspectorTransport(
             )
         }.getOrNull() ?: return false
 
-        latestAppIcon = appIconProvider.loadAppIcon()
         server = boundServer
         acceptJob = scope.launch(Dispatchers.IO) { acceptLoop(boundServer) }
         return true
@@ -129,7 +129,7 @@ internal class NetworkInspectorTransport(
             serverStartWallMs = serverStartWallMs,
             serverStartMonoNs = serverStartMonoNs,
             mode = config.modeLabel,
-            icon = latestAppIcon,
+            icon = appIcon,
         )
         return CdpMessage(
             method = SnapOMethod.AppInfo,
