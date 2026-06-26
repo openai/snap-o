@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -70,6 +72,7 @@ class MainActivity : ComponentActivity() {
                         onPostRequestClick = { runPostRequest(scope) },
                         onUnknownLengthGzipPostRequestClick = { runUnknownLengthGzipPostRequest(scope) },
                         onNoContentTypeTextResponseClick = { runNoContentTypeTextResponseRequest(scope) },
+                        onSlowResponseClick = { runSlowResponseRequest(scope) },
                         onWebSocketDemoClick = { startWebSocketDemo(scope) },
                         modifier = Modifier.padding(innerPadding)
                     )
@@ -146,13 +149,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun executeRequest(scope: CoroutineScope, request: Request) {
+    private fun runSlowResponseRequest(scope: CoroutineScope) {
+        scope.launch {
+            val url = resolveMockHttpUrl("/slow-response") ?: return@launch
+            val request = Request.Builder()
+                .url(url)
+                .header("X-SnapO-Demo", "okhttp-slow-body")
+                .build()
+            executeRequest(scope, request, printResponseBody = false)
+        }
+    }
+
+    private fun executeRequest(
+        scope: CoroutineScope,
+        request: Request,
+        printResponseBody: Boolean = true,
+    ) {
         val call = client.newCall(request)
         scope.launch {
             try {
                 call.executeAsync().use { response ->
                     withContext(Dispatchers.IO) {
-                        println(response.body.string())
+                        val responseBody = response.body.string()
+                        if (printResponseBody) {
+                            println(responseBody)
+                        }
                     }
                 }
             } catch (error: IOException) {
@@ -222,12 +243,15 @@ fun Greeting(
     onPostRequestClick: () -> Unit,
     onUnknownLengthGzipPostRequestClick: () -> Unit,
     onNoContentTypeTextResponseClick: () -> Unit,
+    onSlowResponseClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.padding(16.dp),
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
     ) {
         Button(onClick = onNetworkRequestClick) {
             Text("Network Request")
@@ -240,6 +264,9 @@ fun Greeting(
         }
         Button(onClick = onNoContentTypeTextResponseClick) {
             Text("GET text (no Content-Type)")
+        }
+        Button(onClick = onSlowResponseClick) {
+            Text("Slow response")
         }
         Button(onClick = onWebSocketDemoClick) {
             Text("WebSocket Echo")
@@ -256,6 +283,7 @@ private fun GreetingPreview() {
             onPostRequestClick = {},
             onUnknownLengthGzipPostRequestClick = {},
             onNoContentTypeTextResponseClick = {},
+            onSlowResponseClick = {},
             onWebSocketDemoClick = {},
         )
     }

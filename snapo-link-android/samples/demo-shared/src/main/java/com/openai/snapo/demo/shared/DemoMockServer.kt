@@ -9,6 +9,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import java.net.InetAddress
+import java.util.concurrent.TimeUnit
 
 class DemoMockServer {
     private var server: MockWebServer? = null
@@ -39,6 +40,7 @@ private fun createServer(): MockWebServer {
     val gzipPostBody = """{"ok":true,"endpoint":"post-gzip-unknown-length","source":"mockwebserver"}"""
     val noTypeBody = """{"message":"Hello from Snap-O without Content-Type","source":"okhttp-demo"}"""
     val formBody = """{"ok":true,"endpoint":"form-post","source":"mockwebserver"}"""
+    val slowBody = """{"message":"${"x".repeat(SlowBodyPayloadCharacters)}","source":"okhttp-demo"}"""
     return MockWebServer().apply {
         dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
@@ -78,6 +80,7 @@ private fun createServer(): MockWebServer {
                         .setHeader("Connection", "close")
                         .body(noTypeBody)
                         .build()
+                    "/slow-response" -> slowResponse(slowBody)
                     "/ws-echo" -> MockResponse.Builder()
                         .webSocketUpgrade(
                             object : WebSocketListener() {
@@ -100,6 +103,20 @@ private fun createServer(): MockWebServer {
     }
 }
 
+private fun slowResponse(body: String): MockResponse = MockResponse.Builder()
+    .code(200)
+    .setHeader("Content-Type", "application/json; charset=utf-8")
+    .setHeader("X-SnapO-Demo", "headers-before-body")
+    .setHeader("Connection", "close")
+    .body(body)
+    .bodyDelay(SlowBodyInitialDelayMs, TimeUnit.MILLISECONDS)
+    .throttleBody(
+        bytesPerPeriod = SlowBodyChunkBytes,
+        period = SlowBodyChunkDelayMs,
+        unit = TimeUnit.MILLISECONDS,
+    )
+    .build()
+
 fun String.toWebSocketUrl(): String {
     return when {
         startsWith("http://") -> "ws://${removePrefix("http://")}"
@@ -110,3 +127,7 @@ fun String.toWebSocketUrl(): String {
 
 private const val DemoLogTag: String = "SnapODemo"
 private const val MockHost: String = "127.0.0.1"
+private const val SlowBodyPayloadCharacters: Int = 1024 * 1024
+private const val SlowBodyInitialDelayMs: Long = 2_000L
+private const val SlowBodyChunkBytes: Long = 128L * 1024L
+private const val SlowBodyChunkDelayMs: Long = 250L
