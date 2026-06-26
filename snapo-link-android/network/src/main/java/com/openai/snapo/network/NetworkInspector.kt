@@ -92,6 +92,24 @@ class NetworkInspectorServer internal constructor(
         }
     }
 
+    suspend fun updateLatestRequestBody(
+        requestId: String,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ) {
+        bufferLock.withLock {
+            eventBuffer.updateLatestRequestBody(
+                requestId = requestId,
+                body = body,
+                bodyEncoding = bodyEncoding,
+                bodyTruncatedBytes = bodyTruncatedBytes,
+                bodySize = bodySize,
+            )
+        }
+    }
+
     private suspend fun snapshotMessages(): NetworkReplaySnapshot {
         val snapshot = bufferLock.withLock { eventBuffer.sequencedSnapshot() }
         val requestUrls = HashMap<String, String>()

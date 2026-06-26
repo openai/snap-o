@@ -61,6 +61,32 @@ internal class EventBuffer(
 
     fun findResponseBody(requestId: String): CapturedBody? = responseBodiesById[requestId]
 
+    fun updateLatestRequestBody(
+        requestId: String,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ): Boolean {
+        val index = records.indexOfLast { candidate ->
+            (candidate as? RequestWillBeSent)?.id == requestId
+        }
+        if (index < 0) return false
+        if (!body.isNullOrEmpty()) {
+            upsertRequestBody(requestId, body, bodyEncoding)
+        }
+        val existing = records[index] as? RequestWillBeSent ?: return false
+        val updated = existing.copy(
+            body = null,
+            bodyEncoding = bodyEncoding,
+            bodyTruncatedBytes = bodyTruncatedBytes,
+            bodySize = bodySize ?: existing.bodySize,
+        )
+        replaceRecord(index, existing, updated)
+        trimToByteLimit()
+        return true
+    }
+
     fun updateLatestResponseBody(
         requestId: String,
         bodyPreview: String?,
@@ -90,13 +116,21 @@ internal class EventBuffer(
             bodyTruncatedBytes = bodyTruncatedBytes,
             bodySize = bodySize ?: existing.bodySize,
         )
+        replaceRecord(index, existing, updated)
+        trimToByteLimit()
+        return true
+    }
+
+    private fun replaceRecord(
+        index: Int,
+        existing: NetworkEventRecord,
+        updated: NetworkEventRecord,
+    ) {
         val sequence = checkNotNull(sequenceByRecord.remove(existing))
         records[index] = updated
         sequenceByRecord[updated] = sequence
         subtractApproxBytes(existing)
         approxBytes += estimateSize(updated)
-        trimToByteLimit()
-        return true
     }
 
     private fun normalizeRecord(record: NetworkEventRecord): NetworkEventRecord {
