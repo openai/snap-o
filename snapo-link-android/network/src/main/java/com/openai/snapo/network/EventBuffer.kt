@@ -29,7 +29,6 @@ internal class EventBuffer(
     private val requestBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val responseBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val openWebSockets: MutableSet<String> = mutableSetOf()
-    private val activeResponseStreams: MutableSet<String> = mutableSetOf()
 
     fun append(record: NetworkEventRecord): Long {
         val normalizedRecord = normalizeRecord(record)
@@ -38,7 +37,6 @@ internal class EventBuffer(
         insertSorted(normalizedRecord)
         approxBytes += estimateSize(normalizedRecord)
         updateWebSocketStateOnAdd(normalizedRecord)
-        updateStreamStateOnAdd(normalizedRecord)
         evictExpiredIfNeeded(normalizedRecord)
         trimToByteLimit()
         trimToCountLimit()
@@ -239,34 +237,13 @@ internal class EventBuffer(
         }
     }
 
-    private fun updateStreamStateOnAdd(record: NetworkEventRecord) {
-        when (record) {
-            is ResponseStreamEvent -> activeResponseStreams.add(record.id)
-            is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
-            is ResponseFinished -> activeResponseStreams.remove(record.id)
-            is RequestFailed -> activeResponseStreams.remove(record.id)
-            else -> Unit
-        }
-    }
-
     private fun updateConversationStateOnRemove(record: NetworkEventRecord) {
-        when (record) {
-            is PerRequestRecord -> {
-                val hasRemainingRecords = records.any { candidate ->
-                    (candidate as? PerRequestRecord)?.id == record.id
-                }
-                if (!hasRemainingRecords) {
-                    activeResponseStreams.remove(record.id)
-                }
+        if (record is PerWebSocketRecord) {
+            val hasRemainingRecords = records.any { candidate ->
+                candidate.perWebSocketRecord()?.id == record.id
             }
-
-            is PerWebSocketRecord -> {
-                val hasRemainingRecords = records.any { candidate ->
-                    candidate.perWebSocketRecord()?.id == record.id
-                }
-                if (!hasRemainingRecords) {
-                    openWebSockets.remove(record.id)
-                }
+            if (!hasRemainingRecords) {
+                openWebSockets.remove(record.id)
             }
         }
     }
@@ -274,9 +251,6 @@ internal class EventBuffer(
     private fun completedRequestIds(): Set<String> {
         return records.mapNotNullTo(mutableSetOf()) { candidate ->
             when (candidate) {
-                is ResponseReceived ->
-                    candidate.id.takeUnless(activeResponseStreams::contains)
-
                 is ResponseFinished -> candidate.id
                 is RequestFailed -> candidate.id
                 is ResponseStreamClosed -> candidate.id
