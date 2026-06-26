@@ -95,11 +95,11 @@ final class LivePreviewDisplayView: NSView {
   }
 
   private func attachSession() {
-    guard let session = renderer?.session else { return }
-    let initialFrame = session.initialFrame
-    setInitialFrame(initialFrame)
-    if initialFrame != nil {
-      observeDisplayReadiness()
+    guard let renderer else { return }
+    let session = renderer.session
+    let operationID = renderer.operation.id
+    session.initialFrameHandler = { [weak self] frame in
+      self?.displayInitialFrame(frame, operationID: operationID)
     }
     session.sampleBufferHandler = { [weak self] sample in
       self?.enqueue(sample)
@@ -109,6 +109,7 @@ final class LivePreviewDisplayView: NSView {
 
   private func detachSession() {
     stopObservingDisplayReadiness()
+    renderer?.session.initialFrameHandler = nil
     renderer?.session.sampleBufferHandler = nil
     displayLayer.sampleBufferRenderer.stopRequestingMediaData()
     displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
@@ -127,8 +128,18 @@ final class LivePreviewDisplayView: NSView {
     }
   }
 
-  private func observeDisplayReadiness() {
-    guard let operationID = renderer?.operation.id else { return }
+  private func displayInitialFrame(_ image: CGImage, operationID: UUID) {
+    guard renderer?.operation.id == operationID else { return }
+    observeDisplayReadiness(operationID: operationID)
+    guard !displayLayer.isReadyForDisplay else {
+      hideInitialFrameIfReady(operationID: operationID)
+      return
+    }
+    setInitialFrame(image)
+    hideInitialFrameIfReady(operationID: operationID)
+  }
+
+  private func observeDisplayReadiness(operationID: UUID) {
     stopObservingDisplayReadiness()
     readyForDisplayObserver = NotificationCenter.default.addObserver(
       forName: .AVSampleBufferDisplayLayerReadyForDisplayDidChange,
@@ -136,14 +147,17 @@ final class LivePreviewDisplayView: NSView {
       queue: .main
     ) { [weak self] _ in
       Task { @MainActor [weak self] in
-        guard let self,
-              renderer?.operation.id == operationID,
-              displayLayer.isReadyForDisplay else { return }
-        renderer?.session.discardInitialFrame()
-        setInitialFrame(nil)
-        stopObservingDisplayReadiness()
+        self?.hideInitialFrameIfReady(operationID: operationID)
       }
     }
+  }
+
+  private func hideInitialFrameIfReady(operationID: UUID) {
+    guard renderer?.operation.id == operationID,
+          displayLayer.isReadyForDisplay else { return }
+    renderer?.session.discardInitialFrame()
+    setInitialFrame(nil)
+    stopObservingDisplayReadiness()
   }
 
   private func stopObservingDisplayReadiness() {

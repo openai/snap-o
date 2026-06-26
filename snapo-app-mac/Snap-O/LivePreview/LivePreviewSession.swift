@@ -13,11 +13,20 @@ final class LivePreviewSession {
   private(set) var initialFrame: CGImage?
 
   var media: Media?
+  var initialFrameHandler: ((CGImage) -> Void)? {
+    didSet {
+      if let initialFrame {
+        initialFrameHandler?(initialFrame)
+      }
+    }
+  }
+
   var sampleBufferHandler: ((CMSampleBuffer) -> Void)?
 
   private let densityScale: CGFloat
   private let screenStream: ScreenStreamSession
   private var decoder: H264StreamDecoder?
+  private var initialFrameTask: Task<Void, Never>?
   private var streamTask: Task<Void, Never>?
   private var hasStopped = false
 
@@ -31,14 +40,13 @@ final class LivePreviewSession {
 
     let exec = await adb.exec()
     async let densityValue = exec.displayDensity(deviceID: deviceID)
-    async let capturedFrame = Self.captureInitialFrame(deviceID: deviceID, using: exec)
+    async let startedStream = exec.startScreenStream(deviceID: deviceID)
     densityScale = try await CGFloat(densityValue)
-    initialFrame = try await capturedFrame
-
-    screenStream = try await exec.startScreenStream(deviceID: deviceID)
+    screenStream = try await startedStream
 
     setupDecoder()
     startStreamTask()
+    startInitialFrameTask(using: exec)
   }
 
   private static func captureInitialFrame(deviceID: String, using exec: ADBClient) async throws -> CGImage? {
@@ -89,6 +97,23 @@ final class LivePreviewSession {
 
   func discardInitialFrame() {
     initialFrame = nil
+    initialFrameHandler = nil
+  }
+
+  private func startInitialFrameTask(using exec: ADBClient) {
+    initialFrameTask = Task { [weak self] in
+      guard let self else { return }
+      defer { initialFrameTask = nil }
+
+      do {
+        guard let frame = try await Self.captureInitialFrame(deviceID: deviceID, using: exec),
+              !hasStopped else { return }
+        initialFrame = frame
+        initialFrameHandler?(frame)
+      } catch {
+        // The initial frame is best-effort; live preview continues without it.
+      }
+    }
   }
 
   private func setupDecoder() {
@@ -143,8 +168,12 @@ final class LivePreviewSession {
 
     streamTask?.cancel()
     streamTask = nil
+    initialFrameTask?.cancel()
+    initialFrameTask = nil
     screenStream.close()
     decoder = nil
+    initialFrame = nil
+    initialFrameHandler = nil
     sampleBufferHandler = nil
 
     stopResult = error
