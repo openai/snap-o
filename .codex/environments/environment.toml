@@ -23,3 +23,11 @@ open DerivedData/Build/Products/Debug/Snap-O.app
 name = "Open Xcode"
 icon = "tool"
 command = "open snapo-app-mac/Snap-O.xcodeproj"
+
+[[actions]]
+name = "Open Android Studio"
+icon = "tool"
+command = '''
+cd snapo-link-android
+open -b com.google.android.studio build.gradle.kts
+'''
