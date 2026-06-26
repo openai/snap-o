@@ -13,4 +13,5 @@ android {
 dependencies {
     implementation(project(":network"))
     api(libs.kotlinx.coroutines.core)
+    testImplementation(libs.junit4)
 }
