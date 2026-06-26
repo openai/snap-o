@@ -65,7 +65,7 @@ actor LivePreviewPointerInjector {
           await backend.stop()
           return
         }
-        await self.finishPreparation(
+        await finishPreparation(
           backend,
           deviceID: deviceID,
           generation: generation

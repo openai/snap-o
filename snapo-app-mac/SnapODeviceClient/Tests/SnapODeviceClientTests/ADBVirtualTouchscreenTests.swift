@@ -27,9 +27,9 @@ struct ADBVirtualTouchscreenTests {
 
     let axes = try #require(object["abs_info"] as? [[String: Any]])
     #expect(axisRange(code: 47, in: axes) == 0 ... 9)
-    #expect(axisRange(code: 53, in: axes) == 0 ... 32_767)
-    #expect(axisRange(code: 54, in: axes) == 0 ... 32_767)
-    #expect(axisRange(code: 57, in: axes) == 0 ... 65_535)
+    #expect(axisRange(code: 53, in: axes) == 0 ... 32767)
+    #expect(axisRange(code: 54, in: axes) == 0 ... 32767)
+    #expect(axisRange(code: 57, in: axes) == 0 ... 65535)
 
     #expect(command.contains(#""type":100,"data":[1,3]"#))
     #expect(command.contains(#""type":101,"data":[330,325]"#))
@@ -47,8 +47,8 @@ struct ADBVirtualTouchscreenTests {
 
     for (rotation, expected) in originByRotation {
       let geometry = try UInputTouchscreenProtocol.Geometry(
-        displayWidth: 2_400,
-        displayHeight: 1_080,
+        displayWidth: 2400,
+        displayHeight: 1080,
         rotation: rotation
       )
       #expect(geometry.rawPoint(x: 0, y: 0) == expected)

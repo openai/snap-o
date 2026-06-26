@@ -165,8 +165,8 @@ public extension ADBClient {
 }
 
 enum UInputTouchscreenProtocol {
-  static let maximumAxisValue = 32_767
-  static let maximumTrackingID = 65_535
+  static let maximumAxisValue = 32767
+  static let maximumTrackingID = 65535
 
   struct Point: Equatable {
     let x: Int
@@ -279,7 +279,7 @@ enum UInputTouchscreenProtocol {
     guard let viewport = output.split(separator: "\n").first(where: {
       $0.contains("Viewport INTERNAL: displayId=0")
     }),
-          let marker = viewport.range(of: "orientation=") else { return nil }
+      let marker = viewport.range(of: "orientation=") else { return nil }
     let suffix = viewport[marker.upperBound...]
     guard let value = suffix.first?.wholeNumberValue else { return nil }
     return ADBDisplayRotation(rawValue: value)
