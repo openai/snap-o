@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -20,7 +21,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       if let renderer {
         LivePreviewRendererView(renderer: renderer)
       } else {
-        Color.black
+        Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

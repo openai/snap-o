@@ -11,9 +11,11 @@ struct IdleOverlayView: View {
   var body: some View {
     VStack(spacing: 12) {
       Image("Aperture")
+        .renderingMode(.template)
         .resizable()
+        .foregroundStyle(.secondary)
         .frame(width: 64, height: 64)
-        .infiniteRotate(animated: isProcessing)
+        .infiniteRotate(animated: isProcessing || isRecording)
 
       if isRecording, !isProcessing {
         Button {
@@ -23,22 +25,14 @@ struct IdleOverlayView: View {
             Text("Stop Recording")
             Text("⎋")
               .font(.subheadline)
-              .foregroundStyle(.white.opacity(0.7))
+              .foregroundStyle(.secondary)
           }
-          .padding(.horizontal, 16)
-          .padding(.vertical, 10)
-          .background(
-            RoundedRectangle(cornerRadius: 10)
-              .fill(Color.gray.opacity(0.3))
-          )
-          .foregroundStyle(Color.white)
         }
-        .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
       } else if isRecording {
         ProgressView()
           .progressViewStyle(.circular)
-          .tint(.white)
+          .tint(.primary)
           .controlSize(.large)
       } else if !hasDevices, isDeviceListInitialized {
         Text("Waiting for device…")

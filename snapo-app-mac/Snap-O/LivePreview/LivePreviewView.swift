@@ -81,9 +81,20 @@ final class LivePreviewDisplayView: NSView {
     wantsLayer = true
     layer?.addSublayer(displayLayer)
     displayLayer.videoGravity = .resizeAspect
-    displayLayer.backgroundColor = NSColor.black.cgColor
+    updateDisplayLayerBackgroundColor()
     displayLayer.frame = bounds
     displayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+  }
+
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    updateDisplayLayerBackgroundColor()
+  }
+
+  private func updateDisplayLayerBackgroundColor() {
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      displayLayer.backgroundColor = NSColor.unemphasizedSelectedContentBackgroundColor.cgColor
+    }
   }
 
   private func attachSession() {

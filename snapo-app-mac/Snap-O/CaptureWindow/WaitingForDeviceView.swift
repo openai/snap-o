@@ -6,7 +6,9 @@ struct WaitingForDeviceView: View {
   var body: some View {
     VStack(spacing: 12) {
       Image("Aperture")
+        .renderingMode(.template)
         .resizable()
+        .foregroundStyle(.secondary)
         .frame(width: 64, height: 64)
         .infiniteRotate(animated: true)
 

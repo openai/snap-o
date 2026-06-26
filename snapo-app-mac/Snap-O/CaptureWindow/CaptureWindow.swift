@@ -381,7 +381,7 @@ struct CaptureWindow: View {
 
   private func captureContent(controller: CaptureWindowController) -> some View {
     ZStack {
-      Color.black
+      captureLetterboxBackground
 
       if controller.currentCapture != nil {
         CaptureSnapshotView(
@@ -389,6 +389,8 @@ struct CaptureWindow: View {
           fileStore: controller.fileStore,
           livePreviewHost: controller
         )
+      } else if controller.isLivePreviewActive, controller.hasDevices {
+        EmptyView()
       } else if controller.isDeviceListInitialized {
         IdleOverlayView(
           hasDevices: controller.hasDevices,
