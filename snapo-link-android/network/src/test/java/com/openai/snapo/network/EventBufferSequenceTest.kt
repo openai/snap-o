@@ -50,6 +50,25 @@ class EventBufferSequenceTest {
     }
 
     @Test
+    fun `request body updates preserve the event sequence`() {
+        val buffer = EventBuffer(NetworkInspectorConfig())
+        val sequence = buffer.append(request(id = "request", wallTimeMs = 100L))
+
+        buffer.updateLatestRequestBody(
+            requestId = "request",
+            body = "updated body",
+            bodyEncoding = null,
+            bodyTruncatedBytes = 2L,
+            bodySize = 14L,
+        )
+
+        val event = buffer.sequencedSnapshot().records.single()
+        assertEquals(sequence, event.snapoSequence)
+        assertEquals(14L, (event.record as RequestWillBeSent).bodySize)
+        assertEquals("updated body", buffer.findRequestBody("request")?.body)
+    }
+
+    @Test
     fun `watermark advances when older events are evicted`() {
         val buffer = EventBuffer(
             NetworkInspectorConfig(maxBufferedEvents = 1),

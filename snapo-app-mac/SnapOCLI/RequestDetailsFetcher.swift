@@ -126,6 +126,7 @@ struct RequestDetailsFetcher {
 
       if details.requestSeen,
          details.requestHasPostData,
+         details.responseSeen || details.responseTerminal,
          !requestBodyResolved,
          requestBodyAttempts < Self.attemptLimit {
         requestBodyAttempts += 1
@@ -135,8 +136,18 @@ struct RequestDetailsFetcher {
             params: ["requestId": .string(requestID)],
             timeout: .milliseconds(500)
           )
-          requestBody = message.result?["postData"]?.stringValue
-          requestBodyResolved = true
+          if let error = message.error {
+            if error.message.lowercased().contains("no request body captured") {
+              requestBodyResolved = true
+            } else {
+              return .failure(error.message)
+            }
+          } else if let postData = message.result?["postData"]?.stringValue {
+            requestBody = postData
+            requestBodyResolved = true
+          } else {
+            return .failure("Malformed response for Network.getRequestPostData")
+          }
         } catch NetworkSessionError.commandTimedOut {
           if requestBodyAttempts >= Self.attemptLimit {
             requestBodyResolved = true

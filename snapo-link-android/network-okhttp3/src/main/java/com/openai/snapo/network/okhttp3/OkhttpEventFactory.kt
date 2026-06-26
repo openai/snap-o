@@ -6,9 +6,7 @@ import com.openai.snapo.network.ResponseReceived
 import com.openai.snapo.network.Timings
 import okhttp3.Headers
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.Response
-import java.io.IOException
 
 internal object OkhttpEventFactory {
 
@@ -19,6 +17,7 @@ internal object OkhttpEventFactory {
         body: String?,
         bodyEncoding: String?,
         truncatedBytes: Long?,
+        bodySize: Long?,
     ): RequestWillBeSent =
         RequestWillBeSent(
             id = context.requestId,
@@ -31,7 +30,7 @@ internal object OkhttpEventFactory {
             body = body,
             bodyEncoding = bodyEncoding,
             bodyTruncatedBytes = truncatedBytes,
-            bodySize = request.body.safeContentLength(),
+            bodySize = bodySize,
         )
 
     fun createResponseReceived(
@@ -67,13 +66,5 @@ private fun Headers.toHeaderList(): List<Header> {
         for (index in 0 until headerCount) {
             add(Header(name(index), value(index)))
         }
-    }
-}
-
-private fun RequestBody?.safeContentLength(): Long? = this?.let {
-    try {
-        it.contentLength().takeIf { len -> len >= 0L }
-    } catch (_: IOException) {
-        null
     }
 }

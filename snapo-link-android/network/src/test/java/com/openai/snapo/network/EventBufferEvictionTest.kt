@@ -94,7 +94,7 @@ class EventBufferEvictionTest {
         buffer.append(responseFinished(id = "sentinel-2", wallTimeMs = 13L))
 
         assertEquals(
-            listOf("sentinel-1", "sentinel-2"),
+            listOf(STREAM_ID, STREAM_ID, "sentinel-2"),
             buffer.snapshot().mapNotNull(::recordId),
         )
     }
@@ -132,6 +132,21 @@ class EventBufferEvictionTest {
     }
 
     @Test
+    fun `response headers alone do not mark a conversation complete`() {
+        val buffer = EventBuffer(NetworkInspectorConfig(maxBufferedEvents = 5))
+        buffer.append(request(id = "active", wallTimeMs = 1L))
+        buffer.append(response(id = "active", wallTimeMs = 2L))
+        httpConversation(wallTimeOffsetMs = 10L).forEach(buffer::append)
+
+        buffer.append(responseFinished(id = SENTINEL_ID, wallTimeMs = 20L))
+
+        assertEquals(
+            listOf("active", "active", SENTINEL_ID),
+            buffer.snapshot().mapNotNull(::recordId),
+        )
+    }
+
+    @Test
     fun `expiring the last response stream record clears active state`() {
         val buffer = EventBuffer(
             NetworkInspectorConfig(
@@ -150,7 +165,7 @@ class EventBufferEvictionTest {
         buffer.append(webSocketMessage(id = TRIGGER_ID, wallTimeMs = 13L))
 
         assertEquals(
-            listOf(TRIGGER_ID, TRIGGER_ID),
+            listOf(STREAM_ID, STREAM_ID),
             buffer.snapshot().mapNotNull(::recordId),
         )
     }

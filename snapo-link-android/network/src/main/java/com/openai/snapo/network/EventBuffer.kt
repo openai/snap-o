@@ -29,7 +29,6 @@ internal class EventBuffer(
     private val requestBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val responseBodiesById: MutableMap<String, CapturedBody> = mutableMapOf()
     private val openWebSockets: MutableSet<String> = mutableSetOf()
-    private val activeResponseStreams: MutableSet<String> = mutableSetOf()
 
     fun append(record: NetworkEventRecord): Long {
         val normalizedRecord = normalizeRecord(record)
@@ -38,7 +37,6 @@ internal class EventBuffer(
         insertSorted(normalizedRecord)
         approxBytes += estimateSize(normalizedRecord)
         updateWebSocketStateOnAdd(normalizedRecord)
-        updateStreamStateOnAdd(normalizedRecord)
         evictExpiredIfNeeded(normalizedRecord)
         trimToByteLimit()
         trimToCountLimit()
@@ -60,6 +58,32 @@ internal class EventBuffer(
     fun findRequestBody(requestId: String): CapturedBody? = requestBodiesById[requestId]
 
     fun findResponseBody(requestId: String): CapturedBody? = responseBodiesById[requestId]
+
+    fun updateLatestRequestBody(
+        requestId: String,
+        body: String?,
+        bodyEncoding: String?,
+        bodyTruncatedBytes: Long?,
+        bodySize: Long?,
+    ): Boolean {
+        val index = records.indexOfLast { candidate ->
+            (candidate as? RequestWillBeSent)?.id == requestId
+        }
+        if (index < 0) return false
+        if (!body.isNullOrEmpty()) {
+            upsertRequestBody(requestId, body, bodyEncoding)
+        }
+        val existing = records[index] as? RequestWillBeSent ?: return false
+        val updated = existing.copy(
+            body = null,
+            bodyEncoding = bodyEncoding,
+            bodyTruncatedBytes = bodyTruncatedBytes,
+            bodySize = bodySize ?: existing.bodySize,
+        )
+        replaceRecord(index, existing, updated)
+        trimToByteLimit()
+        return true
+    }
 
     fun updateLatestResponseBody(
         requestId: String,
@@ -90,13 +114,21 @@ internal class EventBuffer(
             bodyTruncatedBytes = bodyTruncatedBytes,
             bodySize = bodySize ?: existing.bodySize,
         )
+        replaceRecord(index, existing, updated)
+        trimToByteLimit()
+        return true
+    }
+
+    private fun replaceRecord(
+        index: Int,
+        existing: NetworkEventRecord,
+        updated: NetworkEventRecord,
+    ) {
         val sequence = checkNotNull(sequenceByRecord.remove(existing))
         records[index] = updated
         sequenceByRecord[updated] = sequence
         subtractApproxBytes(existing)
         approxBytes += estimateSize(updated)
-        trimToByteLimit()
-        return true
     }
 
     private fun normalizeRecord(record: NetworkEventRecord): NetworkEventRecord {
@@ -205,34 +237,13 @@ internal class EventBuffer(
         }
     }
 
-    private fun updateStreamStateOnAdd(record: NetworkEventRecord) {
-        when (record) {
-            is ResponseStreamEvent -> activeResponseStreams.add(record.id)
-            is ResponseStreamClosed -> activeResponseStreams.remove(record.id)
-            is ResponseFinished -> activeResponseStreams.remove(record.id)
-            is RequestFailed -> activeResponseStreams.remove(record.id)
-            else -> Unit
-        }
-    }
-
     private fun updateConversationStateOnRemove(record: NetworkEventRecord) {
-        when (record) {
-            is PerRequestRecord -> {
-                val hasRemainingRecords = records.any { candidate ->
-                    (candidate as? PerRequestRecord)?.id == record.id
-                }
-                if (!hasRemainingRecords) {
-                    activeResponseStreams.remove(record.id)
-                }
+        if (record is PerWebSocketRecord) {
+            val hasRemainingRecords = records.any { candidate ->
+                candidate.perWebSocketRecord()?.id == record.id
             }
-
-            is PerWebSocketRecord -> {
-                val hasRemainingRecords = records.any { candidate ->
-                    candidate.perWebSocketRecord()?.id == record.id
-                }
-                if (!hasRemainingRecords) {
-                    openWebSockets.remove(record.id)
-                }
+            if (!hasRemainingRecords) {
+                openWebSockets.remove(record.id)
             }
         }
     }
@@ -240,9 +251,6 @@ internal class EventBuffer(
     private fun completedRequestIds(): Set<String> {
         return records.mapNotNullTo(mutableSetOf()) { candidate ->
             when (candidate) {
-                is ResponseReceived ->
-                    candidate.id.takeUnless(activeResponseStreams::contains)
-
                 is ResponseFinished -> candidate.id
                 is RequestFailed -> candidate.id
                 is ResponseStreamClosed -> candidate.id
