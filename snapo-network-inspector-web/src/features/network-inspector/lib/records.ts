@@ -57,6 +57,7 @@ export function isCompletedRecord(record: InspectorRecord): boolean {
 export function shouldRequestRequestBody(request: RequestRecord): boolean {
   if (request.requestBody != null) return false;
   if (request.requestHasPostData === false) return false;
+  if (!request.hasReceivedResponse && request.status.kind !== "failure") return false;
   return request.requestBodySize == null || request.requestBodySize !== 0;
 }
 

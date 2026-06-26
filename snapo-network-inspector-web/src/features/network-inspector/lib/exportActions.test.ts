@@ -2,7 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
 import type { RequestBodies, SaveFileInput } from "../../../network/bridge-types";
 import type { InspectorRecord, RequestRecord, StreamEventRecord } from "../../../network/cdp";
-import { exportAsHar, hydrateRecordsForHar } from "./exportActions";
+import { copyCurl, exportAsHar, hydrateRecordsForHar } from "./exportActions";
+
+describe("export body readiness", () => {
+  it("does not query a request body before its upload is known to be complete", async () => {
+    const client = {
+      loadBodies: vi.fn(),
+      copyText: vi.fn(async () => undefined)
+    } as unknown as NetworkClient;
+    const pending = request("pending", {
+      method: "POST",
+      status: { kind: "pending" },
+      endedAt: undefined,
+      requestHasPostData: true,
+      requestBodySize: 4,
+      hasReceivedResponse: false
+    });
+
+    await copyCurl(client, pending);
+
+    expect(client.loadBodies).not.toHaveBeenCalled();
+    expect(client.copyText).toHaveBeenCalledOnce();
+  });
+});
 
 describe("HAR body hydration budget", () => {
   it("counts existing cached bodies before hydrating missing bodies", async () => {

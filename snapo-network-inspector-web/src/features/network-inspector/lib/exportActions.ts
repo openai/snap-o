@@ -3,12 +3,13 @@ import type { RequestBodies } from "../../../network/bridge-types";
 import { estimatedStringStorageBytes, hydratedBodyRetentionLimitBytes } from "../../../network/body-retention";
 import { applyRequestBodies, type InspectorRecord, type RequestRecord } from "../../../network/cdp";
 import { buildHar, harFileName, makeCurlCommand, streamEventsRaw } from "../../../network/exporters";
+import { shouldRequestRequestBody } from "./records";
 
 const exportBodyLoadConcurrency = 3;
 
 export async function copyCurl(client: NetworkClient, request: RequestRecord): Promise<void> {
   let hydrated = request;
-  if (request.requestBody == null) {
+  if (shouldRequestRequestBody(request)) {
     try {
       hydrated = applyRequestBodies(
         request,
