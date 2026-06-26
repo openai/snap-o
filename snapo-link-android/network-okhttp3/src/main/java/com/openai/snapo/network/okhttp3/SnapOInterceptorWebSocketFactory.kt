@@ -53,6 +53,10 @@ class SnapOInterceptorWebSocketFactory @JvmOverloads constructor(
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     override fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket {
+        if (NetworkInspector.getOrNull() == null) {
+            return delegate.newWebSocket(request, listener)
+        }
+
         val webSocketId = UUID.randomUUID().toString()
         val nowWall = System.currentTimeMillis()
         val nowMono = SystemClock.elapsedRealtimeNanos()
