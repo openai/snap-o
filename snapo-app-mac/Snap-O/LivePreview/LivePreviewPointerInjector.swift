@@ -1,6 +1,6 @@
 import Foundation
 
-/// Serializes pointer events, selects a backend, and keeps each gesture on one backend.
+/// Serializes pointer events per source, selects a backend, and keeps each gesture on one backend.
 actor LivePreviewPointerInjector {
   private typealias PreferredBackendFactory = @Sendable (String) async throws -> any LivePreviewPointerBackend
 
@@ -38,8 +38,10 @@ actor LivePreviewPointerInjector {
   private let fallbackBackend: any LivePreviewPointerBackend
   private var deviceStates: [String: DeviceState] = [:]
   private var touchRoutes: [String: TouchRoute] = [:]
-  private var pendingEvents: [LivePreviewPointerEvent] = []
-  private var isFlushing = false
+  private var pendingTouchEvents: [LivePreviewPointerEvent] = []
+  private var pendingMouseEvents: [LivePreviewPointerEvent] = []
+  private var isFlushingTouchEvents = false
+  private var isFlushingMouseEvents = false
 
   init(adb: ADBService) {
     makePreferredBackend = { deviceID in
@@ -80,30 +82,55 @@ actor LivePreviewPointerInjector {
   }
 
   func enqueue(_ event: LivePreviewPointerEvent) async {
-    if event.action == .move,
-       let index = pendingEvents.lastIndex(where: {
-         $0.deviceID == event.deviceID && $0.source == event.source
-       }),
-       pendingEvents[index].action == .move {
-      pendingEvents[index] = event
+    if event.source == .mouse {
+      enqueueMouseEvent(event)
     } else {
-      pendingEvents.append(event)
+      enqueueTouchEvent(event)
+    }
+  }
+
+  private func enqueueTouchEvent(_ event: LivePreviewPointerEvent) {
+    if event.action == .down {
+      pendingMouseEvents.removeAll { $0.deviceID == event.deviceID }
+    }
+    if event.action == .move,
+       let index = pendingTouchEvents.lastIndex(where: { $0.deviceID == event.deviceID }),
+       pendingTouchEvents[index].action == .move {
+      pendingTouchEvents[index] = event
+    } else {
+      pendingTouchEvents.append(event)
     }
 
-    guard !isFlushing else { return }
-    isFlushing = true
-    Task { await flushQueue() }
+    guard !isFlushingTouchEvents else { return }
+    isFlushingTouchEvents = true
+    Task { await flushTouchQueue() }
+  }
+
+  private func enqueueMouseEvent(_ event: LivePreviewPointerEvent) {
+    if event.action == .move,
+       let index = pendingMouseEvents.lastIndex(where: { $0.deviceID == event.deviceID }),
+       pendingMouseEvents[index].action == .move {
+      pendingMouseEvents[index] = event
+    } else {
+      pendingMouseEvents.append(event)
+    }
+
+    guard !isFlushingMouseEvents else { return }
+    isFlushingMouseEvents = true
+    Task { await flushMouseQueue() }
   }
 
   func stopDevice(_ deviceID: String) async {
-    pendingEvents.removeAll { $0.deviceID == deviceID }
+    pendingTouchEvents.removeAll { $0.deviceID == deviceID }
+    pendingMouseEvents.removeAll { $0.deviceID == deviceID }
     touchRoutes.removeValue(forKey: deviceID)
     guard let state = deviceStates.removeValue(forKey: deviceID) else { return }
     await stop(state)
   }
 
   func stopAll() async {
-    pendingEvents.removeAll()
+    pendingTouchEvents.removeAll()
+    pendingMouseEvents.removeAll()
     touchRoutes.removeAll()
     let states = Array(deviceStates.values)
     deviceStates.removeAll()
@@ -150,9 +177,9 @@ actor LivePreviewPointerInjector {
     }
   }
 
-  private func flushQueue() async {
-    while !pendingEvents.isEmpty {
-      let event = pendingEvents.removeFirst()
+  private func flushTouchQueue() async {
+    while !pendingTouchEvents.isEmpty {
+      let event = pendingTouchEvents.removeFirst()
       do {
         try await send(event)
       } catch is CancellationError {
@@ -164,11 +191,33 @@ actor LivePreviewPointerInjector {
       }
     }
 
-    isFlushing = false
+    isFlushingTouchEvents = false
 
-    if !pendingEvents.isEmpty {
-      isFlushing = true
-      await flushQueue()
+    if !pendingTouchEvents.isEmpty {
+      isFlushingTouchEvents = true
+      await flushTouchQueue()
+    }
+  }
+
+  private func flushMouseQueue() async {
+    while !pendingMouseEvents.isEmpty {
+      let event = pendingMouseEvents.removeFirst()
+      do {
+        try await fallbackBackend.send(event)
+      } catch is CancellationError {
+        // Teardown can cancel an in-flight backend operation.
+      } catch {
+        SnapOLog.ui.error(
+          "Failed to send pointer event: \(error.localizedDescription, privacy: .public)"
+        )
+      }
+    }
+
+    isFlushingMouseEvents = false
+
+    if !pendingMouseEvents.isEmpty {
+      isFlushingMouseEvents = true
+      await flushMouseQueue()
     }
   }
 
