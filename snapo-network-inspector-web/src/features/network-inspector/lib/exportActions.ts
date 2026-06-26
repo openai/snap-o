@@ -3,7 +3,7 @@ import type { RequestBodies } from "../../../network/bridge-types";
 import { estimatedStringStorageBytes, hydratedBodyRetentionLimitBytes } from "../../../network/body-retention";
 import { applyRequestBodies, type InspectorRecord, type RequestRecord } from "../../../network/cdp";
 import { buildHar, harFileName, makeCurlCommand, streamEventsRaw } from "../../../network/exporters";
-import { shouldRequestRequestBody } from "./records";
+import { shouldRequestRequestBody, shouldRequestResponseBody } from "./records";
 
 const exportBodyLoadConcurrency = 3;
 
@@ -17,7 +17,9 @@ export async function copyCurl(client: NetworkClient, request: RequestRecord): P
           deviceId: request.server.deviceId,
           socketName: request.server.socketName,
           serverInstanceId: request.server.instanceId,
-          requestId: request.requestId
+          requestId: request.requestId,
+          includeRequestBody: true,
+          includeResponseBody: false
         })
       );
     } catch {
@@ -109,12 +111,17 @@ async function loadBodiesForHar(
   record: InspectorRecord
 ): Promise<RequestBodies | null> {
   if (record.kind !== "request") return null;
+  const includeRequestBody = shouldRequestRequestBody(record);
+  const includeResponseBody = shouldRequestResponseBody(record);
+  if (!includeRequestBody && !includeResponseBody) return null;
   try {
     return await client.loadBodies({
       deviceId: record.server.deviceId,
       socketName: record.server.socketName,
       serverInstanceId: record.server.instanceId,
-      requestId: record.requestId
+      requestId: record.requestId,
+      includeRequestBody,
+      includeResponseBody
     });
   } catch {
     // A completed request may no longer expose its body. Keep its metadata in the HAR.

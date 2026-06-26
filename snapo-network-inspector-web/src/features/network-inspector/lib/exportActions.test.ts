@@ -24,6 +24,25 @@ describe("export body readiness", () => {
     expect(client.loadBodies).not.toHaveBeenCalled();
     expect(client.copyText).toHaveBeenCalledOnce();
   });
+
+  it("loads only the request body when copying a completed request as curl", async () => {
+    const client = {
+      loadBodies: vi.fn(async () => ({ requestId: "complete", requestBody: "body" })),
+      copyText: vi.fn(async () => undefined)
+    } as unknown as NetworkClient;
+    const complete = request("complete", {
+      method: "POST",
+      requestHasPostData: true,
+      requestBodySize: 4,
+      hasReceivedResponse: true
+    });
+
+    await copyCurl(client, complete);
+
+    expect(client.loadBodies).toHaveBeenCalledWith(
+      expect.objectContaining({ includeRequestBody: true, includeResponseBody: false })
+    );
+  });
 });
 
 describe("HAR body hydration budget", () => {
