@@ -11,20 +11,6 @@ import type { SnapOServer } from "../../../network/bridge-types";
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
 import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
-export function collectRecords(
-  state: InspectorDataState,
-  selectedServer: ServerId | null,
-  searchText: string,
-  newestFirst: boolean
-): InspectorRecord[] {
-  return filterRecords(
-    [...state.requests.values(), ...state.webSockets.values()],
-    selectedServer,
-    searchText,
-    newestFirst
-  );
-}
-
 export function filterRecords(
   records: InspectorRecord[],
   selectedServer: ServerId | null,

@@ -2,24 +2,13 @@
   color-scheme: light dark;
 
   --primary: #111;
-  --on-primary: #fff;
-  --primary-container: #e6e6e6;
-  --on-primary-container: #111;
-  --secondary: #2a2a2a;
-  --on-secondary: #fff;
-  --secondary-container: #ececec;
-  --on-secondary-container: #1b1b1b;
   --background: #f7f7f7;
   --on-background: #111;
   --surface: #fdfdfd;
   --on-surface: #151515;
-  --surface-variant: #f1f1f1;
   --on-surface-variant: #6b6b6b;
   --surface-bright: #fff;
-  --surface-dim: #eaeaea;
-  --surface-container-lowest: #fff;
   --surface-container-low: #f6f6f6;
-  --surface-container: #f0f0f0;
   --surface-container-high: #e8e8e8;
   --surface-container-highest: #e1e1e1;
   --outline: #d0d0d0;
@@ -27,7 +16,6 @@
   --success: #23a84a;
   --error: #d04a3c;
   --warning: #ff9b0d;
-  --warning-surface: #f7ebdd;
   --warning-strong: #f69e00;
   --on-warning-strong: #fff;
   --info: #6f6f6f;
@@ -58,24 +46,13 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --primary: #ececec;
-    --on-primary: #101010;
-    --primary-container: #1b1b1b;
-    --on-primary-container: #ececec;
-    --secondary: #e0e0e0;
-    --on-secondary: #111;
-    --secondary-container: #262626;
-    --on-secondary-container: #e0e0e0;
     --background: #0f0f0f;
     --on-background: #f1f1f1;
     --surface: #111;
     --on-surface: #f1f1f1;
-    --surface-variant: #1c1c1c;
     --on-surface-variant: #b5b5b5;
     --surface-bright: #1a1a1a;
-    --surface-dim: #0b0b0b;
-    --surface-container-lowest: #0f0f0f;
     --surface-container-low: #141414;
-    --surface-container: #191919;
     --surface-container-high: #212121;
     --surface-container-highest: #2a2a2a;
     --outline: #3a3a3a;
@@ -83,7 +60,6 @@
     --success: #5bcf8b;
     --error: #ff7b6d;
     --warning: #f2b15a;
-    --warning-surface: #3a2a18;
     --warning-strong: #b86a00;
     --on-warning-strong: #fff;
     --info: #b0b0b0;
@@ -789,7 +765,6 @@ body.split-pane-resizing {
 
 .payload-card,
 .image-preview-card,
-.body-block,
 .event-row,
 .message-card {
   width: 100%;
@@ -811,18 +786,6 @@ body.split-pane-resizing {
 
 .payload-scroll {
   overflow: visible;
-}
-
-.body-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-  color: var(--on-surface-variant);
-  font-size: 10px;
-  line-height: 12px;
-  font-weight: 500;
 }
 
 .inline-action {
