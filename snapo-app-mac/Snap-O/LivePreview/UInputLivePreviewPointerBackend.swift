@@ -8,7 +8,6 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
   private let deviceID: String
   private let touchscreen: ADBVirtualTouchscreen
   private var displayRotation: ADBDisplayRotation
-  private var lastDisplaySize: CGSize?
   private var isStopped = false
 
   static func start(
@@ -42,16 +41,10 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
     }
 
     if event.action == .down {
-      if let lastDisplaySize, lastDisplaySize != event.displaySize {
-        let exec = await adb.exec()
-        if let refreshedRotation = try? await exec.displayRotation(deviceID: deviceID) {
-          displayRotation = refreshedRotation
-          self.lastDisplaySize = event.displaySize
-        }
-        guard !isStopped else { throw CancellationError() }
-      } else if lastDisplaySize == nil {
-        lastDisplaySize = event.displaySize
-      }
+      let exec = await adb.exec()
+      let refreshedRotation = try await exec.displayRotation(deviceID: deviceID)
+      guard !isStopped else { throw CancellationError() }
+      displayRotation = refreshedRotation
     }
 
     try touchscreen.send(
