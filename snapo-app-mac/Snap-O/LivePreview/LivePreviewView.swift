@@ -5,7 +5,7 @@ import SwiftUI
 /// Connects a live-preview session to its interactive AppKit surface.
 struct LivePreviewRenderer {
   let operation: LivePreviewOperationHandle
-  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint) -> Void
+  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
 
   var session: LivePreviewSession {
     operation.session
@@ -288,7 +288,8 @@ final class LivePreviewDisplayView: NSView {
     _ source: LivePreviewPointerSource,
     _ location: CGPoint
   ) {
-    renderer?.sendPointer(action, source, location)
+    guard let renderer, let size = renderer.session.media?.size else { return }
+    renderer.sendPointer(action, source, location, size)
   }
 
   private func convertToDevicePoint(event: NSEvent) -> CGPoint? {

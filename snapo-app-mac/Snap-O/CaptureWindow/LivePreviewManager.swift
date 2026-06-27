@@ -82,11 +82,20 @@ final class LivePreviewManager {
       throw CancellationError()
     }
     activeOperations[operation.id] = operation
+    await pointerInjector.prepare(deviceID: deviceID)
 
     let renderer = LivePreviewRenderer(
       operation: operation
-    ) { [weak self] action, source, location in
-      Task { await self?.sendPointerEvent(deviceID: deviceID, action: action, source: source, location: location) }
+    ) { [weak self] action, source, location, displaySize in
+      Task {
+        await self?.sendPointerEvent(
+          deviceID: deviceID,
+          action: action,
+          source: source,
+          location: location,
+          displaySize: displaySize
+        )
+      }
     }
 
     let session = operation.session
@@ -116,6 +125,9 @@ final class LivePreviewManager {
   func stopRenderer(_ renderer: LivePreviewRenderer) async {
     activeOperations.removeValue(forKey: renderer.operation.id)
     _ = await livePreviewService.stop(renderer.operation)
+    if !activeOperations.values.contains(where: { $0.deviceID == renderer.deviceID }) {
+      await pointerInjector.stopDevice(renderer.deviceID)
+    }
   }
 
   func stop() async {
@@ -127,6 +139,7 @@ final class LivePreviewManager {
     captureIDs.removeAll()
     lastDisplayInfo.removeAll()
     notifyMediaChanged()
+    await pointerInjector.stopAll()
 
     for operation in operations {
       _ = await livePreviewService.stop(operation)
@@ -140,10 +153,14 @@ final class LivePreviewManager {
 
   private func syncDevices(with devices: [Device], requireRefresh: Bool) async {
     let currentIDs = Set(devices.map(\.id))
+    let removedDeviceIDs = Set(deviceInfo.keys).subtracting(currentIDs)
     let removedOperations = activeOperations.values.filter { !currentIDs.contains($0.deviceID) }
     for operation in removedOperations {
       activeOperations.removeValue(forKey: operation.id)
       _ = await livePreviewService.stop(operation)
+    }
+    for deviceID in removedDeviceIDs {
+      await pointerInjector.stopDevice(deviceID)
     }
 
     guard !isStopped else { return }
@@ -283,13 +300,15 @@ final class LivePreviewManager {
     deviceID: String,
     action: LivePreviewPointerAction,
     source: LivePreviewPointerSource,
-    location: CGPoint
+    location: CGPoint,
+    displaySize: CGSize
   ) async {
     let event = LivePreviewPointerEvent(
       deviceID: deviceID,
       action: action,
       source: source,
-      location: location
+      location: location,
+      displaySize: displaySize
     )
     await pointerInjector.enqueue(event)
   }
