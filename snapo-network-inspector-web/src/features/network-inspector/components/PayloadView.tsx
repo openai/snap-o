@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { NetworkClient } from "../../../network/client";
 import {
@@ -449,39 +449,69 @@ function ImagePreview({ client, payload }: { client: NetworkClient; payload: Bod
   const dataUrl = dataUrlForImage(payload);
   const copyFeedback = useCopyFeedback("image");
   const saveFeedback = useCopyFeedback("save-image");
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+
+  useEffect(() => {
+    if (menu == null) return;
+    const close = () => setMenu(null);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [menu]);
+
   if (dataUrl == null) return null;
+
+  const copyImage = () => {
+    copyFeedback.copyWithoutClipboard();
+    void copyImageToClipboard(dataUrl, payload.contentType ?? "image/png");
+  };
+  const saveImage = () => {
+    void client
+      .saveFile({
+        defaultPath: imageFileName(payload.contentType),
+        data: payload.rawText.replace(/\s+/gu, ""),
+        mimeType: payload.contentType,
+        encoding: "base64"
+      })
+      .then((result) => {
+        if (result.saved) saveFeedback.copyWithoutClipboard();
+      });
+  };
+
   return (
     <div className="image-preview-card">
-      <div className="image-preview-header">
-        <span>Image preview</span>
-        <span className="image-content-type">{payload.contentType?.toUpperCase() ?? ""}</span>
-      </div>
       <div className="image-actions">
-        <InlineCopyButton
-          copied={copyFeedback.copied}
-          label="Copy Image"
-          onCopy={() => {
-            copyFeedback.copyWithoutClipboard();
-            void copyImageToClipboard(dataUrl, payload.contentType ?? "image/png");
-          }}
-        />
-        <InlineTextToggle
-          label={saveFeedback.copied ? "SAVED" : "SAVE AS..."}
-          onClick={() => {
-            void client
-              .saveFile({
-                defaultPath: imageFileName(payload.contentType),
-                data: payload.rawText.replace(/\s+/gu, ""),
-                mimeType: payload.contentType,
-                encoding: "base64"
-              })
-              .then((result) => {
-                if (result.saved) saveFeedback.copyWithoutClipboard();
-              });
-          }}
-        />
+        <InlineCopyButton copied={copyFeedback.copied} label="Copy Image" onCopy={copyImage} iconOnly />
+        <button
+          className="inline-action inline-action-icon"
+          type="button"
+          aria-label={saveFeedback.copied ? "Saved" : "Save Image As..."}
+          title={saveFeedback.copied ? "Saved" : "Save Image As..."}
+          onClick={saveImage}
+        >
+          {saveFeedback.copied ? <Check size={14} /> : <Download size={14} />}
+        </button>
       </div>
-      <img className="image-preview" src={dataUrl} alt="" />
+      <img
+        className="image-preview"
+        src={dataUrl}
+        alt=""
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: [
+              { label: "Copy Image", action: copyImage },
+              { label: "Save Image As...", action: saveImage }
+            ]
+          });
+        }}
+      />
+      {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
   );
 }

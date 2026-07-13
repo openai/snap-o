@@ -1077,44 +1077,25 @@ pre {
   gap: 8px;
 }
 
-.image-preview-header,
 .image-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.image-preview-header {
-  color: var(--on-surface);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-}
-
-.image-content-type {
-  color: var(--on-surface-variant);
-  font-size: 10px;
-  line-height: 12px;
-  font-weight: 500;
-}
-
-.image-actions {
-  justify-content: flex-start;
+  justify-content: flex-end;
+  gap: 2px;
 }
 
 .image-preview {
   display: block;
-  width: 100%;
+  align-self: center;
+  max-width: 100%;
   max-height: 520px;
   object-fit: contain;
-  background: var(--surface);
 }
 
 .context-menu {
   position: fixed;
   z-index: 1000;
-  min-width: 190px;
+  width: max-content;
   padding: 4px 0;
   border: 1px solid var(--outline);
   background: var(--surface-bright);
@@ -1129,6 +1110,7 @@ pre {
   padding: 0 12px;
   color: var(--on-surface);
   text-align: left;
+  white-space: nowrap;
   font-size: 12px;
   line-height: 16px;
 }

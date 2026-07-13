@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
                         onPostRequestClick = { runPostRequest(scope) },
                         onUnknownLengthGzipPostRequestClick = { runUnknownLengthGzipPostRequest(scope) },
                         onNoContentTypeTextResponseClick = { runNoContentTypeTextResponseRequest(scope) },
+                        onImageResponseClick = { runImageResponseRequest(scope) },
                         onSlowResponseClick = { runSlowResponseRequest(scope) },
                         onWebSocketDemoClick = { startWebSocketDemo(scope) },
                         modifier = Modifier.padding(innerPadding)
@@ -149,6 +150,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun runImageResponseRequest(scope: CoroutineScope) {
+        scope.launch {
+            val url = resolveMockHttpUrl("/image.png") ?: return@launch
+            val request = Request.Builder()
+                .url(url)
+                .header("X-SnapO-Demo", "okhttp-image-response")
+                .build()
+            executeRequest(scope, request, printResponseBody = false)
+        }
+    }
+
     private fun runSlowResponseRequest(scope: CoroutineScope) {
         scope.launch {
             val url = resolveMockHttpUrl("/slow-response") ?: return@launch
@@ -170,9 +182,10 @@ class MainActivity : ComponentActivity() {
             try {
                 call.executeAsync().use { response ->
                     withContext(Dispatchers.IO) {
-                        val responseBody = response.body.string()
                         if (printResponseBody) {
-                            println(responseBody)
+                            println(response.body.string())
+                        } else {
+                            response.body.bytes()
                         }
                     }
                 }
@@ -243,6 +256,7 @@ fun Greeting(
     onPostRequestClick: () -> Unit,
     onUnknownLengthGzipPostRequestClick: () -> Unit,
     onNoContentTypeTextResponseClick: () -> Unit,
+    onImageResponseClick: () -> Unit,
     onSlowResponseClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -265,6 +279,9 @@ fun Greeting(
         Button(onClick = onNoContentTypeTextResponseClick) {
             Text("GET text (no Content-Type)")
         }
+        Button(onClick = onImageResponseClick) {
+            Text("GET image (PNG)")
+        }
         Button(onClick = onSlowResponseClick) {
             Text("Slow response")
         }
@@ -283,6 +300,7 @@ private fun GreetingPreview() {
             onPostRequestClick = {},
             onUnknownLengthGzipPostRequestClick = {},
             onNoContentTypeTextResponseClick = {},
+            onImageResponseClick = {},
             onSlowResponseClick = {},
             onWebSocketDemoClick = {},
         )
