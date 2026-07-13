@@ -25,7 +25,6 @@ import okhttp3.TrailersSource
 import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
-import okio.ByteString.Companion.toByteString
 import okio.ForwardingSink
 import okio.ForwardingSource
 import okio.buffer
@@ -37,6 +36,7 @@ import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.io.encoding.Base64
 
 /** OkHttp interceptor that mirrors traffic to the active SnapO link if present. */
 class SnapOOkHttpInterceptor @JvmOverloads constructor(
@@ -733,7 +733,10 @@ internal fun resolveResponseBodyCapture(
     declaredBodySize: Long?,
 ): ResolvedResponseBodyCapture {
     val likelyText = capture.isLikelyText(contentType)
-    val bodyLimit = if (likelyText) textBodyMaxBytes else binaryBodyMaxBytes
+    val bodyLimit = resolveEffectiveMaxBytes(
+        maxBytes = if (likelyText) textBodyMaxBytes else binaryBodyMaxBytes,
+        contentLength = declaredBodySize,
+    )
     val retainedBodyBytes = capture.body.prefix(bodyLimit)
     val previewSource = capture.body.prefix(previewBytes)
     val charset = contentType.resolveCharset()
@@ -763,7 +766,7 @@ private fun ResponseBodyCapture.isLikelyText(contentType: MediaType?): Boolean =
 private fun ByteArray.encodeForInspector(likelyText: Boolean, charset: Charset): String? = when {
     isEmpty() -> null
     likelyText -> String(this, charset)
-    else -> toByteString().base64()
+    else -> Base64.encode(this)
 }
 
 private fun ResponseBodyCapture.resolvedBodySize(declaredBodySize: Long?): Long = when {
