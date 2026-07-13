@@ -36,14 +36,16 @@ describe("RequestBodyCache", () => {
     cache.put("request", {
       requestId: "request",
       responseBody: "output",
-      responseBodyBase64Encoded: false
+      responseBodyBase64Encoded: false,
+      responseBodyLoadCompleted: true
     });
 
     expect(cache.peek("request")).toEqual({
       requestId: "request",
       requestBody: "input",
       responseBody: "output",
-      responseBodyBase64Encoded: false
+      responseBodyBase64Encoded: false,
+      responseBodyLoadCompleted: true
     });
   });
 

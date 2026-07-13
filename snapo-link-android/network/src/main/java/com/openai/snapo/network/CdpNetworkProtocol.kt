@@ -79,6 +79,7 @@ internal data class CdpLoadingFinishedParams(
     val requestId: String,
     val timestamp: Double? = null,
     val encodedDataLength: Double? = null,
+    val bodyTruncatedBytes: Long? = null,
 )
 
 @Serializable

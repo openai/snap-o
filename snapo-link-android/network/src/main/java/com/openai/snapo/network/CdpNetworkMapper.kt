@@ -89,6 +89,7 @@ private fun ResponseFinished.toCdpLoadingFinished(): CdpMessage {
                 requestId = id,
                 timestamp = tMonoNs.toMonotonicSeconds(),
                 encodedDataLength = bodySize?.toDouble(),
+                bodyTruncatedBytes = bodyTruncatedBytes,
             ),
         ),
     )

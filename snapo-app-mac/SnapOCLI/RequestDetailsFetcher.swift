@@ -70,6 +70,8 @@ private struct RequestDetailsSnapshot {
 
 struct RequestDetailsFetcher {
   private static let attemptLimit = 3
+  private static let bodyCommandTimeout: Duration = .seconds(10)
+  private static let fetchTimeout: Duration = .seconds(70)
 
   let adb: ADBClient
   let server: CLIServerReference
@@ -93,7 +95,7 @@ struct RequestDetailsFetcher {
 
   private func fetch(using session: CLISession) async throws -> RequestDetailsResult {
     let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: .seconds(5))
+    let deadline = clock.now.advanced(by: Self.fetchTimeout)
     var details = RequestDetailsSnapshot()
     var requestBodyAttempts = 0
     var responseBodyAttempts = 0
@@ -134,7 +136,7 @@ struct RequestDetailsFetcher {
           let message = try await session.command(
             method: SnapONetworkProtocol.Method.getRequestPostData,
             params: ["requestId": .string(requestID)],
-            timeout: .milliseconds(500)
+            timeout: Self.bodyCommandTimeout
           )
           if let error = message.error {
             if error.message.lowercased().contains("no request body captured") {
@@ -165,7 +167,7 @@ struct RequestDetailsFetcher {
           let message = try await session.command(
             method: SnapONetworkProtocol.Method.getResponseBody,
             params: ["requestId": .string(requestID)],
-            timeout: .milliseconds(500)
+            timeout: Self.bodyCommandTimeout
           )
           if let error = message.error {
             if let failure = details.loadingFailedMessage, !failure.isEmpty {

@@ -86,6 +86,31 @@ describe("RequestBodyLoader", () => {
     expect(loaded).toEqual(["fresh"]);
     loader.dispose();
   });
+
+  it.each([
+    ["an empty result", false],
+    ["a failed load", true]
+  ])("marks a missing response body as completed after %s", async (_description, shouldFail) => {
+    const loaded: RequestBodies[] = [];
+    const request = job("request", bodyLoadPriority.selected);
+    request.input.includeRequestBody = false;
+    request.input.includeResponseBody = true;
+    const loader = new RequestBodyLoader(
+      async (input) => {
+        if (shouldFail) throw new Error("body unavailable");
+        return { requestId: input.requestId };
+      },
+      (_recordKey, bodies) => loaded.push(bodies),
+      1
+    );
+    loader.retainRecords(new Set([request.recordKey]));
+
+    loader.schedule([request]);
+    await nextTask();
+
+    expect(loaded).toEqual([{ requestId: "request", responseBodyLoadCompleted: true }]);
+    loader.dispose();
+  });
 });
 
 function job(requestId: string, priority: BodyLoadJob["priority"]): BodyLoadJob {

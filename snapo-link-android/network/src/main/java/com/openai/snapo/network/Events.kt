@@ -58,6 +58,7 @@ data class ResponseFinished(
     override val tWallMs: Long,
     override val tMonoNs: Long,
     val bodySize: Long? = null,
+    val bodyTruncatedBytes: Long? = null,
 ) : PerRequestRecord
 
 /** Failure with partial timings if available. */

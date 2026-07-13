@@ -39,4 +39,20 @@ class NetworkProtocolCompatibilityTest {
 
         assertEquals(17L, encoded.getValue("watermark").jsonPrimitive.content.toLong())
     }
+
+    @Test
+    fun `loading finished carries response size and truncation metadata`() {
+        val params = checkNotNull(
+            ResponseFinished(
+                id = "request-1",
+                tWallMs = 1_000L,
+                tMonoNs = 2_000_000_000L,
+                bodySize = 9_437_184L,
+                bodyTruncatedBytes = 4_194_304L,
+            ).toCdpMessage(requestUrl = null).params,
+        ).jsonObject
+
+        assertEquals(9_437_184.0, params.getValue("encodedDataLength").jsonPrimitive.content.toDouble(), 0.0)
+        assertEquals(4_194_304L, params.getValue("bodyTruncatedBytes").jsonPrimitive.content.toLong())
+    }
 }

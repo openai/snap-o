@@ -30,6 +30,34 @@ describe("reduceCdpMessage", () => {
     expect(request?.updatedAt).toBe(1_710_000_000_250);
   });
 
+  it("retains response truncation metadata from loading-finished events", () => {
+    let state = reduce(createEmptyInspectorState(), requestStarted("large-response", 1));
+    state = reduce(state, {
+      snapoSequence: 2,
+      method: "Network.responseReceived",
+      params: {
+        requestId: "large-response",
+        timestamp: 1.1,
+        type: "XHR",
+        response: { url: "https://example.com/large-response", status: 200, headers: {}, encodedDataLength: 9_437_184 }
+      }
+    });
+    state = reduce(state, {
+      snapoSequence: 3,
+      method: "Network.loadingFinished",
+      params: {
+        requestId: "large-response",
+        timestamp: 1.2,
+        encodedDataLength: 9_437_184,
+        bodyTruncatedBytes: 4_194_304
+      }
+    });
+
+    const request = state.requests.get(requestRecordKey(server, "large-response"));
+    expect(request?.encodedDataLength).toBe(9_437_184);
+    expect(request?.responseBodyTruncatedBytes).toBe(4_194_304);
+  });
+
   it("ignores duplicate and stale sequences independently for each server", () => {
     let state = createEmptyInspectorState();
     state = reduce(state, webSocketCreated(1));

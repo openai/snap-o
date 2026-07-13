@@ -88,7 +88,8 @@ function mergeBodies(existing: RequestBodies | undefined, incoming: RequestBodie
     requestId: incoming.requestId,
     requestBody: incoming.requestBody ?? existing?.requestBody,
     responseBody: incoming.responseBody ?? existing?.responseBody,
-    responseBodyBase64Encoded: incoming.responseBodyBase64Encoded ?? existing?.responseBodyBase64Encoded
+    responseBodyBase64Encoded: incoming.responseBodyBase64Encoded ?? existing?.responseBodyBase64Encoded,
+    responseBodyLoadCompleted: incoming.responseBodyLoadCompleted ?? existing?.responseBodyLoadCompleted
   };
 }
 

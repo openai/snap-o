@@ -84,6 +84,8 @@ private fun createServer(): MockWebServer {
                         .body(noTypeBody)
                         .build()
                     "/image.png" -> imageResponse(imageBody)
+                    "/large-response-complete" -> largeJsonResponse(CompleteLargeBodyBytes)
+                    "/large-response-truncated" -> largeJsonResponse(TruncatedLargeBodyBytes)
                     "/slow-response" -> slowResponse(slowBody)
                     "/ws-echo" -> MockResponse.Builder()
                         .webSocketUpgrade(
@@ -114,6 +116,19 @@ private fun imageResponse(body: ByteString): MockResponse = MockResponse.Builder
     .body(Buffer().write(body))
     .build()
 
+private fun largeJsonResponse(bodyBytes: Int): MockResponse {
+    val prefix = "{\"message\":\""
+    val suffix = "\",\"source\":\"okhttp-demo\"}"
+    val body = prefix + "x".repeat(bodyBytes - prefix.length - suffix.length) + suffix
+    return MockResponse.Builder()
+        .code(200)
+        .setHeader("Content-Type", "application/json; charset=utf-8")
+        .setHeader("Content-Length", bodyBytes.toString())
+        .setHeader("Connection", "close")
+        .body(body)
+        .build()
+}
+
 private fun slowResponse(body: String): MockResponse = MockResponse.Builder()
     .code(200)
     .setHeader("Content-Type", "application/json; charset=utf-8")
@@ -138,6 +153,8 @@ fun String.toWebSocketUrl(): String {
 
 private const val DemoLogTag: String = "SnapODemo"
 private const val MockHost: String = "127.0.0.1"
+private const val CompleteLargeBodyBytes: Int = 7 * 1024 * 1024
+private const val TruncatedLargeBodyBytes: Int = 9 * 1024 * 1024
 private const val SlowBodyPayloadCharacters: Int = 1024 * 1024
 private const val SlowBodyInitialDelayMs: Long = 2_000L
 private const val SlowBodyChunkBytes: Long = 128L * 1024L
