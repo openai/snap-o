@@ -44,6 +44,7 @@ export interface RequestBodies {
   requestBody?: string | null;
   responseBody?: string | null;
   responseBodyBase64Encoded?: boolean | null;
+  responseBodyLoadCompleted?: boolean;
 }
 
 export interface LoadBodiesInput {

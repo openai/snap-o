@@ -9,6 +9,7 @@ import {
 } from "../../../network/cdp";
 import type { SnapOServer } from "../../../network/bridge-types";
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
+import { bodyMetadata } from "../../../network/payload";
 import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
 export function filterRecords(
@@ -49,6 +50,7 @@ export function shouldRequestRequestBody(request: RequestRecord): boolean {
 
 export function shouldRequestResponseBody(request: RequestRecord): boolean {
   if (request.responseBody != null) return false;
+  if (request.responseBodyLoadCompleted) return false;
   if (request.status.kind !== "success") return false;
 
   if (isLikelyStreamingRequest(request)) {
@@ -59,6 +61,16 @@ export function shouldRequestResponseBody(request: RequestRecord): boolean {
 
   if (responseHasNoBody(request)) return false;
   return request.encodedDataLength == null || request.encodedDataLength !== 0;
+}
+
+export function responseBodyCaptureMetadata(request: RequestRecord): string | null {
+  const totalBytes = request.encodedDataLength;
+  if (totalBytes == null) return null;
+  const truncatedBytes = Math.max(0, request.responseBodyTruncatedBytes ?? 0);
+  return bodyMetadata({
+    capturedBytes: Math.max(0, totalBytes - truncatedBytes),
+    totalBytes
+  });
 }
 
 function isCompletedRequest(request: RequestRecord): boolean {

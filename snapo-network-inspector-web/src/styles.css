@@ -759,6 +759,20 @@ body.split-pane-resizing {
   padding: 8px 0 6px 8px;
 }
 
+.body-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.body-loading-spinner {
+  flex: 0 0 auto;
+  animation: spin 1s linear infinite;
+}
+
 .messages-empty {
   padding: 8px 0 0 10px;
 }

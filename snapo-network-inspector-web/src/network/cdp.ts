@@ -46,6 +46,8 @@ export interface RequestRecord {
   requestBodyEncoding?: string | null;
   responseBody?: string | null;
   responseBodyBase64Encoded?: boolean | null;
+  responseBodyTruncatedBytes?: number | null;
+  responseBodyLoadCompleted?: boolean;
   responseType?: string | null;
   hasReceivedResponse?: boolean;
   streamEvents: StreamEventRecord[];
@@ -304,12 +306,14 @@ function reduceLoadingFinished(
     const base = requestDefaults(existing, server, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     const encodedDataLength = params.encodedDataLength ?? existing?.encodedDataLength;
+    const responseBodyTruncatedBytes = numberAt(params, "bodyTruncatedBytes") ?? existing?.responseBodyTruncatedBytes;
     const status = base.status.kind === "success" ? base.status : { kind: "success" as const, code: 200 };
     return {
       ...base,
       status,
       endedAt: eventAt,
       encodedDataLength,
+      responseBodyTruncatedBytes,
       streamClosed: isLikelyStreamingRequest(base)
         ? {
             timestamp: eventAt,
@@ -484,7 +488,8 @@ export function applyRequestBodies(record: RequestRecord, bodies: RequestBodies)
     ...record,
     requestBody: bodies.requestBody ?? record.requestBody,
     responseBody: bodies.responseBody ?? record.responseBody,
-    responseBodyBase64Encoded: bodies.responseBodyBase64Encoded ?? record.responseBodyBase64Encoded
+    responseBodyBase64Encoded: bodies.responseBodyBase64Encoded ?? record.responseBodyBase64Encoded,
+    responseBodyLoadCompleted: bodies.responseBodyLoadCompleted ?? record.responseBodyLoadCompleted
   };
 }
 

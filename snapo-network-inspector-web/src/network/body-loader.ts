@@ -101,11 +101,24 @@ export class RequestBodyLoader {
       void this.loadBodies(entry.input)
         .then((bodies) => {
           if (!this.disposed && !entry.cancelled && this.retainedRecordKeys.has(entry.recordKey)) {
-            this.didLoadBodies(entry.recordKey, bodies);
+            this.didLoadBodies(entry.recordKey, {
+              ...bodies,
+              ...(entry.input.includeResponseBody ? { responseBodyLoadCompleted: true } : {})
+            });
           }
         })
         .catch(() => {
-          // A completed request may no longer expose its body. One failed attempt is enough.
+          if (
+            entry.input.includeResponseBody &&
+            !this.disposed &&
+            !entry.cancelled &&
+            this.retainedRecordKeys.has(entry.recordKey)
+          ) {
+            this.didLoadBodies(entry.recordKey, {
+              requestId: entry.input.requestId,
+              responseBodyLoadCompleted: true
+            });
+          }
         })
         .finally(() => {
           this.runningCount -= 1;

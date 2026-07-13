@@ -73,6 +73,8 @@ class MainActivity : ComponentActivity() {
                         onUnknownLengthGzipPostRequestClick = { runUnknownLengthGzipPostRequest(scope) },
                         onNoContentTypeTextResponseClick = { runNoContentTypeTextResponseRequest(scope) },
                         onImageResponseClick = { runImageResponseRequest(scope) },
+                        onCompleteLargeResponseClick = { runLargeResponseRequest(scope, complete = true) },
+                        onTruncatedLargeResponseClick = { runLargeResponseRequest(scope, complete = false) },
                         onSlowResponseClick = { runSlowResponseRequest(scope) },
                         onWebSocketDemoClick = { startWebSocketDemo(scope) },
                         modifier = Modifier.padding(innerPadding)
@@ -172,6 +174,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun runLargeResponseRequest(scope: CoroutineScope, complete: Boolean) {
+        scope.launch {
+            val path = if (complete) "/large-response-complete" else "/large-response-truncated"
+            val url = resolveMockHttpUrl(path) ?: return@launch
+            val request = Request.Builder()
+                .url(url)
+                .header("X-SnapO-Demo", "okhttp-large-response")
+                .build()
+            executeRequest(scope, request, printResponseBody = false)
+        }
+    }
+
     private fun executeRequest(
         scope: CoroutineScope,
         request: Request,
@@ -257,6 +271,8 @@ fun Greeting(
     onUnknownLengthGzipPostRequestClick: () -> Unit,
     onNoContentTypeTextResponseClick: () -> Unit,
     onImageResponseClick: () -> Unit,
+    onCompleteLargeResponseClick: () -> Unit,
+    onTruncatedLargeResponseClick: () -> Unit,
     onSlowResponseClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -282,6 +298,12 @@ fun Greeting(
         Button(onClick = onImageResponseClick) {
             Text("GET image (PNG)")
         }
+        Button(onClick = onCompleteLargeResponseClick) {
+            Text("GET 7 MiB JSON (complete)")
+        }
+        Button(onClick = onTruncatedLargeResponseClick) {
+            Text("GET 9 MiB JSON (truncated)")
+        }
         Button(onClick = onSlowResponseClick) {
             Text("Slow response")
         }
@@ -301,6 +323,8 @@ private fun GreetingPreview() {
             onUnknownLengthGzipPostRequestClick = {},
             onNoContentTypeTextResponseClick = {},
             onImageResponseClick = {},
+            onCompleteLargeResponseClick = {},
+            onTruncatedLargeResponseClick = {},
             onSlowResponseClick = {},
             onWebSocketDemoClick = {},
         )

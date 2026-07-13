@@ -1,3 +1,4 @@
+import { LoaderCircle } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
@@ -5,6 +6,7 @@ import { decodeRequestBodyForDisplay, makeBodyPayload } from "../../../network/p
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
+import { responseBodyCaptureMetadata, shouldRequestResponseBody } from "../lib/records";
 import { BodySection, payloadMetadata } from "./PayloadView";
 import { HeadersTable, Section } from "./Section";
 import { FailureMessage, StatusBadge } from "./Status";
@@ -35,6 +37,7 @@ export const RequestDetail = memo(function RequestDetail({
         base64Encoded: record.responseBodyBase64Encoded,
         totalBytes: record.encodedDataLength
       });
+  const isResponseBodyLoading = !isSseResponse && shouldRequestResponseBody(record);
   const prefix = `request:${recordId(record)}`;
   const timingText = useAdaptiveTimingText(record.startedAt, record.endedAt, record.status);
 
@@ -99,19 +102,28 @@ export const RequestDetail = memo(function RequestDetail({
           />
         </Section>
       ) : null}
-      {responseBody == null ? null : (
+      {responseBody == null && !isResponseBodyLoading ? null : (
         <Section
           title="Response Body"
-          meta={payloadMetadata(responseBody)}
+          meta={responseBody == null ? responseBodyCaptureMetadata(record) : payloadMetadata(responseBody)}
           storageKey={`${prefix}:responseBody`}
           uiState={uiState}
         >
-          <BodySection
-            client={client}
-            payload={responseBody}
-            storageKey={`${prefix}:responseBody:payload`}
-            uiState={uiState}
-          />
+          {responseBody == null ? (
+            <div className="payload-card">
+              <div className="body-loading" role="status">
+                <LoaderCircle className="body-loading-spinner" size={14} aria-hidden="true" />
+                <span>Loading...</span>
+              </div>
+            </div>
+          ) : (
+            <BodySection
+              client={client}
+              payload={responseBody}
+              storageKey={`${prefix}:responseBody:payload`}
+              uiState={uiState}
+            />
+          )}
         </Section>
       )}
     </div>

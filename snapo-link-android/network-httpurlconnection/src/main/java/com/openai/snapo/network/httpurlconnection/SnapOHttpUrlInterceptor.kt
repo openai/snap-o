@@ -783,6 +783,7 @@ private class ResponseCapturingInputStream(
         publishLoadingFinishedIfNeeded(
             requestId = currentContext.requestId,
             totalBytes = totalBytes,
+            truncatedBytes = snapshot.truncatedBytes,
             error = error,
             after = bodyUpdate,
         )
@@ -841,6 +842,7 @@ private class ResponseCapturingInputStream(
     private fun publishLoadingFinishedIfNeeded(
         requestId: String,
         totalBytes: Long?,
+        truncatedBytes: Long?,
         error: Throwable?,
         after: Job?,
     ) {
@@ -853,6 +855,7 @@ private class ResponseCapturingInputStream(
                 tWallMs = nowWall,
                 tMonoNs = nowMono,
                 bodySize = totalBytes,
+                bodyTruncatedBytes = truncatedBytes,
             )
         }
     }

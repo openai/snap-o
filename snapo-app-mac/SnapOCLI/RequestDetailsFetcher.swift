@@ -70,6 +70,9 @@ private struct RequestDetailsSnapshot {
 
 struct RequestDetailsFetcher {
   private static let attemptLimit = 3
+  private static let bodyCommandTimeout: Duration = .seconds(10)
+  private static let requestLookupTimeout: Duration = .seconds(5)
+  private static let fetchTimeout: Duration = .seconds(70)
 
   let adb: ADBClient
   let server: CLIServerReference
@@ -93,7 +96,8 @@ struct RequestDetailsFetcher {
 
   private func fetch(using session: CLISession) async throws -> RequestDetailsResult {
     let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: .seconds(5))
+    var deadline = clock.now.advanced(by: Self.requestLookupTimeout)
+    var requestLocated = false
     var details = RequestDetailsSnapshot()
     var requestBodyAttempts = 0
     var responseBodyAttempts = 0
@@ -109,6 +113,11 @@ struct RequestDetailsFetcher {
       if case .network(let message) = record {
         details.update(message, requestID: requestID)
         requestBodyEncoding = requestBodyEncoding ?? details.requestBodyEncoding
+
+        if !requestLocated, details.requestSeen {
+          requestLocated = true
+          deadline = clock.now.advanced(by: Self.fetchTimeout)
+        }
 
         if !requestBodyResolved, details.requestSeen, !details.requestHasPostData {
           requestBodyResolved = true
@@ -134,7 +143,7 @@ struct RequestDetailsFetcher {
           let message = try await session.command(
             method: SnapONetworkProtocol.Method.getRequestPostData,
             params: ["requestId": .string(requestID)],
-            timeout: .milliseconds(500)
+            timeout: Self.bodyCommandTimeout
           )
           if let error = message.error {
             if error.message.lowercased().contains("no request body captured") {
@@ -165,7 +174,7 @@ struct RequestDetailsFetcher {
           let message = try await session.command(
             method: SnapONetworkProtocol.Method.getResponseBody,
             params: ["requestId": .string(requestID)],
-            timeout: .milliseconds(500)
+            timeout: Self.bodyCommandTimeout
           )
           if let error = message.error {
             if let failure = details.loadingFailedMessage, !failure.isEmpty {

@@ -359,6 +359,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                         tWallMs = completionWall,
                         tMonoNs = completionMono,
                         bodySize = completedBodySize,
+                        bodyTruncatedBytes = body?.truncatedBytes,
                     )
                 } else {
                     RequestFailed(

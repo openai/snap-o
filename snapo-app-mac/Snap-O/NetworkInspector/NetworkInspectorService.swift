@@ -3,6 +3,7 @@ import SnapODeviceClient
 
 actor NetworkInspectorService {
   private static let maximumBufferedOutputs = 4096
+  private static let bodyCommandTimeout: Duration = .seconds(10)
 
   private struct ServerState {
     let reference: NetworkServerReference
@@ -220,7 +221,7 @@ actor NetworkInspectorService {
     return try? await session.command(
       method: method,
       params: ["requestId": .string(requestID)],
-      timeout: .milliseconds(1500)
+      timeout: Self.bodyCommandTimeout
     )
   }
 

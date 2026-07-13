@@ -86,7 +86,7 @@ export function dataUrlForImage(payload: BodyPayload): string | null {
   return `data:${payload.contentType};base64,${payload.rawText.replace(/\s+/gu, "")}`;
 }
 
-export function bodyMetadata(payload: BodyPayload): string | null {
+export function bodyMetadata(payload: Pick<BodyPayload, "capturedBytes" | "totalBytes">): string | null {
   const parts: string[] = [];
   if (payload.capturedBytes > 0) {
     parts.push(`Captured ${formatBytes(payload.capturedBytes)}`);
