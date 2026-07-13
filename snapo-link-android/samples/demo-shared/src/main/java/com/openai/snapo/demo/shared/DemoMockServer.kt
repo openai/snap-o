@@ -83,12 +83,7 @@ private fun createServer(): MockWebServer {
                         .setHeader("Connection", "close")
                         .body(noTypeBody)
                         .build()
-                    "/image.png" -> MockResponse.Builder()
-                        .code(200)
-                        .setHeader("Content-Type", "image/png")
-                        .setHeader("Connection", "close")
-                        .body(Buffer().write(imageBody))
-                        .build()
+                    "/image.png" -> imageResponse(imageBody)
                     "/slow-response" -> slowResponse(slowBody)
                     "/ws-echo" -> MockResponse.Builder()
                         .webSocketUpgrade(
@@ -111,6 +106,13 @@ private fun createServer(): MockWebServer {
         }
     }
 }
+
+private fun imageResponse(body: ByteString): MockResponse = MockResponse.Builder()
+    .code(200)
+    .setHeader("Content-Type", "image/png")
+    .setHeader("Connection", "close")
+    .body(Buffer().write(body))
+    .build()
 
 private fun slowResponse(body: String): MockResponse = MockResponse.Builder()
     .code(200)
