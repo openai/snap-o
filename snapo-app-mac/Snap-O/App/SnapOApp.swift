@@ -51,11 +51,5 @@ struct SnapOApp: App {
         updaterController: updateCoordinator.updaterController
       )
     }
-
-    Window("Logcat Viewer", id: LogcatWindowID.main) {
-      LogcatWindowRoot(adbService: runtime.adbService, deviceTracker: runtime.deviceTracker)
-    }
-    .defaultSize(width: 1000, height: 600)
-    .handlesExternalEvents(matching: Set(["logcat"]))
   }
 }

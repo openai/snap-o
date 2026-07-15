@@ -153,10 +153,6 @@ struct SnapOCommands: Commands {
       .keyboardShortcut("c", modifiers: [.command, .option])
       .disabled(workspaceController?.canToggleCapture != true)
 
-      Button("Logcat Viewer") {
-        openWindow(id: LogcatWindowID.main)
-      }
-      .keyboardShortcut("l", modifiers: [.command, .option])
       Divider()
       Button("Set ADB path…") {
         Task { await adbService.promptForPath() }
