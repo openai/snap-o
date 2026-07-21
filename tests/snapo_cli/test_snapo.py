@@ -63,8 +63,9 @@ def response_event():
 
 
 class WireServer:
-    def __init__(self, handler):
+    def __init__(self, handler, adb_handshake=False):
         self.handler = handler
+        self.adb_handshake = adb_handshake
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listener.bind(("127.0.0.1", 0))
         self.listener.listen(1)
@@ -91,6 +92,11 @@ class WireServer:
             with connection:
                 connection.settimeout(2)
                 stream = connection.makefile("rwb", buffering=0)
+                if self.adb_handshake:
+                    for _ in range(2):
+                        length = int(stream.read(4), 16)
+                        self.received.append(stream.read(length).decode("utf-8"))
+                        stream.write(b"OKAY")
                 hello = stream.readline()
                 self.received.append(hello.decode("utf-8").rstrip())
                 self.handler(stream, self.received)
@@ -172,10 +178,26 @@ usb-phone device product:oriole
 
 
 class ADBTests(unittest.TestCase):
-    def test_parser_preserves_default_adb_endpoint(self):
+    def test_parser_leaves_default_adb_endpoint_to_configured_adb(self):
         options = snapo.parser().parse_args(["network", "list"])
-        self.assertEqual(options.adb_host, "127.0.0.1")
-        self.assertEqual(options.adb_port, 5037)
+        self.assertIsNone(options.adb_host)
+        self.assertIsNone(options.adb_port)
+
+    def test_default_endpoint_does_not_override_namespace_shim(self):
+        recorded = []
+
+        def run(command, **kwargs):
+            recorded.append(command)
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+        adb = snapo.ADB("/configured/namespace-adb", run=run)
+        self.assertFalse(adb.has_explicit_endpoint)
+        self.assertEqual(adb.endpoint, ("127.0.0.1", 5037))
+        adb.command("devices", "-l", serial="emulator-5554")
+        self.assertEqual(
+            recorded,
+            [["/configured/namespace-adb", "-s", "emulator-5554", "devices", "-l"]],
+        )
 
     def test_resolves_sdk_adb_when_path_is_empty(self):
         with tempfile.TemporaryDirectory() as root:
@@ -200,11 +222,20 @@ class ADBTests(unittest.TestCase):
             return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
         adb = snapo.ADB("/configured/adb", host="namespace.test", port=15037, run=run)
+        self.assertTrue(adb.has_explicit_endpoint)
         adb.command("devices", "-l", serial="emulator-5554")
         self.assertEqual(
             recorded,
             [["/configured/adb", "-H", "namespace.test", "-P", "15037", "-s", "emulator-5554", "devices", "-l"]],
         )
+
+    def test_adb_subprocess_timeout_is_reported(self):
+        def run(command, **kwargs):
+            raise snapo.subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+        adb = snapo.ADB("/configured/adb", run=run, timeout=0.01)
+        with self.assertRaisesRegex(snapo.SnapOError, "timed out"):
+            adb.devices()
 
     def test_forward_retries_and_removes_only_its_forward(self):
         adb = FakeADB(fail_forward=True)
@@ -255,6 +286,52 @@ class ProtocolTests(unittest.TestCase):
             finally:
                 session.close()
         self.assertEqual(server.received[0], "HelloSnapO")
+
+    def test_explicit_adb_endpoint_uses_direct_smart_socket_transport(self):
+        def handler(stream, received):
+            started = read_message(stream, received)
+            self.assertEqual(started, {"method": "SnapO.startStream"})
+            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
+
+        with WireServer(handler, adb_handshake=True) as wire:
+            adb = snapo.ADB("/configured/adb", host="127.0.0.1", port=wire.port)
+            server = snapo.Server("emulator-5554", "snapo_network_42")
+            with snapo.ConnectedSession(adb, server) as session:
+                session.start_stream()
+                self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
+        self.assertEqual(
+            wire.received[:3],
+            [
+                "host:transport:emulator-5554",
+                "localabstract:snapo_network_42",
+                "HelloSnapO",
+            ],
+        )
+
+    def test_ignores_valid_json_records_that_are_not_objects(self):
+        def handler(stream, received):
+            stream.write(b"null\n[]\n42\n\"text\"\n")
+            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
+
+        with WireServer(handler) as wire:
+            session = snapo.Session(wire.port)
+            try:
+                self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
+            finally:
+                session.close()
+
+    def test_rejects_oversized_terminated_record(self):
+        def handler(stream, received):
+            stream.write(b'{"oversized":true}\n')
+
+        with WireServer(handler) as wire:
+            session = snapo.Session(wire.port)
+            try:
+                with mock.patch.object(snapo, "MAX_RECORD_BYTES", 8):
+                    with self.assertRaisesRegex(snapo.SnapOError, "oversized"):
+                        session.read(1)
+            finally:
+                session.close()
 
     def test_command_ignores_unrelated_id_and_correlates_response(self):
         observed = []

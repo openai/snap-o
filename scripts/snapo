@@ -21,6 +21,7 @@ MAX_RECORD_BYTES = 16 * 1024 * 1024
 REDACTED = "[REDACTED]"
 REQUEST_HEADERS = {"authorization", "cookie"}
 RESPONSE_HEADERS = {"set-cookie"}
+ADB_COMMAND_TIMEOUT = 30
 
 
 class SnapOError(Exception):
@@ -68,11 +69,20 @@ def resolve_adb(explicit=None, environ=None, which=shutil.which):
 
 
 class ADB:
-    def __init__(self, executable, host=None, port=None, run=subprocess.run):
+    def __init__(self, executable, host=None, port=None, run=subprocess.run, timeout=ADB_COMMAND_TIMEOUT):
         self.executable = executable
         self.host = host
         self.port = port
         self._run = run
+        self.timeout = timeout
+
+    @property
+    def has_explicit_endpoint(self):
+        return self.host is not None or self.port is not None
+
+    @property
+    def endpoint(self):
+        return self.host or "127.0.0.1", self.port or 5037
 
     def command(self, *arguments, serial=None):
         command = [self.executable]
@@ -90,7 +100,10 @@ class ADB:
                 stderr=subprocess.PIPE,
                 text=True,
                 check=False,
+                timeout=self.timeout,
             )
+        except subprocess.TimeoutExpired as error:
+            raise SnapOError(f"adb command timed out after {self.timeout} seconds") from error
         except OSError as error:
             raise SnapOError(f"failed to run adb: {error}") from error
         if result.returncode:
@@ -252,14 +265,52 @@ class Forward:
 
 
 class Session:
-    def __init__(self, port, connect_timeout=5):
+    def __init__(self, port=None, adb=None, server=None, connect_timeout=5):
+        endpoint = ("127.0.0.1", port) if adb is None else adb.endpoint
         try:
-            self.socket = socket.create_connection(("127.0.0.1", port), timeout=connect_timeout)
+            self.socket = socket.create_connection(endpoint, timeout=connect_timeout)
         except OSError as error:
-            raise SnapOError(f"Failed to connect to forwarded Snap-O socket: {error}") from error
+            target = "forwarded Snap-O socket" if adb is None else "ADB server"
+            raise SnapOError(f"Failed to connect to {target}: {error}") from error
         self.buffer = bytearray()
         self.next_id = 1
-        self.send_bytes(b"HelloSnapO\n")
+        try:
+            if adb is not None:
+                self.adb_request(f"host:transport:{server.device_id}")
+                self.adb_request(f"localabstract:{server.socket_name}")
+            self.send_bytes(b"HelloSnapO\n")
+        except BaseException:
+            self.socket.close()
+            raise
+
+    def adb_request(self, request):
+        payload = request.encode("utf-8")
+        if len(payload) > 0xFFFF:
+            raise SnapOError("ADB request is too large")
+        self.send_bytes(f"{len(payload):04X}".encode("ascii") + payload)
+        status = self.read_exact(4)
+        if status == b"OKAY":
+            return
+        if status == b"FAIL":
+            try:
+                length = int(self.read_exact(4), 16)
+            except ValueError as error:
+                raise SnapOError("ADB returned an invalid failure response") from error
+            message = self.read_exact(length).decode("utf-8", errors="replace")
+            raise SnapOError(f"ADB rejected the network connection: {message}")
+        raise SnapOError("ADB returned an invalid status response")
+
+    def read_exact(self, count):
+        data = bytearray()
+        while len(data) < count:
+            try:
+                chunk = self.socket.recv(count - len(data))
+            except OSError as error:
+                raise SnapOError(f"Failed to read from ADB server: {error}") from error
+            if not chunk:
+                raise SnapOError("ADB server closed the connection unexpectedly")
+            data.extend(chunk)
+        return bytes(data)
 
     def close(self):
         self.socket.close()
@@ -283,12 +334,17 @@ class Session:
             if newline >= 0:
                 line = bytes(self.buffer[:newline]).rstrip(b"\r")
                 del self.buffer[: newline + 1]
+                if len(line) > MAX_RECORD_BYTES:
+                    raise SnapOError("Snap-O sent an oversized network record")
                 if not line:
                     continue
                 try:
-                    return json.loads(line)
+                    message = json.loads(line)
                 except (UnicodeDecodeError, ValueError):
                     continue
+                if isinstance(message, dict):
+                    return message
+                continue
             if len(self.buffer) > MAX_RECORD_BYTES:
                 raise SnapOError("Snap-O sent an oversized network record")
             remaining = deadline - time.monotonic()
@@ -329,6 +385,9 @@ class ConnectedSession:
         self.session = None
 
     def __enter__(self):
+        if getattr(self.forward.adb, "has_explicit_endpoint", False):
+            self.session = Session(adb=self.forward.adb, server=self.forward.server)
+            return self.session
         forward = self.forward.__enter__()
         try:
             self.session = Session(forward.port)
@@ -340,6 +399,8 @@ class ConnectedSession:
     def __exit__(self, error_type, error, traceback):
         if self.session:
             self.session.close()
+        if getattr(self.forward.adb, "has_explicit_endpoint", False):
+            return False
         return self.forward.__exit__(error_type, error, traceback)
 
 
@@ -731,8 +792,8 @@ def add_common_options(parser, socket_option=False):
     if socket_option:
         parser.add_argument("-n", "--socket")
     parser.add_argument("--adb", help="path to the configured adb executable or shim")
-    parser.add_argument("--adb-host", default="127.0.0.1", help="ADB server host (default: 127.0.0.1)")
-    parser.add_argument("--adb-port", type=valid_port, default=5037, help="ADB server port (default: 5037)")
+    parser.add_argument("--adb-host", help="explicit ADB server host (default: adb's configured host)")
+    parser.add_argument("--adb-port", type=valid_port, help="explicit ADB server port (default: adb's configured port)")
     parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
 
 

@@ -40,7 +40,7 @@ Useful global selectors:
 - `-d`: use the single connected USB device.
 - `-e`: use the single connected emulator.
 - `--adb`: use a specific ADB executable or Namespace shim.
-- `--adb-host`, `--adb-port`: connect to a remote ADB server; defaults remain `127.0.0.1:5037`.
+- `--adb-host`, `--adb-port`: connect directly to an explicit remote or tunneled ADB server; otherwise the configured ADB/shim selects its endpoint.
 
 ## Core Flow
 
@@ -50,7 +50,7 @@ Useful global selectors:
 "$SNAPO_BIN" network list --json
 ```
 
-For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, or `show`. Namespace Snap-O forwards are opened on an explicit localhost port and are removed automatically on exit.
+For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, or `show`; the script uses the ADB smart socket directly. With a configured Namespace shim, omit those flags so its Snap-O forward is opened on an explicit localhost port and removed automatically on exit.
 
 Use `--no-app-info` to skip package and app metadata lookup.
 

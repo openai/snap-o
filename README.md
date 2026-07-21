@@ -141,7 +141,7 @@ mkdir -p ~/.local/bin
 install -m 0755 scripts/snapo ~/.local/bin/snapo
 ```
 
-The script preserves `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select an ADB shim explicitly. The default ADB endpoint remains `127.0.0.1:5037`, and `--adb-host <host> --adb-port <port>` can be passed to any network command.
+The script preserves `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select an ADB shim explicitly. By default, server selection is left to the configured ADB/shim (ordinary ADB defaults to `127.0.0.1:5037`). Pass `--adb-host <host> --adb-port <port>` to use an explicit remote or tunneled ADB endpoint.
 
 For an Android devbox with the SDK installed under `$HOME/android-sdk`:
 
@@ -152,7 +152,7 @@ export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"
 snapo network list --json
 ```
 
-The CLI opens an explicit localhost ADB forward for the selected `snapo_network_<pid>` socket, which is compatible with Namespace's allowlisted Snap-O forwarding, and removes the forward when the command exits. Treat captured bodies and URL query values as sensitive.
+With ordinary/shimmed ADB, the CLI opens an explicit localhost forward for the selected `snapo_network_<pid>` socket, which is compatible with Namespace's allowlisted Snap-O forwarding, and removes it when the command exits. With an explicit ADB endpoint, it connects through the ADB smart socket directly and does not create a forward. Treat captured bodies and URL query values as sensitive.
 
 ## Codex Skill
 
