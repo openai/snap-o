@@ -1,5 +1,6 @@
 package com.openai.snapo.network.okhttp3
 
+import com.openai.snapo.network.capture.RawResponseBodyCapture
 import okhttp3.Headers
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
@@ -25,7 +26,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.IOException
-import java.util.Base64
 
 class BodyCaptureTest {
 
@@ -76,7 +76,7 @@ class BodyCaptureTest {
     @Test
     fun `response body is not read until the caller consumes it`() {
         val delegate = TrackingResponseBody("response body")
-        val captures = mutableListOf<ResponseBodyCapture>()
+        val captures = mutableListOf<RawResponseBodyCapture>()
         val body = CapturingResponseBody(delegate = delegate, maxBytes = 4) { capture, error ->
             assertNull(error)
             captures += capture
@@ -89,14 +89,14 @@ class BodyCaptureTest {
         assertEquals("response body", body.string())
         assertTrue(delegate.readCount > 0)
         assertEquals(1, captures.size)
-        assertArrayEquals("resp".encodeToByteArray(), captures.single().body)
+        assertArrayEquals("resp".encodeToByteArray(), captures.single().bytes)
         assertEquals(13L, captures.single().totalBytes)
         assertTrue(captures.single().reachedEof)
     }
 
     @Test
     fun `reading trailers first still passes the response through the capture tee`() {
-        val captures = mutableListOf<ResponseBodyCapture>()
+        val captures = mutableListOf<RawResponseBodyCapture>()
         val body = CapturingResponseBody(TrackingResponseBody("response body"), maxBytes = 4) { capture, _ ->
             captures += capture
         }
@@ -125,14 +125,14 @@ class BodyCaptureTest {
 
     @Test
     fun `zero response capture limit still preserves the caller body`() {
-        var capture: ResponseBodyCapture? = null
+        var capture: RawResponseBodyCapture? = null
         val body = CapturingResponseBody(TrackingResponseBody("complete"), maxBytes = 0) { value, _ ->
             capture = value
         }
 
         assertEquals("complete", body.string())
         val captured = checkNotNull(capture)
-        assertArrayEquals(ByteArray(0), captured.body)
+        assertArrayEquals(ByteArray(0), captured.bytes)
         assertEquals(8L, captured.totalBytes)
     }
 
@@ -161,155 +161,8 @@ class BodyCaptureTest {
     }
 
     @Test
-    fun `response formatter applies body and preview limits after capture`() {
-        val capture = ResponseBodyCapture(
-            body = "0123456789".encodeToByteArray(),
-            totalBytes = 10L,
-            reachedEof = true,
-        )
-
-        val text = resolveResponseBodyCapture(
-            capture = capture,
-            contentType = "text/plain; charset=utf-8".toMediaType(),
-            textBodyMaxBytes = 4,
-            binaryBodyMaxBytes = 6,
-            previewBytes = 2,
-            declaredBodySize = null,
-        )
-        val binary = resolveResponseBodyCapture(
-            capture = capture,
-            contentType = "application/octet-stream".toMediaType(),
-            textBodyMaxBytes = 4,
-            binaryBodyMaxBytes = 6,
-            previewBytes = 2,
-            declaredBodySize = null,
-        )
-        val omitted = resolveResponseBodyCapture(
-            capture = capture,
-            contentType = "text/plain".toMediaType(),
-            textBodyMaxBytes = 0,
-            binaryBodyMaxBytes = 0,
-            previewBytes = 2,
-            declaredBodySize = null,
-        )
-
-        assertEquals("0123", text.body)
-        assertEquals("01", text.preview)
-        assertEquals(null, text.encoding)
-        assertEquals(6L, text.truncatedBytes)
-        assertEquals("MDEyMzQ1", binary.body)
-        assertEquals("MDE=", binary.preview)
-        assertEquals("base64", binary.encoding)
-        assertEquals(4L, binary.truncatedBytes)
-        assertNull(omitted.body)
-        assertEquals("01", omitted.preview)
-        assertEquals(10L, omitted.truncatedBytes)
-    }
-
-    @Test
-    fun `known text response smaller than the complete-body threshold is retained in full`() {
-        val bodySize = 7_000_000
-        val bytes = ByteArray(bodySize) { 'a'.code.toByte() }
-        val capture = ResponseBodyCapture(body = bytes, totalBytes = bodySize.toLong(), reachedEof = true)
-
-        val resolved = resolveResponseBodyCapture(
-            capture = capture,
-            contentType = "text/plain; charset=utf-8".toMediaType(),
-            textBodyMaxBytes = DefaultTextBodyMaxBytes,
-            binaryBodyMaxBytes = DefaultBinaryBodyMaxBytes,
-            previewBytes = DefaultBodyPreviewBytes,
-            declaredBodySize = bodySize.toLong(),
-        )
-
-        val body = checkNotNull(resolved.body)
-        assertEquals(bodySize, body.length)
-        assertTrue(body.all { it == 'a' })
-        assertEquals("a".repeat(DefaultBodyPreviewBytes), resolved.preview)
-        assertNull(resolved.encoding)
-        assertNull(resolved.truncatedBytes)
-        assertEquals(bodySize.toLong(), resolved.bodySize)
-    }
-
-    @Test
-    fun `known binary response smaller than the complete-body threshold is retained in full`() {
-        val bodySize = 7_000_000
-        val bytes = ByteArray(bodySize) { index -> index.toByte() }
-        val capture = ResponseBodyCapture(body = bytes, totalBytes = bodySize.toLong(), reachedEof = true)
-
-        val resolved = resolveResponseBodyCapture(
-            capture = capture,
-            contentType = "application/octet-stream".toMediaType(),
-            textBodyMaxBytes = DefaultTextBodyMaxBytes,
-            binaryBodyMaxBytes = DefaultBinaryBodyMaxBytes,
-            previewBytes = DefaultBodyPreviewBytes,
-            declaredBodySize = bodySize.toLong(),
-        )
-
-        assertArrayEquals(bytes, Base64.getDecoder().decode(checkNotNull(resolved.body)))
-        assertEquals(
-            Base64.getEncoder().encodeToString(bytes.copyOf(DefaultBodyPreviewBytes)),
-            resolved.preview,
-        )
-        assertEquals("base64", resolved.encoding)
-        assertNull(resolved.truncatedBytes)
-        assertEquals(bodySize.toLong(), resolved.bodySize)
-    }
-
-    @Test
-    fun `known response larger than the complete-body threshold remains limited`() {
-        val bodySize = 8L * 1024L * 1024L + 1L
-        val captureLimit = DefaultTextBodyMaxBytes
-        val capture = ResponseBodyCapture(
-            body = ByteArray(captureLimit) { 'a'.code.toByte() },
-            totalBytes = bodySize,
-            reachedEof = true,
-        )
-
-        val resolved = resolveResponseBodyCapture(
-            capture = capture,
-            contentType = "text/plain; charset=utf-8".toMediaType(),
-            textBodyMaxBytes = captureLimit,
-            binaryBodyMaxBytes = DefaultBinaryBodyMaxBytes,
-            previewBytes = DefaultBodyPreviewBytes,
-            declaredBodySize = bodySize,
-        )
-
-        assertEquals(captureLimit, checkNotNull(resolved.body).length)
-        assertEquals(DefaultBodyPreviewBytes, checkNotNull(resolved.preview).length)
-        assertNull(resolved.encoding)
-        assertEquals(bodySize - captureLimit, resolved.truncatedBytes)
-        assertEquals(bodySize, resolved.bodySize)
-    }
-
-    @Test
-    fun `unknown-length response remains limited`() {
-        val captureLimit = 1_024
-        val bodySize = captureLimit + 257L
-        val capture = ResponseBodyCapture(
-            body = ByteArray(captureLimit) { 'a'.code.toByte() },
-            totalBytes = bodySize,
-            reachedEof = true,
-        )
-
-        val resolved = resolveResponseBodyCapture(
-            capture = capture,
-            contentType = "text/plain; charset=utf-8".toMediaType(),
-            textBodyMaxBytes = captureLimit,
-            binaryBodyMaxBytes = DefaultBinaryBodyMaxBytes,
-            previewBytes = 16,
-            declaredBodySize = null,
-        )
-
-        assertEquals(captureLimit, checkNotNull(resolved.body).length)
-        assertEquals(16, checkNotNull(resolved.preview).length)
-        assertNull(resolved.encoding)
-        assertEquals(bodySize - captureLimit, resolved.truncatedBytes)
-        assertEquals(bodySize, resolved.bodySize)
-    }
-
-    @Test
     fun `closing a partially consumed response completes once without claiming eof`() {
-        val captures = mutableListOf<ResponseBodyCapture>()
+        val captures = mutableListOf<RawResponseBodyCapture>()
         val delegate = TrackingResponseBody("response body")
         val body = CapturingResponseBody(delegate, maxBytes = 4) { capture, _ ->
             captures += capture

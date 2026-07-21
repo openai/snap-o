@@ -8,6 +8,14 @@ import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.RequestFailed
 import com.openai.snapo.network.ResponseFinished
 import com.openai.snapo.network.Timings
+import com.openai.snapo.network.capture.BodyContentType
+import com.openai.snapo.network.capture.RawResponseBodyCapture
+import com.openai.snapo.network.capture.ResolvedRequestBody
+import com.openai.snapo.network.capture.resolveEffectiveMaxBytes
+import com.openai.snapo.network.capture.resolveRequestBody
+import com.openai.snapo.network.capture.resolveResponseBody
+import com.openai.snapo.network.capture.resolveResponseCaptureLimit
+import com.openai.snapo.network.capture.shouldEncodeBodyAsBase64
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -30,13 +38,11 @@ import okio.ForwardingSource
 import okio.buffer
 import java.io.Closeable
 import java.io.IOException
-import java.nio.ByteBuffer
 import java.nio.charset.Charset
-import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.io.encoding.Base64
+import com.openai.snapo.network.capture.resolveRequestCaptureLimit as resolveSharedRequestCaptureLimit
 
 /** OkHttp interceptor that mirrors traffic to the active SnapO link if present. */
 class SnapOOkHttpInterceptor @JvmOverloads constructor(
@@ -162,8 +168,8 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             publishLoadingFinished(context, bodySize = 0L, after = responsePublication)
             return response
         }
-        val contentType = responseBody.contentType()
-        return if (contentType.isEventStream()) {
+        val contentType = responseBody.contentType().toBodyContentType()
+        return if (contentType?.isEventStream == true) {
             handleStreamingResponse(
                 context,
                 response,
@@ -192,7 +198,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         context: InterceptContext,
         response: Response,
         body: ResponseBody,
-        contentType: MediaType?,
+        contentType: BodyContentType?,
         bodySize: Long?,
         endWall: Long,
         endMono: Long,
@@ -212,7 +218,13 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         }
         val capturingBody = CapturingResponseBody(
             delegate = body,
-            maxBytes = responseCaptureLimit(contentType, bodySize),
+            maxBytes = resolveResponseCaptureLimit(
+                contentType = contentType,
+                contentLength = bodySize,
+                textBodyMaxBytes = textBodyMaxBytes,
+                binaryBodyMaxBytes = binaryBodyMaxBytes,
+                previewBytes = responseBodyPreviewBytes,
+            ),
             onComplete = { capture, error ->
                 completeResponseCapture(
                     context = context,
@@ -234,7 +246,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         context: InterceptContext,
         response: Response,
         body: ResponseBody,
-        contentType: MediaType?,
+        contentType: BodyContentType?,
         bodySize: Long?,
         endWall: Long,
         endMono: Long,
@@ -258,7 +270,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val streamingBody = StreamingResponseRelayBody(
             delegate = body,
             requestId = context.requestId,
-            charset = contentType.resolveCharset(),
+            charset = contentType?.charsetOrUtf8() ?: Charsets.UTF_8,
             onRecord = { recordBuilder ->
                 synchronized(publicationLock) {
                     previousPublication = publish(
@@ -302,24 +314,12 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         )
     }
 
-    private fun responseCaptureLimit(contentType: MediaType?, contentLength: Long?): Int {
-        val bodyLimit = when {
-            contentType == null -> maxOf(textBodyMaxBytes, binaryBodyMaxBytes)
-            contentType.isTextLike() -> textBodyMaxBytes
-            else -> binaryBodyMaxBytes
-        }
-        return resolveEffectiveMaxBytes(
-            maxBytes = maxOf(bodyLimit, responseBodyPreviewBytes),
-            contentLength = contentLength,
-        )
-    }
-
     private fun completeResponseCapture(
         context: InterceptContext,
-        contentType: MediaType?,
+        contentType: BodyContentType?,
         declaredBodySize: Long?,
         responsePublication: Job?,
-        capture: ResponseBodyCapture,
+        capture: RawResponseBodyCapture,
         error: Throwable?,
     ) {
         val completionWall = System.currentTimeMillis()
@@ -329,7 +329,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             try {
                 responsePublication?.join()
                 val body = runCatching {
-                    resolveResponseBodyCapture(
+                    resolveResponseBody(
                         capture = capture,
                         contentType = contentType,
                         textBodyMaxBytes = textBodyMaxBytes,
@@ -431,12 +431,6 @@ internal data class RequestBodyCapture(
     val body: ByteArray,
     val totalBytes: Long,
     val truncatedBytes: Long,
-)
-
-internal data class ResponseBodyCapture(
-    val body: ByteArray,
-    val totalBytes: Long,
-    val reachedEof: Boolean,
 )
 
 private class RequestCaptureTracker(
@@ -542,7 +536,7 @@ internal class CapturingRequestBody(
 internal class CapturingResponseBody(
     private val delegate: ResponseBody,
     maxBytes: Int,
-    private val onComplete: (ResponseBodyCapture, Throwable?) -> Unit,
+    private val onComplete: (RawResponseBodyCapture, Throwable?) -> Unit,
 ) : ResponseBody() {
     private val closed = AtomicBoolean(false)
     private val completionNotified = AtomicBoolean(false)
@@ -589,8 +583,8 @@ internal class CapturingResponseBody(
         val snapshot = capture.snapshot()
         try {
             onComplete(
-                ResponseBodyCapture(
-                    body = snapshot.body,
+                RawResponseBodyCapture(
+                    bytes = snapshot.body,
                     totalBytes = snapshot.totalBytes,
                     reachedEof = reachedEof,
                 ),
@@ -640,39 +634,6 @@ private fun Response.hasNoBodyByProtocol(): Boolean {
         code == 304
 }
 
-private fun MediaType?.isTextLike(): Boolean = when {
-    this == null -> false
-    type.lowercase() == "text" -> true
-    else -> listOf(
-        "json",
-        "xml",
-        "html",
-        "javascript",
-        "form",
-        "graphql",
-        "plain",
-        "csv",
-        "yaml",
-    ).any(subtype.lowercase()::contains)
-}
-
-private fun MediaType?.isMultipartFormData(): Boolean {
-    val mediaType = this ?: return false
-    return mediaType.type.equals("multipart", ignoreCase = true) &&
-        mediaType.subtype.equals("form-data", ignoreCase = true)
-}
-
-private fun MediaType?.isEventStream(): Boolean {
-    val mediaType = this ?: return false
-    return mediaType.type.equals("text", ignoreCase = true) &&
-        mediaType.subtype.equals("event-stream", ignoreCase = true)
-}
-
-private data class EncodedBody(
-    val body: String?,
-    val encoding: String?,
-)
-
 internal fun resolveRequestCaptureLimit(
     request: Request,
     textBodyMaxBytes: Int,
@@ -682,12 +643,13 @@ internal fun resolveRequestCaptureLimit(
     val contentType = resolveRequestContentType(
         captureContentType = runCatching { requestBody.contentType() }.getOrNull(),
         request = request,
+    ).toBodyContentType()
+    return resolveSharedRequestCaptureLimit(
+        contentType = contentType,
+        contentEncoding = request.header("Content-Encoding"),
+        textBodyMaxBytes = textBodyMaxBytes,
+        binaryBodyMaxBytes = binaryBodyMaxBytes,
     )
-    return if (requestBodyUsesBase64(request, contentType)) {
-        binaryBodyMaxBytes
-    } else {
-        textBodyMaxBytes
-    }
 }
 
 private fun requestBodyEncoding(request: Request): String? {
@@ -695,116 +657,32 @@ private fun requestBodyEncoding(request: Request): String? {
     val contentType = resolveRequestContentType(
         captureContentType = runCatching { requestBody.contentType() }.getOrNull(),
         request = request,
-    )
-    return "base64".takeIf { requestBodyUsesBase64(request, contentType) }
-}
-
-private fun encodeRequestBody(capture: RequestBodyCapture, request: Request): EncodedBody {
-    val contentType = resolveRequestContentType(capture.contentType, request)
-    return when {
-        requestBodyUsesBase64(request, contentType) ->
-            EncodedBody(encodeToString(capture.body, NO_WRAP), "base64")
-
-        contentType.isMultipartFormData() ->
-            EncodedBody(formatMultipartBody(capture.body, contentType), null)
-
-        else -> EncodedBody(String(capture.body, contentType.resolveCharset()), null)
+    ).toBodyContentType()
+    return "base64".takeIf {
+        shouldEncodeBodyAsBase64(
+            contentType = contentType,
+            contentEncoding = request.header("Content-Encoding"),
+        )
     }
 }
 
-private fun requestBodyUsesBase64(request: Request, contentType: MediaType?): Boolean {
-    return hasNonIdentityContentEncoding(request.header("Content-Encoding")) ||
-        (!contentType.isTextLike() && !contentType.isMultipartFormData())
-}
-
-internal data class ResolvedResponseBodyCapture(
-    val preview: String?,
-    val body: String?,
-    val encoding: String?,
-    val truncatedBytes: Long?,
-    val bodySize: Long,
-)
-
-internal fun resolveResponseBodyCapture(
-    capture: ResponseBodyCapture,
-    contentType: MediaType?,
-    textBodyMaxBytes: Int,
-    binaryBodyMaxBytes: Int,
-    previewBytes: Int,
-    declaredBodySize: Long?,
-): ResolvedResponseBodyCapture {
-    val likelyText = capture.isLikelyText(contentType)
-    val bodyLimit = resolveEffectiveMaxBytes(
-        maxBytes = if (likelyText) textBodyMaxBytes else binaryBodyMaxBytes,
-        contentLength = declaredBodySize,
-    )
-    val retainedBodyBytes = capture.body.prefix(bodyLimit)
-    val previewSource = capture.body.prefix(previewBytes)
-    val charset = contentType.resolveCharset()
-    val body = retainedBodyBytes.encodeForInspector(likelyText, charset)
-    val preview = previewSource.encodeForInspector(likelyText, charset)
-    val bodySize = capture.resolvedBodySize(declaredBodySize)
-    val truncatedBytes = capture.resolvedTruncatedBytes(
-        bodySize = bodySize,
-        retainedBytes = retainedBodyBytes.size,
-        hasDeclaredBodySize = declaredBodySize != null,
-    )
-    return ResolvedResponseBodyCapture(
-        preview = preview,
-        body = body,
-        encoding = "base64".takeIf { body != null && !likelyText },
-        truncatedBytes = truncatedBytes,
-        bodySize = bodySize,
-    )
-}
-
-private fun ResponseBodyCapture.isLikelyText(contentType: MediaType?): Boolean = when {
-    contentType?.isTextLike() == true -> true
-    contentType != null -> false
-    else -> body.decodeUtf8TextIfLikely() != null
-}
-
-private fun ByteArray.encodeForInspector(likelyText: Boolean, charset: Charset): String? = when {
-    isEmpty() -> null
-    likelyText -> String(this, charset)
-    else -> Base64.encode(this)
-}
-
-private fun ResponseBodyCapture.resolvedBodySize(declaredBodySize: Long?): Long = when {
-    reachedEof -> totalBytes
-    declaredBodySize != null -> maxOf(declaredBodySize, totalBytes)
-    else -> totalBytes
-}
-
-private fun ResponseBodyCapture.resolvedTruncatedBytes(
-    bodySize: Long,
-    retainedBytes: Int,
-    hasDeclaredBodySize: Boolean,
-): Long? {
-    val truncatedBytes = (bodySize - retainedBytes.toLong()).coerceAtLeast(0L)
-    val truncationIsKnown = reachedEof || hasDeclaredBodySize || totalBytes > retainedBytes
-    return truncatedBytes.takeIf { it > 0L && truncationIsKnown }
-}
-
-private fun ByteArray.prefix(maxBytes: Int): ByteArray {
-    if (maxBytes <= 0 || isEmpty()) return ByteArray(0)
-    return if (size <= maxBytes) this else copyOf(maxBytes)
-}
-
-private fun hasNonIdentityContentEncoding(contentEncoding: String?): Boolean {
-    val encodings = contentEncoding
-        ?.split(',')
-        ?.map { token -> token.substringBefore(';').trim().lowercase() }
-        ?.filter { token -> token.isNotEmpty() }
-        .orEmpty()
-    return encodings.any { token -> token != "identity" }
-}
-
-private fun MediaType?.resolveCharset(): Charset {
-    return try {
-        this?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
-    } catch (_: IllegalArgumentException) {
-        Charsets.UTF_8
+private fun encodeRequestBody(capture: RequestBodyCapture, request: Request): ResolvedRequestBody {
+    val mediaType = resolveRequestContentType(capture.contentType, request)
+    val contentType = mediaType.toBodyContentType()
+    return if (
+        contentType?.isMultipartFormData == true &&
+        !shouldEncodeBodyAsBase64(
+            contentType = contentType,
+            contentEncoding = request.header("Content-Encoding"),
+        )
+    ) {
+        ResolvedRequestBody(body = formatMultipartBody(capture.body, mediaType), encoding = null)
+    } else {
+        resolveRequestBody(
+            bytes = capture.body,
+            contentType = contentType,
+            contentEncoding = request.header("Content-Encoding"),
+        )
     }
 }
 
@@ -817,22 +695,14 @@ private fun resolveRequestContentType(
     return headerValue.toMediaTypeOrNull()
 }
 
-private fun ByteArray.decodeUtf8TextIfLikely(): String? {
-    if (isEmpty()) return ""
-    val decoded = runCatching {
-        Charsets.UTF_8
-            .newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(this))
-            .toString()
-    }.getOrNull() ?: return null
-    if (decoded.isEmpty()) return decoded
-    val printable = decoded.count { ch ->
-        ch == '\n' || ch == '\r' || ch == '\t' || (ch >= ' ' && ch != '\u007f')
-    }
-    val printableRatio = printable.toDouble() / decoded.length.toDouble()
-    return decoded.takeIf { printableRatio >= MinLikelyTextRatio }
+private fun MediaType?.toBodyContentType(): BodyContentType? {
+    val mediaType = this ?: return null
+    val charset = runCatching { mediaType.charset() }.getOrNull()
+    return BodyContentType(
+        type = mediaType.type,
+        subtype = mediaType.subtype,
+        charset = charset,
+    )
 }
 
 private fun formatMultipartBody(bodyBytes: ByteArray, contentType: MediaType?): String {
@@ -1084,16 +954,4 @@ internal fun nanosToMillis(deltaNs: Long): Long? {
     return TimeUnit.NANOSECONDS.toMillis(deltaNs)
 }
 
-internal fun resolveEffectiveMaxBytes(maxBytes: Int, contentLength: Long?): Int {
-    if (maxBytes <= 0) return 0
-    val knownLength = contentLength?.takeIf { it >= 0L } ?: return maxBytes
-    return if (knownLength < CompleteBodyCaptureThresholdBytes) {
-        maxOf(maxBytes.toLong(), knownLength).toInt()
-    } else {
-        maxBytes
-    }
-}
-
-private const val MinLikelyTextRatio: Double = 0.85
 private const val SegmentByteCount: Long = 8L * 1024L
-private const val CompleteBodyCaptureThresholdBytes: Long = 8L * 1024L * 1024L
