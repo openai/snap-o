@@ -1,8 +1,7 @@
-@file:androidx.annotation.RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP)
-
 package com.openai.snapo.network.capture
 
 import android.os.SystemClock
+import androidx.annotation.RestrictTo
 import com.openai.snapo.network.NetworkEventRecord
 import com.openai.snapo.network.ResponseStreamClosed
 import com.openai.snapo.network.ResponseStreamEvent
@@ -16,6 +15,7 @@ import java.nio.charset.CodingErrorAction
  *
  * Stream reads and publication ordering remain owned by the client-specific adapters.
  */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 class SseStreamCapture internal constructor(
     private val requestId: String,
     charset: Charset,
@@ -39,8 +39,9 @@ class SseStreamCapture internal constructor(
     private val decoder = charset.newDecoder()
         .onMalformedInput(CodingErrorAction.REPLACE)
         .onUnmappableCharacter(CodingErrorAction.REPLACE)
+    private val decoderOutput = CharBuffer.allocate(DecoderBufferChars)
     private val text = StringBuilder()
-    private var undecodedBytes = ByteArray(0)
+    private var undecodedBytes = emptyBytes
     private var pendingCarriageReturn = false
     private var totalBytes = 0L
     private var nextSequence = 0L
@@ -54,8 +55,7 @@ class SseStreamCapture internal constructor(
         synchronized(lock) {
             if (completed) return
             totalBytes += length.toLong()
-            appendDecoded(decode(bytes, offset, length, endOfInput = false))
-            drainEvents(flushTail = false).forEach(::emit)
+            decodeAndAppend(bytes, offset, length, endOfInput = false)
         }
     }
 
@@ -63,9 +63,13 @@ class SseStreamCapture internal constructor(
         synchronized(lock) {
             if (completed) return
             completed = true
-            appendDecoded(decode(ByteArray(0), 0, 0, endOfInput = true))
+            decodeAndAppend(emptyBytes, 0, 0, endOfInput = true)
             flushPendingCarriageReturn()
-            drainEvents(flushTail = true).forEach(::emit)
+            if (text.isNotEmpty()) {
+                val tail = text.toString()
+                text.setLength(0)
+                emit(eventRecord(tail))
+            }
             emit(
                 ResponseStreamClosed(
                     id = requestId,
@@ -80,12 +84,12 @@ class SseStreamCapture internal constructor(
         }
     }
 
-    private fun decode(
+    private fun decodeAndAppend(
         bytes: ByteArray,
         offset: Int,
         length: Int,
         endOfInput: Boolean,
-    ): String {
+    ) {
         val input = if (undecodedBytes.isEmpty()) {
             ByteBuffer.wrap(bytes, offset, length)
         } else {
@@ -99,70 +103,59 @@ class SseStreamCapture internal constructor(
             )
             ByteBuffer.wrap(combined)
         }
-        val decoded = StringBuilder()
-        val output = CharBuffer.allocate(DecoderBufferChars)
         while (true) {
-            val result = decoder.decode(input, output, endOfInput)
-            output.flip()
-            decoded.append(output)
-            output.clear()
+            val result = decoder.decode(input, decoderOutput, endOfInput)
+            decoderOutput.flip()
+            appendDecoded(decoderOutput)
+            decoderOutput.clear()
             if (!result.isOverflow) break
         }
 
         undecodedBytes = if (!endOfInput && input.hasRemaining()) {
             ByteArray(input.remaining()).also(input::get)
         } else {
-            ByteArray(0)
+            emptyBytes
         }
 
         if (endOfInput) {
             while (true) {
-                val result = decoder.flush(output)
-                output.flip()
-                decoded.append(output)
-                output.clear()
+                val result = decoder.flush(decoderOutput)
+                decoderOutput.flip()
+                appendDecoded(decoderOutput)
+                decoderOutput.clear()
                 if (!result.isOverflow) break
             }
         }
-        return decoded.toString()
     }
 
-    private fun appendDecoded(decoded: String) {
+    private fun appendDecoded(decoded: CharSequence) {
         for (character in decoded) {
             if (pendingCarriageReturn) {
-                text.append('\n')
+                appendNormalized('\n')
                 pendingCarriageReturn = false
                 if (character == '\n') continue
             }
             if (character == '\r') {
                 pendingCarriageReturn = true
             } else {
-                text.append(character)
+                appendNormalized(character)
             }
         }
     }
 
     private fun flushPendingCarriageReturn() {
         if (!pendingCarriageReturn) return
-        text.append('\n')
+        appendNormalized('\n')
         pendingCarriageReturn = false
     }
 
-    private fun drainEvents(flushTail: Boolean): List<NetworkEventRecord> {
-        if (text.isEmpty()) return emptyList()
-        val records = ArrayList<NetworkEventRecord>()
-        while (true) {
-            val boundary = text.indexOf("\n\n")
-            if (boundary < 0) {
-                if (flushTail && text.isNotEmpty()) {
-                    records += eventRecord(text.toString())
-                    text.setLength(0)
-                }
-                return records
-            }
-            records += eventRecord(text.substring(0, boundary))
-            text.delete(0, boundary + 2)
-        }
+    private fun appendNormalized(character: Char) {
+        text.append(character)
+        if (character != '\n' || text.length < 2 || text[text.length - 2] != '\n') return
+        text.setLength(text.length - 2)
+        val event = text.toString()
+        text.setLength(0)
+        emit(eventRecord(event))
     }
 
     private fun eventRecord(raw: String): ResponseStreamEvent {
@@ -185,5 +178,6 @@ class SseStreamCapture internal constructor(
 
     private companion object {
         const val DecoderBufferChars: Int = 1024
+        val emptyBytes = ByteArray(0)
     }
 }

@@ -145,6 +145,24 @@ class SseStreamCaptureTest {
         assertEquals("\uFFFD", events[1].raw)
     }
 
+    @Test(timeout = 10_000)
+    fun `large event remains incremental when read one byte at a time`() {
+        val records = mutableListOf<NetworkEventRecord>()
+        val capture = capture(records)
+        val event = "data: " + "x".repeat(512 * 1_024)
+        val bytes = "$event\n\n".encodeToByteArray()
+
+        for (index in bytes.indices) {
+            capture.append(bytes, offset = index, length = 1)
+        }
+        capture.complete()
+
+        assertEquals(event, records.filterIsInstance<ResponseStreamEvent>().single().raw)
+        val closed = records.filterIsInstance<ResponseStreamClosed>().single()
+        assertEquals(1L, closed.totalEvents)
+        assertEquals(bytes.size.toLong(), closed.totalBytes)
+    }
+
     private fun capture(records: MutableList<NetworkEventRecord>): SseStreamCapture {
         return capture(records::add)
     }

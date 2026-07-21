@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
                         onImageResponseClick = { runImageResponseRequest(scope) },
                         onCompleteLargeResponseClick = { runLargeResponseRequest(scope, complete = true) },
                         onTruncatedLargeResponseClick = { runLargeResponseRequest(scope, complete = false) },
+                        onSseResponseClick = { runSseResponseRequest(scope) },
                         onSlowResponseClick = { runSlowResponseRequest(scope) },
                         onWebSocketDemoClick = { startWebSocketDemo(scope) },
                         modifier = Modifier.padding(innerPadding)
@@ -174,6 +175,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun runSseResponseRequest(scope: CoroutineScope) {
+        scope.launch {
+            val url = resolveMockHttpUrl("/sse") ?: return@launch
+            val request = Request.Builder()
+                .url(url)
+                .header("Accept", "text/event-stream")
+                .header("X-SnapO-Demo", "okhttp-sse")
+                .build()
+            executeRequest(scope, request)
+        }
+    }
+
     private fun runLargeResponseRequest(scope: CoroutineScope, complete: Boolean) {
         scope.launch {
             val path = if (complete) "/large-response-complete" else "/large-response-truncated"
@@ -264,6 +277,7 @@ private fun gzip(bytes: ByteArray): ByteArray {
     return output.toByteArray()
 }
 
+@Suppress("LongParameterList")
 @Composable
 fun Greeting(
     onNetworkRequestClick: () -> Unit,
@@ -273,6 +287,7 @@ fun Greeting(
     onImageResponseClick: () -> Unit,
     onCompleteLargeResponseClick: () -> Unit,
     onTruncatedLargeResponseClick: () -> Unit,
+    onSseResponseClick: () -> Unit,
     onSlowResponseClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -304,6 +319,9 @@ fun Greeting(
         Button(onClick = onTruncatedLargeResponseClick) {
             Text("GET 9 MB JSON (truncated)")
         }
+        Button(onClick = onSseResponseClick) {
+            Text("GET SSE stream")
+        }
         Button(onClick = onSlowResponseClick) {
             Text("Slow response")
         }
@@ -325,6 +343,7 @@ private fun GreetingPreview() {
             onImageResponseClick = {},
             onCompleteLargeResponseClick = {},
             onTruncatedLargeResponseClick = {},
+            onSseResponseClick = {},
             onSlowResponseClick = {},
             onWebSocketDemoClick = {},
         )

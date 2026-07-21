@@ -44,6 +44,13 @@ private fun createServer(): MockWebServer {
     val imageBody = checkNotNull(DemoAppIconPng.decodeBase64())
     val formBody = """{"ok":true,"endpoint":"form-post","source":"mockwebserver"}"""
     val slowBody = """{"message":"${"x".repeat(SlowBodyPayloadCharacters)}","source":"okhttp-demo"}"""
+    val sseBody = """
+        data: {"step":1,"message":"Starting"}
+
+        data: {"step":2,"message":"Streaming"}
+
+        data: {"step":3,"message":"Complete"}
+    """.trimIndent() + "\n\n"
     return MockWebServer().apply {
         dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
@@ -87,6 +94,7 @@ private fun createServer(): MockWebServer {
                     "/large-response-complete" -> largeJsonResponse(CompleteLargeBodyBytes)
                     "/large-response-truncated" -> largeJsonResponse(TruncatedLargeBodyBytes)
                     "/slow-response" -> slowResponse(slowBody)
+                    "/sse" -> sseResponse(sseBody)
                     "/ws-echo" -> MockResponse.Builder()
                         .webSocketUpgrade(
                             object : WebSocketListener() {
@@ -143,6 +151,18 @@ private fun slowResponse(body: String): MockResponse = MockResponse.Builder()
     )
     .build()
 
+private fun sseResponse(body: String): MockResponse = MockResponse.Builder()
+    .code(200)
+    .setHeader("Content-Type", "text/event-stream; charset=utf-8")
+    .setHeader("Connection", "close")
+    .body(body)
+    .throttleBody(
+        bytesPerPeriod = SseChunkBytes,
+        period = SseChunkDelayMs,
+        unit = TimeUnit.MILLISECONDS,
+    )
+    .build()
+
 fun String.toWebSocketUrl(): String {
     return when {
         startsWith("http://") -> "ws://${removePrefix("http://")}"
@@ -159,6 +179,8 @@ private const val SlowBodyPayloadCharacters: Int = 1024 * 1024
 private const val SlowBodyInitialDelayMs: Long = 2_000L
 private const val SlowBodyChunkBytes: Long = 128L * 1024L
 private const val SlowBodyChunkDelayMs: Long = 250L
+private const val SseChunkBytes: Long = 32L
+private const val SseChunkDelayMs: Long = 350L
 
 private val DemoAppIconPng: String = """
     iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAHsUExURUdwTJDci5/jm1vOVDnJMTfHLjvI

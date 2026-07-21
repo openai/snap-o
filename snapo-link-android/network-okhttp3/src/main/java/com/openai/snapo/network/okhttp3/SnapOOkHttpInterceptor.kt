@@ -3,25 +3,17 @@ package com.openai.snapo.network.okhttp3
 import android.os.SystemClock
 import android.util.Base64.NO_WRAP
 import android.util.Base64.encodeToString
-import com.openai.snapo.network.NetworkEventRecord
 import com.openai.snapo.network.NetworkInspector
-import com.openai.snapo.network.RequestFailed
-import com.openai.snapo.network.ResponseFinished
-import com.openai.snapo.network.Timings
 import com.openai.snapo.network.capture.BodyContentType
+import com.openai.snapo.network.capture.CaptureEventPublisher
 import com.openai.snapo.network.capture.RawResponseBodyCapture
 import com.openai.snapo.network.capture.ResolvedRequestBody
 import com.openai.snapo.network.capture.resolveEffectiveMaxBytes
 import com.openai.snapo.network.capture.resolveRequestBody
-import com.openai.snapo.network.capture.resolveResponseBody
 import com.openai.snapo.network.capture.resolveResponseCaptureLimit
 import com.openai.snapo.network.capture.shouldEncodeBodyAsBase64
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.MediaType
@@ -55,7 +47,12 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
     private val responseBodyPreviewBytes = responseBodyPreviewBytes.coerceAtLeast(0)
     private val textBodyMaxBytes = resolveEffectiveMaxBytes(textBodyMaxBytes, contentLength = null)
     private val binaryBodyMaxBytes = resolveEffectiveMaxBytes(binaryBodyMaxBytes, contentLength = null)
-    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+    private val publisher = CaptureEventPublisher(
+        responseBodyPreviewBytes = this.responseBodyPreviewBytes,
+        textBodyMaxBytes = this.textBodyMaxBytes,
+        binaryBodyMaxBytes = this.binaryBodyMaxBytes,
+        dispatcher = dispatcher,
+    )
 
     @Suppress("TooGenericExceptionCaught")
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -72,18 +69,32 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         val request = chain.request()
         val requestBody = request.body
         val declaredRequestBodySize = requestBody.safeContentLength()
-        val requestPublication = publishRequest(context, request, declaredRequestBodySize)
+        val requestPublication = publisher.publish {
+            OkhttpEventFactory.createRequestWillBeSent(
+                context,
+                request,
+                hasBody = requestBody != null,
+                body = null,
+                bodyEncoding = requestBodyEncoding(request),
+                truncatedBytes = null,
+                bodySize = declaredRequestBodySize,
+            )
+        }
         val requestCapture = RequestCaptureTracker(requestPublication) { capture, after ->
-            updateRequestBody(
-                context = context,
+            publisher.updateRequestBody(
+                requestId = context.requestId,
+                bodyValues = { encodeRequestBody(capture, request) },
+                bodyTruncatedBytes = capture.truncatedBytes,
+                bodySize = maxOf(declaredRequestBodySize ?: 0L, capture.totalBytes),
                 after = after,
-                request = request,
-                declaredBodySize = declaredRequestBodySize,
-                capture = capture,
             )
         }
         val interceptedRequest = request.withCapturingBody(
-            maxBytes = requestCaptureLimit(request),
+            maxBytes = resolveRequestCaptureLimit(
+                request = request,
+                textBodyMaxBytes = textBodyMaxBytes,
+                binaryBodyMaxBytes = binaryBodyMaxBytes,
+            ),
             onComplete = requestCapture::captured,
         )
 
@@ -102,53 +113,17 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         requestCompletion: Job?,
         error: Throwable,
     ): Nothing {
-        handleFailure(context, error, after = requestCompletion)
+        publisher.publishFailure(
+            requestId = context.requestId,
+            requestStartMono = context.startMono,
+            error = error,
+            after = requestCompletion,
+        )
         throw error
     }
 
     override fun close() {
-        scope.cancel()
-    }
-
-    private fun publishRequest(
-        context: InterceptContext,
-        request: Request,
-        declaredBodySize: Long?,
-    ): Job? = publish {
-        OkhttpEventFactory.createRequestWillBeSent(
-            context,
-            request,
-            hasBody = request.body != null,
-            body = null,
-            bodyEncoding = requestBodyEncoding(request),
-            truncatedBytes = null,
-            bodySize = declaredBodySize,
-        )
-    }
-
-    private fun updateRequestBody(
-        context: InterceptContext,
-        after: Job?,
-        request: Request,
-        declaredBodySize: Long?,
-        capture: RequestBodyCapture?,
-    ): Job? {
-        if (capture == null) return after
-        val server = NetworkInspector.getOrNull() ?: return null
-        return scope.launch {
-            try {
-                after?.join()
-                val encoded = encodeRequestBody(capture, request)
-                server.updateLatestRequestBody(
-                    requestId = context.requestId,
-                    body = encoded.body,
-                    bodyEncoding = encoded.encoding,
-                    bodyTruncatedBytes = capture.truncatedBytes,
-                    bodySize = maxOf(declaredBodySize ?: 0L, capture.totalBytes),
-                )
-            } catch (_: Throwable) {
-            }
-        }
+        publisher.close()
     }
 
     private fun handleResponse(context: InterceptContext, response: Response, after: Job?): Response {
@@ -165,7 +140,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 endMono = endMono,
                 after = after,
             )
-            publishLoadingFinished(context, bodySize = 0L, after = responsePublication)
+            publisher.publishFinished(context.requestId, bodySize = 0L, after = responsePublication)
             return response
         }
         val contentType = responseBody.contentType().toBodyContentType()
@@ -213,7 +188,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             after = after,
         )
         if (bodySize == 0L) {
-            publishLoadingFinished(context, bodySize = 0L, after = responsePublication)
+            publisher.publishFinished(context.requestId, bodySize = 0L, after = responsePublication)
             return response
         }
         val capturingBody = CapturingResponseBody(
@@ -226,13 +201,14 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 previewBytes = responseBodyPreviewBytes,
             ),
             onComplete = { capture, error ->
-                completeResponseCapture(
-                    context = context,
+                publisher.completeResponse(
+                    requestId = context.requestId,
+                    requestStartMono = context.startMono,
+                    capture = capture,
                     contentType = contentType,
                     declaredBodySize = bodySize,
-                    responsePublication = responsePublication,
-                    capture = capture,
                     error = error,
+                    after = responsePublication,
                 )
             },
         )
@@ -252,19 +228,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endMono: Long,
         after: Job?,
     ): Response {
-        val responsePublication = publish(after = after) {
-            OkhttpEventFactory.createResponseReceived(
-                context = context,
-                response = response,
-                endWall = endWall,
-                endMono = endMono,
-                bodyPreview = null,
-                bodyText = null,
-                bodyEncoding = null,
-                truncatedBytes = null,
-                bodySize = bodySize,
-            )
-        }
+        val responsePublication = publishResponseMetadata(context, response, bodySize, endWall, endMono, after)
         val publicationLock = Any()
         var previousPublication = responsePublication
         val streamingBody = StreamingResponseRelayBody(
@@ -273,7 +237,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
             charset = contentType?.charsetOrUtf8() ?: Charsets.UTF_8,
             onRecord = { recordBuilder ->
                 synchronized(publicationLock) {
-                    previousPublication = publish(
+                    previousPublication = publisher.publish(
                         after = previousPublication,
                         builder = recordBuilder,
                     ) ?: previousPublication
@@ -291,7 +255,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         endMono: Long,
         after: Job?,
     ): Job? {
-        return publish(after = after) {
+        return publisher.publish(after = after) {
             OkhttpEventFactory.createResponseReceived(
                 context = context,
                 response = response,
@@ -303,119 +267,6 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
                 truncatedBytes = null,
                 bodySize = bodySize,
             )
-        }
-    }
-
-    private fun requestCaptureLimit(request: Request): Int {
-        return resolveRequestCaptureLimit(
-            request = request,
-            textBodyMaxBytes = textBodyMaxBytes,
-            binaryBodyMaxBytes = binaryBodyMaxBytes,
-        )
-    }
-
-    private fun completeResponseCapture(
-        context: InterceptContext,
-        contentType: BodyContentType?,
-        declaredBodySize: Long?,
-        responsePublication: Job?,
-        capture: RawResponseBodyCapture,
-        error: Throwable?,
-    ) {
-        val completionWall = System.currentTimeMillis()
-        val completionMono = SystemClock.elapsedRealtimeNanos()
-        val server = NetworkInspector.getOrNull() ?: return
-        scope.launch {
-            try {
-                responsePublication?.join()
-                val body = runCatching {
-                    resolveResponseBody(
-                        capture = capture,
-                        contentType = contentType,
-                        textBodyMaxBytes = textBodyMaxBytes,
-                        binaryBodyMaxBytes = binaryBodyMaxBytes,
-                        previewBytes = responseBodyPreviewBytes,
-                        declaredBodySize = declaredBodySize,
-                    )
-                }.getOrNull()
-                if (body != null) {
-                    runCatching {
-                        server.updateLatestResponseBody(
-                            requestId = context.requestId,
-                            bodyPreview = body.preview,
-                            body = body.body,
-                            bodyEncoding = body.encoding,
-                            bodyTruncatedBytes = body.truncatedBytes,
-                            bodySize = body.bodySize,
-                        )
-                    }
-                }
-                val completedBodySize = body?.bodySize
-                    ?: declaredBodySize
-                    ?: capture.totalBytes
-                val completionRecord = if (error == null) {
-                    ResponseFinished(
-                        id = context.requestId,
-                        tWallMs = completionWall,
-                        tMonoNs = completionMono,
-                        bodySize = completedBodySize,
-                        bodyTruncatedBytes = body?.truncatedBytes,
-                    )
-                } else {
-                    RequestFailed(
-                        id = context.requestId,
-                        tWallMs = completionWall,
-                        tMonoNs = completionMono,
-                        errorKind = error.javaClass.simpleName.ifEmpty { error.javaClass.name },
-                        message = error.message,
-                        timings = Timings(totalMs = nanosToMillis(completionMono - context.startMono)),
-                    )
-                }
-                server.publish(completionRecord)
-            } catch (_: Throwable) {
-            }
-        }
-    }
-
-    private fun handleFailure(context: InterceptContext, error: Throwable, after: Job? = null) {
-        val failWall = System.currentTimeMillis()
-        val failMono = SystemClock.elapsedRealtimeNanos()
-        publish(after = after) {
-            RequestFailed(
-                id = context.requestId,
-                tWallMs = failWall,
-                tMonoNs = failMono,
-                errorKind = error.javaClass.simpleName.ifEmpty { error.javaClass.name },
-                message = error.message,
-                timings = Timings(totalMs = nanosToMillis(failMono - context.startMono)),
-            )
-        }
-    }
-
-    private fun publishLoadingFinished(context: InterceptContext, bodySize: Long?, after: Job? = null) {
-        val finishWall = System.currentTimeMillis()
-        val finishMono = SystemClock.elapsedRealtimeNanos()
-        publish(after = after) {
-            ResponseFinished(
-                id = context.requestId,
-                tWallMs = finishWall,
-                tMonoNs = finishMono,
-                bodySize = bodySize,
-            )
-        }
-    }
-
-    private inline fun publish(
-        after: Job? = null,
-        crossinline builder: () -> NetworkEventRecord,
-    ): Job? {
-        val server = NetworkInspector.getOrNull() ?: return null
-        return scope.launch {
-            try {
-                after?.join()
-                server.publish(builder())
-            } catch (_: Throwable) {
-            }
         }
     }
 }

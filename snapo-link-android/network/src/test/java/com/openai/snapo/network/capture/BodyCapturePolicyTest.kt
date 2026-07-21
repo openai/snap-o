@@ -1,5 +1,6 @@
 package com.openai.snapo.network.capture
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -164,6 +165,50 @@ class BodyCapturePolicyTest {
         assertEquals(10L, partial.bodySize)
         assertEquals(6L, partial.truncatedBytes)
         assertEquals("base64", partial.encoding)
+    }
+
+    @Test
+    fun `known text response smaller than the complete-body threshold is retained in full`() {
+        val bodySize = 7_000_000
+        val bytes = ByteArray(bodySize) { 'a'.code.toByte() }
+
+        val resolved = resolveResponseBody(
+            capture = RawResponseBodyCapture(bytes = bytes, totalBytes = bodySize.toLong(), reachedEof = true),
+            contentType = BodyContentType.parse("text/plain; charset=utf-8"),
+            textBodyMaxBytes = DefaultTextBodyMaxBytes,
+            binaryBodyMaxBytes = DefaultBinaryBodyMaxBytes,
+            previewBytes = DefaultBodyPreviewBytes,
+            declaredBodySize = bodySize.toLong(),
+        )
+
+        val body = checkNotNull(resolved.body)
+        assertEquals(bodySize, body.length)
+        assertTrue(body.all { it == 'a' })
+        assertEquals("a".repeat(DefaultBodyPreviewBytes), resolved.preview)
+        assertNull(resolved.encoding)
+        assertNull(resolved.truncatedBytes)
+        assertEquals(bodySize.toLong(), resolved.bodySize)
+    }
+
+    @Test
+    fun `known binary response smaller than the complete-body threshold is retained in full`() {
+        val bodySize = 7_000_000
+        val bytes = ByteArray(bodySize) { index -> index.toByte() }
+
+        val resolved = resolveResponseBody(
+            capture = RawResponseBodyCapture(bytes = bytes, totalBytes = bodySize.toLong(), reachedEof = true),
+            contentType = BodyContentType.parse("application/octet-stream"),
+            textBodyMaxBytes = DefaultTextBodyMaxBytes,
+            binaryBodyMaxBytes = DefaultBinaryBodyMaxBytes,
+            previewBytes = DefaultBodyPreviewBytes,
+            declaredBodySize = bodySize.toLong(),
+        )
+
+        assertArrayEquals(bytes, Base64.getDecoder().decode(checkNotNull(resolved.body)))
+        assertEquals(Base64.getEncoder().encodeToString(bytes.copyOf(DefaultBodyPreviewBytes)), resolved.preview)
+        assertEquals("base64", resolved.encoding)
+        assertNull(resolved.truncatedBytes)
+        assertEquals(bodySize.toLong(), resolved.bodySize)
     }
 
     @Test

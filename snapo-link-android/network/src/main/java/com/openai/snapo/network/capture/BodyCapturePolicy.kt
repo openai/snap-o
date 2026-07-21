@@ -1,7 +1,6 @@
-@file:androidx.annotation.RestrictTo(androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP)
-
 package com.openai.snapo.network.capture
 
+import androidx.annotation.RestrictTo
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
@@ -12,6 +11,7 @@ import kotlin.io.encoding.Base64
  *
  * This is library-group API. Applications should configure capture through their client integration.
  */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 data class BodyContentType(
     val type: String,
     val subtype: String,
@@ -35,6 +35,7 @@ data class BodyContentType(
     fun charsetOrUtf8(): Charset = charset ?: Charsets.UTF_8
 
     companion object {
+        @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
         fun parse(value: String?): BodyContentType? {
             val parts = value?.split(';') ?: return null
             val typePieces = parts.firstOrNull()
@@ -57,17 +58,20 @@ data class BodyContentType(
 }
 
 /** Raw response bytes captured by a client-specific stream wrapper. */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 data class RawResponseBodyCapture(
     val bytes: ByteArray,
     val totalBytes: Long,
     val reachedEof: Boolean,
 )
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 data class ResolvedRequestBody(
     val body: String?,
     val encoding: String?,
 )
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 data class ResolvedResponseBody(
     val preview: String?,
     val body: String?,
@@ -76,10 +80,16 @@ data class ResolvedResponseBody(
     val bodySize: Long,
 )
 
+@field:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 const val DefaultBodyPreviewBytes: Int = 4096
+
+@field:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 const val DefaultTextBodyMaxBytes: Int = 5 * 1024 * 1024
+
+@field:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 const val DefaultBinaryBodyMaxBytes: Int = DefaultTextBodyMaxBytes
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 fun resolveEffectiveMaxBytes(maxBytes: Int, contentLength: Long?): Int {
     if (maxBytes <= 0) return 0
     val knownLength = contentLength?.takeIf { it >= 0L } ?: return maxBytes
@@ -90,6 +100,7 @@ fun resolveEffectiveMaxBytes(maxBytes: Int, contentLength: Long?): Int {
     }
 }
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 fun resolveRequestCaptureLimit(
     contentType: BodyContentType?,
     contentEncoding: String?,
@@ -106,6 +117,7 @@ fun resolveRequestCaptureLimit(
     textBodyMaxBytes
 }
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 fun resolveResponseCaptureLimit(
     contentType: BodyContentType?,
     contentLength: Long?,
@@ -124,6 +136,7 @@ fun resolveResponseCaptureLimit(
     )
 }
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 fun shouldEncodeBodyAsBase64(
     contentType: BodyContentType?,
     contentEncoding: String?,
@@ -131,6 +144,7 @@ fun shouldEncodeBodyAsBase64(
     return hasNonIdentityContentEncoding(contentEncoding) || contentType?.isTextLike != true
 }
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 fun resolveRequestBody(
     bytes: ByteArray?,
     contentType: BodyContentType?,
@@ -154,6 +168,7 @@ fun resolveRequestBody(
     }
 }
 
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 fun resolveResponseBody(
     capture: RawResponseBodyCapture,
     contentType: BodyContentType?,
