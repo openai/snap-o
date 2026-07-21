@@ -299,10 +299,10 @@ fun Greeting(
             Text("GET image (PNG)")
         }
         Button(onClick = onCompleteLargeResponseClick) {
-            Text("GET 7.3 MB JSON (complete)")
+            Text("GET 7 MB JSON (complete)")
         }
         Button(onClick = onTruncatedLargeResponseClick) {
-            Text("GET 9.4 MB JSON (truncated)")
+            Text("GET 9 MB JSON (truncated)")
         }
         Button(onClick = onSlowResponseClick) {
             Text("Slow response")
