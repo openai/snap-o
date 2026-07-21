@@ -19,15 +19,6 @@ import org.junit.Test
 class SnapOOkHttpInterceptorTest {
 
     @Test
-    fun `small known bodies can expand the configured capture limit`() {
-        assertEquals(7_000_000, resolveEffectiveMaxBytes(maxBytes = 1_024, contentLength = 7_000_000L))
-        assertEquals(1_024, resolveEffectiveMaxBytes(maxBytes = 1_024, contentLength = 512L))
-        assertEquals(12 * 1024 * 1024, resolveEffectiveMaxBytes(12 * 1024 * 1024, contentLength = null))
-        assertEquals(1_024, resolveEffectiveMaxBytes(maxBytes = 1_024, contentLength = 9L * 1024L * 1024L))
-        assertEquals(0, resolveEffectiveMaxBytes(-1, contentLength = null))
-    }
-
-    @Test
     fun `capture defaults preserve full body and websocket preview limits`() {
         assertEquals(5 * 1024 * 1024, DefaultTextBodyMaxBytes)
         assertEquals(DefaultTextBodyMaxBytes, DefaultBinaryBodyMaxBytes)
