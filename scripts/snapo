@@ -1,0 +1,798 @@
+#!/usr/bin/env python3
+"""Inspect Snap-O network traffic through the locally configured adb command."""
+
+import argparse
+import base64
+import gzip
+import json
+import os
+import shlex
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+
+
+SOCKET_PREFIX = "snapo_network_"
+MAX_RECORD_BYTES = 16 * 1024 * 1024
+REDACTED = "[REDACTED]"
+REQUEST_HEADERS = {"authorization", "cookie"}
+RESPONSE_HEADERS = {"set-cookie"}
+
+
+class SnapOError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Server:
+    device_id: str
+    socket_name: str
+
+    @property
+    def identifier(self):
+        return f"{self.device_id}/{self.socket_name}"
+
+    @property
+    def pid(self):
+        suffix = self.socket_name[len(SOCKET_PREFIX) :]
+        return int(suffix) if suffix.isdigit() else None
+
+
+def resolve_adb(explicit=None, environ=None, which=shutil.which):
+    environ = os.environ if environ is None else environ
+    configured = explicit or environ.get("SNAPO_ADB")
+    if configured:
+        resolved = which(configured) if os.sep not in configured else configured
+        if resolved and os.path.isfile(resolved) and os.access(resolved, os.X_OK):
+            return resolved
+        raise SnapOError(f"adb executable was not found at '{configured}'")
+
+    resolved = which("adb")
+    if resolved:
+        return resolved
+
+    for key in ("ANDROID_SDK_ROOT", "ANDROID_HOME"):
+        sdk_root = environ.get(key)
+        if not sdk_root:
+            continue
+        candidate = os.path.join(sdk_root, "platform-tools", "adb")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise SnapOError(
+        "adb was not found; add platform-tools to PATH, set ANDROID_SDK_ROOT, or pass --adb"
+    )
+
+
+class ADB:
+    def __init__(self, executable, host=None, port=None, run=subprocess.run):
+        self.executable = executable
+        self.host = host
+        self.port = port
+        self._run = run
+
+    def command(self, *arguments, serial=None):
+        command = [self.executable]
+        if self.host:
+            command += ["-H", self.host]
+        if self.port:
+            command += ["-P", str(self.port)]
+        if serial:
+            command += ["-s", serial]
+        command += list(arguments)
+        try:
+            result = self._run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        except OSError as error:
+            raise SnapOError(f"failed to run adb: {error}") from error
+        if result.returncode:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            raise SnapOError(f"adb command failed: {detail}")
+        return result.stdout
+
+    def devices(self):
+        return parse_devices(self.command("devices", "-l"))
+
+    def sockets(self, serial):
+        output = self.command("shell", "cat /proc/net/unix", serial=serial)
+        return parse_sockets(output)
+
+    def package_hint(self, server):
+        if server.pid is None:
+            return None
+        try:
+            output = self.command(
+                "shell",
+                f"cat /proc/{server.pid}/cmdline 2>/dev/null",
+                serial=server.device_id,
+            )
+        except SnapOError:
+            return None
+        values = output.replace("\r", "\n").replace("\0", "\n").split("\n")
+        return next((value.strip() for value in values if value.strip()), None)
+
+
+def parse_devices(output):
+    devices = []
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[1].lower() in {"device", "emulator"}:
+            devices.append(fields[0])
+    return devices
+
+
+def parse_sockets(output):
+    sockets = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        name = fields[-1]
+        if name.startswith("@" + SOCKET_PREFIX):
+            sockets.add(name[1:])
+    return sorted(sockets)
+
+
+def select_devices(devices, serial=None, usb=False, emulator=False):
+    if serial:
+        if serial not in devices:
+            raise SnapOError(f"Device '{serial}' is not connected")
+        return [serial]
+    if emulator:
+        matches = [device for device in devices if device.startswith("emulator-")]
+        if not matches:
+            raise SnapOError("No emulator connected")
+        if len(matches) > 1:
+            raise SnapOError("More than one emulator connected; use -s <serial>")
+        return matches
+    if usb:
+        matches = [device for device in devices if not device.startswith("emulator-")]
+        if not matches:
+            raise SnapOError("No USB device connected")
+        if len(matches) > 1:
+            raise SnapOError("More than one USB device connected; use -s <serial>")
+        return matches
+    return devices
+
+
+def discover(adb, options):
+    devices = select_devices(
+        adb.devices(),
+        serial=options.serial,
+        usb=options.usb,
+        emulator=options.emulator,
+    )
+    if not devices:
+        raise SnapOError("No connected devices found")
+    servers = []
+    for device in devices:
+        servers.extend(Server(device, name) for name in adb.sockets(device))
+    return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
+
+
+def choose_server(servers, requested):
+    if not servers:
+        raise SnapOError("No Snap-O network servers found for selected device(s)")
+    if not requested:
+        if len(servers) == 1:
+            return servers[0]
+        choices = ", ".join(server.identifier for server in servers)
+        raise SnapOError(f"Multiple sockets found; select one with -n/--socket. Available: {choices}")
+
+    if "/" in requested:
+        device_id, socket_name = requested.split("/", 1)
+        matches = [
+            server
+            for server in servers
+            if server.device_id == device_id and server.socket_name == socket_name
+        ]
+    else:
+        matches = [server for server in servers if server.socket_name == requested]
+    if not matches:
+        raise SnapOError(f"No Snap-O network server named '{requested}' found")
+    if len(matches) > 1:
+        choices = ", ".join(server.identifier for server in matches)
+        raise SnapOError(f"Socket '{requested}' exists on multiple devices. Available: {choices}")
+    return matches[0]
+
+
+def available_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
+        candidate.bind(("127.0.0.1", 0))
+        return candidate.getsockname()[1]
+
+
+class Forward:
+    def __init__(self, adb, server, attempts=4):
+        self.adb = adb
+        self.server = server
+        self.attempts = attempts
+        self.port = None
+
+    def __enter__(self):
+        last_error = None
+        for _ in range(self.attempts):
+            port = available_port()
+            try:
+                self.adb.command(
+                    "forward",
+                    f"tcp:{port}",
+                    f"localabstract:{self.server.socket_name}",
+                    serial=self.server.device_id,
+                )
+            except SnapOError as error:
+                last_error = error
+                continue
+            self.port = port
+            return self
+        raise last_error or SnapOError("Unable to create an adb forward")
+
+    def __exit__(self, error_type, error, traceback):
+        if self.port is None:
+            return False
+        try:
+            self.adb.command(
+                "forward",
+                "--remove",
+                f"tcp:{self.port}",
+                serial=self.server.device_id,
+            )
+        except SnapOError:
+            if error_type is None:
+                raise
+        return False
+
+
+class Session:
+    def __init__(self, port, connect_timeout=5):
+        try:
+            self.socket = socket.create_connection(("127.0.0.1", port), timeout=connect_timeout)
+        except OSError as error:
+            raise SnapOError(f"Failed to connect to forwarded Snap-O socket: {error}") from error
+        self.buffer = bytearray()
+        self.next_id = 1
+        self.send_bytes(b"HelloSnapO\n")
+
+    def close(self):
+        self.socket.close()
+
+    def send_bytes(self, payload):
+        try:
+            self.socket.sendall(payload)
+        except OSError as error:
+            raise SnapOError(f"Failed to write to Snap-O socket: {error}") from error
+
+    def send(self, message):
+        self.send_bytes(json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n")
+
+    def start_stream(self):
+        self.send({"method": "SnapO.startStream"})
+
+    def read(self, timeout):
+        deadline = time.monotonic() + timeout
+        while True:
+            newline = self.buffer.find(b"\n")
+            if newline >= 0:
+                line = bytes(self.buffer[:newline]).rstrip(b"\r")
+                del self.buffer[: newline + 1]
+                if not line:
+                    continue
+                try:
+                    return json.loads(line)
+                except (UnicodeDecodeError, ValueError):
+                    continue
+            if len(self.buffer) > MAX_RECORD_BYTES:
+                raise SnapOError("Snap-O sent an oversized network record")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            self.socket.settimeout(remaining)
+            try:
+                chunk = self.socket.recv(64 * 1024)
+            except socket.timeout:
+                return None
+            except OSError as error:
+                raise SnapOError(f"Failed to read from Snap-O socket: {error}") from error
+            if not chunk:
+                raise SnapOError("Snap-O socket closed unexpectedly")
+            self.buffer.extend(chunk)
+
+    def command(self, method, params, timeout=10, on_event=None):
+        command_id = self.next_id
+        self.next_id += 1
+        self.send({"id": command_id, "method": method, "params": params})
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise SnapOError(f"Timed out waiting for {method}")
+            message = self.read(remaining)
+            if message is None:
+                raise SnapOError(f"Timed out waiting for {method}")
+            if message.get("id") == command_id and not message.get("method"):
+                return message
+            if on_event:
+                on_event(message)
+
+
+class ConnectedSession:
+    def __init__(self, adb, server):
+        self.forward = Forward(adb, server)
+        self.session = None
+
+    def __enter__(self):
+        forward = self.forward.__enter__()
+        try:
+            self.session = Session(forward.port)
+        except BaseException:
+            self.forward.__exit__(*sys.exc_info())
+            raise
+        return self.session
+
+    def __exit__(self, error_type, error, traceback):
+        if self.session:
+            self.session.close()
+        return self.forward.__exit__(error_type, error, traceback)
+
+
+def redact_headers(headers, sensitive):
+    return {
+        str(name): REDACTED if str(name).lower() in sensitive else stringify(value)
+        for name, value in (headers or {}).items()
+    }
+
+
+def stringify(value):
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+    return str(value)
+
+
+def sanitize_event(message):
+    sanitized = dict(message)
+    params = dict(message.get("params") or {})
+    method = message.get("method")
+    if method == "Network.requestWillBeSent":
+        request = dict(params.get("request") or {})
+        request["headers"] = redact_headers(request.get("headers"), REQUEST_HEADERS)
+        params["request"] = request
+    elif method == "Network.responseReceived":
+        response = dict(params.get("response") or {})
+        response["headers"] = redact_headers(response.get("headers"), RESPONSE_HEADERS)
+        params["response"] = response
+    elif method == "Network.webSocketCreated":
+        params["headers"] = redact_headers(params.get("headers"), REQUEST_HEADERS)
+    elif method == "Network.webSocketHandshakeResponseReceived":
+        response = dict(params.get("response") or {})
+        response["headers"] = redact_headers(response.get("headers"), RESPONSE_HEADERS)
+        params["response"] = response
+    else:
+        return sanitized
+    sanitized["params"] = params
+    return sanitized
+
+
+class EventFilter:
+    def __init__(self, text):
+        try:
+            tokens = shlex.split(text)
+        except ValueError as error:
+            raise SnapOError(f"Invalid --filter expression: {error}") from error
+        self.includes = []
+        self.excludes = []
+        self.request_ids = set()
+        for token in tokens:
+            excluded = token.startswith("-")
+            value = token[1:] if excluded else token
+            value = value.strip().lower()
+            if value:
+                (self.excludes if excluded else self.includes).append(value)
+
+    def matches(self, message):
+        if not self.includes and not self.excludes:
+            return True
+        params = message.get("params") or {}
+        method = message.get("method")
+        if method == "Network.requestWillBeSent":
+            url = (params.get("request") or {}).get("url")
+        elif method == "Network.responseReceived":
+            url = (params.get("response") or {}).get("url")
+        elif method == "Network.webSocketCreated":
+            url = params.get("url")
+        else:
+            url = None
+        request_id = params.get("requestId")
+        if isinstance(url, str):
+            normalized = url.lower()
+            if all(value in normalized for value in self.includes) and not any(
+                value in normalized for value in self.excludes
+            ):
+                if request_id is not None:
+                    self.request_ids.add(str(request_id))
+                return True
+        return request_id is not None and str(request_id) in self.request_ids
+
+
+def print_json(value):
+    print(json.dumps(value, separators=(",", ":"), ensure_ascii=False))
+
+
+def event_line(message):
+    method = message.get("method")
+    params = message.get("params") or {}
+    request_id = params.get("requestId", "?")
+    if method == "Network.requestWillBeSent":
+        request = params.get("request") or {}
+        return f"REQUEST {request_id} {request.get('method', '?')} {request.get('url', '?')}"
+    if method == "Network.responseReceived":
+        response = params.get("response") or {}
+        return f"RESPONSE {request_id} {display_number(response.get('status'), '?')} {response.get('url', 'unknown-url')}"
+    if method == "Network.loadingFinished":
+        return f"FINISH {request_id} bytes={display_number(params.get('encodedDataLength'), '0')}"
+    if method == "Network.loadingFailed":
+        return f"FAIL {request_id} {params.get('errorText', params.get('type', 'unknown-error'))}"
+    if method in {"Network.webSocketFrameSent", "Network.webSocketFrameReceived"}:
+        response = params.get("response") or {}
+        direction = "WS-SENT" if method.endswith("Sent") else "WS-RECV"
+        opcode = display_number(response.get("opcode"), "?")
+        size = display_number(response.get("payloadSize"), "0")
+        return f"{direction} {request_id} opcode={opcode} size={size}"
+    return f"EVENT {method or json.dumps(message, separators=(',', ':'))}"
+
+
+def display_number(value, fallback):
+    if not isinstance(value, (int, float)):
+        return fallback
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def emit_event(message, as_json):
+    message = sanitize_event(message)
+    if as_json:
+        print_json(message)
+    else:
+        print(event_line(message))
+
+
+def app_info(adb, server):
+    try:
+        with ConnectedSession(adb, server) as session:
+            deadline = time.monotonic() + 1.5
+            while time.monotonic() < deadline:
+                message = session.read(max(0, deadline - time.monotonic()))
+                if message and message.get("method") == "SnapO.appInfo":
+                    return message.get("params") or {}
+    except SnapOError:
+        return {}
+    return {}
+
+
+def run_list(adb, options):
+    servers = discover(adb, options)
+    if not servers:
+        raise SnapOError("No Snap-O network servers found")
+    current_device = None
+    for server in servers:
+        info = app_info(adb, server) if options.include_app_info else {}
+        package = info.get("packageName") or (adb.package_hint(server) if options.include_app_info else None)
+        app_name = info.get("processName")
+        if options.json:
+            print_json(
+                {
+                    "server": server.identifier,
+                    "deviceId": server.device_id,
+                    "socketName": server.socket_name,
+                    "packageName": package,
+                    "appName": app_name,
+                }
+            )
+        else:
+            if current_device != server.device_id:
+                current_device = server.device_id
+                print(f"{current_device}:")
+            suffix = f"  pkg:{package or 'unknown'}" if options.include_app_info else ""
+            print(f"    {server.socket_name}{suffix}")
+    return 0
+
+
+def run_requests(adb, options):
+    server = choose_server(discover(adb, options), options.socket)
+    event_filter = EventFilter(options.filter)
+    with ConnectedSession(adb, server) as session:
+        session.start_stream()
+        deadline = time.monotonic() + 5 if options.no_stream else None
+        while True:
+            timeout = max(0, deadline - time.monotonic()) if deadline else 3600
+            if deadline and timeout == 0:
+                raise SnapOError(f"Timed out waiting for snapshot from {server.identifier}")
+            message = session.read(timeout)
+            if message is None:
+                if deadline:
+                    raise SnapOError(f"Timed out waiting for snapshot from {server.identifier}")
+                continue
+            method = message.get("method")
+            if method == "SnapO.replayComplete" and options.no_stream:
+                return 0
+            if isinstance(method, str) and method.startswith("Network.") and event_filter.matches(message):
+                emit_event(message, options.json)
+
+
+@dataclass
+class RequestState:
+    request_id: str
+    request_seen: bool = False
+    response_seen: bool = False
+    terminal: bool = False
+    has_post_data: bool = False
+    request_method: str = None
+    request_url: str = None
+    request_headers: dict = field(default_factory=dict)
+    request_body_encoding: str = None
+    response_status: int = None
+    response_url: str = None
+    response_headers: dict = field(default_factory=dict)
+    failure: str = None
+
+    def update(self, message):
+        params = message.get("params") or {}
+        if str(params.get("requestId", "")) != self.request_id:
+            return
+        method = message.get("method")
+        if method == "Network.requestWillBeSent":
+            request = params.get("request") or {}
+            self.request_seen = True
+            self.has_post_data = bool(request.get("hasPostData"))
+            self.request_method = request.get("method")
+            self.request_url = request.get("url")
+            self.request_headers = redact_headers(request.get("headers"), REQUEST_HEADERS)
+            self.request_body_encoding = request.get("postDataEncoding")
+        elif method == "Network.responseReceived":
+            response = params.get("response") or {}
+            self.response_seen = True
+            status = response.get("status")
+            self.response_status = int(status) if isinstance(status, (int, float)) else None
+            self.response_url = response.get("url")
+            self.response_headers = redact_headers(response.get("headers"), RESPONSE_HEADERS)
+        elif method == "Network.loadingFinished":
+            self.terminal = True
+            self.failure = None
+        elif method == "Network.loadingFailed":
+            self.terminal = True
+            self.failure = params.get("errorText") or params.get("type")
+
+    def has_no_response_body(self):
+        if (self.request_method or "").upper() == "HEAD":
+            return True
+        if self.response_status is not None and (
+            100 <= self.response_status <= 199 or self.response_status in {204, 205, 304}
+        ):
+            return True
+        for name, value in self.response_headers.items():
+            if name.lower() == "content-length":
+                return value == "0"
+        return False
+
+
+def command_result(session, method, request_id, state):
+    last_error = None
+    for _ in range(3):
+        try:
+            return session.command(
+                method,
+                {"requestId": request_id},
+                timeout=10,
+                on_event=state.update,
+            )
+        except SnapOError as error:
+            last_error = error
+    raise last_error
+
+
+def request_details(session, server, request_id):
+    state = RequestState(request_id)
+    session.start_stream()
+    deadline = time.monotonic() + 5
+    extended = False
+    while time.monotonic() < deadline:
+        message = session.read(min(0.5, max(0, deadline - time.monotonic())))
+        if message:
+            state.update(message)
+        if state.request_seen and not extended:
+            deadline = time.monotonic() + 70
+            extended = True
+        if state.terminal:
+            break
+    if not state.request_seen:
+        raise SnapOError(f"Timed out waiting for network lifecycle for {request_id} on {server.identifier}")
+    if not state.terminal:
+        raise SnapOError(f"Timed out waiting for network lifecycle for {request_id} on {server.identifier}")
+    if not state.response_seen:
+        raise SnapOError(state.failure or f"Request failed before receiving a response for {request_id}")
+
+    request_body = None
+    if state.has_post_data:
+        reply = command_result(session, "Network.getRequestPostData", request_id, state)
+        error = reply.get("error")
+        if error and "no request body captured" not in str(error.get("message", "")).lower():
+            raise SnapOError(str(error.get("message", "Malformed response for Network.getRequestPostData")))
+        if not error:
+            request_body = (reply.get("result") or {}).get("postData")
+            if not isinstance(request_body, str):
+                raise SnapOError("Malformed response for Network.getRequestPostData")
+
+    response_body = ""
+    base64_encoded = False
+    if not state.has_no_response_body():
+        reply = command_result(session, "Network.getResponseBody", request_id, state)
+        error = reply.get("error")
+        if error:
+            raise SnapOError(state.failure or str(error.get("message", "Unable to load response body")))
+        result = reply.get("result") or {}
+        response_body = result.get("body")
+        base64_encoded = result.get("base64Encoded")
+        if not isinstance(response_body, str) or not isinstance(base64_encoded, bool):
+            raise SnapOError("Malformed response for Network.getResponseBody")
+
+    return {
+        "server": server.identifier,
+        "requestId": request_id,
+        "requestMethod": state.request_method,
+        "requestUrl": state.request_url,
+        "requestHeaders": state.request_headers,
+        "requestBodyEncoding": state.request_body_encoding,
+        "requestBody": request_body,
+        "responseStatus": state.response_status,
+        "responseUrl": state.response_url,
+        "responseHeaders": state.response_headers,
+        "responseBody": response_body,
+        "responseBodyBase64Encoded": base64_encoded,
+    }
+
+
+def decoded_body(body, encoding, content_encoding):
+    if (encoding or "").lower() != "base64" or not content_encoding:
+        return body
+    encodings = [value.split(";", 1)[0].strip().lower() for value in content_encoding.split(",")]
+    if not any(value in {"gzip", "x-gzip"} for value in encodings):
+        return body
+    try:
+        return gzip.decompress(base64.b64decode(body)).decode("utf-8")
+    except (OSError, ValueError, UnicodeDecodeError):
+        return body
+
+
+def header_value(headers, name):
+    return next((value for key, value in headers.items() if key.lower() == name.lower()), None)
+
+
+def emit_details(details, as_json):
+    if as_json:
+        print_json(details)
+        return
+    print(f"Server: {details['server']}")
+    print(f"Request ID: {details['requestId']}")
+    print(f"Request: {details['requestMethod'] or 'unknown'} {details['requestUrl'] or 'unknown'}")
+    emit_headers("Request Headers", details["requestHeaders"])
+    print(f"Response: {details['responseStatus'] or 'unknown'} {details['responseUrl'] or 'unknown'}")
+    emit_headers("Response Headers", details["responseHeaders"])
+    print("Request Body:")
+    body = details["requestBody"]
+    if body is None:
+        print("<none>")
+    else:
+        print(
+            decoded_body(
+                body,
+                details["requestBodyEncoding"],
+                header_value(details["requestHeaders"], "Content-Encoding"),
+            )
+        )
+    print(f"Response Body (base64 encoded: {str(details['responseBodyBase64Encoded']).lower()}):")
+    print(details["responseBody"])
+
+
+def emit_headers(title, headers):
+    print(f"{title}:")
+    if not headers:
+        print("  <none>")
+    for name, value in sorted(headers.items(), key=lambda item: item[0].lower()):
+        print(f"  {name}: {value}")
+
+
+def run_show(adb, options):
+    server = choose_server(discover(adb, options), options.socket)
+    with ConnectedSession(adb, server) as session:
+        details = request_details(session, server, options.request_id)
+    emit_details(details, options.json)
+    return 0
+
+
+def add_common_options(parser, socket_option=False):
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("-s", "--serial")
+    selection.add_argument("-d", dest="usb", action="store_true")
+    selection.add_argument("-e", dest="emulator", action="store_true")
+    if socket_option:
+        parser.add_argument("-n", "--socket")
+    parser.add_argument("--adb", help="path to the configured adb executable or shim")
+    parser.add_argument("--adb-host", default="127.0.0.1", help="ADB server host (default: 127.0.0.1)")
+    parser.add_argument("--adb-port", type=valid_port, default=5037, help="ADB server port (default: 5037)")
+    parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
+
+
+def valid_port(value):
+    try:
+        port = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("port must be an integer") from error
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return port
+
+
+def parser():
+    root = argparse.ArgumentParser(prog="snapo", description="Snap-O command line tools")
+    root_commands = root.add_subparsers(dest="root_command")
+    network = root_commands.add_parser("network", help="inspect Snap-O network data")
+    network_commands = network.add_subparsers(dest="network_command")
+
+    list_parser = network_commands.add_parser("list", help="list available Snap-O network servers")
+    add_common_options(list_parser)
+    list_parser.add_argument("--no-app-info", dest="include_app_info", action="store_false")
+    list_parser.set_defaults(handler=run_list, include_app_info=True)
+
+    requests = network_commands.add_parser("requests", help="emit CDP network events")
+    add_common_options(requests, socket_option=True)
+    requests.add_argument("--filter", default="", help="filter URLs using Network Inspector search syntax")
+    requests.add_argument("--no-stream", action="store_true", help="stop after buffered replay completes")
+    requests.set_defaults(handler=run_requests)
+
+    show = network_commands.add_parser("show", help="show details for a request ID")
+    add_common_options(show, socket_option=True)
+    show.add_argument("-r", "--request-id", required=True)
+    show.set_defaults(handler=run_show)
+    return root
+
+
+def interrupted(signum, frame):
+    raise KeyboardInterrupt
+
+
+def main(arguments=None):
+    cli = parser()
+    options = cli.parse_args(arguments)
+    if options.root_command is None:
+        cli.print_help()
+        return 0
+    if options.network_command is None:
+        cli.parse_args(["network", "--help"])
+        return 0
+    try:
+        adb = ADB(resolve_adb(options.adb), host=options.adb_host, port=options.adb_port)
+        return options.handler(adb, options)
+    except KeyboardInterrupt:
+        return 130
+    except SnapOError as error:
+        print(f"snapo: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, interrupted)
+    sys.exit(main())

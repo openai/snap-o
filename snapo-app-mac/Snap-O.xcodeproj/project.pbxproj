@@ -10,25 +10,13 @@
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
 		D20000042F70000100C0FFEE /* SnapODeviceClient in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* SnapODeviceClient */; };
-		D20000052F70000100C0FFEE /* SnapODeviceClient in Frameworks */ = {isa = PBXBuildFile; productRef = D20000032F70000100C0FFEE /* SnapODeviceClient */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		A10000092F5B123400C0FFEE /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 3234F4492E2EC5030057AE77 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A10000052F5B123400C0FFEE;
-			remoteInfo = snapo;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		3234F4512E2EC5030057AE77 /* Snap-O.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Snap-O.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		32AECEFA2E56725E00AA18F0 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		32AECEFC2E56725E00AA18F0 /* Signing.xcconfig.sample */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.xcconfig.sample; sourceTree = "<group>"; };
 		32D6DEB12E395E0B001A7DEE /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
-		A10000012F5B123400C0FFEE /* snapo */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = snapo; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -50,11 +38,6 @@
 			path = "Snap-O";
 			sourceTree = "<group>";
 		};
-		A10000022F5B123400C0FFEE /* SnapOCLI */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = SnapOCLI;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,14 +51,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A10000032F5B123400C0FFEE /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				D20000052F70000100C0FFEE /* SnapODeviceClient in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -83,7 +58,6 @@
 			isa = PBXGroup;
 			children = (
 				3234F4532E2EC5030057AE77 /* Snap-O */,
-				A10000022F5B123400C0FFEE /* SnapOCLI */,
 				32D6DEB02E395E0A001A7DEE /* Frameworks */,
 				3234F4522E2EC5030057AE77 /* Products */,
 			);
@@ -93,7 +67,6 @@
 			isa = PBXGroup;
 			children = (
 				3234F4512E2EC5030057AE77 /* Snap-O.app */,
-				A10000012F5B123400C0FFEE /* snapo */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -132,7 +105,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				A100000A2F5B123400C0FFEE /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				3234F4532E2EC5030057AE77 /* Snap-O */,
@@ -146,28 +118,6 @@
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A10000052F5B123400C0FFEE /* snapo */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = A10000062F5B123400C0FFEE /* Build configuration list for PBXNativeTarget "snapo" */;
-			buildPhases = (
-				A10000042F5B123400C0FFEE /* Sources */,
-				A10000032F5B123400C0FFEE /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				A10000022F5B123400C0FFEE /* SnapOCLI */,
-			);
-			name = snapo;
-			packageProductDependencies = (
-				D20000032F70000100C0FFEE /* SnapODeviceClient */,
-			);
-			productName = snapo;
-			productReference = A10000012F5B123400C0FFEE /* snapo */;
-			productType = "com.apple.product-type.tool";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -179,9 +129,6 @@
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					3234F4502E2EC5030057AE77 = {
-						CreatedOnToolsVersion = 16.4;
-					};
-					A10000052F5B123400C0FFEE = {
 						CreatedOnToolsVersion = 16.4;
 					};
 				};
@@ -205,7 +152,6 @@
 			projectRoot = "";
 			targets = (
 				3234F4502E2EC5030057AE77 /* Snap-O */,
-				A10000052F5B123400C0FFEE /* snapo */,
 			);
 		};
 /* End PBXProject section */
@@ -251,7 +197,7 @@
 			files = (
 			);
 			inputPaths = (
-				"$(BUILT_PRODUCTS_DIR)/snapo",
+				"$(PROJECT_DIR)/../scripts/snapo",
 			);
 			name = "Embed Snap-O CLI";
 			outputPaths = (
@@ -259,7 +205,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\nCLI_SOURCE=\"${BUILT_PRODUCTS_DIR}/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -x \"${CLI_SOURCE}\" ]; then\n  echo \"error: native snapo CLI not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n";
+			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../scripts/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -272,22 +218,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A10000042F5B123400C0FFEE /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		A100000A2F5B123400C0FFEE /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A10000052F5B123400C0FFEE /* snapo */;
-			targetProxy = A10000092F5B123400C0FFEE /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3234F45B2E2EC5040057AE77 /* Debug */ = {
@@ -500,41 +431,6 @@
 			};
 			name = Release;
 		};
-		A10000072F5B123400C0FFEE /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 32AECEFA2E56725E00AA18F0 /* Base.xcconfig */;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = NO;
-				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				PRODUCT_NAME = snapo;
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-				SWIFT_VERSION = 6.0;
-			};
-			name = Debug;
-		};
-		A10000082F5B123400C0FFEE /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 32AECEFA2E56725E00AA18F0 /* Base.xcconfig */;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = NO;
-				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				PRODUCT_NAME = snapo;
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 6.0;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -552,15 +448,6 @@
 			buildConfigurations = (
 				3234F45E2E2EC5040057AE77 /* Debug */,
 				3234F45F2E2EC5040057AE77 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		A10000062F5B123400C0FFEE /* Build configuration list for PBXNativeTarget "snapo" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A10000072F5B123400C0FFEE /* Debug */,
-				A10000082F5B123400C0FFEE /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -592,11 +479,6 @@
 			productName = Sparkle;
 		};
 		D20000022F70000100C0FFEE /* SnapODeviceClient */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = D20000012F70000100C0FFEE /* XCLocalSwiftPackageReference "SnapODeviceClient" */;
-			productName = SnapODeviceClient;
-		};
-		D20000032F70000100C0FFEE /* SnapODeviceClient */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = D20000012F70000100C0FFEE /* XCLocalSwiftPackageReference "SnapODeviceClient" */;
 			productName = SnapODeviceClient;

@@ -9,7 +9,7 @@ Use this skill to pull raw network evidence from Snap-O.
 
 ## CLI Path
 
-Use the bundled binary:
+Use the bundled macOS script:
 
 ```bash
 SNAPO_BIN=/Applications/Snap-O.app/Contents/MacOS/snapo
@@ -17,6 +17,16 @@ SNAPO_BIN=/Applications/Snap-O.app/Contents/MacOS/snapo
 
 If Snap-O is not installed at that path, recommend installing it from:
 https://openai.github.io/snap-o/
+
+On Linux, use the installed script:
+
+```bash
+SNAPO_BIN="$(command -v snapo)"
+```
+
+If it is not installed, use this repository's `scripts/snapo` directly or install it on `PATH`. It requires Python 3 and Android Platform Tools; no Python packages or compiler toolchain are required.
+
+The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a configured ADB/Namespace shim explicitly.
 
 ## Current Command Surface
 
@@ -29,6 +39,8 @@ Useful global selectors:
 - `-s`, `--serial`: use a specific device serial.
 - `-d`: use the single connected USB device.
 - `-e`: use the single connected emulator.
+- `--adb`: use a specific ADB executable or Namespace shim.
+- `--adb-host`, `--adb-port`: connect to a remote ADB server; defaults remain `127.0.0.1:5037`.
 
 ## Core Flow
 
@@ -37,6 +49,8 @@ Useful global selectors:
 ```bash
 "$SNAPO_BIN" network list --json
 ```
+
+For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, or `show`. Namespace Snap-O forwards are opened on an explicit localhost port and are removed automatically on exit.
 
 Use `--no-app-info` to skip package and app metadata lookup.
 

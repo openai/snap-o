@@ -9,6 +9,7 @@ on:
       - 'snapo-app-mac/**'
       - 'snapo-network-inspector-web/**'
       - 'contracts/network/**'
+      - 'scripts/snapo'
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
@@ -19,6 +20,7 @@ on:
       - 'snapo-app-mac/**'
       - 'snapo-network-inspector-web/**'
       - 'contracts/network/**'
+      - 'scripts/snapo'
       - '.github/workflows/mac.yml'
       - 'VERSION'
 

@@ -94,13 +94,13 @@ There is currently no support for choosing a specific device/emulator when start
 
 ### Command Line Network Inspector
 
-Snap-O bundles a native command-line client at:
+Snap-O bundles a small Python command-line client at:
 
 ```bash
 /Applications/Snap-O.app/Contents/MacOS/snapo
 ```
 
-It talks directly to the host computer's existing ADB server and does not require the Snap-O app to be running.
+It uses the host computer's configured `adb` command, requires Python 3, and does not require the Snap-O app to be running.
 
 ```bash
 snapo network list --json
@@ -126,11 +126,33 @@ Snap-O is a small side project kept alive when time allows. If it works for you,
 
 ## Building from source
 
-Building requires Xcode 16 or later.
+The macOS app requires Xcode 16 or later.
 
 1. Install the Android Platform Tools (via Android Studio or `brew install android-platform-tools`).
 2. Open `Snap-O.xcodeproj` in Xcode.
 3. Build and run.
+
+### Linux network CLI
+
+The network CLI is the dependency-free Python script at `scripts/snapo`. Install Python 3 and Android Platform Tools, then put it on `PATH`:
+
+```bash
+mkdir -p ~/.local/bin
+install -m 0755 scripts/snapo ~/.local/bin/snapo
+```
+
+The script preserves `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select an ADB shim explicitly. The default ADB endpoint remains `127.0.0.1:5037`, and `--adb-host <host> --adb-port <port>` can be passed to any network command.
+
+For an Android devbox with the SDK installed under `$HOME/android-sdk`:
+
+```bash
+export ANDROID_SDK_ROOT="$HOME/android-sdk"
+export ANDROID_HOME="$ANDROID_SDK_ROOT"
+export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"
+snapo network list --json
+```
+
+The CLI opens an explicit localhost ADB forward for the selected `snapo_network_<pid>` socket, which is compatible with Namespace's allowlisted Snap-O forwarding, and removes the forward when the command exits. Treat captured bodies and URL query values as sensitive.
 
 ## Codex Skill
 
