@@ -165,18 +165,15 @@ Start a new Codex session after installing or updating the plugin.
 
 ## Linux Support
 
-You can inspect network requests from Snap-O on a Linux machine by using the `snapo` Python CLI tool:
-
-https://github.com/openai/snap-o/releases/latest/download/snapo
-
-This CLI tool is also shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
-
-The dependency-free script is also available at `skills/snap-o-network-inspector/scripts/snapo`. Install Python 3 and Android Platform Tools, then put it on `PATH`:
+You can inspect network requests from Snap-O on a Linux machine by using the dependency-free `snapo` Python CLI tool. Install Python 3 and Android Platform Tools, then download the script from the `main` branch and put it on `PATH`:
 
 ```bash
 mkdir -p ~/.local/bin
-install -m 0755 skills/snap-o-network-inspector/scripts/snapo ~/.local/bin/snapo
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-network-inspector/scripts/snapo -o ~/.local/bin/snapo
+chmod +x ~/.local/bin/snapo
 ```
+
+This is the same CLI shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
 
 The script supports `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
 
