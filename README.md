@@ -1,4 +1,4 @@
-[![download](https://img.shields.io/github/v/release/openai/snap-o?label=download&color=brightgreen)](https://github.com/openai/snap-o/releases/latest)
+[![Download Snap-O for macOS](https://img.shields.io/github/v/release/openai/snap-o?label=Download%20for%20macOS&color=brightgreen)](https://github.com/openai/snap-o/releases/latest/download/Snap-O.dmg)
 
 <p>
   <img src=".github/banner.webp" width="640" alt="Snap-O: Fast. Focused. Effortless.">
@@ -94,13 +94,13 @@ There is currently no support for choosing a specific device/emulator when start
 
 ### Command Line Network Inspector
 
-Snap-O bundles a native command-line client at:
+Snap-O bundles a small Python command-line client at:
 
 ```bash
 /Applications/Snap-O.app/Contents/MacOS/snapo
 ```
 
-It talks directly to the host computer's existing ADB server and does not require the Snap-O app to be running.
+It uses the host computer's configured `adb` command, requires Python 3, and does not require the Snap-O app to be running.
 
 ```bash
 snapo network list --json
@@ -126,21 +126,11 @@ Snap-O is a small side project kept alive when time allows. If it works for you,
 
 ## Building from source
 
-Building requires Xcode 16 or later.
+The macOS app requires Xcode 16 or later.
 
 1. Install the Android Platform Tools (via Android Studio or `brew install android-platform-tools`).
 2. Open `Snap-O.xcodeproj` in Xcode.
 3. Build and run.
-
-## Codex Skill
-
-This repo includes a Codex skill at `skills/snap-o-network-inspector`.
-
-Example prompt in Codex:
-
-```text
-$skill-installer install the snap-o-network-inspector skill from https://github.com/openai/snap-o/tree/main/skills/snap-o-network-inspector
-```
 
 ### Notarizing or shipping builds
 
@@ -149,6 +139,55 @@ If you need to notarize the app yourself:
 1. Copy `Config/Signing.xcconfig.sample` → `Config/Signing.xcconfig`.
 2. Edit the new file with your Apple Developer Team ID and signing certificate name.
 3. Use Xcode's Product → Archive flow, then distribute or upload as usual. The file is ignored by Git, so your credentials remain private.
+
+## Codex Plugin
+
+Snap-O includes a Codex plugin for macOS and Linux. It bundles the network-inspector skill and its Python CLI, and requires Python 3 and Android Platform Tools.
+
+Add the Snap-O marketplace and install the plugin:
+
+```bash
+codex plugin marketplace add openai/snap-o --ref main \
+  --sparse .agents/plugins \
+  --sparse .codex-plugin \
+  --sparse skills
+codex plugin add snap-o@snap-o
+```
+
+Refresh the marketplace and reinstall the plugin to pick up updates:
+
+```bash
+codex plugin marketplace upgrade snap-o
+codex plugin add snap-o@snap-o
+```
+
+Start a new Codex session after installing or updating the plugin.
+
+## Linux Support
+
+You can inspect network requests from Snap-O on a Linux machine by using the `snapo` Python CLI tool:
+
+https://github.com/openai/snap-o/releases/latest/download/snapo
+
+This CLI tool is also shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
+
+The dependency-free script is also available at `skills/snap-o-network-inspector/scripts/snapo`. Install Python 3 and Android Platform Tools, then put it on `PATH`:
+
+```bash
+mkdir -p ~/.local/bin
+install -m 0755 skills/snap-o-network-inspector/scripts/snapo ~/.local/bin/snapo
+```
+
+The script supports `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
+
+Verify that ADB can see your Android device, then inspect its available Snap-O servers:
+
+```bash
+adb devices -l
+snapo network list --json
+```
+
+With the default ADB configuration, the CLI opens a localhost forward for the selected `snapo_network_<pid>` socket and removes it when the command exits. Wrappers selecting a remote ADB server must tunnel that forward back to localhost; otherwise, specify `--adb-host` and `--adb-port`. With an explicit ADB endpoint, the CLI connects through the ADB server directly and does not create a forward. Treat captured bodies and URL query values as sensitive.
 
 ## Community
 

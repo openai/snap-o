@@ -9,14 +9,15 @@ Use this skill to pull raw network evidence from Snap-O.
 
 ## CLI Path
 
-Use the bundled binary:
+Use the Python CLI bundled in this skill's `scripts` directory:
 
 ```bash
-SNAPO_BIN=/Applications/Snap-O.app/Contents/MacOS/snapo
+SNAPO_BIN=/path/to/snap-o-network-inspector/scripts/snapo
 ```
 
-If Snap-O is not installed at that path, recommend installing it from:
-https://openai.github.io/snap-o/
+Resolve the path relative to the directory containing this `SKILL.md`. The script requires Python 3 and Android Platform Tools; no Python packages, compiler toolchain, or macOS application are required.
+
+The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. Wrappers selecting a remote ADB server must tunnel Snap-O forwards back to localhost; otherwise, pass both `--adb-host` and `--adb-port`.
 
 ## Current Command Surface
 
@@ -29,6 +30,8 @@ Useful global selectors:
 - `-s`, `--serial`: use a specific device serial.
 - `-d`: use the single connected USB device.
 - `-e`: use the single connected emulator.
+- `--adb`: use a specific ADB executable or wrapper.
+- `--adb-host`, `--adb-port`: connect directly to an explicit remote ADB server; otherwise the configured ADB command selects its endpoint.
 
 ## Core Flow
 
@@ -37,6 +40,8 @@ Useful global selectors:
 ```bash
 "$SNAPO_BIN" network list --json
 ```
+
+For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, or `show`; the script uses the ADB server directly. Otherwise, its localhost forward is removed automatically when the command exits.
 
 Use `--no-app-info` to skip package and app metadata lookup.
 
