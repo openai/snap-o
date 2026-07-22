@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "empty-query",
+      "searchText": "",
+      "tokens": {
+        "includes": [],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/v1/messages",
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "single-include",
+      "searchText": "api.example",
+      "tokens": {
+        "includes": ["api.example"],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/v1/messages",
+          "expected": true
+        },
+        {
+          "url": "https://cdn.example.net/assets",
+          "expected": false
+        }
+      ]
+    },
+    {
+      "id": "multiple-includes",
+      "searchText": "api.example messages",
+      "tokens": {
+        "includes": ["api.example", "messages"],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/v1/messages",
+          "expected": true
+        },
+        {
+          "url": "https://api.example.com/v1/users",
+          "expected": false
+        }
+      ]
+    },
+    {
+      "id": "exclude-token",
+      "searchText": "example -cdn",
+      "tokens": {
+        "includes": ["example"],
+        "excludes": ["cdn"]
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/v1/messages",
+          "expected": true
+        },
+        {
+          "url": "https://cdn.example.com/assets",
+          "expected": false
+        }
+      ]
+    },
+    {
+      "id": "quoted-phrase",
+      "searchText": "\"source=snapo\"",
+      "tokens": {
+        "includes": ["source=snapo"],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/v1/messages?source=snapo",
+          "expected": true
+        },
+        {
+          "url": "https://api.example.com/v1/messages?source=other",
+          "expected": false
+        }
+      ]
+    },
+    {
+      "id": "escaped-quote",
+      "searchText": "trace\\\"123",
+      "tokens": {
+        "includes": ["trace\"123"],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/v1/trace\"123",
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "escaped-backslash",
+      "searchText": "path\\\\segment",
+      "tokens": {
+        "includes": ["path\\segment"],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/path\\segment",
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "escaped-whitespace-unquoted",
+      "searchText": "hello\\ world",
+      "tokens": {
+        "includes": ["hello world"],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/hello world",
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "case-insensitive",
+      "searchText": "API.EXAMPLE",
+      "tokens": {
+        "includes": ["api.example"],
+        "excludes": []
+      },
+      "matches": [
+        {
+          "url": "https://API.EXAMPLE.com/v1",
+          "expected": true
+        }
+      ]
+    },
+    {
+      "id": "exclude-only",
+      "searchText": "-static",
+      "tokens": {
+        "includes": [],
+        "excludes": ["static"]
+      },
+      "matches": [
+        {
+          "url": "https://api.example.com/v1/messages",
+          "expected": true
+        },
+        {
+          "url": "https://cdn.example.com/static/app.js",
+          "expected": false
+        }
+      ]
+    }
+  ]
+}
