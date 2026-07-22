@@ -173,7 +173,7 @@ curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-ne
 chmod +x ~/.local/bin/snapo
 ```
 
-The CLI is also shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
+This is the same CLI shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
 
 The script supports `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
 
