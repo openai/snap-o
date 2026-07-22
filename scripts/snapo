@@ -186,7 +186,10 @@ def discover(adb, options):
         raise SnapOError("No connected devices found")
     servers = []
     for device in devices:
-        servers.extend(Server(device, name) for name in adb.sockets(device))
+        try:
+            servers.extend(Server(device, name) for name in adb.sockets(device))
+        except SnapOError:
+            continue
     return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
 
 
@@ -341,7 +344,7 @@ class Session:
                     message = json.loads(line)
                 except (UnicodeDecodeError, ValueError):
                     continue
-                if isinstance(message, dict):
+                if valid_record(message):
                     return message
                 continue
             if len(self.buffer) > MAX_RECORD_BYTES:
@@ -376,6 +379,34 @@ class Session:
                 return message
             if on_event:
                 on_event(message)
+
+
+def valid_record(message):
+    if not isinstance(message, dict):
+        return False
+
+    params = message.get("params")
+    if params is not None and not isinstance(params, dict):
+        return False
+
+    if params:
+        if not valid_headers(params.get("headers")):
+            return False
+        for field in ("request", "response"):
+            value = params.get(field)
+            if value is not None and (
+                not isinstance(value, dict) or not valid_headers(value.get("headers"))
+            ):
+                return False
+
+    return all(
+        message.get(field) is None or isinstance(message[field], dict)
+        for field in ("result", "error")
+    )
+
+
+def valid_headers(headers):
+    return headers is None or isinstance(headers, dict)
 
 
 class ConnectedSession:
@@ -762,7 +793,7 @@ def decoded_body(body, encoding, content_encoding):
         return body
     try:
         return gzip.decompress(base64.b64decode(body)).decode("utf-8")
-    except (OSError, ValueError, UnicodeDecodeError):
+    except (EOFError, OSError, ValueError, UnicodeDecodeError):
         return body
 
 

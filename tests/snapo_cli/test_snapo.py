@@ -177,6 +177,20 @@ usb-phone device product:oriole
         with self.assertRaisesRegex(snapo.SnapOError, "multiple devices"):
             snapo.choose_server(servers, "snapo_network_42")
 
+    def test_discovery_continues_after_one_device_becomes_unavailable(self):
+        class PartiallyUnavailableADB:
+            def devices(self):
+                return ["disconnected-device", "emulator-5554"]
+
+            def sockets(self, serial):
+                if serial == "disconnected-device":
+                    raise snapo.SnapOError("device disconnected")
+                return ["snapo_network_42"]
+
+        options = snapo.parser().parse_args(["network", "list"])
+        servers = snapo.discover(PartiallyUnavailableADB(), options)
+        self.assertEqual(servers, [snapo.Server("emulator-5554", "snapo_network_42")])
+
 
 class ADBTests(unittest.TestCase):
     def test_parser_leaves_default_adb_endpoint_to_configured_adb(self):
@@ -312,6 +326,31 @@ class ProtocolTests(unittest.TestCase):
     def test_ignores_valid_json_records_that_are_not_objects(self):
         def handler(stream, received):
             stream.write(b"null\n[]\n42\n\"text\"\n")
+            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
+
+        with WireServer(handler) as wire:
+            session = snapo.Session(wire.port)
+            try:
+                self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
+            finally:
+                session.close()
+
+    def test_ignores_malformed_protocol_record_shapes(self):
+        malformed = [
+            {"method": "Network.loadingFinished", "params": "invalid"},
+            {"method": "Network.loadingFinished", "params": []},
+            {"method": "Network.requestWillBeSent", "params": {"request": "invalid"}},
+            {"method": "Network.requestWillBeSent", "params": {"request": {"headers": "invalid"}}},
+            {"method": "Network.responseReceived", "params": {"response": []}},
+            {"method": "Network.responseReceived", "params": {"response": {"headers": []}}},
+            {"method": "Network.webSocketCreated", "params": {"headers": "invalid"}},
+            {"id": 1, "result": "invalid"},
+            {"id": 1, "error": "invalid"},
+        ]
+
+        def handler(stream, received):
+            for message in malformed:
+                write_message(stream, message)
             write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
 
         with WireServer(handler) as wire:
@@ -465,6 +504,11 @@ class OutputTests(unittest.TestCase):
     def test_decodes_gzip_body_with_standard_library(self):
         encoded = snapo.base64.b64encode(gzip.compress(b'{"ok":true}')).decode("ascii")
         self.assertEqual(snapo.decoded_body(encoded, "base64", "gzip"), '{"ok":true}')
+
+    def test_truncated_gzip_body_falls_back_to_original_capture(self):
+        truncated = gzip.compress(b'{"ok":true}')[:-1]
+        encoded = snapo.base64.b64encode(truncated).decode("ascii")
+        self.assertEqual(snapo.decoded_body(encoded, "base64", "gzip"), encoded)
 
     def test_requests_json_never_prints_raw_sensitive_headers_and_cleans_up(self):
         def handler(stream, received):
