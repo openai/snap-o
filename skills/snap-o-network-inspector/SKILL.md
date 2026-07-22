@@ -17,7 +17,7 @@ SNAPO_BIN=/path/to/snap-o-network-inspector/scripts/snapo
 
 Resolve the path relative to the directory containing this `SKILL.md`. The script requires Python 3 and Android Platform Tools; no Python packages, compiler toolchain, or macOS application are required.
 
-The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper.
+The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. Wrappers selecting a remote ADB server must tunnel Snap-O forwards back to localhost; otherwise, pass both `--adb-host` and `--adb-port`.
 
 ## Current Command Surface
 

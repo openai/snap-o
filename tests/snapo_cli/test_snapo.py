@@ -553,6 +553,14 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(details["responseBodyBase64Encoded"])
         self.assertEqual([message["method"] for message in wire.received[1:]], ["SnapO.startStream"])
 
+    def test_large_zero_content_length_does_not_require_integer_conversion(self):
+        state = snapo.RequestState("request-1")
+        state.response_headers = {"Content-Length": "0" * 5000}
+        self.assertTrue(state.has_no_response_body())
+
+        state.response_headers = {"Content-Length": "0" * 4999 + "1"}
+        self.assertFalse(state.has_no_response_body())
+
 
 class OutputTests(unittest.TestCase):
     def test_sanitizes_all_sensitive_event_headers(self):

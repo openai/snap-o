@@ -738,7 +738,7 @@ class RequestState:
         for name, value in self.response_headers.items():
             if name.lower() == "content-length":
                 length = value.strip()
-                return length.isascii() and length.isdecimal() and int(length) == 0
+                return length.isascii() and length.isdecimal() and not length.strip("0")
         return False
 
 

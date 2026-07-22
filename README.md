@@ -187,7 +187,7 @@ adb devices -l
 snapo network list --json
 ```
 
-With the default ADB configuration, the CLI opens a localhost forward for the selected `snapo_network_<pid>` socket and removes it when the command exits. With an explicit ADB endpoint, it connects through the ADB server directly and does not create a forward. Treat captured bodies and URL query values as sensitive.
+With the default ADB configuration, the CLI opens a localhost forward for the selected `snapo_network_<pid>` socket and removes it when the command exits. Wrappers selecting a remote ADB server must tunnel that forward back to localhost; otherwise, specify `--adb-host` and `--adb-port`. With an explicit ADB endpoint, the CLI connects through the ADB server directly and does not create a forward. Treat captured bodies and URL query values as sensitive.
 
 ## Community
 
