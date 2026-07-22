@@ -229,6 +229,33 @@ class ADBTests(unittest.TestCase):
         self.assertIsNone(options.adb_host)
         self.assertIsNone(options.adb_port)
 
+    def test_parser_requires_both_explicit_adb_endpoint_options(self):
+        commands = (
+            ["network", "list"],
+            ["network", "requests"],
+            ["network", "show", "--request-id", "request-1"],
+        )
+        incomplete_options = (
+            ["--adb-host", "adb.example.test"],
+            ["--adb-port", "15037"],
+        )
+        for command in commands:
+            for endpoint in incomplete_options:
+                with self.subTest(command=command[1], endpoint=endpoint[0]):
+                    errors = io.StringIO()
+                    with contextlib.redirect_stderr(errors):
+                        with self.assertRaises(SystemExit) as error:
+                            snapo.parser().parse_args(command + endpoint)
+                    self.assertEqual(error.exception.code, 2)
+                    self.assertIn("--adb-host and --adb-port must be used together", errors.getvalue())
+
+    def test_parser_accepts_complete_explicit_adb_endpoint(self):
+        options = snapo.parser().parse_args(
+            ["network", "list", "--adb-host", "adb.example.test", "--adb-port", "15037"]
+        )
+        self.assertEqual(options.adb_host, "adb.example.test")
+        self.assertEqual(options.adb_port, 15037)
+
     def test_parser_accepts_exclusion_first_filters(self):
         for value in ("-private", "-private other", '-"private path"'):
             with self.subTest(value=value):

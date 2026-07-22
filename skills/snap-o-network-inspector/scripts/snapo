@@ -885,8 +885,8 @@ def add_common_options(parser, socket_option=False):
     if socket_option:
         parser.add_argument("-n", "--socket")
     parser.add_argument("--adb", help="path to the configured adb executable or shim")
-    parser.add_argument("--adb-host", help="explicit ADB server host (default: adb's configured host)")
-    parser.add_argument("--adb-port", type=valid_port, help="explicit ADB server port (default: adb's configured port)")
+    parser.add_argument("--adb-host", help="explicit ADB server host (requires --adb-port)")
+    parser.add_argument("--adb-port", type=valid_port, help="explicit ADB server port (requires --adb-host)")
     parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
 
 
@@ -909,7 +909,10 @@ class SnapOArgumentParser(argparse.ArgumentParser):
             value = arguments[index + 1]
             if value.startswith("-") and not value.startswith("--") and value not in {"-d", "-e", "-s", "-n", "-r"}:
                 arguments[index : index + 2] = [f"--filter={value}"]
-        return super().parse_args(arguments, namespace)
+        options = super().parse_args(arguments, namespace)
+        if hasattr(options, "adb_host") and (options.adb_host is None) != (options.adb_port is None):
+            self.error("--adb-host and --adb-port must be used together")
+        return options
 
 
 def parser():
