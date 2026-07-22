@@ -6,7 +6,6 @@ import base64
 import gzip
 import json
 import os
-import shlex
 import shutil
 import signal
 import socket
@@ -449,19 +448,48 @@ def sanitize_event(message):
 
 class EventFilter:
     def __init__(self, text):
-        try:
-            tokens = shlex.split(text)
-        except ValueError as error:
-            raise SnapOError(f"Invalid --filter expression: {error}") from error
         self.includes = []
         self.excludes = []
         self.request_ids = set()
-        for token in tokens:
-            excluded = token.startswith("-")
-            value = token[1:] if excluded else token
-            value = value.strip().lower()
-            if value:
-                (self.excludes if excluded else self.includes).append(value)
+        index = 0
+        while index < len(text):
+            while index < len(text) and text[index].isspace():
+                index += 1
+            if index == len(text):
+                break
+
+            excluded = text[index] == "-"
+            if excluded:
+                index += 1
+            if index == len(text):
+                break
+
+            quoted = text[index] == '"'
+            if quoted:
+                index += 1
+
+            characters = []
+            while index < len(text):
+                current = text[index]
+                if quoted and current == '"':
+                    index += 1
+                    break
+                if not quoted and current.isspace():
+                    break
+
+                if current == "\\" and index + 1 < len(text):
+                    following = text[index + 1]
+                    if following in {'"', "\\"} or (not quoted and following.isspace()):
+                        characters.append(following)
+                        index += 2
+                        continue
+
+                characters.append(current)
+                index += 1
+
+            value = "".join(characters)
+            if value.strip():
+                (self.excludes if excluded else self.includes).append(value.lower())
 
     def matches(self, message):
         if not self.includes and not self.excludes:
@@ -489,7 +517,7 @@ class EventFilter:
 
 
 def print_json(value):
-    print(json.dumps(value, separators=(",", ":"), ensure_ascii=False))
+    print(json.dumps(value, separators=(",", ":"), ensure_ascii=False), flush=True)
 
 
 def event_line(message):
@@ -528,7 +556,7 @@ def emit_event(message, as_json):
     if as_json:
         print_json(message)
     else:
-        print(event_line(message))
+        print(event_line(message), flush=True)
 
 
 def app_info(adb, server):

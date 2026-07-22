@@ -6,6 +6,7 @@ import io
 import json
 import os
 import pathlib
+import select
 import socket
 import tempfile
 import threading
@@ -427,6 +428,39 @@ class OutputTests(unittest.TestCase):
         excluded["params"]["requestId"] = "excluded"
         excluded["params"]["request"]["url"] = "https://example.test/private api"
         self.assertFalse(event_filter.matches(excluded))
+
+    def test_filter_uses_network_inspector_search_grammar(self):
+        cases = [
+            ("don't", ["don't"], []),
+            ('"unfinished phrase', ["unfinished phrase"], []),
+            (r"path\segment", [r"path\segment"], []),
+            (r"escaped\ space", ["escaped space"], []),
+            (r'quoted\"value', ['quoted"value'], []),
+            (r"path\\segment", [r"path\segment"], []),
+            ('-"private path" keep', ["keep"], ["private path"]),
+            ("'single quoted'", ["'single", "quoted'"], []),
+        ]
+        for text, includes, excludes in cases:
+            with self.subTest(text=text):
+                event_filter = snapo.EventFilter(text)
+                self.assertEqual(event_filter.includes, includes)
+                self.assertEqual(event_filter.excludes, excludes)
+
+    def test_streamed_events_are_flushed_to_pipes_immediately(self):
+        for as_json in (True, False):
+            with self.subTest(as_json=as_json):
+                reader, writer = os.pipe()
+                try:
+                    with open(writer, "w", buffering=8192) as output:
+                        with contextlib.redirect_stdout(output):
+                            snapo.emit_event(request_event(), as_json=as_json)
+                        readable, _, _ = select.select([reader], [], [], 0)
+                        self.assertEqual(readable, [reader])
+                        record = os.read(reader, 65536).decode("utf-8")
+                        self.assertTrue(record.endswith("\n"))
+                        self.assertNotIn(REQUEST_SECRET, record)
+                finally:
+                    os.close(reader)
 
     def test_decodes_gzip_body_with_standard_library(self):
         encoded = snapo.base64.b64encode(gzip.compress(b'{"ok":true}')).decode("ascii")
