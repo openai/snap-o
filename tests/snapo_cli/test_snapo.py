@@ -14,7 +14,8 @@ import unittest
 from unittest import mock
 
 
-SCRIPT = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "snapo"
+REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
+SCRIPT = REPOSITORY / "skills" / "snap-o-network-inspector" / "scripts" / "snapo"
 LOADER = importlib.machinery.SourceFileLoader("snapo_cli", str(SCRIPT))
 SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
 snapo = importlib.util.module_from_spec(SPEC)
@@ -198,20 +199,34 @@ class ADBTests(unittest.TestCase):
         self.assertIsNone(options.adb_host)
         self.assertIsNone(options.adb_port)
 
-    def test_default_endpoint_does_not_override_namespace_shim(self):
+    def test_parser_accepts_exclusion_first_filters(self):
+        for value in ("-private", "-private other", '-"private path"'):
+            with self.subTest(value=value):
+                options = snapo.parser().parse_args(
+                    ["network", "requests", "--filter", value, "--json"]
+                )
+                self.assertEqual(options.filter, value)
+                self.assertTrue(options.json)
+
+    def test_parser_preserves_missing_filter_value_errors(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                snapo.parser().parse_args(["network", "requests", "--filter", "--json"])
+
+    def test_default_endpoint_does_not_override_configured_adb_wrapper(self):
         recorded = []
 
         def run(command, **kwargs):
             recorded.append(command)
             return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
-        adb = snapo.ADB("/configured/namespace-adb", run=run)
+        adb = snapo.ADB("/configured/adb-wrapper", run=run)
         self.assertFalse(adb.has_explicit_endpoint)
         self.assertEqual(adb.endpoint, ("127.0.0.1", 5037))
         adb.command("devices", "-l", serial="emulator-5554")
         self.assertEqual(
             recorded,
-            [["/configured/namespace-adb", "-s", "emulator-5554", "devices", "-l"]],
+            [["/configured/adb-wrapper", "-s", "emulator-5554", "devices", "-l"]],
         )
 
     def test_resolves_sdk_adb_when_path_is_empty(self):
@@ -236,12 +251,12 @@ class ADBTests(unittest.TestCase):
             recorded.append(command)
             return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
-        adb = snapo.ADB("/configured/adb", host="namespace.test", port=15037, run=run)
+        adb = snapo.ADB("/configured/adb", host="adb.example.test", port=15037, run=run)
         self.assertTrue(adb.has_explicit_endpoint)
         adb.command("devices", "-l", serial="emulator-5554")
         self.assertEqual(
             recorded,
-            [["/configured/adb", "-H", "namespace.test", "-P", "15037", "-s", "emulator-5554", "devices", "-l"]],
+            [["/configured/adb", "-H", "adb.example.test", "-P", "15037", "-s", "emulator-5554", "devices", "-l"]],
         )
 
     def test_adb_subprocess_timeout_is_reported(self):
@@ -279,7 +294,7 @@ class ADBTests(unittest.TestCase):
 
 class ProtocolTests(unittest.TestCase):
     def test_shared_http_replay_fixture_terminates_with_replay_complete(self):
-        fixture = SCRIPT.parents[1] / "contracts" / "network" / "v1" / "http-replay.jsonl"
+        fixture = REPOSITORY / "contracts" / "network" / "v1" / "http-replay.jsonl"
         records = [json.loads(line) for line in fixture.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(records[0]["method"], "SnapO.appInfo")
         self.assertEqual(records[-1]["method"], "SnapO.replayComplete")
@@ -337,12 +352,21 @@ class ProtocolTests(unittest.TestCase):
 
     def test_ignores_malformed_protocol_record_shapes(self):
         malformed = [
+            {"method": [], "params": {}},
             {"method": "Network.loadingFinished", "params": "invalid"},
             {"method": "Network.loadingFinished", "params": []},
             {"method": "Network.requestWillBeSent", "params": {"request": "invalid"}},
             {"method": "Network.requestWillBeSent", "params": {"request": {"headers": "invalid"}}},
+            {"method": "Network.requestWillBeSent", "params": {"request": {"method": 7}}},
+            {"method": "Network.requestWillBeSent", "params": {"request": {"url": {"invalid": True}}}},
+            {"method": "Network.requestWillBeSent", "params": {"request": {"postDataEncoding": 7}}},
+            {"method": "Network.requestWillBeSent", "params": {"request": {"hasPostData": "yes"}}},
             {"method": "Network.responseReceived", "params": {"response": []}},
             {"method": "Network.responseReceived", "params": {"response": {"headers": []}}},
+            {"method": "Network.responseReceived", "params": {"response": {"url": {"invalid": True}}}},
+            {"method": "Network.responseReceived", "params": {"response": {"status": float("inf")}}},
+            {"method": "Network.responseReceived", "params": {"response": {"status": float("nan")}}},
+            {"method": "Network.responseReceived", "params": {"response": {"status": True}}},
             {"method": "Network.webSocketCreated", "params": {"headers": "invalid"}},
             {"id": 1, "result": "invalid"},
             {"id": 1, "error": "invalid"},
@@ -505,6 +529,12 @@ class OutputTests(unittest.TestCase):
         encoded = snapo.base64.b64encode(gzip.compress(b'{"ok":true}')).decode("ascii")
         self.assertEqual(snapo.decoded_body(encoded, "base64", "gzip"), '{"ok":true}')
 
+    def test_decodes_gzip_body_with_repeated_content_encodings(self):
+        encoded = snapo.base64.b64encode(gzip.compress(b'{"ok":true}')).decode("ascii")
+        for content_encoding in ("gzip\ngzip", "identity,\nx-gzip", "gzip; level=9\r\nidentity"):
+            with self.subTest(content_encoding=content_encoding):
+                self.assertEqual(snapo.decoded_body(encoded, "base64", content_encoding), '{"ok":true}')
+
     def test_truncated_gzip_body_falls_back_to_original_capture(self):
         truncated = gzip.compress(b'{"ok":true}')[:-1]
         encoded = snapo.base64.b64encode(truncated).decode("ascii")
@@ -544,6 +574,45 @@ class OutputTests(unittest.TestCase):
         self.assertNotIn(RESPONSE_SECRET, output)
         records = [json.loads(line) for line in output.splitlines()]
         self.assertEqual([record["method"] for record in records], ["Network.requestWillBeSent", "Network.responseReceived"])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_closed_output_pipe_exits_cleanly_and_removes_forward(self):
+        class ClosedPipe:
+            closed = False
+
+            def write(self, value):
+                raise BrokenPipeError
+
+            def flush(self):
+                return None
+
+            def close(self):
+                self.closed = True
+
+        def handler(stream, received):
+            read_message(stream, received)
+            write_message(stream, request_event())
+
+        adb = FakeADB()
+        output = ClosedPipe()
+        with WireServer(handler) as wire:
+            with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
+                with mock.patch.object(snapo, "ADB", return_value=adb):
+                    with mock.patch.object(snapo, "available_port", return_value=wire.port):
+                        with contextlib.redirect_stdout(output):
+                            code = snapo.main(
+                                [
+                                    "network",
+                                    "requests",
+                                    "-s",
+                                    "emulator-5554",
+                                    "-n",
+                                    "snapo_network_42",
+                                    "--json",
+                                ]
+                            )
+        self.assertEqual(code, 0)
+        self.assertTrue(output.closed)
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
 

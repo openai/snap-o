@@ -9,24 +9,15 @@ Use this skill to pull raw network evidence from Snap-O.
 
 ## CLI Path
 
-Use the bundled macOS script:
+Use the Python CLI bundled in this skill's `scripts` directory:
 
 ```bash
-SNAPO_BIN=/Applications/Snap-O.app/Contents/MacOS/snapo
+SNAPO_BIN=/path/to/snap-o-network-inspector/scripts/snapo
 ```
 
-If Snap-O is not installed at that path, recommend installing it from:
-https://openai.github.io/snap-o/
+Resolve the path relative to the directory containing this `SKILL.md`. The script requires Python 3 and Android Platform Tools; no Python packages, compiler toolchain, or macOS application are required.
 
-On Linux, use the installed script:
-
-```bash
-SNAPO_BIN="$(command -v snapo)"
-```
-
-If it is not installed, use this repository's `scripts/snapo` directly or install it on `PATH`. It requires Python 3 and Android Platform Tools; no Python packages or compiler toolchain are required.
-
-The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a configured ADB/Namespace shim explicitly.
+The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper.
 
 ## Current Command Surface
 
@@ -39,8 +30,8 @@ Useful global selectors:
 - `-s`, `--serial`: use a specific device serial.
 - `-d`: use the single connected USB device.
 - `-e`: use the single connected emulator.
-- `--adb`: use a specific ADB executable or Namespace shim.
-- `--adb-host`, `--adb-port`: connect directly to an explicit remote or tunneled ADB server; otherwise the configured ADB/shim selects its endpoint.
+- `--adb`: use a specific ADB executable or wrapper.
+- `--adb-host`, `--adb-port`: connect directly to an explicit remote ADB server; otherwise the configured ADB command selects its endpoint.
 
 ## Core Flow
 
@@ -50,7 +41,7 @@ Useful global selectors:
 "$SNAPO_BIN" network list --json
 ```
 
-For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, or `show`; the script uses the ADB smart socket directly. With a configured Namespace shim, omit those flags so its Snap-O forward is opened on an explicit localhost port and removed automatically on exit.
+For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, or `show`; the script uses the ADB server directly. Otherwise, its localhost forward is removed automatically when the command exits.
 
 Use `--no-app-info` to skip package and app metadata lookup.
 

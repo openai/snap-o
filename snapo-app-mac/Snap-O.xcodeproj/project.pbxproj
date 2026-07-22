@@ -197,7 +197,7 @@
 			files = (
 			);
 			inputPaths = (
-				"$(PROJECT_DIR)/../scripts/snapo",
+				"$(PROJECT_DIR)/../skills/snap-o-network-inspector/scripts/snapo",
 			);
 			name = "Embed Snap-O CLI";
 			outputPaths = (
@@ -205,7 +205,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../scripts/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n";
+			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../skills/snap-o-network-inspector/scripts/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
