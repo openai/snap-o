@@ -138,6 +138,36 @@ class FakeADB:
         return ""
 
 
+class PluginPackagingTests(unittest.TestCase):
+    def test_plugin_bundles_the_network_inspector_skill(self):
+        manifest = json.loads((REPOSITORY / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        release_version = next(
+            line.partition("=")[2].strip()
+            for line in (REPOSITORY / "VERSION").read_text(encoding="utf-8").splitlines()
+            if line.startswith("VERSION =")
+        )
+
+        self.assertEqual(manifest["name"], "snap-o")
+        self.assertEqual(manifest["version"], release_version)
+        self.assertEqual((REPOSITORY / manifest["skills"]).resolve(), SCRIPT.parents[2])
+        self.assertEqual(manifest["interface"]["displayName"], "Snap-O")
+        self.assertEqual(manifest["interface"]["capabilities"], ["Read"])
+
+    def test_marketplace_exposes_the_repository_plugin(self):
+        marketplace = json.loads(
+            (REPOSITORY / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(marketplace["name"], "snap-o")
+        self.assertEqual(len(marketplace["plugins"]), 1)
+
+        plugin = marketplace["plugins"][0]
+        self.assertEqual(plugin["name"], "snap-o")
+        self.assertEqual(plugin["source"], {"source": "local", "path": "./"})
+        self.assertEqual((REPOSITORY / plugin["source"]["path"]).resolve(), REPOSITORY)
+        self.assertEqual(plugin["policy"]["installation"], "AVAILABLE")
+        self.assertEqual(plugin["policy"]["authentication"], "ON_INSTALL")
+
+
 class DiscoveryTests(unittest.TestCase):
     def test_parses_devices_and_deduplicates_sockets(self):
         devices = snapo.parse_devices(
@@ -469,6 +499,32 @@ class ProtocolTests(unittest.TestCase):
             [message["method"] for message in wire.received[2:]],
             ["Network.getRequestPostData", "Network.getResponseBody"],
         )
+
+    def test_zero_padded_content_length_skips_response_body_lookup(self):
+        def handler(stream, received):
+            read_message(stream, received)
+            request = request_event()
+            request["params"]["request"]["hasPostData"] = False
+            response = response_event()
+            response["params"]["response"]["headers"]["Content-Length"] = "00"
+            write_message(stream, request)
+            write_message(stream, response)
+            write_message(stream, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}})
+
+        with WireServer(handler) as wire:
+            session = snapo.Session(wire.port)
+            try:
+                details = snapo.request_details(
+                    session,
+                    snapo.Server("emulator-5554", "snapo_network_42"),
+                    "request-1",
+                )
+            finally:
+                session.close()
+
+        self.assertEqual(details["responseBody"], "")
+        self.assertFalse(details["responseBodyBase64Encoded"])
+        self.assertEqual([message["method"] for message in wire.received[1:]], ["SnapO.startStream"])
 
 
 class OutputTests(unittest.TestCase):

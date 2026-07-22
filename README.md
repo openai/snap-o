@@ -140,15 +140,28 @@ If you need to notarize the app yourself:
 2. Edit the new file with your Apple Developer Team ID and signing certificate name.
 3. Use Xcode's Product → Archive flow, then distribute or upload as usual. The file is ignored by Git, so your credentials remain private.
 
-## Codex Skill
+## Codex Plugin
 
-This repo includes a Codex skill for macOS and Linux at `skills/snap-o-network-inspector`. The skill runs its bundled Python CLI and requires Python 3 and Android Platform Tools.
+Snap-O includes a Codex plugin for macOS and Linux. It bundles the network-inspector skill and its Python CLI, and requires Python 3 and Android Platform Tools.
 
-Example prompt in Codex:
+Add the Snap-O marketplace and install the plugin:
 
-```text
-$skill-installer install the snap-o-network-inspector skill from https://github.com/openai/snap-o/tree/main/skills/snap-o-network-inspector
+```bash
+codex plugin marketplace add openai/snap-o --ref main \
+  --sparse .agents/plugins \
+  --sparse .codex-plugin \
+  --sparse skills
+codex plugin add snap-o@snap-o
 ```
+
+Refresh the marketplace and reinstall the plugin to pick up updates:
+
+```bash
+codex plugin marketplace upgrade snap-o
+codex plugin add snap-o@snap-o
+```
+
+Start a new Codex session after installing or updating the plugin.
 
 ## Linux Support
 
