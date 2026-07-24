@@ -618,6 +618,36 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(details["responseStatus"], 200)
         self.assertGreater(clock["now"], 5)
 
+    def test_request_details_times_out_for_missing_request_during_live_traffic(self):
+        clock = {"now": 0}
+
+        class UnrelatedLiveTrafficSession:
+            def __init__(self):
+                self.reads = 0
+
+            def start_stream(self):
+                return None
+
+            def read(self, timeout):
+                self.reads += 1
+                if self.reads > 10:
+                    raise AssertionError("request lookup kept extending its deadline after replay")
+                clock["now"] += 1
+                if self.reads == 1:
+                    return {"method": "SnapO.replayComplete", "params": {"watermark": 0}}
+                return {"method": "Network.loadingFinished", "params": {"requestId": "unrelated"}}
+
+        session = UnrelatedLiveTrafficSession()
+        with mock.patch.object(snapo.time, "monotonic", side_effect=lambda: clock["now"]):
+            with self.assertRaisesRegex(snapo.SnapOError, "Timed out waiting for network lifecycle"):
+                snapo.request_details(
+                    session,
+                    snapo.Server("emulator-5554", "snapo_network_42"),
+                    "missing-request",
+                )
+
+        self.assertLessEqual(session.reads, 6)
+
     def test_large_zero_content_length_does_not_require_integer_conversion(self):
         state = snapo.RequestState("request-1")
         state.response_headers = {"Content-Length": "0" * 5000}

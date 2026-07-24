@@ -764,12 +764,15 @@ def request_details(session, server, request_id):
     session.start_stream()
     deadline = time.monotonic() + 5
     extended = False
+    replaying = True
     while time.monotonic() < deadline:
         message = session.read(min(0.5, max(0, deadline - time.monotonic())))
         if message:
             state.update(message)
-            if not extended:
+            if not extended and replaying:
                 deadline = time.monotonic() + 5
+                if message.get("method") == "SnapO.replayComplete":
+                    replaying = False
         if state.request_seen and not extended:
             deadline = time.monotonic() + 70
             extended = True
