@@ -678,6 +678,8 @@ def run_requests(adb, options):
                 if deadline:
                     raise SnapOError(f"Timed out waiting for snapshot from {server.identifier}")
                 continue
+            if deadline:
+                deadline = time.monotonic() + 5
             method = message.get("method")
             if method == "SnapO.replayComplete" and options.no_stream:
                 return 0
@@ -766,6 +768,8 @@ def request_details(session, server, request_id):
         message = session.read(min(0.5, max(0, deadline - time.monotonic())))
         if message:
             state.update(message)
+            if not extended:
+                deadline = time.monotonic() + 5
         if state.request_seen and not extended:
             deadline = time.monotonic() + 70
             extended = True
@@ -795,12 +799,15 @@ def request_details(session, server, request_id):
         reply = command_result(session, "Network.getResponseBody", request_id, state)
         error = reply.get("error")
         if error:
-            raise SnapOError(state.failure or str(error.get("message", "Unable to load response body")))
-        result = reply.get("result") or {}
-        response_body = result.get("body")
-        base64_encoded = result.get("base64Encoded")
-        if not isinstance(response_body, str) or not isinstance(base64_encoded, bool):
-            raise SnapOError("Malformed response for Network.getResponseBody")
+            message = str(error.get("message", "Unable to load response body"))
+            if state.failure or "no response body captured" not in message.lower():
+                raise SnapOError(state.failure or message)
+        else:
+            result = reply.get("result") or {}
+            response_body = result.get("body")
+            base64_encoded = result.get("base64Encoded")
+            if not isinstance(response_body, str) or not isinstance(base64_encoded, bool):
+                raise SnapOError("Malformed response for Network.getResponseBody")
 
     return {
         "server": server.identifier,
