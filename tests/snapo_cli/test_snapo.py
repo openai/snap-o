@@ -553,6 +553,101 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(details["responseBodyBase64Encoded"])
         self.assertEqual([message["method"] for message in wire.received[1:]], ["SnapO.startStream"])
 
+    def test_uncaptured_empty_response_body_does_not_hide_response_details(self):
+        def handler(stream, received):
+            read_message(stream, received)
+            request = request_event()
+            request["params"]["request"]["hasPostData"] = False
+            write_message(stream, request)
+            write_message(stream, response_event())
+            write_message(stream, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}})
+            command = read_message(stream, received)
+            write_message(
+                stream,
+                {"id": command["id"], "error": {"message": "No response body captured for request-1"}},
+            )
+
+        with WireServer(handler) as wire:
+            session = snapo.Session(wire.port)
+            try:
+                details = snapo.request_details(
+                    session,
+                    snapo.Server("emulator-5554", "snapo_network_42"),
+                    "request-1",
+                )
+            finally:
+                session.close()
+
+        self.assertEqual(details["responseStatus"], 200)
+        self.assertEqual(details["responseBody"], "")
+        self.assertFalse(details["responseBodyBase64Encoded"])
+
+    def test_request_details_keeps_waiting_while_replay_is_active(self):
+        clock = {"now": 0}
+        request = request_event()
+        request["params"]["request"]["hasPostData"] = False
+
+        class SlowReplaySession:
+            def __init__(self):
+                self.messages = [
+                    {"method": "SnapO.appInfo", "params": {}},
+                    {"method": "SnapO.appInfo", "params": {}},
+                    {"method": "SnapO.appInfo", "params": {}},
+                    request,
+                    response_event(),
+                    {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}},
+                ]
+
+            def start_stream(self):
+                return None
+
+            def read(self, timeout):
+                clock["now"] += 2
+                return self.messages.pop(0)
+
+            def command(self, method, params, timeout, on_event):
+                return {"result": {"body": "", "base64Encoded": False}}
+
+        with mock.patch.object(snapo.time, "monotonic", side_effect=lambda: clock["now"]):
+            details = snapo.request_details(
+                SlowReplaySession(),
+                snapo.Server("emulator-5554", "snapo_network_42"),
+                "request-1",
+            )
+
+        self.assertEqual(details["responseStatus"], 200)
+        self.assertGreater(clock["now"], 5)
+
+    def test_request_details_times_out_for_missing_request_during_live_traffic(self):
+        clock = {"now": 0}
+
+        class UnrelatedLiveTrafficSession:
+            def __init__(self):
+                self.reads = 0
+
+            def start_stream(self):
+                return None
+
+            def read(self, timeout):
+                self.reads += 1
+                if self.reads > 10:
+                    raise AssertionError("request lookup kept extending its deadline after replay")
+                clock["now"] += 1
+                if self.reads == 1:
+                    return {"method": "SnapO.replayComplete", "params": {"watermark": 0}}
+                return {"method": "Network.loadingFinished", "params": {"requestId": "unrelated"}}
+
+        session = UnrelatedLiveTrafficSession()
+        with mock.patch.object(snapo.time, "monotonic", side_effect=lambda: clock["now"]):
+            with self.assertRaisesRegex(snapo.SnapOError, "Timed out waiting for network lifecycle"):
+                snapo.request_details(
+                    session,
+                    snapo.Server("emulator-5554", "snapo_network_42"),
+                    "missing-request",
+                )
+
+        self.assertLessEqual(session.reads, 6)
+
     def test_large_zero_content_length_does_not_require_integer_conversion(self):
         state = snapo.RequestState("request-1")
         state.response_headers = {"Content-Length": "0" * 5000}
@@ -569,6 +664,42 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(request["params"]["request"]["headers"]["Authorization"], snapo.REDACTED)
         self.assertEqual(request["params"]["request"]["headers"]["Cookie"], snapo.REDACTED)
         self.assertEqual(response["params"]["response"]["headers"]["Set-Cookie"], snapo.REDACTED)
+
+    def test_snapshot_replay_timeout_resets_while_records_arrive(self):
+        clock = {"now": 0}
+
+        class SlowReplaySession:
+            def __init__(self):
+                self.messages = [
+                    request_event(),
+                    response_event(),
+                    {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}},
+                    {"method": "SnapO.replayComplete", "params": {"watermark": 3}},
+                ]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, error_type, error, traceback):
+                return False
+
+            def start_stream(self):
+                return None
+
+            def read(self, timeout):
+                clock["now"] += 2
+                return self.messages.pop(0)
+
+        server = snapo.Server("emulator-5554", "snapo_network_42")
+        options = snapo.parser().parse_args(["network", "requests", "--no-stream", "--json"])
+        with mock.patch.object(snapo.time, "monotonic", side_effect=lambda: clock["now"]):
+            with mock.patch.object(snapo, "discover", return_value=[server]):
+                with mock.patch.object(snapo, "ConnectedSession", return_value=SlowReplaySession()):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        result = snapo.run_requests(FakeADB(), options)
+
+        self.assertEqual(result, 0)
+        self.assertGreater(clock["now"], 5)
 
     def test_filter_tracks_matching_request_lifecycle(self):
         event_filter = snapo.EventFilter('example.test -"/private api"')
