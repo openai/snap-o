@@ -3,6 +3,7 @@ package com.openai.snapo.tweaks.internal
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import java.io.Closeable
 import java.math.BigDecimal
 import java.math.BigInteger
 
@@ -42,35 +43,49 @@ internal class InvalidTweakValueException(name: String, reason: String) :
 internal object TweakRegistry {
     private val lock = Any()
     private val tweaks = LinkedHashMap<String, RegisteredTweak>()
+    private val observers = LinkedHashMap<Long, () -> Unit>()
+    private var nextObserverId = 0L
     private val colorPattern = Regex("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
 
-    fun register(descriptor: TweakDescriptor): State<Any> = synchronized(lock) {
-        validateDescriptor(descriptor)
+    fun register(descriptor: TweakDescriptor): State<Any> {
+        var changed = false
+        val state = synchronized(lock) {
+            validateDescriptor(descriptor)
 
-        val existing = tweaks[descriptor.name]
-        if (existing != null) {
-            require(existing.descriptor == descriptor) {
-                "Conflicting declarations for tweak: ${descriptor.name}"
+            val existing = tweaks[descriptor.name]
+            if (existing != null) {
+                require(existing.descriptor == descriptor) {
+                    "Conflicting declarations for tweak: ${descriptor.name}"
+                }
+                existing.references += 1
+                existing.state
+            } else {
+                val tweak = RegisteredTweak(
+                    descriptor = descriptor,
+                    state = mutableStateOf(descriptor.default),
+                    references = 1,
+                )
+                tweaks[descriptor.name] = tweak
+                changed = true
+                tweak.state
             }
-            existing.references += 1
-            existing.state
-        } else {
-            val tweak = RegisteredTweak(
-                descriptor = descriptor,
-                state = mutableStateOf(descriptor.default),
-                references = 1,
-            )
-            tweaks[descriptor.name] = tweak
-            tweak.state
         }
+        if (changed) notifyObservers()
+        return state
     }
 
-    fun unregister(name: String) = synchronized(lock) {
-        val tweak = tweaks[name] ?: return@synchronized
-        tweak.references -= 1
-        if (tweak.references == 0) {
-            tweaks.remove(name)
+    fun unregister(name: String) {
+        val changed = synchronized(lock) {
+            val tweak = tweaks[name] ?: return@synchronized false
+            tweak.references -= 1
+            if (tweak.references == 0) {
+                tweaks.remove(name)
+                true
+            } else {
+                false
+            }
         }
+        if (changed) notifyObservers()
     }
 
     fun snapshot(): List<TweakSnapshot> = synchronized(lock) {
@@ -79,24 +94,58 @@ internal object TweakRegistry {
         }
     }
 
-    fun update(values: Map<String, Any?>): List<TweakSnapshot> = synchronized(lock) {
-        val changes = values.map { (name, value) ->
-            val tweak = tweaks[name]
-                ?: throw UnknownTweakException(name)
-            tweak to validateValue(tweak.descriptor, value)
-        }
+    fun update(values: Map<String, Any?>): List<TweakSnapshot> {
+        var changed = false
+        val snapshots = synchronized(lock) {
+            val changes = values.map { (name, value) ->
+                val tweak = tweaks[name]
+                    ?: throw UnknownTweakException(name)
+                tweak to validateValue(tweak.descriptor, value)
+            }
 
-        changes.forEach { (tweak, value) ->
-            tweak.state.value = value
-        }
+            changes.forEach { (tweak, value) ->
+                if (tweak.state.value != value) {
+                    tweak.state.value = value
+                    changed = true
+                }
+            }
 
-        changes.map { (tweak, _) ->
-            TweakSnapshot(tweak.descriptor, tweak.state.value)
+            changes.map { (tweak, _) ->
+                TweakSnapshot(tweak.descriptor, tweak.state.value)
+            }
         }
+        if (changed) notifyObservers()
+        return snapshots
     }
 
-    fun clear() = synchronized(lock) {
-        tweaks.clear()
+    fun observeChanges(observer: () -> Unit): Closeable {
+        val id = synchronized(lock) {
+            val nextId = nextObserverId++
+            observers[nextId] = observer
+            nextId
+        }
+        return Closeable { synchronized(lock) { observers.remove(id) } }
+    }
+
+    fun containsChangedState(changed: Set<Any>): Boolean = synchronized(lock) {
+        tweaks.values.any { it.state in changed }
+    }
+
+    fun clear() {
+        val changed = synchronized(lock) {
+            if (tweaks.isEmpty()) {
+                false
+            } else {
+                tweaks.clear()
+                true
+            }
+        }
+        if (changed) notifyObservers()
+    }
+
+    private fun notifyObservers() {
+        val current = synchronized(lock) { observers.values.toList() }
+        current.forEach { it() }
     }
 
     private fun validateDescriptor(descriptor: TweakDescriptor) {

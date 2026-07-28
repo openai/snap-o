@@ -118,7 +118,7 @@ struct CaptureToolbar: View {
       if presentedLayout.showsCapture {
         HStack {
           Spacer()
-          networkToggle()
+          inspectorToggle()
             .opacity(1 - networkVisibility)
             .allowsHitTesting(networkVisibility < 0.5)
         }
@@ -138,18 +138,23 @@ struct CaptureToolbar: View {
 
         if let networkModel {
           HStack(spacing: 8) {
-            NetworkInspectorToolbarControls(
-              model: networkModel,
-              isSearchPresented: $isNetworkSearchPresented
-            )
-            NetworkInspectorServerPicker(model: networkModel)
+            if networkModel.selectedInspector?.kind == .tweaks {
+              tweaksInspectorControls(model: networkModel)
+            } else {
+              NetworkInspectorToolbarControls(
+                model: networkModel,
+                isSearchPresented: $isNetworkSearchPresented
+              )
+            }
+            AppInspectorPicker(model: networkModel)
               .padding(.leading, 4)
+            AppInspectorViewPicker(model: networkModel)
           }
         }
 
         Spacer()
 
-        if let networkModel {
+        if let networkModel, networkModel.selectedInspector?.kind != .tweaks {
           NetworkInspectorExportMenu(model: networkModel)
         }
 
@@ -180,7 +185,7 @@ struct CaptureToolbar: View {
     let visibility = min(captureVisibility, networkVisibility)
     let width = (SnapOToolbarStyle.singleControlSize + 8) * captureVisibility
 
-    return networkToggle()
+    return inspectorToggle()
       .opacity(visibility)
       .allowsHitTesting(visibility > 0.5)
       .frame(
@@ -269,17 +274,31 @@ struct CaptureToolbar: View {
     .disabled(!workspace.canToggleCapture)
   }
 
-  private func networkToggle() -> some View {
+  private func inspectorToggle() -> some View {
     Button {
       workspace.toggleNetwork()
     } label: {
-      toggleIcon("network")
-        .accessibilityLabel("Network Inspector")
+      toggleIcon("sidebar.right")
+        .accessibilityLabel("App Inspector")
     }
-    .help(workspace.showsNetwork ? "Hide Network Inspector (⌘⌥I)" : "Show Network Inspector (⌘⌥I)")
+    .help(workspace.showsNetwork ? "Hide App Inspector (⌘⌥I)" : "Show App Inspector (⌘⌥I)")
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
     .disabled(!workspace.canToggleNetwork)
+  }
+
+  private func tweaksInspectorControls(model: NetworkInspectorHostModel) -> some View {
+    Button {
+      model.resetTweaks()
+    } label: {
+      Label("Reset All Tweaks", systemImage: "arrow.counterclockwise")
+        .labelStyle(.iconOnly)
+        .font(.system(size: 15, weight: .medium))
+        .frame(width: 34, height: 32)
+    }
+    .help("Reset all tweaks")
+    .snapOToolbarGroupStyle()
+    .disabled(!model.isPageReady || !model.hasResettableTweaks)
   }
 
   private func toggleIcon(_ systemName: String) -> some View {

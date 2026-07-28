@@ -80,6 +80,14 @@ const descriptors = [
   },
 ];
 
+const demoApp = {
+  id: "PIXEL123:com.openai.snapo.demo.tweaks",
+  name: "Snap-O Tweaks Demo",
+  packageName: "com.openai.snapo.demo.tweaks",
+  deviceName: "Pixel 9 Pro XL",
+  deviceSerial: "PIXEL123",
+};
+
 class FakeElement {
   constructor(tag = "div") {
     this.tagName = tag.toUpperCase();
@@ -133,6 +141,10 @@ class FakeElement {
     return this.attributes.get(name) ?? null;
   }
 
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
   append(...elements) {
     this.children.push(...elements);
   }
@@ -155,6 +167,7 @@ class FakeElement {
 }
 
 function findInput(element, label) {
+  if (!element) return null;
   if (element.getAttribute("aria-label") === label) return element;
 
   for (const child of element.children) {
@@ -165,24 +178,62 @@ function findInput(element, label) {
   return null;
 }
 
+function findAppChoice(document, app, view = "Tweaks") {
+  return findInput(
+    document.querySelector("#app-list"),
+    `${app.name}, ${view}, ${app.deviceName}`,
+  );
+}
+
+function findSection(document, name = "") {
+  return document
+    .querySelector("#tweak-sections")
+    .children.flatMap((column) => column.children)
+    .find((section) => section.dataset.section === name) ?? null;
+}
+
+function findTweakList(document, name = "") {
+  const section = findSection(document, name);
+  return section?.children.at(-1) ?? null;
+}
+
+function visibleSections(document) {
+  return document
+    .querySelector("#tweak-sections")
+    .children.flatMap((column) => column.children)
+    .sort((left, right) => Number(left.dataset.order) - Number(right.dataset.order))
+    .map((section) => section.dataset.section);
+}
+
+function visibleColumnSections(document) {
+  return document
+    .querySelector("#tweak-sections")
+    .children.map((column) => column.children.map((section) => section.dataset.section));
+}
+
+function visibleLabels(document, name = "") {
+  const list = findTweakList(document, name);
+
+  return list?.children.map(
+    (row) => row.children[0].children[0].children[0].textContent,
+  ) ?? [];
+}
+
 function makeDocument() {
   const selectors = [
+    "#app-picker",
+    "#app-chevron",
+    "#app-list",
+    "#inspector-segments",
     "#app-name",
     "#package-name",
+    "#device-name",
     "#connection-status",
     "#status-text",
     "#error-message",
+    "#empty-state",
     "#reset-button",
-    "#refresh-button",
-    "#appearance-section",
-    "#appearance-tweaks",
-    "#appearance-count",
-    "#motion-section",
-    "#motion-tweaks",
-    "#motion-count",
-    "#other-section",
-    "#other-tweaks",
-    "#other-count",
+    "#tweak-sections",
     ".app-icon",
   ];
   const elements = new Map(
@@ -197,10 +248,16 @@ function makeDocument() {
         setProperty(name, value) {
           properties.set(name, value);
         },
+        removeProperty(name) {
+          properties.delete(name);
+        },
       },
     },
     properties,
     createElement(tag) {
+      return new FakeElement(tag);
+    },
+    createElementNS(_namespace, tag) {
       return new FakeElement(tag);
     },
     querySelector(selector) {
@@ -228,6 +285,13 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
 
   globalThis.document = document;
   globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") {
+      return jsonResponse({
+        apps: [demoApp],
+        selectedAppId: demoApp.id,
+      });
+    }
+
     if (pathname === "/app") {
       return jsonResponse({
         name: "Snap-O Tweaks Demo",
@@ -273,31 +337,63 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
       document.querySelector("#package-name").textContent,
       "com.openai.snapo.demo.tweaks",
     );
+    assert.equal(document.querySelector("#device-name").textContent, "Pixel 9 Pro XL");
+    assert.equal(document.querySelector("#app-picker").disabled, true);
+    assert.equal(document.querySelector("#app-chevron").hidden, true);
+    assert.equal(document.querySelector("#app-picker").dataset.available, "true");
+    assert.equal(document.querySelector("#app-picker").dataset.multiple, "false");
+    assert.equal(
+      document.querySelector("#app-picker").getAttribute("aria-expanded"),
+      "false",
+    );
+    assert.equal(document.querySelector("#app-list").childElementCount, 2);
+    assert.ok(findAppChoice(document, demoApp));
+    assert.equal(document.querySelector("#app-list").hidden, true);
+    assert.equal(document.querySelector("#inspector-segments").hidden, true);
+    assert.equal(document.querySelector("#inspector-segments").childElementCount, 0);
+    assert.equal(document.querySelector("#empty-state").hidden, true);
     assert.equal(document.querySelector("#status-text").textContent, "Connected");
     assert.equal(
       document.querySelector("#connection-status").getAttribute("aria-label"),
       "Connected",
     );
-    assert.equal(document.querySelector("#appearance-section").hidden, false);
-    assert.equal(document.querySelector("#motion-section").hidden, false);
-    assert.equal(document.querySelector("#other-section").hidden, true);
-    assert.equal(
-      document.querySelector("#appearance-tweaks").childElementCount,
-      6,
-    );
-    assert.equal(document.querySelector("#motion-tweaks").childElementCount, 4);
-    assert.equal(document.querySelector("#appearance-count").textContent, "6");
-    assert.equal(document.querySelector("#motion-count").textContent, "4");
-    assert.equal(document.properties.get("--accent"), "#5468FF");
+    assert.equal(document.querySelector("#tweak-sections").childElementCount, 1);
+    assert.equal(findTweakList(document).childElementCount, 10);
+    assert.equal(document.properties.has("--accent"), false);
     assert.equal(document.querySelector("#reset-button").disabled, true);
 
-    const appearance = document.querySelector("#appearance-tweaks");
-    const motion = document.querySelector("#motion-tweaks");
+    const appearance = findTweakList(document);
+    const motion = appearance;
 
     const fontSize = findInput(appearance, "Font size");
+    const fontSizeRow = appearance.children[0];
+    const fontSizeLine = fontSizeRow.children[0];
+    const fontSizeContent = fontSizeLine.children[0];
+
+    assert.equal(fontSizeRow.children.length, 2);
+    assert.equal(fontSizeContent.children[0].textContent, "Font size");
+    assert.equal(
+      fontSizeContent.children[2].children[0].getAttribute("aria-label"),
+      "Font size value",
+    );
+    assert.equal(fontSizeContent.children[1].getAttribute("aria-label"), "Reset Font size");
+    assert.equal(fontSizeContent.children[1].getAttribute("title"), "Reset Font size");
+    assert.equal(fontSizeContent.children[1].hidden, true);
+    assert.equal(fontSizeContent.children[1].textContent, "");
+    assert.equal(fontSizeContent.children[1].children[0].tagName, "SVG");
+    assert.equal(
+      fontSizeContent.children[1].children[0].children[0].getAttribute("href"),
+      "#mock-icon-rotate-ccw",
+    );
+    assert.equal(fontSizeRow.dataset.changed, "false");
+    assert.equal(fontSize.min, "16");
+    assert.equal(fontSize.max, "72");
+
     fontSize.value = "48";
     await fontSize.emit("input");
     assert.equal(findInput(appearance, "Font size value").value, "48");
+    assert.equal(fontSizeRow.dataset.changed, "true");
+    assert.equal(fontSizeContent.children[1].hidden, false);
 
     const fontWeight = findInput(appearance, "Font weight value");
     fontWeight.value = "700";
@@ -350,7 +446,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
       "Use spring": false,
       "Preview text": "A calmer direction.",
     });
-    assert.equal(document.properties.get("--accent"), "#3B82F6");
+    assert.equal(document.properties.has("--accent"), false);
     assert.equal(document.querySelector("#reset-button").disabled, false);
 
     const resetAccent = findInput(appearance, "Reset Accent color");
@@ -359,7 +455,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     await delay(0);
     assert.deepEqual(patches.at(-1), { "Accent color": "#5468FF" });
     assert.equal(resetAccent.hidden, true);
-    assert.equal(document.properties.get("--accent"), "#5468FF");
+    assert.equal(document.properties.has("--accent"), false);
 
     const patchesBeforeInvalid = patches.length;
     fontWeight.value = "701";
@@ -377,9 +473,60 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
       Object.fromEntries(descriptors.map((tweak) => [tweak.name, tweak.default])),
     );
     assert.equal(document.querySelector("#reset-button").disabled, true);
-    assert.equal(document.properties.get("--accent"), "#5468FF");
+    assert.equal(document.properties.has("--accent"), false);
     assert.equal(document.querySelector("#status-text").textContent, "Connected");
     assert.equal(document.querySelector("#error-message").hidden, true);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("switches available inspectors beside the app-only picker", async () => {
+  const document = makeDocument();
+  const app = { ...demoApp, views: ["network", "tweaks"] };
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [app], selectedAppId: app.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: app.name, packageName: app.packageName });
+    }
+
+    if (pathname === "/tweaks") {
+      return jsonResponse({ tweaks: structuredClone(descriptors) });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?inspector-segments-test=${Date.now()}`);
+    await delay(0);
+
+    const group = document.querySelector("#inspector-segments");
+
+    assert.equal(group.hidden, false);
+    assert.equal(group.childElementCount, 2);
+    assert.equal(document.querySelector("#app-name").textContent, app.name);
+    assert.equal(findInput(group, "Network inspector").getAttribute("aria-pressed"), "false");
+    assert.equal(findInput(group, "Tweaks inspector").getAttribute("aria-pressed"), "true");
+    assert.equal(findInput(group, "Network inspector").textContent, "");
+    assert.equal(findInput(group, "Network inspector").children[0].tagName, "SVG");
+    assert.equal(findInput(group, "Tweaks inspector").children[0].tagName, "SVG");
+    assert.ok(findAppChoice(document, app, "Network"));
+    assert.ok(findAppChoice(document, app, "Tweaks"));
+
+    await findInput(group, "Network inspector").emit("click");
+
+    assert.equal(document.querySelector("#app-name").textContent, app.name);
+    assert.equal(findInput(group, "Network inspector").getAttribute("aria-pressed"), "true");
+    assert.equal(findInput(group, "Tweaks inspector").getAttribute("aria-pressed"), "false");
   } finally {
     globalThis.document = originalDocument;
     globalThis.fetch = originalFetch;
@@ -398,6 +545,13 @@ test("sliders stream immediately and wait for each request before sending the la
 
   globalThis.document = document;
   globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") {
+      return jsonResponse({
+        apps: [demoApp],
+        selectedAppId: demoApp.id,
+      });
+    }
+
     if (pathname === "/app") {
       return jsonResponse({
         name: "Snap-O Tweaks Demo",
@@ -450,7 +604,7 @@ test("sliders stream immediately and wait for each request before sending the la
     await import(`./app.js?slider-stream-test=${Date.now()}`);
     await delay(0);
 
-    const appearance = document.querySelector("#appearance-tweaks");
+    const appearance = findTweakList(document);
     const slider = findInput(appearance, "Font size");
 
     slider.value = "37";
@@ -498,7 +652,7 @@ test("sliders stream immediately and wait for each request before sending the la
     assert.equal(maximumRequestsInFlight, 1);
     assert.equal(requestsInFlight, 0);
     assert.equal(document.querySelector("#status-text").textContent, "Connected");
-    assert.equal(document.properties.get("--accent"), "#3B82F6");
+    assert.equal(document.properties.has("--accent"), false);
   } finally {
     if (finishFirstRequest) {
       finishFirstRequest();
@@ -507,5 +661,634 @@ test("sliders stream immediately and wait for each request before sending the la
 
     globalThis.document = originalDocument;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("groups tweaks only by explicit folder paths and patches their full names", async () => {
+  const document = makeDocument();
+  const tweaks = [
+    { ...descriptors[0], name: "Typography/Font size" },
+    { ...descriptors[1], name: "Typography/Font weight" },
+    { ...descriptors[2], name: "Colors/Text" },
+    { ...descriptors[5], name: "Motion/Duration" },
+    { ...descriptors[8], name: "Enabled" },
+    { ...descriptors[5], name: "Animation duration" },
+  ];
+  const patches = [];
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
+    }
+
+    if (pathname === "/tweaks" && options?.method === "PATCH") {
+      const { values } = JSON.parse(options.body);
+      patches.push(values);
+
+      for (const tweak of tweaks) {
+        if (Object.hasOwn(values, tweak.name)) tweak.value = values[tweak.name];
+      }
+
+      return jsonResponse({
+        tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+      });
+    }
+
+    if (pathname === "/tweaks") return jsonResponse({ tweaks });
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?explicit-folder-test=${Date.now()}`);
+    await delay(0);
+
+    assert.deepEqual(visibleSections(document), ["Typography", "Colors", "Motion", ""]);
+    assert.deepEqual(visibleLabels(document, "Typography"), ["Font size", "Font weight"]);
+    assert.deepEqual(visibleLabels(document, "Colors"), ["Text"]);
+    assert.deepEqual(visibleLabels(document, "Motion"), ["Duration"]);
+    assert.deepEqual(visibleLabels(document), ["Enabled", "Animation duration"]);
+
+    const typography = findTweakList(document, "Typography");
+    const slider = findInput(typography, "Typography/Font size");
+    slider.value = "48";
+    await slider.emit("input");
+    await delay(0);
+
+    assert.deepEqual(patches, [{ "Typography/Font size": 48 }]);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("restores section and tweak order as folders disappear and reappear", async () => {
+  const document = makeDocument();
+  const typography = { ...descriptors[0], name: "Typography/Font size" };
+  const enabled = { ...descriptors[8], name: "Motion/Enabled" };
+  const duration = { ...descriptors[5], name: "Motion/Duration" };
+  const stiffness = { ...descriptors[6], name: "Motion/Spring stiffness" };
+  const accent = { ...descriptors[4], name: "Colors/Accent" };
+  let tweaks = [typography, enabled, duration, stiffness, accent];
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
+    }
+
+    if (pathname === "/tweaks") return jsonResponse({ tweaks });
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?stable-folder-order-test=${Date.now()}`);
+    await delay(0);
+
+    assert.deepEqual(visibleSections(document), ["Typography", "Motion", "Colors"]);
+    assert.deepEqual(visibleColumnSections(document), [
+      ["Typography", "Colors"],
+      ["Motion"],
+    ]);
+    assert.deepEqual(visibleLabels(document, "Motion"), [
+      "Enabled",
+      "Duration",
+      "Spring stiffness",
+    ]);
+
+    tweaks = [accent, enabled, typography];
+    await delay(2_600);
+    assert.deepEqual(visibleSections(document), ["Typography", "Motion", "Colors"]);
+    assert.deepEqual(visibleLabels(document, "Motion"), ["Enabled"]);
+
+    tweaks = [accent, typography];
+    await delay(2_600);
+    assert.deepEqual(visibleSections(document), ["Typography", "Colors"]);
+    assert.deepEqual(visibleColumnSections(document), [
+      ["Typography", "Colors"],
+      [],
+    ]);
+
+    tweaks = [accent, stiffness, duration, enabled, typography];
+    await delay(2_600);
+    assert.deepEqual(visibleSections(document), ["Typography", "Motion", "Colors"]);
+    assert.deepEqual(visibleColumnSections(document), [
+      ["Typography", "Colors"],
+      ["Motion"],
+    ]);
+    assert.deepEqual(visibleLabels(document, "Motion"), [
+      "Enabled",
+      "Duration",
+      "Spring stiffness",
+    ]);
+    assert.equal(document.properties.has("--accent"), false);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("remembers folder order independently for each selected app", async () => {
+  const document = makeDocument();
+  const secondApp = {
+    id: "PIXEL123:com.example.colors",
+    name: "Color Study",
+    packageName: "com.example.colors",
+    deviceName: "Pixel 9 Pro XL",
+    deviceSerial: "PIXEL123",
+  };
+  const firstFont = { ...descriptors[0], name: "Typography/Font size" };
+  const firstMotion = { ...descriptors[5], name: "Motion/Duration" };
+  const secondColor = { ...descriptors[4], name: "Colors/Accent" };
+  const secondFont = { ...descriptors[1], name: "Typography/Font weight" };
+  let firstTweaks = [firstFont, firstMotion];
+  let selectedId = demoApp.id;
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") {
+      return jsonResponse({
+        apps: [demoApp, secondApp],
+        selectedAppId: selectedId,
+      });
+    }
+
+    if (pathname === "/apps/selection" && options?.method === "PUT") {
+      selectedId = JSON.parse(options.body).id;
+      return jsonResponse({
+        app: selectedId === secondApp.id ? secondApp : demoApp,
+      });
+    }
+
+    if (pathname === "/app") {
+      const selected = selectedId === secondApp.id ? secondApp : demoApp;
+      return jsonResponse({ name: selected.name, packageName: selected.packageName });
+    }
+
+    if (pathname === "/tweaks") {
+      return jsonResponse({
+        tweaks: selectedId === secondApp.id
+          ? [secondColor, secondFont]
+          : firstTweaks,
+      });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?per-app-folder-order-test=${Date.now()}`);
+    await delay(0);
+    assert.deepEqual(visibleSections(document), ["Typography", "Motion"]);
+
+    await document.querySelector("#app-picker").emit("click");
+    await findAppChoice(document, secondApp).emit("click");
+    assert.deepEqual(visibleSections(document), ["Colors", "Typography"]);
+    assert.deepEqual(visibleLabels(document, "Colors"), ["Accent"]);
+
+    firstTweaks = [firstMotion, firstFont];
+    await document.querySelector("#app-picker").emit("click");
+    await findAppChoice(document, demoApp).emit("click");
+
+    assert.deepEqual(visibleSections(document), ["Typography", "Motion"]);
+    assert.deepEqual(visibleLabels(document, "Typography"), ["Font size"]);
+    assert.deepEqual(visibleLabels(document, "Motion"), ["Duration"]);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("shows an accurate empty state when no tweaks apps are running", async () => {
+  const document = makeDocument();
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [], selectedAppId: null });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?empty-state-test=${Date.now()}`);
+    await delay(0);
+
+    assert.equal(document.querySelector("#app-picker").disabled, true);
+    assert.equal(document.querySelector("#app-list").childElementCount, 0);
+    assert.equal(document.querySelector("#empty-state").hidden, false);
+    assert.equal(document.querySelector("#app-name").textContent, "No app selected");
+    assert.equal(document.querySelector("#status-text").textContent, "No apps found");
+    assert.equal(document.querySelector("#reset-button").disabled, true);
+    assert.equal(document.querySelector("#error-message").hidden, true);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("switches apps only after pending slider updates finish", async () => {
+  const document = makeDocument();
+  const secondApp = {
+    id: "PIXEL123:com.example.motion",
+    name: "Motion Study",
+    packageName: "com.example.motion",
+    deviceName: "Pixel 9 Pro XL",
+    deviceSerial: "PIXEL123",
+  };
+  const motionTweak = {
+    name: "Transition progress",
+    type: "float",
+    default: 0.5,
+    value: 0.5,
+    min: 0,
+    max: 1,
+    step: 0.1,
+  };
+  const patches = [];
+  const selections = [];
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  let selectedId = demoApp.id;
+  let finishFirstRequest;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") {
+      return jsonResponse({
+        apps: [demoApp, secondApp],
+        selectedAppId: selectedId,
+      });
+    }
+
+    if (pathname === "/apps/selection" && options?.method === "PUT") {
+      const { id } = JSON.parse(options.body);
+      selections.push(id);
+      selectedId = id;
+      return jsonResponse({ app: id === secondApp.id ? secondApp : demoApp });
+    }
+
+    if (pathname === "/app") {
+      const app = selectedId === secondApp.id ? secondApp : demoApp;
+      return jsonResponse({ name: app.name, packageName: app.packageName });
+    }
+
+    if (pathname === "/tweaks" && options?.method === "PATCH") {
+      const { values } = JSON.parse(options.body);
+      patches.push({ appId: selectedId, values });
+
+      const result = jsonResponse({
+        tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+      });
+
+      if (patches.length === 1) {
+        return new Promise((resolve) => {
+          finishFirstRequest = () => resolve(result);
+        });
+      }
+
+      return result;
+    }
+
+    if (pathname === "/tweaks") {
+      return jsonResponse({
+        tweaks: selectedId === secondApp.id
+          ? [motionTweak]
+          : structuredClone(descriptors),
+      });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?app-switch-test=${Date.now()}`);
+    await delay(0);
+
+    const list = document.querySelector("#app-list");
+    assert.equal(list.childElementCount, 5);
+    assert.equal(list.hidden, true);
+    assert.equal(document.querySelector("#app-picker").disabled, false);
+    assert.equal(document.querySelector("#app-chevron").hidden, false);
+    assert.equal(document.querySelector("#app-picker").dataset.multiple, "true");
+
+    await document.querySelector("#app-picker").emit("click");
+    assert.equal(list.hidden, false);
+    assert.equal(
+      document.querySelector("#app-picker").getAttribute("aria-expanded"),
+      "true",
+    );
+
+    const slider = findInput(
+      findTweakList(document),
+      "Font size",
+    );
+    slider.value = "48";
+    await slider.emit("input");
+    assert.deepEqual(patches, [
+      { appId: demoApp.id, values: { "Font size": 48 } },
+    ]);
+
+    const switching = findAppChoice(document, secondApp).emit("click");
+    await delay(5);
+    assert.deepEqual(selections, []);
+    assert.equal(document.querySelector("#app-name").textContent, demoApp.name);
+
+    const finish = finishFirstRequest;
+    finishFirstRequest = undefined;
+    finish();
+    await switching;
+
+    assert.deepEqual(selections, [secondApp.id]);
+    assert.equal(document.querySelector("#app-list").hidden, true);
+    assert.equal(
+      document.querySelector("#app-picker").getAttribute("aria-expanded"),
+      "false",
+    );
+    assert.equal(document.querySelector("#app-name").textContent, secondApp.name);
+    assert.equal(document.querySelector("#package-name").textContent, secondApp.packageName);
+    assert.equal(document.querySelector("#tweak-sections").childElementCount, 1);
+    assert.equal(findTweakList(document).childElementCount, 1);
+    assert.ok(findInput(findTweakList(document), "Transition progress"));
+    assert.equal(document.properties.has("--accent"), false);
+    assert.equal(
+      findAppChoice(document, secondApp).getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.deepEqual(patches, [
+      { appId: demoApp.id, values: { "Font size": 48 } },
+    ]);
+  } finally {
+    if (finishFirstRequest) {
+      finishFirstRequest();
+      await delay(0);
+    }
+
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("automatic refresh replaces tweaks when the app changes screens", async () => {
+  const document = makeDocument();
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  let tweaks = structuredClone(descriptors);
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
+    }
+
+    if (pathname === "/tweaks") {
+      return jsonResponse({ tweaks });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?screen-change-test=${Date.now()}`);
+    await delay(0);
+    assert.equal(findTweakList(document).childElementCount, 10);
+
+    tweaks = [
+      {
+        name: "Transition duration",
+        type: "int",
+        default: 300,
+        value: 450,
+        min: 100,
+        max: 1_000,
+        step: 50,
+      },
+    ];
+    await delay(2_600);
+
+    assert.equal(document.querySelector("#tweak-sections").childElementCount, 1);
+    assert.equal(findTweakList(document).childElementCount, 1);
+    assert.ok(findInput(findTweakList(document), "Transition duration"));
+    assert.equal(document.querySelector("#reset-button").disabled, false);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("motion tweaks appear and disappear as the visibility tweak changes composition", async () => {
+  const document = makeDocument();
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const visibility = {
+    name: "Show motion",
+    type: "boolean",
+    default: true,
+    value: true,
+  };
+  const motionNames = new Set([
+    "Animation duration",
+    "Spring stiffness",
+    "Spring damping",
+    "Use spring",
+  ]);
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
+    }
+
+    if (pathname === "/tweaks" && options?.method === "PATCH") {
+      const { values } = JSON.parse(options.body);
+
+      if (Object.hasOwn(values, visibility.name)) {
+        visibility.value = values[visibility.name];
+      }
+
+      return jsonResponse({
+        tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+      });
+    }
+
+    if (pathname === "/tweaks") {
+      const visibleTweaks = descriptors.filter(
+        (tweak) => visibility.value || !motionNames.has(tweak.name),
+      );
+
+      return jsonResponse({
+        tweaks: [...visibleTweaks, visibility],
+      });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?composition-visibility-test=${Date.now()}`);
+    await delay(0);
+
+    let motion = findTweakList(document);
+    assert.equal(motion.childElementCount, 11);
+    assert.ok(findInput(motion, "Animation duration"));
+
+    let toggle = findInput(motion, "Show motion");
+    assert.ok(toggle);
+    toggle.checked = false;
+    await toggle.emit("change");
+    await delay(2_600);
+
+    motion = findTweakList(document);
+    assert.equal(visibility.value, false);
+    assert.equal(motion.childElementCount, 7);
+    assert.equal(findInput(motion, "Animation duration"), null);
+    assert.equal(findInput(motion, "Spring stiffness"), null);
+
+    toggle = findInput(motion, "Show motion");
+    assert.ok(toggle);
+    toggle.checked = true;
+    await toggle.emit("change");
+    await delay(2_600);
+
+    motion = findTweakList(document);
+    assert.equal(visibility.value, true);
+    assert.equal(motion.childElementCount, 11);
+    assert.ok(findInput(motion, "Animation duration"));
+    assert.ok(findInput(motion, "Spring stiffness"));
+    assert.equal(document.querySelector("#error-message").hidden, true);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("streams batched composition changes without polling tweak values", async () => {
+  const document = makeDocument();
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const originalEventSource = globalThis.EventSource;
+  const sources = [];
+  let tweakRequests = 0;
+
+  class FakeEventSource {
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      this.closed = false;
+      sources.push(this);
+    }
+
+    addEventListener(name, listener) {
+      this.listeners.set(name, listener);
+    }
+
+    emitTweaks(tweaks) {
+      this.listeners.get("tweaks")?.({
+        data: JSON.stringify({ tweaks }),
+      });
+    }
+
+    close() {
+      this.closed = true;
+    }
+  }
+
+  globalThis.document = document;
+  globalThis.EventSource = FakeEventSource;
+  globalThis.fetch = async (pathname) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
+    }
+
+    if (pathname === "/tweaks") {
+      tweakRequests += 1;
+      return jsonResponse({ tweaks: structuredClone(descriptors) });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?event-stream-test=${Date.now()}`);
+    await delay(0);
+
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0].url, "/tweaks/events");
+    assert.equal(tweakRequests, 1);
+
+    const typography = {
+      name: "Typography/Font size",
+      type: "int",
+      default: 36,
+      value: 48,
+      min: 16,
+      max: 72,
+      step: 1,
+    };
+    const motion = {
+      name: "Motion/Duration",
+      type: "int",
+      default: 400,
+      value: 550,
+      min: 100,
+      max: 1500,
+      step: 50,
+    };
+
+    sources[0].emitTweaks([typography, motion]);
+
+    assert.deepEqual(visibleSections(document), ["Typography", "Motion"]);
+    assert.equal(
+      findInput(findTweakList(document, "Typography"), "Typography/Font size").value,
+      "48",
+    );
+    assert.equal(
+      findInput(findTweakList(document, "Motion"), "Motion/Duration").value,
+      "550",
+    );
+
+    sources[0].emitTweaks([typography]);
+
+    assert.deepEqual(visibleSections(document), ["Typography"]);
+    assert.equal(findTweakList(document, "Motion"), null);
+    assert.equal(tweakRequests, 1);
+  } finally {
+    sources.forEach((source) => source.close());
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+    if (originalEventSource === undefined) {
+      delete globalThis.EventSource;
+    } else {
+      globalThis.EventSource = originalEventSource;
+    }
   }
 });

@@ -28,10 +28,12 @@ curl -fsS http://127.0.0.1:43817/tweaks
 ```
 
 Implement HTTP with Android `LocalServerSocket`, standard streams, and Android
-`JsonReader`/`JsonWriter`. Use one request per connection, JSON for app and
-tweak responses, PNG for `/app/icon`, `Content-Length`, bounded request
-sizes, a read timeout, and `Connection: close`. No server dependency, Android
-TCP port, or `INTERNET` permission is needed.
+`JsonReader`/`JsonWriter`. Use JSON for app and tweak responses, PNG for
+`/app/icon`, and server-sent events for `/tweaks/events`. Ordinary responses
+include `Content-Length` and close their connection. Event streams keep their
+connection open. Bound request sizes and concurrent connections, and apply a
+read timeout while receiving each request. No server dependency, Android TCP
+port, or `INTERNET` permission is needed.
 
 ## REST API
 
@@ -157,6 +159,35 @@ translucent.
 Numeric JSON values may contain at most 128 characters and 64 significant
 digits, with a decimal scale between -64 and 64. Reject values outside those
 limits with `422` before changing any tweaks.
+
+### GET /tweaks/events
+
+Stream the current tweaks using standard server-sent events:
+
+```bash
+curl --no-buffer http://127.0.0.1:43817/tweaks/events
+```
+
+```text
+event: tweaks
+data: {"tweaks":[{"name":"Motion/Show","type":"boolean","default":true,"value":true},{"name":"Motion/Duration","type":"int","default":400,"value":400,"min":100,"max":1500,"step":50}]}
+
+event: tweaks
+data: {"tweaks":[{"name":"Motion/Show","type":"boolean","default":true,"value":false}]}
+
+```
+
+The response uses `Content-Type: text/event-stream`. Its first event contains
+the complete current tweak list. Each later event also contains a complete,
+ordered list using exactly the `GET /tweaks` response shape. Clients replace
+their previous snapshot; a missing tweak has left composition.
+
+Changes are published after the current Android main-thread turn. Tweaks added,
+removed, or changed during the same Compose update appear together in one
+event. Value changes are streamed whether they originated from an HTTP request
+or a Compose snapshot. Idle connections receive occasional SSE comments as
+keep-alives. A slow client receives the latest complete snapshot rather than
+an unbounded queue of intermediate states.
 
 ### PATCH /tweaks
 

@@ -6,9 +6,12 @@ import SnapODeviceClient
 final class NetworkInspectorHostModel {
   private(set) var servers: [NetworkInspectorServer] = []
   private(set) var selectedServer: NetworkInspectorServer?
+  private(set) var inspectorApps: [InspectableApp] = []
+  private(set) var selectedInspector: SelectedAppInspector?
   private(set) var searchText = ""
   private(set) var sortNewestFirst = false
   private(set) var hasClearableItems = false
+  private(set) var hasResettableTweaks = false
   private(set) var selectedRecordKind: String?
   private(set) var hasVisibleRecords = false
   private(set) var isPageReady = false
@@ -21,6 +24,12 @@ final class NetworkInspectorHostModel {
     webContainer = NetworkInspectorWebContainer(bridge: bridge)
 
     bridge.inspectorStateChangedHandler = { [weak self] state in
+      self?.apply(state)
+    }
+    bridge.inspectorAppsChangedHandler = { [weak self] apps in
+      self?.applyInspectorApps(apps)
+    }
+    bridge.tweaksStateChangedHandler = { [weak self] state in
       self?.apply(state)
     }
     webContainer.pageReadinessChangedHandler = { [weak self] isReady in
@@ -44,6 +53,31 @@ final class NetworkInspectorHostModel {
       name: "network:selected-server",
       payload: NetworkServerReference(deviceId: server.deviceId, socketName: server.socketName)
     )
+  }
+
+  func selectInspector(_ app: InspectableApp, option: AppInspectorOption) {
+    let selection = SelectedAppInspector(
+      appId: app.id,
+      kind: option.kind,
+      server: option.server
+    )
+    if selectedInspector?.kind != selection.kind || selectedInspector?.server != selection.server {
+      hasResettableTweaks = false
+    }
+    selectedInspector = selection
+    sendPageEvent(name: "inspector:selected", payload: selection)
+
+    if option.kind == .network,
+       let server = servers.first(where: {
+         $0.deviceId == option.server.deviceId && $0.socketName == option.server.socketName
+       }) {
+      selectServer(server)
+    }
+  }
+
+  var selectedInspectorApp: InspectableApp? {
+    guard let selectedInspector else { return nil }
+    return inspectorApps.first { $0.id == selectedInspector.appId }
   }
 
   func setSearchText(_ searchText: String) {
@@ -70,6 +104,10 @@ final class NetworkInspectorHostModel {
     sendPageEvent(name: "network:export-visible-har", payload: true)
   }
 
+  func resetTweaks() {
+    sendPageEvent(name: "tweaks:reset", payload: true)
+  }
+
   private func apply(_ state: NetworkInspectorNativeState) {
     servers = state.servers
     selectedServer = state.selectedServer.flatMap { selection in
@@ -84,12 +122,55 @@ final class NetworkInspectorHostModel {
     hasVisibleRecords = state.hasVisibleRecords
   }
 
+  private func apply(_ state: TweaksInspectorNativeState) {
+    guard selectedInspector?.kind == .tweaks,
+          selectedInspector?.server == state.server
+    else {
+      return
+    }
+
+    hasResettableTweaks = state.hasResettableTweaks
+  }
+
+  private func applyInspectorApps(_ apps: [InspectableApp]) {
+    inspectorApps = apps
+
+    if let selection = selectedInspector,
+       apps.contains(where: { app in
+         app.id == selection.appId && app.inspectors.contains {
+           $0.kind == selection.kind && $0.server == selection.server
+         }
+       }) {
+      return
+    }
+
+    if let selectedServer,
+       let app = apps.first(where: {
+         $0.deviceId == selectedServer.deviceId && $0.inspectors.contains {
+           $0.kind == .network && $0.server.socketName == selectedServer.socketName
+         }
+       }),
+       let network = app.inspectors.first(where: { $0.kind == .network }) {
+      selectInspector(app, option: network)
+      return
+    }
+
+    guard let app = apps.first, let option = app.inspectors.first else {
+      selectedInspector = nil
+      hasResettableTweaks = false
+      return
+    }
+    selectInspector(app, option: option)
+  }
+
   private func dispatch(_ output: NetworkInspectorOutput) {
     switch output {
     case .event(let event):
       sendPageEvent(name: "network:event", payload: event)
     case .status(let status):
       sendPageEvent(name: "network:status", payload: status)
+    case .tweaks(let event):
+      sendPageEvent(name: "tweaks:changed", payload: event)
     }
   }
 

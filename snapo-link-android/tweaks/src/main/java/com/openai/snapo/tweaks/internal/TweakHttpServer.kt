@@ -8,6 +8,7 @@ import android.os.Process
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
+import androidx.compose.runtime.snapshots.Snapshot
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -21,6 +22,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
@@ -29,6 +31,8 @@ private const val MaxHeaderBytes = 16 * 1024
 private const val MaxBodyBytes = 64 * 1024
 private const val SocketTimeoutMillis = 5_000
 private const val MainThreadTimeoutMillis = 5_000L
+private const val MaximumConcurrentConnections = 32
+private const val EventHeartbeatSeconds = 15L
 
 internal class TweakHttpServer(
     private val appInfoProvider: TweakAppInfoProvider,
@@ -36,12 +40,17 @@ internal class TweakHttpServer(
     private val mainHandler: Handler = Handler(Looper.getMainLooper()),
 ) : Closeable {
     private val lifecycleLock = Any()
+    private val connectionPermits = Semaphore(MaximumConcurrentConnections)
+    private val activeSockets = LinkedHashSet<LocalSocket>()
+    private val changePublisher = TweakChangePublisher(mainHandler::post)
 
     @Volatile
     private var running = false
 
     private var server: LocalServerSocket? = null
     private var acceptThread: Thread? = null
+    private var registryObserver: Closeable? = null
+    private var disposeSnapshotObserver: (() -> Unit)? = null
 
     fun start() {
         synchronized(lifecycleLock) {
@@ -50,6 +59,13 @@ internal class TweakHttpServer(
             val localServer = LocalServerSocket(socketName)
             server = localServer
             running = true
+            registryObserver = TweakRegistry.observeChanges(changePublisher::notifyChanged)
+            val snapshotObserver = Snapshot.registerApplyObserver { changed, _ ->
+                if (TweakRegistry.containsChangedState(changed)) {
+                    changePublisher.notifyChanged()
+                }
+            }
+            disposeSnapshotObserver = snapshotObserver::dispose
             acceptThread = thread(
                 isDaemon = true,
                 name = "Snap-O Tweaks",
@@ -60,13 +76,20 @@ internal class TweakHttpServer(
     }
 
     override fun close() {
-        synchronized(lifecycleLock) {
+        val sockets = synchronized(lifecycleLock) {
             running = false
             runCatching { server?.close() }
             server = null
             acceptThread?.interrupt()
             acceptThread = null
+            registryObserver?.close()
+            registryObserver = null
+            disposeSnapshotObserver?.invoke()
+            disposeSnapshotObserver = null
+            changePublisher.close()
+            activeSockets.toList().also { activeSockets.clear() }
         }
+        sockets.forEach { socket -> runCatching { socket.close() } }
     }
 
     private fun acceptConnections(localServer: LocalServerSocket) {
@@ -78,8 +101,30 @@ internal class TweakHttpServer(
                 continue
             }
 
+            handleAcceptedConnection(socket)
+        }
+    }
+
+    private fun handleAcceptedConnection(socket: LocalSocket) {
+        if (!connectionPermits.tryAcquire()) {
             runCatching {
-                socket.use(::handleConnection)
+                socket.use {
+                    writeResponse(
+                        it.outputStream,
+                        errorResponse(503, "Too many active tweak connections."),
+                    )
+                }
+            }
+            return
+        }
+
+        synchronized(lifecycleLock) { activeSockets.add(socket) }
+        thread(isDaemon = true, name = "Snap-O Tweaks connection") {
+            try {
+                runCatching { socket.use(::handleConnection) }
+            } finally {
+                synchronized(lifecycleLock) { activeSockets.remove(socket) }
+                connectionPermits.release()
             }
         }
     }
@@ -88,7 +133,12 @@ internal class TweakHttpServer(
         socket.soTimeout = SocketTimeoutMillis
 
         val response = try {
-            route(readRequest(socket.inputStream))
+            val request = readRequest(socket.inputStream)
+            if (request.path == "/tweaks/events" && request.method == "GET") {
+                streamTweaks(socket.outputStream)
+                return
+            }
+            route(request)
         } catch (error: TweakUpdateException) {
             errorResponse(error.statusCode, error.message ?: "Invalid tweak update.")
         } catch (error: HttpFailure) {
@@ -110,7 +160,49 @@ internal class TweakHttpServer(
         "/app" -> routeApp(request)
         "/app/icon" -> routeAppIcon(request)
         "/tweaks" -> routeTweaks(request)
+        "/tweaks/events" -> throw HttpFailure(
+            statusCode = 405,
+            message = "Unsupported method: ${request.method}",
+            allowedMethods = "GET",
+        )
         else -> throw HttpFailure(404, "Unknown endpoint: ${request.path}")
+    }
+
+    private fun streamTweaks(output: OutputStream) {
+        changePublisher.subscribe().use { subscription ->
+            output.write(
+                (
+                    "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: text/event-stream; charset=utf-8\r\n" +
+                        "Cache-Control: no-cache\r\n" +
+                        "Connection: close\r\n\r\n"
+                    ).toByteArray(StandardCharsets.US_ASCII),
+            )
+            writeTweakEvent(output, subscription.initial)
+
+            while (running) {
+                val snapshot = try {
+                    subscription.events.poll(EventHeartbeatSeconds, TimeUnit.SECONDS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                }
+
+                if (snapshot == null) {
+                    output.write(": keep-alive\n\n".toByteArray(StandardCharsets.US_ASCII))
+                    output.flush()
+                } else {
+                    writeTweakEvent(output, snapshot)
+                }
+            }
+        }
+    }
+
+    private fun writeTweakEvent(output: OutputStream, tweaks: List<TweakSnapshot>) {
+        output.write("event: tweaks\ndata: ".toByteArray(StandardCharsets.US_ASCII))
+        output.write(tweaksResponse(tweaks, includeDescriptors = true).body)
+        output.write("\n\n".toByteArray(StandardCharsets.US_ASCII))
+        output.flush()
     }
 
     private fun routeApp(request: HttpRequest): HttpResponse {

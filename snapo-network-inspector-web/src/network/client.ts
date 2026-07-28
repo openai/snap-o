@@ -1,21 +1,35 @@
 import type {
   DebugInspectorPreset,
+  InspectableApp,
+  InspectorServerReference,
   LoadBodiesInput,
   NativeInspectorState,
+  NativeTweaksState,
   RequestBodies,
   SaveFileInput,
   SaveFileResult,
+  SelectedAppInspector,
   SnapOServer,
   StartStreamInput,
   StreamEvent,
   StreamStarted,
-  StreamStatus
+  StreamStatus,
+  TweakList,
+  TweakStreamEvent,
+  TweakUpdates,
+  UpdateTweaksInput
 } from "./bridge-types";
 
 export interface NetworkClient {
   readonly usesNativeServerPicker: boolean;
   appVersion(): Promise<string>;
+  listInspectorApps(): Promise<InspectableApp[]>;
   listServers(): Promise<SnapOServer[]>;
+  listTweaks(server: InspectorServerReference): Promise<TweakList>;
+  updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
+  startTweakStream(server: InspectorServerReference): Promise<StreamStarted>;
+  stopTweakStream(streamId: string): Promise<void>;
+  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
@@ -29,7 +43,10 @@ export interface NetworkClient {
   selectedDeviceChanged(deviceId: string): void;
   onPreferredDevice(callback: (deviceId: string) => void): () => void;
   nativeInspectorStateChanged(state: NativeInspectorState): void;
+  nativeTweaksStateChanged(state: NativeTweaksState): void;
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void;
+  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void;
+  onNativeTweaksReset(callback: () => void): () => void;
   onNativeSearchText(callback: (searchText: string) => void): () => void;
   onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void;
   onNativeClearCompleted(callback: () => void): () => void;
@@ -61,8 +78,32 @@ class WebKitNetworkClient implements NetworkClient {
     return this.invoke<string>("appVersion");
   }
 
+  listInspectorApps(): Promise<InspectableApp[]> {
+    return this.invoke<InspectableApp[]>("listInspectorApps");
+  }
+
   listServers(): Promise<SnapOServer[]> {
     return this.invoke<SnapOServer[]>("listServers");
+  }
+
+  listTweaks(server: InspectorServerReference): Promise<TweakList> {
+    return this.invoke<TweakList>("listTweaks", server);
+  }
+
+  updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
+    return this.invoke<TweakUpdates>("updateTweaks", input);
+  }
+
+  startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
+    return this.invoke<StreamStarted>("startTweakStream", server);
+  }
+
+  stopTweakStream(streamId: string): Promise<void> {
+    return this.invoke<void>("stopTweakStream", { streamId });
+  }
+
+  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
+    return listenWebKitEvent<TweakStreamEvent>("tweaks:changed", callback);
   }
 
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
@@ -117,8 +158,20 @@ class WebKitNetworkClient implements NetworkClient {
     void this.invoke<void>("inspectorStateChanged", state);
   }
 
+  nativeTweaksStateChanged(state: NativeTweaksState): void {
+    void this.invoke<void>("tweaksStateChanged", state);
+  }
+
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void {
     return listenWebKitEvent<StartStreamInput>("network:selected-server", callback);
+  }
+
+  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void {
+    return listenWebKitEvent<SelectedAppInspector>("inspector:selected", callback);
+  }
+
+  onNativeTweaksReset(callback: () => void): () => void {
+    return listenWebKitEvent<boolean>("tweaks:reset", () => callback());
   }
 
   onNativeSearchText(callback: (searchText: string) => void): () => void {
@@ -164,13 +217,81 @@ class HttpNetworkClient implements NetworkClient {
   private eventSource: EventSource | null = null;
   private statusCallbacks = new Set<(status: StreamStatus) => void>();
   private eventCallbacks = new Set<(event: StreamEvent) => void>();
+  private tweakCallbacks = new Set<(event: TweakStreamEvent) => void>();
+  private tweakEventSources = new Map<string, EventSource>();
 
   async appVersion(): Promise<string> {
     return "web";
   }
 
+  async listInspectorApps(): Promise<InspectableApp[]> {
+    try {
+      return await fetchJson<InspectableApp[]>("/api/inspector/apps");
+    } catch {
+      const servers = await this.listServers();
+      return servers.map((server) => ({
+        id: `${server.deviceId}:${server.packageName ?? server.displayName}`,
+        name: server.appName || server.displayName,
+        packageName: server.packageName ?? server.displayName,
+        deviceId: server.deviceId,
+        deviceDisplayTitle: server.deviceDisplayTitle,
+        appIconBase64: server.appIconBase64,
+        inspectors: [
+          {
+            kind: "network" as const,
+            server: { deviceId: server.deviceId, socketName: server.socketName }
+          }
+        ]
+      }));
+    }
+  }
+
   async listServers(): Promise<SnapOServer[]> {
     return fetchJson("/api/network/servers");
+  }
+
+  async listTweaks(server: InspectorServerReference): Promise<TweakList> {
+    return fetchJson("/api/inspector/tweaks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(server)
+    });
+  }
+
+  async updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
+    return fetchJson("/api/inspector/tweaks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    });
+  }
+
+  async startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
+    const streamId = crypto.randomUUID();
+    const query = new URLSearchParams({
+      deviceId: server.deviceId,
+      socketName: server.socketName
+    });
+    const source = new EventSource(`/api/inspector/tweaks/events?${query.toString()}`);
+
+    source.addEventListener("tweaks", (event) => {
+      const payload = JSON.parse(event.data) as TweakList;
+      const update: TweakStreamEvent = { streamId, server, tweaks: payload.tweaks };
+      for (const callback of this.tweakCallbacks) callback(update);
+    });
+
+    this.tweakEventSources.set(streamId, source);
+    return { streamId };
+  }
+
+  async stopTweakStream(streamId: string): Promise<void> {
+    this.tweakEventSources.get(streamId)?.close();
+    this.tweakEventSources.delete(streamId);
+  }
+
+  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
+    this.tweakCallbacks.add(callback);
+    return () => this.tweakCallbacks.delete(callback);
   }
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
@@ -262,7 +383,21 @@ class HttpNetworkClient implements NetworkClient {
     void state;
   }
 
+  nativeTweaksStateChanged(state: NativeTweaksState): void {
+    void state;
+  }
+
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeTweaksReset(callback: () => void): () => void {
     void callback;
     return () => {};
   }

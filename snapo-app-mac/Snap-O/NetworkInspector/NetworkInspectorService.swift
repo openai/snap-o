@@ -28,11 +28,13 @@ actor NetworkInspectorService {
 
   private let adbService: ADBService
   private let deviceTracker: DeviceTracker
+  private let tweaksService: TweaksInspectorService
 
   private var servers: [String: ServerState] = [:]
   private var streams: [String: String] = [:]
   private var activeStreamConnections: [String: UUID] = [:]
   private var streamStartFlights: [String: StreamStartFlight] = [:]
+  private var tweakStreams: [String: Task<Void, Never>] = [:]
   private var outputContinuations: [UUID: AsyncStream<NetworkInspectorOutput>.Continuation] = [:]
   private var refreshFlight: RefreshFlight?
   private var isStopped = false
@@ -40,6 +42,10 @@ actor NetworkInspectorService {
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
     self.deviceTracker = deviceTracker
+    tweaksService = TweaksInspectorService(
+      adbService: adbService,
+      deviceTracker: deviceTracker
+    )
   }
 
   func outputStream() -> AsyncStream<NetworkInspectorOutput> {
@@ -60,6 +66,89 @@ actor NetworkInspectorService {
     guard !isStopped else { return [] }
     await refresh()
     return currentServers()
+  }
+
+  func listInspectorApps() async -> [InspectableApp] {
+    let networkServers = await listServers()
+    let tweakApps = await tweaksService.listApps()
+    var apps: [String: InspectableApp] = [:]
+
+    for server in networkServers {
+      let packageName = server.packageName ?? server.displayName
+      let id = "\(server.deviceId):\(packageName)"
+      let option = AppInspectorOption(
+        kind: .network,
+        server: InspectorServerReference(
+          deviceId: server.deviceId,
+          socketName: server.socketName
+        )
+      )
+      let appName = server.appName.flatMap { $0.isEmpty ? nil : $0 }
+      apps[id] = InspectableApp(
+        id: id,
+        name: appName ?? server.displayName,
+        packageName: packageName,
+        deviceId: server.deviceId,
+        deviceDisplayTitle: server.deviceDisplayTitle,
+        appIconBase64: server.appIconBase64,
+        inspectors: [option]
+      )
+    }
+
+    for app in tweakApps {
+      let id = "\(app.deviceID):\(app.packageName)"
+      let option = AppInspectorOption(
+        kind: .tweaks,
+        server: InspectorServerReference(
+          deviceId: app.deviceID,
+          socketName: app.socketName
+        )
+      )
+      let existing = apps[id]
+      apps[id] = InspectableApp(
+        id: id,
+        name: app.name,
+        packageName: app.packageName,
+        deviceId: app.deviceID,
+        deviceDisplayTitle: app.deviceDisplayTitle,
+        appIconBase64: app.appIconBase64 ?? existing?.appIconBase64,
+        inspectors: (existing?.inspectors ?? []) + [option]
+      )
+    }
+
+    return apps.values.sorted {
+      if $0.deviceDisplayTitle != $1.deviceDisplayTitle {
+        return $0.deviceDisplayTitle < $1.deviceDisplayTitle
+      }
+      return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+    }
+  }
+
+  func listTweaks(for reference: InspectorServerReference) async throws -> TweakList {
+    try await tweaksService.listTweaks(for: reference)
+  }
+
+  func updateTweaks(_ input: UpdateTweaksInput) async throws -> TweakUpdates {
+    try await tweaksService.updateTweaks(input)
+  }
+
+  func startTweakStream(_ reference: InspectorServerReference) async throws -> NetworkStreamStarted {
+    guard !isStopped else {
+      throw NetworkInspectorError.invalidBridgeMessage
+    }
+
+    _ = try await tweaksService.listTweaks(for: reference)
+    let streamID = UUID().uuidString
+
+    tweakStreams[streamID] = Task { [weak self] in
+      await self?.consumeTweakStream(reference, streamID: streamID)
+    }
+
+    return NetworkStreamStarted(streamId: streamID)
+  }
+
+  func stopTweakStream(_ streamID: String) {
+    tweakStreams.removeValue(forKey: streamID)?.cancel()
   }
 
   func startStream(_ reference: NetworkServerReference) async throws -> NetworkStreamStarted {
@@ -132,6 +221,12 @@ actor NetworkInspectorService {
   }
 
   func stopAllStreams() async {
+    let activeTweakStreams = Array(tweakStreams.values)
+    tweakStreams.removeAll()
+    for stream in activeTweakStreams {
+      stream.cancel()
+    }
+
     let serverKeys = Set(streams.values)
     streams.removeAll()
     activeStreamConnections.removeAll()
@@ -183,6 +278,12 @@ actor NetworkInspectorService {
   func stop() async {
     guard !isStopped else { return }
     isStopped = true
+    let activeTweakStreams = Array(tweakStreams.values)
+    tweakStreams.removeAll()
+    for stream in activeTweakStreams {
+      stream.cancel()
+    }
+    await tweaksService.stop()
     refreshFlight?.task.cancel()
     refreshFlight = nil
     streams.removeAll()
@@ -209,6 +310,41 @@ actor NetworkInspectorService {
 
   func isRunning() -> Bool {
     !isStopped
+  }
+
+  private func consumeTweakStream(
+    _ reference: InspectorServerReference,
+    streamID: String
+  ) async {
+    var retryDelay: Duration = .milliseconds(250)
+
+    while !Task.isCancelled, !isStopped {
+      do {
+        try await tweaksService.streamTweaks(for: reference) { [weak self] list in
+          Task {
+            await self?.emit(
+              .tweaks(
+                TweakStreamEvent(
+                  streamId: streamID,
+                  server: reference,
+                  tweaks: list.tweaks
+                )
+              )
+            )
+          }
+        }
+        retryDelay = .milliseconds(250)
+      } catch {
+        guard !Task.isCancelled, !isStopped else { return }
+      }
+
+      do {
+        try await Task.sleep(for: retryDelay)
+      } catch {
+        return
+      }
+      retryDelay = min(retryDelay * 2, .seconds(4))
+    }
   }
 
   private func optionalCommand(
