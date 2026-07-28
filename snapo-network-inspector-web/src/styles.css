@@ -1186,9 +1186,18 @@ pre {
   background: var(--surface-container-low);
 }
 
+.inspector-app-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 .inspector-app-select {
   position: relative;
   width: min(100%, 280px);
+  min-width: 0;
+  flex: 0 1 280px;
 }
 
 .inspector-app-picker-button {
@@ -1243,6 +1252,31 @@ pre {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.inspector-app-segments {
+  display: flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--outline-variant);
+  border-radius: 16px;
+  background: var(--surface-bright);
+  padding: 2px 4px;
+}
+
+.inspector-app-segment {
+  display: grid;
+  width: 30px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--on-surface-variant);
+}
+
+.inspector-app-segment[aria-checked="true"] {
+  color: var(--accent-blue);
 }
 
 .inspector-app-menu {

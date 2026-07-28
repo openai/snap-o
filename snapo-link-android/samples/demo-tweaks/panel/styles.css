@@ -23,6 +23,7 @@
   --input-hover: #e8e8e8;
   --selection: color-mix(in srgb, var(--text) 8%, var(--surface-bright));
   --control-accent: var(--text);
+  --accent-blue: #2778db;
   --success: #23a84a;
   --error: #d04a3c;
   --content-width: 1040px;
@@ -40,6 +41,7 @@
     --line: #242424;
     --input-background: #212121;
     --input-hover: #2a2a2a;
+    --accent-blue: #5aa4e8;
     --success: #5bcf8b;
     --error: #ff7b6d;
   }
@@ -96,6 +98,44 @@ button {
   width: min(100%, 244px);
   min-width: 0;
   flex: 0 1 244px;
+}
+
+.inspector-segments {
+  display: flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-bright);
+  padding: 2px 4px;
+}
+
+.inspector-segments[hidden] {
+  display: none;
+}
+
+.inspector-segment {
+  display: grid;
+  width: 30px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+}
+
+.inspector-segment-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.inspector-segment[aria-pressed="true"] {
+  color: var(--accent-blue);
+}
+
+.inspector-segment:disabled {
+  opacity: 0.45;
 }
 
 .server-picker-button {

@@ -55,10 +55,7 @@ struct AppInspectorPicker: View {
       return model.inspectorApps.isEmpty ? "No Apps Found" : "Select an App"
     }
 
-    guard let kind = model.selectedInspector?.kind else {
-      return app.name
-    }
-    return "\(app.name) · \(kind.title)"
+    return app.name
   }
 
   private var deviceTitle: String {
@@ -68,6 +65,31 @@ struct AppInspectorPicker: View {
       return model.inspectorApps.isEmpty ? "No devices detected" : "Choose a device"
     }
     return title
+  }
+}
+
+struct AppInspectorViewPicker: View {
+  @Bindable var model: NetworkInspectorHostModel
+
+  var body: some View {
+    if let app = model.selectedInspectorApp, app.inspectors.count > 1 {
+      HStack(spacing: 0) {
+        ForEach(app.inspectors) { option in
+          Button {
+            model.selectInspector(app, option: option)
+          } label: {
+            Label(option.kind.title, systemImage: option.kind.systemImage)
+              .labelStyle(.iconOnly)
+              .font(.system(size: 15, weight: .medium))
+              .foregroundStyle(model.selectedInspector?.kind == option.kind ? Color.accentColor : Color.primary)
+              .frame(width: 34, height: 32)
+          }
+          .help(option.kind.title)
+        }
+      }
+      .snapOToolbarGroupStyle()
+      .accessibilityLabel("Inspector")
+    }
   }
 }
 

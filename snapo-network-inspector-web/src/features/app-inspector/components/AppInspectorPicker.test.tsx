@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { InspectableApp, SelectedAppInspector } from "../../../network/bridge-types";
-import { AppInspectorMenu } from "./AppInspectorPicker";
+import { AppInspectorMenu, AppInspectorPicker, AppInspectorViewPicker } from "./AppInspectorPicker";
 
 describe("app-first inspector menu", () => {
   it("shows an app once and includes only the inspectors it exposes", () => {
@@ -23,6 +23,35 @@ describe("app-first inspector menu", () => {
 
     expect(markup.match(/aria-checked="true"/g)).toHaveLength(1);
     expect(markup.match(/aria-checked="false"/g)).toHaveLength(2);
+  });
+
+  it("shows only the app name in the picker button", () => {
+    const markup = renderToStaticMarkup(<AppInspectorPicker apps={apps} selection={selection} onSelect={vi.fn()} />);
+
+    expect(markup).toContain('class="inspector-app-picker-name">ChatGPT</span>');
+    expect(markup).not.toContain("ChatGPT · Tweaks");
+    expect(markup).not.toContain("ChatGPT · Network");
+  });
+
+  it("shows a selectable icon group when an app exposes both inspectors", () => {
+    const markup = renderToStaticMarkup(
+      <AppInspectorViewPicker app={apps[0]} selection={selection} onSelect={vi.fn()} />
+    );
+
+    expect(markup).toContain('role="radiogroup"');
+    expect(markup.match(/class="inspector-app-segment"/g)).toHaveLength(2);
+    expect(markup).toMatch(/aria-label="Network" aria-checked="false"/);
+    expect(markup).toMatch(/aria-label="Tweaks" aria-checked="true"/);
+    expect(markup).not.toContain(">Network</button>");
+    expect(markup).not.toContain(">Tweaks</button>");
+  });
+
+  it("hides the icon group when only one inspector is available", () => {
+    const markup = renderToStaticMarkup(
+      <AppInspectorViewPicker app={apps[1]} selection={selection} onSelect={vi.fn()} />
+    );
+
+    expect(markup).toBe("");
   });
 });
 

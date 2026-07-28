@@ -64,6 +64,7 @@ const elements = {
   appPicker: document.querySelector("#app-picker"),
   appChevron: document.querySelector("#app-chevron"),
   appList: document.querySelector("#app-list"),
+  inspectorSegments: document.querySelector("#inspector-segments"),
   appIcon: document.querySelector(".app-icon"),
   appName: document.querySelector("#app-name"),
   packageName: document.querySelector("#package-name"),
@@ -177,6 +178,7 @@ function renderApps() {
   elements.appPicker.dataset.available = String(state.apps.length > 0);
   elements.appPicker.dataset.multiple = String(multipleApps);
   elements.appChevron.hidden = !multipleApps;
+  renderInspectorViews();
 
   if (isMockMode) {
     renderMockApps();
@@ -184,6 +186,42 @@ function renderApps() {
   }
 
   renderAppGroupedMenu();
+}
+
+function renderInspectorViews() {
+  const app = state.apps.find((candidate) => candidate.id === state.selectedAppId);
+  const views = app?.views ?? (app ? ["tweaks"] : []);
+
+  elements.inspectorSegments.hidden = views.length < 2;
+
+  if (!app || views.length < 2) {
+    elements.inspectorSegments.replaceChildren();
+    return;
+  }
+
+  const segments = views.map((view) => {
+    const title = view === "network" ? "Network" : "Tweaks";
+    const selected = view === state.selectedView;
+    const button = node("button", "inspector-segment");
+
+    button.type = "button";
+    button.disabled = state.switching;
+    button.setAttribute("aria-label", `${title} inspector`);
+    button.setAttribute("aria-pressed", String(selected));
+    button.setAttribute("title", title);
+    button.append(mockIcon(view === "network" ? "network" : "tweaks", "inspector-segment-icon"));
+    button.addEventListener("click", () => {
+      if (state.switching || view === state.selectedView) return;
+
+      state.selectedView = view;
+      updateAppIdentity(app);
+      renderApps();
+      setAppMenuOpen(false);
+    });
+    return button;
+  });
+
+  elements.inspectorSegments.replaceChildren(...segments);
 }
 
 function mockIcon(name, className = "mock-menu-icon") {
@@ -249,7 +287,7 @@ function renderMockApps() {
 
         if (app.id !== state.selectedAppId) await selectApp(app.id);
 
-        elements.appName.textContent = `${app.name} · ${viewName}`;
+        elements.appName.textContent = app.name;
         renderApps();
         setAppMenuOpen(false);
       });
@@ -316,9 +354,7 @@ function renderAppGroupedMenu() {
 
         if (app.id !== state.selectedAppId) await selectApp(app.id);
 
-        if (isMockMode) {
-          elements.appName.textContent = `${app.name} · ${viewName}`;
-        }
+        if (isMockMode) elements.appName.textContent = app.name;
         renderApps();
         setAppMenuOpen(false);
       });
@@ -346,9 +382,7 @@ function showEmptyState() {
 }
 
 function updateAppIdentity(app) {
-  elements.appName.textContent = isMockMode
-    ? `${app.name} · ${state.selectedView === "network" ? "Network" : "Tweaks"}`
-    : app.name;
+  elements.appName.textContent = app.name;
   elements.packageName.textContent = app.packageName;
   elements.deviceName.textContent = app.deviceName;
   if (isMockMode) {

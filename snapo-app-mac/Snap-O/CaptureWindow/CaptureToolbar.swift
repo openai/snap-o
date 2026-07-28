@@ -148,6 +148,7 @@ struct CaptureToolbar: View {
             }
             AppInspectorPicker(model: networkModel)
               .padding(.leading, 4)
+            AppInspectorViewPicker(model: networkModel)
           }
         }
 

@@ -136,10 +136,12 @@ test("serves the host-side tweaks panel", async () => {
   assert.match(html, /id="app-picker"/);
   assert.match(html, /id="app-chevron"/);
   assert.match(html, /id="app-list"/);
+  assert.match(html, /id="inspector-segments"/);
   assert.match(html, /id="tweak-sections"/);
   assert.match(html, /id="reset-button"/);
   assert.match(html, /href="#mock-icon-rotate-ccw"/);
   assert.match(html, /id="reset-button"[\s\S]*?id="app-picker"/);
+  assert.match(html, /id="app-picker"[\s\S]*?id="inspector-segments"/);
   assert.doesNotMatch(html, /id="refresh-button"/);
 });
 

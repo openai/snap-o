@@ -35,42 +35,79 @@ export function AppInspectorPicker({
   }, [expanded]);
 
   return (
-    <div className="inspector-app-select" ref={rootRef}>
-      <button
-        className="inspector-app-picker-button"
-        type="button"
-        aria-label="Select an app and inspector"
-        aria-haspopup="menu"
-        aria-expanded={expanded}
-        aria-controls={menuId}
-        disabled={apps.length === 0}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <AppIcon app={selectedApp} size={28} />
-        <span className="inspector-app-picker-text">
-          <span className="inspector-app-picker-name">
-            {selectedApp == null
-              ? "No Apps Found"
-              : `${selectedApp.name} · ${selection?.kind === "tweaks" ? "Tweaks" : "Network"}`}
+    <div className="inspector-app-toolbar">
+      <div className="inspector-app-select" ref={rootRef}>
+        <button
+          className="inspector-app-picker-button"
+          type="button"
+          aria-label="Select an app and inspector"
+          aria-haspopup="menu"
+          aria-expanded={expanded}
+          aria-controls={menuId}
+          disabled={apps.length === 0}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <AppIcon app={selectedApp} size={28} />
+          <span className="inspector-app-picker-text">
+            <span className="inspector-app-picker-name">{selectedApp?.name ?? "No Apps Found"}</span>
+            <span className="inspector-app-picker-device">
+              {selectedApp?.deviceDisplayTitle ?? "No devices detected"}
+            </span>
           </span>
-          <span className="inspector-app-picker-device">
-            {selectedApp?.deviceDisplayTitle ?? "No devices detected"}
-          </span>
-        </span>
-        <ChevronDown size={16} aria-hidden="true" />
-      </button>
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
 
-      {expanded ? (
-        <AppInspectorMenu
-          id={menuId}
-          apps={apps}
-          selection={selection}
-          onSelect={(app, option) => {
-            onSelect(app, option);
-            setExpanded(false);
-          }}
-        />
-      ) : null}
+        {expanded ? (
+          <AppInspectorMenu
+            id={menuId}
+            apps={apps}
+            selection={selection}
+            onSelect={(app, option) => {
+              onSelect(app, option);
+              setExpanded(false);
+            }}
+          />
+        ) : null}
+      </div>
+
+      {selectedApp ? <AppInspectorViewPicker app={selectedApp} selection={selection} onSelect={onSelect} /> : null}
+    </div>
+  );
+}
+
+export function AppInspectorViewPicker({
+  app,
+  selection,
+  onSelect
+}: {
+  app: InspectableApp;
+  selection: SelectedAppInspector | null;
+  onSelect(app: InspectableApp, option: AppInspectorOption): void;
+}): JSX.Element | null {
+  if (app.inspectors.length < 2) return null;
+
+  return (
+    <div className="inspector-app-segments" role="radiogroup" aria-label="Inspector">
+      {app.inspectors.map((option) => {
+        const selected = selection?.appId === app.id && selection.kind === option.kind;
+        const title = option.kind === "network" ? "Network" : "Tweaks";
+        const Icon = option.kind === "network" ? Network : SlidersHorizontal;
+
+        return (
+          <button
+            className="inspector-app-segment"
+            key={`${option.kind}:${option.server.socketName}`}
+            type="button"
+            role="radio"
+            aria-label={title}
+            aria-checked={selected}
+            title={title}
+            onClick={() => onSelect(app, option)}
+          >
+            <Icon size={16} aria-hidden="true" />
+          </button>
+        );
+      })}
     </div>
   );
 }

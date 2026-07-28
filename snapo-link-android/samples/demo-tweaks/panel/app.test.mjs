@@ -224,6 +224,7 @@ function makeDocument() {
     "#app-picker",
     "#app-chevron",
     "#app-list",
+    "#inspector-segments",
     "#app-name",
     "#package-name",
     "#device-name",
@@ -348,6 +349,8 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.equal(document.querySelector("#app-list").childElementCount, 2);
     assert.ok(findAppChoice(document, demoApp));
     assert.equal(document.querySelector("#app-list").hidden, true);
+    assert.equal(document.querySelector("#inspector-segments").hidden, true);
+    assert.equal(document.querySelector("#inspector-segments").childElementCount, 0);
     assert.equal(document.querySelector("#empty-state").hidden, true);
     assert.equal(document.querySelector("#status-text").textContent, "Connected");
     assert.equal(
@@ -462,6 +465,57 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.equal(document.properties.has("--accent"), false);
     assert.equal(document.querySelector("#status-text").textContent, "Connected");
     assert.equal(document.querySelector("#error-message").hidden, true);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("switches available inspectors beside the app-only picker", async () => {
+  const document = makeDocument();
+  const app = { ...demoApp, views: ["network", "tweaks"] };
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [app], selectedAppId: app.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: app.name, packageName: app.packageName });
+    }
+
+    if (pathname === "/tweaks") {
+      return jsonResponse({ tweaks: structuredClone(descriptors) });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?inspector-segments-test=${Date.now()}`);
+    await delay(0);
+
+    const group = document.querySelector("#inspector-segments");
+
+    assert.equal(group.hidden, false);
+    assert.equal(group.childElementCount, 2);
+    assert.equal(document.querySelector("#app-name").textContent, app.name);
+    assert.equal(findInput(group, "Network inspector").getAttribute("aria-pressed"), "false");
+    assert.equal(findInput(group, "Tweaks inspector").getAttribute("aria-pressed"), "true");
+    assert.equal(findInput(group, "Network inspector").textContent, "");
+    assert.equal(findInput(group, "Network inspector").children[0].tagName, "SVG");
+    assert.equal(findInput(group, "Tweaks inspector").children[0].tagName, "SVG");
+    assert.ok(findAppChoice(document, app, "Network"));
+    assert.ok(findAppChoice(document, app, "Tweaks"));
+
+    await findInput(group, "Network inspector").emit("click");
+
+    assert.equal(document.querySelector("#app-name").textContent, app.name);
+    assert.equal(findInput(group, "Network inspector").getAttribute("aria-pressed"), "true");
+    assert.equal(findInput(group, "Tweaks inspector").getAttribute("aria-pressed"), "false");
   } finally {
     globalThis.document = originalDocument;
     globalThis.fetch = originalFetch;
