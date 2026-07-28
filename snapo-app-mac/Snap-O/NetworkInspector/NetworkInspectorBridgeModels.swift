@@ -90,6 +90,11 @@ struct TweakStreamEvent: Codable {
   let tweaks: [TweakDescriptor]
 }
 
+struct TweaksInspectorNativeState: Codable {
+  let server: InspectorServerReference
+  let hasResettableTweaks: Bool
+}
+
 struct TweakUpdate: Codable {
   let name: String
   let value: TweakValue

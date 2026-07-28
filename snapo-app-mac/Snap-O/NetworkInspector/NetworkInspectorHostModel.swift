@@ -11,6 +11,7 @@ final class NetworkInspectorHostModel {
   private(set) var searchText = ""
   private(set) var sortNewestFirst = false
   private(set) var hasClearableItems = false
+  private(set) var hasResettableTweaks = false
   private(set) var selectedRecordKind: String?
   private(set) var hasVisibleRecords = false
   private(set) var isPageReady = false
@@ -27,6 +28,9 @@ final class NetworkInspectorHostModel {
     }
     bridge.inspectorAppsChangedHandler = { [weak self] apps in
       self?.applyInspectorApps(apps)
+    }
+    bridge.tweaksStateChangedHandler = { [weak self] state in
+      self?.apply(state)
     }
     webContainer.pageReadinessChangedHandler = { [weak self] isReady in
       self?.isPageReady = isReady
@@ -57,6 +61,9 @@ final class NetworkInspectorHostModel {
       kind: option.kind,
       server: option.server
     )
+    if selectedInspector?.kind != selection.kind || selectedInspector?.server != selection.server {
+      hasResettableTweaks = false
+    }
     selectedInspector = selection
     sendPageEvent(name: "inspector:selected", payload: selection)
 
@@ -115,6 +122,16 @@ final class NetworkInspectorHostModel {
     hasVisibleRecords = state.hasVisibleRecords
   }
 
+  private func apply(_ state: TweaksInspectorNativeState) {
+    guard selectedInspector?.kind == .tweaks,
+          selectedInspector?.server == state.server
+    else {
+      return
+    }
+
+    hasResettableTweaks = state.hasResettableTweaks
+  }
+
   private func applyInspectorApps(_ apps: [InspectableApp]) {
     inspectorApps = apps
 
@@ -140,6 +157,7 @@ final class NetworkInspectorHostModel {
 
     guard let app = apps.first, let option = app.inspectors.first else {
       selectedInspector = nil
+      hasResettableTweaks = false
       return
     }
     selectInspector(app, option: option)

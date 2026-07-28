@@ -8,6 +8,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
   var inspectorAppsChangedHandler: (([InspectableApp]) -> Void)?
+  var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
 
   private let service: NetworkInspectorService
 
@@ -100,6 +101,11 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "inspectorStateChanged":
       try inspectorStateChangedHandler?(
         Self.decode(NetworkInspectorNativeState.self, from: payload)
+      )
+      return nil
+    case "tweaksStateChanged":
+      try tweaksStateChangedHandler?(
+        Self.decode(TweaksInspectorNativeState.self, from: payload)
       )
       return nil
     default:

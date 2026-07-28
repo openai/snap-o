@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 import type { TweakDescriptor } from "../../network/bridge-types";
-import { groupTweaks, reconcileStreamedTweaks } from "./TweaksInspectorApp";
+import { canResetTweaks, groupTweaks, reconcileStreamedTweaks } from "./TweaksInspectorApp";
+
+describe("native reset toolbar state", () => {
+  it("disables reset when no tweaks exist", () => {
+    expect(canResetTweaks([])).toBe(false);
+  });
+
+  it("disables reset when all tweaks are at their defaults", () => {
+    expect(canResetTweaks([tweak("Typography/Font size"), tweak("Motion/Duration")])).toBe(false);
+  });
+
+  it("enables reset immediately when a tweak changes", () => {
+    expect(canResetTweaks([{ ...tweak("Typography/Font size"), value: 2 }])).toBe(true);
+  });
+
+  it("disables reset when every changed tweak returns to its default", () => {
+    const fontSize = tweak("Typography/Font size");
+
+    expect(canResetTweaks([{ ...fontSize, value: 2 }])).toBe(true);
+    expect(canResetTweaks([fontSize])).toBe(false);
+  });
+});
 
 describe("streamed tweak snapshots", () => {
   it("adds and removes a section in one update", () => {

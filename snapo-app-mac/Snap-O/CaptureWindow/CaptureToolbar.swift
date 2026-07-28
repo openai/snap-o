@@ -298,7 +298,7 @@ struct CaptureToolbar: View {
     }
     .help("Reset all tweaks")
     .snapOToolbarGroupStyle()
-    .disabled(!model.isPageReady)
+    .disabled(!model.isPageReady || !model.hasResettableTweaks)
   }
 
   private func toggleIcon(_ systemName: String) -> some View {

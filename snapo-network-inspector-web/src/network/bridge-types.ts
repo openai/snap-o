@@ -65,6 +65,11 @@ export interface TweakStreamEvent extends TweakList {
   server: InspectorServerReference;
 }
 
+export interface NativeTweaksState {
+  server: InspectorServerReference;
+  hasResettableTweaks: boolean;
+}
+
 export interface TweakUpdate {
   name: string;
   value: TweakValue;

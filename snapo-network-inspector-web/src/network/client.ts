@@ -4,6 +4,7 @@ import type {
   InspectorServerReference,
   LoadBodiesInput,
   NativeInspectorState,
+  NativeTweaksState,
   RequestBodies,
   SaveFileInput,
   SaveFileResult,
@@ -42,6 +43,7 @@ export interface NetworkClient {
   selectedDeviceChanged(deviceId: string): void;
   onPreferredDevice(callback: (deviceId: string) => void): () => void;
   nativeInspectorStateChanged(state: NativeInspectorState): void;
+  nativeTweaksStateChanged(state: NativeTweaksState): void;
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void;
   onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void;
   onNativeTweaksReset(callback: () => void): () => void;
@@ -154,6 +156,10 @@ class WebKitNetworkClient implements NetworkClient {
 
   nativeInspectorStateChanged(state: NativeInspectorState): void {
     void this.invoke<void>("inspectorStateChanged", state);
+  }
+
+  nativeTweaksStateChanged(state: NativeTweaksState): void {
+    void this.invoke<void>("tweaksStateChanged", state);
   }
 
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void {
@@ -374,6 +380,10 @@ class HttpNetworkClient implements NetworkClient {
   }
 
   nativeInspectorStateChanged(state: NativeInspectorState): void {
+    void state;
+  }
+
+  nativeTweaksStateChanged(state: NativeTweaksState): void {
     void state;
   }
 

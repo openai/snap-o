@@ -154,7 +154,14 @@ export function TweaksInspectorApp({
     () => groupTweaks(tweaks, selection.appId, orderByApp),
     [orderByApp, selection.appId, tweaks]
   );
-  const hasChanges = tweaks.some((tweak) => tweak.value !== tweak.default);
+  const hasChanges = canResetTweaks(tweaks);
+
+  useEffect(() => {
+    client.nativeTweaksStateChanged({
+      server,
+      hasResettableTweaks: hasChanges && !saving
+    });
+  }, [client, hasChanges, saving, server]);
 
   return (
     <main className="tweaks-inspector">
@@ -201,6 +208,10 @@ export function TweaksInspectorApp({
       </div>
     </main>
   );
+}
+
+export function canResetTweaks(tweaks: TweakDescriptor[]): boolean {
+  return tweaks.some((tweak) => tweak.value !== tweak.default);
 }
 
 export function reconcileStreamedTweaks(
