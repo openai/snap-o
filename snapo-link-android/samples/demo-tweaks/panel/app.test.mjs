@@ -232,7 +232,6 @@ function makeDocument() {
     "#error-message",
     "#empty-state",
     "#reset-button",
-    "#refresh-button",
     "#tweak-sections",
     ".app-icon",
   ];
@@ -705,12 +704,12 @@ test("restores section and tweak order as folders disappear and reappear", async
     ]);
 
     tweaks = [accent, enabled, typography];
-    await document.querySelector("#refresh-button").emit("click");
+    await delay(2_600);
     assert.deepEqual(visibleSections(document), ["Typography", "Motion", "Colors"]);
     assert.deepEqual(visibleLabels(document, "Motion"), ["Enabled"]);
 
     tweaks = [accent, typography];
-    await document.querySelector("#refresh-button").emit("click");
+    await delay(2_600);
     assert.deepEqual(visibleSections(document), ["Typography", "Colors"]);
     assert.deepEqual(visibleColumnSections(document), [
       ["Typography", "Colors"],
@@ -718,7 +717,7 @@ test("restores section and tweak order as folders disappear and reappear", async
     ]);
 
     tweaks = [accent, stiffness, duration, enabled, typography];
-    await document.querySelector("#refresh-button").emit("click");
+    await delay(2_600);
     assert.deepEqual(visibleSections(document), ["Typography", "Motion", "Colors"]);
     assert.deepEqual(visibleColumnSections(document), [
       ["Typography", "Colors"],
@@ -982,7 +981,7 @@ test("switches apps only after pending slider updates finish", async () => {
   }
 });
 
-test("refresh replaces tweaks when the app changes screens", async () => {
+test("automatic refresh replaces tweaks when the app changes screens", async () => {
   const document = makeDocument();
   const originalDocument = globalThis.document;
   const originalFetch = globalThis.fetch;
@@ -1021,7 +1020,7 @@ test("refresh replaces tweaks when the app changes screens", async () => {
         step: 50,
       },
     ];
-    await document.querySelector("#refresh-button").emit("click");
+    await delay(2_600);
 
     assert.equal(document.querySelector("#tweak-sections").childElementCount, 1);
     assert.equal(findTweakList(document).childElementCount, 1);

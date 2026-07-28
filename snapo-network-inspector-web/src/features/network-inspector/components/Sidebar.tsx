@@ -2,7 +2,13 @@ import { RefreshCw, SortAsc, SortDesc, Trash2 } from "lucide-react";
 import { memo } from "react";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord, ServerId } from "../../../network/cdp";
-import type { SnapOServer } from "../../../network/bridge-types";
+import type {
+  AppInspectorOption,
+  InspectableApp,
+  SelectedAppInspector,
+  SnapOServer
+} from "../../../network/bridge-types";
+import { AppInspectorPicker } from "../../app-inspector/components/AppInspectorPicker";
 import { serverHasProtocolWarning } from "../lib/protocol";
 import { RecordList } from "./RecordList";
 import { ServerSelect } from "./ServerPicker";
@@ -19,9 +25,12 @@ export const Sidebar = memo(function Sidebar({
   placeholder,
   selectedRecordId,
   client,
+  inspectorApps,
+  inspectorSelection,
   showsServerPicker,
   showsInlineToolbar,
   onServerChange,
+  onInspectorSelect,
   onReplacementServerClick,
   onSearchTextChange,
   onToggleSortOrder,
@@ -39,9 +48,12 @@ export const Sidebar = memo(function Sidebar({
   placeholder: string | null;
   selectedRecordId: string | null;
   client: NetworkClient;
+  inspectorApps?: InspectableApp[];
+  inspectorSelection?: SelectedAppInspector | null;
   showsServerPicker: boolean;
   showsInlineToolbar: boolean;
   onServerChange(server: ServerId | null): void;
+  onInspectorSelect?(app: InspectableApp, option: AppInspectorOption): void;
   onReplacementServerClick(server: SnapOServer): void;
   onSearchTextChange(value: string): void;
   onToggleSortOrder(): void;
@@ -56,7 +68,15 @@ export const Sidebar = memo(function Sidebar({
       {showsServerPicker || replacementServer != null ? (
         <div className="server-picker-frame">
           {showsServerPicker ? (
-            <ServerSelect servers={servers} selectedServer={selectedServer} onChange={onServerChange} />
+            inspectorApps && onInspectorSelect ? (
+              <AppInspectorPicker
+                apps={inspectorApps}
+                selection={inspectorSelection ?? null}
+                onSelect={onInspectorSelect}
+              />
+            ) : (
+              <ServerSelect servers={servers} selectedServer={selectedServer} onChange={onServerChange} />
+            )
           ) : null}
           {replacementServer == null ? null : (
             <button

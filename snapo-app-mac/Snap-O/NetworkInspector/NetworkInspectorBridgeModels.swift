@@ -1,6 +1,107 @@
 import Foundation
 import SnapODeviceClient
 
+enum AppInspectorKind: String, Codable {
+  case network
+  case tweaks
+}
+
+struct InspectorServerReference: Codable, Hashable {
+  let deviceId: String
+  let socketName: String
+}
+
+struct AppInspectorOption: Codable, Identifiable {
+  let kind: AppInspectorKind
+  let server: InspectorServerReference
+
+  var id: String {
+    "\(kind.rawValue):\(server.deviceId):\(server.socketName)"
+  }
+}
+
+struct InspectableApp: Codable, Identifiable {
+  let id: String
+  let name: String
+  let packageName: String
+  let deviceId: String
+  let deviceDisplayTitle: String
+  let appIconBase64: String?
+  let inspectors: [AppInspectorOption]
+}
+
+struct SelectedAppInspector: Codable {
+  let appId: String
+  let kind: AppInspectorKind
+  let server: InspectorServerReference
+}
+
+enum TweakValue: Codable {
+  case bool(Bool)
+  case int(Int)
+  case double(Double)
+  case string(String)
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let value = try? container.decode(Bool.self) {
+      self = .bool(value)
+    } else if let value = try? container.decode(Int.self) {
+      self = .int(value)
+    } else if let value = try? container.decode(Double.self) {
+      self = .double(value)
+    } else {
+      self = try .string(container.decode(String.self))
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .bool(let value):
+      try container.encode(value)
+    case .int(let value):
+      try container.encode(value)
+    case .double(let value):
+      try container.encode(value)
+    case .string(let value):
+      try container.encode(value)
+    }
+  }
+}
+
+struct TweakDescriptor: Codable {
+  let name: String
+  let type: String
+  let `default`: TweakValue
+  let value: TweakValue
+  let min: TweakValue?
+  let max: TweakValue?
+  let step: TweakValue?
+}
+
+struct TweakList: Codable {
+  let tweaks: [TweakDescriptor]
+}
+
+struct TweakUpdate: Codable {
+  let name: String
+  let value: TweakValue
+}
+
+struct TweakUpdates: Codable {
+  let tweaks: [TweakUpdate]
+}
+
+struct TweakPatch: Codable {
+  let values: [String: TweakValue]
+}
+
+struct UpdateTweaksInput: Codable {
+  let server: InspectorServerReference
+  let values: [String: TweakValue]
+}
+
 struct NetworkInspectorServer: Codable {
   let server: String
   let deviceId: String

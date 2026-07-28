@@ -1185,3 +1185,299 @@ pre {
 .text-button:hover {
   background: var(--surface-container-low);
 }
+
+.inspector-app-select {
+  position: relative;
+  width: min(100%, 280px);
+}
+
+.inspector-app-picker-button {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--outline);
+  background: var(--surface-bright);
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.inspector-app-picker-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 1px;
+}
+
+.inspector-app-picker-name,
+.inspector-app-picker-device,
+.inspector-app-heading-name,
+.inspector-app-heading-device {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-app-picker-name {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.inspector-app-picker-device {
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.inspector-app-icon {
+  display: block;
+  flex: none;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-container-high);
+}
+
+.inspector-app-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.inspector-app-menu {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  width: min(320px, calc(100vw - 24px));
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--outline);
+  background: var(--surface-bright);
+  padding: 4px;
+}
+
+.inspector-app-group + .inspector-app-group {
+  border-top: 1px solid var(--outline-variant);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.inspector-app-heading {
+  display: flex;
+  height: 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 7px;
+}
+
+.inspector-app-heading-name {
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.inspector-app-heading-device {
+  min-width: 0;
+  margin-left: auto;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.inspector-app-option {
+  display: flex;
+  width: 100%;
+  height: 38px;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0 8px 0 24px;
+  color: var(--on-surface);
+  text-align: left;
+  font-size: 12px;
+}
+
+.inspector-app-option:hover,
+.inspector-app-option:focus-visible,
+.inspector-app-option[data-selected="true"] {
+  background: color-mix(in srgb, var(--on-surface) 7%, transparent);
+}
+
+.inspector-app-option-check {
+  margin-left: auto;
+  opacity: 0;
+}
+
+.inspector-app-option[data-selected="true"] .inspector-app-option-check {
+  opacity: 1;
+}
+
+.tweaks-inspector {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--surface-bright);
+}
+
+.tweaks-inspector-toolbar {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--outline-variant);
+  padding: 7px 12px;
+}
+
+.tweaks-inspector-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tweaks-action,
+.tweaks-reset {
+  border: 0;
+  background: transparent;
+  padding: 5px 0;
+  color: var(--on-surface-variant);
+  font-size: 11px;
+}
+
+.tweaks-reset {
+  margin-left: auto;
+}
+
+.tweaks-action:disabled {
+  opacity: 0.5;
+}
+
+.tweaks-action:hover:not(:disabled),
+.tweaks-reset:hover {
+  color: var(--on-surface);
+}
+
+.tweaks-inspector-content {
+  width: min(100%, 1040px);
+  min-height: 0;
+  overflow-y: auto;
+  margin-inline: auto;
+  padding: 20px clamp(18px, 4vw, 36px) 48px;
+}
+
+.tweaks-error {
+  margin: 0 0 14px;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.tweaks-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  align-items: start;
+  gap: 0 44px;
+}
+
+.tweaks-column {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+}
+
+.tweaks-section {
+  padding-block: 14px 22px;
+}
+
+.tweaks-section h2 {
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 16px;
+}
+
+.tweaks-section-list {
+  display: grid;
+  gap: 14px;
+}
+
+.tweaks-control {
+  display: grid;
+  gap: 7px;
+}
+
+.tweaks-control-line {
+  display: flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 9px;
+}
+
+.tweaks-control-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tweaks-number,
+.tweaks-hex,
+.tweaks-string {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--surface-container-high);
+  padding: 5px 8px;
+  color: var(--on-surface);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tweaks-number {
+  width: 60px;
+  text-align: right;
+}
+
+.tweaks-hex {
+  width: 88px;
+  text-transform: uppercase;
+}
+
+.tweaks-string {
+  width: 100%;
+  min-height: 32px;
+}
+
+.tweaks-range {
+  width: 100%;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--on-surface);
+}
+
+.tweaks-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--on-surface);
+}
+
+.tweaks-color-fields {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tweaks-color {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  padding: 2px;
+}

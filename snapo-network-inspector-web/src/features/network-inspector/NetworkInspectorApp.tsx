@@ -1,12 +1,22 @@
-import type { CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
+import type { AppInspectorOption, InspectableApp, SelectedAppInspector } from "../../network/bridge-types";
 import { DetailContent } from "./components/DetailPane";
 import { Sidebar } from "./components/Sidebar";
 import { useNetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
 import { usePersistentSplitPane } from "./hooks/usePersistentSplitPane";
 import { useSearchHighlights } from "./hooks/useSearchHighlights";
 
-export function NetworkInspectorApp(): JSX.Element {
+export function NetworkInspectorApp({
+  inspectorApps = [],
+  inspectorSelection = null,
+  onInspectorSelect
+}: {
+  inspectorApps?: InspectableApp[];
+  inspectorSelection?: SelectedAppInspector | null;
+  onInspectorSelect?(app: InspectableApp, option: AppInspectorOption): void;
+}): JSX.Element {
   const model = useNetworkInspectorModel();
+  const { selectServer } = model;
   const {
     containerRef,
     sidebarWidth,
@@ -18,6 +28,11 @@ export function NetworkInspectorApp(): JSX.Element {
     resizeWithKeyboard
   } = usePersistentSplitPane();
   useSearchHighlights(containerRef, model.searchText);
+
+  useEffect(() => {
+    if (inspectorSelection?.kind !== "network") return;
+    selectServer(inspectorSelection.server);
+  }, [inspectorSelection, selectServer]);
 
   return (
     <div className="app-shell" ref={containerRef} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
@@ -36,6 +51,9 @@ export function NetworkInspectorApp(): JSX.Element {
         showsServerPicker={!model.client.usesNativeServerPicker}
         showsInlineToolbar={!model.client.usesNativeServerPicker}
         onServerChange={model.selectServer}
+        inspectorApps={inspectorApps}
+        inspectorSelection={inspectorSelection}
+        onInspectorSelect={onInspectorSelect}
         onReplacementServerClick={model.selectReplacementServer}
         onSearchTextChange={model.setSearchText}
         onToggleSortOrder={model.toggleSortOrder}

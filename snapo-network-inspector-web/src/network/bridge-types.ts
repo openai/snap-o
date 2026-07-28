@@ -16,6 +16,64 @@ export interface SnapOServer {
   appName?: string | null;
 }
 
+export type AppInspectorKind = "network" | "tweaks";
+
+export interface InspectorServerReference {
+  deviceId: string;
+  socketName: string;
+}
+
+export interface AppInspectorOption {
+  kind: AppInspectorKind;
+  server: InspectorServerReference;
+}
+
+export interface InspectableApp {
+  id: string;
+  name: string;
+  packageName: string;
+  deviceId: string;
+  deviceDisplayTitle: string;
+  appIconBase64?: string | null;
+  inspectors: AppInspectorOption[];
+}
+
+export interface SelectedAppInspector {
+  appId: string;
+  kind: AppInspectorKind;
+  server: InspectorServerReference;
+}
+
+export type TweakValue = boolean | number | string;
+
+export interface TweakDescriptor {
+  name: string;
+  type: "int" | "float" | "boolean" | "color" | "string";
+  default: TweakValue;
+  value: TweakValue;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export interface TweakList {
+  tweaks: TweakDescriptor[];
+}
+
+export interface TweakUpdate {
+  name: string;
+  value: TweakValue;
+}
+
+export interface TweakUpdates {
+  tweaks: TweakUpdate[];
+}
+
+export interface UpdateTweaksInput {
+  server: InspectorServerReference;
+  values: Record<string, TweakValue>;
+}
+
 export interface NativeInspectorState {
   servers: SnapOServer[];
   selectedServer: StartStreamInput | null;

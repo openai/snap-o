@@ -74,7 +74,6 @@ const elements = {
   empty: document.querySelector("#empty-state"),
   sections: document.querySelector("#tweak-sections"),
   reset: document.querySelector("#reset-button"),
-  refresh: document.querySelector("#refresh-button"),
 };
 
 function node(tag, className, text) {
@@ -949,7 +948,6 @@ if (typeof window !== "undefined") {
   });
 }
 
-elements.refresh.addEventListener("click", () => load());
 elements.reset.addEventListener("click", resetTweaks);
 
 elements.appIcon.addEventListener("error", (event) => {

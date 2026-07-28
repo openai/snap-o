@@ -137,6 +137,10 @@ test("serves the host-side tweaks panel", async () => {
   assert.match(html, /id="app-chevron"/);
   assert.match(html, /id="app-list"/);
   assert.match(html, /id="tweak-sections"/);
+  assert.match(html, /id="reset-button"/);
+  assert.match(html, /href="#mock-icon-rotate-ccw"/);
+  assert.match(html, /id="reset-button"[\s\S]*?id="app-picker"/);
+  assert.doesNotMatch(html, /id="refresh-button"/);
 });
 
 test("serves the browser application and stylesheet", async () => {
@@ -161,7 +165,8 @@ test("anchors the app and actions to the Mac-style full-width toolbar", async ()
 
   assert.ok(toolbar);
   assert.match(toolbar, /width:\s*100%/);
-  assert.match(toolbar, /justify-content:\s*space-between/);
+  assert.match(toolbar, /justify-content:\s*flex-start/);
+  assert.match(toolbar, /gap:\s*8px/);
   assert.match(toolbar, /padding:\s*8px\s+12px/);
   assert.doesNotMatch(toolbar, /margin-inline:\s*auto/);
 

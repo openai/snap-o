@@ -86,8 +86,8 @@ button {
   width: 100%;
   min-height: 66px;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 8px;
   padding: 8px 12px;
 }
 
@@ -460,6 +460,10 @@ button {
 
 .toolbar-button:disabled {
   color: var(--subtle);
+}
+
+.toolbar-icon {
+  display: block;
 }
 
 .error-message {

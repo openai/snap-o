@@ -1,6 +1,9 @@
-# Snap-O Network Inspector Web UI
+# Snap-O App Inspector Web UI
 
-This project contains the React renderer embedded in Snap-O's native macOS app. The Swift app hosts the built files in a `WKWebView` and provides device and network operations through the WebKit message bridge in `src/network/client.ts`.
+This project contains the App Inspector renderer embedded in Snap-O's native
+macOS app. The Swift app hosts the built files in a `WKWebView` and provides
+device, Network Inspector, and Snap-O Tweaks operations through the WebKit
+message bridge in `src/network/client.ts`.
 
 The renderer also retains its HTTP transport so it can run in a browser-hosted environment. It contains only portable web UI code.
 
@@ -16,7 +19,9 @@ npm install --registry=https://openai.firewall.socket.dev/npm/
 npm run dev
 ```
 
-Running the renderer by itself uses the HTTP endpoints under `/api/network/...`. To use the native WebKit bridge and inspect a connected device, build and run the Swift app in `snapo-app-mac`.
+Running the renderer by itself uses the HTTP endpoints under `/api/network/...`
+and `/api/inspector/...`. To use the native WebKit bridge and inspect a connected
+device, build and run the Swift app in `snapo-app-mac`.
 
 ## Validation
 

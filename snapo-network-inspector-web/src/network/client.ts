@@ -1,21 +1,30 @@
 import type {
   DebugInspectorPreset,
+  InspectableApp,
+  InspectorServerReference,
   LoadBodiesInput,
   NativeInspectorState,
   RequestBodies,
   SaveFileInput,
   SaveFileResult,
+  SelectedAppInspector,
   SnapOServer,
   StartStreamInput,
   StreamEvent,
   StreamStarted,
-  StreamStatus
+  StreamStatus,
+  TweakList,
+  TweakUpdates,
+  UpdateTweaksInput
 } from "./bridge-types";
 
 export interface NetworkClient {
   readonly usesNativeServerPicker: boolean;
   appVersion(): Promise<string>;
+  listInspectorApps(): Promise<InspectableApp[]>;
   listServers(): Promise<SnapOServer[]>;
+  listTweaks(server: InspectorServerReference): Promise<TweakList>;
+  updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
@@ -30,6 +39,8 @@ export interface NetworkClient {
   onPreferredDevice(callback: (deviceId: string) => void): () => void;
   nativeInspectorStateChanged(state: NativeInspectorState): void;
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void;
+  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void;
+  onNativeTweaksReset(callback: () => void): () => void;
   onNativeSearchText(callback: (searchText: string) => void): () => void;
   onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void;
   onNativeClearCompleted(callback: () => void): () => void;
@@ -61,8 +72,20 @@ class WebKitNetworkClient implements NetworkClient {
     return this.invoke<string>("appVersion");
   }
 
+  listInspectorApps(): Promise<InspectableApp[]> {
+    return this.invoke<InspectableApp[]>("listInspectorApps");
+  }
+
   listServers(): Promise<SnapOServer[]> {
     return this.invoke<SnapOServer[]>("listServers");
+  }
+
+  listTweaks(server: InspectorServerReference): Promise<TweakList> {
+    return this.invoke<TweakList>("listTweaks", server);
+  }
+
+  updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
+    return this.invoke<TweakUpdates>("updateTweaks", input);
   }
 
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
@@ -121,6 +144,14 @@ class WebKitNetworkClient implements NetworkClient {
     return listenWebKitEvent<StartStreamInput>("network:selected-server", callback);
   }
 
+  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void {
+    return listenWebKitEvent<SelectedAppInspector>("inspector:selected", callback);
+  }
+
+  onNativeTweaksReset(callback: () => void): () => void {
+    return listenWebKitEvent<boolean>("tweaks:reset", () => callback());
+  }
+
   onNativeSearchText(callback: (searchText: string) => void): () => void {
     return listenWebKitEvent<string>("network:search-text", callback);
   }
@@ -169,8 +200,46 @@ class HttpNetworkClient implements NetworkClient {
     return "web";
   }
 
+  async listInspectorApps(): Promise<InspectableApp[]> {
+    try {
+      return await fetchJson<InspectableApp[]>("/api/inspector/apps");
+    } catch {
+      const servers = await this.listServers();
+      return servers.map((server) => ({
+        id: `${server.deviceId}:${server.packageName ?? server.displayName}`,
+        name: server.appName || server.displayName,
+        packageName: server.packageName ?? server.displayName,
+        deviceId: server.deviceId,
+        deviceDisplayTitle: server.deviceDisplayTitle,
+        appIconBase64: server.appIconBase64,
+        inspectors: [
+          {
+            kind: "network" as const,
+            server: { deviceId: server.deviceId, socketName: server.socketName }
+          }
+        ]
+      }));
+    }
+  }
+
   async listServers(): Promise<SnapOServer[]> {
     return fetchJson("/api/network/servers");
+  }
+
+  async listTweaks(server: InspectorServerReference): Promise<TweakList> {
+    return fetchJson("/api/inspector/tweaks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(server)
+    });
+  }
+
+  async updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
+    return fetchJson("/api/inspector/tweaks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    });
   }
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
@@ -263,6 +332,16 @@ class HttpNetworkClient implements NetworkClient {
   }
 
   onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeTweaksReset(callback: () => void): () => void {
     void callback;
     return () => {};
   }

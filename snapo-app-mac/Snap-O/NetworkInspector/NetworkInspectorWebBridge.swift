@@ -7,6 +7,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   static let messageHandlerName = "snapoNetwork"
 
   var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
+  var inspectorAppsChangedHandler: (([InspectableApp]) -> Void)?
 
   private let service: NetworkInspectorService
 
@@ -48,6 +49,16 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
       return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
     case "listServers":
       return try await Self.jsonObject(service.listServers())
+    case "listInspectorApps":
+      let apps = await service.listInspectorApps()
+      inspectorAppsChangedHandler?(apps)
+      return try Self.jsonObject(apps)
+    case "listTweaks":
+      let reference = try Self.decode(InspectorServerReference.self, from: payload)
+      return try await Self.jsonObject(service.listTweaks(for: reference))
+    case "updateTweaks":
+      let input = try Self.decode(UpdateTweaksInput.self, from: payload)
+      return try await Self.jsonObject(service.updateTweaks(input))
     case "loadBodies":
       let input = try Self.decode(NetworkLoadBodiesInput.self, from: payload)
       return try await Self.jsonObject(service.loadBodies(input))

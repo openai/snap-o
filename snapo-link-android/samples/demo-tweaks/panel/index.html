@@ -41,10 +41,29 @@
       <symbol id="mock-icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="m20 6-11 11-5-5" />
       </symbol>
+      <symbol id="mock-icon-rotate-ccw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+        <path d="M3 3v5h5" />
+      </symbol>
     </svg>
     <main class="inspector">
       <header class="inspector-toolbar">
         <div class="toolbar-content">
+          <div class="toolbar">
+            <button
+              id="reset-button"
+              class="toolbar-button"
+              type="button"
+              aria-label="Reset all tweaks"
+              title="Reset all tweaks"
+              disabled
+            >
+              <svg class="toolbar-icon" width="16" height="16" aria-hidden="true">
+                <use href="#mock-icon-rotate-ccw"></use>
+              </svg>
+            </button>
+          </div>
+
           <div class="server-select">
             <button
               id="app-picker"
@@ -91,15 +110,6 @@
               aria-label="Detected apps"
               hidden
             ></div>
-          </div>
-
-          <div class="toolbar">
-            <button id="refresh-button" class="toolbar-button" type="button">
-              Refresh
-            </button>
-            <button id="reset-button" class="toolbar-button" type="button" disabled>
-              Reset all
-            </button>
           </div>
         </div>
       </header>
