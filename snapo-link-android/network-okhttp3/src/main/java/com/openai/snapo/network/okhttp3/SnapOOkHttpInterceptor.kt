@@ -367,7 +367,9 @@ internal class CapturingRequestBody(
         val buffered = capturingSink.buffer()
         try {
             delegate.writeTo(buffered)
-            buffered.emit()
+            if (buffered.isOpen) {
+                buffered.emit()
+            }
         } finally {
             val snapshot = capture.snapshot()
             val completedCapture = RequestBodyCapture(

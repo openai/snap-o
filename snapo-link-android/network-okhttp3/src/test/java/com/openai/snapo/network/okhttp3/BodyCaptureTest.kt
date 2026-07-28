@@ -62,6 +62,31 @@ class BodyCaptureTest {
     }
 
     @Test
+    fun `request capture succeeds when the request body closes its sink`() {
+        val delegate = object : RequestBody() {
+            override fun contentType(): MediaType? = null
+
+            override fun writeTo(sink: BufferedSink) {
+                sink.writeUtf8("request body")
+                sink.close()
+            }
+        }
+        var capture: RequestBodyCapture? = null
+        val body = CapturingRequestBody(delegate = delegate, maxBytes = 4) { value ->
+            capture = value
+        }
+        val sink = Buffer()
+
+        body.writeTo(sink)
+
+        assertEquals("request body", sink.readUtf8())
+        val captured = checkNotNull(capture)
+        assertArrayEquals("requ".encodeToByteArray(), captured.body)
+        assertEquals(12L, captured.totalBytes)
+        assertEquals(8L, captured.truncatedBytes)
+    }
+
+    @Test
     fun `request observer failure cannot break the network write`() {
         val sink = Buffer()
         val body = CapturingRequestBody(CountingRequestBody("request body"), maxBytes = 4) {
