@@ -40,6 +40,8 @@ export interface NetworkClient {
   openNativeColorPanel?(color: string, sessionId: string, present?: boolean): Promise<void>;
   closeNativeColorPanel?(sessionId: string): Promise<void>;
   onNativeColorPanelChange?(callback: (event: NativeColorPanelChange) => void): () => void;
+  listHiddenHosts(): Promise<string[]>;
+  addHiddenHost(host: string): Promise<void>;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
@@ -58,6 +60,7 @@ export interface NetworkClient {
   onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void;
   onNativeTweaksReset(callback: () => void): () => void;
   onNativeSearchText(callback: (searchText: string) => void): () => void;
+  onNativeHiddenHosts(callback: (hiddenHosts: string[]) => void): () => void;
   onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void;
   onNativeClearCompleted(callback: () => void): () => void;
   onNativeCopySelectedUrl(callback: () => void): () => void;
@@ -132,6 +135,14 @@ class WebKitNetworkClient implements NetworkClient {
     return listenWebKitEvent<NativeColorPanelChange>("tweaks:color-panel-changed", callback);
   }
 
+  listHiddenHosts(): Promise<string[]> {
+    return this.invoke<string[]>("listHiddenHosts");
+  }
+
+  addHiddenHost(host: string): Promise<void> {
+    return this.invoke<void>("addHiddenHost", { host });
+  }
+
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
     return this.invoke<RequestBodies>("loadBodies", input);
   }
@@ -202,6 +213,10 @@ class WebKitNetworkClient implements NetworkClient {
 
   onNativeSearchText(callback: (searchText: string) => void): () => void {
     return listenWebKitEvent<string>("network:search-text", callback);
+  }
+
+  onNativeHiddenHosts(callback: (hiddenHosts: string[]) => void): () => void {
+    return listenWebKitEvent<string[]>("network:hidden-hosts", callback);
   }
 
   onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void {
@@ -346,6 +361,14 @@ class HttpNetworkClient implements NetworkClient {
     return () => this.tweakCallbacks.delete(callback);
   }
 
+  async listHiddenHosts(): Promise<string[]> {
+    return [];
+  }
+
+  async addHiddenHost(host: string): Promise<void> {
+    void host;
+  }
+
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
     return fetchJson("/api/network/bodies", {
       method: "POST",
@@ -455,6 +478,11 @@ class HttpNetworkClient implements NetworkClient {
   }
 
   onNativeSearchText(callback: (searchText: string) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeHiddenHosts(callback: (hiddenHosts: string[]) => void): () => void {
     void callback;
     return () => {};
   }

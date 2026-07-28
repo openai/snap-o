@@ -10,17 +10,20 @@ import {
 import type { SnapOServer } from "../../../network/bridge-types";
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
 import { bodyMetadata } from "../../../network/payload";
+import { isHiddenHost } from "./hostFilters";
 import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
 export function filterRecords(
   records: InspectorRecord[],
   selectedServer: ServerId | null,
   searchText: string,
-  newestFirst: boolean
+  newestFirst: boolean,
+  hiddenHosts: readonly string[] = []
 ): InspectorRecord[] {
   const searchQuery = parseNetworkSearchQuery(searchText);
   const filteredRecords = records
     .filter((record) => serverMatches(selectedServer, record.server))
+    .filter((record) => !isHiddenHost(record.url, hiddenHosts))
     .filter((record) => matchesNetworkSearch(record, searchQuery))
     .sort((a, b) => a.startedAt - b.startedAt);
   if (newestFirst) filteredRecords.reverse();

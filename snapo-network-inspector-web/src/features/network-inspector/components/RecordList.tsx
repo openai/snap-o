@@ -4,6 +4,7 @@ import { recordId, type InspectorRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { StatusView } from "./Status";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
+import { normalizeHiddenHost } from "../lib/hostFilters";
 import { contextMenuExportSelection, splitUrl } from "../lib/records";
 
 export const RecordList = memo(function RecordList({
@@ -12,6 +13,7 @@ export const RecordList = memo(function RecordList({
   placeholder,
   selectedRecordId,
   onSelect,
+  onAddHiddenHost,
   client
 }: {
   records: InspectorRecord[];
@@ -19,6 +21,7 @@ export const RecordList = memo(function RecordList({
   placeholder: string | null;
   selectedRecordId: string | null;
   onSelect(id: string): void;
+  onAddHiddenHost(value: string): void;
   client: NetworkClient;
 }): JSX.Element {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -31,10 +34,10 @@ export const RecordList = memo(function RecordList({
       setMenu({
         x: event.clientX,
         y: event.clientY,
-        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client)
+        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client, onAddHiddenHost)
       });
     },
-    [allRecords, client, onSelect, selectedRecordId]
+    [allRecords, client, onAddHiddenHost, onSelect, selectedRecordId]
   );
 
   useEffect(() => {
@@ -108,14 +111,23 @@ const RecordRow = memo(function RecordRow({
   );
 });
 
-function sidebarContextMenuItems(
+export function sidebarContextMenuItems(
   clicked: InspectorRecord,
   selectedRecordId: string | null,
   allRecords: InspectorRecord[],
-  client: NetworkClient
+  client: NetworkClient,
+  onAddHiddenHost: (host: string) => void
 ): ContextMenuItem[] {
   const exportRecords = contextMenuExportSelection(clicked, selectedRecordId, allRecords);
+  const host = normalizeHiddenHost(clicked.url);
   const items: ContextMenuItem[] = [{ label: "Copy URL", action: () => void client.copyText(clicked.url) }];
+  items.push({
+    label: "Add to filtered hosts",
+    action: () => {
+      if (host != null) onAddHiddenHost(host);
+    },
+    disabled: host == null
+  });
   if (clicked.kind === "request") {
     items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked) });
   }

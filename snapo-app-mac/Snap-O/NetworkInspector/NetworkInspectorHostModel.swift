@@ -1,14 +1,20 @@
+import Foundation
 import Observation
 import SnapODeviceClient
 
 @Observable
 @MainActor
 final class NetworkInspectorHostModel {
+  private enum Keys {
+    static let hiddenHosts = "networkInspector.hiddenHosts"
+  }
+
   private(set) var servers: [NetworkInspectorServer] = []
   private(set) var selectedServer: NetworkInspectorServer?
   private(set) var inspectorApps: [InspectableApp] = []
   private(set) var selectedInspector: SelectedAppInspector?
   private(set) var searchText = ""
+  private(set) var hiddenHosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
   private(set) var sortNewestFirst = false
   private(set) var hasClearableItems = false
   private(set) var hasResettableTweaks = false
@@ -32,8 +38,18 @@ final class NetworkInspectorHostModel {
     bridge.tweaksStateChangedHandler = { [weak self] state in
       self?.apply(state)
     }
+    bridge.hiddenHostsHandler = { [weak self] in
+      self?.hiddenHosts ?? []
+    }
+    bridge.addHiddenHostHandler = { [weak self] host in
+      self?.addHiddenHost(host)
+    }
     webContainer.pageReadinessChangedHandler = { [weak self] isReady in
-      self?.isPageReady = isReady
+      guard let self else { return }
+      isPageReady = isReady
+      if isReady {
+        sendPageEvent(name: "network:hidden-hosts", payload: hiddenHosts)
+      }
     }
     webContainer.start()
 
@@ -87,6 +103,21 @@ final class NetworkInspectorHostModel {
 
   func setSearchText(_ searchText: String) {
     sendPageEvent(name: "network:search-text", payload: searchText)
+  }
+
+  func addHiddenHost(_ value: String) {
+    guard let host = Self.normalizedHost(value), !hiddenHosts.contains(host) else { return }
+
+    hiddenHosts.append(host)
+    hiddenHosts.sort()
+    saveHiddenHosts()
+  }
+
+  func removeHiddenHost(_ host: String) {
+    guard let index = hiddenHosts.firstIndex(of: host) else { return }
+
+    hiddenHosts.remove(at: index)
+    saveHiddenHosts()
   }
 
   func setSortNewestFirst(_ sortNewestFirst: Bool) {
@@ -197,5 +228,32 @@ final class NetworkInspectorHostModel {
 
   private func sendPageEvent(name: String, payload: some Encodable) {
     webContainer.sendPageEvent(name: name, payload: payload)
+  }
+
+  private func saveHiddenHosts() {
+    UserDefaults.standard.set(hiddenHosts, forKey: Keys.hiddenHosts)
+    sendPageEvent(name: "network:hidden-hosts", payload: hiddenHosts)
+  }
+
+  private static func normalizedHost(_ value: String) -> String? {
+    var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasPrefix("*.") {
+      trimmed.removeFirst(2)
+    }
+    guard !trimmed.isEmpty else { return nil }
+
+    let input = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+    guard let components = URLComponents(string: input),
+          let scheme = components.scheme?.lowercased(),
+          ["http", "https", "ws", "wss"].contains(scheme),
+          components.user == nil,
+          components.password == nil,
+          let rawHost = components.host?.lowercased()
+    else {
+      return nil
+    }
+
+    let host = rawHost.hasSuffix(".") ? String(rawHost.dropLast()) : rawHost
+    return host.isEmpty ? nil : host
   }
 }
