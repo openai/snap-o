@@ -14,6 +14,7 @@ import { recordId, type InspectorRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { StatusView } from "./Status";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
+import { normalizeHiddenHost } from "../lib/hostFilters";
 import { contextMenuExportSelection, splitUrl } from "../lib/records";
 
 export const RecordList = memo(function RecordList({
@@ -22,6 +23,7 @@ export const RecordList = memo(function RecordList({
   placeholder,
   selectedRecordId,
   onSelect,
+  onAddHiddenHost,
   client,
   isConnected = true
 }: {
@@ -30,6 +32,7 @@ export const RecordList = memo(function RecordList({
   placeholder: string | null;
   selectedRecordId: string | null;
   onSelect(id: string): void;
+  onAddHiddenHost(value: string): void;
   client: NetworkClient;
   isConnected?: boolean;
 }): JSX.Element {
@@ -53,10 +56,10 @@ export const RecordList = memo(function RecordList({
         x,
         y,
         keyboard,
-        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client, isConnected)
+        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client, onAddHiddenHost, isConnected)
       });
     },
-    [allRecords, client, isConnected, selectRecord, selectedRecordId]
+    [allRecords, client, isConnected, onAddHiddenHost, selectRecord, selectedRecordId]
   );
   const openActiveContextMenu = () => {
     const record = records[selectedIndex];
@@ -209,15 +212,24 @@ const RecordRow = memo(function RecordRow({
   );
 });
 
-function sidebarContextMenuItems(
+export function sidebarContextMenuItems(
   clicked: InspectorRecord,
   selectedRecordId: string | null,
   allRecords: InspectorRecord[],
   client: NetworkClient,
-  isConnected: boolean
+  onAddHiddenHost: (host: string) => void,
+  isConnected = true
 ): ContextMenuItem[] {
   const exportRecords = contextMenuExportSelection(clicked, selectedRecordId, allRecords);
+  const host = normalizeHiddenHost(clicked.url);
   const items: ContextMenuItem[] = [{ label: "Copy URL", action: () => void client.copyText(clicked.url) }];
+  items.push({
+    label: "Add to filtered hosts",
+    action: () => {
+      if (host != null) onAddHiddenHost(host);
+    },
+    disabled: host == null
+  });
   if (clicked.kind === "request") {
     items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked, isConnected) });
   }

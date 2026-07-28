@@ -5,6 +5,7 @@ import SwiftUI
 struct NetworkInspectorToolbarControls: View {
   @Bindable var model: NetworkInspectorHostModel
   @Binding var isSearchPresented: Bool
+  @State private var isHostFilterPresented = false
 
   private var sortHelp: String {
     model.sortNewestFirst
@@ -38,6 +39,20 @@ struct NetworkInspectorToolbarControls: View {
           .frame(width: 34, height: 32)
         }
         .help(sortHelp)
+
+        Button {
+          isHostFilterPresented.toggle()
+        } label: {
+          Label("Manage Hidden Hosts", systemImage: "line.3.horizontal.decrease.circle")
+            .labelStyle(.iconOnly)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(model.hiddenHosts.isEmpty ? Color.primary : Color.accentColor)
+            .frame(width: 34, height: 32)
+        }
+        .help(hostFilterHelp)
+        .popover(isPresented: $isHostFilterPresented, arrowEdge: .bottom) {
+          NetworkInspectorHostFilterPopover(model: model)
+        }
 
         if !isSearchPresented {
           Button {
@@ -83,6 +98,63 @@ struct NetworkInspectorToolbarControls: View {
         isSearchPresented = true
       }
     }
+  }
+
+  private var hostFilterHelp: String {
+    let count = model.hiddenHosts.count
+    guard count > 0 else { return "Manage permanently hidden hosts" }
+    return "Manage permanently hidden hosts (\(count) active \(count == 1 ? "filter" : "filters"))"
+  }
+}
+
+private struct NetworkInspectorHostFilterPopover: View {
+  @Bindable var model: NetworkInspectorHostModel
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Hidden Hosts")
+          .font(.system(size: 13, weight: .semibold))
+
+        Text("Right-click on any request and click \"Add to filtered hosts\".")
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      if model.hiddenHosts.isEmpty {
+        Text("No hidden hosts")
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+      } else {
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 4) {
+            ForEach(model.hiddenHosts, id: \.self) { host in
+              HStack(spacing: 8) {
+                Text(host)
+                  .font(.system(size: 12))
+                  .lineLimit(1)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                  model.removeHiddenHost(host)
+                } label: {
+                  Label("Show \(host) Again", systemImage: "xmark.circle.fill")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Show requests to \(host) again")
+              }
+              .padding(.vertical, 4)
+            }
+          }
+        }
+        .frame(maxHeight: 200)
+      }
+    }
+    .padding(14)
+    .frame(width: 340, alignment: .leading)
   }
 }
 

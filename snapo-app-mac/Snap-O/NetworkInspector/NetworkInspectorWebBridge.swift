@@ -17,6 +17,8 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   var appInspectorStateChangedHandler: ((AppInspectorState) -> Void)?
   var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
   var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
+  var hiddenHostsHandler: (() -> [String])?
+  var addHiddenHostHandler: ((String) -> Void)?
 
   private let service: NetworkInspectorService
   private var activeColorPanelSessionID: String?
@@ -107,6 +109,12 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "stopTweakStream":
       let input = try Self.decode(StreamIdentifier.self, from: payload)
       await service.stopTweakStream(input.streamId)
+      return nil
+    case "listHiddenHosts":
+      return try Self.jsonObject(hiddenHostsHandler?() ?? [])
+    case "addHiddenHost":
+      let input = try Self.decode(HiddenHostInput.self, from: payload)
+      addHiddenHostHandler?(input.host)
       return nil
     case "loadBodies":
       let input = try Self.decode(NetworkLoadBodiesInput.self, from: payload)
@@ -284,6 +292,10 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   private struct StreamIdentifier: Decodable {
     let streamId: String
+  }
+
+  private struct HiddenHostInput: Decodable {
+    let host: String
   }
 
   private struct ExternalURL: Decodable {

@@ -17,6 +17,7 @@ import { NetworkStreamController, type StreamLifecycleState } from "../../../net
 import { useInspectorUiState } from "./useInspectorUiState";
 import { applyDebugInspectorPreset } from "../lib/debug";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
+import { loadHiddenHosts, normalizeHiddenHost, normalizeHiddenHosts, saveHiddenHosts } from "../lib/hostFilters";
 import {
   clearCompleted,
   countRecordsForServer,
@@ -45,6 +46,7 @@ export interface NetworkInspectorModel {
   allRecords: InspectorRecord[];
   sidebarPlaceholder: string | null;
   searchText: string;
+  hiddenHosts: string[];
   sortNewestFirst: boolean;
   serverRecordCount: number;
   hasClearableItems: boolean;
@@ -53,6 +55,8 @@ export interface NetworkInspectorModel {
   selectReplacementServer(server: SnapOServer): void;
   selectRecord(id: string): void;
   setSearchText(value: string): void;
+  addHiddenHost(value: string): void;
+  removeHiddenHost(host: string): void;
   toggleSortOrder(): void;
   clearCompletedRecords(): void;
   retryResponseBody(): void;
@@ -72,6 +76,9 @@ export function useNetworkInspectorModel(
   const selectedServerRef = useRef<ServerId | null>(null);
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [hiddenHosts, setHiddenHosts] = useState<string[]>(() =>
+    client.usesNativeServerPicker ? [] : loadHiddenHosts()
+  );
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const [debugPreset, setDebugPreset] = useState<DebugInspectorPreset>("live");
   const [, setBodyCacheRevision] = useState(0);
@@ -86,6 +93,27 @@ export function useNetworkInspectorModel(
   const { bodyCache, bodyLoader } = bodyHydration;
   const toggleSortOrder = useCallback(() => setSortNewestFirst((value) => !value), []);
   const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
+  const addHiddenHost = useCallback(
+    (value: string) => {
+      const host = normalizeHiddenHost(value);
+      if (host == null) return;
+
+      setHiddenHosts((current) => (current.includes(host) ? current : [...current, host].sort()));
+
+      if (client.usesNativeServerPicker) {
+        void client.addHiddenHost(host).catch(() => {
+          void client.listHiddenHosts().then(
+            (hosts) => setHiddenHosts(normalizeHiddenHosts(hosts)),
+            () => {}
+          );
+        });
+      }
+    },
+    [client]
+  );
+  const removeHiddenHost = useCallback((host: string) => {
+    setHiddenHosts((current) => current.filter((value) => value !== host));
+  }, []);
 
   useEffect(() => {
     return () => bodyLoader.dispose();
@@ -116,10 +144,31 @@ export function useNetworkInspectorModel(
 
   useEffect(() => client.onNativeSelectedServer(selectServer), [client, selectServer]);
   useEffect(() => client.onNativeSearchText(setSearchText), [client]);
+  useEffect(() => client.onNativeHiddenHosts(setHiddenHosts), [client]);
   useEffect(() => client.onNativeSortOrder(setSortNewestFirst), [client]);
   useEffect(() => {
     if (isActive) return client.onNativeClearCompleted(clearCompletedRecords);
   }, [clearCompletedRecords, client, isActive]);
+
+  useEffect(() => {
+    if (!client.usesNativeServerPicker) return;
+
+    let disposed = false;
+    void client.listHiddenHosts().then(
+      (hosts) => {
+        if (!disposed) setHiddenHosts(normalizeHiddenHosts(hosts));
+      },
+      () => {}
+    );
+
+    return () => {
+      disposed = true;
+    };
+  }, [client]);
+
+  useEffect(() => {
+    if (!client.usesNativeServerPicker) saveHiddenHosts(hiddenHosts);
+  }, [client, hiddenHosts]);
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -205,8 +254,8 @@ export function useNetworkInspectorModel(
   const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
 
   const visibleRecords = useMemo(
-    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
-    [allRecords, searchText, selectedServer, sortNewestFirst]
+    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst, hiddenHosts),
+    [allRecords, hiddenHosts, searchText, selectedServer, sortNewestFirst]
   );
 
   const serverRecordCount = useMemo(
@@ -381,6 +430,7 @@ export function useNetworkInspectorModel(
     allRecords,
     sidebarPlaceholder,
     searchText,
+    hiddenHosts,
     sortNewestFirst,
     serverRecordCount,
     hasClearableItems,
@@ -389,6 +439,8 @@ export function useNetworkInspectorModel(
     selectReplacementServer,
     selectRecord,
     setSearchText,
+    addHiddenHost,
+    removeHiddenHost,
     toggleSortOrder,
     clearCompletedRecords,
     retryResponseBody,

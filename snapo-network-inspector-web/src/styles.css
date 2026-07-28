@@ -451,6 +451,96 @@ body.split-pane-resizing {
   background: var(--surface-container-highest);
 }
 
+.host-filter-control {
+  position: relative;
+}
+
+.host-filter-active {
+  color: var(--accent-blue);
+}
+
+.host-filter-count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--accent-blue);
+  color: var(--surface-bright);
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 14px;
+  font-weight: 600;
+}
+
+.host-filter-popup {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(300px, calc(100vw - 24px));
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-bright);
+  padding: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+}
+
+.host-filter-heading {
+  color: var(--on-surface);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.host-filter-description {
+  margin: 4px 0 10px;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.host-filter-empty {
+  margin: 12px 0 0;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.host-filter-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.host-filter-item {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.host-filter-hostname {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--on-surface);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-filter-remove {
+  flex: 0 0 auto;
+}
+
 .record-list-frame {
   position: relative;
   flex: 1;

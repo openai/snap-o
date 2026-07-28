@@ -1,6 +1,50 @@
 import { describe, expect, it } from "vitest";
-import type { RequestRecord } from "../../../network/cdp";
-import { responseBodyCaptureMetadata, shouldRequestRequestBody, shouldRequestResponseBody } from "./records";
+import type { RequestRecord, WebSocketRecord } from "../../../network/cdp";
+import {
+  filterRecords,
+  responseBodyCaptureMetadata,
+  shouldRequestRequestBody,
+  shouldRequestResponseBody
+} from "./records";
+
+describe("persistent host filtering", () => {
+  it("hides requests to excluded hosts and their subdomains", () => {
+    const hidden = request({ requestId: "hidden", url: "https://events.example.com/track" });
+    const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
+
+    expect(filterRecords([hidden, visible], server, "", false, ["example.com"])).toEqual([visible]);
+  });
+
+  it("hides WebSocket connections to excluded hosts", () => {
+    const hidden: WebSocketRecord = {
+      kind: "websocket",
+      server,
+      socketId: "hidden-socket",
+      method: "GET",
+      url: "wss://stream.example.com/live",
+      requestHeaders: [],
+      responseHeaders: [],
+      status: { kind: "pending" },
+      startedAt: 1,
+      messages: [],
+      messageCount: 0,
+      updatedAt: 1
+    };
+    const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
+
+    expect(filterRecords([hidden, visible], server, "", false, ["example.com"])).toEqual([visible]);
+  });
+
+  it("continues applying keyword filters to hosts that are not hidden", () => {
+    const hidden = request({ requestId: "hidden", url: "https://events.example.com/conversation" });
+    const matching = request({ requestId: "matching", url: "https://api.openai.com/conversation" });
+    const unrelated = request({ requestId: "unrelated", url: "https://api.openai.com/models" });
+
+    expect(filterRecords([hidden, matching, unrelated], server, "conversation", false, ["example.com"])).toEqual([
+      matching
+    ]);
+  });
+});
 
 describe("request body loading", () => {
   it("waits until request transmission has completed", () => {

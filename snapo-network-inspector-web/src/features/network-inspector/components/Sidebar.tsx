@@ -11,6 +11,7 @@ import type {
 } from "../../../network/bridge-types";
 import { AppInspectorPicker } from "../../app-inspector/components/AppInspectorPicker";
 import { serverHasProtocolWarning } from "../lib/protocol";
+import { HostFilterControl } from "./HostFilterControl";
 import { RecordList } from "./RecordList";
 import { ServerSelect } from "./ServerPicker";
 
@@ -19,6 +20,7 @@ export const Sidebar = memo(function Sidebar({
   selectedServer,
   replacementServer,
   searchText,
+  hiddenHosts,
   sortNewestFirst,
   hasClearableItems,
   records,
@@ -36,6 +38,8 @@ export const Sidebar = memo(function Sidebar({
   onInspectorSelect,
   onReplacementServerClick,
   onSearchTextChange,
+  onAddHiddenHost,
+  onRemoveHiddenHost,
   onToggleSortOrder,
   onClearCompleted,
   onRecordSelect
@@ -44,6 +48,7 @@ export const Sidebar = memo(function Sidebar({
   selectedServer: SnapOServer | null;
   replacementServer: SnapOServer | null;
   searchText: string;
+  hiddenHosts: string[];
   sortNewestFirst: boolean;
   hasClearableItems: boolean;
   records: InspectorRecord[];
@@ -61,6 +66,8 @@ export const Sidebar = memo(function Sidebar({
   onInspectorSelect?(app: InspectableApp, option?: AppInspectorOption): void;
   onReplacementServerClick(server: SnapOServer): void;
   onSearchTextChange(value: string): void;
+  onAddHiddenHost(value: string): void;
+  onRemoveHiddenHost(host: string): void;
   onToggleSortOrder(): void;
   onClearCompleted(): void;
   onRecordSelect(id: string): void;
@@ -117,6 +124,7 @@ export const Sidebar = memo(function Sidebar({
           </div>
 
           <div className="toolbar-action-group">
+            <HostFilterControl hiddenHosts={hiddenHosts} onRemoveHost={onRemoveHiddenHost} />
             <button
               className="toolbar-icon-button"
               type="button"
@@ -146,6 +154,7 @@ export const Sidebar = memo(function Sidebar({
         placeholder={placeholder}
         selectedRecordId={selectedRecordId}
         onSelect={onRecordSelect}
+        onAddHiddenHost={onAddHiddenHost}
         client={client}
         isConnected={selectedServer?.isConnected === true}
       />
