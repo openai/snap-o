@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
 import type { TweakDescriptor } from "../../network/bridge-types";
-import { canResetTweaks, groupTweaks, reconcileStreamedTweaks } from "./TweaksInspectorApp";
+import { canResetTweaks, groupTweaks, parseTweakColor, reconcileStreamedTweaks } from "./TweaksInspectorApp";
+
+describe("editable tweak colors", () => {
+  it("normalizes complete RGB colors", () => {
+    expect(parseTweakColor("#a1b2c3")).toBe("#A1B2C3");
+  });
+
+  it("normalizes complete RGBA colors", () => {
+    expect(parseTweakColor("#a1b2c380")).toBe("#A1B2C380");
+  });
+
+  it("does not commit an incomplete color while it is being edited", () => {
+    expect(parseTweakColor("#A1B2")).toBeNull();
+    expect(parseTweakColor("#A1B2C3F")).toBeNull();
+    expect(parseTweakColor("")).toBeNull();
+  });
+
+  it("rejects invalid hexadecimal digits", () => {
+    expect(parseTweakColor("#A1B2G3")).toBeNull();
+  });
+});
 
 describe("native reset toolbar state", () => {
   it("disables reset when no tweaks exist", () => {

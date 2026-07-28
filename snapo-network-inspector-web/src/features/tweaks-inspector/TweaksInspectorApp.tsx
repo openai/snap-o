@@ -1,5 +1,5 @@
 import { RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AppInspectorOption,
   InspectableApp,
@@ -9,6 +9,7 @@ import type {
 } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
 import { AppInspectorPicker } from "../app-inspector/components/AppInspectorPicker";
+import { TweakUpdateQueue } from "./tweak-update-queue";
 
 interface TweakSection {
   name: string;
@@ -35,17 +36,28 @@ export function TweaksInspectorApp({
   const [tweaks, setTweaks] = useState<TweakDescriptor[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const pending = useRef(new Map<string, TweakValue>());
-  const inFlight = useRef(new Set<string>());
-  const savingRef = useRef(false);
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
   const server = selection.server;
+  const queue = useMemo(
+    () =>
+      new TweakUpdateQueue(client, server, {
+        onUpdate(updates, pending) {
+          setTweaks((current) =>
+            current.map((tweak) => {
+              const update = updates.find((candidate) => candidate.name === tweak.name);
+              return update && !pending.has(tweak.name) ? { ...tweak, value: update.value } : tweak;
+            })
+          );
+        },
+        onError: setError,
+        onSavingChange: setSaving
+      }),
+    [client, server]
+  );
 
   useEffect(() => {
     let disposed = false;
     let streamId: string | undefined;
-    pending.current.clear();
-    inFlight.current.clear();
 
     const unsubscribe = client.onTweaksChanged((event) => {
       if (
@@ -57,7 +69,7 @@ export function TweaksInspectorApp({
         return;
       }
 
-      setTweaks((current) => reconcileStreamedTweaks(current, event.tweaks, pending.current, inFlight.current));
+      setTweaks((current) => reconcileStreamedTweaks(current, event.tweaks, queue.pending, queue.inFlight));
       setError(null);
     });
 
@@ -65,7 +77,7 @@ export function TweaksInspectorApp({
       .listTweaks(server)
       .then((response) => {
         if (disposed) return;
-        setTweaks((current) => reconcileStreamedTweaks(current, response.tweaks, pending.current, inFlight.current));
+        setTweaks((current) => reconcileStreamedTweaks(current, response.tweaks, queue.pending, queue.inFlight));
         setError(null);
       })
       .catch((cause: unknown) => {
@@ -89,64 +101,28 @@ export function TweaksInspectorApp({
 
     return () => {
       disposed = true;
+      queue.cancel();
       unsubscribe();
       if (streamId !== undefined) void client.stopTweakStream(streamId);
     };
-  }, [client, server]);
-
-  const flush = useCallback(async () => {
-    if (savingRef.current || pending.current.size === 0) return;
-
-    savingRef.current = true;
-    setSaving(true);
-
-    try {
-      while (pending.current.size > 0) {
-        const values = Object.fromEntries(pending.current);
-        const names = Object.keys(values);
-        pending.current.clear();
-        for (const name of names) inFlight.current.add(name);
-
-        let result;
-        try {
-          result = await client.updateTweaks({ server, values });
-        } finally {
-          for (const name of names) inFlight.current.delete(name);
-        }
-
-        setTweaks((current) =>
-          current.map((tweak) => {
-            const update = result.tweaks.find((candidate) => candidate.name === tweak.name);
-            return update && !pending.current.has(tweak.name) ? { ...tweak, value: update.value } : tweak;
-          })
-        );
-      }
-      setError(null);
-    } catch (cause) {
-      pending.current.clear();
-      setError(cause instanceof Error ? cause.message : "Unable to update tweaks.");
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  }, [client, server]);
+  }, [client, queue, server]);
 
   const updateTweak = useCallback(
     (tweak: TweakDescriptor, value: TweakValue) => {
       setTweaks((current) => current.map((item) => (item.name === tweak.name ? { ...item, value } : item)));
-      pending.current.set(tweak.name, value);
-      void flush();
+      queue.enqueue(tweak.name, value);
+      void queue.flush();
     },
-    [flush]
+    [queue]
   );
 
   const resetAll = useCallback(() => {
     for (const tweak of tweaks) {
-      pending.current.set(tweak.name, tweak.default);
+      queue.enqueue(tweak.name, tweak.default);
     }
     setTweaks((current) => current.map((tweak) => ({ ...tweak, value: tweak.default })));
-    void flush();
-  }, [flush, tweaks]);
+    void queue.flush();
+  }, [queue, tweaks]);
 
   useEffect(() => client.onNativeTweaksReset(resetAll), [client, resetAll]);
 
@@ -359,34 +335,7 @@ function TweakField({
   }
 
   if (tweak.type === "color") {
-    return (
-      <span className="tweaks-color-fields">
-        <input
-          className="tweaks-color"
-          type="color"
-          aria-label={`${tweak.name} color`}
-          value={String(tweak.value).slice(0, 7)}
-          onChange={(event) => {
-            const previous = String(tweak.value);
-            const alpha = previous.length === 9 ? previous.slice(7) : "";
-            onChange(tweak, `${event.currentTarget.value.toUpperCase()}${alpha}`);
-          }}
-        />
-        <input
-          className="tweaks-hex"
-          type="text"
-          aria-label={`${tweak.name} hex`}
-          maxLength={9}
-          value={String(tweak.value)}
-          onChange={(event) => {
-            const value = event.currentTarget.value;
-            if (/^#[\da-f]{6}(?:[\da-f]{2})?$/i.test(value)) {
-              onChange(tweak, value.toUpperCase());
-            }
-          }}
-        />
-      </span>
-    );
+    return <TweakColorField tweak={tweak} onChange={onChange} />;
   }
 
   if (tweak.type === "int" || tweak.type === "float") {
@@ -410,4 +359,52 @@ function TweakField({
   }
 
   return null;
+}
+
+function TweakColorField({
+  tweak,
+  onChange
+}: {
+  tweak: TweakDescriptor;
+  onChange(tweak: TweakDescriptor, value: TweakValue): void;
+}): JSX.Element {
+  const committed = String(tweak.value);
+  const [draft, setDraft] = useState(() => ({ committed, value: committed }));
+  const value = draft.committed === committed ? draft.value : committed;
+
+  return (
+    <span className="tweaks-color-fields">
+      <input
+        className="tweaks-color"
+        type="color"
+        aria-label={`${tweak.name} color`}
+        value={committed.slice(0, 7)}
+        onChange={(event) => {
+          const alpha = committed.length === 9 ? committed.slice(7) : "";
+          onChange(tweak, `${event.currentTarget.value.toUpperCase()}${alpha}`);
+        }}
+      />
+      <input
+        className="tweaks-hex"
+        type="text"
+        aria-label={`${tweak.name} hex`}
+        maxLength={9}
+        value={value}
+        onChange={(event) => {
+          const next = event.currentTarget.value;
+          setDraft({ committed, value: next });
+
+          const color = parseTweakColor(next);
+          if (color !== null) onChange(tweak, color);
+        }}
+        onBlur={() => {
+          if (parseTweakColor(value) === null) setDraft({ committed, value: committed });
+        }}
+      />
+    </span>
+  );
+}
+
+export function parseTweakColor(value: string): string | null {
+  return /^#[\da-f]{6}(?:[\da-f]{2})?$/i.test(value) ? value.toUpperCase() : null;
 }
