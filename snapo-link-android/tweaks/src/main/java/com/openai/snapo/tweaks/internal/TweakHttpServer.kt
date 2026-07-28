@@ -8,7 +8,6 @@ import android.os.Process
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
-import androidx.compose.runtime.snapshots.Snapshot
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -50,7 +49,6 @@ internal class TweakHttpServer(
     private var server: LocalServerSocket? = null
     private var acceptThread: Thread? = null
     private var registryObserver: Closeable? = null
-    private var disposeSnapshotObserver: (() -> Unit)? = null
 
     fun start() {
         synchronized(lifecycleLock) {
@@ -60,12 +58,6 @@ internal class TweakHttpServer(
             server = localServer
             running = true
             registryObserver = TweakRegistry.observeChanges(changePublisher::notifyChanged)
-            val snapshotObserver = Snapshot.registerApplyObserver { changed, _ ->
-                if (TweakRegistry.containsChangedState(changed)) {
-                    changePublisher.notifyChanged()
-                }
-            }
-            disposeSnapshotObserver = snapshotObserver::dispose
             acceptThread = thread(
                 isDaemon = true,
                 name = "Snap-O Tweaks",
@@ -84,8 +76,6 @@ internal class TweakHttpServer(
             acceptThread = null
             registryObserver?.close()
             registryObserver = null
-            disposeSnapshotObserver?.invoke()
-            disposeSnapshotObserver = null
             changePublisher.close()
             activeSockets.toList().also { activeSockets.clear() }
         }

@@ -2,7 +2,11 @@ package com.openai.snapo.tweaks.internal
 
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import com.openai.snapo.tweaks.SnapOTweakEntry
+import com.openai.snapo.tweaks.toSnapOTweakValue
 import java.io.Closeable
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -43,9 +47,17 @@ internal class InvalidTweakValueException(name: String, reason: String) :
 internal object TweakRegistry {
     private val lock = Any()
     private val tweaks = LinkedHashMap<String, RegisteredTweak>()
+    private val observedTweakOrder = HashMap<String, Long>()
+    private val tweakStates = HashMap<TweakDescriptor, MutableState<Any>>()
+    private val activeEntries = mutableStateOf<List<SnapOTweakEntry>>(emptyList())
     private val observers = LinkedHashMap<Long, () -> Unit>()
     private var nextObserverId = 0L
+    private var nextTweakOrder = 0L
     private val colorPattern = Regex("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
+
+    fun stateFor(descriptor: TweakDescriptor): State<Any> = synchronized(lock) {
+        tweakStates.getOrPut(descriptor) { mutableStateOf(descriptor.default) }
+    }
 
     fun register(descriptor: TweakDescriptor): State<Any> {
         var changed = false
@@ -62,10 +74,20 @@ internal object TweakRegistry {
             } else {
                 val tweak = RegisteredTweak(
                     descriptor = descriptor,
-                    state = mutableStateOf(descriptor.default),
+                    state = tweakStates.getOrPut(descriptor) {
+                        mutableStateOf(descriptor.default)
+                    },
                     references = 1,
                 )
+                val wasObserved = observedTweakOrder.containsKey(descriptor.name)
+                if (!wasObserved) {
+                    observedTweakOrder[descriptor.name] = nextTweakOrder++
+                }
                 tweaks[descriptor.name] = tweak
+                if (wasObserved) {
+                    restoreObservedTweakOrder()
+                }
+                publishActiveEntries()
                 changed = true
                 tweak.state
             }
@@ -80,6 +102,7 @@ internal object TweakRegistry {
             tweak.references -= 1
             if (tweak.references == 0) {
                 tweaks.remove(name)
+                publishActiveEntries()
                 true
             } else {
                 false
@@ -87,6 +110,8 @@ internal object TweakRegistry {
         }
         if (changed) notifyObservers()
     }
+
+    fun activeEntries(): State<List<SnapOTweakEntry>> = activeEntries
 
     fun snapshot(): List<TweakSnapshot> = synchronized(lock) {
         tweaks.values.map { tweak ->
@@ -103,10 +128,12 @@ internal object TweakRegistry {
                 tweak to validateValue(tweak.descriptor, value)
             }
 
-            changes.forEach { (tweak, value) ->
-                if (tweak.state.value != value) {
-                    tweak.state.value = value
-                    changed = true
+            Snapshot.withMutableSnapshot {
+                changes.forEach { (tweak, value) ->
+                    if (tweak.state.value != value) {
+                        tweak.state.value = value
+                        changed = true
+                    }
                 }
             }
 
@@ -127,16 +154,17 @@ internal object TweakRegistry {
         return Closeable { synchronized(lock) { observers.remove(id) } }
     }
 
-    fun containsChangedState(changed: Set<Any>): Boolean = synchronized(lock) {
-        tweaks.values.any { it.state in changed }
-    }
-
     fun clear() {
         val changed = synchronized(lock) {
+            observedTweakOrder.clear()
+            tweakStates.clear()
+            nextTweakOrder = 0L
+
             if (tweaks.isEmpty()) {
                 false
             } else {
                 tweaks.clear()
+                publishActiveEntries()
                 true
             }
         }
@@ -146,6 +174,20 @@ internal object TweakRegistry {
     private fun notifyObservers() {
         val current = synchronized(lock) { observers.values.toList() }
         current.forEach { it() }
+    }
+
+    private fun publishActiveEntries() {
+        activeEntries.value = tweaks.values.map(RegisteredTweak::entry)
+    }
+
+    private fun restoreObservedTweakOrder() {
+        val orderedTweaks = tweaks.entries.sortedBy { entry ->
+            observedTweakOrder.getValue(entry.key)
+        }
+        tweaks.clear()
+        orderedTweaks.forEach { (name, tweak) ->
+            tweaks[name] = tweak
+        }
     }
 
     private fun validateDescriptor(descriptor: TweakDescriptor) {
@@ -339,5 +381,11 @@ internal object TweakRegistry {
         val descriptor: TweakDescriptor,
         val state: MutableState<Any>,
         var references: Int,
-    )
+    ) {
+        val entry = SnapOTweakEntry(
+            name = descriptor.name,
+            value = derivedStateOf { descriptor.toSnapOTweakValue(state.value) },
+            defaultValue = descriptor.toSnapOTweakValue(descriptor.default),
+        )
+    }
 }

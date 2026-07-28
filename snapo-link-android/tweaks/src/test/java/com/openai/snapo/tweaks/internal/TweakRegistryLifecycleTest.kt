@@ -1,7 +1,11 @@
 package com.openai.snapo.tweaks.internal
 
+import androidx.compose.runtime.snapshots.Snapshot
+import com.openai.snapo.tweaks.SnapOTweakValue
+import com.openai.snapo.tweaks.SnapOTweaks
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -44,6 +48,347 @@ class TweakRegistryLifecycleTest {
         TweakRegistry.unregister(descriptor.name)
 
         assertTrue(TweakRegistry.snapshot().isEmpty())
+    }
+
+    @Test
+    fun `composition registrations reuse the registry-owned state`() {
+        val descriptor = TweakDescriptor(
+            name = "Lifecycle initial composition",
+            type = TweakType.INT,
+            default = 16,
+        )
+        val initialState = TweakRegistry.stateFor(descriptor)
+
+        assertTrue(TweakRegistry.snapshot().isEmpty())
+
+        val sharedState = TweakRegistry.register(descriptor)
+
+        assertSame(initialState, sharedState)
+        assertEquals(16, initialState.value)
+
+        TweakRegistry.unregister(descriptor.name)
+
+        assertTrue(TweakRegistry.snapshot().isEmpty())
+    }
+
+    @Test
+    fun `looking up registry-owned state does not activate or publish a tweak`() {
+        val descriptor = TweakDescriptor(
+            name = "Lifecycle inactive composition state",
+            type = TweakType.INT,
+            default = 16,
+        )
+        var notifications = 0
+        val subscription = TweakRegistry.observeChanges { notifications += 1 }
+        val initialEntries = TweakRegistry.activeEntries().value
+
+        val state = TweakRegistry.stateFor(descriptor)
+
+        assertEquals(16, state.value)
+        assertEquals(0, notifications)
+        assertTrue(TweakRegistry.snapshot().isEmpty())
+        assertSame(initialEntries, TweakRegistry.activeEntries().value)
+        assertTrue(SnapOTweaks.activeTweaks().isEmpty())
+        assertTrue(SnapOTweaks.activeTweakEntries().value.isEmpty())
+
+        subscription.close()
+    }
+
+    @Test
+    fun `state cached by an abandoned snapshot stays absent from active tweaks`() {
+        val descriptor = TweakDescriptor(
+            name = "Lifecycle abandoned composition state",
+            type = TweakType.INT,
+            default = 16,
+        )
+        var notifications = 0
+        val observer = TweakRegistry.observeChanges { notifications += 1 }
+        val abandonedSnapshot = Snapshot.takeMutableSnapshot()
+
+        try {
+            abandonedSnapshot.enter { TweakRegistry.stateFor(descriptor) }
+        } finally {
+            abandonedSnapshot.dispose()
+        }
+
+        assertEquals(16, TweakRegistry.stateFor(descriptor).value)
+        assertEquals(0, notifications)
+        assertTrue(TweakRegistry.snapshot().isEmpty())
+        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertTrue(SnapOTweaks.activeTweaks().isEmpty())
+        assertTrue(SnapOTweaks.activeTweakEntries().value.isEmpty())
+
+        observer.close()
+    }
+
+    @Test
+    fun `same-name composition registrations each observe shared updates`() {
+        val descriptor = TweakDescriptor(
+            name = "Lifecycle shared composition",
+            type = TweakType.INT,
+            default = 16,
+        )
+        val firstState = TweakRegistry.stateFor(descriptor)
+
+        TweakRegistry.register(descriptor)
+        TweakRegistry.update(mapOf(descriptor.name to 20))
+        val secondState = TweakRegistry.stateFor(descriptor)
+        TweakRegistry.register(descriptor)
+
+        assertSame(firstState, secondState)
+        assertEquals(20, firstState.value)
+        assertEquals(20, secondState.value)
+
+        TweakRegistry.update(mapOf(descriptor.name to 24))
+
+        assertEquals(24, firstState.value)
+        assertEquals(24, secondState.value)
+
+        TweakRegistry.unregister(descriptor.name)
+        TweakRegistry.update(mapOf(descriptor.name to 28))
+
+        assertEquals(28, secondState.value)
+
+        TweakRegistry.unregister(descriptor.name)
+
+        assertTrue(TweakRegistry.snapshot().isEmpty())
+    }
+
+    @Test
+    fun `a returning tweak restores its last value without remaining active while absent`() {
+        val descriptor = TweakDescriptor(
+            name = "Lifecycle remembered value",
+            type = TweakType.INT,
+            default = 16,
+        )
+        val original = TweakRegistry.register(descriptor)
+        TweakRegistry.update(mapOf(descriptor.name to 24))
+
+        TweakRegistry.unregister(descriptor.name)
+
+        assertTrue(TweakRegistry.snapshot().isEmpty())
+        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertSame(original, TweakRegistry.stateFor(descriptor))
+        assertEquals(24, TweakRegistry.stateFor(descriptor).value)
+
+        val restored = TweakRegistry.register(descriptor)
+
+        assertSame(original, restored)
+        assertEquals(24, restored.value)
+        assertEquals(24, TweakRegistry.snapshot().single().value)
+    }
+
+    @Test
+    fun `same-name descriptors retain their edited values independently`() {
+        val original = TweakDescriptor(
+            name = "Lifecycle descriptor-specific values",
+            type = TweakType.INT,
+            default = 16,
+            min = 0,
+            max = 48,
+        )
+        val replacement = original.copy(default = 24, max = 64)
+        val originalState = TweakRegistry.register(original)
+        TweakRegistry.update(mapOf(original.name to 20))
+        TweakRegistry.unregister(original.name)
+
+        val replacementState = TweakRegistry.register(replacement)
+        TweakRegistry.update(mapOf(replacement.name to 32))
+        TweakRegistry.unregister(replacement.name)
+
+        assertNotSame(originalState, replacementState)
+        assertSame(originalState, TweakRegistry.register(original))
+        assertEquals(20, originalState.value)
+        TweakRegistry.unregister(original.name)
+        assertSame(replacementState, TweakRegistry.register(replacement))
+        assertEquals(32, replacementState.value)
+    }
+
+    @Test
+    fun `looking up a replacement descriptor does not reject the outgoing registration`() {
+        val outgoing = TweakDescriptor(
+            name = "Lifecycle descriptor replacement lookup",
+            type = TweakType.INT,
+            default = 16,
+        )
+        val replacement = outgoing.copy(default = 24)
+        TweakRegistry.register(outgoing)
+        val activeEntries = TweakRegistry.activeEntries().value
+        var notifications = 0
+        val observer = TweakRegistry.observeChanges { notifications += 1 }
+
+        val replacementState = TweakRegistry.stateFor(replacement)
+
+        assertEquals(24, replacementState.value)
+        assertEquals(16, TweakRegistry.snapshot().single().value)
+        assertSame(activeEntries, TweakRegistry.activeEntries().value)
+        assertEquals(listOf(outgoing.name), SnapOTweaks.activeTweaks().map { it.name })
+        assertEquals(0, notifications)
+
+        TweakRegistry.unregister(outgoing.name)
+
+        assertTrue(TweakRegistry.snapshot().isEmpty())
+        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertTrue(SnapOTweaks.activeTweaks().isEmpty())
+        assertEquals(1, notifications)
+        assertSame(replacementState, TweakRegistry.register(replacement))
+        assertEquals(24, replacementState.value)
+        assertEquals(replacement, TweakRegistry.snapshot().single().descriptor)
+        assertEquals(2, notifications)
+
+        observer.close()
+    }
+
+    @Test
+    fun `cached descriptor values remain available while another same-name descriptor is active`() {
+        val original = TweakDescriptor(
+            name = "Lifecycle descriptor replacement history",
+            type = TweakType.INT,
+            default = 16,
+        )
+        val replacement = original.copy(default = 24)
+        TweakRegistry.register(original)
+        TweakRegistry.update(mapOf(original.name to 20))
+        TweakRegistry.unregister(original.name)
+        TweakRegistry.register(replacement)
+
+        assertEquals(20, TweakRegistry.stateFor(original).value)
+        assertThrows(IllegalArgumentException::class.java) {
+            TweakRegistry.register(original)
+        }
+        assertEquals(24, TweakRegistry.snapshot().single().value)
+    }
+
+    @Test
+    fun `clearing the registry also clears retained tweak values`() {
+        val descriptor = TweakDescriptor(
+            name = "Lifecycle cleared remembered value",
+            type = TweakType.INT,
+            default = 16,
+        )
+        TweakRegistry.register(descriptor)
+        TweakRegistry.update(mapOf(descriptor.name to 24))
+        TweakRegistry.unregister(descriptor.name)
+
+        TweakRegistry.clear()
+
+        val replacement = TweakRegistry.stateFor(descriptor)
+
+        assertEquals(16, replacement.value)
+        assertSame(replacement, TweakRegistry.register(descriptor))
+    }
+
+    @Test
+    fun `observable membership changes only when tweaks enter or leave composition`() {
+        val descriptor = TweakDescriptor(
+            name = "Lifecycle observable membership",
+            type = TweakType.INT,
+            default = 16,
+        )
+        val entries = TweakRegistry.activeEntries()
+        val state = TweakRegistry.register(descriptor)
+        val registeredEntries = entries.value
+        val entry = registeredEntries.single()
+
+        assertEquals(descriptor.name, entry.name)
+        assertEquals(SnapOTweakValue.Integer(16), entry.value.value)
+
+        TweakRegistry.update(mapOf(descriptor.name to 20))
+
+        assertSame(registeredEntries, entries.value)
+        assertSame(entry, entries.value.single())
+        assertEquals(SnapOTweakValue.Integer(20), entry.value.value)
+        assertEquals(20, state.value)
+
+        TweakRegistry.register(descriptor)
+
+        assertSame(registeredEntries, entries.value)
+
+        TweakRegistry.unregister(descriptor.name)
+
+        assertSame(registeredEntries, entries.value)
+
+        TweakRegistry.unregister(descriptor.name)
+
+        assertTrue(entries.value.isEmpty())
+    }
+
+    @Test
+    fun `temporarily removed tweaks return to their original observed position`() {
+        val first = TweakDescriptor("Lifecycle first ordered tweak", TweakType.INT, 1)
+        val second = TweakDescriptor("Lifecycle second ordered tweak", TweakType.INT, 2)
+        val third = TweakDescriptor("Lifecycle third ordered tweak", TweakType.INT, 3)
+
+        TweakRegistry.register(first)
+        TweakRegistry.register(second)
+        TweakRegistry.register(third)
+        TweakRegistry.unregister(second.name)
+
+        assertEquals(
+            listOf(first.name, third.name),
+            TweakRegistry.activeEntries().value.map { it.name },
+        )
+
+        TweakRegistry.register(second)
+
+        assertEquals(
+            listOf(first.name, second.name, third.name),
+            TweakRegistry.snapshot().map { it.descriptor.name },
+        )
+        assertEquals(
+            listOf(first.name, second.name, third.name),
+            TweakRegistry.activeEntries().value.map { it.name },
+        )
+    }
+
+    @Test
+    fun `observed order survives periods with no active tweaks`() {
+        val first = TweakDescriptor("Lifecycle first returning tweak", TweakType.INT, 1)
+        val second = TweakDescriptor("Lifecycle second returning tweak", TweakType.INT, 2)
+
+        TweakRegistry.register(first)
+        TweakRegistry.register(second)
+        TweakRegistry.unregister(first.name)
+        TweakRegistry.unregister(second.name)
+        TweakRegistry.register(second)
+        TweakRegistry.register(first)
+
+        assertEquals(
+            listOf(first.name, second.name),
+            TweakRegistry.activeEntries().value.map { it.name },
+        )
+    }
+
+    @Test
+    fun `clearing the registry also resets previously observed order`() {
+        val first = TweakDescriptor("Lifecycle first reset order", TweakType.INT, 1)
+        val second = TweakDescriptor("Lifecycle second reset order", TweakType.INT, 2)
+
+        TweakRegistry.register(first)
+        TweakRegistry.register(second)
+        TweakRegistry.clear()
+        TweakRegistry.register(second)
+        TweakRegistry.register(first)
+
+        assertEquals(
+            listOf(second.name, first.name),
+            TweakRegistry.activeEntries().value.map { it.name },
+        )
+    }
+
+    @Test
+    fun `clearing the registry also clears observable membership`() {
+        TweakRegistry.register(
+            TweakDescriptor(
+                name = "Lifecycle cleared observable membership",
+                type = TweakType.INT,
+                default = 16,
+            ),
+        )
+
+        TweakRegistry.clear()
+
+        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
     }
 
     @Test

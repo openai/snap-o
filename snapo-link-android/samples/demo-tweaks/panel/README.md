@@ -81,9 +81,9 @@ App discovery and selection belong to this demo server. `/apps` and
 To put a tweak in a section, use a `/` in its name:
 
 ```kotlin
-tweakInt("Typography/Font size", 36, min = 16, max = 72)
-tweakBoolean("Motion/Enabled", true)
-tweakInt("Motion/Duration", 400, min = 100, max = 1500)
+val fontSize by tweakInt("Typography/Font size", 36, min = 16, max = 72)
+val isMotionEnabled by tweakBoolean("Motion/Enabled", true)
+val animationDuration by tweakInt("Motion/Duration", 400, min = 100, max = 1500)
 ```
 
 The part before `/` is the section. The part after `/` is the label. A tweak

@@ -28,5 +28,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
 
     debugImplementation(project(":tweaks"))
+    debugImplementation(project(":tweaks-overlay"))
     releaseImplementation(project(":tweaks-noop"))
+    releaseImplementation(project(":tweaks-overlay-noop"))
 }

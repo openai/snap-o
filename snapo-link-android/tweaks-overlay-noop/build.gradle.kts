@@ -5,10 +5,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-description = "Live Compose tweaks for inspecting and adjusting a running app with Snap-O."
+description = "No-op Compose tweak overlay for excluding the floating inspector from release builds."
 
 android {
-    namespace = "com.openai.snapo.tweaks"
+    namespace = "com.openai.snapo.tweaks.overlay"
 
     buildFeatures {
         compose = true
@@ -17,8 +17,7 @@ android {
 
 dependencies {
     api(platform(libs.androidx.compose.bom))
-    api("androidx.compose.runtime:runtime")
-    api(libs.androidx.compose.ui.graphics)
+    api(libs.androidx.compose.ui)
 
-    testImplementation(libs.junit4)
+    implementation(libs.androidx.compose.foundation)
 }

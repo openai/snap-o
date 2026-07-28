@@ -1,10 +1,9 @@
 package com.openai.snapo.tweaks.internal
 
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -132,27 +131,27 @@ class TweakChangePublisherTest {
     }
 
     @Test
-    fun `compose snapshot state changes are recognized`() {
-        val state = TweakRegistry.register(descriptor("Motion/Duration", 400))
-        var observed = false
-        val observer = Snapshot.registerApplyObserver { changed, _ ->
-            if (TweakRegistry.containsChangedState(changed)) {
-                observed = true
-            }
-        }
+    fun `unrelated compose state changes do not publish tweak snapshots`() {
+        TweakRegistry.register(descriptor("Motion/Duration", 400))
+        val scheduled = mutableListOf<Runnable>()
+        val publisher = TweakChangePublisher { runnable -> scheduled.add(runnable) }
+        val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
+        val unrelatedState = mutableStateOf(0)
 
-        try {
+        publisher.subscribe().use { subscription ->
             Snapshot.withMutableSnapshot {
-                (state as MutableState<Any>).value = 550
+                unrelatedState.value = 1
             }
 
-            assertTrue(observed)
-            assertEquals(550, TweakRegistry.snapshot().single().value)
-            assertTrue(TweakRegistry.containsChangedState(setOf(state)))
-            assertFalse(TweakRegistry.containsChangedState(setOf(Any())))
-        } finally {
-            observer.dispose()
+            assertTrue(scheduled.isEmpty())
+
+            TweakRegistry.update(mapOf("Motion/Duration" to 550))
+            scheduled.single().run()
+
+            assertEquals(550, subscription.events.poll()?.single()?.value)
         }
+
+        observer.close()
     }
 
     private fun descriptor(name: String, default: Int) = TweakDescriptor(

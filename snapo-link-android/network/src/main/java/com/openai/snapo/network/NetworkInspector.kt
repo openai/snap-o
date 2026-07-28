@@ -2,6 +2,7 @@ package com.openai.snapo.network
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.util.Log
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,14 +41,17 @@ class NetworkInspectorServer internal constructor(
     )
 
     fun start(): Boolean {
-        if (!config.allowRelease &&
-            app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0
-        ) {
+        val canStart = isNetworkInspectorStartAllowed(
+            isDebuggable = app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+            configAllowsRelease = config.allowRelease,
+            applicationAllowsRelease = app.allowsNetworkInspectorInRelease(),
+        )
+        if (!canStart) {
             Log.e(
                 TAG,
                 "Snap-O Network Inspector detected in a release build. Server will NOT start. " +
                     "Release builds should use a noop artifact instead, " +
-                    "or set snapo.allow_release=\"true\" if intentional."
+                    "or set snapo.network.allow_release=\"true\" if intentional."
             )
             return false
         }
@@ -286,4 +290,23 @@ object NetworkInspector {
     fun getOrNull(): NetworkInspectorServer? = server
 }
 
+internal fun isNetworkInspectorStartAllowed(
+    isDebuggable: Boolean,
+    configAllowsRelease: Boolean,
+    applicationAllowsRelease: Boolean,
+): Boolean = isDebuggable || configAllowsRelease || applicationAllowsRelease
+
+private fun Application.allowsNetworkInspectorInRelease(): Boolean = try {
+    packageManager
+        .getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+        .metaData
+        ?.getBoolean(NetworkAllowReleaseMetadataKey, false)
+        ?: false
+} catch (_: PackageManager.NameNotFoundException) {
+    false
+} catch (_: SecurityException) {
+    false
+}
+
+private const val NetworkAllowReleaseMetadataKey = "snapo.network.allow_release"
 private const val TAG = "SnapONetwork"

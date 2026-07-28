@@ -3,9 +3,11 @@
 package com.openai.snapo.tweaks
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.Color
 
-/** Returns the release-build floating-point value unchanged. */
+/** Returns observable release-build state for the current floating-point default. */
 @Composable
 fun tweakFloat(
     name: String,
@@ -13,9 +15,9 @@ fun tweakFloat(
     min: Float? = null,
     max: Float? = null,
     step: Float? = null,
-): Float = default
+): State<Float> = rememberUpdatedState(default)
 
-/** Returns the release-build integer value unchanged. */
+/** Returns observable release-build state for the current integer default. */
 @Composable
 fun tweakInt(
     name: String,
@@ -23,25 +25,25 @@ fun tweakInt(
     min: Int? = null,
     max: Int? = null,
     step: Int? = null,
-): Int = default
+): State<Int> = rememberUpdatedState(default)
 
-/** Returns the release-build color unchanged. */
+/** Returns observable release-build state for the current color default. */
 @Composable
 fun tweakColor(
     name: String,
     default: Color,
-): Color = default
+): State<Color> = rememberUpdatedState(default)
 
-/** Returns the release-build boolean value unchanged. */
+/** Returns observable release-build state for the current boolean default. */
 @Composable
 fun tweakBoolean(
     name: String,
     default: Boolean,
-): Boolean = default
+): State<Boolean> = rememberUpdatedState(default)
 
-/** Returns the release-build text unchanged. */
+/** Returns observable release-build state for the current text default. */
 @Composable
 fun tweakString(
     name: String,
     default: String,
-): String = default
+): State<String> = rememberUpdatedState(default)

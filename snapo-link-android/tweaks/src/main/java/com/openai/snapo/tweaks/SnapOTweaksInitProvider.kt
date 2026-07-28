@@ -4,23 +4,37 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.util.Log
 import com.openai.snapo.tweaks.internal.TweakAppInfoProvider
 import com.openai.snapo.tweaks.internal.TweakHttpServer
+import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 import java.io.IOException
 
-/** Starts the local Snap-O Tweaks server only in a debuggable application. */
-class SnapOTweaksInitProvider : ContentProvider() {
+/** Enables live tweaks for debuggable apps or explicitly opted-in release apps. */
+internal class SnapOTweaksInitProvider : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val applicationContext = context?.applicationContext ?: return false
-        if (applicationContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) {
+        val applicationInfo = applicationInfoWithMetadata(applicationContext)
+        val isDebuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val allowRelease = applicationInfo.metaData?.getBoolean(AllowReleaseMetadata, false) == true
+
+        if (!TweaksRuntimePolicy.configure(isDebuggable, allowRelease)) {
             return false
         }
 
         return TweaksRuntime.start(applicationContext)
+    }
+
+    private fun applicationInfoWithMetadata(context: Context): ApplicationInfo = try {
+        context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+    } catch (_: PackageManager.NameNotFoundException) {
+        context.applicationInfo
+    } catch (_: SecurityException) {
+        context.applicationInfo
     }
 
     override fun query(
@@ -47,6 +61,10 @@ class SnapOTweaksInitProvider : ContentProvider() {
         selection: String?,
         selectionArgs: Array<out String>?,
     ): Int = 0
+
+    private companion object {
+        const val AllowReleaseMetadata = "snapo.tweaks.allow_release"
+    }
 }
 
 private object TweaksRuntime {
