@@ -84,6 +84,12 @@ struct TweakList: Codable {
   let tweaks: [TweakDescriptor]
 }
 
+struct TweakStreamEvent: Codable {
+  let streamId: String
+  let server: InspectorServerReference
+  let tweaks: [TweakDescriptor]
+}
+
 struct TweakUpdate: Codable {
   let name: String
   let value: TweakValue
@@ -185,6 +191,7 @@ struct NetworkSaveFileResult: Codable {
 enum NetworkInspectorOutput {
   case event(NetworkStreamEvent)
   case status(NetworkStreamStatus)
+  case tweaks(TweakStreamEvent)
 }
 
 extension NetworkInspectorServer: Sendable {}
@@ -194,6 +201,11 @@ extension NetworkRequestBodies: Sendable {}
 extension NetworkStreamStarted: Sendable {}
 extension NetworkStreamEvent: Sendable {}
 extension NetworkStreamStatus: Sendable {}
+extension InspectorServerReference: Sendable {}
+extension TweakValue: Sendable {}
+extension TweakDescriptor: Sendable {}
+extension TweakList: Sendable {}
+extension TweakStreamEvent: Sendable {}
 extension NetworkSaveFileInput: Sendable {}
 extension NetworkSaveFileResult: Sendable {}
 extension NetworkInspectorOutput: Sendable {}

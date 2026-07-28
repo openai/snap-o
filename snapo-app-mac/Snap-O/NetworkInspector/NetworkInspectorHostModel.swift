@@ -151,6 +151,8 @@ final class NetworkInspectorHostModel {
       sendPageEvent(name: "network:event", payload: event)
     case .status(let status):
       sendPageEvent(name: "network:status", payload: status)
+    case .tweaks(let event):
+      sendPageEvent(name: "tweaks:changed", payload: event)
     }
   }
 

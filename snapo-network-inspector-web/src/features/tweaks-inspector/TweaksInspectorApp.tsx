@@ -36,37 +36,61 @@ export function TweaksInspectorApp({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const pending = useRef(new Map<string, TweakValue>());
+  const inFlight = useRef(new Set<string>());
   const savingRef = useRef(false);
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
   const server = selection.server;
 
   useEffect(() => {
     let disposed = false;
+    let streamId: string | undefined;
     pending.current.clear();
+    inFlight.current.clear();
 
-    const reload = () => {
-      void client
-        .listTweaks(server)
-        .then((response) => {
-          if (disposed) return;
-          setTweaks(response.tweaks);
-          setError(null);
-        })
-        .catch((cause: unknown) => {
-          if (disposed) return;
-          setError(cause instanceof Error ? cause.message : "Unable to load tweaks.");
-        });
-    };
+    const unsubscribe = client.onTweaksChanged((event) => {
+      if (
+        disposed ||
+        event.server.deviceId !== server.deviceId ||
+        event.server.socketName !== server.socketName ||
+        (streamId !== undefined && event.streamId !== streamId)
+      ) {
+        return;
+      }
 
-    reload();
+      setTweaks((current) => reconcileStreamedTweaks(current, event.tweaks, pending.current, inFlight.current));
+      setError(null);
+    });
 
-    const interval = window.setInterval(() => {
-      if (!document.hidden) reload();
-    }, 2_500);
+    void client
+      .listTweaks(server)
+      .then((response) => {
+        if (disposed) return;
+        setTweaks((current) => reconcileStreamedTweaks(current, response.tweaks, pending.current, inFlight.current));
+        setError(null);
+      })
+      .catch((cause: unknown) => {
+        if (disposed) return;
+        setError(cause instanceof Error ? cause.message : "Unable to load tweaks.");
+      });
+
+    void client
+      .startTweakStream(server)
+      .then((started) => {
+        if (disposed) {
+          void client.stopTweakStream(started.streamId);
+          return;
+        }
+        streamId = started.streamId;
+      })
+      .catch((cause: unknown) => {
+        if (disposed) return;
+        setError(cause instanceof Error ? cause.message : "Unable to stream tweaks.");
+      });
 
     return () => {
       disposed = true;
-      window.clearInterval(interval);
+      unsubscribe();
+      if (streamId !== undefined) void client.stopTweakStream(streamId);
     };
   }, [client, server]);
 
@@ -79,8 +103,16 @@ export function TweaksInspectorApp({
     try {
       while (pending.current.size > 0) {
         const values = Object.fromEntries(pending.current);
+        const names = Object.keys(values);
         pending.current.clear();
-        const result = await client.updateTweaks({ server, values });
+        for (const name of names) inFlight.current.add(name);
+
+        let result;
+        try {
+          result = await client.updateTweaks({ server, values });
+        } finally {
+          for (const name of names) inFlight.current.delete(name);
+        }
 
         setTweaks((current) =>
           current.map((tweak) => {
@@ -171,6 +203,23 @@ export function TweaksInspectorApp({
   );
 }
 
+export function reconcileStreamedTweaks(
+  current: TweakDescriptor[],
+  incoming: TweakDescriptor[],
+  pending: ReadonlyMap<string, TweakValue>,
+  inFlight: ReadonlySet<string>
+): TweakDescriptor[] {
+  const currentByName = new Map(current.map((tweak) => [tweak.name, tweak]));
+
+  return incoming.map((tweak) => {
+    const existing = currentByName.get(tweak.name);
+    if (existing && (pending.has(tweak.name) || inFlight.has(tweak.name))) {
+      return { ...tweak, value: existing.value };
+    }
+    return tweak;
+  });
+}
+
 export function groupTweaks(
   tweaks: TweakDescriptor[],
   appId: string,
@@ -237,17 +286,20 @@ function TweakControl({
     <div className="tweaks-control">
       <div className="tweaks-control-line">
         <span className="tweaks-control-label">{label}</span>
-        <TweakField tweak={tweak} onChange={onChange} />
         {changed ? (
           <button
             className="tweaks-reset"
             type="button"
             aria-label={`Reset ${tweak.name}`}
+            title={`Reset ${label}`}
             onClick={() => onChange(tweak, tweak.default)}
           >
-            Reset
+            <RotateCcw size={13} aria-hidden="true" />
           </button>
         ) : null}
+        <span className="tweaks-control-field">
+          <TweakField tweak={tweak} onChange={onChange} />
+        </span>
       </div>
 
       {(tweak.type === "int" || tweak.type === "float") && tweak.min !== undefined && tweak.max !== undefined ? (

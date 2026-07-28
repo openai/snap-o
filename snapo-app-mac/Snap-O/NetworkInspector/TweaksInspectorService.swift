@@ -91,6 +91,38 @@ actor TweaksInspectorService {
     return try JSONDecoder().decode(TweakUpdates.self, from: data)
   }
 
+  func streamTweaks(
+    for reference: InspectorServerReference,
+    onChange: @escaping @Sendable (TweakList) -> Void
+  ) async throws {
+    let connection = try connection(for: reference)
+    var request = URLRequest(url: connection.baseURL.appending(path: "tweaks/events"))
+    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+
+    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+    try Self.validate(response)
+
+    var eventName: String?
+    var dataLines: [String] = []
+
+    for try await line in bytes.lines {
+      try Task.checkCancellation()
+
+      if line.isEmpty {
+        if eventName == "tweaks", !dataLines.isEmpty {
+          let data = Data(dataLines.joined(separator: "\n").utf8)
+          try onChange(JSONDecoder().decode(TweakList.self, from: data))
+        }
+        eventName = nil
+        dataLines.removeAll(keepingCapacity: true)
+      } else if line.hasPrefix("event:") {
+        eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+      } else if line.hasPrefix("data:") {
+        dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
+      }
+    }
+  }
+
   func stop() async {
     let adb = await adbService.exec()
     let forwards = connections.values.map(\.forward)

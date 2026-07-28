@@ -498,6 +498,24 @@ button {
   color: var(--text);
 }
 
+.tweak-reset {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.tweak-reset[hidden] {
+  display: none;
+}
+
+.tweak-reset-icon {
+  width: 13px;
+  height: 13px;
+}
+
 .toolbar-button:disabled {
   color: var(--subtle);
 }
@@ -601,6 +619,7 @@ button {
   flex: 0 0 auto;
   align-items: center;
   gap: 9px;
+  margin-left: auto;
 }
 
 .number-input,

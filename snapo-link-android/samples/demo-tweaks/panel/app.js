@@ -6,6 +6,8 @@ const state = {
   rows: new Map(),
   orderingByApp: new Map(),
   pending: new Map(),
+  inFlight: new Set(),
+  eventSource: undefined,
   timer: undefined,
   pollTimer: undefined,
   refreshing: false,
@@ -367,6 +369,7 @@ function renderAppGroupedMenu() {
 }
 
 function showEmptyState() {
+  closeTweakStream();
   state.tweaks = [];
   state.rows.clear();
   elements.appName.textContent = "No app selected";
@@ -442,6 +445,7 @@ async function flushPending() {
 
   const values = Object.fromEntries(state.pending);
   state.pending.clear();
+  for (const name of Object.keys(values)) state.inFlight.add(name);
   state.saving = true;
   setStatus("connected", "Saving…");
   updateResetButton();
@@ -468,6 +472,7 @@ async function flushPending() {
     setStatus("error", "Update failed");
     await reloadTweaks();
   } finally {
+    for (const name of Object.keys(values)) state.inFlight.delete(name);
     state.saving = false;
     updateResetButton();
 
@@ -483,16 +488,18 @@ function makeTweakLine(tweak) {
   const line = node("div", "tweak-line");
   const content = node("div", "tweak-content");
   const actions = node("div", "tweak-actions");
-  const reset = node("button", "tweak-reset", "Reset");
+  const reset = node("button", "tweak-reset");
   reset.type = "button";
   reset.hidden = tweak.value === tweak.default;
   reset.setAttribute("aria-label", `Reset ${tweak.name}`);
+  reset.setAttribute("title", `Reset ${tweakLabel(tweak.name)}`);
+  reset.append(mockIcon("rotate-ccw", "tweak-reset-icon"));
   reset.addEventListener("click", () => {
     updateValue(tweak, tweak.default, 0);
   });
 
-  content.append(node("span", "tweak-label", tweakLabel(tweak.name)), actions);
-  line.append(content, reset);
+  content.append(node("span", "tweak-label", tweakLabel(tweak.name)), reset, actions);
+  line.append(content);
   return { line, actions, reset };
 }
 
@@ -781,6 +788,76 @@ function sameTweakShape(current, incoming) {
   });
 }
 
+function applyTweakSnapshot(incoming) {
+  const existing = new Map(state.tweaks.map((tweak) => [tweak.name, tweak]));
+  const nextTweaks = incoming.map((next) => {
+    const current = existing.get(next.name);
+
+    if (
+      current &&
+      (state.pending.has(next.name) || state.inFlight.has(next.name))
+    ) {
+      return { ...next, value: current.value };
+    }
+
+    const fields = state.rows.get(next.name);
+    if (current && Object.values(fields ?? {}).includes(document.activeElement)) {
+      return { ...next, value: current.value };
+    }
+
+    return next;
+  });
+
+  if (!sameTweakShape(state.tweaks, nextTweaks)) {
+    state.tweaks = nextTweaks;
+    renderTweaks();
+    return;
+  }
+
+  for (const next of nextTweaks) {
+    const current = existing.get(next.name);
+    if (current && current.value !== next.value) {
+      current.value = next.value;
+      updateTweakRow(current);
+    }
+  }
+
+  updateResetButton();
+}
+
+function closeTweakStream() {
+  state.eventSource?.close();
+  state.eventSource = undefined;
+}
+
+function openTweakStream() {
+  closeTweakStream();
+
+  if (isMockMode || typeof EventSource === "undefined") return;
+
+  const source = new EventSource("/tweaks/events");
+  state.eventSource = source;
+
+  source.addEventListener("tweaks", (event) => {
+    if (state.eventSource !== source || state.switching) return;
+
+    try {
+      const result = JSON.parse(event.data);
+      applyTweakSnapshot(result.tweaks);
+      setError();
+      setStatus("connected", "Connected");
+    } catch (error) {
+      setError(error.message);
+      setStatus("error", "Invalid tweak update");
+    }
+  });
+
+  source.addEventListener("error", () => {
+    if (state.eventSource !== source || state.switching) return;
+    setStatus("connecting", "Reconnecting…");
+  });
+}
+
 function scheduleRefresh() {
   clearTimeout(state.pollTimer);
   state.pollTimer = setTimeout(() => {
@@ -815,29 +892,8 @@ async function refreshCurrent() {
       return;
     }
 
-    const incoming = (await request("/tweaks")).tweaks;
-
-    if (!sameTweakShape(state.tweaks, incoming)) {
-      state.tweaks = incoming;
-      renderTweaks();
-    } else {
-      for (const next of incoming) {
-        if (state.pending.has(next.name)) continue;
-
-        const tweak = state.tweaks.find((candidate) => candidate.name === next.name);
-        const fields = state.rows.get(next.name);
-
-        if (
-          tweak &&
-          tweak.value !== next.value &&
-          !Object.values(fields ?? {}).includes(document.activeElement)
-        ) {
-          tweak.value = next.value;
-          updateTweakRow(tweak);
-        }
-      }
-
-      updateResetButton();
+    if (!state.eventSource) {
+      applyTweakSnapshot((await request("/tweaks")).tweaks);
     }
 
     setError();
@@ -876,6 +932,7 @@ async function load({ refreshApps = true } = {}) {
     updateAppIdentity({ ...selected, ...app });
     state.tweaks = result.tweaks;
     renderTweaks();
+    openTweakStream();
     setError();
     setStatus("connected", "Connected");
 
@@ -897,6 +954,7 @@ async function selectApp(id) {
   }
 
   state.switching = true;
+  closeTweakStream();
   setAppMenuOpen(false);
   renderApps();
   updateResetButton();

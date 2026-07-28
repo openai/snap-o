@@ -81,6 +81,15 @@ before(async () => {
       return;
     }
 
+    if (request.url === "/tweaks/events" && request.method === "GET") {
+      response.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/event-stream; charset=utf-8",
+      });
+      response.write(`event: tweaks\ndata: ${JSON.stringify({ tweaks: initialTweaks })}\n\n`);
+      return;
+    }
+
     if (request.url === "/tweaks" && request.method === "PATCH") {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
@@ -185,11 +194,29 @@ test("keeps tweak values beside their labels without visible slider bounds", asy
   const response = await fetch(new URL("/styles.css", panel.url));
   const styles = await response.text();
   const content = styles.match(/\.tweak-content\s*\{([^}]*)\}/)?.[1];
+  const actions = styles.match(/\.tweak-actions\s*\{([^}]*)\}/)?.[1];
 
   assert.ok(content);
   assert.match(content, /display:\s*flex/);
   assert.match(content, /gap:\s*10px/);
+  assert.ok(actions);
+  assert.match(actions, /margin-left:\s*auto/);
   assert.doesNotMatch(styles, /\.range-labels\b/);
+});
+
+test("shows an icon reset only for changed tweaks", async () => {
+  const response = await fetch(new URL("/styles.css", panel.url));
+  const styles = await response.text();
+  const reset = styles.match(/\.tweak-reset\s*\{\s*display:\s*inline-flex;([^}]*)\}/)?.[0];
+  const hidden = styles.match(/\.tweak-reset\[hidden\]\s*\{([^}]*)\}/)?.[1];
+  const icon = styles.match(/\.tweak-reset-icon\s*\{([^}]*)\}/)?.[1];
+  assert.ok(reset);
+  assert.match(reset, /display:\s*inline-flex/);
+  assert.ok(hidden);
+  assert.match(hidden, /display:\s*none/);
+  assert.ok(icon);
+  assert.match(icon, /width:\s*13px/);
+  assert.doesNotMatch(styles, /\.tweak-row\[data-changed="true"\]\s+\.tweak-label/);
 });
 
 test("uses a responsive, monochrome inspector dashboard", async () => {
@@ -417,6 +444,42 @@ test("proxies the original flat tweak descriptors", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { tweaks: initialTweaks });
+});
+
+test("streams complete tweak snapshots while allowing concurrent patches", async () => {
+  const controller = new AbortController();
+
+  try {
+    const response = await fetch(new URL("/tweaks/events", panel.url), {
+      signal: controller.signal,
+    });
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/event-stream/);
+
+    const reader = response.body.getReader();
+    const first = await reader.read();
+    const event = new TextDecoder().decode(first.value);
+
+    assert.match(event, /^event: tweaks\ndata: /);
+    assert.deepEqual(
+      JSON.parse(event.match(/^event: tweaks\ndata: (.+)\n\n$/s)[1]),
+      { tweaks: initialTweaks },
+    );
+
+    const patch = await fetch(new URL("/tweaks", panel.url), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values: { "Font size": 48 } }),
+    });
+
+    assert.equal(patch.status, 200);
+    assert.deepEqual(await patch.json(), {
+      tweaks: [{ name: "Font size", value: 48 }],
+    });
+  } finally {
+    controller.abort();
+  }
 });
 
 test("forwards live tweak patches", async () => {

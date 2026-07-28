@@ -34,6 +34,7 @@ actor NetworkInspectorService {
   private var streams: [String: String] = [:]
   private var activeStreamConnections: [String: UUID] = [:]
   private var streamStartFlights: [String: StreamStartFlight] = [:]
+  private var tweakStreams: [String: Task<Void, Never>] = [:]
   private var outputContinuations: [UUID: AsyncStream<NetworkInspectorOutput>.Continuation] = [:]
   private var refreshFlight: RefreshFlight?
   private var isStopped = false
@@ -131,6 +132,25 @@ actor NetworkInspectorService {
     try await tweaksService.updateTweaks(input)
   }
 
+  func startTweakStream(_ reference: InspectorServerReference) async throws -> NetworkStreamStarted {
+    guard !isStopped else {
+      throw NetworkInspectorError.invalidBridgeMessage
+    }
+
+    _ = try await tweaksService.listTweaks(for: reference)
+    let streamID = UUID().uuidString
+
+    tweakStreams[streamID] = Task { [weak self] in
+      await self?.consumeTweakStream(reference, streamID: streamID)
+    }
+
+    return NetworkStreamStarted(streamId: streamID)
+  }
+
+  func stopTweakStream(_ streamID: String) {
+    tweakStreams.removeValue(forKey: streamID)?.cancel()
+  }
+
   func startStream(_ reference: NetworkServerReference) async throws -> NetworkStreamStarted {
     await refresh()
     guard !isStopped, let state = servers[reference.key] else {
@@ -201,6 +221,12 @@ actor NetworkInspectorService {
   }
 
   func stopAllStreams() async {
+    let activeTweakStreams = Array(tweakStreams.values)
+    tweakStreams.removeAll()
+    for stream in activeTweakStreams {
+      stream.cancel()
+    }
+
     let serverKeys = Set(streams.values)
     streams.removeAll()
     activeStreamConnections.removeAll()
@@ -252,6 +278,11 @@ actor NetworkInspectorService {
   func stop() async {
     guard !isStopped else { return }
     isStopped = true
+    let activeTweakStreams = Array(tweakStreams.values)
+    tweakStreams.removeAll()
+    for stream in activeTweakStreams {
+      stream.cancel()
+    }
     await tweaksService.stop()
     refreshFlight?.task.cancel()
     refreshFlight = nil
@@ -279,6 +310,41 @@ actor NetworkInspectorService {
 
   func isRunning() -> Bool {
     !isStopped
+  }
+
+  private func consumeTweakStream(
+    _ reference: InspectorServerReference,
+    streamID: String
+  ) async {
+    var retryDelay: Duration = .milliseconds(250)
+
+    while !Task.isCancelled, !isStopped {
+      do {
+        try await tweaksService.streamTweaks(for: reference) { [weak self] list in
+          Task {
+            await self?.emit(
+              .tweaks(
+                TweakStreamEvent(
+                  streamId: streamID,
+                  server: reference,
+                  tweaks: list.tweaks
+                )
+              )
+            )
+          }
+        }
+        retryDelay = .milliseconds(250)
+      } catch {
+        guard !Task.isCancelled, !isStopped else { return }
+      }
+
+      do {
+        try await Task.sleep(for: retryDelay)
+      } catch {
+        return
+      }
+      retryDelay = min(retryDelay * 2, .seconds(4))
+    }
   }
 
   private func optionalCommand(

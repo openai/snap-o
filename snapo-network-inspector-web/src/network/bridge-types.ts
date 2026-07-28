@@ -60,6 +60,11 @@ export interface TweakList {
   tweaks: TweakDescriptor[];
 }
 
+export interface TweakStreamEvent extends TweakList {
+  streamId: string;
+  server: InspectorServerReference;
+}
+
 export interface TweakUpdate {
   name: string;
   value: TweakValue;

@@ -373,16 +373,27 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.equal(fontSizeRow.children.length, 2);
     assert.equal(fontSizeContent.children[0].textContent, "Font size");
     assert.equal(
-      fontSizeContent.children[1].children[0].getAttribute("aria-label"),
+      fontSizeContent.children[2].children[0].getAttribute("aria-label"),
       "Font size value",
     );
-    assert.equal(fontSizeLine.children[1].getAttribute("aria-label"), "Reset Font size");
+    assert.equal(fontSizeContent.children[1].getAttribute("aria-label"), "Reset Font size");
+    assert.equal(fontSizeContent.children[1].getAttribute("title"), "Reset Font size");
+    assert.equal(fontSizeContent.children[1].hidden, true);
+    assert.equal(fontSizeContent.children[1].textContent, "");
+    assert.equal(fontSizeContent.children[1].children[0].tagName, "SVG");
+    assert.equal(
+      fontSizeContent.children[1].children[0].children[0].getAttribute("href"),
+      "#mock-icon-rotate-ccw",
+    );
+    assert.equal(fontSizeRow.dataset.changed, "false");
     assert.equal(fontSize.min, "16");
     assert.equal(fontSize.max, "72");
 
     fontSize.value = "48";
     await fontSize.emit("input");
     assert.equal(findInput(appearance, "Font size value").value, "48");
+    assert.equal(fontSizeRow.dataset.changed, "true");
+    assert.equal(fontSizeContent.children[1].hidden, false);
 
     const fontWeight = findInput(appearance, "Font weight value");
     fontWeight.value = "700";
@@ -1173,5 +1184,111 @@ test("motion tweaks appear and disappear as the visibility tweak changes composi
   } finally {
     globalThis.document = originalDocument;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("streams batched composition changes without polling tweak values", async () => {
+  const document = makeDocument();
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const originalEventSource = globalThis.EventSource;
+  const sources = [];
+  let tweakRequests = 0;
+
+  class FakeEventSource {
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      this.closed = false;
+      sources.push(this);
+    }
+
+    addEventListener(name, listener) {
+      this.listeners.set(name, listener);
+    }
+
+    emitTweaks(tweaks) {
+      this.listeners.get("tweaks")?.({
+        data: JSON.stringify({ tweaks }),
+      });
+    }
+
+    close() {
+      this.closed = true;
+    }
+  }
+
+  globalThis.document = document;
+  globalThis.EventSource = FakeEventSource;
+  globalThis.fetch = async (pathname) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
+    }
+
+    if (pathname === "/tweaks") {
+      tweakRequests += 1;
+      return jsonResponse({ tweaks: structuredClone(descriptors) });
+    }
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?event-stream-test=${Date.now()}`);
+    await delay(0);
+
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0].url, "/tweaks/events");
+    assert.equal(tweakRequests, 1);
+
+    const typography = {
+      name: "Typography/Font size",
+      type: "int",
+      default: 36,
+      value: 48,
+      min: 16,
+      max: 72,
+      step: 1,
+    };
+    const motion = {
+      name: "Motion/Duration",
+      type: "int",
+      default: 400,
+      value: 550,
+      min: 100,
+      max: 1500,
+      step: 50,
+    };
+
+    sources[0].emitTweaks([typography, motion]);
+
+    assert.deepEqual(visibleSections(document), ["Typography", "Motion"]);
+    assert.equal(
+      findInput(findTweakList(document, "Typography"), "Typography/Font size").value,
+      "48",
+    );
+    assert.equal(
+      findInput(findTweakList(document, "Motion"), "Motion/Duration").value,
+      "550",
+    );
+
+    sources[0].emitTweaks([typography]);
+
+    assert.deepEqual(visibleSections(document), ["Typography"]);
+    assert.equal(findTweakList(document, "Motion"), null);
+    assert.equal(tweakRequests, 1);
+  } finally {
+    sources.forEach((source) => source.close());
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+    if (originalEventSource === undefined) {
+      delete globalThis.EventSource;
+    } else {
+      globalThis.EventSource = originalEventSource;
+    }
   }
 });

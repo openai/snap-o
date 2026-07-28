@@ -59,6 +59,13 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "updateTweaks":
       let input = try Self.decode(UpdateTweaksInput.self, from: payload)
       return try await Self.jsonObject(service.updateTweaks(input))
+    case "startTweakStream":
+      let reference = try Self.decode(InspectorServerReference.self, from: payload)
+      return try await Self.jsonObject(service.startTweakStream(reference))
+    case "stopTweakStream":
+      let input = try Self.decode(StreamIdentifier.self, from: payload)
+      await service.stopTweakStream(input.streamId)
+      return nil
     case "loadBodies":
       let input = try Self.decode(NetworkLoadBodiesInput.self, from: payload)
       return try await Self.jsonObject(service.loadBodies(input))

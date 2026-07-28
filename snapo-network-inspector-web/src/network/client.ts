@@ -14,6 +14,7 @@ import type {
   StreamStarted,
   StreamStatus,
   TweakList,
+  TweakStreamEvent,
   TweakUpdates,
   UpdateTweaksInput
 } from "./bridge-types";
@@ -25,6 +26,9 @@ export interface NetworkClient {
   listServers(): Promise<SnapOServer[]>;
   listTweaks(server: InspectorServerReference): Promise<TweakList>;
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
+  startTweakStream(server: InspectorServerReference): Promise<StreamStarted>;
+  stopTweakStream(streamId: string): Promise<void>;
+  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
@@ -86,6 +90,18 @@ class WebKitNetworkClient implements NetworkClient {
 
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
     return this.invoke<TweakUpdates>("updateTweaks", input);
+  }
+
+  startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
+    return this.invoke<StreamStarted>("startTweakStream", server);
+  }
+
+  stopTweakStream(streamId: string): Promise<void> {
+    return this.invoke<void>("stopTweakStream", { streamId });
+  }
+
+  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
+    return listenWebKitEvent<TweakStreamEvent>("tweaks:changed", callback);
   }
 
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
@@ -195,6 +211,8 @@ class HttpNetworkClient implements NetworkClient {
   private eventSource: EventSource | null = null;
   private statusCallbacks = new Set<(status: StreamStatus) => void>();
   private eventCallbacks = new Set<(event: StreamEvent) => void>();
+  private tweakCallbacks = new Set<(event: TweakStreamEvent) => void>();
+  private tweakEventSources = new Map<string, EventSource>();
 
   async appVersion(): Promise<string> {
     return "web";
@@ -240,6 +258,34 @@ class HttpNetworkClient implements NetworkClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input)
     });
+  }
+
+  async startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
+    const streamId = crypto.randomUUID();
+    const query = new URLSearchParams({
+      deviceId: server.deviceId,
+      socketName: server.socketName
+    });
+    const source = new EventSource(`/api/inspector/tweaks/events?${query.toString()}`);
+
+    source.addEventListener("tweaks", (event) => {
+      const payload = JSON.parse(event.data) as TweakList;
+      const update: TweakStreamEvent = { streamId, server, tweaks: payload.tweaks };
+      for (const callback of this.tweakCallbacks) callback(update);
+    });
+
+    this.tweakEventSources.set(streamId, source);
+    return { streamId };
+  }
+
+  async stopTweakStream(streamId: string): Promise<void> {
+    this.tweakEventSources.get(streamId)?.close();
+    this.tweakEventSources.delete(streamId);
+  }
+
+  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
+    this.tweakCallbacks.add(callback);
+    return () => this.tweakCallbacks.delete(callback);
   }
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {

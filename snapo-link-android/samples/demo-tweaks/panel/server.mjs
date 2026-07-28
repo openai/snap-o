@@ -3,6 +3,8 @@ import { createServer } from "node:http";
 import { homedir } from "node:os";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -20,7 +22,7 @@ const staticFiles = new Map([
   ],
 ]);
 
-const tweakRoutes = new Set(["/app", "/app/icon", "/tweaks"]);
+const tweakRoutes = new Set(["/app", "/app/icon", "/tweaks", "/tweaks/events"]);
 
 export function parseAdbDevices(output) {
   return output
@@ -461,6 +463,11 @@ async function serveStatic(request, response, file) {
 }
 
 async function proxyTweak(request, response, connection, pathname, target) {
+  if (pathname === "/tweaks/events" && request.method === "GET") {
+    await proxyTweakEvents(request, response, connection, target);
+    return;
+  }
+
   const headers = {};
   let body;
 
@@ -501,6 +508,57 @@ async function proxyTweak(request, response, connection, pathname, target) {
 
   response.writeHead(upstream.status, responseHeaders);
   response.end(data);
+}
+
+async function proxyTweakEvents(request, response, connection, target) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  response.once("close", abort);
+
+  try {
+    const performRequest = () => fetch(
+      new URL("/tweaks/events", target ?? connection.target),
+      {
+        method: request.method,
+        headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
+      },
+    );
+
+    let upstream;
+
+    try {
+      upstream = await performRequest();
+    } catch (error) {
+      if (connection.fixed || target || controller.signal.aborted) throw error;
+
+      await connection.reconnect();
+      upstream = await performRequest();
+    }
+
+    if (!upstream.ok || !upstream.body) {
+      const data = Buffer.from(await upstream.arrayBuffer());
+      response.writeHead(upstream.status, {
+        "Cache-Control": "no-store",
+        "Content-Type": upstream.headers.get("content-type") ?? "application/json",
+        "Content-Length": data.length,
+        "X-Content-Type-Options": "nosniff",
+      });
+      response.end(data);
+      return;
+    }
+
+    response.writeHead(upstream.status, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+    });
+
+    await pipeline(Readable.fromWeb(upstream.body), response);
+  } finally {
+    response.removeListener("close", abort);
+    controller.abort();
+  }
 }
 
 function publicApp(app) {
