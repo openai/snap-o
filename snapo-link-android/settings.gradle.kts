@@ -21,11 +21,14 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "snapo-link-android"
+include(":tweaks")
+include(":tweaks-noop")
 include(":network")
 include(":network-okhttp3")
 include(":network-okhttp3-noop")
 include(":network-httpurlconnection")
 include(":network-httpurlconnection-noop")
+include(":samples:demo-tweaks")
 include(":samples:demo-okhttp")
 include(":samples:demo-ktor-okhttp")
 include(":samples:demo-httpurlconnection")

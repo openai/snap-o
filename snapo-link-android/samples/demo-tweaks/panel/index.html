@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Optional browser panel for the Snap-O Tweaks sample."
+    />
+    <meta name="theme-color" content="#fafaf9" />
+    <title>Snap-O Tweaks</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main class="panel">
+      <header class="app-header">
+        <div class="app-bar">
+          <div class="app-identity">
+            <div class="app-icon-frame">
+              <img
+                class="app-icon"
+                src="/app/icon"
+                alt=""
+                width="38"
+                height="38"
+              />
+              <span
+                id="connection-status"
+                class="connection-status"
+                role="status"
+                aria-label="Connecting"
+              >
+                <span class="status-dot"></span>
+                <span id="status-text" class="visually-hidden">Connecting</span>
+              </span>
+            </div>
+            <div class="app-heading">
+              <p id="app-name" class="app-name">Connecting…</p>
+              <p id="package-name" class="package-name"></p>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <button id="refresh-button" class="toolbar-button" type="button">
+              Refresh
+            </button>
+            <button id="reset-button" class="toolbar-button" type="button" disabled>
+              Reset all
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <p id="error-message" class="error-message" role="alert" hidden></p>
+
+      <section id="appearance-section" class="tweak-section" hidden>
+        <div class="section-heading">
+          <h2>Appearance</h2>
+          <span id="appearance-count" class="section-count"></span>
+        </div>
+        <div id="appearance-tweaks" class="tweak-list"></div>
+      </section>
+
+      <section id="motion-section" class="tweak-section" hidden>
+        <div class="section-heading">
+          <h2>Motion</h2>
+          <span id="motion-count" class="section-count"></span>
+        </div>
+        <div id="motion-tweaks" class="tweak-list"></div>
+      </section>
+
+      <section id="other-section" class="tweak-section" hidden>
+        <div class="section-heading">
+          <h2>Other</h2>
+          <span id="other-count" class="section-count"></span>
+        </div>
+        <div id="other-tweaks" class="tweak-list"></div>
+      </section>
+    </main>
+  </body>
+</html>

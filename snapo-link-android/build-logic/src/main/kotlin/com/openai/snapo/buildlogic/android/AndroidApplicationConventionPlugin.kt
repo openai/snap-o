@@ -22,9 +22,9 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
 
             buildTypes {
                 maybeCreate("release").apply {
-                    // Keep release builds lightweight for samples without extra optimization steps.
-                    isMinifyEnabled = false
+                    isMinifyEnabled = true
                     isShrinkResources = false
+                    proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
                 }
             }
 

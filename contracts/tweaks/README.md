@@ -1,0 +1,382 @@
+# Snap-O Tweaks protocol
+
+Status: phase one. The network inspector protocol is unchanged.
+
+Snap-O Tweaks exposes adjustable values from the currently composed Android UI
+through a debug-only app-local socket. Agents and desktop tools can use HTTP to
+inspect those values and change them while the app runs.
+
+## Transport
+
+Android listens on:
+
+```text
+snapo_tweaks_<pid>
+```
+
+Discover and forward the socket:
+
+```bash
+adb -s emulator-5554 shell cat /proc/net/unix
+adb -s emulator-5554 forward tcp:0 localabstract:snapo_tweaks_12345
+```
+
+ADB prints the assigned localhost port:
+
+```bash
+curl -fsS http://127.0.0.1:43817/tweaks
+```
+
+Implement HTTP with Android `LocalServerSocket`, standard streams, and Android
+`JsonReader`/`JsonWriter`. Use one request per connection, JSON for app and
+tweak responses, PNG for `/app/icon`, `Content-Length`, bounded request
+sizes, a read timeout, and `Connection: close`. No server dependency, Android
+TCP port, or `INTERNET` permission is needed.
+
+## REST API
+
+### GET /app
+
+Return exactly the app's user-facing Android label and package name:
+
+```json
+{
+  "name": "Snap-O Tweaks Demo",
+  "packageName": "com.openai.snapo.demo.tweaks"
+}
+```
+
+Resolve `name` from the actual Android app label.
+
+### GET /app/icon
+
+Lazily return the app icon as a 96 × 96 PNG with `Content-Type: image/png`.
+Return `404` when the icon is unavailable.
+
+### GET /tweaks
+
+Return a flat list of currently registered tweaks:
+
+```json
+{
+  "tweaks": [
+    {
+      "name": "Font size",
+      "type": "int",
+      "default": 36,
+      "value": 36,
+      "min": 16,
+      "max": 72,
+      "step": 1
+    },
+    {
+      "name": "Font weight",
+      "type": "int",
+      "default": 600,
+      "value": 600,
+      "min": 100,
+      "max": 900,
+      "step": 100
+    },
+    {
+      "name": "Text color",
+      "type": "color",
+      "default": "#18212F",
+      "value": "#18212F"
+    },
+    {
+      "name": "Background color",
+      "type": "color",
+      "default": "#F7F8FA",
+      "value": "#F7F8FA"
+    },
+    {
+      "name": "Accent color",
+      "type": "color",
+      "default": "#5468FF",
+      "value": "#5468FF"
+    },
+    {
+      "name": "Animation duration",
+      "type": "int",
+      "default": 400,
+      "value": 400,
+      "min": 100,
+      "max": 1500,
+      "step": 50
+    },
+    {
+      "name": "Spring stiffness",
+      "type": "float",
+      "default": 280.0,
+      "value": 280.0,
+      "min": 80.0,
+      "max": 800.0,
+      "step": 20.0
+    },
+    {
+      "name": "Spring damping",
+      "type": "float",
+      "default": 0.7,
+      "value": 0.7,
+      "min": 0.1,
+      "max": 1.0,
+      "step": 0.05
+    },
+    {
+      "name": "Use spring",
+      "type": "boolean",
+      "default": true,
+      "value": true
+    },
+    {
+      "name": "Preview text",
+      "type": "string",
+      "default": "Make it feel right.",
+      "value": "Make it feel right."
+    }
+  ]
+}
+```
+
+A tweak name represents one shared value, not one composable. Multiple active
+composables may register the same name; the tweak appears only once, and an
+update changes the value observed by every usage. A tweak remains registered
+until its last usage leaves composition.
+
+Usages with the same name must agree on the tweak type, default, and
+constraints. Conflicting declarations are a configuration error.
+
+Supported types are `int`, `float`, `boolean`, `color`, and `string`. Integer
+tweaks accept only whole numbers; float tweaks accept whole or fractional
+numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include
+constraints actually supplied by the app. A `step` is relative to `min`, or to
+`default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when
+translucent.
+
+Numeric JSON values may contain at most 128 characters and 64 significant
+digits, with a decimal scale between -64 and 64. Reject values outside those
+limits with `422` before changing any tweaks.
+
+### PATCH /tweaks
+
+```bash
+curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "values": {
+      "Font size": 48,
+      "Font weight": 700,
+      "Accent color": "#3B82F6",
+      "Animation duration": 550,
+      "Spring damping": 0.8,
+      "Use spring": false,
+      "Preview text": "A calmer direction."
+    }
+  }'
+```
+
+```json
+{
+  "tweaks": [
+    { "name": "Font size", "value": 48 },
+    { "name": "Font weight", "value": 700 },
+    { "name": "Accent color", "value": "#3B82F6" },
+    { "name": "Animation duration", "value": 550 },
+    { "name": "Spring damping", "value": 0.8 },
+    { "name": "Use spring", "value": false },
+    { "name": "Preview text", "value": "A calmer direction." }
+  ]
+}
+```
+
+Validate all values before changing any of them. Return `400` for malformed
+requests, `404` when an endpoint or requested tweak does not exist, `405`
+for an unsupported method, `413` for an oversized body, and `422` when a value
+has the wrong type or violates a constraint. Errors use a small JSON body:
+
+```json
+{
+  "error": "Unknown tweak: Font size"
+}
+```
+
+Apply changes on the Android main thread. If any value is invalid, do not update
+any tweaks in that request. Reset a value by patching it with its default.
+
+## Compose API
+
+```kotlin
+import com.openai.snapo.tweaks.tweakBoolean
+import com.openai.snapo.tweaks.tweakColor
+import com.openai.snapo.tweaks.tweakFloat
+import com.openai.snapo.tweaks.tweakInt
+import com.openai.snapo.tweaks.tweakString
+
+@Composable
+fun TweakSpecimen() {
+    val textColor = tweakColor(
+        name = "Text color",
+        default = Color(0xFF18212F),
+    )
+
+    val backgroundColor = tweakColor(
+        name = "Background color",
+        default = Color(0xFFF7F8FA),
+    )
+
+    val accentColor = tweakColor(
+        name = "Accent color",
+        default = Color(0xFF5468FF),
+    )
+
+    MaterialTheme(
+        colorScheme = lightColorScheme(
+            primary = accentColor,
+            background = backgroundColor,
+            onBackground = textColor,
+            surface = backgroundColor,
+            onSurface = textColor,
+        ),
+    ) {
+        TypographySpecimen()
+        MotionSpecimen()
+    }
+}
+
+@Composable
+fun TypographySpecimen() {
+    val fontSize = tweakInt(
+        name = "Font size",
+        default = 36,
+        min = 16,
+        max = 72,
+        step = 1,
+    )
+
+    val fontWeight = tweakInt(
+        name = "Font weight",
+        default = 600,
+        min = 100,
+        max = 900,
+        step = 100,
+    )
+
+    Text(
+        text = tweakString("Preview text", "Make it feel right."),
+        fontSize = fontSize.sp,
+        fontWeight = FontWeight(fontWeight),
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+
+    SpecimenAccessory()
+}
+
+@Composable
+fun SpecimenAccessory() {
+    val fontSize = tweakInt("Font size", 36, min = 16, max = 72, step = 1)
+
+    Text(text = "$fontSize sp")
+}
+
+@Composable
+fun MotionSpecimen() {
+    val durationMillis = tweakInt(
+        name = "Animation duration",
+        default = 400,
+        min = 100,
+        max = 1_500,
+        step = 50,
+    )
+
+    val springStiffness = tweakFloat(
+        name = "Spring stiffness",
+        default = 280f,
+        min = 80f,
+        max = 800f,
+        step = 20f,
+    )
+
+    val springDamping = tweakFloat(
+        name = "Spring damping",
+        default = 0.7f,
+        min = 0.1f,
+        max = 1f,
+        step = 0.05f,
+    )
+
+    val useSpring = tweakBoolean(
+        name = "Use spring",
+        default = true,
+    )
+
+    val animationSpec = if (useSpring) {
+        spring<Float>(dampingRatio = springDamping, stiffness = springStiffness)
+    } else {
+        tween<Float>(durationMillis = durationMillis)
+    }
+
+    MotionContent(animationSpec)
+}
+```
+
+Read each tweak in the composable that uses it. Theme colors are intentionally
+read at the theme boundary; font, text, and animation changes recompose their
+respective leaf composables rather than the entire screen. Both typography
+composables read the same Font size state, so one host update changes both.
+When a value only affects layout or drawing, read its state in the corresponding
+layout or draw callback instead of composition.
+`DisposableEffect` registers each usage and removes the tweak only after its
+final usage leaves composition. Screen navigation therefore determines what
+appears in the response.
+
+Provide `tweakInt`, `tweakFloat`, `tweakColor`, `tweakBoolean`, and
+`tweakString`. Numeric tweaks accept optional `min`, `max`, and `step` values
+of the same type. Convert integer values into Compose units at the call site,
+such as `tweakInt("Font size", 36).sp`. The real and no-op artifacts expose the
+same package and public Compose API.
+
+## Setup
+
+```kotlin
+dependencies {
+    debugImplementation(project(":tweaks"))
+    releaseImplementation(project(":tweaks-noop"))
+}
+```
+
+```text
+:tweaks              Compose API, debug registry, HTTP, and abstract socket.
+:tweaks-noop         Matching Compose API that returns default values.
+:samples:demo-tweaks Standalone Compose sample with no network integration.
+```
+
+Install the standalone debug sample on a connected Android device:
+
+```bash
+./gradlew :samples:demo-tweaks:installDebug
+```
+
+From the repository root, start the sample's optional host-side tweak panel:
+
+```bash
+node snapo-link-android/samples/demo-tweaks/panel/server.mjs
+```
+
+Open `http://127.0.0.1:4175`. The dependency-free panel discovers connected
+devices and live tweak sockets, creates its own ADB forward, displays the app
+icon and tweaks, and reconnects when the app process changes. It is a model-built
+demo, not a required setup step or the expected way to use Snap-O Tweaks. Any
+agent or host can use the same endpoints to create its own UI. See the sample
+panel's README for device and package selection.
+
+A non-exported `ContentProvider` in the debug artifact starts the runtime only
+when `ApplicationInfo.FLAG_DEBUGGABLE` is set. The release artifact returns
+default values, contains no provider, and starts no server. Sample release
+builds enable R8, so unused no-op calls and their tweak-name strings can be
+removed. Verify the release APK contains neither tweak-name strings nor the
+debug provider, registry, server, or socket.
+
+Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network
+protocol change, actions, streaming, groups, scopes, units, separate tweak
+IDs, or revisions.
