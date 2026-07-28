@@ -68,9 +68,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun TweakDemo() {
-    val textColor = tweakColor("Text color", Color(0xFF18212F))
-    val backgroundColor = tweakColor("Background color", Color(0xFFF7F8FA))
-    val accentColor = tweakColor("Accent color", Color(0xFF5468FF))
+    val textColor = tweakColor("Colors/Text", Color(0xFF18212F))
+    val backgroundColor = tweakColor("Colors/Background", Color(0xFFF7F8FA))
+    val accentColor = tweakColor("Colors/Accent", Color(0xFF5468FF))
 
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -95,6 +95,7 @@ private fun TweakDemo() {
 @Composable
 private fun TweakDemoContent() {
     val dividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    val showMotion = tweakBoolean("Motion/Show", true)
 
     Column(
         modifier = Modifier
@@ -107,8 +108,11 @@ private fun TweakDemoContent() {
         DemoHeader()
         HorizontalDivider(color = dividerColor)
         TypographyPreview()
-        HorizontalDivider(color = dividerColor)
-        MotionPreview()
+
+        if (showMotion) {
+            HorizontalDivider(color = dividerColor)
+            MotionPreview()
+        }
     }
 }
 
@@ -135,9 +139,9 @@ private fun DemoHeader() {
 
 @Composable
 private fun TypographyPreview() {
-    val fontSize = tweakInt("Font size", 36, min = 16, max = 72, step = 1)
-    val fontWeight = tweakInt("Font weight", 600, min = 100, max = 900, step = 100)
-    val previewText = tweakString("Preview text", "Make it feel right.")
+    val fontSize = tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
+    val fontWeight = tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
+    val previewText = tweakString("Typography/Preview text", "Make it feel right.")
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -158,8 +162,8 @@ private fun TypographyPreview() {
 
 @Composable
 private fun TypographyDetails() {
-    val fontSize = tweakInt("Font size", 36, min = 16, max = 72, step = 1)
-    val fontWeight = tweakInt("Font weight", 600, min = 100, max = 900, step = 100)
+    val fontSize = tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
+    val fontWeight = tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
 
     Text(
         text = "$fontSize sp · $fontWeight",
@@ -171,10 +175,10 @@ private fun TypographyDetails() {
 @Composable
 private fun MotionPreview() {
     var isStateB by rememberSaveable { mutableStateOf(false) }
-    val duration = tweakInt("Animation duration", 400, min = 100, max = 1500, step = 50)
-    val stiffness = tweakFloat("Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
-    val damping = tweakFloat("Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
-    val useSpring = tweakBoolean("Use spring", true)
+    val duration = tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
+    val stiffness = tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
+    val damping = tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
+    val useSpring = tweakBoolean("Motion/Use spring", true)
 
     val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
         spring(
@@ -266,14 +270,14 @@ private fun MotionTrack(
 private fun AnimationDetails(
     isStateB: Boolean,
 ) {
-    val useSpring = tweakBoolean("Use spring", true)
+    val useSpring = tweakBoolean("Motion/Use spring", true)
     val description = if (useSpring) {
-        val stiffness = tweakFloat("Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
-        val damping = tweakFloat("Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
+        val stiffness = tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
+        val damping = tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
 
         "Spring · $stiffness stiffness · $damping damping"
     } else {
-        val duration = tweakInt("Animation duration", 400, min = 100, max = 1500, step = 50)
+        val duration = tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
 
         "Tween · $duration ms"
     }

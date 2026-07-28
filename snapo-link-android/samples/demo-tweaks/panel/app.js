@@ -1,17 +1,78 @@
 const state = {
+  apps: [],
+  selectedAppId: undefined,
+  selectedView: "tweaks",
   tweaks: [],
   rows: new Map(),
+  orderingByApp: new Map(),
   pending: new Map(),
   timer: undefined,
+  pollTimer: undefined,
+  refreshing: false,
   saving: false,
+  switching: false,
+  menuOpen: false,
 };
 
+const isMockMode = typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("mock");
+
+const isAppGroupedMock = isMockMode &&
+  new URLSearchParams(window.location.search).get("mock") === "apps";
+
+const mockApps = [
+  {
+    id: "mock:chatgpt",
+    name: "ChatGPT",
+    packageName: "com.openai.chatgpt",
+    deviceName: "Pixel 9 Pro XL",
+    views: ["network", "tweaks"],
+  },
+  {
+    id: "mock:tweaks-demo",
+    name: "Snap-O Tweaks Demo",
+    packageName: "com.openai.snapo.demo.tweaks",
+    deviceName: "Pixel 9 Pro XL",
+    views: ["tweaks"],
+  },
+  {
+    id: "mock:emulator:chatgpt",
+    name: "ChatGPT",
+    packageName: "com.openai.chatgpt",
+    deviceName: "Android Emulator",
+    views: ["network"],
+  },
+];
+
+const mockTweaks = [
+  { name: "Colors/Text", type: "color", default: "#18212F", value: "#18212F" },
+  { name: "Colors/Background", type: "color", default: "#F7F8FA", value: "#F7F8FA" },
+  { name: "Colors/Accent", type: "color", default: "#5468FF", value: "#5468FF" },
+  { name: "Typography/Font size", type: "int", default: 36, value: 36, min: 16, max: 72, step: 1 },
+  { name: "Typography/Font weight", type: "int", default: 600, value: 600, min: 100, max: 900, step: 100 },
+  { name: "Typography/Preview text", type: "string", default: "Make it feel right.", value: "Make it feel right." },
+  { name: "Motion/Show", type: "boolean", default: true, value: true },
+  { name: "Motion/Duration", type: "int", default: 400, value: 400, min: 100, max: 1500, step: 50 },
+  { name: "Motion/Spring stiffness", type: "float", default: 280, value: 280, min: 80, max: 800, step: 20 },
+  { name: "Motion/Spring damping", type: "float", default: 0.7, value: 0.7, min: 0.1, max: 1, step: 0.05 },
+  { name: "Motion/Use spring", type: "boolean", default: true, value: true },
+];
+
+let mockSelectedAppId = mockApps[0].id;
+
 const elements = {
+  appPicker: document.querySelector("#app-picker"),
+  appChevron: document.querySelector("#app-chevron"),
+  appList: document.querySelector("#app-list"),
+  appIcon: document.querySelector(".app-icon"),
   appName: document.querySelector("#app-name"),
   packageName: document.querySelector("#package-name"),
+  deviceName: document.querySelector("#device-name"),
   status: document.querySelector("#connection-status"),
   statusText: document.querySelector("#status-text"),
   error: document.querySelector("#error-message"),
+  empty: document.querySelector("#empty-state"),
+  sections: document.querySelector("#tweak-sections"),
   reset: document.querySelector("#reset-button"),
   refresh: document.querySelector("#refresh-button"),
 };
@@ -36,6 +97,8 @@ function setError(message) {
 }
 
 async function request(path, options) {
+  if (isMockMode) return mockRequest(path, options);
+
   const response = await fetch(path, {
     cache: "no-store",
     ...options,
@@ -49,11 +112,261 @@ async function request(path, options) {
   return payload;
 }
 
+function mockRequest(path, options) {
+  if (path === "/apps") {
+    return { apps: structuredClone(mockApps), selectedAppId: mockSelectedAppId };
+  }
+
+  if (path === "/apps/selection") {
+    const { id } = JSON.parse(options.body);
+    const app = mockApps.find((candidate) => candidate.id === id);
+
+    if (!app) throw new Error("The selected app is not available.");
+
+    mockSelectedAppId = id;
+    return { app: structuredClone(app) };
+  }
+
+  if (path === "/app") {
+    return structuredClone(mockApps.find((app) => app.id === mockSelectedAppId));
+  }
+
+  if (path === "/tweaks" && options?.method === "PATCH") {
+    const { values } = JSON.parse(options.body);
+
+    for (const tweak of mockTweaks) {
+      if (Object.hasOwn(values, tweak.name)) tweak.value = values[tweak.name];
+    }
+
+    return {
+      tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+    };
+  }
+
+  if (path === "/tweaks") {
+    const showMotion = mockTweaks.find((tweak) => tweak.name === "Motion/Show");
+    const tweaks = mockTweaks.filter((tweak) =>
+      showMotion.value || !tweak.name.startsWith("Motion/") || tweak.name === "Motion/Show"
+    );
+
+    return { tweaks: structuredClone(tweaks) };
+  }
+
+  throw new Error("The mock route is not available.");
+}
+
 function updateResetButton() {
   elements.reset.disabled =
     state.saving ||
+    state.switching ||
     state.tweaks.length === 0 ||
     state.tweaks.every((tweak) => tweak.value === tweak.default);
+}
+
+function setAppMenuOpen(open) {
+  const hasChoices = state.apps.length > 1 ||
+    state.apps.some((app) => (app.views?.length ?? 0) > 1);
+  state.menuOpen = open && hasChoices && !state.switching;
+  elements.appList.hidden = !state.menuOpen;
+  elements.appPicker.setAttribute("aria-expanded", String(state.menuOpen));
+}
+
+function renderApps() {
+  const multipleApps = state.apps.length > 1 ||
+    state.apps.some((app) => (app.views?.length ?? 0) > 1);
+  elements.appPicker.disabled = state.switching || !multipleApps;
+  elements.appPicker.dataset.available = String(state.apps.length > 0);
+  elements.appPicker.dataset.multiple = String(multipleApps);
+  elements.appChevron.hidden = !multipleApps;
+
+  if (isMockMode) {
+    renderMockApps();
+    return;
+  }
+
+  renderAppGroupedMenu();
+}
+
+function mockIcon(name, className = "mock-menu-icon") {
+  const namespace = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(namespace, "svg");
+  const use = document.createElementNS(namespace, "use");
+
+  icon.setAttribute("class", className);
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+  use.setAttribute("href", `#mock-icon-${name}`);
+  icon.append(use);
+  return icon;
+}
+
+function renderMockApps() {
+  if (isAppGroupedMock) {
+    renderAppGroupedMenu();
+    return;
+  }
+
+  const rows = [];
+
+  for (const view of ["network", "tweaks"]) {
+    const apps = state.apps.filter((app) => (app.views ?? ["tweaks"]).includes(view));
+
+    if (apps.length === 0) continue;
+
+    const viewName = view === "network" ? "Network" : "Tweaks";
+    const heading = node("div", "mock-menu-heading");
+
+    heading.setAttribute("role", "presentation");
+    heading.append(
+      mockIcon(view === "network" ? "network" : "tweaks", "mock-heading-icon"),
+      node("span", undefined, viewName),
+    );
+    rows.push(heading);
+
+    for (const app of apps) {
+      const selected = app.id === state.selectedAppId && view === state.selectedView;
+      const button = node("button", "mock-menu-choice");
+      const identity = node("span", "mock-choice-identity");
+
+      button.type = "button";
+      button.dataset.selected = String(selected);
+      button.setAttribute("role", "menuitemradio");
+      button.setAttribute("aria-checked", String(selected));
+      button.setAttribute("aria-label", `${app.name}, ${viewName}, ${app.deviceName}`);
+      button.setAttribute("title", app.packageName);
+
+      identity.append(
+        node("span", "mock-choice-name", app.name),
+        node("span", "mock-choice-device", app.deviceName),
+      );
+      button.append(
+        mockIcon("app", "mock-choice-app-icon"),
+        identity,
+        mockIcon("check", "mock-menu-check"),
+      );
+
+      button.addEventListener("click", async () => {
+        state.selectedView = view;
+
+        if (app.id !== state.selectedAppId) await selectApp(app.id);
+
+        elements.appName.textContent = `${app.name} · ${viewName}`;
+        renderApps();
+        setAppMenuOpen(false);
+      });
+      rows.push(button);
+    }
+  }
+
+  elements.appList.replaceChildren(...rows);
+  setAppMenuOpen(state.menuOpen);
+}
+
+function appMenuIcon(app) {
+  if (isMockMode) return mockIcon("app", "mock-app-heading-icon");
+
+  const icon = node("img", "mock-app-heading-icon");
+  icon.src = `/apps/${encodeURIComponent(app.id)}/icon`;
+  icon.alt = "";
+  icon.width = 15;
+  icon.height = 15;
+  icon.addEventListener("error", () => {
+    icon.hidden = true;
+  });
+  return icon;
+}
+
+function renderAppGroupedMenu() {
+  const rows = [];
+
+  for (const app of state.apps) {
+    if (rows.length > 0) rows.push(node("div", "mock-app-separator"));
+
+    const heading = node("div", "mock-app-heading");
+
+    heading.setAttribute("role", "presentation");
+    heading.setAttribute("title", app.packageName);
+    heading.append(
+      appMenuIcon(app),
+      node("span", "mock-app-heading-name", app.name),
+      node("span", "mock-app-heading-device", app.deviceName),
+    );
+    rows.push(heading);
+
+    for (const view of app.views ?? ["tweaks"]) {
+      const viewName = view === "network" ? "Network" : "Tweaks";
+      const selected = app.id === state.selectedAppId && view === state.selectedView;
+      const button = node("button", "mock-menu-choice mock-app-view-choice");
+
+      button.type = "button";
+      button.dataset.selected = String(selected);
+      button.disabled = state.switching;
+      button.setAttribute("role", "menuitemradio");
+      button.setAttribute("aria-checked", String(selected));
+      button.setAttribute("aria-pressed", String(selected));
+      button.setAttribute("aria-label", `${app.name}, ${viewName}, ${app.deviceName}`);
+      button.setAttribute("title", app.packageName);
+      button.append(
+        mockIcon(view === "network" ? "network" : "tweaks", "mock-app-view-icon"),
+        node("span", "mock-app-view-name", viewName),
+        mockIcon("check", "mock-menu-check"),
+      );
+
+      button.addEventListener("click", async () => {
+        state.selectedView = view;
+
+        if (app.id !== state.selectedAppId) await selectApp(app.id);
+
+        if (isMockMode) {
+          elements.appName.textContent = `${app.name} · ${viewName}`;
+        }
+        renderApps();
+        setAppMenuOpen(false);
+      });
+      rows.push(button);
+    }
+  }
+
+  elements.appList.replaceChildren(...rows);
+  setAppMenuOpen(state.menuOpen);
+}
+
+function showEmptyState() {
+  state.tweaks = [];
+  state.rows.clear();
+  elements.appName.textContent = "No app selected";
+  elements.packageName.textContent = "";
+  elements.deviceName.textContent = "";
+  elements.appIcon.hidden = true;
+  elements.appPicker.removeAttribute?.("title");
+  elements.empty.hidden = false;
+  document.title = "Tweaks · Snap-O";
+  renderTweaks();
+  setError();
+  setStatus("disconnected", "No apps found");
+}
+
+function updateAppIdentity(app) {
+  elements.appName.textContent = isMockMode
+    ? `${app.name} · ${state.selectedView === "network" ? "Network" : "Tweaks"}`
+    : app.name;
+  elements.packageName.textContent = app.packageName;
+  elements.deviceName.textContent = app.deviceName;
+  if (isMockMode) {
+    elements.appIcon.hidden = true;
+
+    const frame = elements.appIcon.parentElement;
+
+    if (frame && !frame.querySelector(".mock-toolbar-icon")) {
+      frame.prepend(mockIcon("app", "mock-toolbar-icon"));
+    }
+  } else {
+    elements.appIcon.src = `/apps/${encodeURIComponent(app.id)}/icon`;
+    elements.appIcon.hidden = false;
+  }
+  elements.appPicker.setAttribute("title", app.packageName);
+  elements.empty.hidden = true;
+  document.title = `${app.name} · Snap-O Tweaks`;
 }
 
 function updateTweakRow(tweak) {
@@ -72,22 +385,12 @@ function updateTweakRow(tweak) {
   if (fields.checkbox) fields.checkbox.checked = tweak.value;
 }
 
-function applyAccent() {
-  const accent = state.tweaks.find(
-    (tweak) => tweak.name === "Accent color" && tweak.type === "color",
-  );
-
-  if (accent) {
-    document.documentElement.style.setProperty("--accent", accent.value);
-  }
-}
-
 function updateValue(tweak, value, delay = 75) {
+  if (state.switching) return;
   tweak.value = value;
   state.pending.set(tweak.name, value);
   updateTweakRow(tweak);
   updateResetButton();
-  applyAccent();
   clearTimeout(state.timer);
   state.timer = undefined;
 
@@ -145,6 +448,7 @@ async function flushPending() {
 
 function makeTweakLine(tweak) {
   const line = node("div", "tweak-line");
+  const content = node("div", "tweak-content");
   const actions = node("div", "tweak-actions");
   const reset = node("button", "tweak-reset", "Reset");
   reset.type = "button";
@@ -154,8 +458,8 @@ function makeTweakLine(tweak) {
     updateValue(tweak, tweak.default, 0);
   });
 
-  actions.append(reset);
-  line.append(node("span", "tweak-label", tweak.name), actions);
+  content.append(node("span", "tweak-label", tweakLabel(tweak.name)), actions);
+  line.append(content, reset);
   return { line, actions, reset };
 }
 
@@ -201,12 +505,7 @@ function makeNumberTweak(tweak) {
       updateValue(tweak, value, 0);
     });
 
-    const labels = node("div", "range-labels");
-    labels.append(
-      node("span", undefined, numberText(tweak.min)),
-      node("span", undefined, numberText(tweak.max)),
-    );
-    row.append(slider, labels);
+    row.append(slider);
   }
 
   input.addEventListener("input", () => {
@@ -329,35 +628,100 @@ function makeTweak(tweak) {
   }
 }
 
-function sectionFor(tweak) {
-  if (/animation|duration|spring|damping|stiffness|motion/i.test(tweak.name)) {
-    return "motion";
+function tweakPath(name) {
+  const separator = name.indexOf("/");
+
+  if (separator <= 0 || separator === name.length - 1) {
+    return { section: undefined, label: name };
   }
 
-  if (/font|text|color|background|accent|preview/i.test(tweak.name)) {
-    return "appearance";
+  const section = name.slice(0, separator).trim();
+  const label = name.slice(separator + 1).trim();
+
+  return section && label
+    ? { section, label }
+    : { section: undefined, label: name };
+}
+
+function tweakLabel(name) {
+  return tweakPath(name).label;
+}
+
+function tweakOrdering() {
+  const appId = state.selectedAppId ?? "";
+  let ordering = state.orderingByApp.get(appId);
+
+  if (!ordering) {
+    ordering = { sections: new Map(), tweaks: new Map() };
+    state.orderingByApp.set(appId, ordering);
   }
 
-  return "other";
+  return ordering;
 }
 
 function renderTweaks() {
   state.rows.clear();
 
-  for (const name of ["appearance", "motion", "other"]) {
-    const section = document.querySelector(`#${name}-section`);
-    const list = document.querySelector(`#${name}-tweaks`);
-    const count = document.querySelector(`#${name}-count`);
-    const tweaks = state.tweaks.filter((tweak) => sectionFor(tweak) === name);
+  const ordering = tweakOrdering();
+  const activeSections = new Map();
 
-    if (count) count.textContent = String(tweaks.length);
-    list.replaceChildren(
-      ...tweaks.map(makeTweak).filter((tweak) => tweak !== null),
-    );
-    section.hidden = list.childElementCount === 0;
+  for (const tweak of state.tweaks) {
+    const { section } = tweakPath(tweak.name);
+    const sectionKey = section ?? "";
+
+    if (!ordering.sections.has(sectionKey)) {
+      ordering.sections.set(sectionKey, ordering.sections.size);
+    }
+
+    if (!ordering.tweaks.has(tweak.name)) {
+      ordering.tweaks.set(tweak.name, ordering.tweaks.size);
+    }
+
+    if (!activeSections.has(sectionKey)) activeSections.set(sectionKey, []);
+    activeSections.get(sectionKey).push(tweak);
   }
 
-  applyAccent();
+  const sections = [...activeSections.entries()]
+    .sort(([left], [right]) =>
+      ordering.sections.get(left) - ordering.sections.get(right),
+    )
+    .map(([name, tweaks]) => {
+      const section = node("section", "tweak-section");
+      section.dataset.section = name;
+      section.dataset.order = String(ordering.sections.get(name));
+
+      if (name) {
+        const heading = node("div", "section-heading");
+        heading.append(node("h2", undefined, name));
+        section.append(heading);
+      }
+
+      const list = node("div", "tweak-list");
+      list.replaceChildren(
+        ...tweaks
+          .sort((left, right) =>
+            ordering.tweaks.get(left.name) - ordering.tweaks.get(right.name),
+          )
+          .map(makeTweak)
+          .filter((tweak) => tweak !== null),
+      );
+      section.append(list);
+      return section;
+    });
+
+  const columnCount = Math.min(2, ordering.sections.size);
+  const columns = Array.from({ length: columnCount }, (_, index) => {
+    const column = node("div", "tweak-column");
+    column.dataset.column = String(index);
+    return column;
+  });
+
+  for (const section of sections) {
+    const index = ordering.sections.get(section.dataset.section) % columnCount;
+    columns[index].append(section);
+  }
+
+  elements.sections.replaceChildren(...columns);
   updateResetButton();
 }
 
@@ -367,25 +731,170 @@ async function reloadTweaks() {
   renderTweaks();
 }
 
-async function load() {
-  setStatus("connecting", "Connecting");
+function sameTweakShape(current, incoming) {
+  if (current.length !== incoming.length) return false;
+
+  return current.every((tweak, index) => {
+    const next = incoming[index];
+
+    return (
+      tweak.name === next.name &&
+      tweak.type === next.type &&
+      tweak.default === next.default &&
+      tweak.min === next.min &&
+      tweak.max === next.max &&
+      tweak.step === next.step
+    );
+  });
+}
+
+function scheduleRefresh() {
+  clearTimeout(state.pollTimer);
+  state.pollTimer = setTimeout(() => {
+    if (!document.hidden) void refreshCurrent();
+    else scheduleRefresh();
+  }, 2_500);
+  state.pollTimer.unref?.();
+}
+
+async function refreshCurrent() {
+  if (state.refreshing || state.saving || state.switching) {
+    scheduleRefresh();
+    return;
+  }
+
+  state.refreshing = true;
 
   try {
-    const [app, result] = await Promise.all([
-      request("/app"),
-      request("/tweaks"),
-    ]);
+    const result = await request("/apps");
+    const previousId = state.selectedAppId;
+    state.apps = result.apps;
+    state.selectedAppId = result.selectedAppId ?? undefined;
+    renderApps();
 
-    elements.appName.textContent = app.name;
-    elements.packageName.textContent = app.packageName;
-    document.title = `${app.name} · Snap-O Tweaks`;
-    state.tweaks = result.tweaks;
-    renderTweaks();
+    if (!state.selectedAppId) {
+      showEmptyState();
+      return;
+    }
+
+    if (previousId !== state.selectedAppId) {
+      await load({ refreshApps: false });
+      return;
+    }
+
+    const incoming = (await request("/tweaks")).tweaks;
+
+    if (!sameTweakShape(state.tweaks, incoming)) {
+      state.tweaks = incoming;
+      renderTweaks();
+    } else {
+      for (const next of incoming) {
+        if (state.pending.has(next.name)) continue;
+
+        const tweak = state.tweaks.find((candidate) => candidate.name === next.name);
+        const fields = state.rows.get(next.name);
+
+        if (
+          tweak &&
+          tweak.value !== next.value &&
+          !Object.values(fields ?? {}).includes(document.activeElement)
+        ) {
+          tweak.value = next.value;
+          updateTweakRow(tweak);
+        }
+      }
+
+      updateResetButton();
+    }
+
     setError();
     setStatus("connected", "Connected");
   } catch (error) {
     setError(error.message);
     setStatus("error", "Disconnected");
+  } finally {
+    state.refreshing = false;
+    scheduleRefresh();
+  }
+}
+
+async function load({ refreshApps = true } = {}) {
+  setStatus("connecting", "Connecting");
+
+  try {
+    if (refreshApps) {
+      const discovery = await request("/apps");
+      state.apps = discovery.apps;
+      state.selectedAppId = discovery.selectedAppId ?? undefined;
+      renderApps();
+    }
+
+    if (!state.selectedAppId) {
+      showEmptyState();
+      return;
+    }
+
+    const [app, result] = await Promise.all([
+      request("/app"),
+      request("/tweaks"),
+    ]);
+
+    const selected = state.apps.find((candidate) => candidate.id === state.selectedAppId);
+    updateAppIdentity({ ...selected, ...app });
+    state.tweaks = result.tweaks;
+    renderTweaks();
+    setError();
+    setStatus("connected", "Connected");
+
+    if (isMockMode && refreshApps) setAppMenuOpen(true);
+  } catch (error) {
+    setError(error.message);
+    setStatus("error", "Disconnected");
+  } finally {
+    scheduleRefresh();
+  }
+}
+
+async function selectApp(id) {
+  if (state.switching) return;
+
+  if (id === state.selectedAppId) {
+    setAppMenuOpen(false);
+    return;
+  }
+
+  state.switching = true;
+  setAppMenuOpen(false);
+  renderApps();
+  updateResetButton();
+
+  try {
+    clearTimeout(state.timer);
+
+    while (state.saving || state.pending.size > 0) {
+      if (!state.saving) {
+        await flushPending();
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    const result = await request("/apps/selection", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+
+    state.selectedAppId = result.app.id;
+    renderApps();
+    await load({ refreshApps: false });
+  } catch (error) {
+    setError(error.message);
+    setStatus("error", "Could not switch apps");
+  } finally {
+    state.switching = false;
+    renderApps();
+    updateResetButton();
   }
 }
 
@@ -419,10 +928,31 @@ async function resetTweaks() {
   }
 }
 
-elements.refresh.addEventListener("click", load);
+elements.appPicker.addEventListener("click", () => {
+  setAppMenuOpen(!state.menuOpen);
+});
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerdown", (event) => {
+    const picker = elements.appPicker.parentElement;
+
+    if (state.menuOpen && picker && !picker.contains(event.target)) {
+      setAppMenuOpen(false);
+    }
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (state.menuOpen && event.key === "Escape") {
+      setAppMenuOpen(false);
+      elements.appPicker.focus();
+    }
+  });
+}
+
+elements.refresh.addEventListener("click", () => load());
 elements.reset.addEventListener("click", resetTweaks);
 
-document.querySelector(".app-icon").addEventListener("error", (event) => {
+elements.appIcon.addEventListener("error", (event) => {
   event.currentTarget.hidden = true;
 });
 

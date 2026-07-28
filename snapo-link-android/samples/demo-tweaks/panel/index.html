@@ -6,40 +6,91 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Optional browser panel for the Snap-O Tweaks sample."
+      content="An example inspector for running Snap-O Tweaks apps."
     />
-    <meta name="theme-color" content="#fafaf9" />
-    <title>Snap-O Tweaks</title>
+    <meta name="theme-color" content="#ffffff" />
+    <title>Tweaks · Snap-O</title>
     <link rel="stylesheet" href="/styles.css" />
     <script type="module" src="/app.js"></script>
   </head>
   <body>
-    <main class="panel">
-      <header class="app-header">
-        <div class="app-bar">
-          <div class="app-identity">
-            <div class="app-icon-frame">
-              <img
-                class="app-icon"
-                src="/app/icon"
-                alt=""
-                width="38"
-                height="38"
-              />
-              <span
-                id="connection-status"
-                class="connection-status"
-                role="status"
-                aria-label="Connecting"
-              >
-                <span class="status-dot"></span>
-                <span id="status-text" class="visually-hidden">Connecting</span>
+    <svg class="visually-hidden" aria-hidden="true" focusable="false">
+      <symbol id="mock-icon-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="3" />
+        <path d="M3 9h18" />
+        <path d="M8 3v6" />
+      </symbol>
+      <symbol id="mock-icon-network" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="16" y="16" width="6" height="6" rx="1" />
+        <rect x="2" y="16" width="6" height="6" rx="1" />
+        <rect x="9" y="2" width="6" height="6" rx="1" />
+        <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+        <path d="M12 12V8" />
+      </symbol>
+      <symbol id="mock-icon-tweaks" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 5H3" />
+        <path d="M12 19H3" />
+        <path d="M14 3v4" />
+        <path d="M16 17v4" />
+        <path d="M21 12h-9" />
+        <path d="M21 19h-5" />
+        <path d="M21 5h-7" />
+        <path d="M8 10v4" />
+        <path d="M8 12H3" />
+      </symbol>
+      <symbol id="mock-icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m20 6-11 11-5-5" />
+      </symbol>
+    </svg>
+    <main class="inspector">
+      <header class="inspector-toolbar">
+        <div class="toolbar-content">
+          <div class="server-select">
+            <button
+              id="app-picker"
+              class="server-picker-button"
+              type="button"
+              aria-label="Select a tweaks-enabled app"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-controls="app-list"
+              disabled
+            >
+              <span class="server-app-icon">
+                <img class="app-icon" alt="" width="32" height="32" hidden />
+                <span
+                  id="connection-status"
+                  class="connection-status"
+                  role="status"
+                  aria-label="Connecting"
+                >
+                  <span class="status-dot"></span>
+                  <span id="status-text" class="visually-hidden">Connecting</span>
+                </span>
               </span>
-            </div>
-            <div class="app-heading">
-              <p id="app-name" class="app-name">Connecting…</p>
-              <p id="package-name" class="package-name"></p>
-            </div>
+              <span class="server-picker-text">
+                <span id="app-name" class="server-name">Select an app</span>
+                <span id="device-name" class="server-device"></span>
+                <span id="package-name" class="visually-hidden"></span>
+              </span>
+              <img
+                id="app-chevron"
+                class="server-chevron"
+                src="/icons/chevron-down.svg"
+                alt=""
+                width="18"
+                height="18"
+                hidden
+              />
+            </button>
+
+            <div
+              id="app-list"
+              class="server-picker-menu"
+              role="menu"
+              aria-label="Detected apps"
+              hidden
+            ></div>
           </div>
 
           <div class="toolbar">
@@ -53,30 +104,17 @@
         </div>
       </header>
 
-      <p id="error-message" class="error-message" role="alert" hidden></p>
+      <section class="detail" aria-label="App tweaks">
+        <div class="detail-content">
+          <p id="error-message" class="error-message" role="alert" hidden></p>
 
-      <section id="appearance-section" class="tweak-section" hidden>
-        <div class="section-heading">
-          <h2>Appearance</h2>
-          <span id="appearance-count" class="section-count"></span>
-        </div>
-        <div id="appearance-tweaks" class="tweak-list"></div>
-      </section>
+          <section id="empty-state" class="empty-state" hidden>
+            <h1>No apps found</h1>
+            <p>Open an app with Snap-O Tweaks on a connected Android device.</p>
+          </section>
 
-      <section id="motion-section" class="tweak-section" hidden>
-        <div class="section-heading">
-          <h2>Motion</h2>
-          <span id="motion-count" class="section-count"></span>
+          <div id="tweak-sections" class="tweak-sections"></div>
         </div>
-        <div id="motion-tweaks" class="tweak-list"></div>
-      </section>
-
-      <section id="other-section" class="tweak-section" hidden>
-        <div class="section-heading">
-          <h2>Other</h2>
-          <span id="other-count" class="section-count"></span>
-        </div>
-        <div id="other-tweaks" class="tweak-list"></div>
       </section>
     </main>
   </body>

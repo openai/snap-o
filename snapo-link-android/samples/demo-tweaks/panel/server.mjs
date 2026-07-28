@@ -14,6 +14,10 @@ const staticFiles = new Map([
   ["/", { name: "index.html", type: "text/html; charset=utf-8" }],
   ["/app.js", { name: "app.js", type: "text/javascript; charset=utf-8" }],
   ["/styles.css", { name: "styles.css", type: "text/css; charset=utf-8" }],
+  [
+    "/icons/chevron-down.svg",
+    { name: "icons/chevron-down.svg", type: "image/svg+xml" },
+  ],
 ]);
 
 const tweakRoutes = new Set(["/app", "/app/icon", "/tweaks"]);
@@ -97,17 +101,29 @@ async function probeTweakTarget(target, packageName, fetcher) {
       signal: AbortSignal.timeout(1_500),
     });
 
-    if (!response.ok) return false;
+    if (!response.ok) return null;
 
     const app = await response.json();
     if (typeof app.name !== "string" || typeof app.packageName !== "string") {
-      return false;
+      return null;
     }
 
-    return !packageName || app.packageName === packageName;
+    return !packageName || app.packageName === packageName ? app : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function describeTweakApp(app, device, socket, target) {
+  return {
+    id: `${device.serial}:${app.packageName}`,
+    name: app.name,
+    packageName: app.packageName,
+    deviceName: device.model,
+    deviceSerial: device.serial,
+    pid: socket?.pid,
+    target: validateTarget(target),
+  };
 }
 
 async function createDeviceForward(adb, serial, socket, run) {
@@ -194,6 +210,139 @@ async function discoverOnDevice({
   }
 
   return null;
+}
+
+async function discoverAppsOnDevice({
+  adb,
+  device,
+  forwards,
+  packageName,
+  run,
+  fetcher,
+}) {
+  let sockets = [];
+
+  try {
+    const { stdout } = await run(
+      adb,
+      ["-s", device.serial, "shell", "cat", "/proc/net/unix"],
+      { timeout: 4_000 },
+    );
+    sockets = parseTweakSockets(stdout);
+  } catch {
+    // Existing forwards may remain usable if socket inspection is unavailable.
+  }
+
+  const deviceForwards = forwards.filter(
+    (forward) => forward.serial === device.serial,
+  );
+  const apps = new Map();
+  const checkedPorts = new Set();
+
+  async function checkForward(target, socket) {
+    const normalized = validateTarget(target);
+    if (checkedPorts.has(normalized.href)) return false;
+    checkedPorts.add(normalized.href);
+
+    const app = await probeTweakTarget(normalized, packageName, fetcher);
+    if (!app) return false;
+
+    const description = describeTweakApp(app, device, socket, normalized);
+    if (!apps.has(description.id)) apps.set(description.id, description);
+    return true;
+  }
+
+  for (const socket of sockets) {
+    const existing = deviceForwards.filter(
+      (forward) => forward.socket === `localabstract:${socket.name}`,
+    );
+    let found = false;
+
+    for (const forward of existing) {
+      found = await checkForward(
+        new URL(`http://127.0.0.1:${forward.port}`),
+        socket,
+      );
+      if (found) break;
+    }
+
+    if (found) continue;
+
+    let created;
+
+    try {
+      created = await createDeviceForward(adb, device.serial, socket.name, run);
+      if (await checkForward(created.target, socket)) continue;
+    } catch {
+      if (!created) continue;
+    }
+
+    if (created) {
+      try {
+        await run(
+          adb,
+          ["-s", device.serial, "forward", "--remove", `tcp:${created.port}`],
+          { timeout: 4_000 },
+        );
+      } catch {
+        // A rejected temporary forward may already have disappeared.
+      }
+    }
+  }
+
+  for (const forward of deviceForwards) {
+    const match = forward.socket.match(/snapo_tweaks_(\d+)$/);
+    const socket = match
+      ? { name: `snapo_tweaks_${match[1]}`, pid: Number(match[1]) }
+      : undefined;
+
+    await checkForward(new URL(`http://127.0.0.1:${forward.port}`), socket);
+  }
+
+  return [...apps.values()];
+}
+
+export async function discoverTweakApps({
+  serial,
+  packageName,
+  adb,
+  run = runFile,
+  fetcher = fetch,
+} = {}) {
+  for (const executable of adb ? [adb] : adbCandidates()) {
+    let devices;
+    let forwards;
+
+    try {
+      const [deviceResult, forwardResult] = await Promise.all([
+        run(executable, ["devices", "-l"], { timeout: 4_000 }),
+        run(executable, ["forward", "--list"], { timeout: 4_000 }),
+      ]);
+      devices = parseAdbDevices(deviceResult.stdout);
+      forwards = parseAdbForwards(forwardResult.stdout);
+    } catch {
+      continue;
+    }
+
+    if (serial) devices = devices.filter((device) => device.serial === serial);
+
+    const discovered = await Promise.all(
+      devices.map((device) =>
+        discoverAppsOnDevice({
+          adb: executable,
+          device,
+          forwards,
+          packageName,
+          run,
+          fetcher,
+        }),
+      ),
+    );
+
+    return discovered.flat();
+  }
+
+  return [];
 }
 
 export async function discoverTweakTarget({
@@ -311,7 +460,7 @@ async function serveStatic(request, response, file) {
   response.end(request.method === "HEAD" ? undefined : data);
 }
 
-async function proxyTweak(request, response, connection, pathname) {
+async function proxyTweak(request, response, connection, pathname, target) {
   const headers = {};
   let body;
 
@@ -320,7 +469,7 @@ async function proxyTweak(request, response, connection, pathname) {
     body = await readRequestBody(request);
   }
 
-  const performRequest = () => fetch(new URL(pathname, connection.target), {
+  const performRequest = () => fetch(new URL(pathname, target ?? connection.target), {
     method: request.method,
     headers,
     body,
@@ -332,7 +481,7 @@ async function proxyTweak(request, response, connection, pathname) {
   try {
     upstream = await performRequest();
   } catch (error) {
-    if (connection.fixed) throw error;
+    if (connection.fixed || target) throw error;
 
     await connection.reconnect();
     upstream = await performRequest();
@@ -354,6 +503,97 @@ async function proxyTweak(request, response, connection, pathname) {
   response.end(data);
 }
 
+function publicApp(app) {
+  return {
+    id: app.id,
+    name: app.name,
+    packageName: app.packageName,
+    deviceName: app.deviceName,
+    deviceSerial: app.deviceSerial,
+  };
+}
+
+async function handleApps(request, response, connection, pathname) {
+  if (pathname === "/apps") {
+    if (request.method !== "GET") {
+      jsonResponse(response, 405, { error: "Method not allowed." }, {
+        Allow: "GET",
+      });
+      return;
+    }
+
+    await connection.refreshApps();
+    jsonResponse(response, 200, {
+      apps: connection.apps.map(publicApp),
+      selectedAppId: connection.selectedAppId ?? null,
+    });
+    return;
+  }
+
+  if (pathname === "/apps/selection") {
+    if (request.method !== "PUT") {
+      jsonResponse(response, 405, { error: "Method not allowed." }, {
+        Allow: "PUT",
+      });
+      return;
+    }
+
+    let payload;
+
+    try {
+      payload = JSON.parse((await readRequestBody(request)).toString("utf8"));
+    } catch (error) {
+      if (error.status === 413) throw error;
+      jsonResponse(response, 400, { error: "Expected a JSON app selection." });
+      return;
+    }
+
+    const selected = connection.apps.find((app) => app.id === payload?.id);
+
+    if (!selected) {
+      jsonResponse(response, 404, { error: "The selected app is not available." });
+      return;
+    }
+
+    connection.selectedAppId = selected.id;
+    connection.target = selected.target;
+    jsonResponse(response, 200, { app: publicApp(selected) });
+    return;
+  }
+
+  const iconMatch = pathname.match(/^\/apps\/([^/]+)\/icon$/);
+
+  if (iconMatch) {
+    if (request.method !== "GET") {
+      jsonResponse(response, 405, { error: "Method not allowed." }, {
+        Allow: "GET",
+      });
+      return;
+    }
+
+    let id;
+
+    try {
+      id = decodeURIComponent(iconMatch[1]);
+    } catch {
+      jsonResponse(response, 400, { error: "Invalid app identifier." });
+      return;
+    }
+
+    const app = connection.apps.find((candidate) => candidate.id === id);
+
+    if (!app) {
+      jsonResponse(response, 404, { error: "The selected app is not available." });
+      return;
+    }
+
+    await proxyTweak(request, response, connection, "/app/icon", app.target);
+    return;
+  }
+
+  jsonResponse(response, 404, { error: "Not found." });
+}
+
 function createHandler(connection) {
   return async (request, response) => {
     try {
@@ -365,7 +605,23 @@ function createHandler(connection) {
         return;
       }
 
+      if (pathname === "/apps" || pathname.startsWith("/apps/")) {
+        await handleApps(request, response, connection, pathname);
+        return;
+      }
+
       if (tweakRoutes.has(pathname)) {
+        if (!connection.target) {
+          await connection.refreshApps();
+        }
+
+        if (!connection.target) {
+          jsonResponse(response, 503, {
+            error: "No running Snap-O Tweaks app found.",
+          });
+          return;
+        }
+
         await proxyTweak(request, response, connection, pathname);
         return;
       }
@@ -391,22 +647,77 @@ export async function createTweakPanelServer({
   serial,
   packageName,
   discoverTarget = discoverTweakTarget,
+  discoverApps = discoverTweakApps,
   hostname = "127.0.0.1",
   port = 0,
 } = {}) {
   const configuredTarget = target ?? process.env.SNAPO_TWEAKS_URL;
+  const legacyDiscovery =
+    !configuredTarget && discoverTarget !== discoverTweakTarget;
   const connection = {
-    target: validateTarget(
-      configuredTarget ?? (await discoverTarget({ serial, packageName })),
-    ),
+    target: configuredTarget
+      ? validateTarget(configuredTarget)
+      : legacyDiscovery
+        ? validateTarget(await discoverTarget({ serial, packageName }))
+        : undefined,
     fixed: Boolean(configuredTarget),
+    apps: [],
+    selectedAppId: undefined,
+    refreshing: undefined,
     reconnecting: undefined,
+    async refreshApps() {
+      if (!this.refreshing) {
+        this.refreshing = Promise.resolve()
+          .then(async () => {
+            if (this.fixed || legacyDiscovery) {
+              const identity = await probeTweakTarget(this.target, packageName, fetch);
+
+              if (!identity) {
+                this.apps = [];
+                return;
+              }
+
+              const device = {
+                serial: serial ?? "local",
+                model: serial ?? "Local endpoint",
+              };
+              const app = describeTweakApp(identity, device, undefined, this.target);
+              this.apps = [app];
+              this.selectedAppId = app.id;
+              return;
+            }
+
+            this.apps = await discoverApps({ serial, packageName });
+            const selected =
+              this.apps.find((app) => app.id === this.selectedAppId) ??
+              this.apps[0];
+            this.selectedAppId = selected?.id;
+            this.target = selected ? validateTarget(selected.target) : undefined;
+          })
+          .finally(() => {
+            this.refreshing = undefined;
+          });
+      }
+
+      return this.refreshing;
+    },
     async reconnect() {
       if (!this.reconnecting) {
         this.reconnecting = Promise.resolve()
-          .then(() => discoverTarget({ serial, packageName }))
-          .then((next) => {
-            this.target = validateTarget(next);
+          .then(async () => {
+            if (legacyDiscovery) {
+              this.target = validateTarget(
+                await discoverTarget({ serial, packageName }),
+              );
+              return;
+            }
+
+            const selectedId = this.selectedAppId;
+            await this.refreshApps();
+
+            if (!this.target || (selectedId && this.selectedAppId !== selectedId)) {
+              throw new Error("The selected Android tweaks app is not available.");
+            }
           })
           .finally(() => {
             this.reconnecting = undefined;
@@ -416,6 +727,8 @@ export async function createTweakPanelServer({
       return this.reconnecting;
     },
   };
+
+  if (!configuredTarget && !legacyDiscovery) await connection.refreshApps();
   const server = createServer(createHandler(connection));
 
   await new Promise((resolve, reject) => {
@@ -491,7 +804,11 @@ export function parseArguments(args) {
 async function main() {
   const panel = await createTweakPanelServer(parseArguments(process.argv.slice(2)));
   console.log(`Snap-O Tweaks panel: ${panel.url}`);
-  console.log(`Android tweaks endpoint: ${panel.target}`);
+  console.log(
+    panel.target
+      ? `Android tweaks endpoint: ${panel.target}`
+      : "Waiting for a running Snap-O Tweaks app.",
+  );
 
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.once(signal, async () => {

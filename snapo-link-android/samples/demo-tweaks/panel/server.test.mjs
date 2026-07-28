@@ -4,6 +4,7 @@ import { after, before, test } from "node:test";
 
 import {
   createTweakPanelServer,
+  discoverTweakApps,
   discoverTweakTarget,
   parseAdbDevices,
   parseAdbForwards,
@@ -123,16 +124,26 @@ test("serves the host-side tweaks panel", async () => {
   assert.match(html, /\/styles\.css/);
   assert.match(
     html,
-    /class="app-icon-frame">[\s\S]*?class="app-icon"[\s\S]*?id="connection-status"/,
+    /class="server-app-icon">[\s\S]*?class="app-icon"[\s\S]*?id="connection-status"/,
   );
   assert.doesNotMatch(html, /class="masthead"/);
-  assert.doesNotMatch(html, /<h1\b/);
+  assert.doesNotMatch(html, /<aside\b/);
+  assert.doesNotMatch(html, /class="sidebar"/);
+  assert.doesNotMatch(html, /class="sidebar-heading"/);
+  assert.doesNotMatch(html, /class="app-header"/);
+  assert.doesNotMatch(html, /id="app-count"/);
+  assert.match(html, /class="inspector-toolbar"/);
+  assert.match(html, /id="app-picker"/);
+  assert.match(html, /id="app-chevron"/);
+  assert.match(html, /id="app-list"/);
+  assert.match(html, /id="tweak-sections"/);
 });
 
 test("serves the browser application and stylesheet", async () => {
   for (const [pathname, type] of [
     ["/app.js", /text\/javascript/],
     ["/styles.css", /text\/css/],
+    ["/icons/chevron-down.svg", /image\/svg\+xml/],
   ]) {
     const response = await fetch(new URL(pathname, panel.url));
     assert.equal(response.status, 200);
@@ -141,10 +152,248 @@ test("serves the browser application and stylesheet", async () => {
   }
 });
 
+test("anchors the app and actions to the Mac-style full-width toolbar", async () => {
+  const response = await fetch(new URL("/styles.css", panel.url));
+  const styles = await response.text();
+  const toolbar = styles.match(/\.toolbar-content\s*\{([^}]*)\}/)?.[1];
+  const picker = styles.match(/\.server-select\s*\{([^}]*)\}/)?.[1];
+  const content = styles.match(/\.detail-content\s*\{([^}]*)\}/)?.[1];
+
+  assert.ok(toolbar);
+  assert.match(toolbar, /width:\s*100%/);
+  assert.match(toolbar, /justify-content:\s*space-between/);
+  assert.match(toolbar, /padding:\s*8px\s+12px/);
+  assert.doesNotMatch(toolbar, /margin-inline:\s*auto/);
+
+  assert.ok(picker);
+  assert.match(picker, /width:\s*min\(100%,\s*244px\)/);
+  assert.match(picker, /flex:\s*0\s+1\s+244px/);
+
+  assert.ok(content);
+  assert.match(content, /width:\s*min\(100%,\s*var\(--content-width\)\)/);
+  assert.match(content, /margin-inline:\s*auto/);
+});
+
+test("keeps tweak values beside their labels without visible slider bounds", async () => {
+  const response = await fetch(new URL("/styles.css", panel.url));
+  const styles = await response.text();
+  const content = styles.match(/\.tweak-content\s*\{([^}]*)\}/)?.[1];
+
+  assert.ok(content);
+  assert.match(content, /display:\s*flex/);
+  assert.match(content, /gap:\s*10px/);
+  assert.doesNotMatch(styles, /\.range-labels\b/);
+});
+
+test("uses a responsive, monochrome inspector dashboard", async () => {
+  const response = await fetch(new URL("/styles.css", panel.url));
+  const styles = await response.text();
+  const sections = styles.match(/\.tweak-sections\s*\{([^}]*)\}/)?.[1];
+  const column = styles.match(/\.tweak-column\s*\{([^}]*)\}/)?.[1];
+  const section = styles.match(/\.tweak-section\s*\{([^}]*)\}/)?.[1];
+  const ungrouped = styles.match(
+    /\.tweak-section\[data-section=""\]\s+\.tweak-list\s*\{([^}]*)\}/,
+  )?.[1];
+  const slider = styles.match(/\.range-input\s*\{([^}]*)\}/)?.[1];
+  const checkbox = styles.match(/\.boolean-input\s*\{([^}]*)\}/)?.[1];
+
+  assert.match(styles, /--control-accent:\s*var\(--text\)/);
+  assert.doesNotMatch(styles, /--accent:\s*#[\da-f]+/i);
+  assert.ok(sections);
+  assert.match(sections, /grid-template-columns:\s*repeat\(auto-fit/);
+  assert.ok(column);
+  assert.match(column, /display:\s*grid/);
+  assert.match(column, /align-content:\s*start/);
+  assert.ok(section);
+  assert.doesNotMatch(section, /border-top/);
+  assert.ok(ungrouped);
+  assert.match(ungrouped, /grid-template-columns:\s*repeat\(auto-fit/);
+  assert.ok(slider);
+  assert.match(slider, /accent-color:\s*var\(--control-accent\)/);
+  assert.ok(checkbox);
+  assert.match(checkbox, /accent-color:\s*var\(--control-accent\)/);
+});
+
+test("serves Network Inspector's official Lucide app-picker chevron", async () => {
+  const response = await fetch(new URL("/icons/chevron-down.svg", panel.url));
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /image\/svg\+xml/);
+  assert.match(await response.text(), /<path d="m6 9 6 6 6-6"\s*\/>/);
+});
+
 test("proxies app metadata without adding an icon URL", async () => {
   const response = await fetch(new URL("/app", panel.url));
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), app);
+});
+
+test("lists a fixed-target app without exposing its local upstream", async () => {
+  const response = await fetch(new URL("/apps", panel.url));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    apps: [
+      {
+        id: `local:${app.packageName}`,
+        name: app.name,
+        packageName: app.packageName,
+        deviceName: "Local endpoint",
+        deviceSerial: "local",
+      },
+    ],
+    selectedAppId: `local:${app.packageName}`,
+  });
+});
+
+test("serves an app-list icon as an unchanged PNG", async () => {
+  await fetch(new URL("/apps", panel.url));
+
+  const pathname = `/apps/${encodeURIComponent(`local:${app.packageName}`)}/icon`;
+  const response = await fetch(new URL(pathname, panel.url));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/png");
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), icon);
+});
+
+test("starts without an Android app and exposes an honest empty state", async () => {
+  const emptyPanel = await createTweakPanelServer({
+    discoverApps: async () => [],
+  });
+
+  try {
+    const apps = await fetch(new URL("/apps", emptyPanel.url));
+    assert.equal(apps.status, 200);
+    assert.deepEqual(await apps.json(), { apps: [], selectedAppId: null });
+
+    const tweaks = await fetch(new URL("/tweaks", emptyPanel.url));
+    assert.equal(tweaks.status, 503);
+    assert.deepEqual(await tweaks.json(), {
+      error: "No running Snap-O Tweaks app found.",
+    });
+  } finally {
+    await emptyPanel.close();
+  }
+});
+
+test("switches only to a discovered app and routes its tweaks and icon", async () => {
+  const first = {
+    ...app,
+    name: "First Tweaks App",
+    packageName: "com.example.first",
+  };
+  const second = {
+    ...app,
+    name: "Second Tweaks App",
+    packageName: "com.example.second",
+  };
+  const secondIcon = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x33, 0x44]);
+  const patches = [];
+
+  function makeAppServer(identity, image) {
+    return createServer(async (request, response) => {
+      if (request.url === "/app" && request.method === "GET") {
+        reply(response, 200, identity);
+      } else if (request.url === "/app/icon" && request.method === "GET") {
+        reply(response, 200, image);
+      } else if (request.url === "/tweaks" && request.method === "GET") {
+        reply(response, 200, { tweaks: initialTweaks });
+      } else if (request.url === "/tweaks" && request.method === "PATCH") {
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        patches.push({ packageName: identity.packageName, values: payload.values });
+        reply(response, 200, {
+          tweaks: Object.entries(payload.values).map(([name, value]) => ({
+            name,
+            value,
+          })),
+        });
+      } else {
+        reply(response, 404, { error: "Not found." });
+      }
+    });
+  }
+
+  const firstServer = makeAppServer(first, icon);
+  const secondServer = makeAppServer(second, secondIcon);
+  await Promise.all([
+    new Promise((resolve) => firstServer.listen(0, "127.0.0.1", resolve)),
+    new Promise((resolve) => secondServer.listen(0, "127.0.0.1", resolve)),
+  ]);
+
+  const discovered = [
+    {
+      id: `PIXEL123:${first.packageName}`,
+      ...first,
+      deviceName: "Pixel 9 Pro XL",
+      deviceSerial: "PIXEL123",
+      target: new URL(`http://127.0.0.1:${firstServer.address().port}`),
+    },
+    {
+      id: `PIXEL123:${second.packageName}`,
+      ...second,
+      deviceName: "Pixel 9 Pro XL",
+      deviceSerial: "PIXEL123",
+      target: new URL(`http://127.0.0.1:${secondServer.address().port}`),
+    },
+  ];
+  const multiPanel = await createTweakPanelServer({
+    discoverApps: async () => discovered,
+  });
+
+  try {
+    const apps = await fetch(new URL("/apps", multiPanel.url));
+    const listing = await apps.json();
+    assert.equal(listing.apps.length, 2);
+    assert.equal(listing.selectedAppId, discovered[0].id);
+    assert.equal(Object.hasOwn(listing.apps[0], "target"), false);
+
+    const selection = await fetch(new URL("/apps/selection", multiPanel.url), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: discovered[1].id }),
+    });
+    assert.equal(selection.status, 200);
+    assert.equal((await selection.json()).app.name, second.name);
+
+    const metadata = await fetch(new URL("/app", multiPanel.url));
+    assert.deepEqual(await metadata.json(), second);
+
+    const image = await fetch(
+      new URL(`/apps/${encodeURIComponent(discovered[1].id)}/icon`, multiPanel.url),
+    );
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), secondIcon);
+
+    const patch = await fetch(new URL("/tweaks", multiPanel.url), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values: { "Font size": 44 } }),
+    });
+    assert.equal(patch.status, 200);
+    assert.deepEqual(patches, [
+      { packageName: second.packageName, values: { "Font size": 44 } },
+    ]);
+
+    const unknown = await fetch(new URL("/apps/selection", multiPanel.url), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "PIXEL123:com.example.unknown" }),
+    });
+    assert.equal(unknown.status, 404);
+
+    const current = await fetch(new URL("/app", multiPanel.url));
+    assert.deepEqual(await current.json(), second);
+  } finally {
+    await multiPanel.close();
+    firstServer.closeAllConnections();
+    secondServer.closeAllConnections();
+    await Promise.all([
+      new Promise((resolve) => firstServer.close(resolve)),
+      new Promise((resolve) => secondServer.close(resolve)),
+    ]);
+  }
 });
 
 test("proxies the application icon as an unchanged PNG", async () => {
@@ -267,6 +516,79 @@ test("discovers only live Snap-O Tweaks app sockets", () => {
     { name: "snapo_tweaks_6976", pid: 6976 },
     { name: "snapo_tweaks_4312", pid: 4312 },
   ]);
+});
+
+test("discovers every running tweaks app across connected Android devices", async () => {
+  const identities = new Map([
+    [49231, { name: "Design Preview", packageName: "com.example.design" }],
+    [49232, { name: "Motion Study", packageName: "com.example.motion" }],
+    [49233, { name: "Tablet Preview", packageName: "com.example.tablet" }],
+  ]);
+  const run = async (_executable, args) => {
+    if (args[0] === "devices") {
+      return {
+        stdout: [
+          "List of devices attached",
+          "PHONE123 device model:Pixel_9_Pro_XL transport_id:9",
+          "TABLET456 device model:Pixel_Tablet transport_id:5",
+        ].join("\n"),
+      };
+    }
+
+    if (args[0] === "forward") {
+      return {
+        stdout: [
+          "PHONE123 tcp:49231 localabstract:snapo_tweaks_7001",
+          "PHONE123 tcp:49232 localabstract:snapo_tweaks_7002",
+          "TABLET456 tcp:49233 localabstract:snapo_tweaks_8101",
+        ].join("\n"),
+      };
+    }
+
+    if (args.includes("/proc/net/unix")) {
+      return {
+        stdout: args.includes("PHONE123")
+          ? "@snapo_tweaks_7002\n@snapo_tweaks_7001\n"
+          : "@snapo_tweaks_8101\n",
+      };
+    }
+
+    throw new Error(`Unexpected ADB arguments: ${args.join(" ")}`);
+  };
+  const apps = await discoverTweakApps({
+    adb: "sample-adb",
+    run,
+    fetcher: async (url) => {
+      const identity = identities.get(Number(url.port));
+      return identity
+        ? new Response(JSON.stringify(identity))
+        : new Response(null, { status: 404 });
+    },
+  });
+
+  assert.deepEqual(
+    apps.map(({ id, name, deviceName, pid }) => ({ id, name, deviceName, pid })),
+    [
+      {
+        id: "PHONE123:com.example.motion",
+        name: "Motion Study",
+        deviceName: "Pixel 9 Pro XL",
+        pid: 7002,
+      },
+      {
+        id: "PHONE123:com.example.design",
+        name: "Design Preview",
+        deviceName: "Pixel 9 Pro XL",
+        pid: 7001,
+      },
+      {
+        id: "TABLET456:com.example.tablet",
+        name: "Tablet Preview",
+        deviceName: "Pixel Tablet",
+        pid: 8101,
+      },
+    ],
+  );
 });
 
 test("creates its own ADB forward for a running app", async () => {
