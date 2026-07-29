@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  HiddenHostsRevision,
   isHiddenHost,
   loadHiddenHosts,
   normalizeHiddenHost,
@@ -10,6 +11,26 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("persistent hidden host filters", () => {
+  it("rejects startup snapshots after a newer hidden-host update", () => {
+    const revision = new HiddenHostsRevision();
+    const startupSnapshot = revision.capture();
+
+    revision.invalidate();
+
+    expect(revision.isCurrent(startupSnapshot)).toBe(false);
+    expect(revision.isCurrent(revision.capture())).toBe(true);
+  });
+
+  it("rejects a failed mutation's recovery after a newer hidden-host update", () => {
+    const revision = new HiddenHostsRevision();
+
+    revision.invalidate();
+    const recoverySnapshot = revision.capture();
+    revision.invalidate();
+
+    expect(revision.isCurrent(recoverySnapshot)).toBe(false);
+  });
+
   it("normalizes host names, URLs, ports, and wildcard prefixes", () => {
     expect(normalizeHiddenHost("  API.Example.COM  ")).toBe("api.example.com");
     expect(normalizeHiddenHost("https://API.Example.COM:443/events")).toBe("api.example.com");

@@ -1,5 +1,21 @@
 const hiddenHostsStorageKey = "snapo.networkInspector.hiddenHosts";
 
+export class HiddenHostsRevision {
+  private value = 0;
+
+  capture(): number {
+    return this.value;
+  }
+
+  invalidate(): void {
+    this.value += 1;
+  }
+
+  isCurrent(revision: number): boolean {
+    return this.value === revision;
+  }
+}
+
 export function normalizeHiddenHost(value: string): string | null {
   const trimmed = value.trim().replace(/^\*\./, "");
   if (trimmed.length === 0) return null;

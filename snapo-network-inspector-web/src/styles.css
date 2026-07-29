@@ -392,6 +392,7 @@ body.split-pane-resizing {
 }
 
 .filter-frame {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -439,6 +440,10 @@ body.split-pane-resizing {
   color: var(--on-surface-variant);
 }
 
+.host-filter-control > .toolbar-icon-button {
+  position: relative;
+}
+
 .toolbar-icon-button:disabled {
   color: rgb(107 107 107 / 40%);
 }
@@ -452,7 +457,7 @@ body.split-pane-resizing {
 }
 
 .host-filter-control {
-  position: relative;
+  position: static;
 }
 
 .host-filter-active {
@@ -481,8 +486,8 @@ body.split-pane-resizing {
   position: absolute;
   z-index: 30;
   top: calc(100% + 6px);
-  right: 0;
-  width: min(300px, calc(100vw - 24px));
+  right: 8px;
+  width: min(300px, calc(100% - 16px));
   border: 1px solid var(--outline);
   border-radius: 8px;
   background: var(--surface-bright);

@@ -17,7 +17,13 @@ import { NetworkStreamController, type StreamLifecycleState } from "../../../net
 import { useInspectorUiState } from "./useInspectorUiState";
 import { applyDebugInspectorPreset } from "../lib/debug";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
-import { loadHiddenHosts, normalizeHiddenHost, normalizeHiddenHosts, saveHiddenHosts } from "../lib/hostFilters";
+import {
+  HiddenHostsRevision,
+  loadHiddenHosts,
+  normalizeHiddenHost,
+  normalizeHiddenHosts,
+  saveHiddenHosts
+} from "../lib/hostFilters";
 import {
   clearCompleted,
   countRecordsForServer,
@@ -74,6 +80,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const [hiddenHosts, setHiddenHosts] = useState<string[]>(() =>
     client.usesNativeServerPicker ? [] : loadHiddenHosts()
   );
+  const [hiddenHostsRevision] = useState(() => new HiddenHostsRevision());
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const [debugPreset, setDebugPreset] = useState<DebugInspectorPreset>("live");
   const [, setBodyCacheRevision] = useState(0);
@@ -93,22 +100,30 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
       const host = normalizeHiddenHost(value);
       if (host == null) return;
 
+      hiddenHostsRevision.invalidate();
       setHiddenHosts((current) => (current.includes(host) ? current : [...current, host].sort()));
 
       if (client.usesNativeServerPicker) {
         void client.addHiddenHost(host).catch(() => {
+          const revision = hiddenHostsRevision.capture();
           void client.listHiddenHosts().then(
-            (hosts) => setHiddenHosts(normalizeHiddenHosts(hosts)),
+            (hosts) => {
+              if (hiddenHostsRevision.isCurrent(revision)) setHiddenHosts(normalizeHiddenHosts(hosts));
+            },
             () => {}
           );
         });
       }
     },
-    [client]
+    [client, hiddenHostsRevision]
   );
-  const removeHiddenHost = useCallback((host: string) => {
-    setHiddenHosts((current) => current.filter((value) => value !== host));
-  }, []);
+  const removeHiddenHost = useCallback(
+    (host: string) => {
+      hiddenHostsRevision.invalidate();
+      setHiddenHosts((current) => current.filter((value) => value !== host));
+    },
+    [hiddenHostsRevision]
+  );
 
   useEffect(() => {
     return () => bodyLoader.dispose();
@@ -139,7 +154,14 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
 
   useEffect(() => client.onNativeSelectedServer(selectServer), [client, selectServer]);
   useEffect(() => client.onNativeSearchText(setSearchText), [client]);
-  useEffect(() => client.onNativeHiddenHosts(setHiddenHosts), [client]);
+  useEffect(
+    () =>
+      client.onNativeHiddenHosts((hosts) => {
+        hiddenHostsRevision.invalidate();
+        setHiddenHosts(normalizeHiddenHosts(hosts));
+      }),
+    [client, hiddenHostsRevision]
+  );
   useEffect(() => client.onNativeSortOrder(setSortNewestFirst), [client]);
   useEffect(() => client.onNativeClearCompleted(clearCompletedRecords), [clearCompletedRecords, client]);
 
@@ -147,9 +169,10 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     if (!client.usesNativeServerPicker) return;
 
     let disposed = false;
+    const revision = hiddenHostsRevision.capture();
     void client.listHiddenHosts().then(
       (hosts) => {
-        if (!disposed) setHiddenHosts(normalizeHiddenHosts(hosts));
+        if (!disposed && hiddenHostsRevision.isCurrent(revision)) setHiddenHosts(normalizeHiddenHosts(hosts));
       },
       () => {}
     );
@@ -157,7 +180,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     return () => {
       disposed = true;
     };
-  }, [client]);
+  }, [client, hiddenHostsRevision]);
 
   useEffect(() => {
     if (!client.usesNativeServerPicker) saveHiddenHosts(hiddenHosts);

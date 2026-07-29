@@ -7,6 +7,7 @@ import SnapODeviceClient
 final class NetworkInspectorHostModel {
   private enum Keys {
     static let hiddenHosts = "networkInspector.hiddenHosts"
+    static let hiddenHostsDidChange = Notification.Name("networkInspector.hiddenHostsDidChange")
   }
 
   private(set) var servers: [NetworkInspectorServer] = []
@@ -24,6 +25,7 @@ final class NetworkInspectorHostModel {
 
   @ObservationIgnored let webContainer: NetworkInspectorWebContainer
   @ObservationIgnored private var outputTask: Task<Void, Never>?
+  @ObservationIgnored private var hiddenHostsObserver: NSObjectProtocol?
 
   init(service: NetworkInspectorService) {
     let bridge = NetworkInspectorWebBridge(service: service)
@@ -51,6 +53,15 @@ final class NetworkInspectorHostModel {
         sendPageEvent(name: "network:hidden-hosts", payload: hiddenHosts)
       }
     }
+    hiddenHostsObserver = NotificationCenter.default.addObserver(
+      forName: Keys.hiddenHostsDidChange,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.reloadHiddenHosts()
+      }
+    }
     webContainer.start()
 
     outputTask = Task { [weak self] in
@@ -61,6 +72,10 @@ final class NetworkInspectorHostModel {
   func stop() {
     outputTask?.cancel()
     outputTask = nil
+    if let hiddenHostsObserver {
+      NotificationCenter.default.removeObserver(hiddenHostsObserver)
+      self.hiddenHostsObserver = nil
+    }
     webContainer.stop()
   }
 
@@ -106,18 +121,22 @@ final class NetworkInspectorHostModel {
   }
 
   func addHiddenHost(_ value: String) {
-    guard let host = Self.normalizedHost(value), !hiddenHosts.contains(host) else { return }
+    guard let host = Self.normalizedHost(value) else { return }
 
-    hiddenHosts.append(host)
-    hiddenHosts.sort()
-    saveHiddenHosts()
+    var hosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
+    guard !hosts.contains(host) else { return }
+
+    hosts.append(host)
+    hosts.sort()
+    saveHiddenHosts(hosts)
   }
 
   func removeHiddenHost(_ host: String) {
-    guard let index = hiddenHosts.firstIndex(of: host) else { return }
+    var hosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
+    guard let index = hosts.firstIndex(of: host) else { return }
 
-    hiddenHosts.remove(at: index)
-    saveHiddenHosts()
+    hosts.remove(at: index)
+    saveHiddenHosts(hosts)
   }
 
   func setSortNewestFirst(_ sortNewestFirst: Bool) {
@@ -230,9 +249,19 @@ final class NetworkInspectorHostModel {
     webContainer.sendPageEvent(name: name, payload: payload)
   }
 
-  private func saveHiddenHosts() {
-    UserDefaults.standard.set(hiddenHosts, forKey: Keys.hiddenHosts)
+  private func saveHiddenHosts(_ hosts: [String]) {
+    hiddenHosts = hosts
+    UserDefaults.standard.set(hosts, forKey: Keys.hiddenHosts)
     sendPageEvent(name: "network:hidden-hosts", payload: hiddenHosts)
+    NotificationCenter.default.post(name: Keys.hiddenHostsDidChange, object: nil)
+  }
+
+  private func reloadHiddenHosts() {
+    let hosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
+    guard hiddenHosts != hosts else { return }
+
+    hiddenHosts = hosts
+    sendPageEvent(name: "network:hidden-hosts", payload: hosts)
   }
 
   private static func normalizedHost(_ value: String) -> String? {
