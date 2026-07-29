@@ -17,13 +17,13 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * Auto-initializes the Network Inspector server very early in app startup.
  *
- * Reads configuration from this provider’s <meta-data> in the merged manifest.
+ * Reads configuration from this provider’s <meta-data> in the merged manifest. Release builds
+ * require the application-level snapo.network.allow_release metadata flag to be explicitly true.
  *
  * Manifest keys (all optional):
  *  - snapo.auto_init (boolean)        default: true
  *  - snapo.main_process_only (boolean)default: true
  *  - snapo.mode_label (string)        default: "safe"
- *  - snapo.allow_release (boolean)    default: false
  *  - snapo.buffer_window_ms (long)    default: 300000 (5 minutes)
  *  - snapo.max_events (int)           default: 10000
  *  - snapo.max_bytes (long)           default: 16777216 (16 MB)
@@ -49,14 +49,11 @@ class SnapONetworkInitProvider : ContentProvider() {
         val maxEvents = readInt(meta, "snapo.max_events", 10_000)
         val maxBytes = readLong(meta, "snapo.max_bytes", 16L * 1024 * 1024)
         val modeLabel = meta?.getString("snapo.mode_label") ?: "safe"
-        val allowRelease = meta?.getBoolean("snapo.allow_release", false) ?: false
-
         val networkConfig = NetworkInspectorConfig(
             bufferWindow = bufferMs.milliseconds,
             maxBufferedEvents = maxEvents,
             maxBufferedBytes = maxBytes,
             modeLabel = modeLabel,
-            allowRelease = allowRelease,
         )
 
         NetworkInspector.initialize(ctx.applicationContext as Application, networkConfig)

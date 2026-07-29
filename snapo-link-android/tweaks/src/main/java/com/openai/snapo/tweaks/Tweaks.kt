@@ -1,17 +1,19 @@
 package com.openai.snapo.tweaks
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.toArgb
 import com.openai.snapo.tweaks.internal.TweakDescriptor
 import com.openai.snapo.tweaks.internal.TweakRegistry
 import com.openai.snapo.tweaks.internal.TweakType
+import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 
-/** Exposes a floating-point value to Snap-O Tweaks. */
+/** Exposes a floating-point tweak as observable state. */
 @Composable
 fun tweakFloat(
     name: String,
@@ -19,7 +21,7 @@ fun tweakFloat(
     min: Float? = null,
     max: Float? = null,
     step: Float? = null,
-): Float = rememberTweakValue(
+): State<Float> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.FLOAT,
@@ -28,9 +30,10 @@ fun tweakFloat(
         max = max,
         step = step,
     ),
+    default = default,
 ) { value -> value as Float }
 
-/** Exposes an integer value to Snap-O Tweaks. */
+/** Exposes an integer tweak as observable state. */
 @Composable
 fun tweakInt(
     name: String,
@@ -38,7 +41,7 @@ fun tweakInt(
     min: Int? = null,
     max: Int? = null,
     step: Int? = null,
-): Int = rememberTweakValue(
+): State<Int> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.INT,
@@ -47,69 +50,115 @@ fun tweakInt(
         max = max,
         step = step,
     ),
+    default = default,
 ) { value -> value as Int }
 
-/** Exposes a color as an RGB or RGBA hexadecimal string. */
+/** Exposes a color tweak as observable state. */
 @Composable
 fun tweakColor(
     name: String,
     default: Color,
-): Color = rememberTweakValue(
-    TweakDescriptor(
-        name = name,
-        type = TweakType.COLOR,
-        default = default.toTweakColor(),
-    ),
-) { value -> (value as String).toTweakColor() }
+): State<Color> {
+    val encodedDefault = default.toTweakColor()
+    return rememberTweakState(
+        TweakDescriptor(
+            name = name,
+            type = TweakType.COLOR,
+            default = encodedDefault,
+        ),
+        default = default,
+    ) { value ->
+        decodeTweakColor(value, default, encodedDefault)
+    }
+}
 
-/** Exposes a boolean value to Snap-O Tweaks. */
+/** Exposes a boolean tweak as observable state. */
 @Composable
 fun tweakBoolean(
     name: String,
     default: Boolean,
-): Boolean = rememberTweakValue(
+): State<Boolean> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.BOOLEAN,
         default = default,
     ),
+    default = default,
 ) { value -> value as Boolean }
 
-/** Exposes a text value to Snap-O Tweaks. */
+/** Exposes a text tweak as observable state. */
 @Composable
 fun tweakString(
     name: String,
     default: String,
-): String = rememberTweakValue(
+): State<String> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.STRING,
         default = default,
     ),
+    default = default,
 ) { value -> value as String }
 
 @Composable
-private fun <T> rememberTweakValue(
+private fun <T> rememberTweakState(
     descriptor: TweakDescriptor,
+    default: T,
     decode: (Any) -> T,
-): T {
-    val registeredState = remember(descriptor) {
-        mutableStateOf<State<Any>?>(null)
+): State<T> = if (TweaksRuntimePolicy.isAllowed) {
+    remember(descriptor, decode) {
+        TweakRegistration(descriptor, decode)
     }
+} else {
+    rememberUpdatedState(default)
+}
 
-    DisposableEffect(descriptor) {
-        registeredState.value = TweakRegistry.register(descriptor)
+internal class TweakRegistration<T>(
+    private val descriptor: TweakDescriptor,
+    private val decode: (Any) -> T,
+) : RememberObserver, State<T> {
 
-        onDispose {
-            TweakRegistry.unregister(descriptor.name)
+    private val state: State<Any> = TweakRegistry.stateFor(descriptor)
+    private var registered = false
+
+    override val value: T
+        get() = decode(state.value)
+
+    override fun onRemembered() {
+        if (!registered) {
+            TweakRegistry.register(descriptor)
+            registered = true
         }
     }
 
-    return decode(registeredState.value?.value ?: descriptor.default)
+    override fun onForgotten() = unregister()
+
+    override fun onAbandoned() = unregister()
+
+    private fun unregister() {
+        if (registered) {
+            TweakRegistry.unregister(descriptor.name)
+            registered = false
+        }
+    }
 }
 
-private fun Color.toTweakColor(): String {
-    val argb = toArgb()
+internal fun decodeTweakColor(
+    value: Any,
+    default: Color,
+    encodedDefault: String,
+): Color {
+    val encodedValue = value as String
+
+    return if (encodedValue == encodedDefault) {
+        default
+    } else {
+        encodedValue.toTweakColor()
+    }
+}
+
+internal fun Color.toTweakColor(): String {
+    val argb = if (isSpecified) toArgb() else 0
     val redGreenBlue = (argb and 0x00FF_FFFF)
         .toString(radix = 16)
         .padStart(length = 6, padChar = '0')
@@ -127,7 +176,7 @@ private fun Color.toTweakColor(): String {
     }
 }
 
-private fun String.toTweakColor(): Color {
+internal fun String.toTweakColor(): Color {
     require(startsWith('#')) { "Tweak colors must start with #." }
 
     val digits = substring(startIndex = 1)

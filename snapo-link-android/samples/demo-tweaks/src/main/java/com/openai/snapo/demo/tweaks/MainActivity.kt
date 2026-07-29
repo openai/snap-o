@@ -13,14 +13,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -32,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -42,17 +41,26 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
+import com.openai.snapo.tweaks.overlay.SnapOTweakOverlaySettings
 import com.openai.snapo.tweaks.tweakBoolean
 import com.openai.snapo.tweaks.tweakColor
 import com.openai.snapo.tweaks.tweakFloat
 import com.openai.snapo.tweaks.tweakInt
 import com.openai.snapo.tweaks.tweakString
+import kotlin.math.roundToInt
+
+private val DefaultTextColor = Color(0xFF18212F)
+private val DefaultBackgroundColor = Color(0xFFF7F8FA)
+private val DefaultAccentColor = Color(0xFF5468FF)
 
 class MainActivity : ComponentActivity() {
 
@@ -68,9 +76,44 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun TweakDemo() {
-    val textColor = tweakColor("Colors/Text", Color(0xFF18212F))
-    val backgroundColor = tweakColor("Colors/Background", Color(0xFFF7F8FA))
-    val accentColor = tweakColor("Colors/Accent", Color(0xFF5468FF))
+    var isTweakableContentVisible by rememberSaveable { mutableStateOf(true) }
+
+    MaterialTheme(
+        colorScheme = lightColorScheme(
+            primary = DefaultAccentColor,
+            onPrimary = Color.White,
+            background = DefaultBackgroundColor,
+            onBackground = DefaultTextColor,
+            surface = DefaultBackgroundColor,
+            onSurface = DefaultTextColor,
+        ),
+    ) {
+        SnapOTweakOverlay {
+            if (isTweakableContentVisible) {
+                TweakDemoContent(
+                    onToggleTweakableContent = {
+                        isTweakableContentVisible = !isTweakableContentVisible
+                    },
+                )
+            } else {
+                TweakDemoScreen(
+                    isTweakableContentVisible = false,
+                    onToggleTweakableContent = {
+                        isTweakableContentVisible = !isTweakableContentVisible
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TweakDemoContent(
+    onToggleTweakableContent: () -> Unit,
+) {
+    val textColor = tweakColor("Colors/Text", DefaultTextColor).value
+    val backgroundColor = tweakColor("Colors/Background", DefaultBackgroundColor).value
+    val accentColor = tweakColor("Colors/Accent", DefaultAccentColor).value
 
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -82,37 +125,78 @@ private fun TweakDemo() {
             onSurface = textColor,
         ),
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = backgroundColor,
-            contentColor = textColor,
+        TweakDemoScreen(
+            isTweakableContentVisible = true,
+            onToggleTweakableContent = onToggleTweakableContent,
+        )
+    }
+}
+
+@Composable
+private fun TweakDemoScreen(
+    isTweakableContentVisible: Boolean,
+    onToggleTweakableContent: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+    ) {
+        val dividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 28.dp, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(30.dp),
         ) {
-            TweakDemoContent()
+            DemoHeader()
+            OverlayEnableSwitch()
+            Button(onClick = onToggleTweakableContent) {
+                Text(
+                    if (isTweakableContentVisible) {
+                        "Hide tweakable UI"
+                    } else {
+                        "Show tweakable UI"
+                    },
+                )
+            }
+
+            if (isTweakableContentVisible) {
+                HorizontalDivider(color = dividerColor)
+                TypographyPreview()
+                MotionSection(dividerColor)
+            }
         }
     }
 }
 
 @Composable
-private fun TweakDemoContent() {
-    val dividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-    val showMotion = tweakBoolean("Motion/Show", true)
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 28.dp, vertical = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(30.dp),
-    ) {
-        DemoHeader()
+private fun MotionSection(dividerColor: Color) {
+    val isVisible by tweakBoolean("Motion/Show", true)
+    if (isVisible) {
         HorizontalDivider(color = dividerColor)
-        TypographyPreview()
+        MotionPreview()
+    }
+}
 
-        if (showMotion) {
-            HorizontalDivider(color = dividerColor)
-            MotionPreview()
-        }
+@Composable
+private fun OverlayEnableSwitch() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "In-app overlay",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Switch(
+            checked = SnapOTweakOverlaySettings.isEnabled,
+            onCheckedChange = { SnapOTweakOverlaySettings.isEnabled = it },
+        )
     }
 }
 
@@ -139,31 +223,36 @@ private fun DemoHeader() {
 
 @Composable
 private fun TypographyPreview() {
-    val fontSize = tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
-    val fontWeight = tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
-    val previewText = tweakString("Typography/Preview text", "Make it feel right.")
-
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = "Typography",
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
         )
-        Text(
-            text = previewText,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = fontSize.sp,
-            fontWeight = FontWeight(fontWeight),
-            lineHeight = (fontSize * 1.2f).sp,
-        )
+        TweakableTypographyPreview()
         TypographyDetails()
     }
 }
 
 @Composable
+private fun TweakableTypographyPreview() {
+    val fontSize by tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
+    val fontWeight by tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
+    val previewText by tweakString("Typography/Preview text", "Make it feel right.")
+
+    Text(
+        text = previewText,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = fontSize.sp,
+        fontWeight = FontWeight(fontWeight),
+        lineHeight = (fontSize * 1.2f).sp,
+    )
+}
+
+@Composable
 private fun TypographyDetails() {
-    val fontSize = tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
-    val fontWeight = tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
+    val fontSize by tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
+    val fontWeight by tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
 
     Text(
         text = "$fontSize sp · $fontWeight",
@@ -175,17 +264,20 @@ private fun TypographyDetails() {
 @Composable
 private fun MotionPreview() {
     var isStateB by rememberSaveable { mutableStateOf(false) }
-    val duration = tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
-    val stiffness = tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
-    val damping = tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
-    val useSpring = tweakBoolean("Motion/Use spring", true)
+    val useSpring by tweakBoolean("Motion/Use spring", true)
 
     val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
+        val stiffness by tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
+        val damping by tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
+
         spring(
             dampingRatio = damping,
             stiffness = stiffness,
+            visibilityThreshold = 0.001f,
         )
     } else {
+        val duration by tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
+
         tween(
             durationMillis = duration,
             easing = FastOutSlowInEasing,
@@ -225,6 +317,14 @@ private fun MotionTrack(
 ) {
     val accentColor = MaterialTheme.colorScheme.primary
     val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+    val trackColor = accentColor.copy(alpha = 0.22f)
+    val trackThickness = tweakFloat(
+        name = "Motion/Track thickness",
+        default = 2f,
+        min = 1f,
+        max = 8f,
+        step = 0.5f,
+    )
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -234,31 +334,26 @@ private fun MotionTrack(
             Text("State A", color = if (isStateB) mutedColor else accentColor)
             Text("State B", color = if (isStateB) accentColor else mutedColor)
         }
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
-                .clickable(role = Role.Button, onClick = onToggle),
+                .clickable(role = Role.Button, onClick = onToggle)
+                .drawBehind {
+                    drawLine(
+                        color = trackColor,
+                        start = Offset(x = 0f, y = center.y),
+                        end = Offset(x = size.width, y = center.y),
+                        strokeWidth = trackThickness.value.dp.toPx(),
+                    )
+                },
             contentAlignment = Alignment.CenterStart,
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .background(accentColor.copy(alpha = 0.22f)),
-            )
-
             val markerSize = 40.dp
-            val markerTravel = (maxWidth - markerSize).coerceAtLeast(0.dp)
 
             Box(
                 modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = (markerTravel * progress.value).roundToPx(),
-                            y = 0,
-                        )
-                    }
+                    .motionMarkerOffset(progress)
                     .size(markerSize)
                     .background(accentColor, CircleShape),
             )
@@ -267,17 +362,31 @@ private fun MotionTrack(
 }
 
 @Composable
+private fun Modifier.motionMarkerOffset(progress: State<Float>): Modifier =
+    layout { measurable, constraints ->
+        val marker = measurable.measure(constraints)
+        val travel = (constraints.maxWidth - marker.width).coerceAtLeast(0)
+
+        layout(marker.width, marker.height) {
+            marker.placeRelative(
+                x = (travel * progress.value).roundToInt(),
+                y = 0,
+            )
+        }
+    }
+
+@Composable
 private fun AnimationDetails(
     isStateB: Boolean,
 ) {
-    val useSpring = tweakBoolean("Motion/Use spring", true)
+    val useSpring by tweakBoolean("Motion/Use spring", true)
     val description = if (useSpring) {
-        val stiffness = tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
-        val damping = tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
+        val stiffness by tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
+        val damping by tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
 
         "Spring · $stiffness stiffness · $damping damping"
     } else {
-        val duration = tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
+        val duration by tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
 
         "Tween · $duration ms"
     }

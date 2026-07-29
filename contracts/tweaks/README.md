@@ -3,8 +3,9 @@
 Status: phase one. The network inspector protocol is unchanged.
 
 Snap-O Tweaks exposes adjustable values from the currently composed Android UI
-through a debug-only app-local socket. Agents and desktop tools can use HTTP to
-inspect those values and change them while the app runs.
+through an app-local socket, enabled by default only in debug builds. Agents
+and desktop tools can use HTTP to inspect those values and change them while
+the app runs.
 
 ## Transport
 
@@ -144,7 +145,9 @@ Return a flat list of currently registered tweaks:
 A tweak name represents one shared value, not one composable. Multiple active
 composables may register the same name; the tweak appears only once, and an
 update changes the value observed by every usage. A tweak remains registered
-until its last usage leaves composition.
+until its last usage leaves composition. Its most recently edited value remains
+available if the same complete declaration later returns, but inactive tweaks do
+not appear in responses or event snapshots.
 
 Usages with the same name must agree on the tweak type, default, and
 constraints. Conflicting declarations are a configuration error.
@@ -238,6 +241,7 @@ any tweaks in that request. Reset a value by patching it with its default.
 ## Compose API
 
 ```kotlin
+import androidx.compose.runtime.getValue
 import com.openai.snapo.tweaks.tweakBoolean
 import com.openai.snapo.tweaks.tweakColor
 import com.openai.snapo.tweaks.tweakFloat
@@ -246,17 +250,17 @@ import com.openai.snapo.tweaks.tweakString
 
 @Composable
 fun TweakSpecimen() {
-    val textColor = tweakColor(
+    val textColor by tweakColor(
         name = "Text color",
         default = Color(0xFF18212F),
     )
 
-    val backgroundColor = tweakColor(
+    val backgroundColor by tweakColor(
         name = "Background color",
         default = Color(0xFFF7F8FA),
     )
 
-    val accentColor = tweakColor(
+    val accentColor by tweakColor(
         name = "Accent color",
         default = Color(0xFF5468FF),
     )
@@ -277,7 +281,7 @@ fun TweakSpecimen() {
 
 @Composable
 fun TypographySpecimen() {
-    val fontSize = tweakInt(
+    val fontSize by tweakInt(
         name = "Font size",
         default = 36,
         min = 16,
@@ -285,7 +289,7 @@ fun TypographySpecimen() {
         step = 1,
     )
 
-    val fontWeight = tweakInt(
+    val fontWeight by tweakInt(
         name = "Font weight",
         default = 600,
         min = 100,
@@ -293,8 +297,10 @@ fun TypographySpecimen() {
         step = 100,
     )
 
+    val previewText by tweakString("Preview text", "Make it feel right.")
+
     Text(
-        text = tweakString("Preview text", "Make it feel right."),
+        text = previewText,
         fontSize = fontSize.sp,
         fontWeight = FontWeight(fontWeight),
         color = MaterialTheme.colorScheme.onSurface,
@@ -305,14 +311,14 @@ fun TypographySpecimen() {
 
 @Composable
 fun SpecimenAccessory() {
-    val fontSize = tweakInt("Font size", 36, min = 16, max = 72, step = 1)
+    val fontSize by tweakInt("Font size", 36, min = 16, max = 72, step = 1)
 
     Text(text = "$fontSize sp")
 }
 
 @Composable
 fun MotionSpecimen() {
-    val durationMillis = tweakInt(
+    val durationMillis by tweakInt(
         name = "Animation duration",
         default = 400,
         min = 100,
@@ -320,7 +326,7 @@ fun MotionSpecimen() {
         step = 50,
     )
 
-    val springStiffness = tweakFloat(
+    val springStiffness by tweakFloat(
         name = "Spring stiffness",
         default = 280f,
         min = 80f,
@@ -328,7 +334,7 @@ fun MotionSpecimen() {
         step = 20f,
     )
 
-    val springDamping = tweakFloat(
+    val springDamping by tweakFloat(
         name = "Spring damping",
         default = 0.7f,
         min = 0.1f,
@@ -336,7 +342,7 @@ fun MotionSpecimen() {
         step = 0.05f,
     )
 
-    val useSpring = tweakBoolean(
+    val useSpring by tweakBoolean(
         name = "Use spring",
         default = true,
     )
@@ -351,21 +357,34 @@ fun MotionSpecimen() {
 }
 ```
 
-Read each tweak in the composable that uses it. Theme colors are intentionally
-read at the theme boundary; font, text, and animation changes recompose their
-respective leaf composables rather than the entire screen. Both typography
-composables read the same Font size state, so one host update changes both.
-When a value only affects layout or drawing, read its state in the corresponding
-layout or draw callback instead of composition.
-`DisposableEffect` registers each usage and removes the tweak only after its
-final usage leaves composition. Screen navigation therefore determines what
-appears in the response.
+Each tweak function returns `State<T>`. Delegate it with `by` where the value is
+used; `androidx.compose.runtime.getValue` supplies the delegate operator. Theme
+colors are intentionally read at the theme boundary; font, text, and animation
+changes recompose their respective leaf composables rather than the entire
+screen. Both typography composables read the same Font size state, so one host
+update changes both. When a value only affects layout or drawing, read the
+delegated value inside the corresponding callback instead of composition:
+
+```kotlin
+val horizontalOffset by tweakInt("Horizontal offset", 0, min = 0, max = 200)
+
+Box(
+    modifier = Modifier.offset {
+        IntOffset(x = horizontalOffset, y = 0)
+    },
+)
+```
+
+Each remembered usage registers with composition and removes the tweak from
+the active list only after its final usage leaves. Returning declarations
+restore their previously edited values. Screen navigation therefore determines
+what appears in the response without discarding edits.
 
 Provide `tweakInt`, `tweakFloat`, `tweakColor`, `tweakBoolean`, and
-`tweakString`. Numeric tweaks accept optional `min`, `max`, and `step` values
-of the same type. Convert integer values into Compose units at the call site,
-such as `tweakInt("Font size", 36).sp`. The real and no-op artifacts expose the
-same package and public Compose API.
+`tweakString`; each returns its corresponding `State<T>`. Numeric tweaks accept
+optional `min`, `max`, and `step` values of the same type. Convert delegated
+integer values into Compose units at the call site, such as `fontSize.sp`. The
+real and no-op artifacts expose the same package and public Compose API.
 
 ## Setup
 
@@ -373,14 +392,62 @@ same package and public Compose API.
 dependencies {
     debugImplementation(project(":tweaks"))
     releaseImplementation(project(":tweaks-noop"))
+
+    // Optional: include the floating on-device inspector.
+    debugImplementation(project(":tweaks-overlay"))
+    releaseImplementation(project(":tweaks-overlay-noop"))
 }
 ```
 
 ```text
-:tweaks              Compose API, debug registry, HTTP, and abstract socket.
-:tweaks-noop         Matching Compose API that returns default values.
-:samples:demo-tweaks Standalone Compose sample with no network integration.
+:tweaks                 Compose API, live registry, HTTP, and abstract socket.
+:tweaks-noop            Matching Compose API that returns default values.
+:tweaks-overlay         Optional floating Compose tweak inspector.
+:tweaks-overlay-noop    Matching overlay wrapper without the inspector.
+:samples:demo-tweaks    Standalone Compose sample with no network integration.
 ```
+
+### Optional in-app overlay
+
+Wrap the app's root content with `SnapOTweakOverlay`:
+
+```kotlin
+import androidx.compose.runtime.Composable
+import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
+
+@Composable
+fun App() {
+    SnapOTweakOverlay {
+        AppContent()
+    }
+}
+```
+
+The overlay is disabled by default. Expose its app-wide setting from a
+developer-settings screen:
+
+```kotlin
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.Composable
+import com.openai.snapo.tweaks.overlay.SnapOTweakOverlaySettings
+
+@Composable
+fun DeveloperSettings() {
+    Switch(
+        checked = SnapOTweakOverlaySettings.isEnabled,
+        onCheckedChange = { enabled ->
+            SnapOTweakOverlaySettings.isEnabled = enabled
+        },
+    )
+}
+```
+
+The setting persists between app launches. When enabled, a movable button
+appears only while at least one tweak is in composition. Tap it to inspect or
+edit the active tweaks, and minimize the panel to return to the button. The
+panel stays synchronized with host-side changes, remembers its position, and
+disappears when the last tweak leaves composition. The no-op overlay keeps the
+same wrapper and settings APIs without showing a panel in release builds.
 
 Install the standalone debug sample on a connected Android device:
 
@@ -401,13 +468,23 @@ demo, not a required setup step or the expected way to use Snap-O Tweaks. Any
 agent or host can use the same endpoints to create its own UI. See the sample
 panel's README for device and package selection.
 
-A non-exported `ContentProvider` in the debug artifact starts the runtime only
-when `ApplicationInfo.FLAG_DEBUGGABLE` is set. The release artifact returns
-default values, contains no provider, and starts no server. Sample release
-builds enable R8, so unused no-op calls and their tweak-name strings can be
-removed. Verify the release APK contains neither tweak-name strings nor the
-debug provider, registry, server, or socket.
+A non-exported `ContentProvider` in the live artifact starts the runtime by
+default only when `ApplicationInfo.FLAG_DEBUGGABLE` is set. To intentionally
+enable live Snap-O Tweaks in a non-debuggable app, set its application flag:
+
+```xml
+<application>
+    <meta-data android:name="snapo.tweaks.allow_release" android:value="true" />
+</application>
+```
+
+This flag allows the Tweaks server and, if installed and enabled, the in-app
+overlay. It does not enable Network Inspector, which has its own
+`snapo.network.allow_release` application flag. The no-op release artifacts are
+still recommended: they return default values, contain no provider, and let R8
+remove unused calls and tweak-name strings. Verify the release APK contains
+neither tweak-name strings nor the live provider, registry, server, or socket.
 
 Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network
-protocol change, actions, streaming, groups, scopes, units, separate tweak
-IDs, or revisions.
+protocol change, actions, groups, scopes, units, separate tweak IDs, or
+revisions.

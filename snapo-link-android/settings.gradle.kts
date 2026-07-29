@@ -23,6 +23,8 @@ dependencyResolutionManagement {
 rootProject.name = "snapo-link-android"
 include(":tweaks")
 include(":tweaks-noop")
+include(":tweaks-overlay")
+include(":tweaks-overlay-noop")
 include(":network")
 include(":network-okhttp3")
 include(":network-okhttp3-noop")
