@@ -48,6 +48,20 @@ struct NetworkInspectorToolbarControls: View {
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(model.hiddenHosts.isEmpty ? Color.primary : Color.accentColor)
             .frame(width: 34, height: 32)
+            .overlay(alignment: .topTrailing) {
+              if !model.hiddenHosts.isEmpty {
+                Text(model.hiddenHosts.count > 99 ? "99+" : "\(model.hiddenHosts.count)")
+                  .font(.system(size: 9, weight: .semibold))
+                  .monospacedDigit()
+                  .foregroundStyle(.white)
+                  .padding(.horizontal, 3)
+                  .frame(minWidth: 14, minHeight: 14)
+                  .background(Color.accentColor, in: Capsule())
+                  .offset(x: -2, y: 2)
+                  .allowsHitTesting(false)
+                  .accessibilityHidden(true)
+              }
+            }
         }
         .help(hostFilterHelp)
         .popover(isPresented: $isHostFilterPresented, arrowEdge: .bottom) {
