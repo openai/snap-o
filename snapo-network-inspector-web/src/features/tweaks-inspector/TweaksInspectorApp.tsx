@@ -1,5 +1,5 @@
 import { RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppInspectorOption,
   InspectableApp,
@@ -7,7 +7,7 @@ import type {
   TweakDescriptor,
   TweakValue
 } from "../../network/bridge-types";
-import type { NetworkClient } from "../../network/client";
+import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
 import { AppInspectorPicker } from "../app-inspector/components/AppInspectorPicker";
 import { TweakUpdateQueue } from "./tweak-update-queue";
 
@@ -21,6 +21,13 @@ interface TweakOrdering {
   sections: Map<string, number>;
   tweaks: Map<string, number>;
 }
+
+interface ActiveColorPanelSession {
+  tweak: TweakDescriptor;
+  sessionId: string;
+}
+
+let nextColorPanelSession = 0;
 
 export function TweaksInspectorApp({
   client,
@@ -37,7 +44,12 @@ export function TweaksInspectorApp({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
+  const activeColorPanel = useRef<ActiveColorPanelSession | null>(null);
   const server = selection.server;
+  const hasNativeColorPanel =
+    client.usesNativeServerPicker &&
+    typeof client.openNativeColorPanel === "function" &&
+    typeof client.onNativeColorPanelChange === "function";
   const queue = useMemo(
     () =>
       new TweakUpdateQueue(client, server, {
@@ -107,14 +119,81 @@ export function TweaksInspectorApp({
     };
   }, [client, queue, server]);
 
+  const openNativeColorPanel = useCallback(
+    (tweak: TweakDescriptor, present = true) => {
+      if (!hasNativeColorPanel || client.openNativeColorPanel === undefined) {
+        activeColorPanel.current = null;
+        return;
+      }
+
+      const sessionId = String(++nextColorPanelSession);
+      activeColorPanel.current = { tweak, sessionId };
+      void client.openNativeColorPanel(String(tweak.value), sessionId, present).catch((cause: unknown) => {
+        if (activeColorPanel.current?.sessionId !== sessionId) return;
+
+        activeColorPanel.current = null;
+        setError(cause instanceof Error ? cause.message : "Unable to open the color picker.");
+      });
+    },
+    [client, hasNativeColorPanel]
+  );
+
   const updateTweak = useCallback(
     (tweak: TweakDescriptor, value: TweakValue) => {
+      const active = activeColorPanel.current;
+      if (active?.tweak.name === tweak.name && active.tweak.value !== value) {
+        openNativeColorPanel({ ...tweak, value }, false);
+      }
+
       setTweaks((current) => current.map((item) => (item.name === tweak.name ? { ...item, value } : item)));
       queue.enqueue(tweak.name, value);
       void queue.flush();
     },
-    [queue]
+    [openNativeColorPanel, queue]
   );
+
+  useEffect(() => {
+    const active = activeColorPanel.current;
+    if (active === null) return;
+
+    const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
+    if (tweak === undefined) {
+      activeColorPanel.current = null;
+      void client.closeNativeColorPanel?.(active.sessionId).catch((cause: unknown) => {
+        if (activeColorPanel.current !== null) return;
+
+        setError(cause instanceof Error ? cause.message : "Unable to close the color picker.");
+      });
+      return;
+    }
+
+    if (tweak.value === active.tweak.value) {
+      activeColorPanel.current = { ...active, tweak };
+      return;
+    }
+
+    openNativeColorPanel(tweak, false);
+  }, [client, openNativeColorPanel, tweaks]);
+
+  useEffect(() => {
+    if (!hasNativeColorPanel || client.onNativeColorPanelChange === undefined) return;
+
+    const unsubscribe = client.onNativeColorPanelChange((event) => {
+      const active = activeColorPanel.current;
+      if (active === null) return;
+
+      const value = nativePanelTweakColor(event, active.sessionId);
+      if (value === null) return;
+
+      activeColorPanel.current = { ...active, tweak: { ...active.tweak, value } };
+      updateTweak(active.tweak, value);
+    });
+
+    return () => {
+      activeColorPanel.current = null;
+      unsubscribe();
+    };
+  }, [client, hasNativeColorPanel, updateTweak]);
 
   const resetAll = useCallback(() => {
     for (const tweak of tweaks) {
@@ -173,7 +252,12 @@ export function TweaksInspectorApp({
                   {section.name ? <h2>{section.name}</h2> : null}
                   <div className="tweaks-section-list">
                     {section.tweaks.map((tweak) => (
-                      <TweakControl key={tweak.name} tweak={tweak} onChange={updateTweak} />
+                      <TweakControl
+                        key={tweak.name}
+                        tweak={tweak}
+                        onChange={updateTweak}
+                        onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
+                      />
                     ))}
                   </div>
                 </section>
@@ -261,10 +345,12 @@ function tweakLabel(name: string): string {
 
 function TweakControl({
   tweak,
-  onChange
+  onChange,
+  onOpenColorPanel
 }: {
   tweak: TweakDescriptor;
   onChange(tweak: TweakDescriptor, value: TweakValue): void;
+  onOpenColorPanel?(tweak: TweakDescriptor): void;
 }): JSX.Element {
   const label = tweakLabel(tweak.name);
   const changed = tweak.value !== tweak.default;
@@ -285,7 +371,7 @@ function TweakControl({
           </button>
         ) : null}
         <span className="tweaks-control-field">
-          <TweakField tweak={tweak} onChange={onChange} />
+          <TweakField tweak={tweak} onChange={onChange} onOpenColorPanel={onOpenColorPanel} />
         </span>
       </div>
 
@@ -317,10 +403,12 @@ function TweakControl({
 
 function TweakField({
   tweak,
-  onChange
+  onChange,
+  onOpenColorPanel
 }: {
   tweak: TweakDescriptor;
   onChange(tweak: TweakDescriptor, value: TweakValue): void;
+  onOpenColorPanel?(tweak: TweakDescriptor): void;
 }): JSX.Element | null {
   if (tweak.type === "boolean") {
     return (
@@ -335,7 +423,7 @@ function TweakField({
   }
 
   if (tweak.type === "color") {
-    return <TweakColorField tweak={tweak} onChange={onChange} />;
+    return <TweakColorField tweak={tweak} onChange={onChange} onOpenColorPanel={onOpenColorPanel} />;
   }
 
   if (tweak.type === "int" || tweak.type === "float") {
@@ -361,12 +449,14 @@ function TweakField({
   return null;
 }
 
-function TweakColorField({
+export function TweakColorField({
   tweak,
-  onChange
+  onChange,
+  onOpenColorPanel
 }: {
   tweak: TweakDescriptor;
   onChange(tweak: TweakDescriptor, value: TweakValue): void;
+  onOpenColorPanel?(tweak: TweakDescriptor): void;
 }): JSX.Element {
   const committed = String(tweak.value);
   const [draft, setDraft] = useState(() => ({ committed, value: committed }));
@@ -374,16 +464,26 @@ function TweakColorField({
 
   return (
     <span className="tweaks-color-fields">
-      <input
-        className="tweaks-color"
-        type="color"
-        aria-label={`${tweak.name} color`}
-        value={committed.slice(0, 7)}
-        onChange={(event) => {
-          const alpha = committed.length === 9 ? committed.slice(7) : "";
-          onChange(tweak, `${event.currentTarget.value.toUpperCase()}${alpha}`);
-        }}
-      />
+      {onOpenColorPanel ? (
+        <button
+          className="tweaks-color tweaks-color-button"
+          type="button"
+          aria-label={`${tweak.name} color`}
+          onClick={() => onOpenColorPanel(tweak)}
+        >
+          <span className="tweaks-color-swatch" style={{ backgroundColor: committed }} />
+        </button>
+      ) : (
+        <input
+          className="tweaks-color"
+          type="color"
+          aria-label={`${tweak.name} color`}
+          value={committed.slice(0, 7)}
+          onChange={(event) => {
+            onChange(tweak, tweakColorWithPreservedAlpha(committed, event.currentTarget.value));
+          }}
+        />
+      )}
       <input
         className="tweaks-hex"
         type="text"
@@ -407,4 +507,18 @@ function TweakColorField({
 
 export function parseTweakColor(value: string): string | null {
   return /^#[\da-f]{6}(?:[\da-f]{2})?$/i.test(value) ? value.toUpperCase() : null;
+}
+
+export function tweakColorWithPreservedAlpha(committed: string, color: string): string {
+  const alpha = committed.length === 9 ? committed.slice(7) : "";
+  return `${color.toUpperCase()}${alpha}`;
+}
+
+export function nativePanelTweakColor(event: NativeColorPanelChange, sessionId: string): string | null {
+  if (event.sessionId !== sessionId) return null;
+
+  const normalized = parseTweakColor(event.color);
+  if (normalized === null || normalized.length !== 9) return null;
+
+  return normalized.slice(7) === "FF" ? normalized.slice(0, 7) : normalized;
 }

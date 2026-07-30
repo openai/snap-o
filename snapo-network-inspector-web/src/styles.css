@@ -1528,3 +1528,14 @@ pre {
   border-radius: 4px;
   padding: 2px;
 }
+
+.tweaks-color-button {
+  background: var(--surface-bright);
+}
+
+.tweaks-color-swatch {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+}

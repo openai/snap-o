@@ -1,6 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
 import type { TweakDescriptor } from "../../network/bridge-types";
-import { canResetTweaks, groupTweaks, parseTweakColor, reconcileStreamedTweaks } from "./TweaksInspectorApp";
+import { createNetworkClient } from "../../network/client";
+import {
+  canResetTweaks,
+  groupTweaks,
+  nativePanelTweakColor,
+  parseTweakColor,
+  reconcileStreamedTweaks,
+  TweakColorField,
+  tweakColorWithPreservedAlpha
+} from "./TweaksInspectorApp";
 
 describe("editable tweak colors", () => {
   it("normalizes complete RGB colors", () => {
@@ -19,6 +30,92 @@ describe("editable tweak colors", () => {
 
   it("rejects invalid hexadecimal digits", () => {
     expect(parseTweakColor("#A1B2G3")).toBeNull();
+  });
+
+  it("preserves the alpha channel when the browser color input changes RGB", () => {
+    expect(tweakColorWithPreservedAlpha("#11223380", "#a1b2c3")).toBe("#A1B2C380");
+  });
+
+  it("does not add an alpha channel to RGB colors", () => {
+    expect(tweakColorWithPreservedAlpha("#112233", "#a1b2c3")).toBe("#A1B2C3");
+  });
+
+  it("applies native RGBA updates", () => {
+    expect(nativePanelTweakColor({ color: "#a1b2c344", sessionId: "active" }, "active")).toBe("#A1B2C344");
+  });
+
+  it("ignores stale native color events from a previously opened field", () => {
+    expect(nativePanelTweakColor({ color: "#a1b2c344", sessionId: "previous" }, "active")).toBeNull();
+  });
+
+  it("keeps panel-originated changes on the current session", () => {
+    expect(nativePanelTweakColor({ color: "#11223380", sessionId: "current" }, "current")).toBe("#11223380");
+    expect(nativePanelTweakColor({ color: "#44556640", sessionId: "current" }, "current")).toBe("#44556640");
+  });
+
+  it("rejects queued panel events after an external change refreshes its session", () => {
+    expect(nativePanelTweakColor({ color: "#11223380", sessionId: "before-sync" }, "after-sync")).toBeNull();
+    expect(nativePanelTweakColor({ color: "#44556640", sessionId: "after-sync" }, "after-sync")).toBe("#44556640");
+  });
+
+  it("closes only the native color-panel session that lost its tweak", async () => {
+    const postMessage = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("window", { webkit: { messageHandlers: { snapoNetwork: { postMessage } } } });
+
+    try {
+      const client = createNetworkClient();
+      await client.closeNativeColorPanel?.("removed-session");
+
+      expect(postMessage).toHaveBeenCalledWith({
+        command: "closeNativeColorPanel",
+        payload: { sessionId: "removed-session" }
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps the alpha component when a native color is translucent", () => {
+    expect(nativePanelTweakColor({ color: "#a1b2c380", sessionId: "active" }, "active")).toBe("#A1B2C380");
+  });
+
+  it("omits the alpha component when a native color is fully opaque", () => {
+    expect(nativePanelTweakColor({ color: "#a1b2c3ff", sessionId: "active" }, "active")).toBe("#A1B2C3");
+  });
+
+  it("canonicalizes originally RGBA colors to RGB when made opaque", () => {
+    expect(nativePanelTweakColor({ color: "#5468FFFF", sessionId: "active" }, "active")).toBe("#5468FF");
+  });
+
+  it("ignores native color updates without an alpha component", () => {
+    expect(nativePanelTweakColor({ color: "#a1b2c3", sessionId: "active" }, "active")).toBeNull();
+  });
+
+  it("keeps the browser-native color input when no native panel is available", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakColorField, {
+        tweak: colorTweak(),
+        onChange() {}
+      })
+    );
+
+    expect(markup).toContain('type="color"');
+    expect(markup).not.toContain("tweaks-color-button");
+  });
+
+  it("renders an accessible native-panel swatch instead of the HTML color input", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakColorField, {
+        tweak: colorTweak(),
+        onChange() {},
+        onOpenColorPanel() {}
+      })
+    );
+
+    expect(markup).toContain('class="tweaks-color tweaks-color-button"');
+    expect(markup).toContain('aria-label="Colors/Accent color"');
+    expect(markup).toContain("background-color:#5468FF80");
+    expect(markup).not.toContain('type="color"');
   });
 });
 
@@ -144,5 +241,14 @@ function tweak(name: string): TweakDescriptor {
     type: "int",
     default: 1,
     value: 1
+  };
+}
+
+function colorTweak(): TweakDescriptor {
+  return {
+    name: "Colors/Accent",
+    type: "color",
+    default: "#5468FF80",
+    value: "#5468FF80"
   };
 }

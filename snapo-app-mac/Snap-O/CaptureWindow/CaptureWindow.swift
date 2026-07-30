@@ -71,6 +71,7 @@ struct CaptureWindow: View {
       }
       .task(id: workspace.showsNetwork) {
         guard workspace.showsNetwork else {
+          networkSession.model?.webContainer.closeNativeColorPanel()
           // Hiding the pane is a layout change, not a session boundary. Preserve its streams and history until the window closes.
           return
         }

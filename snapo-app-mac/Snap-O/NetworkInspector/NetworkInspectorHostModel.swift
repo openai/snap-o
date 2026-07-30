@@ -61,6 +61,11 @@ final class NetworkInspectorHostModel {
       kind: option.kind,
       server: option.server
     )
+    if selectedInspector?.appId != selection.appId
+      || selectedInspector?.kind != selection.kind
+      || selectedInspector?.server != selection.server {
+      webContainer.closeNativeColorPanel()
+    }
     if selectedInspector?.kind != selection.kind || selectedInspector?.server != selection.server {
       hasResettableTweaks = false
     }
@@ -156,6 +161,7 @@ final class NetworkInspectorHostModel {
     }
 
     guard let app = apps.first, let option = app.inspectors.first else {
+      webContainer.closeNativeColorPanel()
       selectedInspector = nil
       hasResettableTweaks = false
       return
