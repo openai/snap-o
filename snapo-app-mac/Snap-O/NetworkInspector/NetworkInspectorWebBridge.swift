@@ -11,7 +11,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   static let messageHandlerName = "snapoNetwork"
 
-  private static weak var colorPanelOwner: NetworkInspectorWebBridge?
+  private weak static var colorPanelOwner: NetworkInspectorWebBridge?
 
   var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
   var inspectorAppsChangedHandler: (([InspectableApp]) -> Void)?
