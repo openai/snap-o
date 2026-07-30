@@ -35,6 +35,7 @@ actor NetworkInspectorService {
   private var activeStreamConnections: [String: UUID] = [:]
   private var streamStartFlights: [String: StreamStartFlight] = [:]
   private var tweakStreams: [String: Task<Void, Never>] = [:]
+  private var inspectorServerOrder: [InspectorServerReference] = []
   private var outputContinuations: [UUID: AsyncStream<NetworkInspectorOutput>.Continuation] = [:]
   private var refreshFlight: RefreshFlight?
   private var isStopped = false
@@ -116,12 +117,27 @@ actor NetworkInspectorService {
       )
     }
 
-    return apps.values.sorted {
-      if $0.deviceDisplayTitle != $1.deviceDisplayTitle {
-        return $0.deviceDisplayTitle < $1.deviceDisplayTitle
+    return orderedInspectorApps(Array(apps.values))
+  }
+
+  private func orderedInspectorApps(_ apps: [InspectableApp]) -> [InspectableApp] {
+    let previousOrder = Dictionary(
+      uniqueKeysWithValues: inspectorServerOrder.enumerated().map { ($0.element, $0.offset) }
+    )
+    let orderedApps = apps.sorted { first, second in
+      let firstOrder = first.inspectors.compactMap { previousOrder[$0.server] }.min() ?? -1
+      let secondOrder = second.inspectors.compactMap { previousOrder[$0.server] }.min() ?? -1
+
+      if firstOrder != secondOrder {
+        return firstOrder < secondOrder
       }
-      return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+      if first.deviceId != second.deviceId {
+        return first.deviceId < second.deviceId
+      }
+      return first.packageName < second.packageName
     }
+    inspectorServerOrder = orderedApps.flatMap { $0.inspectors.map(\.server) }
+    return orderedApps
   }
 
   func listTweaks(for reference: InspectorServerReference) async throws -> TweakList {
