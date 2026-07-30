@@ -1,7 +1,6 @@
 package com.openai.snapo.tweaks.overlay
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,11 +37,8 @@ import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
@@ -64,6 +60,7 @@ private const val MaximumDiscreteSliderIntervals = 1_000
 @Composable
 internal fun TweakOverlayControl(
     tweak: SnapOTweakEntry,
+    onSelectColor: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -76,22 +73,29 @@ internal fun TweakOverlayControl(
                     TweakIntegerSlider(tweak, defaultValue, modifier)
                 }
             } else {
-                TweakOverlayLabelRow(tweak)
+                TweakOverlayLabelRow(tweak) {
+                    TweakIntegerEditor(tweak, defaultValue)
+                }
             }
             is SnapOTweakValue.Floating -> if (defaultValue.hasSliderBounds()) {
                 TweakNumericControl(tweak) { modifier ->
                     TweakFloatingSlider(tweak, defaultValue, modifier)
                 }
             } else {
-                TweakOverlayLabelRow(tweak)
+                TweakOverlayLabelRow(tweak) {
+                    TweakFloatingEditor(tweak, defaultValue)
+                }
             }
             is SnapOTweakValue.Text -> {
-                TweakOverlayLabelRow(tweak)
+                TweakOverlayLabelRow(tweak) {}
                 TweakTextEditor(tweak)
             }
-            is SnapOTweakValue.Toggle,
-            is SnapOTweakValue.ColorValue,
-            -> TweakOverlayLabelRow(tweak)
+            is SnapOTweakValue.Toggle -> TweakOverlayLabelRow(tweak) {
+                TweakToggleField(tweak)
+            }
+            is SnapOTweakValue.ColorValue -> TweakOverlayLabelRow(tweak) {
+                TweakColorField(tweak, onSelectColor)
+            }
         }
     }
 }
@@ -168,7 +172,9 @@ private fun TweakNumericControl(
         TweakOverlayLabelRow(
             tweak = tweak,
             compact = true,
-        )
+        ) {
+            TweakNumericFieldValue(tweak)
+        }
         slider(
             Modifier.requiredHeight(48.dp),
         )
@@ -180,6 +186,7 @@ private fun TweakOverlayLabelRow(
     tweak: SnapOTweakEntry,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    field: @Composable () -> Unit,
 ) {
     val rowHeight = if (compact) 20.dp else 48.dp
     val isChanged by remember(tweak) {
@@ -233,29 +240,8 @@ private fun TweakOverlayLabelRow(
         Box(
             contentAlignment = Alignment.CenterEnd,
         ) {
-            TweakOverlayField(tweak)
+            field()
         }
-    }
-}
-
-@Composable
-private fun TweakOverlayField(
-    tweak: SnapOTweakEntry,
-) {
-    when (val defaultValue = tweak.defaultValue) {
-        is SnapOTweakValue.Integer -> if (defaultValue.hasSliderBounds()) {
-            TweakNumericFieldValue(tweak)
-        } else {
-            TweakIntegerEditor(tweak, defaultValue)
-        }
-        is SnapOTweakValue.Floating -> if (defaultValue.hasSliderBounds()) {
-            TweakNumericFieldValue(tweak)
-        } else {
-            TweakFloatingEditor(tweak, defaultValue)
-        }
-        is SnapOTweakValue.Toggle -> TweakToggleField(tweak)
-        is SnapOTweakValue.ColorValue -> TweakColorEditor(tweak)
-        is SnapOTweakValue.Text -> Unit
     }
 }
 
@@ -614,88 +600,10 @@ private fun TweakTextEditor(
 }
 
 @Composable
-private fun TweakColorEditor(
-    tweak: SnapOTweakEntry,
-) {
-    val value = tweak.value.value as SnapOTweakValue.ColorValue
-    val committed = value.value.toTweakHex()
-    var draft by rememberSaveable { mutableStateOf(committed) }
-    var isFocused by remember { mutableStateOf(false) }
-
-    LaunchedEffect(committed, isFocused) {
-        if (!isFocused) draft = committed
-    }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(18.dp)
-                .background(value.value, RoundedCornerShape(4.dp))
-                .border(1.dp, TweakOverlayColors.outline, RoundedCornerShape(4.dp)),
-        )
-
-        BasicTextField(
-            value = draft,
-            onValueChange = { updated ->
-                if (updated.length <= 9) {
-                    draft = updated
-                    updated.toTweakColorOrNull()?.let { color ->
-                        SnapOTweaks.update(tweak.name, value.copy(value = color))
-                    }
-                }
-            },
-            modifier = Modifier
-                .width(78.dp)
-                .onFocusChanged { isFocused = it.isFocused },
-            textStyle = TextStyle(
-                color = TweakOverlayColors.foreground,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-            ),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-            singleLine = true,
-        )
-    }
-}
-
-@Composable
 private fun TweakFieldText(value: String) {
     Text(
         text = value,
         color = TweakOverlayColors.foreground,
         fontSize = 13.sp,
     )
-}
-
-private fun Color.toTweakHex(): String {
-    val argb = toArgb()
-    val rgb = (argb and 0x00FF_FFFF)
-        .toString(radix = 16)
-        .padStart(length = 6, padChar = '0')
-        .uppercase()
-    val alpha = argb ushr 24
-
-    return if (alpha == 0xFF) {
-        "#$rgb"
-    } else {
-        val suffix = alpha.toString(radix = 16).padStart(length = 2, padChar = '0').uppercase()
-        "#$rgb$suffix"
-    }
-}
-
-private fun String.toTweakColorOrNull(): Color? {
-    if (!Regex("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$").matches(this)) return null
-
-    val digits = substring(1)
-    val argb = if (digits.length == 6) {
-        0xFF00_0000L or digits.toLong(radix = 16)
-    } else {
-        val rgba = digits.toLong(radix = 16)
-        ((rgba and 0xFF) shl 24) or (rgba ushr 8)
-    }
-
-    return Color(argb.toInt())
 }

@@ -159,6 +159,13 @@ constraints actually supplied by the app. A `step` is relative to `min`, or to
 `default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when
 translucent.
 
+Compose color defaults keep their exact in-process identity, including color
+space, component precision, and `Color.Unspecified`. The HTTP protocol still
+presents colors as sRGB hex; non-sRGB defaults are projected, and
+`Color.Unspecified` appears as `#00000000`. Patching a color with that presented
+default remains the legacy reset operation, so the same projected hex cannot
+also express a distinct sRGB edit for a non-round-trippable default.
+
 Numeric JSON values may contain at most 128 characters and 64 significant
 digits, with a decimal scale between -64 and 64. Reject values outside those
 limits with `422` before changing any tweaks.

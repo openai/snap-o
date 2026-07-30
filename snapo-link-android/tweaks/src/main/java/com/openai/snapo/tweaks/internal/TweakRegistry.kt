@@ -6,7 +6,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import com.openai.snapo.tweaks.SnapOTweakEntry
+import com.openai.snapo.tweaks.TweakColorValue
 import com.openai.snapo.tweaks.toSnapOTweakValue
+import com.openai.snapo.tweaks.toTweakColorValue
 import java.io.Closeable
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -200,7 +202,8 @@ internal object TweakRegistry {
             }
 
             TweakType.COLOR -> require(
-                descriptor.default is String && colorPattern.matches(descriptor.default),
+                descriptor.default is TweakColorValue &&
+                    colorPattern.matches(descriptor.default.wireValue),
             ) {
                 "Color tweaks must use #RRGGBB or #RRGGBBAA: ${descriptor.name}"
             }
@@ -304,12 +307,36 @@ internal object TweakRegistry {
             }
 
             TweakType.COLOR -> {
-                val color = value as? String
-                    ?: invalidValue(descriptor, "Expected a color string.")
-                if (!colorPattern.matches(color)) {
-                    invalidValue(descriptor, "Expected #RRGGBB or #RRGGBBAA.")
+                val defaultColor = descriptor.default as TweakColorValue
+
+                when (value) {
+                    is TweakColorValue -> {
+                        val color = try {
+                            value.color.toTweakColorValue()
+                        } catch (_: IllegalArgumentException) {
+                            invalidValue(descriptor, "Expected a supported color.")
+                        }
+                        if (color.color == defaultColor.color) {
+                            defaultColor
+                        } else {
+                            color
+                        }
+                    }
+
+                    is String -> {
+                        if (!colorPattern.matches(value)) {
+                            invalidValue(descriptor, "Expected #RRGGBB or #RRGGBBAA.")
+                        }
+                        val normalized = value.uppercase()
+                        if (normalized == defaultColor.wireValue) {
+                            defaultColor
+                        } else {
+                            normalized.toTweakColorValue()
+                        }
+                    }
+
+                    else -> invalidValue(descriptor, "Expected a color string.")
                 }
-                color.uppercase()
             }
         }
 

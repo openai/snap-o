@@ -8,6 +8,7 @@ import android.os.Process
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
+import com.openai.snapo.tweaks.TweakColorValue
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -504,6 +505,7 @@ internal class TweakHttpServer(
             is Boolean -> writer.value(value)
             is Number -> writer.value(value)
             is String -> writer.value(value)
+            is TweakColorValue -> writer.value(value.wireValue)
             else -> throw HttpFailure(500, "Unsupported tweak value.")
         }
     }

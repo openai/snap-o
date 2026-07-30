@@ -49,12 +49,14 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openai.snapo.tweaks.SnapOTweakEntry
+import com.openai.snapo.tweaks.SnapOTweakValue
 import com.openai.snapo.tweaks.SnapOTweaks
 import kotlin.math.roundToInt
 
@@ -163,6 +165,25 @@ private fun TweakOverlayLayer(
 }
 
 @Composable
+private fun resolveSelectedColorTweak(
+    name: String?,
+    tweaks: List<SnapOTweakEntry>,
+    onMissing: () -> Unit,
+): SnapOTweakEntry? {
+    val selected = name?.let { selectedName ->
+        tweaks.firstOrNull { tweak ->
+            tweak.name == selectedName && tweak.defaultValue is SnapOTweakValue.ColorValue
+        }
+    }
+
+    LaunchedEffect(name, selected) {
+        if (name != null && selected == null) onMissing()
+    }
+
+    return selected
+}
+
+@Composable
 private fun Modifier.measureOverlaySize(
     onSizeMeasured: (IntSize) -> Unit,
 ): Modifier = layout { measurable, constraints ->
@@ -193,6 +214,14 @@ private fun ExpandedTweakOverlay(
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var selectedColorTweakName by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedColorTweak = resolveSelectedColorTweak(
+        name = selectedColorTweakName,
+        tweaks = tweaks,
+    ) {
+        selectedColorTweakName = null
+    }
+
     Surface(
         modifier = modifier.height(height),
         shape = RoundedCornerShape(14.dp),
@@ -202,31 +231,47 @@ private fun ExpandedTweakOverlay(
         shadowElevation = 5.dp,
     ) {
         Column {
-            TweakOverlayActions(
-                tweaks = tweaks,
-                onMinimize = onMinimize,
-                onDrag = onDrag,
-            )
-            HorizontalDivider(color = TweakOverlayColors.outline)
+            if (selectedColorTweak == null) {
+                TweakOverlayActions(
+                    tweaks = tweaks,
+                    onMinimize = onMinimize,
+                    onDrag = onDrag,
+                )
+                HorizontalDivider(color = TweakOverlayColors.outline)
 
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(TweakOverlayLayout.fieldRowSpacing),
-            ) {
-                itemsIndexed(tweaks, key = { _, tweak -> tweak.name }) { index, tweak ->
-                    val section = tweak.name.substringBefore('/', missingDelimiterValue = "")
-                    val previousSection = if (index == 0) {
-                        null
-                    } else {
-                        tweaks[index - 1].name.substringBefore('/', missingDelimiterValue = "")
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(TweakOverlayLayout.fieldRowSpacing),
+                ) {
+                    itemsIndexed(tweaks, key = { _, tweak -> tweak.name }) { index, tweak ->
+                        val section = tweak.name.substringBefore('/', missingDelimiterValue = "")
+                        val previousSection = if (index == 0) {
+                            null
+                        } else {
+                            tweaks[index - 1].name.substringBefore('/', missingDelimiterValue = "")
+                        }
+
+                        if (section.isNotEmpty() && section != previousSection) {
+                            TweakOverlaySection(section)
+                        }
+
+                        TweakOverlayControl(
+                            tweak = tweak,
+                            onSelectColor = { selectedColorTweakName = tweak.name },
+                        )
                     }
-
-                    if (section.isNotEmpty() && section != previousSection) {
-                        TweakOverlaySection(section)
-                    }
-
-                    TweakOverlayControl(tweak)
                 }
+            } else {
+                TweakColorOverlayActions(
+                    tweak = selectedColorTweak,
+                    onClose = { selectedColorTweakName = null },
+                    onDrag = onDrag,
+                )
+                HorizontalDivider(color = TweakOverlayColors.outline)
+                TweakColorChooser(
+                    tweak = selectedColorTweak,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -245,22 +290,52 @@ private fun TweakOverlayActions(
     }
 
     TweakOverlayHeader(
+        title = "Tweaks",
         hasChanges = hasChanges,
         onReset = {
             tweaks.filter { tweak -> tweak.isChanged }.forEach { tweak ->
                 SnapOTweaks.update(tweak.name, tweak.defaultValue)
             }
         },
-        onMinimize = onMinimize,
+        resetContentDescription = "Reset all tweaks",
+        onTrailingAction = onMinimize,
+        trailingIcon = R.drawable.snapo_tweaks_close,
+        trailingContentDescription = "Minimize tweaks",
+        onDrag = onDrag,
+    )
+}
+
+@Composable
+private fun TweakColorOverlayActions(
+    tweak: SnapOTweakEntry,
+    onClose: () -> Unit,
+    onDrag: (Float) -> Unit,
+) {
+    val hasChanges by remember(tweak) {
+        derivedStateOf(structuralEqualityPolicy()) { tweak.isChanged }
+    }
+
+    TweakOverlayHeader(
+        title = tweak.name.substringAfter('/'),
+        hasChanges = hasChanges,
+        onReset = { SnapOTweaks.update(tweak.name, tweak.defaultValue) },
+        resetContentDescription = "Reset ${tweak.name}",
+        onTrailingAction = onClose,
+        trailingIcon = R.drawable.snapo_tweaks_check,
+        trailingContentDescription = "Done editing ${tweak.name}",
         onDrag = onDrag,
     )
 }
 
 @Composable
 private fun TweakOverlayHeader(
+    title: String,
     hasChanges: Boolean,
     onReset: () -> Unit,
-    onMinimize: () -> Unit,
+    resetContentDescription: String,
+    onTrailingAction: () -> Unit,
+    trailingIcon: Int,
+    trailingContentDescription: String,
     onDrag: (Float) -> Unit,
 ) {
     val currentOnDrag by rememberUpdatedState(onDrag)
@@ -291,10 +366,12 @@ private fun TweakOverlayHeader(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = "Tweaks",
+                text = title,
                 modifier = Modifier.weight(1f),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
 
             IconButton(
@@ -303,27 +380,32 @@ private fun TweakOverlayHeader(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.snapo_tweaks_restart),
-                    contentDescription = "Reset all tweaks",
+                    contentDescription = resetContentDescription,
                 )
             }
 
-            IconButton(onClick = onMinimize) {
+            IconButton(onClick = onTrailingAction) {
                 Icon(
-                    painter = painterResource(R.drawable.snapo_tweaks_close),
-                    contentDescription = "Minimize tweaks",
+                    painter = painterResource(trailingIcon),
+                    contentDescription = trailingContentDescription,
                 )
             }
         }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 7.dp)
-                .width(30.dp)
-                .height(3.dp)
-                .background(TweakOverlayColors.secondary.copy(alpha = 0.35f), CircleShape),
-        )
+        TweakOverlayDragHandle()
     }
+}
+
+@Composable
+private fun BoxScope.TweakOverlayDragHandle() {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(top = 7.dp)
+            .width(30.dp)
+            .height(3.dp)
+            .background(TweakOverlayColors.secondary.copy(alpha = 0.35f), CircleShape),
+    )
 }
 
 @Composable

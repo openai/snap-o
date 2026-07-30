@@ -1,5 +1,7 @@
 package com.openai.snapo.tweaks.internal
 
+import com.openai.snapo.tweaks.TweakColorValue
+import com.openai.snapo.tweaks.toTweakColorValue
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -295,17 +297,17 @@ class TweakValidationTest {
         val descriptor = TweakDescriptor(
             name = "Validation color",
             type = TweakType.COLOR,
-            default = "#2563EB",
+            default = "#2563EB".toTweakColorValue(),
         )
         val state = TweakRegistry.register(descriptor)
 
         TweakRegistry.update(mapOf(descriptor.name to "#3b82f6"))
 
-        assertEquals("#3B82F6", state.value)
+        assertEquals("#3B82F6", (state.value as TweakColorValue).wireValue)
 
         TweakRegistry.update(mapOf(descriptor.name to "#112233aa"))
 
-        assertEquals("#112233AA", state.value)
+        assertEquals("#112233AA", (state.value as TweakColorValue).wireValue)
     }
 
     @Test
@@ -313,7 +315,7 @@ class TweakValidationTest {
         val descriptor = TweakDescriptor(
             name = "Validation invalid color",
             type = TweakType.COLOR,
-            default = "#2563EB",
+            default = "#2563EB".toTweakColorValue(),
         )
         val state = TweakRegistry.register(descriptor)
 
@@ -322,7 +324,7 @@ class TweakValidationTest {
         assertInvalidUpdate(descriptor.name, "#GGGGGG")
         assertInvalidUpdate(descriptor.name, 0x2563EB)
 
-        assertEquals("#2563EB", state.value)
+        assertEquals("#2563EB", (state.value as TweakColorValue).wireValue)
     }
 
     @Test
