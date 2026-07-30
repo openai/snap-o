@@ -4,8 +4,9 @@ import VideoToolbox
 /// Decodes the live-preview H.264 byte stream into displayable samples.
 final class H264StreamDecoder: @unchecked Sendable {
   private static let frameIdleTimeout: DispatchTimeInterval = .milliseconds(50)
+  private static let startCode = Data([0, 0, 1])
 
-  private let onSample: (CMSampleBuffer) -> Void
+  private let onSample: (CMSampleBuffer, Bool) -> Void
   private let onFormat: (CMVideoFormatDescription) -> Void
   private let processingQueue = DispatchQueue(label: "com.openai.snapo.live-preview.h264-decoder")
 
@@ -20,7 +21,7 @@ final class H264StreamDecoder: @unchecked Sendable {
 
   init(
     frameRate: Int32 = 30,
-    onSampleBuffer: @escaping (CMSampleBuffer) -> Void,
+    onSampleBuffer: @escaping (CMSampleBuffer, Bool) -> Void,
     formatHandler: @escaping (CMVideoFormatDescription) -> Void
   ) {
     onSample = onSampleBuffer
@@ -58,10 +59,10 @@ final class H264StreamDecoder: @unchecked Sendable {
   }
 
   private func flushPendingNAL() {
-    let startCode = Data([0, 0, 0, 1])
+    let startCode = Self.startCode
     guard buffer.starts(with: startCode), buffer.count > startCode.count else { return }
 
-    let nal = Data(buffer.dropFirst(startCode.count))
+    let nal = normalizedNAL(Data(buffer.dropFirst(startCode.count)))
     guard let firstByte = nal.first else { return }
     let type = firstByte & 0x1F
     guard type == 1 || type == 5,
@@ -72,7 +73,7 @@ final class H264StreamDecoder: @unchecked Sendable {
   }
 
   private func parseBuffer() {
-    let startCode = Data([0, 0, 0, 1])
+    let startCode = Self.startCode
 
     while true {
       guard let startRange = buffer.range(of: startCode) else {
@@ -86,18 +87,27 @@ final class H264StreamDecoder: @unchecked Sendable {
         buffer.removeSubrange(0 ..< startRange.lowerBound)
       }
 
-      guard let nextRange = buffer.range(of: startCode, options: [], in: startRange.upperBound ..< buffer.endIndex) else {
+      let nalStart = buffer.index(buffer.startIndex, offsetBy: startCode.count)
+      guard let nextRange = buffer.range(of: startCode, options: [], in: nalStart ..< buffer.endIndex) else {
         // incomplete NAL, wait for more data
         return
       }
 
-      let nalData = buffer[startRange.upperBound ..< nextRange.lowerBound]
-      if flushedNALByteCount != nalData.count {
-        handleNAL(Data(nalData))
+      let nal = normalizedNAL(Data(buffer[nalStart ..< nextRange.lowerBound]))
+      if flushedNALByteCount != nal.count {
+        handleNAL(nal)
       }
       flushedNALByteCount = nil
       buffer.removeSubrange(0 ..< nextRange.lowerBound)
     }
+  }
+
+  private func normalizedNAL(_ nal: Data) -> Data {
+    var nal = nal
+    while nal.last == 0 {
+      nal.removeLast()
+    }
+    return nal
   }
 
   private func handleNAL(_ nal: Data) {
@@ -120,7 +130,7 @@ final class H264StreamDecoder: @unchecked Sendable {
       }
       nalUnits.append(nal)
       if let sample = makeSampleBuffer(from: nalUnits, format: formatDescription, isIDR: type == 5) {
-        onSample(sample)
+        onSample(sample, type == 5)
       }
     default:
       break
@@ -211,13 +221,15 @@ final class H264StreamDecoder: @unchecked Sendable {
     )
     guard status == noErr, let sampleBuffer else { return nil }
 
-    if isIDR,
-       let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) {
+    if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) {
       let attachment = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+      let notSync = isIDR
+        ? Unmanaged.passUnretained(kCFBooleanFalse).toOpaque()
+        : Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
       CFDictionarySetValue(
         attachment,
         Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(),
-        Unmanaged.passUnretained(kCFBooleanFalse).toOpaque()
+        notSync
       )
     }
 

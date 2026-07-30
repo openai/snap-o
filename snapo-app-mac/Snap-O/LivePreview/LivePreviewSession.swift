@@ -5,15 +5,22 @@ import SnapODeviceClient
 /// Owns one device-side live-preview process and its decoded frame stream.
 @MainActor
 final class LivePreviewSession {
+  private static let maxPendingSampleCount = 60
+  private static let maxPendingSampleByteCount = 2 * 1024 * 1024
+
   let deviceID: String
 
   var media: Media?
   var sampleBufferHandler: ((CMSampleBuffer) -> Void)? {
     didSet {
-      guard let sampleBufferHandler else { return }
+      guard let sampleBufferHandler else {
+        discardPendingSamples()
+        needsKeyFrame = true
+        return
+      }
 
       let pendingSamples = pendingSampleBuffers
-      pendingSampleBuffers.removeAll(keepingCapacity: true)
+      discardPendingSamples()
       for sample in pendingSamples {
         sampleBufferHandler(sample)
       }
@@ -24,6 +31,8 @@ final class LivePreviewSession {
   private let screenStream: ScreenStreamSession
   private var decoder: H264StreamDecoder?
   private var pendingSampleBuffers: [CMSampleBuffer] = []
+  private var pendingSampleByteCount = 0
+  private var needsKeyFrame = true
   private var streamTask: Task<Void, Never>?
   private var hasStopped = false
 
@@ -64,21 +73,16 @@ final class LivePreviewSession {
   }
 
   private func setupDecoder() {
-    let decoder = H264StreamDecoder { [weak self] sample in
+    let decoder = H264StreamDecoder { [weak self] sample, isKeyFrame in
       guard let self else { return }
       let boxed = UnsafeSendable(value: sample)
-      Task { @MainActor in
-        guard !self.hasStopped else { return }
-        if let sampleBufferHandler = self.sampleBufferHandler {
-          sampleBufferHandler(boxed.value)
-        } else {
-          self.pendingSampleBuffers.append(boxed.value)
-        }
+      DispatchQueue.main.async {
+        self.receiveSample(boxed.value, isKeyFrame: isKeyFrame)
       }
     } formatHandler: { [weak self] format in
       guard let self else { return }
       let dims = CMVideoFormatDescriptionGetDimensions(format)
-      Task { @MainActor in
+      DispatchQueue.main.async {
         guard !self.hasStopped else { return }
         let size = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
         let display = DisplayInfo(size: size, densityScale: self.densityScale)
@@ -93,6 +97,40 @@ final class LivePreviewSession {
       }
     }
     self.decoder = decoder
+  }
+
+  private func receiveSample(_ sample: CMSampleBuffer, isKeyFrame: Bool) {
+    guard !hasStopped else { return }
+
+    if isKeyFrame {
+      needsKeyFrame = false
+      if sampleBufferHandler == nil {
+        discardPendingSamples()
+      }
+    }
+    guard !needsKeyFrame else { return }
+
+    if let sampleBufferHandler {
+      sampleBufferHandler(sample)
+      return
+    }
+
+    let sampleByteCount = CMSampleBufferGetTotalSampleSize(sample)
+    guard sampleByteCount <= Self.maxPendingSampleByteCount,
+          pendingSampleBuffers.count < Self.maxPendingSampleCount,
+          pendingSampleByteCount <= Self.maxPendingSampleByteCount - sampleByteCount else {
+      discardPendingSamples()
+      needsKeyFrame = true
+      return
+    }
+
+    pendingSampleBuffers.append(sample)
+    pendingSampleByteCount += sampleByteCount
+  }
+
+  private func discardPendingSamples() {
+    pendingSampleBuffers.removeAll(keepingCapacity: true)
+    pendingSampleByteCount = 0
   }
 
   private func startStreamTask() {
@@ -112,7 +150,9 @@ final class LivePreviewSession {
       }
 
       decoder.finish()
-      await finish(with: streamError)
+      DispatchQueue.main.async {
+        self.finish(with: streamError)
+      }
     }
   }
 
@@ -125,7 +165,6 @@ final class LivePreviewSession {
     screenStream.close()
     decoder?.finish()
     decoder = nil
-    pendingSampleBuffers.removeAll(keepingCapacity: false)
     sampleBufferHandler = nil
 
     stopResult = error
