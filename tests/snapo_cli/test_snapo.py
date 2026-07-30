@@ -1,5 +1,6 @@
 import contextlib
 import gzip
+import http.server
 import importlib.machinery
 import importlib.util
 import io
@@ -8,6 +9,7 @@ import os
 import pathlib
 import select
 import socket
+import socketserver
 import tempfile
 import threading
 import unittest
@@ -138,6 +140,183 @@ class FakeADB:
         return ""
 
 
+class FakeTweakADB(FakeADB):
+    def __init__(self, sockets=None, devices=None, fail_forward=False):
+        super().__init__(fail_forward=fail_forward)
+        self.available_devices = devices or ["emulator-5554"]
+        self.available_sockets = sockets or {"emulator-5554": ["snapo_tweaks_42"]}
+
+    def devices(self):
+        return self.available_devices
+
+    def tweak_sockets(self, serial):
+        value = self.available_sockets.get(serial, [])
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+def tweak_descriptors():
+    return [
+        {
+            "name": "Typography/Font size",
+            "type": "int",
+            "default": 16,
+            "value": 16,
+            "min": -8,
+            "max": 48,
+            "step": 2,
+        },
+        {
+            "name": "Motion/Damping ratio",
+            "type": "float",
+            "default": 0.5,
+            "value": 0.5,
+            "min": -1.0,
+            "max": 1.0,
+            "step": 0.1,
+        },
+        {"name": "Motion/Enabled", "type": "boolean", "default": True, "value": True},
+        {"name": "Palette/Accent color", "type": "color", "default": "#5468FF", "value": "#5468FF"},
+        {"name": "Preview/Text value", "type": "string", "default": "true", "value": "true"},
+    ]
+
+
+class TweakHTTPServer:
+    def __init__(self, descriptors=None, app=None, error=None, stream_events=None):
+        self.descriptors = json.loads(json.dumps(descriptors or tweak_descriptors()))
+        self.app = app or {"name": "Snap-O Tweaks Demo", "packageName": "com.example.tweaks"}
+        self.error = error
+        self.stream_events = stream_events
+        self.requests = []
+        owner = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                owner.requests.append(("GET", self.path, None))
+                if self.path == "/app":
+                    self.send_json(200, owner.app)
+                elif self.path == "/tweaks":
+                    self.send_json(200, {"tweaks": owner.descriptors})
+                elif self.path == "/tweaks/events":
+                    events = owner.stream_events or [
+                        ": keep-alive\n\n",
+                        "event: ignored\ndata: {\"unexpected\":true}\n\n",
+                        "event: tweaks\ndata: " + json.dumps({"tweaks": owner.descriptors}) + "\n\n",
+                    ]
+                    body = "".join(events).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    self.wfile.flush()
+                else:
+                    self.send_json(404, {"error": f"Unknown endpoint: {self.path}"})
+
+            def do_PATCH(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                owner.requests.append(("PATCH", self.path, payload))
+                if owner.error is not None:
+                    status, message = owner.error
+                    self.send_json(status, {"error": message})
+                    return
+
+                descriptors = {item["name"]: item for item in owner.descriptors}
+                unknown = next((name for name in payload["values"] if name not in descriptors), None)
+                if unknown is not None:
+                    self.send_json(404, {"error": f"Unknown tweak: {unknown}"})
+                    return
+
+                updates = []
+                for name, value in payload["values"].items():
+                    if descriptors[name]["type"] == "color":
+                        value = value.upper()
+                    descriptors[name]["value"] = value
+                    updates.append({"name": name, "value": value})
+                self.send_json(200, {"tweaks": updates})
+
+            def send_json(self, status, payload):
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format, *arguments):
+                return None
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, error_type, error, traceback):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
+        if self.thread.is_alive():
+            raise AssertionError("tweak HTTP server did not stop")
+
+
+class TweakSmartSocketServer:
+    def __init__(self, payload):
+        self.payload = payload
+        self.received = []
+        owner = self
+
+        class Handler(socketserver.BaseRequestHandler):
+            def handle(self):
+                stream = self.request.makefile("rwb", buffering=0)
+                for _ in range(2):
+                    size = int(stream.read(4), 16)
+                    owner.received.append(stream.read(size).decode("utf-8"))
+                    stream.write(b"OKAY")
+
+                request_line = stream.readline().decode("utf-8").rstrip()
+                owner.received.append(request_line)
+                while stream.readline().strip():
+                    pass
+
+                body = json.dumps(owner.payload).encode("utf-8")
+                response = (
+                    b"HTTP/1.1 200 OK\r\n"
+                    b"Content-Type: application/json\r\n"
+                    + f"Content-Length: {len(body)}\r\n".encode("ascii")
+                    + b"Connection: close\r\n\r\n"
+                    + body
+                )
+                stream.write(response)
+
+        class Server(socketserver.ThreadingTCPServer):
+            allow_reuse_address = True
+            daemon_threads = True
+
+        self.server = Server(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, error_type, error, traceback):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
+        if self.thread.is_alive():
+            raise AssertionError("tweak ADB smart-socket server did not stop")
+
+
 class PluginPackagingTests(unittest.TestCase):
     def test_plugin_bundles_the_network_inspector_skill(self):
         manifest = json.loads((REPOSITORY / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
@@ -221,6 +400,157 @@ usb-phone device product:oriole
         options = snapo.parser().parse_args(["network", "list"])
         servers = snapo.discover(PartiallyUnavailableADB(), options)
         self.assertEqual(servers, [snapo.Server("emulator-5554", "snapo_network_42")])
+
+
+class TweakDiscoveryTests(unittest.TestCase):
+    def test_server_pid_supports_both_network_and_tweak_socket_prefixes(self):
+        self.assertEqual(snapo.Server("emulator-5554", "snapo_network_42").pid, 42)
+        self.assertEqual(snapo.Server("emulator-5554", "snapo_tweaks_42").pid, 42)
+
+    def test_parses_tweak_sockets_without_mixing_network_inspectors(self):
+        output = """Num RefCount Protocol Flags Type St Inode Path
+1: 0 0 0 1 01 1 @snapo_network_42
+2: 0 0 0 1 01 2 @snapo_tweaks_93
+3: 0 0 0 1 01 3 @unrelated
+4: 0 0 0 1 01 4 @snapo_tweaks_7
+5: 0 0 0 1 01 5 @snapo_tweaks_93
+"""
+        self.assertEqual(snapo.parse_tweak_sockets(output), ["snapo_tweaks_7", "snapo_tweaks_93"])
+        self.assertEqual(snapo.parse_sockets(output), ["snapo_network_42"])
+
+    def test_adb_tweak_socket_discovery_reads_device_unix_sockets(self):
+        recorded = []
+
+        def run(command, **kwargs):
+            recorded.append(command)
+            output = "1: 0 0 0 1 01 1 @snapo_tweaks_42\n2: 0 0 0 1 01 2 @snapo_network_9\n"
+            return type("Result", (), {"returncode": 0, "stdout": output, "stderr": ""})()
+
+        adb = snapo.ADB("/configured/adb", run=run)
+        self.assertEqual(adb.tweak_sockets("emulator-5554"), ["snapo_tweaks_42"])
+        self.assertEqual(
+            recorded,
+            [["/configured/adb", "-s", "emulator-5554", "shell", "cat /proc/net/unix"]],
+        )
+
+    def test_discovers_tweaks_on_selected_devices_and_skips_unavailable_devices(self):
+        adb = FakeTweakADB(
+            devices=["disconnected-device", "emulator-5554", "usb-phone"],
+            sockets={
+                "disconnected-device": snapo.SnapOError("device disconnected"),
+                "emulator-5554": ["snapo_tweaks_42"],
+                "usb-phone": ["snapo_tweaks_8"],
+            },
+        )
+        options = snapo.parser().parse_args(["tweaks", "apps"])
+        self.assertEqual(
+            snapo.discover_tweaks(adb, options),
+            [snapo.Server("emulator-5554", "snapo_tweaks_42"), snapo.Server("usb-phone", "snapo_tweaks_8")],
+        )
+
+        selected = snapo.parser().parse_args(["tweaks", "apps", "-s", "usb-phone"])
+        self.assertEqual(snapo.discover_tweaks(adb, selected), [snapo.Server("usb-phone", "snapo_tweaks_8")])
+
+    def test_parser_registers_every_tweak_command_and_shared_selectors(self):
+        commands = {
+            "apps": ["apps"],
+            "list": ["list", "-n", "snapo_tweaks_42"],
+            "get": ["get", "Typography/Font size", "-n", "snapo_tweaks_42"],
+            "set": ["set", "Typography/Font size", "-2", "-n", "snapo_tweaks_42"],
+            "reset": ["reset", "Typography/Font size", "-n", "snapo_tweaks_42"],
+            "watch": ["watch", "--once", "-n", "snapo_tweaks_42"],
+        }
+        for name, arguments in commands.items():
+            with self.subTest(command=name):
+                options = snapo.parser().parse_args(
+                    ["tweaks", *arguments, "-s", "emulator-5554", "--adb", "/configured/adb", "--json"]
+                )
+                self.assertEqual(options.root_command, "tweaks")
+                self.assertEqual(options.tweaks_command, name)
+                self.assertEqual(options.serial, "emulator-5554")
+                self.assertEqual(options.adb, "/configured/adb")
+                self.assertTrue(options.json)
+
+    def test_tweak_commands_preserve_remote_adb_endpoint_validation(self):
+        commands = (
+            ["tweaks", "apps"],
+            ["tweaks", "list"],
+            ["tweaks", "get", "Motion/Enabled"],
+            ["tweaks", "set", "Motion/Enabled", "false"],
+            ["tweaks", "reset", "Motion/Enabled"],
+            ["tweaks", "watch", "--once"],
+        )
+        for command in commands:
+            with self.subTest(command=command[1]):
+                options = snapo.parser().parse_args(
+                    command + ["--adb-host", "adb.example.test", "--adb-port", "15037"]
+                )
+                self.assertEqual(options.adb_host, "adb.example.test")
+                self.assertEqual(options.adb_port, 15037)
+
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors):
+                    with self.assertRaises(SystemExit):
+                        snapo.parser().parse_args(command + ["--adb-host", "adb.example.test"])
+                self.assertIn("--adb-host and --adb-port must be used together", errors.getvalue())
+
+    def test_main_shows_tweaks_group_help_without_starting_adb(self):
+        stdout = io.StringIO()
+        with mock.patch.object(snapo, "resolve_adb", side_effect=AssertionError("adb should not start")):
+            with contextlib.redirect_stdout(stdout):
+                with self.assertRaises(SystemExit) as result:
+                    snapo.main(["tweaks"])
+
+        self.assertEqual(result.exception.code, 0)
+        self.assertIn("apps", stdout.getvalue())
+        self.assertIn("watch", stdout.getvalue())
+
+
+class TweakValueTests(unittest.TestCase):
+    def descriptor(self, name):
+        return next(item for item in tweak_descriptors() if item["name"] == name)
+
+    def test_integer_values_preserve_negative_numbers_and_reject_fractional_values(self):
+        descriptor = self.descriptor("Typography/Font size")
+        self.assertEqual(snapo.parse_tweak_value(descriptor, "-2"), -2)
+        with self.assertRaises(snapo.SnapOError):
+            snapo.parse_tweak_value(descriptor, "2.5")
+        with self.assertRaises(snapo.SnapOError):
+            snapo.parse_tweak_value(descriptor, "true")
+
+    def test_float_values_preserve_negative_numbers_and_reject_nonfinite_numbers(self):
+        descriptor = self.descriptor("Motion/Damping ratio")
+        self.assertEqual(snapo.parse_tweak_value(descriptor, "-0.5"), -0.5)
+        self.assertEqual(snapo.parse_tweak_value(descriptor, "1"), 1.0)
+        for value in ("nan", "NaN", "inf", "-inf", "infinity"):
+            with self.subTest(value=value):
+                with self.assertRaises(snapo.SnapOError):
+                    snapo.parse_tweak_value(descriptor, value)
+
+    def test_float_json_values_reject_huge_integers_without_overflowing(self):
+        descriptor = self.descriptor("Motion/Damping ratio")
+        with self.assertRaises(snapo.SnapOError):
+            snapo.validate_tweak_json_value(descriptor, 10**400)
+
+    def test_boolean_values_are_typed_but_strings_remain_literal(self):
+        boolean = self.descriptor("Motion/Enabled")
+        self.assertIs(snapo.parse_tweak_value(boolean, "TRUE"), True)
+        self.assertIs(snapo.parse_tweak_value(boolean, "false"), False)
+        with self.assertRaises(snapo.SnapOError):
+            snapo.parse_tweak_value(boolean, "maybe")
+
+        string = self.descriptor("Preview/Text value")
+        self.assertEqual(snapo.parse_tweak_value(string, "true"), "true")
+        self.assertEqual(snapo.parse_tweak_value(string, "-0.5"), "-0.5")
+
+    def test_colors_accept_rgb_or_rgba_and_reject_invalid_hex(self):
+        descriptor = self.descriptor("Palette/Accent color")
+        self.assertEqual(snapo.parse_tweak_value(descriptor, "#3b82f6").upper(), "#3B82F6")
+        self.assertEqual(snapo.parse_tweak_value(descriptor, "#3B82F680").upper(), "#3B82F680")
+        for value in ("3B82F6", "#FFF", "#3B82FG", "#123456789"):
+            with self.subTest(value=value):
+                with self.assertRaises(snapo.SnapOError):
+                    snapo.parse_tweak_value(descriptor, value)
 
 
 class ADBTests(unittest.TestCase):
@@ -655,6 +985,305 @@ class ProtocolTests(unittest.TestCase):
 
         state.response_headers = {"Content-Length": "0" * 4999 + "1"}
         self.assertFalse(state.has_no_response_body())
+
+
+class TweakTransportTests(unittest.TestCase):
+    def test_local_http_transport_creates_and_removes_only_its_tweak_forward(self):
+        adb = FakeTweakADB()
+        server = snapo.Server("emulator-5554", "snapo_tweaks_42")
+        with TweakHTTPServer() as wire:
+            with mock.patch.object(snapo, "available_port", return_value=wire.port):
+                with snapo.TweakConnection(adb, server) as connection:
+                    response = connection.request("GET", "/tweaks")
+
+        self.assertEqual(response["tweaks"][0]["name"], "Typography/Font size")
+        self.assertEqual(
+            adb.calls,
+            [
+                ("emulator-5554", ("forward", f"tcp:{wire.port}", "localabstract:snapo_tweaks_42")),
+                ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")),
+            ],
+        )
+
+    def test_explicit_adb_endpoint_sends_http_through_direct_smart_socket(self):
+        payload = {"tweaks": tweak_descriptors()}
+        with TweakSmartSocketServer(payload) as wire:
+            adb = snapo.ADB("/configured/adb", host="127.0.0.1", port=wire.port)
+            server = snapo.Server("emulator-5554", "snapo_tweaks_42")
+            with snapo.TweakConnection(adb, server) as connection:
+                response = connection.request("GET", "/tweaks")
+
+        self.assertEqual(response, payload)
+        self.assertEqual(
+            wire.received,
+            [
+                "host:transport:emulator-5554",
+                "localabstract:snapo_tweaks_42",
+                "GET /tweaks HTTP/1.1",
+            ],
+        )
+        self.assertNotIn("HelloSnapO", " ".join(wire.received))
+
+    def test_http_errors_include_status_and_server_message(self):
+        adb = FakeTweakADB()
+        server = snapo.Server("emulator-5554", "snapo_tweaks_42")
+        for status, detail in ((404, "Unknown tweak: Missing"), (422, "Value exceeds the maximum.")):
+            with self.subTest(status=status):
+                with TweakHTTPServer(error=(status, detail)) as wire:
+                    with mock.patch.object(snapo, "available_port", return_value=wire.port):
+                        with snapo.TweakConnection(adb, server) as connection:
+                            with self.assertRaisesRegex(snapo.SnapOError, f"HTTP {status}.*{detail}"):
+                                connection.request("PATCH", "/tweaks", {"values": {"Motion/Enabled": False}})
+
+                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_oversized_http_responses_are_rejected_and_forward_is_removed(self):
+        adb = FakeTweakADB()
+        server = snapo.Server("emulator-5554", "snapo_tweaks_42")
+        with TweakHTTPServer() as wire:
+            with mock.patch.object(snapo, "available_port", return_value=wire.port):
+                with mock.patch.object(snapo, "MAX_RECORD_BYTES", 16):
+                    with self.assertRaisesRegex(snapo.SnapOError, "oversized"):
+                        with snapo.TweakConnection(adb, server) as connection:
+                            connection.request("GET", "/tweaks")
+
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+
+class TweakCommandTests(unittest.TestCase):
+    def run_command(self, arguments, wire, adb=None):
+        adb = adb or FakeTweakADB()
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
+            with mock.patch.object(snapo, "ADB", return_value=adb):
+                with mock.patch.object(snapo, "available_port", return_value=wire.port):
+                    with contextlib.redirect_stdout(stdout):
+                        with contextlib.redirect_stderr(stderr):
+                            result = snapo.main(["tweaks", *arguments])
+        return result, stdout.getvalue(), stderr.getvalue(), adb
+
+    def test_apps_identifies_each_running_application_from_its_tweak_server(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, adb = self.run_command(["apps", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        app = json.loads(output)
+        self.assertEqual(app["deviceId"], "emulator-5554")
+        self.assertEqual(app["socketName"], "snapo_tweaks_42")
+        self.assertEqual(app["appName"], "Snap-O Tweaks Demo")
+        self.assertEqual(app["packageName"], "com.example.tweaks")
+        self.assertEqual(wire.requests, [("GET", "/app", None)])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_list_emits_one_complete_json_snapshot(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, adb = self.run_command(["list", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), {"tweaks": wire.descriptors})
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_list_renders_descriptive_human_readable_values(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, _ = self.run_command(["list"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertIn("Typography/Font size = 16 [int]", output)
+        self.assertIn("Motion/Enabled = true [boolean]", output)
+        self.assertIn('Preview/Text value = "true" [string]', output)
+
+    def test_get_accepts_tweak_names_with_slashes_and_spaces(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, _ = self.run_command(["get", "Typography/Font size", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), wire.descriptors[0])
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+
+    def test_get_reports_unknown_tweaks_without_mutating_the_application(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, adb = self.run_command(["get", "Motion/Missing", "--json"], wire)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn("Unknown tweak: Motion/Missing", errors)
+        self.assertEqual([request[0] for request in wire.requests], ["GET"])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_set_parses_values_using_each_descriptor_type(self):
+        cases = (
+            ("Typography/Font size", "-2", -2),
+            ("Motion/Damping ratio", "-0.5", -0.5),
+            ("Motion/Enabled", "false", False),
+            ("Palette/Accent color", "#3b82f6", "#3B82F6"),
+            ("Preview/Text value", "true", "true"),
+        )
+        for name, raw, expected in cases:
+            with self.subTest(name=name):
+                with TweakHTTPServer() as wire:
+                    result, output, errors, adb = self.run_command(["set", name, raw, "--json"], wire)
+
+                self.assertEqual(result, 0, errors)
+                self.assertEqual(json.loads(output), {"tweaks": [{"name": name, "value": expected}]})
+                self.assertEqual(wire.requests[0], ("GET", "/tweaks", None))
+                self.assertEqual(len(wire.requests), 2)
+                self.assertEqual(wire.requests[1][0:2], ("PATCH", "/tweaks"))
+                sent = wire.requests[1][2]["values"][name]
+                if isinstance(expected, str) and name == "Palette/Accent color":
+                    self.assertEqual(sent.upper(), expected)
+                else:
+                    self.assertEqual(sent, expected)
+                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_set_rejects_invalid_values_without_sending_a_patch(self):
+        cases = (
+            ("Typography/Font size", "3.5"),
+            ("Motion/Damping ratio", "NaN"),
+            ("Motion/Damping ratio", "inf"),
+            ("Motion/Enabled", "probably"),
+            ("Palette/Accent color", "#nothex"),
+        )
+        for name, raw in cases:
+            with self.subTest(name=name, value=raw):
+                with TweakHTTPServer() as wire:
+                    result, output, errors, adb = self.run_command(["set", name, raw, "--json"], wire)
+
+                self.assertEqual(result, 1)
+                self.assertEqual(output, "")
+                self.assertTrue(errors.startswith("snapo:"), errors)
+                self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_set_applies_a_typed_json_batch_in_one_atomic_patch(self):
+        values = {
+            "Typography/Font size": -2,
+            "Motion/Damping ratio": -0.5,
+            "Motion/Enabled": False,
+            "Preview/Text value": "true",
+        }
+        with TweakHTTPServer() as wire:
+            result, output, errors, _ = self.run_command(
+                ["set", "--values-json", json.dumps(values), "--json"],
+                wire,
+            )
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": values})])
+        self.assertEqual(
+            json.loads(output),
+            {"tweaks": [{"name": name, "value": value} for name, value in values.items()]},
+        )
+
+    def test_invalid_json_batches_never_partially_update_tweaks(self):
+        batches = (
+            "{",
+            "[]",
+            "{}",
+            '{"Motion/Enabled":"false"}',
+            '{"Typography/Font size":true}',
+            '{"Motion/Damping ratio":NaN}',
+            '{"Motion/Damping ratio":' + "9" * 400 + "}",
+            '{"Motion/Enabled":false,"Motion/Missing":12}',
+        )
+        for batch in batches:
+            with self.subTest(batch=batch):
+                with TweakHTTPServer() as wire:
+                    result, output, errors, _ = self.run_command(
+                        ["set", "--values-json", batch, "--json"],
+                        wire,
+                    )
+
+                self.assertEqual(result, 1)
+                self.assertEqual(output, "")
+                self.assertTrue(errors.startswith("snapo:"), errors)
+                self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+
+    def test_reset_one_tweak_patches_its_declared_default(self):
+        descriptors = tweak_descriptors()
+        descriptors[0]["value"] = 24
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(
+                ["reset", "Typography/Font size", "--json"],
+                wire,
+            )
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Typography/Font size": 16}}))
+        self.assertEqual(json.loads(output), {"tweaks": [{"name": "Typography/Font size", "value": 16}]})
+
+    def test_reset_all_patches_every_default_in_one_atomic_request(self):
+        descriptors = tweak_descriptors()
+        descriptors[0]["value"] = 24
+        descriptors[2]["value"] = False
+        defaults = {descriptor["name"]: descriptor["default"] for descriptor in descriptors}
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["reset", "--all", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": defaults})])
+        self.assertEqual(len(json.loads(output)["tweaks"]), len(descriptors))
+
+    def test_reset_requires_exactly_one_target(self):
+        for arguments in (["reset"], ["reset", "Motion/Enabled", "--all"]):
+            with self.subTest(arguments=arguments):
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors):
+                    with self.assertRaises(SystemExit) as error:
+                        snapo.parser().parse_args(["tweaks", *arguments])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("reset requires either NAME or --all", errors.getvalue())
+
+    def test_set_requires_either_one_value_or_an_atomic_batch(self):
+        invalid = (
+            ["set"],
+            ["set", "Motion/Enabled"],
+            ["set", "Motion/Enabled", "true", "--values-json", '{"Motion/Enabled":false}'],
+        )
+        for arguments in invalid:
+            with self.subTest(arguments=arguments):
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors):
+                    with self.assertRaises(SystemExit) as error:
+                        snapo.parser().parse_args(["tweaks", *arguments])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("set", errors.getvalue())
+
+    def test_server_validation_errors_reach_stderr_and_remove_the_forward(self):
+        for status, detail in ((404, "Unknown tweak: Motion/Enabled"), (422, "Value exceeds the maximum.")):
+            with self.subTest(status=status):
+                with TweakHTTPServer(error=(status, detail)) as wire:
+                    result, output, errors, adb = self.run_command(
+                        ["set", "Motion/Enabled", "false", "--json"],
+                        wire,
+                    )
+
+                self.assertEqual(result, 1)
+                self.assertEqual(output, "")
+                self.assertIn(f"HTTP {status}", errors)
+                self.assertIn(detail, errors)
+                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_watch_ignores_keepalives_and_other_events_then_emits_a_complete_snapshot(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, adb = self.run_command(["watch", "--once", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), {"tweaks": wire.descriptors})
+        self.assertEqual(len(output.splitlines()), 1)
+        self.assertEqual(wire.requests, [("GET", "/tweaks/events", None)])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_watch_rejects_malformed_snapshots_and_still_removes_its_forward(self):
+        events = ["event: tweaks\ndata: {\"tweaks\":\"not-a-list\"}\n\n"]
+        with TweakHTTPServer(stream_events=events) as wire:
+            result, output, errors, adb = self.run_command(["watch", "--once", "--json"], wire)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn("invalid tweak list", errors)
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
 
 class OutputTests(unittest.TestCase):
