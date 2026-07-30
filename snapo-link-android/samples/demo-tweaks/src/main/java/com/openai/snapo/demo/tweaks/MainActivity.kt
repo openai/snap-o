@@ -51,11 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlaySettings
-import com.openai.snapo.tweaks.tweakBoolean
-import com.openai.snapo.tweaks.tweakColor
-import com.openai.snapo.tweaks.tweakFloat
-import com.openai.snapo.tweaks.tweakInt
-import com.openai.snapo.tweaks.tweakString
+import com.openai.snapo.tweaks.tweak
 import kotlin.math.roundToInt
 
 private val DefaultTextColor = Color(0xFF18212F)
@@ -111,9 +107,9 @@ private fun TweakDemo() {
 private fun TweakDemoContent(
     onToggleTweakableContent: () -> Unit,
 ) {
-    val textColor = tweakColor("Colors/Text", DefaultTextColor).value
-    val backgroundColor = tweakColor("Colors/Background", DefaultBackgroundColor).value
-    val accentColor = tweakColor("Colors/Accent", DefaultAccentColor).value
+    val textColor by tweak(DefaultTextColor, "Colors/Text")
+    val backgroundColor by tweak(DefaultBackgroundColor, "Colors/Background")
+    val accentColor by tweak(DefaultAccentColor, "Colors/Accent")
 
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -175,7 +171,7 @@ private fun TweakDemoScreen(
 
 @Composable
 private fun MotionSection(dividerColor: Color) {
-    val isVisible by tweakBoolean("Motion/Show", true)
+    val isVisible by tweak(true, "Motion/Show")
     if (isVisible) {
         HorizontalDivider(color = dividerColor)
         MotionPreview()
@@ -236,9 +232,9 @@ private fun TypographyPreview() {
 
 @Composable
 private fun TweakableTypographyPreview() {
-    val fontSize by tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
-    val fontWeight by tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
-    val previewText by tweakString("Typography/Preview text", "Make it feel right.")
+    val fontSize by tweak(36, "Typography/Font size", 16..72, step = 1)
+    val fontWeight by tweak(600, "Typography/Font weight", 100..900, step = 100)
+    val previewText by tweak("Make it feel right.", name = "Typography/Preview text")
 
     Text(
         text = previewText,
@@ -251,8 +247,8 @@ private fun TweakableTypographyPreview() {
 
 @Composable
 private fun TypographyDetails() {
-    val fontSize by tweakInt("Typography/Font size", 36, min = 16, max = 72, step = 1)
-    val fontWeight by tweakInt("Typography/Font weight", 600, min = 100, max = 900, step = 100)
+    val fontSize by tweak(36, "Typography/Font size", 16..72, step = 1)
+    val fontWeight by tweak(600, "Typography/Font weight", 100..900, step = 100)
 
     Text(
         text = "$fontSize sp · $fontWeight",
@@ -264,22 +260,22 @@ private fun TypographyDetails() {
 @Composable
 private fun MotionPreview() {
     var isStateB by rememberSaveable { mutableStateOf(false) }
-    val useSpring by tweakBoolean("Motion/Use spring", true)
+    val useSpring by tweak(true, "Motion/Use spring")
 
     val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
-        val stiffness by tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
-        val damping by tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
+        val stiffness by tweak(280f, "Motion/Spring stiffness", 80f..800f, step = 20f)
+        val dampingRatio by tweak(0.7f, "Motion/Spring damping", 0.1f..1f, step = 0.05f)
 
         spring(
-            dampingRatio = damping,
+            dampingRatio = dampingRatio,
             stiffness = stiffness,
             visibilityThreshold = 0.001f,
         )
     } else {
-        val duration by tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
+        val durationMillis by tweak(400, "Motion/Duration", 100..1500, step = 50)
 
         tween(
-            durationMillis = duration,
+            durationMillis = durationMillis,
             easing = FastOutSlowInEasing,
         )
     }
@@ -318,13 +314,7 @@ private fun MotionTrack(
     val accentColor = MaterialTheme.colorScheme.primary
     val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
     val trackColor = accentColor.copy(alpha = 0.22f)
-    val trackThickness = tweakFloat(
-        name = "Motion/Track thickness",
-        default = 2f,
-        min = 1f,
-        max = 8f,
-        step = 0.5f,
-    )
+    val trackThickness by tweak(2f, "Motion/Track thickness", 1f..8f, step = 0.5f)
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -344,7 +334,7 @@ private fun MotionTrack(
                         color = trackColor,
                         start = Offset(x = 0f, y = center.y),
                         end = Offset(x = size.width, y = center.y),
-                        strokeWidth = trackThickness.value.dp.toPx(),
+                        strokeWidth = trackThickness.dp.toPx(),
                     )
                 },
             contentAlignment = Alignment.CenterStart,
@@ -379,16 +369,16 @@ private fun Modifier.motionMarkerOffset(progress: State<Float>): Modifier =
 private fun AnimationDetails(
     isStateB: Boolean,
 ) {
-    val useSpring by tweakBoolean("Motion/Use spring", true)
+    val useSpring by tweak(true, "Motion/Use spring")
     val description = if (useSpring) {
-        val stiffness by tweakFloat("Motion/Spring stiffness", 280f, min = 80f, max = 800f, step = 20f)
-        val damping by tweakFloat("Motion/Spring damping", 0.7f, min = 0.1f, max = 1f, step = 0.05f)
+        val stiffness by tweak(280f, "Motion/Spring stiffness", 80f..800f, step = 20f)
+        val dampingRatio by tweak(0.7f, "Motion/Spring damping", 0.1f..1f, step = 0.05f)
 
-        "Spring · $stiffness stiffness · $damping damping"
+        "Spring · $stiffness stiffness · $dampingRatio damping"
     } else {
-        val duration by tweakInt("Motion/Duration", 400, min = 100, max = 1500, step = 50)
+        val durationMillis by tweak(400, "Motion/Duration", 100..1500, step = 50)
 
-        "Tween · $duration ms"
+        "Tween · $durationMillis ms"
     }
     val selectedState = if (isStateB) "State B" else "State A"
 

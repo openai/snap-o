@@ -15,19 +15,18 @@ import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 
 /** Exposes a floating-point tweak as observable state. */
 @Composable
-fun tweakFloat(
-    name: String,
+fun tweak(
     default: Float,
-    min: Float? = null,
-    max: Float? = null,
+    name: String,
+    range: ClosedFloatingPointRange<Float>? = null,
     step: Float? = null,
 ): State<Float> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.FLOAT,
         default = default,
-        min = min,
-        max = max,
+        min = range?.start,
+        max = range?.endInclusive,
         step = step,
     ),
     default = default,
@@ -35,19 +34,18 @@ fun tweakFloat(
 
 /** Exposes an integer tweak as observable state. */
 @Composable
-fun tweakInt(
-    name: String,
+fun tweak(
     default: Int,
-    min: Int? = null,
-    max: Int? = null,
+    name: String,
+    range: IntRange? = null,
     step: Int? = null,
 ): State<Int> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.INT,
         default = default,
-        min = min,
-        max = max,
+        min = range?.start,
+        max = range?.endInclusive,
         step = step,
     ),
     default = default,
@@ -55,9 +53,9 @@ fun tweakInt(
 
 /** Exposes a color tweak as observable state. */
 @Composable
-fun tweakColor(
-    name: String,
+fun tweak(
     default: Color,
+    name: String,
 ): State<Color> {
     val encodedDefault = default.toTweakColor()
     return rememberTweakState(
@@ -74,9 +72,9 @@ fun tweakColor(
 
 /** Exposes a boolean tweak as observable state. */
 @Composable
-fun tweakBoolean(
-    name: String,
+fun tweak(
     default: Boolean,
+    name: String,
 ): State<Boolean> = rememberTweakState(
     TweakDescriptor(
         name = name,
@@ -88,9 +86,9 @@ fun tweakBoolean(
 
 /** Exposes a text tweak as observable state. */
 @Composable
-fun tweakString(
-    name: String,
+fun tweak(
     default: String,
+    name: String,
 ): State<String> = rememberTweakState(
     TweakDescriptor(
         name = name,

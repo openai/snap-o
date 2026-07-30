@@ -242,28 +242,13 @@ any tweaks in that request. Reset a value by patching it with its default.
 
 ```kotlin
 import androidx.compose.runtime.getValue
-import com.openai.snapo.tweaks.tweakBoolean
-import com.openai.snapo.tweaks.tweakColor
-import com.openai.snapo.tweaks.tweakFloat
-import com.openai.snapo.tweaks.tweakInt
-import com.openai.snapo.tweaks.tweakString
+import com.openai.snapo.tweaks.tweak
 
 @Composable
 fun TweakSpecimen() {
-    val textColor by tweakColor(
-        name = "Text color",
-        default = Color(0xFF18212F),
-    )
-
-    val backgroundColor by tweakColor(
-        name = "Background color",
-        default = Color(0xFFF7F8FA),
-    )
-
-    val accentColor by tweakColor(
-        name = "Accent color",
-        default = Color(0xFF5468FF),
-    )
+    val textColor by tweak(Color(0xFF18212F), "Text color")
+    val backgroundColor by tweak(Color(0xFFF7F8FA), "Background color")
+    val accentColor by tweak(Color(0xFF5468FF), "Accent color")
 
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -281,28 +266,10 @@ fun TweakSpecimen() {
 
 @Composable
 fun TypographySpecimen() {
-    val fontSize by tweakInt(
-        name = "Font size",
-        default = 36,
-        min = 16,
-        max = 72,
-        step = 1,
-    )
-
-    val fontWeight by tweakInt(
-        name = "Font weight",
-        default = 600,
-        min = 100,
-        max = 900,
-        step = 100,
-    )
-
-    val previewText by tweakString("Preview text", "Make it feel right.")
-
     Text(
-        text = previewText,
-        fontSize = fontSize.sp,
-        fontWeight = FontWeight(fontWeight),
+        text = tweak("Make it feel right.", name = "Preview text").value,
+        fontSize = tweak(36, "Font size", 16..72, step = 1).value.sp,
+        fontWeight = FontWeight(tweak(600, "Font weight", 100..900, step = 100).value),
         color = MaterialTheme.colorScheme.onSurface,
     )
 
@@ -311,45 +278,23 @@ fun TypographySpecimen() {
 
 @Composable
 fun SpecimenAccessory() {
-    val fontSize by tweakInt("Font size", 36, min = 16, max = 72, step = 1)
+    val fontSize by tweak(36, "Font size", 16..72, step = 1)
 
     Text(text = "$fontSize sp")
 }
 
 @Composable
 fun MotionSpecimen() {
-    val durationMillis by tweakInt(
-        name = "Animation duration",
-        default = 400,
-        min = 100,
-        max = 1_500,
-        step = 50,
-    )
-
-    val springStiffness by tweakFloat(
-        name = "Spring stiffness",
-        default = 280f,
-        min = 80f,
-        max = 800f,
-        step = 20f,
-    )
-
-    val springDamping by tweakFloat(
-        name = "Spring damping",
-        default = 0.7f,
-        min = 0.1f,
-        max = 1f,
-        step = 0.05f,
-    )
-
-    val useSpring by tweakBoolean(
-        name = "Use spring",
-        default = true,
-    )
+    val useSpring by tweak(true, "Use spring")
 
     val animationSpec = if (useSpring) {
-        spring<Float>(dampingRatio = springDamping, stiffness = springStiffness)
+        val stiffness by tweak(280f, "Spring stiffness", 80f..800f, step = 20f)
+        val dampingRatio by tweak(0.7f, "Spring damping", 0.1f..1f, step = 0.05f)
+
+        spring<Float>(dampingRatio = dampingRatio, stiffness = stiffness)
     } else {
+        val durationMillis by tweak(400, "Animation duration", 100..1_500, step = 50)
+
         tween<Float>(durationMillis = durationMillis)
     }
 
@@ -357,16 +302,17 @@ fun MotionSpecimen() {
 }
 ```
 
-Each tweak function returns `State<T>`. Delegate it with `by` where the value is
-used; `androidx.compose.runtime.getValue` supplies the delegate operator. Theme
-colors are intentionally read at the theme boundary; font, text, and animation
-changes recompose their respective leaf composables rather than the entire
-screen. Both typography composables read the same Font size state, so one host
-update changes both. When a value only affects layout or drawing, read the
-delegated value inside the corresponding callback instead of composition:
+Each tweak function returns `State<T>`. Read it with `.value`, or delegate it
+with `by`; `androidx.compose.runtime.getValue` supplies the delegate operator.
+Theme colors are intentionally read at the theme boundary; font, text, and
+animation changes recompose their respective leaf composables rather than the
+entire screen. Both typography composables read the same Font size state, so
+one host update changes both. When a value only affects layout or drawing,
+read the delegated value inside the corresponding callback instead of
+composition:
 
 ```kotlin
-val horizontalOffset by tweakInt("Horizontal offset", 0, min = 0, max = 200)
+val horizontalOffset by tweak(0, "Horizontal offset", 0..200)
 
 Box(
     modifier = Modifier.offset {
@@ -380,11 +326,13 @@ the active list only after its final usage leaves. Returning declarations
 restore their previously edited values. Screen navigation therefore determines
 what appears in the response without discarding edits.
 
-Provide `tweakInt`, `tweakFloat`, `tweakColor`, `tweakBoolean`, and
-`tweakString`; each returns its corresponding `State<T>`. Numeric tweaks accept
-optional `min`, `max`, and `step` values of the same type. Convert delegated
-integer values into Compose units at the call site, such as `fontSize.sp`. The
-real and no-op artifacts expose the same package and public Compose API.
+Provide overloaded `tweak(default, name)` functions for `Int`, `Float`,
+`Color`, `Boolean`, and `String` defaults; each returns its corresponding
+`State<T>`. For strings, name the second argument to distinguish the label from
+the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept
+an optional range and `step` of the same type. Convert delegated integer values
+into Compose units at the call site, such as `fontSize.sp`. The real and no-op
+artifacts expose the same package and public Compose API.
 
 ## Setup
 
