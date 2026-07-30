@@ -147,11 +147,15 @@ Snap-O includes a Codex plugin for macOS and Linux. It bundles the network-inspe
 Add the Snap-O marketplace and install the plugin:
 
 ```bash
-codex plugin marketplace add openai/snap-o --ref main \
-  --sparse .agents/plugins \
-  --sparse .codex-plugin \
-  --sparse skills \
-  --sparse scripts
+codex plugin marketplace add openai/snap-o --ref main
+codex plugin add snap-o@snap-o
+```
+
+If you previously installed this marketplace with sparse paths, migrate once:
+
+```bash
+codex plugin marketplace remove snap-o
+codex plugin marketplace add openai/snap-o --ref main
 codex plugin add snap-o@snap-o
 ```
 

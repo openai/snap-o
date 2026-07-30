@@ -99,8 +99,9 @@ reset-everything request:
 ## Availability and failures
 
 Tweaks use app-local `snapo_tweaks_<pid>` sockets and normally exist only in
-debug-enabled apps. If none appear, check device authorization, device
-selection, whether the app is running, and whether its current UI declares
-tweaks. Do not enable release servers or modify apps or dependencies without
-an explicit request. Preserve validation errors; the CLI cleans up its own
-temporary ADB forwards.
+debug-enabled apps. If no socket appears, check device authorization and
+selection, whether the app is running, its live Tweaks dependency/integration,
+debug/runtime policy, and server startup. If a socket exists but `/tweaks` is
+empty, the current Compose UI has no active tweak declarations. Do not enable
+release servers or modify apps or dependencies without an explicit request.
+Preserve validation errors; the CLI cleans up its own temporary ADB forwards.

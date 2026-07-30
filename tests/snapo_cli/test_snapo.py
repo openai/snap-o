@@ -400,15 +400,22 @@ class PluginPackagingTests(unittest.TestCase):
         self.assertEqual(plugin["policy"]["installation"], "AVAILABLE")
         self.assertEqual(plugin["policy"]["authentication"], "ON_INSTALL")
 
-    def test_documented_sparse_install_includes_shared_cli(self):
+    def test_documented_marketplace_install_avoids_sparse_paths_and_migrates_existing_users(self):
         readme = (REPOSITORY / "README.md").read_text(encoding="utf-8")
-        install_command = readme.split("codex plugin marketplace add openai/snap-o --ref main", 1)[1].split(
-            "codex plugin add snap-o@snap-o", 1
-        )[0]
+        add_command = "codex plugin marketplace add openai/snap-o --ref main"
+        install_command = "codex plugin add snap-o@snap-o"
+        add_commands = [line.strip() for line in readme.splitlines() if line.strip().startswith(add_command)]
 
-        for path in (".agents/plugins", ".codex-plugin", "skills", "scripts"):
-            with self.subTest(path=path):
-                self.assertIn(f"--sparse {path}", install_command)
+        self.assertGreaterEqual(len(add_commands), 2)
+        self.assertTrue(all(command == add_command for command in add_commands))
+        self.assertNotIn("--sparse", readme)
+
+        migration_start = readme.index("codex plugin marketplace remove snap-o")
+        migration_add = readme.index(add_command, migration_start)
+        migration_install = readme.index(install_command, migration_add)
+        self.assertLess(migration_start, migration_add)
+        self.assertLess(migration_add, migration_install)
+        self.assertIn("codex plugin marketplace upgrade snap-o", readme[migration_install:])
 
 
 class DiscoveryTests(unittest.TestCase):
