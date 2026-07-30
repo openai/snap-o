@@ -2,9 +2,12 @@
 import VideoToolbox
 
 /// Decodes the live-preview H.264 byte stream into displayable samples.
-final class H264StreamDecoder {
+final class H264StreamDecoder: @unchecked Sendable {
+  private static let frameIdleTimeout: DispatchTimeInterval = .milliseconds(50)
+
   private let onSample: (CMSampleBuffer) -> Void
   private let onFormat: (CMVideoFormatDescription) -> Void
+  private let processingQueue = DispatchQueue(label: "com.openai.snapo.live-preview.h264-decoder")
 
   private var buffer = Data()
   private var sps: Data?
@@ -12,6 +15,7 @@ final class H264StreamDecoder {
   private var formatDescription: CMVideoFormatDescription?
   private var frameIndex: Int64 = 0
   private let timescale: Int32
+  private var pendingFrameFlush: DispatchWorkItem?
 
   init(
     frameRate: Int32 = 30,
@@ -24,11 +28,46 @@ final class H264StreamDecoder {
   }
 
   func append(_ data: Data) {
-    buffer.append(data)
-    parseBuffer()
+    processingQueue.sync {
+      buffer.append(data)
+      parseBuffer()
+      schedulePendingFrameFlush()
+    }
+  }
+
+  func finish() {
+    processingQueue.sync {
+      pendingFrameFlush?.cancel()
+      pendingFrameFlush = nil
+      flushPendingNAL()
+    }
   }
 
   // MARK: - Parsing
+
+  private func schedulePendingFrameFlush() {
+    pendingFrameFlush?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      pendingFrameFlush = nil
+      flushPendingNAL()
+    }
+    pendingFrameFlush = work
+    processingQueue.asyncAfter(deadline: .now() + Self.frameIdleTimeout, execute: work)
+  }
+
+  private func flushPendingNAL() {
+    let startCode = Data([0, 0, 0, 1])
+    guard buffer.starts(with: startCode), buffer.count > startCode.count else { return }
+
+    let nal = Data(buffer.dropFirst(startCode.count))
+    guard let firstByte = nal.first else { return }
+    let type = firstByte & 0x1F
+    guard type == 1 || type == 5 else { return }
+
+    buffer.removeAll(keepingCapacity: true)
+    handleNAL(nal)
+  }
 
   private func parseBuffer() {
     let startCode = Data([0, 0, 0, 1])
