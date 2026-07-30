@@ -93,7 +93,7 @@ actor TweaksInspectorService {
 
   func streamTweaks(
     for reference: InspectorServerReference,
-    onChange: @escaping @Sendable (TweakList) -> Void
+    onChange: @escaping @Sendable (TweakList) async -> Void
   ) async throws {
     let connection = try connection(for: reference)
     var request = URLRequest(url: connection.baseURL.appending(path: "tweaks/events"))
@@ -102,24 +102,15 @@ actor TweaksInspectorService {
     let (bytes, response) = try await URLSession.shared.bytes(for: request)
     try Self.validate(response)
 
-    var eventName: String?
-    var dataLines: [String] = []
+    // SSE frames end with an empty line, which AsyncBytes.lines omits.
+    var decoder = TweakEventStreamDecoder()
 
-    for try await line in bytes.lines {
+    for try await byte in bytes {
       try Task.checkCancellation()
 
-      if line.isEmpty {
-        if eventName == "tweaks", !dataLines.isEmpty {
-          let data = Data(dataLines.joined(separator: "\n").utf8)
-          try onChange(JSONDecoder().decode(TweakList.self, from: data))
-        }
-        eventName = nil
-        dataLines.removeAll(keepingCapacity: true)
-      } else if line.hasPrefix("event:") {
-        eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
-      } else if line.hasPrefix("data:") {
-        dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
-      }
+      guard let data = decoder.consume(byte) else { continue }
+      let tweaks = try JSONDecoder().decode(TweakList.self, from: data)
+      await onChange(tweaks)
     }
   }
 

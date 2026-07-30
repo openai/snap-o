@@ -5,10 +5,17 @@ import java.util.concurrent.LinkedBlockingDeque
 
 internal class TweakChangePublisher(
     private val schedule: (Runnable) -> Boolean,
+    private val snapshot: () -> List<TweakSnapshot>,
 ) : Closeable {
+    constructor(schedule: (Runnable) -> Boolean) : this(
+        schedule = schedule,
+        snapshot = TweakRegistry::snapshot,
+    )
+
     private val lock = Any()
     private val subscriptions = LinkedHashMap<Long, LinkedBlockingDeque<List<TweakSnapshot>>>()
     private var nextSubscriptionId = 0L
+    private var changedSincePublicationStarted = false
     private var publicationScheduled = false
     private var closed = false
 
@@ -20,7 +27,7 @@ internal class TweakChangePublisher(
         subscriptions[id] = events
 
         Subscription(
-            initial = TweakRegistry.snapshot(),
+            initial = snapshot(),
             events = events,
             onClose = { synchronized(lock) { subscriptions.remove(id) } },
         )
@@ -28,7 +35,12 @@ internal class TweakChangePublisher(
 
     fun notifyChanged() {
         val shouldSchedule = synchronized(lock) {
-            if (closed || publicationScheduled || subscriptions.isEmpty()) {
+            if (closed) {
+                false
+            } else if (publicationScheduled) {
+                changedSincePublicationStarted = true
+                false
+            } else if (subscriptions.isEmpty()) {
                 false
             } else {
                 publicationScheduled = true
@@ -36,9 +48,7 @@ internal class TweakChangePublisher(
             }
         }
 
-        if (shouldSchedule && !schedule(Runnable(::publish))) {
-            synchronized(lock) { publicationScheduled = false }
-        }
+        if (shouldSchedule) schedulePublication()
     }
 
     override fun close() {
@@ -50,18 +60,43 @@ internal class TweakChangePublisher(
     }
 
     private fun publish() {
-        val snapshot = TweakRegistry.snapshot()
-
         synchronized(lock) {
-            publicationScheduled = false
-            if (closed) return
+            if (closed) {
+                publicationScheduled = false
+                return
+            }
+            changedSincePublicationStarted = false
+        }
+        val snapshot = snapshot()
 
-            subscriptions.values.forEach { events ->
-                if (!events.offer(snapshot)) {
-                    events.poll()
-                    events.offer(snapshot)
+        val shouldSchedule = synchronized(lock) {
+            if (closed) {
+                publicationScheduled = false
+                false
+            } else {
+                subscriptions.values.forEach { events ->
+                    if (!events.offer(snapshot)) {
+                        events.poll()
+                        events.offer(snapshot)
+                    }
+                }
+
+                if (changedSincePublicationStarted) {
+                    changedSincePublicationStarted = false
+                    true
+                } else {
+                    publicationScheduled = false
+                    false
                 }
             }
+        }
+
+        if (shouldSchedule) schedulePublication()
+    }
+
+    private fun schedulePublication() {
+        if (!schedule(Runnable(::publish))) {
+            synchronized(lock) { publicationScheduled = false }
         }
     }
 

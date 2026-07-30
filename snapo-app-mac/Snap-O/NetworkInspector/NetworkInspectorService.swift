@@ -321,17 +321,15 @@ actor NetworkInspectorService {
     while !Task.isCancelled, !isStopped {
       do {
         try await tweaksService.streamTweaks(for: reference) { [weak self] list in
-          Task {
-            await self?.emit(
-              .tweaks(
-                TweakStreamEvent(
-                  streamId: streamID,
-                  server: reference,
-                  tweaks: list.tweaks
-                )
+          await self?.emit(
+            .tweaks(
+              TweakStreamEvent(
+                streamId: streamID,
+                server: reference,
+                tweaks: list.tweaks
               )
             )
-          }
+          )
         }
         retryDelay = .milliseconds(250)
       } catch {

@@ -46,6 +46,7 @@ class TweakChangePublisherTest {
                 listOf("Motion/Duration", "Motion/Delay", "Motion/Repeat"),
                 subscription.events.poll()?.names(),
             )
+            assertTrue(scheduled.isEmpty())
             assertNull(subscription.events.poll())
         }
 
@@ -87,6 +88,95 @@ class TweakChangePublisherTest {
         }
 
         observer.close()
+    }
+
+    @Test
+    fun `changes arriving during publication are eventually published`() {
+        val tweak = descriptor("Motion/Duration", 400)
+        TweakRegistry.register(tweak)
+        val scheduled = mutableListOf<Runnable>()
+        var updateOnNextSnapshot = false
+        var updatedDuringPublication = false
+        val publisher = TweakChangePublisher(
+            schedule = { runnable -> scheduled.add(runnable) },
+            snapshot = {
+                val current = TweakRegistry.snapshot()
+                if (updateOnNextSnapshot) {
+                    updateOnNextSnapshot = false
+                    TweakRegistry.update(mapOf(tweak.name to 550))
+                    updatedDuringPublication = true
+                }
+                current
+            },
+        )
+        val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
+
+        publisher.subscribe().use { subscription ->
+            TweakRegistry.update(mapOf(tweak.name to 500))
+            updateOnNextSnapshot = true
+
+            assertEquals(1, scheduled.size)
+            scheduled.removeAt(0).run()
+
+            assertTrue(updatedDuringPublication)
+            assertEquals(500, subscription.events.poll()?.single()?.value)
+            assertEquals(1, scheduled.size)
+
+            scheduled.removeAt(0).run()
+
+            assertEquals(550, subscription.events.poll()?.single()?.value)
+            assertTrue(scheduled.isEmpty())
+            assertNull(subscription.events.poll())
+        }
+
+        observer.close()
+    }
+
+    @Test
+    fun `changes during publication survive subscriber churn`() {
+        val tweak = descriptor("Motion/Duration", 400)
+        TweakRegistry.register(tweak)
+        val scheduled = mutableListOf<Runnable>()
+        var churnOnNextSnapshot = false
+        lateinit var publisher: TweakChangePublisher
+        lateinit var initialSubscription: TweakChangePublisher.Subscription
+        var replacementSubscription: TweakChangePublisher.Subscription? = null
+        publisher = TweakChangePublisher(
+            schedule = { runnable -> scheduled.add(runnable) },
+            snapshot = {
+                val current = TweakRegistry.snapshot()
+                if (churnOnNextSnapshot) {
+                    churnOnNextSnapshot = false
+                    initialSubscription.close()
+                    TweakRegistry.update(mapOf(tweak.name to 550))
+                    replacementSubscription = publisher.subscribe()
+                }
+                current
+            },
+        )
+        val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
+        initialSubscription = publisher.subscribe()
+
+        try {
+            TweakRegistry.update(mapOf(tweak.name to 500))
+            churnOnNextSnapshot = true
+
+            scheduled.removeAt(0).run()
+
+            val replacement = requireNotNull(replacementSubscription)
+            assertEquals(550, replacement.initial.single().value)
+            assertEquals(1, scheduled.size)
+
+            scheduled.removeAt(0).run()
+
+            assertEquals(550, replacement.events.poll()?.single()?.value)
+            assertTrue(scheduled.isEmpty())
+            assertNull(replacement.events.poll())
+        } finally {
+            initialSubscription.close()
+            replacementSubscription?.close()
+            observer.close()
+        }
     }
 
     @Test
