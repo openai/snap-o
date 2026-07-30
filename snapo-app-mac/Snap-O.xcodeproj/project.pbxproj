@@ -193,6 +193,7 @@
 		};
 		A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);

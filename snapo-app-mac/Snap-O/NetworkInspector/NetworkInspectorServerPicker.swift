@@ -94,6 +94,12 @@ struct AppInspectorViewPicker: View {
 }
 
 private struct AppInspectorPickerPopover: View {
+  private enum Metrics {
+    static let minimumWidth: CGFloat = 320
+    static let maximumWidth: CGFloat = 480
+    static let nonTextWidth: CGFloat = 160
+  }
+
   @Bindable var model: NetworkInspectorHostModel
   let selectInspector: (InspectableApp, AppInspectorOption) -> Void
 
@@ -128,7 +134,28 @@ private struct AppInspectorPickerPopover: View {
         .fixedSize(horizontal: false, vertical: true)
       }
     }
-    .frame(width: 320)
+    .frame(width: preferredWidth)
+  }
+
+  private var preferredWidth: CGFloat {
+    let appFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    let deviceFont = NSFont.systemFont(ofSize: 12)
+    let inspectorFont = NSFont.systemFont(ofSize: 11)
+    let contentWidth = model.inspectorApps.flatMap { app in
+      let appWidth = max(
+        textWidth(app.name, font: appFont),
+        textWidth(app.deviceDisplayTitle, font: deviceFont)
+      )
+      return app.inspectors.map { option in
+        appWidth + textWidth(option.kind.title, font: inspectorFont) + Metrics.nonTextWidth
+      }
+    }.max() ?? Metrics.minimumWidth
+
+    return min(max(ceil(contentWidth), Metrics.minimumWidth), Metrics.maximumWidth)
+  }
+
+  private func textWidth(_ text: String, font: NSFont) -> CGFloat {
+    (text as NSString).size(withAttributes: [.font: font]).width
   }
 }
 
