@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppInspectorOption,
   InspectableApp,
+  InspectorServerReference,
   SelectedAppInspector,
   TweakDescriptor,
   TweakValue
@@ -28,6 +29,7 @@ interface ActiveColorPanelSession {
 }
 
 let nextColorPanelSession = 0;
+const docsUrl = "https://openai.github.io/snap-o/tweaks.html#expose-values";
 
 export function TweaksInspectorApp({
   client,
@@ -41,6 +43,7 @@ export function TweaksInspectorApp({
   onSelect(app: InspectableApp, option: AppInspectorOption): void;
 }): JSX.Element {
   const [tweaks, setTweaks] = useState<TweakDescriptor[]>([]);
+  const [loadedServer, setLoadedServer] = useState<InspectorServerReference | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
@@ -90,6 +93,7 @@ export function TweaksInspectorApp({
       .then((response) => {
         if (disposed) return;
         setTweaks((current) => reconcileStreamedTweaks(current, response.tweaks, queue.pending, queue.inFlight));
+        setLoadedServer(server);
         setError(null);
       })
       .catch((cause: unknown) => {
@@ -238,36 +242,59 @@ export function TweaksInspectorApp({
         </header>
       ) : null}
 
-      <div className="tweaks-inspector-content">
-        {error ? (
-          <p className="tweaks-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <div className="tweaks-columns">
-          {sections.map((column, index) => (
-            <div className="tweaks-column" key={index}>
-              {column.map((section) => (
-                <section className="tweaks-section" key={section.name}>
-                  {section.name ? <h2>{section.name}</h2> : null}
-                  <div className="tweaks-section-list">
-                    {section.tweaks.map((tweak) => (
-                      <TweakControl
-                        key={tweak.name}
-                        tweak={tweak}
-                        onChange={updateTweak}
-                        onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ))}
+      {hasLoadedTweaksForServer(loadedServer, server) && !error && tweaks.length === 0 ? (
+        <TweaksEmptyState onOpenDocs={() => void client.openExternal(docsUrl)} />
+      ) : (
+        <div className="tweaks-inspector-content">
+          {error ? (
+            <p className="tweaks-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="tweaks-columns">
+            {sections.map((column, index) => (
+              <div className="tweaks-column" key={index}>
+                {column.map((section) => (
+                  <section className="tweaks-section" key={section.name}>
+                    {section.name ? <h2>{section.name}</h2> : null}
+                    <div className="tweaks-section-list">
+                      {section.tweaks.map((tweak) => (
+                        <TweakControl
+                          key={tweak.name}
+                          tweak={tweak}
+                          onChange={updateTweak}
+                          onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </main>
   );
+}
+
+export function TweaksEmptyState({ onOpenDocs }: { onOpenDocs(): void }): JSX.Element {
+  return (
+    <section className="empty-detail">
+      <h1>No tweaks on screen</h1>
+      <p>Add a tweak to your app’s Compose UI to see it here.</p>
+      <button className="text-button" type="button" onClick={onOpenDocs}>
+        Read the developer guide
+      </button>
+    </section>
+  );
+}
+
+export function hasLoadedTweaksForServer(
+  loadedServer: InspectorServerReference | null,
+  server: InspectorServerReference
+): boolean {
+  return loadedServer?.deviceId === server.deviceId && loadedServer.socketName === server.socketName;
 }
 
 export function canResetTweaks(tweaks: TweakDescriptor[]): boolean {

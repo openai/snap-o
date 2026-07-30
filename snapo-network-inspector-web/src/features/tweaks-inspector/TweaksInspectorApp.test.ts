@@ -1,17 +1,64 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { TweakDescriptor } from "../../network/bridge-types";
-import { createNetworkClient } from "../../network/client";
+import type { SelectedAppInspector, TweakDescriptor } from "../../network/bridge-types";
+import { createNetworkClient, type NetworkClient } from "../../network/client";
 import {
   canResetTweaks,
   groupTweaks,
+  hasLoadedTweaksForServer,
   nativePanelTweakColor,
   parseTweakColor,
   reconcileStreamedTweaks,
   TweakColorField,
+  TweaksEmptyState,
+  TweaksInspectorApp,
   tweakColorWithPreservedAlpha
 } from "./TweaksInspectorApp";
+
+describe("empty tweaks inspector", () => {
+  const client = { usesNativeServerPicker: true, openExternal: async () => {} } as unknown as NetworkClient;
+  const selection: SelectedAppInspector = {
+    appId: "pixel:com.openai.chatgpt",
+    kind: "tweaks",
+    server: { deviceId: "pixel", socketName: "snapo_tweaks_10" }
+  };
+
+  it("waits for the initial tweak request before showing an empty state", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweaksInspectorApp, { client, apps: [], selection, onSelect() {} })
+    );
+
+    expect(markup).not.toContain('class="empty-detail"');
+    expect(markup).not.toContain("No tweaks on screen");
+  });
+
+  it("uses the network inspector empty-state layout and offers the developer guide", () => {
+    const markup = renderToStaticMarkup(createElement(TweaksEmptyState, { onOpenDocs() {} }));
+
+    expect(markup).toContain('class="empty-detail"');
+    expect(markup).toContain("No tweaks on screen");
+    expect(markup).toContain("Add a tweak to your app’s Compose UI to see it here.");
+    expect(markup).toContain('class="text-button"');
+    expect(markup).toContain("Read the developer guide");
+    expect(markup).not.toContain('class="tweaks-columns"');
+  });
+
+  it("does not treat an incomplete request as loaded", () => {
+    expect(hasLoadedTweaksForServer(null, selection.server)).toBe(false);
+  });
+
+  it("recognizes when the selected server has finished loading", () => {
+    expect(hasLoadedTweaksForServer({ ...selection.server }, selection.server)).toBe(true);
+  });
+
+  it("waits again when switching to another app or device", () => {
+    expect(hasLoadedTweaksForServer(selection.server, { ...selection.server, deviceId: "emulator" })).toBe(false);
+    expect(hasLoadedTweaksForServer(selection.server, { ...selection.server, socketName: "snapo_tweaks_20" })).toBe(
+      false
+    );
+  });
+});
 
 describe("editable tweak colors", () => {
   it("normalizes complete RGB colors", () => {
