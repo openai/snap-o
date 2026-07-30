@@ -9,9 +9,9 @@ import androidx.compose.ui.graphics.Color
 
 /** Returns observable release-build state for the current floating-point default. */
 @Composable
-fun tweakFloat(
-    name: String,
+fun tweak(
     default: Float,
+    name: String,
     min: Float? = null,
     max: Float? = null,
     step: Float? = null,
@@ -19,9 +19,9 @@ fun tweakFloat(
 
 /** Returns observable release-build state for the current integer default. */
 @Composable
-fun tweakInt(
-    name: String,
+fun tweak(
     default: Int,
+    name: String,
     min: Int? = null,
     max: Int? = null,
     step: Int? = null,
@@ -29,21 +29,21 @@ fun tweakInt(
 
 /** Returns observable release-build state for the current color default. */
 @Composable
-fun tweakColor(
-    name: String,
+fun tweak(
     default: Color,
+    name: String,
 ): State<Color> = rememberUpdatedState(default)
 
 /** Returns observable release-build state for the current boolean default. */
 @Composable
-fun tweakBoolean(
-    name: String,
+fun tweak(
     default: Boolean,
+    name: String,
 ): State<Boolean> = rememberUpdatedState(default)
 
 /** Returns observable release-build state for the current text default. */
 @Composable
-fun tweakString(
-    name: String,
+fun tweak(
     default: String,
+    name: String,
 ): State<String> = rememberUpdatedState(default)

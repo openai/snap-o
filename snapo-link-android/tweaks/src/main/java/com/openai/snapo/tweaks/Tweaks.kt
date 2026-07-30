@@ -15,9 +15,9 @@ import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 
 /** Exposes a floating-point tweak as observable state. */
 @Composable
-fun tweakFloat(
-    name: String,
+fun tweak(
     default: Float,
+    name: String,
     min: Float? = null,
     max: Float? = null,
     step: Float? = null,
@@ -35,9 +35,9 @@ fun tweakFloat(
 
 /** Exposes an integer tweak as observable state. */
 @Composable
-fun tweakInt(
-    name: String,
+fun tweak(
     default: Int,
+    name: String,
     min: Int? = null,
     max: Int? = null,
     step: Int? = null,
@@ -55,9 +55,9 @@ fun tweakInt(
 
 /** Exposes a color tweak as observable state. */
 @Composable
-fun tweakColor(
-    name: String,
+fun tweak(
     default: Color,
+    name: String,
 ): State<Color> {
     val encodedDefault = default.toTweakColor()
     return rememberTweakState(
@@ -74,9 +74,9 @@ fun tweakColor(
 
 /** Exposes a boolean tweak as observable state. */
 @Composable
-fun tweakBoolean(
-    name: String,
+fun tweak(
     default: Boolean,
+    name: String,
 ): State<Boolean> = rememberTweakState(
     TweakDescriptor(
         name = name,
@@ -88,9 +88,9 @@ fun tweakBoolean(
 
 /** Exposes a text tweak as observable state. */
 @Composable
-fun tweakString(
-    name: String,
+fun tweak(
     default: String,
+    name: String,
 ): State<String> = rememberTweakState(
     TweakDescriptor(
         name = name,
