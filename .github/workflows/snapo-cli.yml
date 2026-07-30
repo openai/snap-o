@@ -1,4 +1,4 @@
-name: Network CLI
+name: Snap-O CLI
 
 on:
   push:
@@ -10,7 +10,8 @@ on:
       - 'skills/snap-o-network-inspector/**'
       - 'tests/snapo_cli/**'
       - 'contracts/network/**'
-      - '.github/workflows/network-cli.yml'
+      - 'contracts/tweaks/**'
+      - '.github/workflows/snapo-cli.yml'
   pull_request:
     branches: [main, master]
     paths:
@@ -20,7 +21,8 @@ on:
       - 'skills/snap-o-network-inspector/**'
       - 'tests/snapo_cli/**'
       - 'contracts/network/**'
-      - '.github/workflows/network-cli.yml'
+      - 'contracts/tweaks/**'
+      - '.github/workflows/snapo-cli.yml'
 
 permissions:
   contents: read
@@ -49,3 +51,9 @@ jobs:
           "$SNAPO_CLI" network list --help
           "$SNAPO_CLI" network requests --help
           "$SNAPO_CLI" network show --help
+          "$SNAPO_CLI" tweaks apps --help
+          "$SNAPO_CLI" tweaks list --help
+          "$SNAPO_CLI" tweaks get --help
+          "$SNAPO_CLI" tweaks set --help
+          "$SNAPO_CLI" tweaks reset --help
+          "$SNAPO_CLI" tweaks watch --help
