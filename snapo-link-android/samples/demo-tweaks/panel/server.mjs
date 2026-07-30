@@ -476,7 +476,8 @@ async function proxyTweak(request, response, connection, pathname, target) {
     body = await readRequestBody(request);
   }
 
-  const performRequest = () => fetch(new URL(pathname, target ?? connection.target), {
+  const upstreamPath = pathname + new URL(request.url, "http://127.0.0.1").search;
+  const performRequest = () => fetch(new URL(upstreamPath, target ?? connection.target), {
     method: request.method,
     headers,
     body,
@@ -517,7 +518,7 @@ async function proxyTweakEvents(request, response, connection, target) {
 
   try {
     const performRequest = () => fetch(
-      new URL("/tweaks/events", target ?? connection.target),
+      new URL(request.url, target ?? connection.target),
       {
         method: request.method,
         headers: { Accept: "text/event-stream" },

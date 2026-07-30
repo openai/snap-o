@@ -147,7 +147,7 @@ composables may register the same name; the tweak appears only once, and an
 update changes the value observed by every usage. A tweak remains registered
 until its last usage leaves composition. Its most recently edited value remains
 available if the same complete declaration later returns, but inactive tweaks do
-not appear in responses or event snapshots.
+not appear in default responses or event snapshots.
 
 Usages with the same name must agree on the tweak type, default, and
 constraints. Conflicting declarations are a configuration error.
@@ -169,6 +169,41 @@ also express a distinct sRGB edit for a non-round-trippable default.
 Numeric JSON values may contain at most 128 characters and 64 significant
 digits, with a decimal scale between -64 and 64. Reject values outside those
 limits with `422` before changing any tweaks.
+
+### GET /tweaks?include=adjusted
+
+Opt in to a complete list of active tweaks and previously adjusted tweaks that
+have since left composition:
+
+```bash
+curl -fsS 'http://127.0.0.1:43817/tweaks?include=adjusted'
+```
+
+The response uses the same `{"tweaks":[...]}` shape and complete tweak
+descriptors as `GET /tweaks`. Include every currently active tweak, whether or
+not it has been adjusted, and every inactive tweak whose value was actually
+changed by a successful user adjustment. Preserve the tweak's original
+declaration, constraints, and latest value after its final usage leaves
+composition. Separate screens may reuse a name with different declarations;
+include each independently adjusted complete descriptor, even when names
+repeat. Repeated names occur only for distinct complete descriptors; active-only
+listings and updates still resolve at most one active descriptor per name.
+Order names by first observation, regardless of later activation or adjustment.
+For repeated names, list the active declaration first, followed by historical
+declarations in stable adjustment order.
+
+An adjusted tweak remains in this history even after its value is reset to its
+default. An inactive tweak that was never changed, a no-op update that leaves
+its value unchanged, and a rejected or atomically rolled-back update do not
+create history entries. Adjustment history exists only for the current app
+process and is discarded when that process exits.
+
+Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only
+currently active names and returns `404` for an inactive name. Plain
+`GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported
+query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated,
+or additional query parameters and queries on other endpoints or methods
+return `400`.
 
 ### GET /tweaks/events
 
@@ -331,7 +366,9 @@ Box(
 Each remembered usage registers with composition and removes the tweak from
 the active list only after its final usage leaves. Returning declarations
 restore their previously edited values. Screen navigation therefore determines
-what appears in the response without discarding edits.
+what appears in the default response without discarding edits; request
+`GET /tweaks?include=adjusted` to also recover previously adjusted values from
+screens that are no longer in composition.
 
 Provide overloaded `tweak(default, name)` functions for `Int`, `Float`,
 `Color`, `Boolean`, and `String` defaults; each returns its corresponding

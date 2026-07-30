@@ -13,6 +13,7 @@ It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
 ## Top-Level Features
 
 - **Network Inspector:** Mirror app traffic into the macOS client, inspect requests and responses, and explore payloads with collapsible JSON pretty printing. Start with the [Network Inspector guide](https://openai.github.io/snap-o/network-inspector.html).
+- **Snap-O Tweaks:** Inspect and adjust live Compose values, including previously adjusted tweaks that have since left composition.
 - **Screen Capture:** Grab screenshots and screen recordings quickly, preview recordings instantly, and drag captures directly into PRs, chat, and docs without save-first friction.
 
 ## Network Inspector
@@ -20,6 +21,15 @@ It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
 Curious about mirroring app traffic into the macOS client? Check the [Network Inspector guide](https://openai.github.io/snap-o/network-inspector.html) for setup steps, dependency coordinates, and configuration tips.
 
 Snap-O can replay network requests that happened before you opened Snap-O, so you do not miss early events, and includes collapsible JSON pretty printing.
+
+## Snap-O Tweaks
+
+Snap-O Tweaks exposes adjustable Compose values through an app-local Android
+socket. The default `GET /tweaks` response contains currently composed tweaks;
+`GET /tweaks?include=adjusted` also includes every previously adjusted tweak
+retained by the running app process. Historical inactive tweaks remain
+read-only until their declarations return. See the [Tweaks protocol
+guide](contracts/tweaks/README.md) for setup, descriptors, and updates.
 
 ## Why build an Android inspection system?
 
@@ -92,7 +102,7 @@ Running these tools launches Snap-O (or brings it to the foreground) and immedia
 
 There is currently no support for choosing a specific device/emulator when starting Snap-O in this way.
 
-### Command Line Network Inspector
+### Command Line Inspection
 
 Snap-O bundles a small Python command-line client at:
 
@@ -106,6 +116,10 @@ It uses the host computer's configured `adb` command, requires Python 3, and doe
 snapo network list --json
 snapo network requests -s <serial> -n <socket> --no-stream --json
 snapo network show -s <serial> -n <socket> -r <request-id> --json
+snapo tweaks apps --json
+snapo tweaks list -s <serial> -n <socket> --json
+snapo tweaks list --all -s <serial> -n <socket> --json
+snapo tweaks get 'Motion/Duration' --all -s <serial> -n <socket> --json
 ```
 
 ## Why a web UI for the Network Inspector?
@@ -142,7 +156,9 @@ If you need to notarize the app yourself:
 
 ## Codex Plugin
 
-Snap-O includes a Codex plugin for macOS and Linux. It bundles the network-inspector skill and its Python CLI, and requires Python 3 and Android Platform Tools.
+Snap-O includes a Codex plugin for macOS and Linux. It bundles the network
+inspector and Snap-O Tweaks skills with their shared Python CLI, and requires
+Python 3 and Android Platform Tools.
 
 Add the Snap-O marketplace and install the plugin:
 
@@ -170,7 +186,10 @@ Start a new Codex session after installing or updating the plugin.
 
 ## Linux Support
 
-You can inspect network requests from Snap-O on a Linux machine by using the dependency-free `snapo` Python CLI tool. Install Python 3 and Android Platform Tools, then download the script from the `main` branch and put it on `PATH`:
+You can inspect network requests and live or previously adjusted tweaks from
+Snap-O on a Linux machine by using the dependency-free `snapo` Python CLI tool.
+Install Python 3 and Android Platform Tools, then download the script from the
+`main` branch and put it on `PATH`:
 
 ```bash
 mkdir -p ~/.local/bin
@@ -180,7 +199,14 @@ chmod +x ~/.local/bin/snapo
 
 This is the same CLI shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
 
-The script supports `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
+The script supports `snapo network list`, `requests`, and `show`, alongside
+`snapo tweaks apps`, `list`, `get`, `set`, `reset`, and `watch`. Pass `--all`
+to `tweaks list` or `tweaks get` to include previously adjusted inactive
+tweaks. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`;
+use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or
+wrapper. By default, server selection is left to the configured ADB command,
+which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host>` and
+`--adb-port <port>` to use an explicit remote ADB server.
 
 Verify that ADB can see your Android device, then inspect its available Snap-O servers:
 

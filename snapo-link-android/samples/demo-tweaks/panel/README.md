@@ -4,8 +4,8 @@ A model built this inspector as one way to find running apps and change live
 values. Each app must use Snap-O Tweaks.
 
 This is only a demo, not part of the feature or the expected way to use it.
-You do not need this inspector. Any tool can use `/app`, `/tweaks`, and
-`/tweaks/events` to build its own live UI.
+You do not need this inspector. Any tool can use `/app`, `/tweaks`,
+`/tweaks?include=adjusted`, and `/tweaks/events` to build its own live UI.
 
 ## What you need
 
@@ -136,6 +136,17 @@ You can set one value or all values back.
 Turn off **Show** in the **Motion** section to hide the motion preview in the
 sample app. Its animation tweaks leave the composition and vanish from the
 inspector. Turn it back on to see them appear again.
+
+The inspector continues to display only active tweaks. To inspect retained
+values the user previously adjusted, including tweaks that have since left
+composition, request the expanded view through the demo server:
+
+```bash
+curl -fsS 'http://127.0.0.1:4175/tweaks?include=adjusted'
+```
+
+Inactive historical tweaks can be inspected, but cannot be changed or reset
+until they return to composition.
 
 ## Test the panel
 

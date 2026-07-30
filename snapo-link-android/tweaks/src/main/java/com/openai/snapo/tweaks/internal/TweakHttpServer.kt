@@ -150,7 +150,7 @@ internal class TweakHttpServer(
     private fun route(request: HttpRequest): HttpResponse = when (request.path) {
         "/app" -> routeApp(request)
         "/app/icon" -> routeAppIcon(request)
-        "/tweaks" -> routeTweaks(request)
+        "/tweaks", "/tweaks?include=adjusted" -> routeTweaks(request)
         "/tweaks/events" -> throw HttpFailure(
             statusCode = 405,
             message = "Unsupported method: ${request.method}",
@@ -228,7 +228,10 @@ internal class TweakHttpServer(
     }
 
     private fun routeTweaks(request: HttpRequest): HttpResponse = when (request.method) {
-        "GET" -> tweaksResponse(TweakRegistry.snapshot(), includeDescriptors = true)
+        "GET" -> tweaksResponse(
+            TweakRegistry.snapshot(includeAdjusted = request.path != "/tweaks"),
+            includeDescriptors = true,
+        )
         "PATCH" -> {
             requireJsonRequest(request)
             val changes = readPatchValues(request.body)
@@ -252,10 +255,14 @@ internal class TweakHttpServer(
         val headers = readHeaders(input, firstLine.length)
         val contentLength = readContentLength(headers)
         val body = readBody(input, contentLength)
+        val target = parts[1]
+        if ('?' in target && (target != "/tweaks?include=adjusted" || parts[0] != "GET")) {
+            invalidRequest("Unsupported query parameters.")
+        }
 
         return HttpRequest(
             method = parts[0],
-            path = parts[1],
+            path = target,
             headers = headers,
             body = body,
         )

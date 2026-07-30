@@ -35,6 +35,7 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 | `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example"}`. |
 | `GET /app/icon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
 | `GET /tweaks` | Current active tweak descriptors and values. |
+| `GET /tweaks?include=adjusted` | Active descriptors plus all previously adjusted tweaks retained outside composition. |
 | `PATCH /tweaks` | One atomic update containing one or more named values. |
 | `GET /tweaks/events` | Server-sent events containing complete current snapshots. |
 
@@ -45,6 +46,7 @@ Ordinary responses close their connection and include a content length. The even
 ```bash
 curl -fsS "$base/app"
 curl -fsS "$base/tweaks"
+curl -fsS "$base/tweaks?include=adjusted"
 curl -fsS "$base/app/icon" -o /tmp/snapo-tweak-app-icon
 ```
 
@@ -74,7 +76,24 @@ The tweak response has this shape:
 
 The available types are `int`, `float`, `boolean`, `color`, and `string`. Preserve actual JSON types: booleans are not strings, integer values cannot be fractional, and floats accept whole or fractional finite numbers. Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may include `min`, `max`, and `step`; step alignment starts at `min`, or at `default` if there is no minimum.
 
-A tweak exists only while its declaration is active in Compose. Names are shared identifiers: two active declarations of the same complete descriptor observe the same value. Names may contain spaces and `/`; send the entire name unchanged.
+Plain `GET /tweaks` includes only declarations active in Compose. Add
+`?include=adjusted` to include every tweak successfully adjusted by the user,
+including retained descriptors whose declarations have since left composition.
+The expanded response uses the same descriptor shape and also includes current
+active tweaks. Separate screens can reuse a name with different complete
+declarations; preserve every returned descriptor instead of deduplicating by
+name. A tweak that was adjusted and later reset can still appear with its
+default value; compare `value` and `default` to identify outstanding user
+changes. Retention lasts for the current app process and is cleared with the
+registry; it is not persistent storage across app restarts.
+
+Names are shared identifiers: two active declarations of the same complete
+descriptor observe the same value. Names may contain spaces and `/`; send the
+entire name unchanged. Repeated names in expanded results represent distinct
+complete descriptors; active-only snapshots and updates still resolve at most
+one currently active descriptor per name. Historical descriptors are read-only
+while inactive: `PATCH /tweaks` still rejects their names until their
+declarations return.
 
 ### Update or reset values atomically
 
@@ -90,7 +109,12 @@ The response contains the changed names and their resulting values:
 {"tweaks":[{"name":"Motion/Duration","value":550},{"name":"Motion/Enabled","value":false}]}
 ```
 
-Every value is validated before any update is applied. An invalid or unknown entry prevents the entire batch from changing. Reset by fetching `GET /tweaks` and sending the target descriptor's `default` value back in a patch; reset all by patching every active name to its own default in one request. There is no separate get-by-name, reset, delete, action, or grouping endpoint.
+Every value is validated before any update is applied. An invalid, unknown, or
+inactive entry prevents the entire batch from changing. Reset by fetching
+`GET /tweaks` and sending the target descriptor's `default` value back in a
+patch; reset all by patching every active name to its own default in one
+request. There is no separate get-by-name, reset, delete, action, or grouping
+endpoint.
 
 ### Watch complete snapshots
 
@@ -109,7 +133,13 @@ data: {"tweaks":[{"name":"Motion/Enabled","type":"boolean","default":true,"value
 
 ```
 
-The first event is the complete current list. Every later `event: tweaks` is also a complete, ordered replacement snapshot, not a delta. Remove items absent from the newest snapshot. Ignore lines starting with `:`; they are idle keepalives. Reconnect and replace state when the app process or socket changes.
+The first event is the complete current active list. Every later `event: tweaks`
+is also a complete, ordered replacement snapshot, not a delta. Historical
+inactive tweaks are not included in event snapshots; request
+`GET /tweaks?include=adjusted` separately when their retained values are needed.
+Remove items absent from the newest snapshot. Ignore lines starting with `:`;
+they are idle keepalives. Reconnect and replace state when the app process or
+socket changes.
 
 For a browser, serve a same-origin proxy that forwards these routes to the ADB-forwarded target:
 
