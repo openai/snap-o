@@ -70,8 +70,7 @@
       }
 
       ::selection {
-        color: var(--ink);
-        background: rgba(35, 181, 21, 0.18);
+        background: rgba(111, 214, 138, 0.24);
       }
 
       a {
@@ -972,9 +971,36 @@ val client = HttpClient(OkHttp) {
             <div class="section-body">
             <p class="prose">
               Debug builds initialize the on-device server automatically through
-              <code>SnapONetworkInitProvider</code>. Most apps should keep the
-              defaults.
+              <code>SnapONetworkInitProvider</code>. Release builds do not start
+              the server unless Network Inspector is explicitly enabled. Most
+              apps should keep the defaults and use the no-op release artifact.
             </p>
+
+            <details>
+              <summary>Enable Network Inspector in release builds</summary>
+              <div class="details-body">
+                <p class="prose">
+                  If you intentionally include the real network dependency in a
+                  release build, add the following metadata directly to your
+                  application's <code>&lt;application&gt;</code> element. This
+                  opt-in applies only to Network Inspector. No-op release
+                  artifacts remain the recommended setup for most apps.
+                </p>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>AndroidManifest.xml</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code class="syntax-code" data-language="xml">&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"&gt;
+    &lt;application&gt;
+        &lt;meta-data
+            android:name="snapo.network.allow_release"
+            android:value="true" /&gt;
+    &lt;/application&gt;
+&lt;/manifest&gt;</code></pre>
+                </div>
+              </div>
+            </details>
 
             <details>
               <summary>Provider configuration</summary>
@@ -1030,11 +1056,6 @@ val client = HttpClient(OkHttp) {
                         <td><code>snapo.mode_label</code></td>
                         <td><code>safe</code></td>
                         <td>Reports a custom mode label to Snap-O clients.</td>
-                      </tr>
-                      <tr>
-                        <td><code>snapo.allow_release</code></td>
-                        <td><code>false</code></td>
-                        <td>Allows the server in a non-debuggable build. Enable only intentionally.</td>
                       </tr>
                       <tr>
                         <td><code>snapo.buffer_window_ms</code></td>

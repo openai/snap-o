@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tweaks Protocol · Snap-O</title>
+    <meta
+      name="description"
+      content="Reference for the Snap-O Tweaks HTTP and event-stream protocol, including every endpoint, example requests, JSON responses, updates, resets, and errors."
+    />
+    <link rel="icon" type="image/png" href="assets/icon-64.png" />
+    <style>
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
+      }
+
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
+      }
+
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
+      }
+
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
+      }
+
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --ink: #0b0c0b;
+        --muted: #565a55;
+        --line: #d8dbd4;
+        --navy: #071321;
+        --lime: #23b515;
+        --green: #18820f;
+        --maxw: 1200px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--bg);
+        font: 16px/1.6 "OpenAI Sans", Arial, sans-serif;
+        font-feature-settings: "liga" on, "calt" on;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      ::selection {
+        background: rgba(111, 214, 138, 0.24);
+      }
+
+      a {
+        color: inherit;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
+      }
+
+      a:hover {
+        color: var(--green);
+      }
+
+      a:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 4px;
+      }
+
+      .wrap {
+        width: min(100%, var(--maxw));
+        margin-inline: auto;
+        padding-inline: clamp(20px, 4vw, 48px);
+      }
+
+      .guide-hero {
+        padding-block: clamp(42px, 6vw, 72px) clamp(54px, 7vw, 82px);
+      }
+
+      .hero-copy {
+        max-width: 760px;
+      }
+
+      .back-link {
+        display: inline-flex;
+        gap: 8px;
+        margin-bottom: clamp(46px, 7vw, 78px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        text-decoration: none;
+      }
+
+      .back-link a {
+        text-decoration: none;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 2.25rem;
+        line-height: 1.17;
+        letter-spacing: -0.025em;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .lead {
+        max-width: 58ch;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: clamp(1.04rem, 1.5vw, 1.16rem);
+        line-height: 1.55;
+        text-wrap: pretty;
+      }
+
+      .guide-layout {
+        padding-bottom: 48px;
+      }
+
+      article {
+        max-width: 860px;
+      }
+
+      .guide-layout > *,
+      article {
+        min-width: 0;
+      }
+
+      .guide-section {
+        scroll-margin-top: 96px;
+        padding-block: 28px 64px;
+        border-top: 1px solid var(--line);
+      }
+
+      .guide-section + .guide-section {
+        padding-top: 34px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+      .section-heading {
+        position: relative;
+        margin-bottom: 10px;
+        padding-left: 44px;
+      }
+
+      .section-heading h2 {
+        min-height: 27px;
+        display: flex;
+        align-items: center;
+      }
+
+      .section-heading .step {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .section-body {
+        min-width: 0;
+        padding-left: 44px;
+      }
+
+      h3 {
+        margin: 36px 0 10px;
+        font-size: 1.15rem;
+        line-height: 1.35;
+        letter-spacing: -0.015em;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      p + p {
+        margin-top: 14px;
+      }
+
+      .prose {
+        color: var(--muted);
+        text-wrap: pretty;
+      }
+
+      .notice {
+        margin: 26px 0;
+        padding: 2px 0 2px 18px;
+        border-left: 3px solid var(--lime);
+        color: var(--muted);
+      }
+
+      .notice strong {
+        color: var(--ink);
+      }
+
+      .code-block {
+        max-width: 100%;
+        margin: 22px 0 0;
+        overflow: hidden;
+        color: #eef3ed;
+        background: var(--navy);
+        border-radius: 6px;
+      }
+
+      .code-head {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding-inline: 16px 10px;
+        color: #aeb9c2;
+        border-bottom: 1px solid #263342;
+        font: 500 0.72rem/1 "SF Mono", Consolas, "Liberation Mono",
+          ui-monospace, monospace;
+      }
+
+      .syntax-code .token.keyword,
+      .syntax-code .token.boolean,
+      .syntax-code .token.builtin {
+        color: #d2a8ff;
+      }
+
+      .syntax-code .token.function,
+      .syntax-code .token.attr-name,
+      .syntax-code .token.property {
+        color: #9dd8ff;
+      }
+
+      .syntax-code .token.class-name,
+      .syntax-code .token.constant,
+      .syntax-code .token.tag {
+        color: #f2cc60;
+      }
+
+      .syntax-code .token.string,
+      .syntax-code .token.attr-value {
+        color: var(--lime);
+      }
+
+      .syntax-code .token.number {
+        color: #ffb86b;
+      }
+
+      .syntax-code .token.operator,
+      .syntax-code .token.annotation,
+      .syntax-code .token.symbol {
+        color: #ff9b8f;
+      }
+
+      .syntax-code .token.punctuation {
+        color: #aeb9c2;
+      }
+
+      .syntax-code .token.comment {
+        color: #8b98a5;
+        font-style: italic;
+      }
+
+      .copy-button {
+        min-height: 30px;
+        padding: 0 8px;
+        color: #d8dfd6;
+        background: transparent;
+        border: 1px solid #42505d;
+        border-radius: 3px;
+        font: inherit;
+      }
+
+      .copy-button:hover {
+        color: var(--navy);
+        background: var(--lime);
+        border-color: var(--lime);
+      }
+
+      pre {
+        margin: 0;
+        padding: 20px;
+        overflow-x: auto;
+        font: 0.84rem/1.7 "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+        tab-size: 2;
+      }
+
+      code {
+        font-family: "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+      }
+
+      :not(pre) > code {
+        padding: 0.12em 0.35em;
+        color: var(--green);
+        background: rgba(35, 181, 21, 0.08);
+        border-radius: 3px;
+        font-size: 0.88em;
+      }
+
+      .table-scroll {
+        max-width: 100%;
+        margin-top: 20px;
+        overflow-x: auto;
+      }
+
+      .config-table {
+        width: 100%;
+        min-width: 620px;
+        border-collapse: collapse;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: left;
+      }
+
+      .config-table th,
+      .config-table td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      .config-table th {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .config-table th:first-child,
+      .config-table td:first-child {
+        padding-left: 0;
+      }
+
+      .config-table th:last-child,
+      .config-table td:last-child {
+        padding-right: 0;
+      }
+
+      .quick-jump {
+        display: none;
+      }
+
+      footer {
+        padding-bottom: 30px;
+      }
+
+      .footer-row {
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        font-size: 0.8rem;
+      }
+
+      @media (min-width: 1280px) {
+        .quick-jump {
+          position: fixed;
+          z-index: 10;
+          top: 96px;
+          right: clamp(32px, 4vw, 56px);
+          display: block;
+          width: 200px;
+          max-height: calc(100vh - 120px);
+          overflow-y: auto;
+        }
+
+        .quick-jump-list {
+          position: relative;
+          margin: 0;
+          padding: 0 0 0 14px;
+          list-style: none;
+          border-left: 2px solid #eceee9;
+        }
+
+        .quick-jump-list li + li {
+          margin-top: 12px;
+        }
+
+        .quick-jump-link {
+          position: relative;
+          display: block;
+          color: #777c76;
+          font-size: 0.875rem;
+          line-height: 1.4;
+          text-decoration: none;
+          transition: color 140ms ease;
+        }
+
+        .quick-jump-link::before {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: -16px;
+          width: 2px;
+          content: "";
+          background: transparent;
+        }
+
+        .quick-jump-link:hover {
+          color: var(--ink);
+        }
+
+        .quick-jump-link[aria-current="location"] {
+          color: var(--ink);
+          font-weight: 500;
+        }
+
+        .quick-jump-link[aria-current="location"]::before {
+          background: var(--ink);
+        }
+      }
+
+      @media (max-width: 520px) {
+        .guide-hero {
+          padding-block: 34px 50px;
+        }
+
+        h1 {
+          font-size: 1.875rem;
+          line-height: 1.2;
+        }
+
+        .guide-section {
+          padding-bottom: 52px;
+        }
+
+        .guide-section + .guide-section {
+          padding-top: 46px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+
+        .quick-jump-link {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <section class="guide-hero">
+        <div class="wrap">
+          <div class="hero-copy">
+            <nav class="back-link" aria-label="Breadcrumb">
+              <a href="index.html">Snap-O</a>
+              <span aria-hidden="true">-</span>
+              <a href="tweaks.html">Tweaks Guide</a>
+            </nav>
+            <h1>Tweaks Protocol</h1>
+            <p class="lead">
+              Read live Compose values, change them, reset defaults, and
+              subscribe to updates through the Snap-O Tweaks HTTP and
+              event-stream protocol.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div class="wrap guide-layout">
+        <article>
+          <section class="guide-section" id="overview">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">1</span>
+              <h2>Protocol overview</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                The Tweaks module exposes HTTP over an app-local abstract
+                Unix-domain socket. Snap-O, custom clients, and authorized
+                agents connect through ADB forwarding. The server does not
+                listen on an Android TCP port or a public network interface,
+                and does not require the <code>INTERNET</code> permission.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Terminal · discover and connect</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="shell">serial=emulator-5554
+socket=snapo_tweaks_12345
+
+adb -s "$serial" shell cat /proc/net/unix
+port="$(adb -s "$serial" forward tcp:0 "localabstract:$socket")"
+base="http://127.0.0.1:$port"
+
+curl -fsS "$base/tweaks"</code></pre>
+              </div>
+
+              <p class="prose">
+                Socket names follow <code>snapo_tweaks_&lt;pid&gt;</code>.
+                Keep the forward alive while your client uses it, and
+                discover and forward the new socket again when the Android
+                app process restarts. When finished, remove only the forward
+                you created:
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Terminal · remove your ADB forward</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="shell">adb -s "$serial" forward --remove "tcp:$port"</code></pre>
+              </div>
+
+              <p class="prose">
+                The Snap-O CLI manages this discovery and cleanup
+                automatically. For a remote ADB server, an ADB forward is
+                local to the server’s host; tunnel it to your client, or use
+                the CLI with both <code>--adb-host</code> and
+                <code>--adb-port</code> for direct ADB transport.
+              </p>
+
+              <p class="prose">
+                Debug builds enable the server by default. A nondebuggable app
+                can enable it only by including the real Tweaks dependency and
+                setting <code>snapo.tweaks.allow_release</code> to
+                <code>true</code> in its application's
+                <code>&lt;application&gt;</code> metadata. Release no-op
+                artifacts remain the recommended default. See
+                <a href="tweaks.html#install">release setup</a> for the
+                manifest example. Network Inspector has its own independent
+                <code>snapo.network.allow_release</code> opt-in.
+              </p>
+
+              <p class="prose">
+                When its optional dependency is installed and its developer
+                setting is enabled, the on-device floating panel observes the
+                same tweak registry directly. Changes from the panel, Snap-O,
+                and custom clients update that shared registry without a
+                separate panel-specific HTTP connection. Host applications
+                observe updates through the event stream or their normal
+                refresh behavior. See the
+                <a href="tweaks.html#floating-overlay">floating overlay setup</a>
+                for Android integration.
+              </p>
+
+              <div class="table-scroll">
+                <table class="config-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Method</th>
+                      <th scope="col">Endpoint</th>
+                      <th scope="col">Purpose</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>GET</code></td>
+                      <td><code>/app</code></td>
+                      <td>Read the app name and package name.</td>
+                    </tr>
+                    <tr>
+                      <td><code>GET</code></td>
+                      <td><code>/app/icon</code></td>
+                      <td>Read the app icon.</td>
+                    </tr>
+                    <tr>
+                      <td><code>GET</code></td>
+                      <td><code>/tweaks</code></td>
+                      <td>List currently composed tweaks and descriptors.</td>
+                    </tr>
+                    <tr>
+                      <td><code>PATCH</code></td>
+                      <td><code>/tweaks</code></td>
+                      <td>Update or reset one or more live values.</td>
+                    </tr>
+                    <tr>
+                      <td><code>GET</code></td>
+                      <td><code>/tweaks/events</code></td>
+                      <td>Subscribe to live tweak snapshots.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p class="notice">
+                <strong>Composition determines visibility.</strong> A tweak
+                can be listed, changed, or streamed only while at least one
+                composable using its name is in composition. Its last edited
+                value is retained within the app process and restored when the
+                same declaration returns.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="get-app">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">2</span>
+              <h2>GET /app</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Read the running app’s user-visible name and Android package
+                name. Use this endpoint to identify which app a client has
+                connected to.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">GET /app HTTP/1.1
+Host: 127.0.0.1</code></pre>
+              </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "name": "Snap-O Tweaks Demo",
+  "packageName": "com.openai.snapo.demo.tweaks"
+}</code></pre>
+              </div>
+            </div>
+          </section>
+
+          <section class="guide-section" id="get-app-icon">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">3</span>
+              <h2>GET /app/icon</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Read the running app’s icon. Use the response’s
+                <code>Content-Type</code> without assuming a particular
+                image format or size.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">GET /app/icon HTTP/1.1
+Host: 127.0.0.1</code></pre>
+              </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">HTTP/1.1 200 OK
+Content-Type: &lt;image media type&gt;
+
+&lt;image bytes&gt;</code></pre>
+              </div>
+
+              <p class="notice">
+                The server returns <code>404 Not Found</code> if an app icon
+                cannot be loaded.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="get-tweaks">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">4</span>
+              <h2>GET /tweaks</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                List the controls currently in composition. Each descriptor
+                includes its full name, value type, default, and current
+                value. Numeric controls also include any configured
+                <code>min</code>, <code>max</code>, and <code>step</code>.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">GET /tweaks HTTP/1.1
+Host: 127.0.0.1</code></pre>
+              </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "tweaks": [
+    {
+      "name": "Typography/Font size",
+      "type": "int",
+      "default": 36,
+      "value": 36,
+      "min": 16,
+      "max": 72,
+      "step": 1
+    },
+    {
+      "name": "Colors/Text",
+      "type": "color",
+      "default": "#18212F",
+      "value": "#18212F"
+    },
+    {
+      "name": "Motion/Show",
+      "type": "boolean",
+      "default": true,
+      "value": true
+    }
+  ]
+}</code></pre>
+              </div>
+
+              <p class="prose">
+                Supported <code>type</code> values are <code>int</code>,
+                <code>float</code>, <code>boolean</code>,
+                <code>color</code>, and <code>string</code>. Colors use
+                <code>#RRGGBB</code> or <code>#RRGGBBAA</code>.
+              </p>
+
+              <p class="prose">
+                Compose color defaults retain their original color space and
+                precision in the app, while HTTP represents them as sRGB
+                hex. <code>Color.Unspecified</code> appears as
+                <code>#00000000</code>. Updating a color with its reported
+                default restores the original Compose value, including when
+                that value does not round-trip through its sRGB hex form.
+              </p>
+
+              <p class="prose">
+                Integer values must be whole numbers. Floating-point values
+                may be whole or fractional. When present, a numeric
+                <code>step</code> is relative to <code>min</code>, or to the
+                tweak's <code>default</code> when no minimum is specified.
+                Reusing a name shares one value across active composables;
+                its type, default, and constraints must match everywhere.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="patch-tweaks">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">5</span>
+              <h2>PATCH /tweaks</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Update one or more registered tweaks in a single request.
+                Send <code>application/json</code> and put the complete tweak
+                names and their new primitive values in a
+                <code>values</code> object.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">PATCH /tweaks HTTP/1.1
+Host: 127.0.0.1
+Content-Type: application/json
+Content-Length: 78
+
+{
+  "values": {
+    "Typography/Font size": 48,
+    "Motion/Show": false
+  }
+}</code></pre>
+              </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "tweaks": [
+    {
+      "name": "Typography/Font size",
+      "value": 48
+    },
+    {
+      "name": "Motion/Show",
+      "value": false
+    }
+  ]
+}</code></pre>
+              </div>
+
+              <p class="notice">
+                <strong>Updates are validated together.</strong> Every tweak
+                must exist, match its declared type, and satisfy its numeric
+                bounds and step before any value is changed. A successful
+                response includes only the updated names and values.
+              </p>
+
+              <h3>Reset to the default</h3>
+              <p class="prose">
+                There is no separate reset endpoint. Send the
+                <code>default</code> reported by <code>GET /tweaks</code>
+                through the same update request.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request · Reset</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "values": {
+    "Typography/Font size": 36,
+    "Motion/Show": true
+  }
+}</code></pre>
+              </div>
+            </div>
+          </section>
+
+          <section class="guide-section" id="tweak-events">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">6</span>
+              <h2>GET /tweaks/events</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Subscribe to the current full tweak snapshot and subsequent
+                changes as controls are registered, removed, or updated.
+                The response uses server-sent events with the
+                <code>text/event-stream</code> content type.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">GET /tweaks/events HTTP/1.1
+Host: 127.0.0.1
+Accept: text/event-stream</code></pre>
+              </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">HTTP/1.1 200 OK
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache
+
+event: tweaks
+data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":36,"min":16,"max":72,"step":1}]}
+
+event: tweaks
+data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":48,"min":16,"max":72,"step":1}]}
+
+: keep-alive</code></pre>
+              </div>
+
+              <p class="notice">
+                Each <code>tweaks</code> event contains a complete current
+                snapshot, not a patch. Replace your client’s current control
+                list with the received <code>tweaks</code> array. Lines
+                starting with <code>:</code> are keep-alive comments.
+              </p>
+
+              <p class="prose">
+                The first event arrives immediately. Later changes made within
+                the same Android main-thread turn are combined into one
+                ordered snapshot, including values changed by the on-device
+                overlay. An omitted tweak has left composition. Slow clients
+                receive the newest complete snapshot instead of accumulating
+                every intermediate state.
+              </p>
+
+              <p class="notice">
+                <strong>Browser clients need a same-origin proxy.</strong>
+                The Android server does not provide CORS headers or handle
+                browser <code>OPTIONS</code> preflight. Serve your interface
+                and its forwarded API through the same origin; native and
+                server-side HTTP clients do not have this restriction.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="errors">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">7</span>
+              <h2>Error responses</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Errors return a JSON object containing an
+                <code>error</code> message and the relevant HTTP status.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 422 Unprocessable Entity</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "error": "Invalid value for Typography/Font size: Value exceeds the maximum."
+}</code></pre>
+              </div>
+
+              <div class="table-scroll">
+                <table class="config-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Status</th>
+                      <th scope="col">Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>400 Bad Request</code></td>
+                      <td>Malformed request, invalid JSON, or a missing <code>values</code> object.</td>
+                    </tr>
+                    <tr>
+                      <td><code>404 Not Found</code></td>
+                      <td>Unknown endpoint, unavailable icon, or tweak not currently in composition.</td>
+                    </tr>
+                    <tr>
+                      <td><code>405 Method Not Allowed</code></td>
+                      <td>Unsupported endpoint method. The <code>Allow</code> response header lists valid methods.</td>
+                    </tr>
+                    <tr>
+                      <td><code>408 Request Timeout</code></td>
+                      <td>The request did not complete within the server’s timeout.</td>
+                    </tr>
+                    <tr>
+                      <td><code>413 Payload Too Large</code></td>
+                      <td>The JSON request exceeds the server’s maximum request size.</td>
+                    </tr>
+                    <tr>
+                      <td><code>422 Unprocessable Entity</code></td>
+                      <td>A value has the wrong type, invalid color, or violates its bounds or step.</td>
+                    </tr>
+                    <tr>
+                      <td><code>500 Internal Server Error</code></td>
+                      <td>An unexpected failure occurred while processing a tweak update.</td>
+                    </tr>
+                    <tr>
+                      <td><code>503 Service Unavailable</code></td>
+                      <td>The connection limit was reached, or the Android main thread is unavailable.</td>
+                    </tr>
+                    <tr>
+                      <td><code>504 Gateway Timeout</code></td>
+                      <td>A tweak update timed out waiting for the Android main thread.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </article>
+
+        <aside class="quick-jump" aria-label="On this page">
+          <nav>
+            <ol class="quick-jump-list">
+              <li><a class="quick-jump-link" href="#overview">Protocol overview</a></li>
+              <li><a class="quick-jump-link" href="#get-app">GET /app</a></li>
+              <li><a class="quick-jump-link" href="#get-app-icon">GET /app/icon</a></li>
+              <li><a class="quick-jump-link" href="#get-tweaks">GET /tweaks</a></li>
+              <li><a class="quick-jump-link" href="#patch-tweaks">PATCH /tweaks</a></li>
+              <li><a class="quick-jump-link" href="#tweak-events">GET /tweaks/events</a></li>
+              <li><a class="quick-jump-link" href="#errors">Error responses</a></li>
+            </ol>
+          </nav>
+        </aside>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap footer-row">
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+      </div>
+    </footer>
+
+    <script>
+      window.Prism = { manual: true };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-http.min.js"></script>
+    <script>
+      const escapeHtml = (value) =>
+        value.replace(
+          /[&<>"']/g,
+          (character) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            })[character],
+        );
+
+      for (const code of document.querySelectorAll(".syntax-code")) {
+        const source = code.textContent;
+        const language = code.dataset.language;
+        const grammar = window.Prism?.languages?.[language];
+
+        code.dataset.copyText = source;
+        code.innerHTML = grammar
+          ? Prism.highlight(source, grammar, language)
+          : escapeHtml(source);
+      }
+
+      for (const button of document.querySelectorAll(".copy-button")) {
+        button.addEventListener("click", async () => {
+          const code = button.closest(".code-block").querySelector("code");
+          await navigator.clipboard.writeText(code.dataset.copyText || code.innerText);
+          button.textContent = "Copied";
+          window.setTimeout(() => {
+            button.textContent = "Copy";
+          }, 1400);
+        });
+      }
+
+      const sections = [...document.querySelectorAll(".guide-section")];
+      const jumpLinks = [...document.querySelectorAll(".quick-jump-link")];
+
+      if ("IntersectionObserver" in window && jumpLinks.length > 0) {
+        const setCurrentSection = (id) => {
+          for (const link of jumpLinks) {
+            if (link.hash === `#${id}`) {
+              link.setAttribute("aria-current", "location");
+            } else {
+              link.removeAttribute("aria-current");
+            }
+          }
+        };
+
+        const sectionObserver = new IntersectionObserver(
+          (entries) => {
+            const visibleSection = entries
+              .filter((entry) => entry.isIntersecting)
+              .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+
+            if (visibleSection) {
+              setCurrentSection(visibleSection.target.id);
+            }
+          },
+          { rootMargin: "-18% 0px -68%", threshold: 0 },
+        );
+
+        for (const section of sections) {
+          sectionObserver.observe(section);
+        }
+
+        setCurrentSection(sections[0].id);
+      }
+
+      document.getElementById("year").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
