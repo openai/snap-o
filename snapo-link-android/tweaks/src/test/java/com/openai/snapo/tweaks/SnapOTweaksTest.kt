@@ -1,12 +1,14 @@
 package com.openai.snapo.tweaks
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import com.openai.snapo.tweaks.internal.TweakDescriptor
 import com.openai.snapo.tweaks.internal.TweakRegistry
 import com.openai.snapo.tweaks.internal.TweakType
 import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -182,7 +184,7 @@ class SnapOTweaksTest {
         val descriptor = TweakDescriptor(
             name = "Colors/Accent",
             type = TweakType.COLOR,
-            default = "#5468FF",
+            default = "#5468FF".toTweakColorValue(),
         )
         val state = TweakRegistry.register(descriptor)
 
@@ -196,7 +198,58 @@ class SnapOTweaksTest {
             SnapOTweakValue.ColorValue(Color(0xFF112233)),
         )
 
-        assertEquals("#112233", state.value)
+        assertEquals("#112233", (state.value as TweakColorValue).wireValue)
+    }
+
+    @Test
+    fun `color entries preserve exact defaults and overlay resets`() {
+        val default = Color(
+            red = 0.25f,
+            green = 0.5f,
+            blue = 0.75f,
+            alpha = 0.3f,
+            colorSpace = ColorSpaces.DisplayP3,
+        )
+        val descriptor = TweakDescriptor(
+            name = "Colors/Exact accent",
+            type = TweakType.COLOR,
+            default = default.toTweakColorValue(),
+        )
+        val state = TweakRegistry.register(descriptor)
+        val entry = SnapOTweaks.activeTweakEntries().value.single()
+        val projectedSrgb = default.toTweakColor().toTweakColor()
+        val edited = Color(
+            red = 0.9f,
+            green = 0.1f,
+            blue = 0.2f,
+            alpha = 0.7f,
+            colorSpace = ColorSpaces.DisplayP3,
+        )
+
+        assertEquals(SnapOTweakValue.ColorValue(default), entry.value.value)
+        assertEquals(SnapOTweakValue.ColorValue(default), entry.defaultValue)
+
+        SnapOTweaks.update(
+            descriptor.name,
+            SnapOTweakValue.ColorValue(projectedSrgb),
+        )
+
+        assertNotEquals(default, projectedSrgb)
+        assertEquals(projectedSrgb, (state.value as TweakColorValue).color)
+        assertEquals(SnapOTweakValue.ColorValue(projectedSrgb), entry.value.value)
+
+        SnapOTweaks.update(
+            descriptor.name,
+            SnapOTweakValue.ColorValue(edited),
+        )
+
+        assertEquals(edited, (state.value as TweakColorValue).color)
+        assertEquals(SnapOTweakValue.ColorValue(edited), entry.value.value)
+
+        SnapOTweaks.update(descriptor.name, entry.defaultValue)
+
+        assertEquals(default, (state.value as TweakColorValue).color)
+        assertEquals(SnapOTweakValue.ColorValue(default), entry.value.value)
     }
 
     @Test

@@ -6,8 +6,6 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.isSpecified
-import androidx.compose.ui.graphics.toArgb
 import com.openai.snapo.tweaks.internal.TweakDescriptor
 import com.openai.snapo.tweaks.internal.TweakRegistry
 import com.openai.snapo.tweaks.internal.TweakType
@@ -59,17 +57,15 @@ fun tweakColor(
     name: String,
     default: Color,
 ): State<Color> {
-    val encodedDefault = default.toTweakColor()
+    val defaultValue = default.toTweakColorValue()
     return rememberTweakState(
         TweakDescriptor(
             name = name,
             type = TweakType.COLOR,
-            default = encodedDefault,
+            default = defaultValue,
         ),
         default = default,
-    ) { value ->
-        decodeTweakColor(value, default, encodedDefault)
-    }
+    ) { value -> (value as TweakColorValue).color }
 }
 
 /** Exposes a boolean tweak as observable state. */
@@ -141,55 +137,4 @@ internal class TweakRegistration<T>(
             registered = false
         }
     }
-}
-
-internal fun decodeTweakColor(
-    value: Any,
-    default: Color,
-    encodedDefault: String,
-): Color {
-    val encodedValue = value as String
-
-    return if (encodedValue == encodedDefault) {
-        default
-    } else {
-        encodedValue.toTweakColor()
-    }
-}
-
-internal fun Color.toTweakColor(): String {
-    val argb = if (isSpecified) toArgb() else 0
-    val redGreenBlue = (argb and 0x00FF_FFFF)
-        .toString(radix = 16)
-        .padStart(length = 6, padChar = '0')
-        .uppercase()
-    val alpha = argb ushr 24
-
-    return if (alpha == 0xFF) {
-        "#$redGreenBlue"
-    } else {
-        val alphaHex = alpha
-            .toString(radix = 16)
-            .padStart(length = 2, padChar = '0')
-            .uppercase()
-        "#$redGreenBlue$alphaHex"
-    }
-}
-
-internal fun String.toTweakColor(): Color {
-    require(startsWith('#')) { "Tweak colors must start with #." }
-
-    val digits = substring(startIndex = 1)
-    val argb = when (digits.length) {
-        6 -> 0xFF00_0000L or digits.toLong(radix = 16)
-        8 -> {
-            val rgba = digits.toLong(radix = 16)
-            val alpha = rgba and 0xFF
-            (alpha shl 24) or (rgba ushr 8)
-        }
-
-        else -> error("Tweak colors must use #RRGGBB or #RRGGBBAA.")
-    }
-
-    return Color(argb.toInt())
 }

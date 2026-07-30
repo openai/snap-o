@@ -8,6 +8,9 @@ import com.openai.snapo.tweaks.internal.TweakRegistry
 import com.openai.snapo.tweaks.internal.TweakType
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -222,13 +225,21 @@ class TweakRegistrationTest {
             colorSpace = ColorSpaces.DisplayP3,
         )
         val encodedDefault = default.toTweakColor()
-        val descriptor = colorDescriptor(encodedDefault)
+        val descriptor = colorDescriptor(default)
         val state = TweakRegistration(descriptor) { value ->
-            decodeTweakColor(value, default, encodedDefault)
+            (value as TweakColorValue).color
         }
         state.onRemembered()
 
         assertEquals(default, state.value)
+        assertEquals(
+            SnapOTweakValue.ColorValue(default),
+            SnapOTweaks.activeTweakEntries().value.single().defaultValue,
+        )
+        assertEquals(
+            SnapOTweakValue.ColorValue(default),
+            SnapOTweaks.activeTweakEntries().value.single().value.value,
+        )
 
         TweakRegistry.update(mapOf(descriptor.name to "#112233"))
         assertEquals(Color(0xFF112233), state.value)
@@ -242,9 +253,9 @@ class TweakRegistrationTest {
     @Test
     fun `unspecified color defaults remain unspecified until edited`() {
         val encodedDefault = Color.Unspecified.toTweakColor()
-        val descriptor = colorDescriptor(encodedDefault)
+        val descriptor = colorDescriptor(Color.Unspecified)
         val state = TweakRegistration(descriptor) { value ->
-            decodeTweakColor(value, Color.Unspecified, encodedDefault)
+            (value as TweakColorValue).color
         }
         state.onRemembered()
 
@@ -260,6 +271,96 @@ class TweakRegistrationTest {
         state.onForgotten()
     }
 
+    @Test
+    fun `same exact color defaults share retained state`() {
+        val default = Color(
+            red = 0.25f,
+            green = 0.5f,
+            blue = 0.75f,
+            alpha = 0.3f,
+            colorSpace = ColorSpaces.DisplayP3,
+        )
+        val firstDescriptor = colorDescriptor(
+            default = default,
+            name = "Lifecycle shared exact color",
+        )
+        val secondDescriptor = colorDescriptor(
+            default = default,
+            name = firstDescriptor.name,
+        )
+
+        val first = TweakRegistry.register(firstDescriptor)
+        val second = TweakRegistry.register(secondDescriptor)
+
+        assertSame(first, second)
+        assertEquals(default, (first.value as TweakColorValue).color)
+
+        TweakRegistry.unregister(firstDescriptor.name)
+        TweakRegistry.unregister(firstDescriptor.name)
+    }
+
+    @Test
+    fun `unspecified and transparent defaults retain independent histories`() {
+        assertIndependentColorHistories(
+            firstDefault = Color.Unspecified,
+            secondDefault = Color.Transparent,
+            name = "Lifecycle unspecified and transparent colors",
+        )
+    }
+
+    @Test
+    fun `color-space collisions retain independent histories`() {
+        val displayP3 = Color(
+            red = 0.25f,
+            green = 0.5f,
+            blue = 0.75f,
+            alpha = 1f,
+            colorSpace = ColorSpaces.DisplayP3,
+        )
+        val projectedSrgb = displayP3.toTweakColor().toTweakColor()
+
+        assertIndependentColorHistories(
+            firstDefault = displayP3,
+            secondDefault = projectedSrgb,
+            name = "Lifecycle color-space collisions",
+        )
+    }
+
+    @Test
+    fun `quantized alpha collisions retain independent histories`() {
+        val first = Color(
+            red = 0.25f,
+            green = 0.5f,
+            blue = 0.75f,
+            alpha = 0.5f,
+            colorSpace = ColorSpaces.DisplayP3,
+        )
+        val second = Color(
+            red = 0.25f,
+            green = 0.5f,
+            blue = 0.75f,
+            alpha = 0.5015f,
+            colorSpace = ColorSpaces.DisplayP3,
+        )
+
+        assertIndependentColorHistories(
+            firstDefault = first,
+            secondDefault = second,
+            name = "Lifecycle quantized alpha collisions",
+        )
+    }
+
+    @Test
+    fun `unsupported packed colors fail with a clear error`() {
+        val unsupported = Color(value = ULong.MAX_VALUE)
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            unsupported.toTweakColorValue()
+        }
+
+        assertTrue(error.message.orEmpty().contains("convertible to sRGB"))
+    }
+
     private fun registration(descriptor: TweakDescriptor) =
         TweakRegistration(descriptor) { value -> value as Int }
 
@@ -270,10 +371,49 @@ class TweakRegistrationTest {
         assertTrue(SnapOTweaks.activeTweakEntries().value.isEmpty())
     }
 
-    private fun colorDescriptor(default: String) = TweakDescriptor(
-        name = "Lifecycle remembered color tweak",
+    private fun assertIndependentColorHistories(
+        firstDefault: Color,
+        secondDefault: Color,
+        name: String,
+    ) {
+        val firstDescriptor = colorDescriptor(firstDefault, name)
+        val secondDescriptor = colorDescriptor(secondDefault, name)
+
+        assertNotEquals(firstDefault, secondDefault)
+        assertEquals(
+            (firstDescriptor.default as TweakColorValue).wireValue,
+            (secondDescriptor.default as TweakColorValue).wireValue,
+        )
+        assertNotEquals(firstDescriptor, secondDescriptor)
+
+        val firstState = TweakRegistry.register(firstDescriptor)
+        TweakRegistry.update(mapOf(name to "#112233"))
+        TweakRegistry.unregister(name)
+
+        val secondState = TweakRegistry.register(secondDescriptor)
+        assertNotSame(firstState, secondState)
+        assertEquals(secondDefault, (secondState.value as TweakColorValue).color)
+        TweakRegistry.update(mapOf(name to "#445566"))
+        TweakRegistry.unregister(name)
+
+        val restoredFirst = TweakRegistry.register(firstDescriptor)
+        assertSame(firstState, restoredFirst)
+        assertEquals(Color(0xFF112233), (restoredFirst.value as TweakColorValue).color)
+        TweakRegistry.unregister(name)
+
+        val restoredSecond = TweakRegistry.register(secondDescriptor)
+        assertSame(secondState, restoredSecond)
+        assertEquals(Color(0xFF445566), (restoredSecond.value as TweakColorValue).color)
+        TweakRegistry.unregister(name)
+    }
+
+    private fun colorDescriptor(
+        default: Color,
+        name: String = "Lifecycle remembered color tweak",
+    ) = TweakDescriptor(
+        name = name,
         type = TweakType.COLOR,
-        default = default,
+        default = default.toTweakColorValue(),
     )
 
     private fun descriptor() = TweakDescriptor(

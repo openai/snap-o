@@ -105,7 +105,7 @@ internal fun TweakDescriptor.toSnapOTweakValue(value: Any): SnapOTweakValue = wh
     )
 
     TweakType.BOOLEAN -> SnapOTweakValue.Toggle(value as Boolean)
-    TweakType.COLOR -> SnapOTweakValue.ColorValue((value as String).toTweakColor())
+    TweakType.COLOR -> SnapOTweakValue.ColorValue((value as TweakColorValue).color)
     TweakType.STRING -> SnapOTweakValue.Text(value as String)
 }
 
@@ -113,6 +113,6 @@ private fun SnapOTweakValue.toRegistryValue(): Any = when (this) {
     is SnapOTweakValue.Integer -> value
     is SnapOTweakValue.Floating -> value
     is SnapOTweakValue.Toggle -> value
-    is SnapOTweakValue.ColorValue -> value.toTweakColor()
+    is SnapOTweakValue.ColorValue -> value.toTweakColorValue()
     is SnapOTweakValue.Text -> value
 }
