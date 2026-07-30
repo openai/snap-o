@@ -119,13 +119,37 @@ export function TweaksInspectorApp({
     };
   }, [client, queue, server]);
 
+  const openNativeColorPanel = useCallback(
+    (tweak: TweakDescriptor, present = true) => {
+      if (!hasNativeColorPanel || client.openNativeColorPanel === undefined) {
+        activeColorPanel.current = null;
+        return;
+      }
+
+      const sessionId = String(++nextColorPanelSession);
+      activeColorPanel.current = { tweak, sessionId };
+      void client.openNativeColorPanel(String(tweak.value), sessionId, present).catch((cause: unknown) => {
+        if (activeColorPanel.current?.sessionId !== sessionId) return;
+
+        activeColorPanel.current = null;
+        setError(cause instanceof Error ? cause.message : "Unable to open the color picker.");
+      });
+    },
+    [client, hasNativeColorPanel]
+  );
+
   const updateTweak = useCallback(
     (tweak: TweakDescriptor, value: TweakValue) => {
+      const active = activeColorPanel.current;
+      if (active?.tweak.name === tweak.name && active.tweak.value !== value) {
+        openNativeColorPanel({ ...tweak, value }, false);
+      }
+
       setTweaks((current) => current.map((item) => (item.name === tweak.name ? { ...item, value } : item)));
       queue.enqueue(tweak.name, value);
       void queue.flush();
     },
-    [queue]
+    [openNativeColorPanel, queue]
   );
 
   useEffect(() => {
@@ -133,8 +157,18 @@ export function TweaksInspectorApp({
     if (active === null) return;
 
     const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
-    activeColorPanel.current = tweak === undefined ? null : { ...active, tweak };
-  }, [tweaks]);
+    if (tweak === undefined) {
+      activeColorPanel.current = null;
+      return;
+    }
+
+    if (tweak.value === active.tweak.value) {
+      activeColorPanel.current = { ...active, tweak };
+      return;
+    }
+
+    openNativeColorPanel(tweak, false);
+  }, [openNativeColorPanel, tweaks]);
 
   useEffect(() => {
     if (!hasNativeColorPanel || client.onNativeColorPanelChange === undefined) return;
@@ -144,7 +178,10 @@ export function TweaksInspectorApp({
       if (active === null) return;
 
       const value = nativePanelTweakColor(event, active.sessionId);
-      if (value !== null) updateTweak(active.tweak, value);
+      if (value === null) return;
+
+      activeColorPanel.current = { ...active, tweak: { ...active.tweak, value } };
+      updateTweak(active.tweak, value);
     });
 
     return () => {
@@ -152,20 +189,6 @@ export function TweaksInspectorApp({
       unsubscribe();
     };
   }, [client, hasNativeColorPanel, updateTweak]);
-
-  const openNativeColorPanel = useCallback(
-    (tweak: TweakDescriptor) => {
-      if (!hasNativeColorPanel || client.openNativeColorPanel === undefined) return;
-
-      const sessionId = String(++nextColorPanelSession);
-      activeColorPanel.current = { tweak, sessionId };
-      void client.openNativeColorPanel(String(tweak.value), sessionId).catch((cause: unknown) => {
-        if (activeColorPanel.current?.sessionId === sessionId) activeColorPanel.current = null;
-        setError(cause instanceof Error ? cause.message : "Unable to open the color picker.");
-      });
-    },
-    [client, hasNativeColorPanel]
-  );
 
   const resetAll = useCallback(() => {
     for (const tweak of tweaks) {

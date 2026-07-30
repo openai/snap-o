@@ -47,6 +47,16 @@ describe("editable tweak colors", () => {
     expect(nativePanelTweakColor({ color: "#a1b2c344", sessionId: "previous" }, "active")).toBeNull();
   });
 
+  it("keeps panel-originated changes on the current session", () => {
+    expect(nativePanelTweakColor({ color: "#11223380", sessionId: "current" }, "current")).toBe("#11223380");
+    expect(nativePanelTweakColor({ color: "#44556640", sessionId: "current" }, "current")).toBe("#44556640");
+  });
+
+  it("rejects queued panel events after an external change refreshes its session", () => {
+    expect(nativePanelTweakColor({ color: "#11223380", sessionId: "before-sync" }, "after-sync")).toBeNull();
+    expect(nativePanelTweakColor({ color: "#44556640", sessionId: "after-sync" }, "after-sync")).toBe("#44556640");
+  });
+
   it("keeps the alpha component when a native color is translucent", () => {
     expect(nativePanelTweakColor({ color: "#a1b2c380", sessionId: "active" }, "active")).toBe("#A1B2C380");
   });

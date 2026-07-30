@@ -156,6 +156,9 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
       alpha: alpha
     )
     let panel = NSColorPanel.shared
+    let shouldPresent = input.present ?? true
+    guard shouldPresent || (Self.colorPanelOwner === self && panel.isVisible) else { return }
+
     let presentationWindow = NSApp.mainWindow
     let shouldCenterPanel = !panel.isVisible || Self.colorPanelOwner !== self
     panel.setTarget(nil)
@@ -171,7 +174,9 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     if shouldCenterPanel {
       positionColorPanel(panel, over: presentationWindow)
     }
-    panel.makeKeyAndOrderFront(nil)
+    if shouldPresent {
+      panel.makeKeyAndOrderFront(nil)
+    }
   }
 
   private func positionColorPanel(_ panel: NSColorPanel, over window: NSWindow?) {
@@ -271,5 +276,6 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   private struct NativeColorPanelInput: Decodable {
     let color: String
     let sessionId: String
+    let present: Bool?
   }
 }
