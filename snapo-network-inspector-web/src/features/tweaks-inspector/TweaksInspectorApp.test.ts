@@ -1,7 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TweakDescriptor } from "../../network/bridge-types";
+import { createNetworkClient } from "../../network/client";
 import {
   canResetTweaks,
   groupTweaks,
@@ -55,6 +56,23 @@ describe("editable tweak colors", () => {
   it("rejects queued panel events after an external change refreshes its session", () => {
     expect(nativePanelTweakColor({ color: "#11223380", sessionId: "before-sync" }, "after-sync")).toBeNull();
     expect(nativePanelTweakColor({ color: "#44556640", sessionId: "after-sync" }, "after-sync")).toBe("#44556640");
+  });
+
+  it("closes only the native color-panel session that lost its tweak", async () => {
+    const postMessage = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("window", { webkit: { messageHandlers: { snapoNetwork: { postMessage } } } });
+
+    try {
+      const client = createNetworkClient();
+      await client.closeNativeColorPanel?.("removed-session");
+
+      expect(postMessage).toHaveBeenCalledWith({
+        command: "closeNativeColorPanel",
+        payload: { sessionId: "removed-session" }
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps the alpha component when a native color is translucent", () => {

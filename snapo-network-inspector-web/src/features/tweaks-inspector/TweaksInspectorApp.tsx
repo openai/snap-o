@@ -159,6 +159,11 @@ export function TweaksInspectorApp({
     const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
     if (tweak === undefined) {
       activeColorPanel.current = null;
+      void client.closeNativeColorPanel?.(active.sessionId).catch((cause: unknown) => {
+        if (activeColorPanel.current !== null) return;
+
+        setError(cause instanceof Error ? cause.message : "Unable to close the color picker.");
+      });
       return;
     }
 
@@ -168,7 +173,7 @@ export function TweaksInspectorApp({
     }
 
     openNativeColorPanel(tweak, false);
-  }, [openNativeColorPanel, tweaks]);
+  }, [client, openNativeColorPanel, tweaks]);
 
   useEffect(() => {
     if (!hasNativeColorPanel || client.onNativeColorPanelChange === undefined) return;

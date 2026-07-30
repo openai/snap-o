@@ -84,6 +84,12 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "openNativeColorPanel":
       try openNativeColorPanel(Self.decode(NativeColorPanelInput.self, from: payload))
       return nil
+    case "closeNativeColorPanel":
+      let input = try Self.decode(NativeColorPanelSessionInput.self, from: payload)
+      if activeColorPanelSessionID == input.sessionId {
+        closeNativeColorPanel()
+      }
+      return nil
     case "startTweakStream":
       let reference = try Self.decode(InspectorServerReference.self, from: payload)
       return try await Self.jsonObject(service.startTweakStream(reference))
@@ -277,5 +283,9 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     let color: String
     let sessionId: String
     let present: Bool?
+  }
+
+  private struct NativeColorPanelSessionInput: Decodable {
+    let sessionId: String
   }
 }
