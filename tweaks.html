@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tweaks Guide · Snap-O</title>
+    <meta
+      name="description"
+      content="Expose Jetpack Compose values to Snap-O and adjust them live with App Inspector, an on-device panel, the REST API, or an agent."
+    />
+    <link rel="icon" type="image/png" href="assets/icon-64.png" />
+    <style>
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
+      }
+
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --ink: #0b0c0b;
+        --muted: #565a55;
+        --line: #d8dbd4;
+        --navy: #071321;
+        --lime: #23b515;
+        --green: #18820f;
+        --maxw: 1200px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--bg);
+        font: 16px/1.6 "OpenAI Sans", Arial, sans-serif;
+        font-feature-settings: "liga" on, "calt" on;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      ::selection {
+        background: rgba(111, 214, 138, 0.24);
+      }
+
+      a {
+        color: inherit;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
+      }
+
+      a:hover {
+        color: var(--green);
+      }
+
+      a:focus-visible,
+      button:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 4px;
+      }
+
+      .wrap {
+        width: min(100%, var(--maxw));
+        margin-inline: auto;
+        padding-inline: clamp(20px, 4vw, 48px);
+      }
+
+      .guide-hero {
+        padding-block: clamp(42px, 6vw, 72px) clamp(54px, 7vw, 82px);
+      }
+
+      .hero-copy {
+        max-width: 760px;
+      }
+
+      .back-link {
+        display: inline-flex;
+        margin-bottom: clamp(46px, 7vw, 78px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        text-decoration: none;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 2.25rem;
+        line-height: 1.17;
+        letter-spacing: -0.025em;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .lead {
+        max-width: 58ch;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: clamp(1.04rem, 1.5vw, 1.16rem);
+        line-height: 1.55;
+        text-wrap: pretty;
+      }
+
+      .guide-layout {
+        padding-bottom: 48px;
+      }
+
+      article {
+        max-width: 860px;
+      }
+
+      .guide-layout > *,
+      article {
+        min-width: 0;
+      }
+
+      .guide-section {
+        scroll-margin-top: 96px;
+        padding-block: 28px 64px;
+        border-top: 1px solid var(--line);
+      }
+
+      .guide-section + .guide-section {
+        padding-top: 34px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+        letter-spacing: 0;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+      .section-heading {
+        position: relative;
+        margin-bottom: 10px;
+        padding-left: 44px;
+      }
+
+      .section-heading h2 {
+        min-height: 27px;
+        display: flex;
+        align-items: center;
+      }
+
+      .section-heading .step {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .section-body {
+        min-width: 0;
+        padding-left: 44px;
+      }
+
+      h3 {
+        margin: 36px 0 10px;
+        font-size: 1.15rem;
+        line-height: 1.35;
+        letter-spacing: -0.015em;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      p + p {
+        margin-top: 14px;
+      }
+
+      .prose {
+        color: var(--muted);
+        text-wrap: pretty;
+      }
+
+      .notice {
+        margin: 26px 0;
+        padding: 2px 0 2px 18px;
+        border-left: 3px solid var(--lime);
+        color: var(--muted);
+      }
+
+      .notice strong {
+        color: var(--ink);
+      }
+
+      .code-block {
+        max-width: 100%;
+        margin: 22px 0 0;
+        overflow: hidden;
+        color: #eef3ed;
+        background: var(--navy);
+        border-radius: 6px;
+      }
+
+      .code-head {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding-inline: 16px 10px;
+        color: #aeb9c2;
+        border-bottom: 1px solid #263342;
+        font: 500 0.72rem/1 "SF Mono", Consolas, "Liberation Mono",
+          ui-monospace, monospace;
+      }
+
+      .syntax-code .code-line {
+        display: block;
+      }
+
+      .syntax-code .code-line:empty::before {
+        content: "\00a0";
+      }
+
+      .syntax-code .code-line-muted {
+        opacity: 0.48;
+      }
+
+      .syntax-code .code-line-emphasis {
+        font-weight: 500;
+      }
+
+      .syntax-code .token.keyword,
+      .syntax-code .token.boolean,
+      .syntax-code .token.builtin {
+        color: #d2a8ff;
+      }
+
+      .syntax-code .token.function,
+      .syntax-code .token.attr-name {
+        color: #9dd8ff;
+      }
+
+      .syntax-code .token.class-name,
+      .syntax-code .token.constant,
+      .syntax-code .token.tag {
+        color: #f2cc60;
+      }
+
+      .syntax-code .token.string,
+      .syntax-code .token.attr-value {
+        color: #e5c07b;
+      }
+
+      .syntax-code .token.number {
+        color: #ffb86b;
+      }
+
+      .syntax-code .token.operator,
+      .syntax-code .token.annotation,
+      .syntax-code .token.symbol {
+        color: #ff9b8f;
+      }
+
+      .syntax-code .token.punctuation {
+        color: #aeb9c2;
+      }
+
+      .syntax-code .token.comment {
+        color: #79b8a4;
+        font-style: italic;
+      }
+
+      .copy-button {
+        min-height: 30px;
+        padding: 0 8px;
+        color: #d8dfd6;
+        background: transparent;
+        border: 1px solid #42505d;
+        border-radius: 3px;
+        font: inherit;
+      }
+
+      .copy-button:hover {
+        color: var(--navy);
+        background: var(--lime);
+        border-color: var(--lime);
+      }
+
+      pre {
+        margin: 0;
+        padding: 20px;
+        overflow-x: auto;
+        font: 0.84rem/1.7 "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+        tab-size: 2;
+      }
+
+      code {
+        font-family: "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+      }
+
+      :not(pre) > code {
+        padding: 0.12em 0.35em;
+        color: var(--green);
+        background: rgba(35, 181, 21, 0.08);
+        border-radius: 3px;
+        font-size: 0.88em;
+        overflow-wrap: anywhere;
+      }
+
+      .dependency-format-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 22px;
+        margin-top: 22px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .dependency-format-tab {
+        margin: 0 0 -1px;
+        padding: 0 0 9px;
+        color: var(--muted);
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        font: 500 0.86rem/1.4 "OpenAI Sans", Arial, sans-serif;
+      }
+
+      .dependency-format-tab:hover {
+        color: var(--ink);
+      }
+
+      .dependency-format-tab[aria-selected="true"] {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+      .dependency-format-panel[hidden] {
+        display: none;
+      }
+
+      .dependency-format-panel .code-block {
+        margin-top: 18px;
+      }
+
+      .table-scroll {
+        max-width: 100%;
+        margin-top: 20px;
+        overflow-x: auto;
+      }
+
+      .config-table {
+        width: 100%;
+        min-width: 620px;
+        border-collapse: collapse;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: left;
+      }
+
+      .config-table th,
+      .config-table td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      .config-table th {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .config-table th:first-child,
+      .config-table td:first-child {
+        padding-left: 0;
+      }
+
+      .config-table th:last-child,
+      .config-table td:last-child {
+        padding-right: 0;
+      }
+
+      .verify-list,
+      .check-list {
+        margin: 24px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .verify-list {
+        counter-reset: verify;
+      }
+
+      .verify-list li {
+        counter-increment: verify;
+        display: grid;
+        grid-template-columns: 27px minmax(0, 1fr);
+        gap: 14px;
+        padding-block: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .verify-list li::before {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        content: counter(verify);
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+      .check-list li {
+        position: relative;
+        padding: 10px 0 10px 24px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .check-list li::before {
+        position: absolute;
+        top: 1.25rem;
+        left: 2px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        content: "";
+        background: var(--lime);
+      }
+
+      .quick-jump {
+        display: none;
+      }
+
+      footer {
+        padding-bottom: 30px;
+      }
+
+      .footer-row {
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        font-size: 0.8rem;
+      }
+
+      @media (min-width: 1280px) {
+        .quick-jump {
+          position: fixed;
+          z-index: 10;
+          top: 96px;
+          right: clamp(32px, 4vw, 56px);
+          display: block;
+          width: 200px;
+          max-height: calc(100vh - 120px);
+          overflow-y: auto;
+        }
+
+        .quick-jump-list {
+          position: relative;
+          margin: 0;
+          padding: 0 0 0 14px;
+          list-style: none;
+          border-left: 2px solid #eceee9;
+        }
+
+        .quick-jump-list li + li {
+          margin-top: 12px;
+        }
+
+        .quick-jump-link {
+          position: relative;
+          display: block;
+          color: #777c76;
+          font-size: 0.875rem;
+          line-height: 1.4;
+          text-decoration: none;
+          transition: color 140ms ease;
+        }
+
+        .quick-jump-link::before {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: -16px;
+          width: 2px;
+          content: "";
+          background: transparent;
+        }
+
+        .quick-jump-link:hover {
+          color: var(--ink);
+        }
+
+        .quick-jump-link[aria-current="location"] {
+          color: var(--ink);
+          font-weight: 500;
+        }
+
+        .quick-jump-link[aria-current="location"]::before {
+          background: var(--ink);
+        }
+      }
+
+      @media (max-width: 520px) {
+        .guide-hero {
+          padding-block: 34px 50px;
+        }
+
+        h1 {
+          font-size: 1.875rem;
+          line-height: 1.2;
+        }
+
+        .guide-section {
+          padding-bottom: 52px;
+        }
+
+        .guide-section + .guide-section {
+          padding-top: 46px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+
+        .quick-jump-link {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <section class="guide-hero">
+        <div class="wrap">
+          <div class="hero-copy">
+            <a class="back-link" href="index.html">Snap-O</a>
+            <h1>Tweaks Guide</h1>
+            <p class="lead">
+              Expose values directly from your Compose UI and see changes
+              immediately. Interact with them through Snap-O’s Mac App
+              Inspector, an optional on-device panel, the REST API, or an
+              agent.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div class="wrap guide-layout">
+        <article>
+          <section class="guide-section" id="maven-central">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">1</span>
+              <h2>Use Maven Central</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Snap-O publishes its Android libraries to
+                <a href="https://central.sonatype.com/namespace/com.openai.snapo">Maven Central</a>.
+                Most Android projects already include
+                <code>mavenCentral()</code>; add it to your dependency
+                sources if yours does not.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>settings.gradle.kts</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="4">dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}</code></pre>
+              </div>
+            </div>
+          </section>
+
+          <section class="guide-section" id="install">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">2</span>
+              <h2>Add the Android dependencies</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Add the real Tweaks implementation to debug builds and the
+                matching no-op implementation to release builds. Both expose
+                the same Compose functions. In release, each function returns
+                observable state containing its default without shipping the
+                live registry or server. The no-op artifacts remain the
+                recommended release setup.
+                The overlay dependencies are optional. Add both only if you
+                want an on-device floating panel. Their matching public APIs
+                let the same app-root code compile in debug and release.
+              </p>
+
+              <div
+                class="dependency-format-tabs"
+                role="tablist"
+                aria-label="Tweaks dependency format"
+              >
+                <button
+                  class="dependency-format-tab"
+                  id="tweaks-catalog-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="tweaks-catalog-panel"
+                >
+                  Version catalog
+                </button>
+                <button
+                  class="dependency-format-tab"
+                  id="tweaks-direct-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="tweaks-direct-panel"
+                  tabindex="-1"
+                >
+                  Direct dependency
+                </button>
+              </div>
+
+              <div
+                class="dependency-format-panel"
+                id="tweaks-catalog-panel"
+                role="tabpanel"
+                aria-labelledby="tweaks-catalog-tab"
+              >
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>gradle/libs.versions.toml</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code class="syntax-code" data-language="toml" data-emphasis-lines="2,5,6,8,9,10">[versions]
+snapo = "3.2.0"
+
+[libraries]
+snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
+snapo-tweaks-noop = { module = "com.openai.snapo:tweaks-noop", version.ref = "snapo" }
+
+# Optional: add both if you want the in-app overlay panel.
+snapo-tweaks-overlay = { module = "com.openai.snapo:tweaks-overlay", version.ref = "snapo" }
+snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", version.ref = "snapo" }</code></pre>
+                </div>
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>app/build.gradle.kts</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3,5,6,7">dependencies {
+    debugImplementation(libs.snapo.tweaks)
+    releaseImplementation(libs.snapo.tweaks.noop)
+
+    // Optional: add both if you want the in-app overlay panel.
+    debugImplementation(libs.snapo.tweaks.overlay)
+    releaseImplementation(libs.snapo.tweaks.overlay.noop)
+}</code></pre>
+                </div>
+              </div>
+
+              <div
+                class="dependency-format-panel"
+                id="tweaks-direct-panel"
+                role="tabpanel"
+                aria-labelledby="tweaks-direct-tab"
+                hidden
+              >
+                <div class="code-block">
+                  <div class="code-head">
+                    <span>app/build.gradle.kts</span>
+                    <button class="copy-button" type="button">Copy</button>
+                  </div>
+                  <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3,5,6,7">dependencies {
+    debugImplementation("com.openai.snapo:tweaks:3.2.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:3.2.0")
+
+    // Optional: add both if you want the in-app overlay panel.
+    debugImplementation("com.openai.snapo:tweaks-overlay:3.2.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:3.2.0")
+}</code></pre>
+                </div>
+              </div>
+
+              <p class="prose">
+                Add the Tweaks dependencies to each Android module that calls
+                the <code>tweak(...)</code> function. In a multi-module app, a shared
+                Gradle convention plugin can apply the debug and release pair
+                consistently. Only the module that installs the optional
+                overlay needs its additional overlay dependencies.
+              </p>
+
+              <p class="notice">
+                If a real Tweaks artifact is included in a nondebuggable app,
+                tweaks still return their defaults, the server does not start,
+                and the floating overlay stays hidden unless you explicitly
+                enable Tweaks for that app.
+              </p>
+
+              <details>
+                <summary>Enable Tweaks in release builds</summary>
+                <div class="details-body">
+                  <p class="prose">
+                    Only when you intentionally include the real Tweaks
+                    artifacts in a release build, add this metadata directly
+                    to your application's <code>&lt;application&gt;</code>
+                    element. It enables the Tweaks server and, if installed
+                    and enabled, the on-device overlay.
+                  </p>
+                  <div class="code-block">
+                    <div class="code-head">
+                      <span>AndroidManifest.xml</span>
+                      <button class="copy-button" type="button">Copy</button>
+                    </div>
+                    <pre><code class="syntax-code" data-language="xml">&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"&gt;
+    &lt;application&gt;
+        &lt;meta-data
+            android:name="snapo.tweaks.allow_release"
+            android:value="true" /&gt;
+    &lt;/application&gt;
+&lt;/manifest&gt;</code></pre>
+                  </div>
+                  <p class="prose">
+                    This setting applies only to Tweaks.
+                    <code>snapo.network.allow_release</code> controls Network
+                    Inspector separately; enabling either feature does not
+                    enable the other. Prefer no-op release artifacts unless
+                    you need live inspection in a release build.
+                  </p>
+                </div>
+              </details>
+            </div>
+          </section>
+
+          <section class="guide-section" id="expose-values">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">3</span>
+              <h2>Expose values from Compose</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Replace a fixed UI value with a tweak at the place that consumes
+                it. Snap-O registers the control while that composable is in
+                composition and returns observable <code>State&lt;T&gt;</code>
+                that updates as you edit its value.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Kotlin · typography</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="kotlin">import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.openai.snapo.tweaks.tweak
+
+@Composable
+fun TypographyPreview() {
+    Text(
+        text = tweak("Make it feel right.", name = "Typography/Preview text").value,
+        fontSize = tweak(36, "Typography/Font size", 16..72).value.sp,
+        fontWeight = FontWeight(tweak(600, "Typography/Font weight", 100..900, step = 100).value),
+        color = tweak(Color(0xFF18212F), "Colors/Text").value,
+    )
+}</code></pre>
+              </div>
+
+              <p class="notice">
+                Read each tweak close to its consumer when practical. You do not
+                need to hoist every value to the top of a screen.
+              </p>
+
+              <h3>Compose function reference</h3>
+              <p class="prose">
+                Import <code>com.openai.snapo.tweaks.tweak</code> and call
+                the overload matching your default value from composition.
+                Every overload returns <code>State&lt;T&gt;</code>. Delegate
+                the state with <code>by</code>, or read
+                <code>tweak(...).value</code> immediately. Numeric ranges and
+                increments are optional. For strings, name the
+                <code>name</code> argument to distinguish it from the
+                default value.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>com.openai.snapo.tweaks · Kotlin</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="kotlin">@Composable
+fun tweak(
+    default: Int,
+    name: String,
+    range: IntRange? = null,
+    step: Int? = null,
+): State&lt;Int&gt;
+
+@Composable
+fun tweak(
+    default: Float,
+    name: String,
+    range: ClosedFloatingPointRange&lt;Float&gt;? = null,
+    step: Float? = null,
+): State&lt;Float&gt;
+
+@Composable
+fun tweak(
+    default: Color,
+    name: String,
+): State&lt;Color&gt;
+
+@Composable
+fun tweak(
+    default: Boolean,
+    name: String,
+): State&lt;Boolean&gt;
+
+@Composable
+fun tweak(
+    default: String,
+    name: String,
+): State&lt;String&gt;</code></pre>
+              </div>
+
+              <p class="prose">
+                Keep the returned state unread until the phase that needs it.
+                For a value used only during drawing or layout, read the
+                delegated value inside the draw or layout callback to avoid
+                recomposing the caller.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Kotlin · deferred draw read</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="kotlin">import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.openai.snapo.tweaks.tweak
+
+@Composable
+fun MotionTrack(modifier: Modifier = Modifier) {
+    val thickness by tweak(
+        default = 2f,
+        name = "Motion/Track thickness",
+        range = 1f..8f,
+        step = 0.5f,
+    )
+
+    Box(
+        modifier = modifier.drawBehind {
+            drawLine(
+                color = Color.Black,
+                start = Offset(x = 0f, y = center.y),
+                end = Offset(x = size.width, y = center.y),
+                strokeWidth = thickness.dp.toPx(),
+            )
+        },
+    )
+}</code></pre>
+              </div>
+            </div>
+          </section>
+
+          <section class="guide-section" id="groups-and-lifecycle">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">4</span>
+              <h2>Group tweaks by section (optional)</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Tweaks work without sections. When grouping would make a
+                screen easier to inspect, use a slash-separated name to place
+                a control in a visible inspector section. For example,
+                <code>Typography/Font size</code> appears under
+                <strong>Typography</strong>, and
+                <code>Motion/Duration</code> appears under
+                <strong>Motion</strong>.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Kotlin · visibility and motion</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="kotlin">import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.openai.snapo.tweaks.tweak
+
+@Composable
+fun MotionSection(isExpanded: Boolean) {
+    if (!tweak(true, "Motion/Show").value) return
+
+    val useSpring by tweak(true, "Motion/Use spring")
+    val animationSpec = if (useSpring) {
+        spring&lt;Float&gt;(
+            dampingRatio = tweak(0.7f, "Motion/Spring damping", 0.1f..1f, step = 0.05f).value,
+            stiffness = tweak(280f, "Motion/Spring stiffness", 80f..800f, step = 20f).value,
+        )
+    } else {
+        tween&lt;Float&gt;(
+            durationMillis = tweak(400, "Motion/Duration", 100..1500, step = 50).value,
+            easing = FastOutSlowInEasing,
+        )
+    }
+
+    AnimatedVisibility(
+        visible = isExpanded,
+        enter = fadeIn(animationSpec),
+        exit = fadeOut(animationSpec),
+    ) {
+        Box(modifier = Modifier.size(48.dp)) {
+            // Animated content.
+        }
+    }
+}</code></pre>
+              </div>
+
+              <p class="notice">
+                <strong>One name, one tweak.</strong> Reusing the exact same
+                name in multiple composed consumers shares one control and
+                current value. Use matching defaults and bounds for each use.
+              </p>
+
+              <p class="prose">
+                Controls appear only while their composables are in
+                composition. In the example, turning off
+                <code>Motion/Show</code> removes the motion controls; changing
+                <code>Motion/Use spring</code> swaps the spring settings for
+                the duration control. When the same UI returns during the app
+                process, its controls register again with their last edited
+                values and original ordering.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="interact">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">5</span>
+              <h2>Interact with tweaks</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Once the enabled app exposes a tweak, choose the interaction
+                that fits your workflow: inspect the app on your Mac, use an
+                optional panel on the device, call the REST API, or let an
+                agent work with the same live values.
+              </p>
+
+              <h3 id="app-inspector">Mac App Inspector</h3>
+              <p class="prose">
+                Snap-O’s App Inspector discovers the running app with Tweaks
+                enabled and shows the controls registered by its current
+                Compose screen.
+              </p>
+
+              <ol class="verify-list">
+                <li>
+                  <span>Install and launch the debug build, or an explicitly enabled release build, on a connected, authorized Android device or emulator.</span>
+                </li>
+                <li>
+                  <span>Open Snap-O on macOS and select the device.</span>
+                </li>
+                <li>
+                  <span>Choose <strong>Tools → Show App Inspector</strong>, or press <strong>⌘⌥I</strong>.</span>
+                </li>
+                <li>
+                  <span>Select your app and its <strong>Tweaks</strong> entry in the inspector picker.</span>
+                </li>
+                <li>
+                  <span>Adjust a slider, color, switch, or text field and watch the running Compose UI update.</span>
+                </li>
+                <li>
+                  <span>Reset an individual control or use <strong>Reset all tweaks</strong> to restore defaults.</span>
+                </li>
+              </ol>
+
+              <p class="notice">
+                Navigate through your Android app to change which controls are
+                visible. Only tweaks belonging to the currently composed UI
+                appear in the inspector.
+              </p>
+
+              <h3 id="on-device-panel">On-device panel</h3>
+              <p class="prose">
+                For a developer-facing UI on the Android device, the optional
+                <code>SnapOTweakOverlay</code> starts as a movable floating
+                control and expands into an editable panel. Install it at the
+                app root and expose Snap-O’s built-in overlay setting from
+                your developer settings. The panel automatically observes
+                the same currently composed tweaks as the Mac inspector. See
+                <a href="#floating-overlay">Add an on-device floating panel</a>
+                for the module and root wrapper.
+              </p>
+
+              <h3 id="rest-api">REST API</h3>
+              <p class="prose">
+                The Tweaks server exposes a small HTTP API for reading
+                currently composed controls, updating their values, and
+                streaming changes. Use it to build your own inspection tools,
+                integrations, and custom panels.
+              </p>
+
+              <p class="prose">
+                See the
+                <a href="tweaks-protocol.html">Tweaks protocol reference</a>
+                for every endpoint, example requests and responses, live
+                events, resets, and error handling.
+              </p>
+
+              <h3 id="agents">Agents (e.g. Codex)</h3>
+              <p class="prose">
+                Install the official Snap-O Codex plugin to give an agent the
+                dedicated Tweaks skill and shared command-line client. The
+                plugin requires Python 3 and Android Platform Tools.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Terminal · install the Codex plugin</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="shell">codex plugin marketplace add openai/snap-o --ref main
+codex plugin add snap-o@snap-o</code></pre>
+              </div>
+
+              <details>
+                <summary>Migrate an existing sparse marketplace installation</summary>
+                <div class="details-body">
+                  <p class="prose">
+                    If Snap-O was previously installed with sparse paths,
+                    remove and add its marketplace again so the shared CLI
+                    and both plugin skills are available:
+                  </p>
+                  <div class="code-block">
+                    <div class="code-head">
+                      <span>Terminal · migrate the Codex plugin</span>
+                      <button class="copy-button" type="button">Copy</button>
+                    </div>
+                    <pre><code class="syntax-code" data-language="shell">codex plugin marketplace remove snap-o
+codex plugin marketplace add openai/snap-o --ref main
+codex plugin add snap-o@snap-o</code></pre>
+                  </div>
+                </div>
+              </details>
+
+              <p class="prose">
+                Start a new Codex session after installation. Ask the agent
+                to inspect the available controls, apply a requested design
+                direction, or reset a value. For example: “Make this screen
+                feel calmer; try the typography, color, and motion tweaks
+                and tell me what changed.” The skill discovers the running
+                app, reads typed descriptors, and changes or resets values
+                only when requested.
+              </p>
+
+              <p class="prose">
+                Snap-O for macOS also bundles the same CLI. Use it directly
+                for discovery, automation, live snapshots, and explicitly
+                requested updates:
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Terminal · inspect and update live tweaks</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="shell">SNAPO_BIN="/Applications/Snap-O.app/Contents/MacOS/snapo"
+
+"$SNAPO_BIN" tweaks apps --json
+"$SNAPO_BIN" tweaks list -s emulator-5554 -n snapo_tweaks_12345 --json
+"$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345 --json
+"$SNAPO_BIN" tweaks reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345 --json
+"$SNAPO_BIN" tweaks watch -s emulator-5554 -n snapo_tweaks_12345 --once --json</code></pre>
+              </div>
+
+              <p class="notice">
+                The CLI manages Android socket discovery, forwarding, and
+                cleanup. Device serials and socket names come from the
+                discovery output and change when the app process restarts.
+              </p>
+
+              <p class="prose">
+                You can also ask an agent to create a small custom panel for a
+                specific workflow, such as typography comparisons, animation
+                tuning, or a curated set of design controls. The panel can
+                read <code>GET /tweaks</code>, send
+                <code>PATCH /tweaks</code>, and subscribe to
+                <code>GET /tweaks/events</code>. No separate Snap-O agent API
+                or automatic panel integration is required or implied.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="floating-overlay">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">6</span>
+              <h2>Optional: add an on-device floating panel</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                The optional overlay provides <code>SnapOTweakOverlay</code>
+                for apps that also want to edit live tweaks on the device.
+                Wrap your root content once. Snap-O owns and persists the
+                developer setting, and the overlay automatically discovers
+                tweaks from the current composition. Its matching no-op
+                artifact renders your app content unchanged in release, so
+                this code belongs in your shared source set.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Kotlin · shared root content</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="kotlin">import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.unit.sp
+import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
+import com.openai.snapo.tweaks.overlay.SnapOTweakOverlaySettings
+import com.openai.snapo.tweaks.tweak
+
+@Composable
+fun AppRoot() {
+    SnapOTweakOverlay {
+        ProfileScreen()
+    }
+}
+
+@Composable
+fun OverlayDeveloperSetting() {
+    Switch(
+        checked = SnapOTweakOverlaySettings.isEnabled,
+        onCheckedChange = { SnapOTweakOverlaySettings.isEnabled = it },
+    )
+}
+
+@Composable
+fun ProfileScreen() {
+    val fontSize by tweak(
+        default = 16,
+        name = "Typography/Font size",
+        range = 12..32,
+    )
+
+    Text(
+        text = "Profile",
+        fontSize = fontSize.sp,
+    )
+}</code></pre>
+              </div>
+
+              <p class="prose">
+                The panel starts as a collapsed floating button that can be
+                moved anywhere on the screen. Tap it to expand the panel and
+                edit integer, floating-point, boolean, color, or text tweaks.
+                Reset an individual tweak or restore every tweak to its
+                default. Changes update the running app immediately and are
+                available to the Mac inspector through its normal updates.
+                Snap-O saves the button's horizontal and vertical position,
+                restoring it when the button returns or the app restarts.
+              </p>
+
+              <p class="notice">
+                <strong>Visibility follows the current Compose screen.</strong>
+                The button appears only when the real overlay is installed,
+                the Tweaks runtime is enabled,
+                <code>SnapOTweakOverlaySettings.isEnabled</code> is
+                <code>true</code> and at least one tweak is in composition.
+                The setting defaults to off and survives app restarts. As
+                screens and sections appear or disappear, the panel updates
+                automatically. The no-op overlay never appears, and its
+                setting remains disabled. No manually supplied values,
+                update callback, or build-specific app wrapper is required.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="troubleshoot">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">7</span>
+              <h2>Troubleshooting</h2>
+            </div>
+            <div class="section-body">
+              <ul class="check-list">
+                <li>Confirm the installed app contains the live <code>:tweaks</code> artifact, not <code>:tweaks-noop</code>.</li>
+                <li>For a nondebuggable app, set <code>snapo.tweaks.allow_release</code> to <code>true</code> in its <code>&lt;application&gt;</code> metadata.</li>
+                <li>If no Tweaks server appears, check device authorization, app startup, the live dependency, and whether the current build allows the runtime.</li>
+                <li>If the server appears but its tweak list is empty, open a screen that calls <code>tweak(...)</code>; controls exist only while their composables are in composition.</li>
+                <li>Use the exact same name, default, and bounds when one control is read in multiple places.</li>
+                <li>Choose your app’s <strong>Tweaks</strong> entry inside <strong>App Inspector</strong>.</li>
+                <li>After the Android app restarts, select its current running app or process if prompted.</li>
+                <li>For the optional overlay, confirm its developer setting is enabled and the current Compose screen contains at least one tweak.</li>
+              </ul>
+            </div>
+          </section>
+        </article>
+
+        <aside class="quick-jump" aria-label="On this page">
+          <nav>
+            <ol class="quick-jump-list">
+              <li><a class="quick-jump-link" href="#maven-central">Use Maven Central</a></li>
+              <li><a class="quick-jump-link" href="#install">Add the Android dependencies</a></li>
+              <li><a class="quick-jump-link" href="#expose-values">Expose values from Compose</a></li>
+              <li><a class="quick-jump-link" href="#groups-and-lifecycle">Group tweaks by section (optional)</a></li>
+              <li><a class="quick-jump-link" href="#interact">Interact with tweaks</a></li>
+              <li><a class="quick-jump-link" href="#floating-overlay">Optional floating panel</a></li>
+              <li><a class="quick-jump-link" href="#troubleshoot">Troubleshooting</a></li>
+            </ol>
+          </nav>
+        </aside>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap footer-row">
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+      </div>
+    </footer>
+
+    <script>
+      window.Prism = { manual: true };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-kotlin.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-toml.min.js"></script>
+    <script>
+      const escapeHtml = (value) =>
+        value.replace(
+          /[&<>"']/g,
+          (character) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            })[character],
+        );
+
+      if (window.Prism?.languages?.kotlin) {
+        Prism.languages.insertBefore("kotlin", "function", {
+          "class-name": /\b[A-Z][A-Za-z0-9_]*\b/,
+        });
+      }
+
+      for (const code of document.querySelectorAll(".syntax-code")) {
+        const source = code.textContent;
+        const language = code.dataset.language;
+        const emphasisLines = new Set(
+          (code.dataset.emphasisLines || "")
+            .split(",")
+            .filter(Boolean)
+            .map(Number),
+        );
+        const grammar = window.Prism?.languages?.[language];
+        const highlightedCode = grammar
+          ? Prism.highlight(source, grammar, language)
+          : escapeHtml(source);
+
+        code.dataset.copyText = source;
+        if (emphasisLines.size === 0) {
+          code.innerHTML = highlightedCode;
+          continue;
+        }
+
+        code.innerHTML = highlightedCode
+          .split("\n")
+          .map((line, index) => {
+            const emphasisClass = emphasisLines.has(index + 1)
+              ? "code-line-emphasis"
+              : "code-line-muted";
+            return `<span class="code-line ${emphasisClass}">${line}</span>`;
+          })
+          .join("");
+      }
+
+      for (const button of document.querySelectorAll(".copy-button")) {
+        button.addEventListener("click", async () => {
+          const code = button.closest(".code-block").querySelector("code");
+          await navigator.clipboard.writeText(code.dataset.copyText || code.innerText);
+          button.textContent = "Copied";
+          window.setTimeout(() => {
+            button.textContent = "Copy";
+          }, 1400);
+        });
+      }
+
+      for (const tablist of document.querySelectorAll(".dependency-format-tabs")) {
+        const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+
+        const activateTab = (activeTab, moveFocus = false) => {
+          for (const tab of tabs) {
+            const isActive = tab === activeTab;
+            const panel = document.getElementById(tab.getAttribute("aria-controls"));
+            tab.setAttribute("aria-selected", String(isActive));
+            tab.tabIndex = isActive ? 0 : -1;
+            panel.hidden = !isActive;
+          }
+
+          if (moveFocus) {
+            activeTab.focus();
+          }
+        };
+
+        tabs.forEach((tab, index) => {
+          tab.addEventListener("click", () => activateTab(tab));
+          tab.addEventListener("keydown", (event) => {
+            let nextIndex;
+
+            if (event.key === "ArrowRight") {
+              nextIndex = (index + 1) % tabs.length;
+            } else if (event.key === "ArrowLeft") {
+              nextIndex = (index - 1 + tabs.length) % tabs.length;
+            } else if (event.key === "Home") {
+              nextIndex = 0;
+            } else if (event.key === "End") {
+              nextIndex = tabs.length - 1;
+            } else {
+              return;
+            }
+
+            event.preventDefault();
+            activateTab(tabs[nextIndex], true);
+          });
+        });
+      }
+
+      const sections = [...document.querySelectorAll(".guide-section")];
+      const jumpLinks = [...document.querySelectorAll(".quick-jump-link")];
+
+      if ("IntersectionObserver" in window && jumpLinks.length > 0) {
+        const setCurrentSection = (id) => {
+          for (const link of jumpLinks) {
+            if (link.hash === `#${id}`) {
+              link.setAttribute("aria-current", "location");
+            } else {
+              link.removeAttribute("aria-current");
+            }
+          }
+        };
+
+        const sectionObserver = new IntersectionObserver(
+          (entries) => {
+            const visibleSection = entries
+              .filter((entry) => entry.isIntersecting)
+              .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+
+            if (visibleSection) {
+              setCurrentSection(visibleSection.target.id);
+            }
+          },
+          { rootMargin: "-18% 0px -68%", threshold: 0 },
+        );
+
+        for (const section of sections) {
+          sectionObserver.observe(section);
+        }
+
+        setCurrentSection(sections[0].id);
+      }
+
+      document.getElementById("year").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
