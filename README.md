@@ -147,10 +147,15 @@ Snap-O includes a Codex plugin for macOS and Linux. It bundles the network-inspe
 Add the Snap-O marketplace and install the plugin:
 
 ```bash
-codex plugin marketplace add openai/snap-o --ref main \
-  --sparse .agents/plugins \
-  --sparse .codex-plugin \
-  --sparse skills
+codex plugin marketplace add openai/snap-o --ref main
+codex plugin add snap-o@snap-o
+```
+
+If you previously installed this marketplace with sparse paths, migrate once:
+
+```bash
+codex plugin marketplace remove snap-o
+codex plugin marketplace add openai/snap-o --ref main
 codex plugin add snap-o@snap-o
 ```
 
@@ -169,7 +174,7 @@ You can inspect network requests from Snap-O on a Linux machine by using the dep
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-network-inspector/scripts/snapo -o ~/.local/bin/snapo
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/scripts/snapo -o ~/.local/bin/snapo
 chmod +x ~/.local/bin/snapo
 ```
 

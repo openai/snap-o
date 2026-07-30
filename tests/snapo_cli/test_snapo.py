@@ -17,7 +17,7 @@ from unittest import mock
 
 
 REPOSITORY = pathlib.Path(__file__).resolve().parents[2]
-SCRIPT = REPOSITORY / "skills" / "snap-o-network-inspector" / "scripts" / "snapo"
+SCRIPT = REPOSITORY / "scripts" / "snapo"
 LOADER = importlib.machinery.SourceFileLoader("snapo_cli", str(SCRIPT))
 SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
 snapo = importlib.util.module_from_spec(SPEC)
@@ -318,7 +318,7 @@ class TweakSmartSocketServer:
 
 
 class PluginPackagingTests(unittest.TestCase):
-    def test_plugin_bundles_the_network_inspector_skill(self):
+    def test_plugin_bundles_network_inspection_and_live_tweaks_skills(self):
         manifest = json.loads((REPOSITORY / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         release_version = next(
             line.partition("=")[2].strip()
@@ -328,9 +328,63 @@ class PluginPackagingTests(unittest.TestCase):
 
         self.assertEqual(manifest["name"], "snap-o")
         self.assertEqual(manifest["version"], release_version)
-        self.assertEqual((REPOSITORY / manifest["skills"]).resolve(), SCRIPT.parents[2])
+        skills_root = (REPOSITORY / manifest["skills"]).resolve()
+        self.assertEqual(skills_root, REPOSITORY / "skills")
+        self.assertEqual(SCRIPT.parent, REPOSITORY / "scripts")
+        self.assertTrue(SCRIPT.is_file())
+        self.assertTrue(os.access(SCRIPT, os.X_OK))
         self.assertEqual(manifest["interface"]["displayName"], "Snap-O")
-        self.assertEqual(manifest["interface"]["capabilities"], ["Read"])
+        self.assertEqual(manifest["interface"]["capabilities"], ["Read", "Write"])
+
+        for name, display_name in (
+            ("snap-o-network-inspector", "Snap-O Network Inspector"),
+            ("snap-o-tweaks", "Snap-O Tweaks"),
+        ):
+            with self.subTest(skill=name):
+                skill_path = skills_root / name / "SKILL.md"
+                agent_path = skills_root / name / "agents" / "openai.yaml"
+
+                self.assertTrue(skill_path.is_file())
+                skill_content = skill_path.read_text(encoding="utf-8")
+                self.assertIn(f"\nname: {name}\n", skill_content)
+                self.assertIn("../../scripts/snapo", skill_content)
+                self.assertEqual((skill_path.parent / "../../scripts/snapo").resolve(), SCRIPT)
+                self.assertTrue(agent_path.is_file())
+
+                agent_metadata = agent_path.read_text(encoding="utf-8")
+                self.assertIn("interface:\n", agent_metadata)
+                self.assertIn(f'display_name: "{display_name}"', agent_metadata)
+                self.assertIn("short_description:", agent_metadata)
+                self.assertIn(f"${name}", agent_metadata)
+
+    def test_tweaks_skill_reuses_shared_cli_and_bundles_protocol_references(self):
+        skill_root = REPOSITORY / "skills" / "snap-o-tweaks"
+        skill_content = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+        shared_cli = "../../scripts/snapo"
+
+        self.assertIn(shared_cli, skill_content)
+        self.assertEqual((skill_root / shared_cli).resolve(), SCRIPT.resolve())
+        self.assertTrue(SCRIPT.is_file())
+
+        for name in ("protocol.md", "interaction-surfaces.md"):
+            with self.subTest(reference=name):
+                reference = skill_root / "references" / name
+                self.assertTrue(reference.is_file())
+                self.assertTrue(reference.read_text(encoding="utf-8").strip())
+                self.assertIn(f"references/{name}", skill_content)
+
+        interaction_guide = (skill_root / "references" / "interaction-surfaces.md").read_text(
+            encoding="utf-8"
+        )
+        protocol = (skill_root / "references" / "protocol.md").read_text(encoding="utf-8")
+        self.assertIn("/proc/net/unix", protocol)
+        self.assertIn("forward tcp:0", protocol)
+        self.assertIn("forward --remove", protocol)
+        self.assertIn("[protocol.md](protocol.md)", interaction_guide)
+
+        for artifact in ("tweaks", "tweaks-noop", "tweaks-overlay", "tweaks-overlay-noop"):
+            with self.subTest(artifact=artifact):
+                self.assertIn(f"com.openai.snapo:{artifact}:$snapoVersion", interaction_guide)
 
     def test_marketplace_exposes_the_repository_plugin(self):
         marketplace = json.loads(
@@ -345,6 +399,23 @@ class PluginPackagingTests(unittest.TestCase):
         self.assertEqual((REPOSITORY / plugin["source"]["path"]).resolve(), REPOSITORY)
         self.assertEqual(plugin["policy"]["installation"], "AVAILABLE")
         self.assertEqual(plugin["policy"]["authentication"], "ON_INSTALL")
+
+    def test_documented_marketplace_install_avoids_sparse_paths_and_migrates_existing_users(self):
+        readme = (REPOSITORY / "README.md").read_text(encoding="utf-8")
+        add_command = "codex plugin marketplace add openai/snap-o --ref main"
+        install_command = "codex plugin add snap-o@snap-o"
+        add_commands = [line.strip() for line in readme.splitlines() if line.strip().startswith(add_command)]
+
+        self.assertGreaterEqual(len(add_commands), 2)
+        self.assertTrue(all(command == add_command for command in add_commands))
+        self.assertNotIn("--sparse", readme)
+
+        migration_start = readme.index("codex plugin marketplace remove snap-o")
+        migration_add = readme.index(add_command, migration_start)
+        migration_install = readme.index(install_command, migration_add)
+        self.assertLess(migration_start, migration_add)
+        self.assertLess(migration_add, migration_install)
+        self.assertIn("codex plugin marketplace upgrade snap-o", readme[migration_install:])
 
 
 class DiscoveryTests(unittest.TestCase):

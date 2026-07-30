@@ -1,7 +1,7 @@
 {
   "name": "snap-o",
   "version": "3.2.0",
-  "description": "Inspect Android network traffic with Snap-O.",
+  "description": "Inspect Android network traffic and adjust live UI tweaks with Snap-O.",
   "author": {
     "name": "OpenAI",
     "url": "https://openai.com"
@@ -12,24 +12,29 @@
   "keywords": [
     "android",
     "network",
+    "tweaks",
+    "ui",
     "adb",
     "debugging"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Snap-O",
-    "shortDescription": "Inspect Android network traffic",
-    "longDescription": "Inspect live and captured Android network requests and responses on macOS and Linux.",
+    "shortDescription": "Inspect Android network traffic and live UI tweaks",
+    "longDescription": "Inspect live and captured Android network requests, or inspect and adjust live Android UI tweaks on macOS and Linux.",
     "developerName": "OpenAI",
     "category": "Productivity",
     "capabilities": [
-      "Read"
+      "Read",
+      "Write"
     ],
     "websiteURL": "https://openai.github.io/snap-o/",
     "defaultPrompt": [
       "Inspect the latest Android network requests with Snap-O.",
       "Show failed requests from the attached Android device.",
-      "Show the request and response bodies for an API call."
+      "Show the request and response bodies for an API call.",
+      "Show the active UI tweaks in the attached Android app.",
+      "Adjust a live Android UI tweak and reset it to its default."
     ]
   }
 }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Snap-O Tweaks"
+  short_description: "Inspect and adjust live Android UI tweaks"
+  default_prompt: "Use $snap-o-tweaks to inspect or adjust live values in the attached Android app."
