@@ -38,9 +38,7 @@ struct LivePreviewRendererView: NSViewRepresentable {
 final class LivePreviewDisplayView: NSView {
   private var renderer: LivePreviewRenderer?
   private var trackingArea: NSTrackingArea?
-  private var readyForDisplayObserver: NSObjectProtocol?
   private let displayLayer = AVSampleBufferDisplayLayer()
-  private let initialFrameLayer = CALayer()
   private var endedLivePreviewTrace = false
 
   private var pointerState = PointerState()
@@ -84,14 +82,10 @@ final class LivePreviewDisplayView: NSView {
     guard displayLayer.superlayer == nil else { return }
     wantsLayer = true
     layer?.addSublayer(displayLayer)
-    layer?.addSublayer(initialFrameLayer)
     displayLayer.videoGravity = .resizeAspect
     updateDisplayLayerBackgroundColor()
     displayLayer.frame = bounds
     displayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-    initialFrameLayer.contentsGravity = .resizeAspect
-    initialFrameLayer.frame = bounds
-    initialFrameLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
   }
 
   override func viewDidChangeEffectiveAppearance() {
@@ -108,24 +102,17 @@ final class LivePreviewDisplayView: NSView {
   private func attachSession() {
     guard let renderer else { return }
     let session = renderer.session
-    let operationID = renderer.operation.id
-    session.initialFrameHandler = { [weak self] frame in
-      self?.displayInitialFrame(frame, operationID: operationID)
-    }
+    endedLivePreviewTrace = false
     session.sampleBufferHandler = { [weak self] sample in
       self?.enqueue(sample)
     }
-    endedLivePreviewTrace = false
   }
 
   private func detachSession() {
-    stopObservingDisplayReadiness()
-    renderer?.session.initialFrameHandler = nil
     renderer?.session.sampleBufferHandler = nil
     displayLayer.sampleBufferRenderer.stopRequestingMediaData()
     displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
     displayLayer.sampleBufferRenderer.requestMediaDataWhenReady(on: .main) {}
-    setInitialFrame(nil)
     endedLivePreviewTrace = false
   }
 
@@ -137,52 +124,6 @@ final class LivePreviewDisplayView: NSView {
       Perf.end(.livePreviewStart, finalLabel: "first frame enqueued")
       Perf.end(.appFirstSnapshot, finalLabel: "first media appeared (live)")
     }
-  }
-
-  private func displayInitialFrame(_ image: CGImage, operationID: UUID) {
-    guard renderer?.operation.id == operationID else { return }
-    observeDisplayReadiness(operationID: operationID)
-    guard !displayLayer.isReadyForDisplay else {
-      hideInitialFrameIfReady(operationID: operationID)
-      return
-    }
-    setInitialFrame(image)
-    hideInitialFrameIfReady(operationID: operationID)
-  }
-
-  private func observeDisplayReadiness(operationID: UUID) {
-    stopObservingDisplayReadiness()
-    readyForDisplayObserver = NotificationCenter.default.addObserver(
-      forName: .AVSampleBufferDisplayLayerReadyForDisplayDidChange,
-      object: displayLayer,
-      queue: .main
-    ) { [weak self] _ in
-      Task { @MainActor [weak self] in
-        self?.hideInitialFrameIfReady(operationID: operationID)
-      }
-    }
-  }
-
-  private func hideInitialFrameIfReady(operationID: UUID) {
-    guard renderer?.operation.id == operationID,
-          displayLayer.isReadyForDisplay else { return }
-    renderer?.session.discardInitialFrame()
-    setInitialFrame(nil)
-    stopObservingDisplayReadiness()
-  }
-
-  private func stopObservingDisplayReadiness() {
-    guard let readyForDisplayObserver else { return }
-    NotificationCenter.default.removeObserver(readyForDisplayObserver)
-    self.readyForDisplayObserver = nil
-  }
-
-  private func setInitialFrame(_ image: CGImage?) {
-    if image == nil, initialFrameLayer.contents == nil { return }
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    initialFrameLayer.contents = image
-    CATransaction.commit()
   }
 
   override func updateTrackingAreas() {
