@@ -50,6 +50,7 @@ internal object TweakRegistry {
     private val lock = Any()
     private val tweaks = LinkedHashMap<String, RegisteredTweak>()
     private val observedTweakOrder = HashMap<String, Long>()
+    private val adjustedTweaks = LinkedHashMap<TweakDescriptor, RegisteredTweak>()
     private val tweakStates = HashMap<TweakDescriptor, MutableState<Any>>()
     private val activeEntries = mutableStateOf<List<SnapOTweakEntry>>(emptyList())
     private val observers = LinkedHashMap<Long, () -> Unit>()
@@ -115,8 +116,16 @@ internal object TweakRegistry {
 
     fun activeEntries(): State<List<SnapOTweakEntry>> = activeEntries
 
-    fun snapshot(): List<TweakSnapshot> = synchronized(lock) {
-        tweaks.values.map { tweak ->
+    fun snapshot(includeAdjusted: Boolean = false): List<TweakSnapshot> = synchronized(lock) {
+        val registeredTweaks = if (includeAdjusted) {
+            (tweaks.values + adjustedTweaks.values)
+                .distinctBy(RegisteredTweak::descriptor)
+                .sortedBy { tweak -> observedTweakOrder.getValue(tweak.descriptor.name) }
+        } else {
+            tweaks.values
+        }
+
+        registeredTweaks.map { tweak ->
             TweakSnapshot(tweak.descriptor, tweak.state.value)
         }
     }
@@ -130,13 +139,18 @@ internal object TweakRegistry {
                 tweak to validateValue(tweak.descriptor, value)
             }
 
+            val changedTweaks = ArrayList<RegisteredTweak>()
             Snapshot.withMutableSnapshot {
                 changes.forEach { (tweak, value) ->
                     if (tweak.state.value != value) {
                         tweak.state.value = value
+                        changedTweaks.add(tweak)
                         changed = true
                     }
                 }
+            }
+            changedTweaks.forEach { tweak ->
+                adjustedTweaks[tweak.descriptor] = tweak
             }
 
             changes.map { (tweak, _) ->
@@ -159,6 +173,7 @@ internal object TweakRegistry {
     fun clear() {
         val changed = synchronized(lock) {
             observedTweakOrder.clear()
+            adjustedTweaks.clear()
             tweakStates.clear()
             nextTweakOrder = 0L
 

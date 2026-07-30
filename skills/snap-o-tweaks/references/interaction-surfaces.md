@@ -4,7 +4,14 @@ The same active Compose tweak registry can be inspected from several surfaces. C
 
 ## Command line: agents, automation, and repeatable checks
 
-Use the dependency-free Snap-O CLI when a terminal, Codex agent, test script, or Linux/macOS workflow needs app discovery, typed value inspection or updates, atomic batches, resets, or live snapshots. Its tweaks workflow documents command selection and options. The CLI owns temporary local forwarding and cleanup; explicit remote ADB endpoints use direct smart-socket transport.
+Use the dependency-free Snap-O CLI when a terminal, Codex agent, test script, or
+Linux/macOS workflow needs app discovery, typed value inspection or updates,
+atomic batches, resets, or live snapshots. Use `snapo tweaks list --all` or
+`snapo tweaks get NAME --all` to include previously adjusted tweaks no longer in
+composition; inactive historical tweaks are inspectable but not writable. Its
+tweaks workflow documents command selection and options. The CLI owns temporary
+local forwarding and cleanup; explicit remote ADB endpoints use direct
+smart-socket transport.
 
 ## Snap-O macOS app: an existing desktop inspector
 
@@ -62,7 +69,12 @@ The CLI and Snap-O macOS app own socket discovery, forwarding, and cleanup. The 
 
 ## Custom interfaces: browsers, Node, Swift, and Compose
 
-Build a custom surface when an existing CLI, desktop inspector, or in-app overlay does not match the desired controls or workflow. All external hosts should discover the tweak socket, establish an accessible ADB transport, read `/app` and `/tweaks`, send atomic `PATCH /tweaks` updates, and consume full snapshots from `/tweaks/events`.
+Build a custom surface when an existing CLI, desktop inspector, or in-app overlay
+does not match the desired controls or workflow. All external hosts should
+discover the tweak socket, establish an accessible ADB transport, read `/app`
+and `/tweaks`, send atomic `PATCH /tweaks` updates, and consume full active
+snapshots from `/tweaks/events`. Request `/tweaks?include=adjusted` when a
+workflow needs every retained user adjustment, including inactive declarations.
 
 - A browser interface can use `fetch` and `EventSource` through a same-origin proxy; see [protocol.md](protocol.md) for browser transport restrictions.
 - A Node host or terminal tool can use built-in `fetch` for requests and parse the response body as a standard SSE stream.

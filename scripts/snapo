@@ -1196,7 +1196,7 @@ def run_tweak_apps(adb, options):
 def run_tweak_list(adb, options):
     server = choose_tweak_server(adb, options)
     with TweakConnection(adb, server) as connection:
-        document = connection.request("GET", "/tweaks")
+        document = connection.request("GET", tweak_listing_path(options))
     tweak_descriptors(document)
     emit_tweak_document(document, options.json)
     return 0
@@ -1205,9 +1205,18 @@ def run_tweak_list(adb, options):
 def run_tweak_get(adb, options):
     server = choose_tweak_server(adb, options)
     with TweakConnection(adb, server) as connection:
-        descriptors = tweak_descriptors(connection.request("GET", "/tweaks"))
+        descriptors = tweak_descriptors(connection.request("GET", tweak_listing_path(options)))
+    if options.all and sum(descriptor["name"] == options.name for descriptor in descriptors) > 1:
+        raise SnapOError(
+            f"Multiple tweaks named '{options.name}'; "
+            "use 'snapo tweaks list --all --json' to inspect their declarations"
+        )
     emit_tweak_document(find_tweak(descriptors, options.name), options.json)
     return 0
+
+
+def tweak_listing_path(options):
+    return "/tweaks?include=adjusted" if options.all else "/tweaks"
 
 
 def tweak_json_values(raw):
@@ -1380,11 +1389,13 @@ def parser():
 
     tweak_list = tweaks_commands.add_parser("list", help="list available tweaks and their values")
     add_common_options(tweak_list, socket_option=True)
+    tweak_list.add_argument("--all", action="store_true", help="include previously adjusted inactive tweaks")
     tweak_list.set_defaults(handler=run_tweak_list)
 
     get = tweaks_commands.add_parser("get", help="show one tweak and its current value")
     add_common_options(get, socket_option=True)
     get.add_argument("name", metavar="NAME")
+    get.add_argument("--all", action="store_true", help="include previously adjusted inactive tweaks")
     get.set_defaults(handler=run_tweak_get)
 
     set_tweak = tweaks_commands.add_parser("set", help="update one tweak or an atomic JSON batch")

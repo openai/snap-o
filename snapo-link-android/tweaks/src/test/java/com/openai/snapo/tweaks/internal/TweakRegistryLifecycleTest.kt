@@ -179,6 +179,169 @@ class TweakRegistryLifecycleTest {
     }
 
     @Test
+    fun `expanded snapshots include adjusted inactive tweaks and exclude untouched inactive tweaks`() {
+        val untouched = TweakDescriptor("Lifecycle untouched historical tweak", TweakType.INT, 8)
+        val adjusted = TweakDescriptor("Lifecycle adjusted historical tweak", TweakType.INT, 16)
+        val active = TweakDescriptor("Lifecycle active historical tweak", TweakType.INT, 24)
+
+        TweakRegistry.register(untouched)
+        TweakRegistry.unregister(untouched.name)
+        TweakRegistry.register(adjusted)
+        TweakRegistry.update(mapOf(adjusted.name to 20))
+        TweakRegistry.unregister(adjusted.name)
+        TweakRegistry.register(active)
+
+        assertEquals(listOf(active.name), TweakRegistry.snapshot().map { it.descriptor.name })
+        assertEquals(
+            listOf(adjusted.name, active.name),
+            TweakRegistry.snapshot(includeAdjusted = true).map { it.descriptor.name },
+        )
+        assertEquals(20, TweakRegistry.snapshot(includeAdjusted = true).first().value)
+    }
+
+    @Test
+    fun `unchanged updates do not add inactive tweaks to adjusted history`() {
+        val descriptor = TweakDescriptor("Lifecycle unchanged historical tweak", TweakType.INT, 16)
+
+        TweakRegistry.register(descriptor)
+        TweakRegistry.update(mapOf(descriptor.name to descriptor.default))
+        TweakRegistry.unregister(descriptor.name)
+
+        assertTrue(TweakRegistry.snapshot(includeAdjusted = true).isEmpty())
+    }
+
+    @Test
+    fun `resetting adjusted tweaks retains their historical descriptors and default values`() {
+        val descriptor = TweakDescriptor("Lifecycle reset historical tweak", TweakType.INT, 16)
+
+        TweakRegistry.register(descriptor)
+        TweakRegistry.update(mapOf(descriptor.name to 24))
+        TweakRegistry.update(mapOf(descriptor.name to descriptor.default))
+        TweakRegistry.unregister(descriptor.name)
+
+        assertEquals(
+            TweakSnapshot(descriptor, descriptor.default),
+            TweakRegistry.snapshot(includeAdjusted = true).single(),
+        )
+    }
+
+    @Test
+    fun `rejected updates do not create adjusted tweak history`() {
+        val descriptor = TweakDescriptor("Lifecycle rejected historical tweak", TweakType.INT, 16)
+
+        TweakRegistry.register(descriptor)
+        assertThrows(UnknownTweakException::class.java) {
+            TweakRegistry.update(
+                linkedMapOf(
+                    descriptor.name to 24,
+                    "Lifecycle missing historical tweak" to 32,
+                ),
+            )
+        }
+        TweakRegistry.unregister(descriptor.name)
+
+        assertTrue(TweakRegistry.snapshot(includeAdjusted = true).isEmpty())
+    }
+
+    @Test
+    fun `expanded snapshots preserve observed order across active and historical tweaks`() {
+        val first = TweakDescriptor("Lifecycle first expanded tweak", TweakType.INT, 1)
+        val second = TweakDescriptor("Lifecycle second expanded tweak", TweakType.INT, 2)
+        val third = TweakDescriptor("Lifecycle third expanded tweak", TweakType.INT, 3)
+
+        TweakRegistry.register(first)
+        TweakRegistry.register(second)
+        TweakRegistry.register(third)
+        TweakRegistry.update(mapOf(first.name to 11, third.name to 33))
+        TweakRegistry.unregister(first.name)
+        TweakRegistry.unregister(third.name)
+
+        assertEquals(
+            listOf(first.name, second.name, third.name),
+            TweakRegistry.snapshot(includeAdjusted = true).map { it.descriptor.name },
+        )
+    }
+
+    @Test
+    fun `expanded snapshots retain independently adjusted declarations with the same name`() {
+        val original = TweakDescriptor(
+            name = "Lifecycle distinct historical declarations",
+            type = TweakType.INT,
+            default = 16,
+            min = 0,
+            max = 48,
+        )
+        val replacement = original.copy(default = 24, max = 64)
+
+        TweakRegistry.register(original)
+        TweakRegistry.update(mapOf(original.name to 20))
+        TweakRegistry.unregister(original.name)
+        TweakRegistry.register(replacement)
+        TweakRegistry.update(mapOf(replacement.name to 32))
+        TweakRegistry.unregister(replacement.name)
+
+        assertEquals(
+            listOf(TweakSnapshot(original, 20), TweakSnapshot(replacement, 32)),
+            TweakRegistry.snapshot(includeAdjusted = true),
+        )
+    }
+
+    @Test
+    fun `expanded snapshots prioritize active declarations over same-name adjusted history`() {
+        val original = TweakDescriptor("Lifecycle replaced historical tweak", TweakType.INT, 16)
+        val replacement = original.copy(default = 24)
+
+        TweakRegistry.register(original)
+        TweakRegistry.update(mapOf(original.name to 20))
+        TweakRegistry.unregister(original.name)
+        TweakRegistry.register(replacement)
+
+        assertEquals(
+            listOf(
+                TweakSnapshot(replacement, replacement.default),
+                TweakSnapshot(original, 20),
+            ),
+            TweakRegistry.snapshot(includeAdjusted = true),
+        )
+
+        TweakRegistry.update(mapOf(replacement.name to 32))
+        assertEquals(
+            listOf(TweakSnapshot(replacement, 32), TweakSnapshot(original, 20)),
+            TweakRegistry.snapshot(includeAdjusted = true),
+        )
+
+        TweakRegistry.unregister(replacement.name)
+
+        assertEquals(
+            listOf(TweakSnapshot(original, 20), TweakSnapshot(replacement, 32)),
+            TweakRegistry.snapshot(includeAdjusted = true),
+        )
+    }
+
+    @Test
+    fun `resetting same-name adjusted declarations preserves their separate history`() {
+        val original = TweakDescriptor("Lifecycle reset shared-name history", TweakType.INT, 16)
+        val replacement = original.copy(default = 24)
+
+        TweakRegistry.register(original)
+        TweakRegistry.update(mapOf(original.name to 20))
+        TweakRegistry.update(mapOf(original.name to original.default))
+        TweakRegistry.unregister(original.name)
+        TweakRegistry.register(replacement)
+        TweakRegistry.update(mapOf(replacement.name to 32))
+        TweakRegistry.update(mapOf(replacement.name to replacement.default))
+        TweakRegistry.unregister(replacement.name)
+
+        assertEquals(
+            listOf(
+                TweakSnapshot(original, original.default),
+                TweakSnapshot(replacement, replacement.default),
+            ),
+            TweakRegistry.snapshot(includeAdjusted = true),
+        )
+    }
+
+    @Test
     fun `same-name descriptors retain their edited values independently`() {
         val original = TweakDescriptor(
             name = "Lifecycle descriptor-specific values",
@@ -266,15 +429,23 @@ class TweakRegistryLifecycleTest {
             type = TweakType.INT,
             default = 16,
         )
+        val sameNameReplacement = descriptor.copy(default = 24)
         TweakRegistry.register(descriptor)
-        TweakRegistry.update(mapOf(descriptor.name to 24))
+        TweakRegistry.update(mapOf(descriptor.name to 20))
         TweakRegistry.unregister(descriptor.name)
+        TweakRegistry.register(sameNameReplacement)
+        TweakRegistry.update(mapOf(sameNameReplacement.name to 32))
+        TweakRegistry.unregister(sameNameReplacement.name)
+
+        assertEquals(2, TweakRegistry.snapshot(includeAdjusted = true).size)
 
         TweakRegistry.clear()
 
         val replacement = TweakRegistry.stateFor(descriptor)
 
+        assertTrue(TweakRegistry.snapshot(includeAdjusted = true).isEmpty())
         assertEquals(16, replacement.value)
+        assertEquals(24, TweakRegistry.stateFor(sameNameReplacement).value)
         assertSame(replacement, TweakRegistry.register(descriptor))
     }
 

@@ -41,6 +41,12 @@ const initialTweaks = [
   },
 ];
 
+const inactiveAdjustedTweak = {
+  ...initialTweaks[0],
+  name: "Historical font size",
+  value: 48,
+};
+
 const icon = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x11, 0x22,
 ]);
@@ -78,6 +84,18 @@ before(async () => {
 
     if (request.url === "/tweaks" && request.method === "GET") {
       reply(response, 200, { tweaks: initialTweaks });
+      return;
+    }
+
+    if (request.url === "/tweaks?include=adjusted" && request.method === "GET") {
+      reply(response, 200, {
+        tweaks: [...initialTweaks, inactiveAdjustedTweak],
+      });
+      return;
+    }
+
+    if (request.url.startsWith("/tweaks/events?") && request.method === "GET") {
+      reply(response, 400, { error: "Unsupported query parameters." });
       return;
     }
 
@@ -444,6 +462,22 @@ test("proxies the original flat tweak descriptors", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { tweaks: initialTweaks });
+});
+
+test("preserves the query when proxying previously adjusted tweaks", async () => {
+  const response = await fetch(new URL("/tweaks?include=adjusted", panel.url));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    tweaks: [...initialTweaks, inactiveAdjustedTweak],
+  });
+});
+
+test("preserves Android validation errors for queried event streams", async () => {
+  const response = await fetch(new URL("/tweaks/events?include=adjusted", panel.url));
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Unsupported query parameters." });
 });
 
 test("streams complete tweak snapshots while allowing concurrent patches", async () => {

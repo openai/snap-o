@@ -1,6 +1,6 @@
 ---
 name: snap-o-tweaks
-description: Inspect, stream, and explicitly adjust live Android UI tweak values through Snap-O. Use when a request mentions Snap-O Tweaks, tweak-enabled Android apps, runtime UI parameters, Compose tweak or overlay controls, tweak discovery, typed values, defaults or resets, atomic tweak batches, the Tweaks REST/SSE API, or selecting between CLI, macOS inspector, in-app overlay, and custom tweak interfaces.
+description: Inspect, stream, and explicitly adjust live Android UI tweak values through Snap-O. Use when a request mentions Snap-O Tweaks, tweak-enabled Android apps, runtime UI parameters, Compose tweak or overlay controls, tweak discovery, previously adjusted or currently inactive tweaks, applying all user-made tweak changes, typed values, defaults or resets, atomic tweak batches, the Tweaks REST/SSE API, or selecting between CLI, macOS inspector, in-app overlay, and custom tweak interfaces.
 ---
 
 # Snap-O Tweaks
@@ -58,7 +58,24 @@ ADB resolves from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use
    Select devices with `-s <serial>`, `-d` (USB), or `-e` (emulator). Use
    `-n <socket>` for every subcommand except `apps` when selection is ambiguous.
 
-3. Observe live complete snapshots:
+3. Include every tweak the user has adjusted, even when its declaration is not
+   currently in composition:
+
+   ```bash
+   "$SNAPO_BIN" tweaks list --all -s <serial> -n <socket> --json
+   "$SNAPO_BIN" tweaks get 'Typography/Font size' --all -s <serial> -n <socket> --json
+   ```
+
+   The expanded list combines current tweaks with retained, previously adjusted
+   tweaks. Compare each descriptor's `value` with its `default` when the user
+   asks to apply all changes they made. Separate screens can reuse tweak names
+   with different declarations; preserve every descriptor from `list --all`
+   instead of deduplicating by name. `get NAME --all` reports an error when
+   multiple declarations match; use `list --all --json` to inspect them.
+   Historical tweaks can be inspected while inactive, but can only be changed
+   or reset when their declaration is active.
+
+4. Observe live complete snapshots:
 
    ```bash
    "$SNAPO_BIN" tweaks watch -s <serial> -n <socket> --json
@@ -67,6 +84,8 @@ ADB resolves from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use
 
    `--once` exits after the first complete snapshot. `--json` emits
    newline-delimited JSON; `list` and `watch` emit complete tweak snapshots.
+   Event streams contain only currently active tweaks; use `list --all` for
+   historical adjustments.
 
 ## Change values only when requested
 
@@ -102,6 +121,8 @@ Tweaks use app-local `snapo_tweaks_<pid>` sockets and normally exist only in
 debug-enabled apps. If no socket appears, check device authorization and
 selection, whether the app is running, its live Tweaks dependency/integration,
 debug/runtime policy, and server startup. If a socket exists but `/tweaks` is
-empty, the current Compose UI has no active tweak declarations. Do not enable
-release servers or modify apps or dependencies without an explicit request.
-Preserve validation errors; the CLI cleans up its own temporary ADB forwards.
+empty, the current Compose UI has no active tweak declarations; `list --all`
+can still return retained adjustments. Adjustment history lasts only for the
+current Android app process. Do not enable release servers or modify apps or
+dependencies without an explicit request. Preserve validation errors; the CLI
+cleans up its own temporary ADB forwards.

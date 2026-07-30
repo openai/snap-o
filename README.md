@@ -60,6 +60,19 @@ If the ADB server is not running, Snap-O asks you to pick your `adb` binary so i
 
 Note: Snap‑O uses the macOS Hardened Runtime. It will run the `adb` binary you select, so always choose a trusted `adb` from the official Android Platform Tools.
 
+### Previously adjusted Tweaks
+
+Include previously adjusted values even after their declarations leave composition:
+
+```bash
+snapo tweaks list --all -s <serial> -n <socket> --json
+snapo tweaks get 'Motion/Duration' --all -s <serial> -n <socket> --json
+```
+
+The equivalent API is `GET /tweaks?include=adjusted`. Inactive tweaks remain
+read-only. See the [Tweaks protocol guide](contracts/tweaks/README.md) for
+descriptors and updates.
+
 ### Drag and Drop
 
 After you capture a screenshot or screen recording, you can drag and drop it without saving first. Drop the capture straight into a GitHub pull request, a Slack message, or any app that accepts images and video.

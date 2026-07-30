@@ -183,8 +183,9 @@ def tweak_descriptors():
 
 
 class TweakHTTPServer:
-    def __init__(self, descriptors=None, app=None, error=None, stream_events=None):
+    def __init__(self, descriptors=None, app=None, error=None, stream_events=None, adjusted_descriptors=None):
         self.descriptors = json.loads(json.dumps(descriptors or tweak_descriptors()))
+        self.adjusted_descriptors = self.descriptors if adjusted_descriptors is None else adjusted_descriptors
         self.app = app or {"name": "Snap-O Tweaks Demo", "packageName": "com.example.tweaks"}
         self.error = error
         self.stream_events = stream_events
@@ -200,6 +201,8 @@ class TweakHTTPServer:
                     self.send_json(200, owner.app)
                 elif self.path == "/tweaks":
                     self.send_json(200, {"tweaks": owner.descriptors})
+                elif self.path == "/tweaks?include=adjusted":
+                    self.send_json(200, {"tweaks": owner.adjusted_descriptors})
                 elif self.path == "/tweaks/events":
                     events = owner.stream_events or [
                         ": keep-alive\n\n",
@@ -381,6 +384,10 @@ class PluginPackagingTests(unittest.TestCase):
         self.assertIn("forward tcp:0", protocol)
         self.assertIn("forward --remove", protocol)
         self.assertIn("[protocol.md](protocol.md)", interaction_guide)
+        self.assertIn("tweaks list --all", skill_content)
+        self.assertIn("tweaks get 'Typography/Font size' --all", skill_content)
+        self.assertIn("GET /tweaks?include=adjusted", protocol)
+        self.assertIn("snapo tweaks list --all", interaction_guide)
 
         for artifact in ("tweaks", "tweaks-noop", "tweaks-overlay", "tweaks-overlay-noop"):
             with self.subTest(artifact=artifact):
@@ -1156,6 +1163,31 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
+    def test_list_all_includes_previously_adjusted_inactive_tweaks(self):
+        active = tweak_descriptors()[0]
+        inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7}
+
+        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, inactive]) as wire:
+            result, output, errors, adb = self.run_command(["list", "--all", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), {"tweaks": [active, inactive]})
+        self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_list_all_preserves_independently_adjusted_tweaks_with_the_same_name(self):
+        active = tweak_descriptors()[1]
+        first = {**tweak_descriptors()[0], "value": 20}
+        second = {**first, "default": 24, "value": 32, "max": 64}
+        expanded = [active, first, second]
+
+        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=expanded) as wire:
+            result, output, errors, _ = self.run_command(["list", "--all", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), {"tweaks": expanded})
+        self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
+
     def test_list_renders_descriptive_human_readable_values(self):
         with TweakHTTPServer() as wire:
             result, output, errors, _ = self.run_command(["list"], wire)
@@ -1172,6 +1204,36 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), wire.descriptors[0])
         self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+
+    def test_get_all_finds_a_previously_adjusted_inactive_tweak(self):
+        active = tweak_descriptors()[0]
+        inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7}
+
+        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, inactive]) as wire:
+            result, output, errors, adb = self.run_command(
+                ["get", inactive["name"], "--all", "--json"],
+                wire,
+            )
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), inactive)
+        self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_get_all_rejects_independently_adjusted_tweaks_with_the_same_name(self):
+        active = tweak_descriptors()[1]
+        first = {**tweak_descriptors()[0], "value": 20}
+        second = {**first, "default": 24, "value": 32, "max": 64}
+
+        with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, first, second]) as wire:
+            result, output, errors, adb = self.run_command(["get", first["name"], "--all", "--json"], wire)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn(f"Multiple tweaks named '{first['name']}'", errors)
+        self.assertIn("snapo tweaks list --all --json", errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks?include=adjusted", None)])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_get_reports_unknown_tweaks_without_mutating_the_application(self):
         with TweakHTTPServer() as wire:

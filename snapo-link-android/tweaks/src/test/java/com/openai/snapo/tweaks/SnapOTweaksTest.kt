@@ -85,6 +85,22 @@ class SnapOTweaksTest {
     }
 
     @Test
+    fun `overlay updates remain available as adjusted history after leaving composition`() {
+        val descriptor = TweakDescriptor(
+            name = "Typography/Historical font size",
+            type = TweakType.INT,
+            default = 16,
+        )
+        TweakRegistry.register(descriptor)
+
+        SnapOTweaks.update(descriptor.name, SnapOTweakValue.Integer(20))
+        TweakRegistry.unregister(descriptor.name)
+
+        assertTrue(SnapOTweaks.activeTweaks().isEmpty())
+        assertEquals(20, TweakRegistry.snapshot(includeAdjusted = true).single().value)
+    }
+
+    @Test
     fun `release updates without an override ignore unavailable tweaks`() {
         TweaksRuntimePolicy.configure(isDebuggable = false, allowRelease = false)
 
