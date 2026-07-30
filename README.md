@@ -6,20 +6,31 @@
 
 # Snap-O: Android Inspection System
 
-Snap-O is a fast, tidy macOS app for Android inspection: capture screenshots and recordings, and inspect network traffic from Android devices and emulators.
+Snap-O is a fast, tidy macOS app for Android inspection. Originally built for streamlined screen capture, Snap-O now also supports network traffic inspection and live UI adjustments on Android devices and emulators.
 
 It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
-
-## Top-Level Features
-
-- **Network Inspector:** Mirror app traffic into the macOS client, inspect requests and responses, and explore payloads with collapsible JSON pretty printing. Start with the [Network Inspector guide](https://openai.github.io/snap-o/network-inspector.html).
-- **Screen Capture:** Grab screenshots and screen recordings quickly, preview recordings instantly, and drag captures directly into PRs, chat, and docs without save-first friction.
 
 ## Network Inspector
 
 Curious about mirroring app traffic into the macOS client? Check the [Network Inspector guide](https://openai.github.io/snap-o/network-inspector.html) for setup steps, dependency coordinates, and configuration tips.
 
 Snap-O can replay network requests that happened before you opened Snap-O, so you do not miss early events, and includes collapsible JSON pretty printing.
+
+## Screen Capture
+
+- Shows a screenshot the moment the window opens
+- Instantly preview screen recordings, and step through frame-by-frame.
+- Lets you drag and drop captures anywhere without saving them first
+- Multi-device support
+- Supports multiple windows of captures at once
+- Keeps your disk uncluttered by cleaning up after itself
+- Integrates with Android Studio External Tools
+
+## Tweaks (Alpha)
+
+Snap-O Tweaks lets you inspect and adjust Jetpack Compose UI values without rebuilding or restarting your app. Tweaks is an alpha feature; its APIs, behavior, and interface may change.
+
+Follow the [Tweaks developer guide](https://openai.github.io/snap-o/tweaks.html) for setup steps.
 
 ## Why build an Android inspection system?
 
@@ -33,16 +44,6 @@ You might like Snap-O if you've ever wished you could:
 
 I've built variations of this tool a few times over the last decade; this is the first one
 I'm open-sourcing.
-
-## Screen Capture Features
-
-- Shows a screenshot the moment the window opens
-- Instantly preview screen recordings, and step through frame-by-frame.
-- Lets you drag and drop captures anywhere without saving them first
-- Multi-device support
-- Supports multiple windows of captures at once
-- Keeps your disk uncluttered by cleaning up after itself
-- Integrates with Android Studio External Tools
 
 ## Usage
 
@@ -65,16 +66,18 @@ After you capture a screenshot or screen recording, you can drag and drop it wit
 
 ### Keyboard Shortcuts
 
-| Action                   | Shortcut |
-|--------------------------|----------|
-| New screenshot           | `⌘R`     |
-| Start recording          | `⇧⌘R`    |
-| Start live preview       | `⇧⌘L`    |
-| Stop recording / preview | `⎋`      |
-| Save as                  | `⌘S`     |
-| Copy image to clipboard  | `⌘C`     |
-| Previous device          | `⌘[`     |
-| Next device              | `⌘]`     |
+| Action                    | Shortcut |
+|---------------------------|----------|
+| New screenshot            | `⌘R`     |
+| Start recording           | `⇧⌘R`    |
+| Start live preview        | `⇧⌘L`    |
+| Stop recording / preview  | `⎋`      |
+| Save as                   | `⌘S`     |
+| Copy image to clipboard   | `⌘C`     |
+| Previous device           | `⌘[`     |
+| Next device               | `⌘]`     |
+| Show / hide App Inspector | `⌥⌘I`    |
+| Show / hide Capture       | `⌥⌘C`    |
 
 ### Android Studio External Tools
 
@@ -92,7 +95,7 @@ Running these tools launches Snap-O (or brings it to the foreground) and immedia
 
 There is currently no support for choosing a specific device/emulator when starting Snap-O in this way.
 
-### Command Line Network Inspector
+### Command Line Inspector
 
 Snap-O bundles a small Python command-line client at:
 
@@ -106,11 +109,15 @@ It uses the host computer's configured `adb` command, requires Python 3, and doe
 snapo network list --json
 snapo network requests -s <serial> -n <socket> --no-stream --json
 snapo network show -s <serial> -n <socket> -r <request-id> --json
+snapo tweaks apps --json
+snapo tweaks list -s <serial> -n <socket> --json
+snapo tweaks set 'Typography/Font size' 42 -s <serial> -n <socket> --json
+snapo tweaks reset 'Typography/Font size' -s <serial> -n <socket> --json
 ```
 
-## Why a web UI for the Network Inspector?
+## Why a web UI for the App Inspector?
 
-The Network Inspector uses a React UI hosted in the macOS app's system WebKit runtime. Native Swift code handles ADB and network transport through the host computer's existing ADB server, so the distribution does not include Chromium, Node.js, or another ADB executable. The same UI can also run in a browser through its HTTP transport.
+The Network and Tweaks inspectors share a React UI hosted in the macOS app's system WebKit runtime. Native Swift code handles ADB and transport through the host computer's existing ADB server, so the distribution does not include Chromium, Node.js, or another ADB executable. The same UI can also run in a browser through its HTTP transport.
 
 The screenshot tool remains in SwiftUI because it delivers a better macOS experience for video playback today. Snap-O uses AVKit because it gives a polished video player on macOS and keeps the download small. VLC-based playback felt clunky and the viewing experience suffered.
 
@@ -126,23 +133,24 @@ Snap-O is a small side project kept alive when time allows. If it works for you,
 
 ## Building from source
 
-The macOS app requires Xcode 16 or later.
+The macOS app requires Xcode 26 or later and Node.js 22.12 or later.
 
 1. Install the Android Platform Tools (via Android Studio or `brew install android-platform-tools`).
-2. Open `Snap-O.xcodeproj` in Xcode.
-3. Build and run.
+2. Install Node.js 22.12 or later and ensure `npm` is available to Xcode.
+3. Open `snapo-app-mac/Snap-O.xcodeproj` in Xcode.
+4. Build and run.
 
 ### Notarizing or shipping builds
 
 If you need to notarize the app yourself:
 
-1. Copy `Config/Signing.xcconfig.sample` → `Config/Signing.xcconfig`.
+1. Copy `snapo-app-mac/Config/Signing.xcconfig.sample` → `snapo-app-mac/Config/Signing.xcconfig`.
 2. Edit the new file with your Apple Developer Team ID and signing certificate name.
 3. Use Xcode's Product → Archive flow, then distribute or upload as usual. The file is ignored by Git, so your credentials remain private.
 
 ## Codex Plugin
 
-Snap-O includes a Codex plugin for macOS and Linux. It bundles the network-inspector skill and its Python CLI, and requires Python 3 and Android Platform Tools.
+Snap-O includes a Codex plugin for macOS and Linux. It bundles skills for network inspection and live Tweaks, along with their shared Python CLI, and requires Python 3 and Android Platform Tools.
 
 Add the Snap-O marketplace and install the plugin:
 
@@ -170,7 +178,7 @@ Start a new Codex session after installing or updating the plugin.
 
 ## Linux Support
 
-You can inspect network requests from Snap-O on a Linux machine by using the dependency-free `snapo` Python CLI tool. Install Python 3 and Android Platform Tools, then download the script from the `main` branch and put it on `PATH`:
+You can inspect network requests and alpha Tweaks from Snap-O on a Linux machine by using the dependency-free `snapo` Python CLI tool. Install Python 3 and Android Platform Tools, then download the script from the `main` branch and put it on `PATH`:
 
 ```bash
 mkdir -p ~/.local/bin
@@ -180,16 +188,17 @@ chmod +x ~/.local/bin/snapo
 
 This is the same CLI shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
 
-The script supports `snapo network list`, `requests`, and `show`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
+The script supports `snapo network list`, `requests`, and `show`, as well as `snapo tweaks apps`, `list`, `get`, `set`, `reset`, and `watch`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
 
 Verify that ADB can see your Android device, then inspect its available Snap-O servers:
 
 ```bash
 adb devices -l
 snapo network list --json
+snapo tweaks apps --json
 ```
 
-With the default ADB configuration, the CLI opens a localhost forward for the selected `snapo_network_<pid>` socket and removes it when the command exits. Wrappers selecting a remote ADB server must tunnel that forward back to localhost; otherwise, specify `--adb-host` and `--adb-port`. With an explicit ADB endpoint, the CLI connects through the ADB server directly and does not create a forward. Treat captured bodies and URL query values as sensitive.
+With the default ADB configuration, the CLI opens a localhost forward for the selected `snapo_network_<pid>` or `snapo_tweaks_<pid>` socket and removes it when the command exits. Wrappers selecting a remote ADB server must tunnel that forward back to localhost; otherwise, specify `--adb-host` and `--adb-port`. With an explicit ADB endpoint, the CLI connects through the ADB server directly and does not create a forward. Treat captured bodies, URL query values, and editable tweaks as sensitive.
 
 ## Community
 
