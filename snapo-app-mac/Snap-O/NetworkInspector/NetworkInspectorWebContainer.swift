@@ -43,8 +43,8 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     webView = WKWebView(frame: .zero, configuration: configuration)
     super.init()
     webView.navigationDelegate = self
-    bridge.colorPanelChangedHandler = { [weak self] color in
-      self?.sendPageEvent(name: "tweaks:color-panel-changed", payload: color)
+    bridge.colorPanelChangedHandler = { [weak self] change in
+      self?.sendPageEvent(name: "tweaks:color-panel-changed", payload: change)
     }
   }
 

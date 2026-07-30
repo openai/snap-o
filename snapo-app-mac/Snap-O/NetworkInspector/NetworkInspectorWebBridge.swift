@@ -4,6 +4,11 @@ import WebKit
 
 @MainActor
 final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply {
+  struct NativeColorPanelChange: Encodable {
+    let color: String
+    let sessionId: String
+  }
+
   static let messageHandlerName = "snapoNetwork"
 
   private static weak var colorPanelOwner: NetworkInspectorWebBridge?
@@ -11,9 +16,10 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
   var inspectorAppsChangedHandler: (([InspectableApp]) -> Void)?
   var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
-  var colorPanelChangedHandler: ((String) -> Void)?
+  var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
 
   private let service: NetworkInspectorService
+  private var activeColorPanelSessionID: String?
 
   init(service: NetworkInspectorService) {
     self.service = service
@@ -25,6 +31,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   }
 
   func closeNativeColorPanel() {
+    activeColorPanelSessionID = nil
     guard Self.colorPanelOwner === self else { return }
 
     let panel = NSColorPanel.shared
@@ -133,7 +140,8 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   private func openNativeColorPanel(_ input: NativeColorPanelInput) throws {
     guard input.color.count == 7 || input.color.count == 9,
           input.color.first == "#",
-          let components = UInt32(input.color.dropFirst(), radix: 16)
+          let components = UInt32(input.color.dropFirst(), radix: 16),
+          !input.sessionId.isEmpty
     else {
       throw NetworkInspectorError.invalidBridgeMessage
     }
@@ -152,9 +160,11 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     let shouldCenterPanel = !panel.isVisible || Self.colorPanelOwner !== self
     panel.setTarget(nil)
     panel.setAction(nil)
+    Self.colorPanelOwner?.activeColorPanelSessionID = nil
     panel.showsAlpha = true
     panel.isContinuous = true
     panel.color = color
+    activeColorPanelSessionID = input.sessionId
     panel.setTarget(self)
     panel.setAction(#selector(colorPanelDidChange(_:)))
     Self.colorPanelOwner = self
@@ -190,6 +200,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   @objc
   private func colorPanelDidChange(_ panel: NSColorPanel) {
     guard Self.colorPanelOwner === self,
+          let sessionId = activeColorPanelSessionID,
           let color = panel.color.usingColorSpace(.sRGB)
     else {
       return
@@ -199,7 +210,12 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     let green = Int((min(max(color.greenComponent, 0), 1) * 255).rounded())
     let blue = Int((min(max(color.blueComponent, 0), 1) * 255).rounded())
     let alpha = Int((min(max(color.alphaComponent, 0), 1) * 255).rounded())
-    colorPanelChangedHandler?(String(format: "#%02X%02X%02X%02X", red, green, blue, alpha))
+    colorPanelChangedHandler?(
+      NativeColorPanelChange(
+        color: String(format: "#%02X%02X%02X%02X", red, green, blue, alpha),
+        sessionId: sessionId
+      )
+    )
   }
 
   private func saveFile(_ input: NetworkSaveFileInput) throws -> NetworkSaveFileResult {
@@ -254,5 +270,6 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   private struct NativeColorPanelInput: Decodable {
     let color: String
+    let sessionId: String
   }
 }

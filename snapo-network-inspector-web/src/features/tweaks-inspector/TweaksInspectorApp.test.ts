@@ -40,23 +40,27 @@ describe("editable tweak colors", () => {
   });
 
   it("applies native RGBA updates", () => {
-    expect(nativePanelTweakColor("#a1b2c344")).toBe("#A1B2C344");
+    expect(nativePanelTweakColor({ color: "#a1b2c344", sessionId: "active" }, "active")).toBe("#A1B2C344");
+  });
+
+  it("ignores stale native color events from a previously opened field", () => {
+    expect(nativePanelTweakColor({ color: "#a1b2c344", sessionId: "previous" }, "active")).toBeNull();
   });
 
   it("keeps the alpha component when a native color is translucent", () => {
-    expect(nativePanelTweakColor("#a1b2c380")).toBe("#A1B2C380");
+    expect(nativePanelTweakColor({ color: "#a1b2c380", sessionId: "active" }, "active")).toBe("#A1B2C380");
   });
 
   it("omits the alpha component when a native color is fully opaque", () => {
-    expect(nativePanelTweakColor("#a1b2c3ff")).toBe("#A1B2C3");
+    expect(nativePanelTweakColor({ color: "#a1b2c3ff", sessionId: "active" }, "active")).toBe("#A1B2C3");
   });
 
   it("canonicalizes originally RGBA colors to RGB when made opaque", () => {
-    expect(nativePanelTweakColor("#5468FFFF")).toBe("#5468FF");
+    expect(nativePanelTweakColor({ color: "#5468FFFF", sessionId: "active" }, "active")).toBe("#5468FF");
   });
 
   it("ignores native color updates without an alpha component", () => {
-    expect(nativePanelTweakColor("#a1b2c3")).toBeNull();
+    expect(nativePanelTweakColor({ color: "#a1b2c3", sessionId: "active" }, "active")).toBeNull();
   });
 
   it("keeps the browser-native color input when no native panel is available", () => {

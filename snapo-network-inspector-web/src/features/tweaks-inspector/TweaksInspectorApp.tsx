@@ -7,7 +7,7 @@ import type {
   TweakDescriptor,
   TweakValue
 } from "../../network/bridge-types";
-import type { NetworkClient } from "../../network/client";
+import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
 import { AppInspectorPicker } from "../app-inspector/components/AppInspectorPicker";
 import { TweakUpdateQueue } from "./tweak-update-queue";
 
@@ -21,6 +21,13 @@ interface TweakOrdering {
   sections: Map<string, number>;
   tweaks: Map<string, number>;
 }
+
+interface ActiveColorPanelSession {
+  tweak: TweakDescriptor;
+  sessionId: string;
+}
+
+let nextColorPanelSession = 0;
 
 export function TweaksInspectorApp({
   client,
@@ -37,7 +44,7 @@ export function TweaksInspectorApp({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
-  const activeColorTweak = useRef<TweakDescriptor | null>(null);
+  const activeColorPanel = useRef<ActiveColorPanelSession | null>(null);
   const server = selection.server;
   const hasNativeColorPanel =
     client.usesNativeServerPicker &&
@@ -122,25 +129,26 @@ export function TweaksInspectorApp({
   );
 
   useEffect(() => {
-    const active = activeColorTweak.current;
+    const active = activeColorPanel.current;
     if (active === null) return;
 
-    activeColorTweak.current = tweaks.find((tweak) => tweak.name === active.name && tweak.type === "color") ?? null;
+    const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
+    activeColorPanel.current = tweak === undefined ? null : { ...active, tweak };
   }, [tweaks]);
 
   useEffect(() => {
     if (!hasNativeColorPanel || client.onNativeColorPanelChange === undefined) return;
 
-    const unsubscribe = client.onNativeColorPanelChange((color) => {
-      const tweak = activeColorTweak.current;
-      if (tweak === null) return;
+    const unsubscribe = client.onNativeColorPanelChange((event) => {
+      const active = activeColorPanel.current;
+      if (active === null) return;
 
-      const value = nativePanelTweakColor(color);
-      if (value !== null) updateTweak(tweak, value);
+      const value = nativePanelTweakColor(event, active.sessionId);
+      if (value !== null) updateTweak(active.tweak, value);
     });
 
     return () => {
-      activeColorTweak.current = null;
+      activeColorPanel.current = null;
       unsubscribe();
     };
   }, [client, hasNativeColorPanel, updateTweak]);
@@ -149,9 +157,10 @@ export function TweaksInspectorApp({
     (tweak: TweakDescriptor) => {
       if (!hasNativeColorPanel || client.openNativeColorPanel === undefined) return;
 
-      activeColorTweak.current = tweak;
-      void client.openNativeColorPanel(String(tweak.value)).catch((cause: unknown) => {
-        if (activeColorTweak.current?.name === tweak.name) activeColorTweak.current = null;
+      const sessionId = String(++nextColorPanelSession);
+      activeColorPanel.current = { tweak, sessionId };
+      void client.openNativeColorPanel(String(tweak.value), sessionId).catch((cause: unknown) => {
+        if (activeColorPanel.current?.sessionId === sessionId) activeColorPanel.current = null;
         setError(cause instanceof Error ? cause.message : "Unable to open the color picker.");
       });
     },
@@ -477,8 +486,10 @@ export function tweakColorWithPreservedAlpha(committed: string, color: string): 
   return `${color.toUpperCase()}${alpha}`;
 }
 
-export function nativePanelTweakColor(color: string): string | null {
-  const normalized = parseTweakColor(color);
+export function nativePanelTweakColor(event: NativeColorPanelChange, sessionId: string): string | null {
+  if (event.sessionId !== sessionId) return null;
+
+  const normalized = parseTweakColor(event.color);
   if (normalized === null || normalized.length !== 9) return null;
 
   return normalized.slice(7) === "FF" ? normalized.slice(0, 7) : normalized;
