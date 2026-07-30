@@ -94,6 +94,12 @@ struct AppInspectorViewPicker: View {
 }
 
 private struct AppInspectorPickerPopover: View {
+  private enum Metrics {
+    static let minimumWidth: CGFloat = 320
+    static let maximumWidth: CGFloat = 480
+    static let nonTextWidth: CGFloat = 160
+  }
+
   @Bindable var model: NetworkInspectorHostModel
   let selectInspector: (InspectableApp, AppInspectorOption) -> Void
 
@@ -109,11 +115,17 @@ private struct AppInspectorPickerPopover: View {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(model.inspectorApps) { app in
-              AppInspectorPickerAppGroup(
-                app: app,
-                selection: model.selectedInspector,
-                selectInspector: selectInspector
-              )
+              ForEach(app.inspectors) { option in
+                AppInspectorPickerOptionRow(
+                  app: app,
+                  option: option,
+                  isSelected: model.selectedInspector?.appId == app.id
+                    && model.selectedInspector?.kind == option.kind
+                    && model.selectedInspector?.server == option.server
+                ) {
+                  selectInspector(app, option)
+                }
+              }
             }
           }
           .padding(6)
@@ -122,50 +134,33 @@ private struct AppInspectorPickerPopover: View {
         .fixedSize(horizontal: false, vertical: true)
       }
     }
-    .frame(width: 320)
+    .frame(width: preferredWidth)
   }
-}
 
-private struct AppInspectorPickerAppGroup: View {
-  let app: InspectableApp
-  let selection: SelectedAppInspector?
-  let selectInspector: (InspectableApp, AppInspectorOption) -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 8) {
-        AppInspectorIcon(app: app, size: 16, statusSize: 0)
-
-        Text(app.name)
-          .font(.system(size: 11, weight: .medium))
-          .lineLimit(1)
-
-        Spacer(minLength: 8)
-
-        Text(app.deviceDisplayTitle)
-          .font(.system(size: 10))
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+  private var preferredWidth: CGFloat {
+    let appFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    let deviceFont = NSFont.systemFont(ofSize: 12)
+    let inspectorFont = NSFont.systemFont(ofSize: 11)
+    let contentWidth = model.inspectorApps.flatMap { app in
+      let appWidth = max(
+        textWidth(app.name, font: appFont),
+        textWidth(app.deviceDisplayTitle, font: deviceFont)
+      )
+      return app.inspectors.map { option in
+        appWidth + textWidth(option.kind.title, font: inspectorFont) + Metrics.nonTextWidth
       }
-      .frame(height: 30)
-      .padding(.horizontal, 8)
-      .help(app.packageName)
+    }.max() ?? Metrics.minimumWidth
 
-      ForEach(app.inspectors) { option in
-        AppInspectorPickerOptionRow(
-          option: option,
-          isSelected: selection?.appId == app.id
-            && selection?.kind == option.kind
-            && selection?.server == option.server
-        ) {
-          selectInspector(app, option)
-        }
-      }
-    }
+    return min(max(ceil(contentWidth), Metrics.minimumWidth), Metrics.maximumWidth)
+  }
+
+  private func textWidth(_ text: String, font: NSFont) -> CGFloat {
+    (text as NSString).size(withAttributes: [.font: font]).width
   }
 }
 
 private struct AppInspectorPickerOptionRow: View {
+  let app: InspectableApp
   let option: AppInspectorOption
   let isSelected: Bool
   let select: () -> Void
@@ -175,23 +170,26 @@ private struct AppInspectorPickerOptionRow: View {
   var body: some View {
     Button(action: select) {
       HStack(spacing: 10) {
-        Image(systemName: option.kind.systemImage)
-          .font(.system(size: 13))
+        AppInspectorIcon(app: app, size: 32, statusSize: 0)
+
+        AppInspectorPickerText(
+          appName: app.name,
+          deviceName: app.deviceDisplayTitle
+        )
+
+        Spacer(minLength: 8)
+
+        Label(option.kind.title, systemImage: option.kind.systemImage)
+          .font(.system(size: 11))
           .foregroundStyle(.secondary)
-          .frame(width: 18)
-
-        Text(option.kind.title)
-          .font(.system(size: 12))
-
-        Spacer()
+          .fixedSize()
 
         Image(systemName: "checkmark")
           .font(.system(size: 11, weight: .semibold))
           .opacity(isSelected ? 1 : 0)
       }
-      .padding(.leading, 22)
-      .padding(.trailing, 8)
-      .frame(height: 38)
+      .padding(.horizontal, 8)
+      .frame(height: 52)
       .contentShape(Rectangle())
       .background {
         if isHovering || isSelected {
@@ -201,6 +199,7 @@ private struct AppInspectorPickerOptionRow: View {
       }
     }
     .buttonStyle(.plain)
+    .help(app.packageName)
     .onHover { isHovering = $0 }
   }
 }
