@@ -28,6 +28,7 @@ interface ActiveColorPanelSession {
 }
 
 let nextColorPanelSession = 0;
+const docsUrl = "https://openai.github.io/snap-o/tweaks.html#expose-values";
 
 export function TweaksInspectorApp({
   client,
@@ -238,34 +239,44 @@ export function TweaksInspectorApp({
         </header>
       ) : null}
 
-      <div className="tweaks-inspector-content">
-        {error ? (
-          <p className="tweaks-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <div className="tweaks-columns">
-          {sections.map((column, index) => (
-            <div className="tweaks-column" key={index}>
-              {column.map((section) => (
-                <section className="tweaks-section" key={section.name}>
-                  {section.name ? <h2>{section.name}</h2> : null}
-                  <div className="tweaks-section-list">
-                    {section.tweaks.map((tweak) => (
-                      <TweakControl
-                        key={tweak.name}
-                        tweak={tweak}
-                        onChange={updateTweak}
-                        onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ))}
+      {!error && tweaks.length === 0 ? (
+        <section className="empty-detail">
+          <h1>No tweaks on screen</h1>
+          <p>Add a tweak to your app’s Compose UI to see it here.</p>
+          <button className="text-button" type="button" onClick={() => void client.openExternal(docsUrl)}>
+            Read the developer guide
+          </button>
+        </section>
+      ) : (
+        <div className="tweaks-inspector-content">
+          {error ? (
+            <p className="tweaks-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="tweaks-columns">
+            {sections.map((column, index) => (
+              <div className="tweaks-column" key={index}>
+                {column.map((section) => (
+                  <section className="tweaks-section" key={section.name}>
+                    {section.name ? <h2>{section.name}</h2> : null}
+                    <div className="tweaks-section-list">
+                      {section.tweaks.map((tweak) => (
+                        <TweakControl
+                          key={tweak.name}
+                          tweak={tweak}
+                          onChange={updateTweak}
+                          onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </main>
   );
 }

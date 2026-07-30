@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { TweakDescriptor } from "../../network/bridge-types";
-import { createNetworkClient } from "../../network/client";
+import type { SelectedAppInspector, TweakDescriptor } from "../../network/bridge-types";
+import { createNetworkClient, type NetworkClient } from "../../network/client";
 import {
   canResetTweaks,
   groupTweaks,
@@ -10,8 +10,31 @@ import {
   parseTweakColor,
   reconcileStreamedTweaks,
   TweakColorField,
+  TweaksInspectorApp,
   tweakColorWithPreservedAlpha
 } from "./TweaksInspectorApp";
+
+describe("empty tweaks inspector", () => {
+  it("uses the network inspector empty-state layout and offers the developer guide", () => {
+    const client = { usesNativeServerPicker: true, openExternal: async () => {} } as unknown as NetworkClient;
+    const selection: SelectedAppInspector = {
+      appId: "pixel:com.openai.chatgpt",
+      kind: "tweaks",
+      server: { deviceId: "pixel", socketName: "snapo_tweaks_10" }
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(TweaksInspectorApp, { client, apps: [], selection, onSelect() {} })
+    );
+
+    expect(markup).toContain('class="empty-detail"');
+    expect(markup).toContain("No tweaks on screen");
+    expect(markup).toContain("Add a tweak to your app’s Compose UI to see it here.");
+    expect(markup).toContain('class="text-button"');
+    expect(markup).toContain("Read the developer guide");
+    expect(markup).not.toContain('class="tweaks-columns"');
+  });
+});
 
 describe("editable tweak colors", () => {
   it("normalizes complete RGB colors", () => {

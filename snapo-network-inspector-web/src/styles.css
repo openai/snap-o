@@ -1410,6 +1410,10 @@ pre {
   padding: 20px clamp(18px, 4vw, 36px) 48px;
 }
 
+.tweaks-inspector > .empty-detail {
+  grid-row: 2;
+}
+
 .tweaks-error {
   margin: 0 0 14px;
   color: var(--error);
