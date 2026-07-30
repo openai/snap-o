@@ -268,8 +268,8 @@ fun TweakSpecimen() {
 fun TypographySpecimen() {
     Text(
         text = tweak("Make it feel right.", name = "Preview text").value,
-        fontSize = tweak(36, "Font size", min = 16, max = 72, step = 1).value.sp,
-        fontWeight = FontWeight(tweak(600, "Font weight", min = 100, max = 900, step = 100).value),
+        fontSize = tweak(36, "Font size", 16..72, step = 1).value.sp,
+        fontWeight = FontWeight(tweak(600, "Font weight", 100..900, step = 100).value),
         color = MaterialTheme.colorScheme.onSurface,
     )
 
@@ -278,7 +278,7 @@ fun TypographySpecimen() {
 
 @Composable
 fun SpecimenAccessory() {
-    val fontSize by tweak(36, "Font size", min = 16, max = 72, step = 1)
+    val fontSize by tweak(36, "Font size", 16..72, step = 1)
 
     Text(text = "$fontSize sp")
 }
@@ -288,12 +288,12 @@ fun MotionSpecimen() {
     val useSpring by tweak(true, "Use spring")
 
     val animationSpec = if (useSpring) {
-        val stiffness by tweak(280f, "Spring stiffness", min = 80f, max = 800f, step = 20f)
-        val dampingRatio by tweak(0.7f, "Spring damping", min = 0.1f, max = 1f, step = 0.05f)
+        val stiffness by tweak(280f, "Spring stiffness", 80f..800f, step = 20f)
+        val dampingRatio by tweak(0.7f, "Spring damping", 0.1f..1f, step = 0.05f)
 
         spring<Float>(dampingRatio = dampingRatio, stiffness = stiffness)
     } else {
-        val durationMillis by tweak(400, "Animation duration", min = 100, max = 1_500, step = 50)
+        val durationMillis by tweak(400, "Animation duration", 100..1_500, step = 50)
 
         tween<Float>(durationMillis = durationMillis)
     }
@@ -312,7 +312,7 @@ read the delegated value inside the corresponding callback instead of
 composition:
 
 ```kotlin
-val horizontalOffset by tweak(0, "Horizontal offset", min = 0, max = 200)
+val horizontalOffset by tweak(0, "Horizontal offset", 0..200)
 
 Box(
     modifier = Modifier.offset {
@@ -330,9 +330,9 @@ Provide overloaded `tweak(default, name)` functions for `Int`, `Float`,
 `Color`, `Boolean`, and `String` defaults; each returns its corresponding
 `State<T>`. For strings, name the second argument to distinguish the label from
 the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept
-optional `min`, `max`, and `step` values of the same type. Convert delegated
-integer values into Compose units at the call site, such as `fontSize.sp`.
-The real and no-op artifacts expose the same package and public Compose API.
+an optional range and `step` of the same type. Convert delegated integer values
+into Compose units at the call site, such as `fontSize.sp`. The real and no-op
+artifacts expose the same package and public Compose API.
 
 ## Setup
 

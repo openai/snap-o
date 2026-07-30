@@ -18,16 +18,15 @@ import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 fun tweak(
     default: Float,
     name: String,
-    min: Float? = null,
-    max: Float? = null,
+    range: ClosedFloatingPointRange<Float>? = null,
     step: Float? = null,
 ): State<Float> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.FLOAT,
         default = default,
-        min = min,
-        max = max,
+        min = range?.start,
+        max = range?.endInclusive,
         step = step,
     ),
     default = default,
@@ -38,16 +37,15 @@ fun tweak(
 fun tweak(
     default: Int,
     name: String,
-    min: Int? = null,
-    max: Int? = null,
+    range: IntRange? = null,
     step: Int? = null,
 ): State<Int> = rememberTweakState(
     TweakDescriptor(
         name = name,
         type = TweakType.INT,
         default = default,
-        min = min,
-        max = max,
+        min = range?.start,
+        max = range?.endInclusive,
         step = step,
     ),
     default = default,

@@ -12,8 +12,7 @@ import androidx.compose.ui.graphics.Color
 fun tweak(
     default: Float,
     name: String,
-    min: Float? = null,
-    max: Float? = null,
+    range: ClosedFloatingPointRange<Float>? = null,
     step: Float? = null,
 ): State<Float> = rememberUpdatedState(default)
 
@@ -22,8 +21,7 @@ fun tweak(
 fun tweak(
     default: Int,
     name: String,
-    min: Int? = null,
-    max: Int? = null,
+    range: IntRange? = null,
     step: Int? = null,
 ): State<Int> = rememberUpdatedState(default)
 

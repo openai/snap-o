@@ -232,8 +232,8 @@ private fun TypographyPreview() {
 
 @Composable
 private fun TweakableTypographyPreview() {
-    val fontSize by tweak(36, "Typography/Font size", min = 16, max = 72, step = 1)
-    val fontWeight by tweak(600, "Typography/Font weight", min = 100, max = 900, step = 100)
+    val fontSize by tweak(36, "Typography/Font size", 16..72, step = 1)
+    val fontWeight by tweak(600, "Typography/Font weight", 100..900, step = 100)
     val previewText by tweak("Make it feel right.", name = "Typography/Preview text")
 
     Text(
@@ -247,8 +247,8 @@ private fun TweakableTypographyPreview() {
 
 @Composable
 private fun TypographyDetails() {
-    val fontSize by tweak(36, "Typography/Font size", min = 16, max = 72, step = 1)
-    val fontWeight by tweak(600, "Typography/Font weight", min = 100, max = 900, step = 100)
+    val fontSize by tweak(36, "Typography/Font size", 16..72, step = 1)
+    val fontWeight by tweak(600, "Typography/Font weight", 100..900, step = 100)
 
     Text(
         text = "$fontSize sp · $fontWeight",
@@ -263,8 +263,8 @@ private fun MotionPreview() {
     val useSpring by tweak(true, "Motion/Use spring")
 
     val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
-        val stiffness by tweak(280f, "Motion/Spring stiffness", min = 80f, max = 800f, step = 20f)
-        val dampingRatio by tweak(0.7f, "Motion/Spring damping", min = 0.1f, max = 1f, step = 0.05f)
+        val stiffness by tweak(280f, "Motion/Spring stiffness", 80f..800f, step = 20f)
+        val dampingRatio by tweak(0.7f, "Motion/Spring damping", 0.1f..1f, step = 0.05f)
 
         spring(
             dampingRatio = dampingRatio,
@@ -272,7 +272,7 @@ private fun MotionPreview() {
             visibilityThreshold = 0.001f,
         )
     } else {
-        val durationMillis by tweak(400, "Motion/Duration", min = 100, max = 1500, step = 50)
+        val durationMillis by tweak(400, "Motion/Duration", 100..1500, step = 50)
 
         tween(
             durationMillis = durationMillis,
@@ -314,7 +314,7 @@ private fun MotionTrack(
     val accentColor = MaterialTheme.colorScheme.primary
     val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
     val trackColor = accentColor.copy(alpha = 0.22f)
-    val trackThickness by tweak(2f, "Motion/Track thickness", min = 1f, max = 8f, step = 0.5f)
+    val trackThickness by tweak(2f, "Motion/Track thickness", 1f..8f, step = 0.5f)
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -371,12 +371,12 @@ private fun AnimationDetails(
 ) {
     val useSpring by tweak(true, "Motion/Use spring")
     val description = if (useSpring) {
-        val stiffness by tweak(280f, "Motion/Spring stiffness", min = 80f, max = 800f, step = 20f)
-        val dampingRatio by tweak(0.7f, "Motion/Spring damping", min = 0.1f, max = 1f, step = 0.05f)
+        val stiffness by tweak(280f, "Motion/Spring stiffness", 80f..800f, step = 20f)
+        val dampingRatio by tweak(0.7f, "Motion/Spring damping", 0.1f..1f, step = 0.05f)
 
         "Spring · $stiffness stiffness · $dampingRatio damping"
     } else {
-        val durationMillis by tweak(400, "Motion/Duration", min = 100, max = 1500, step = 50)
+        val durationMillis by tweak(400, "Motion/Duration", 100..1500, step = 50)
 
         "Tween · $durationMillis ms"
     }
