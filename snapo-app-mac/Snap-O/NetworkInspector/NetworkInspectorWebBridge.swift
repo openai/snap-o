@@ -6,9 +6,12 @@ import WebKit
 final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply {
   static let messageHandlerName = "snapoNetwork"
 
+  private static weak var colorPanelOwner: NetworkInspectorWebBridge?
+
   var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
   var inspectorAppsChangedHandler: (([InspectableApp]) -> Void)?
   var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
+  var colorPanelChangedHandler: ((String) -> Void)?
 
   private let service: NetworkInspectorService
 
@@ -17,7 +20,18 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   }
 
   func prepareForPageReload() async {
+    closeNativeColorPanel()
     await service.stopAllStreams()
+  }
+
+  func closeNativeColorPanel() {
+    guard Self.colorPanelOwner === self else { return }
+
+    let panel = NSColorPanel.shared
+    panel.setTarget(nil)
+    panel.setAction(nil)
+    Self.colorPanelOwner = nil
+    panel.orderOut(nil)
   }
 
   func userContentController(
@@ -60,6 +74,9 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "updateTweaks":
       let input = try Self.decode(UpdateTweaksInput.self, from: payload)
       return try await Self.jsonObject(service.updateTweaks(input))
+    case "openNativeColorPanel":
+      try openNativeColorPanel(Self.decode(NativeColorPanelInput.self, from: payload))
+      return nil
     case "startTweakStream":
       let reference = try Self.decode(InspectorServerReference.self, from: payload)
       return try await Self.jsonObject(service.startTweakStream(reference))
@@ -113,6 +130,78 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     }
   }
 
+  private func openNativeColorPanel(_ input: NativeColorPanelInput) throws {
+    guard input.color.count == 7 || input.color.count == 9,
+          input.color.first == "#",
+          let components = UInt32(input.color.dropFirst(), radix: 16)
+    else {
+      throw NetworkInspectorError.invalidBridgeMessage
+    }
+
+    let hasAlpha = input.color.count == 9
+    let rgb = hasAlpha ? components >> 8 : components
+    let alpha = hasAlpha ? CGFloat(components & 0xFF) / 255 : 1
+    let color = NSColor(
+      srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+      green: CGFloat((rgb >> 8) & 0xFF) / 255,
+      blue: CGFloat(rgb & 0xFF) / 255,
+      alpha: alpha
+    )
+    let panel = NSColorPanel.shared
+    let presentationWindow = NSApp.mainWindow
+    let shouldCenterPanel = !panel.isVisible || Self.colorPanelOwner !== self
+    panel.setTarget(nil)
+    panel.setAction(nil)
+    panel.showsAlpha = true
+    panel.isContinuous = true
+    panel.color = color
+    panel.setTarget(self)
+    panel.setAction(#selector(colorPanelDidChange(_:)))
+    Self.colorPanelOwner = self
+    if shouldCenterPanel {
+      positionColorPanel(panel, over: presentationWindow)
+    }
+    panel.makeKeyAndOrderFront(nil)
+  }
+
+  private func positionColorPanel(_ panel: NSColorPanel, over window: NSWindow?) {
+    guard let window else { return }
+
+    let panelSize = panel.frame.size
+    let centeredOrigin = NSPoint(
+      x: window.frame.midX - panelSize.width / 2,
+      y: window.frame.midY - panelSize.height / 2
+    )
+    guard let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame else {
+      panel.setFrameOrigin(centeredOrigin)
+      return
+    }
+
+    let maximumX = max(visibleFrame.minX, visibleFrame.maxX - panelSize.width)
+    let maximumY = max(visibleFrame.minY, visibleFrame.maxY - panelSize.height)
+    panel.setFrameOrigin(
+      NSPoint(
+        x: min(max(centeredOrigin.x, visibleFrame.minX), maximumX),
+        y: min(max(centeredOrigin.y, visibleFrame.minY), maximumY)
+      )
+    )
+  }
+
+  @objc
+  private func colorPanelDidChange(_ panel: NSColorPanel) {
+    guard Self.colorPanelOwner === self,
+          let color = panel.color.usingColorSpace(.sRGB)
+    else {
+      return
+    }
+
+    let red = Int((min(max(color.redComponent, 0), 1) * 255).rounded())
+    let green = Int((min(max(color.greenComponent, 0), 1) * 255).rounded())
+    let blue = Int((min(max(color.blueComponent, 0), 1) * 255).rounded())
+    let alpha = Int((min(max(color.alphaComponent, 0), 1) * 255).rounded())
+    colorPanelChangedHandler?(String(format: "#%02X%02X%02X%02X", red, green, blue, alpha))
+  }
+
   private func saveFile(_ input: NetworkSaveFileInput) throws -> NetworkSaveFileResult {
     let data: Data
     switch input.encoding {
@@ -161,5 +250,9 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   private struct ClipboardText: Decodable {
     let text: String
+  }
+
+  private struct NativeColorPanelInput: Decodable {
+    let color: String
   }
 }

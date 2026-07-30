@@ -43,6 +43,9 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     webView = WKWebView(frame: .zero, configuration: configuration)
     super.init()
     webView.navigationDelegate = self
+    bridge.colorPanelChangedHandler = { [weak self] color in
+      self?.sendPageEvent(name: "tweaks:color-panel-changed", payload: color)
+    }
   }
 
   func start() {
@@ -52,12 +55,18 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
   func stop() {
     recoveryTask?.cancel()
     recoveryTask = nil
+    closeNativeColorPanel()
+    bridge.colorPanelChangedHandler = nil
     invalidatePageEventDelivery(clearPending: true)
     webView.stopLoading()
     webView.configuration.userContentController.removeScriptMessageHandler(
       forName: NetworkInspectorWebBridge.messageHandlerName,
       contentWorld: .page
     )
+  }
+
+  func closeNativeColorPanel() {
+    bridge.closeNativeColorPanel()
   }
 
   func recoverFromEventOverflow() {

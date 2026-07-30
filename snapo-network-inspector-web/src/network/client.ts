@@ -30,6 +30,8 @@ export interface NetworkClient {
   startTweakStream(server: InspectorServerReference): Promise<StreamStarted>;
   stopTweakStream(streamId: string): Promise<void>;
   onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
+  openNativeColorPanel?(color: string): Promise<void>;
+  onNativeColorPanelChange?(callback: (color: string) => void): () => void;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
@@ -104,6 +106,14 @@ class WebKitNetworkClient implements NetworkClient {
 
   onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
     return listenWebKitEvent<TweakStreamEvent>("tweaks:changed", callback);
+  }
+
+  openNativeColorPanel(color: string): Promise<void> {
+    return this.invoke<void>("openNativeColorPanel", { color });
+  }
+
+  onNativeColorPanelChange(callback: (color: string) => void): () => void {
+    return listenWebKitEvent<string>("tweaks:color-panel-changed", callback);
   }
 
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
