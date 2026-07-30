@@ -119,6 +119,7 @@ private struct AppInspectorPickerPopover: View {
           .padding(6)
         }
         .frame(maxHeight: 320)
+        .fixedSize(horizontal: false, vertical: true)
       }
     }
     .frame(width: 320)
