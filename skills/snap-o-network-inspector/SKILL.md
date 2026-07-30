@@ -9,13 +9,16 @@ Use this skill to pull raw network evidence from Snap-O.
 
 ## CLI Path
 
-Use the Python CLI bundled in this skill's `scripts` directory:
+Use the shared Python CLI bundled at the Snap-O plugin root:
 
 ```bash
-SNAPO_BIN=/path/to/snap-o-network-inspector/scripts/snapo
+SNAPO_BIN=/path/to/snap-o/scripts/snapo
 ```
 
-Resolve the path relative to the directory containing this `SKILL.md`. The script requires Python 3 and Android Platform Tools; no Python packages, compiler toolchain, or macOS application are required.
+Resolve `../../scripts/snapo` relative to the directory containing this
+`SKILL.md`; do not assume the current working directory. The script requires
+Python 3 and Android Platform Tools; no Python packages, compiler toolchain,
+or macOS application are required.
 
 The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. Wrappers selecting a remote ADB server must tunnel Snap-O forwards back to localhost; otherwise, pass both `--adb-host` and `--adb-port`.
 

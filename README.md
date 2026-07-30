@@ -150,7 +150,8 @@ Add the Snap-O marketplace and install the plugin:
 codex plugin marketplace add openai/snap-o --ref main \
   --sparse .agents/plugins \
   --sparse .codex-plugin \
-  --sparse skills
+  --sparse skills \
+  --sparse scripts
 codex plugin add snap-o@snap-o
 ```
 
@@ -169,7 +170,7 @@ You can inspect network requests from Snap-O on a Linux machine by using the dep
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-network-inspector/scripts/snapo -o ~/.local/bin/snapo
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/scripts/snapo -o ~/.local/bin/snapo
 chmod +x ~/.local/bin/snapo
 ```
 
