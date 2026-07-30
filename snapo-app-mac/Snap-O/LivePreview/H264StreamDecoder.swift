@@ -16,6 +16,7 @@ final class H264StreamDecoder: @unchecked Sendable {
   private var frameIndex: Int64 = 0
   private let timescale: Int32
   private var pendingFrameFlush: DispatchWorkItem?
+  private var flushedNALByteCount: Int?
 
   init(
     frameRate: Int32 = 30,
@@ -63,9 +64,10 @@ final class H264StreamDecoder: @unchecked Sendable {
     let nal = Data(buffer.dropFirst(startCode.count))
     guard let firstByte = nal.first else { return }
     let type = firstByte & 0x1F
-    guard type == 1 || type == 5 else { return }
+    guard type == 1 || type == 5,
+          flushedNALByteCount != nal.count else { return }
 
-    buffer.removeAll(keepingCapacity: true)
+    flushedNALByteCount = nal.count
     handleNAL(nal)
   }
 
@@ -90,7 +92,10 @@ final class H264StreamDecoder: @unchecked Sendable {
       }
 
       let nalData = buffer[startRange.upperBound ..< nextRange.lowerBound]
-      handleNAL(Data(nalData))
+      if flushedNALByteCount != nalData.count {
+        handleNAL(Data(nalData))
+      }
+      flushedNALByteCount = nil
       buffer.removeSubrange(0 ..< nextRange.lowerBound)
     }
   }
