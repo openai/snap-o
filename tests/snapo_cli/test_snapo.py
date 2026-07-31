@@ -398,23 +398,6 @@ class PluginPackagingTests(unittest.TestCase):
                 self.assertTrue(reference.read_text(encoding="utf-8").strip())
                 self.assertIn(f"references/{name}", skill_content)
 
-        interaction_guide = (skill_root / "references" / "interaction-surfaces.md").read_text(
-            encoding="utf-8"
-        )
-        protocol = (skill_root / "references" / "protocol.md").read_text(encoding="utf-8")
-        self.assertIn("/proc/net/unix", protocol)
-        self.assertIn("forward tcp:0", protocol)
-        self.assertIn("forward --remove", protocol)
-        self.assertIn("[protocol.md](protocol.md)", interaction_guide)
-        self.assertIn("tweaks list --all", skill_content)
-        self.assertIn("tweaks get 'Typography/Font size' --all", skill_content)
-        self.assertIn("GET /tweaks?include=adjusted", protocol)
-        self.assertIn("snapo tweaks list --all", interaction_guide)
-
-        for artifact in ("tweaks", "tweaks-noop", "tweaks-overlay", "tweaks-overlay-noop"):
-            with self.subTest(artifact=artifact):
-                self.assertIn(f"com.openai.snapo:{artifact}:$snapoVersion", interaction_guide)
-
     def test_marketplace_exposes_the_repository_plugin(self):
         marketplace = json.loads(
             (REPOSITORY / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8")

@@ -300,21 +300,21 @@ class Forward:
         return False
 
 
-class Session:
-    def __init__(self, port=None, adb=None, server=None, connect_timeout=5):
+class LocalAbstractSocket:
+    def __init__(self, port=None, adb=None, server=None, timeout=5, feature="network"):
         endpoint = ("127.0.0.1", port) if adb is None else adb.endpoint
         try:
-            self.socket = socket.create_connection(endpoint, timeout=connect_timeout)
+            self.socket = socket.create_connection(endpoint, timeout=timeout)
         except OSError as error:
-            target = "forwarded Snap-O socket" if adb is None else "ADB server"
+            target = "ADB server" if adb is not None else "forwarded Snap-O socket"
+            if adb is None and feature == "tweaks":
+                target = "forwarded Snap-O tweaks socket"
             raise SnapOError(f"Failed to connect to {target}: {error}") from error
-        self.buffer = bytearray()
-        self.next_id = 1
+        self.feature = feature
         try:
             if adb is not None:
                 self.adb_request(f"host:transport:{server.device_id}")
                 self.adb_request(f"localabstract:{server.socket_name}")
-            self.send_bytes(b"HelloSnapO\n")
         except BaseException:
             self.socket.close()
             raise
@@ -323,7 +323,10 @@ class Session:
         payload = request.encode("utf-8")
         if len(payload) > 0xFFFF:
             raise SnapOError("ADB request is too large")
-        self.send_bytes(f"{len(payload):04X}".encode("ascii") + payload)
+        try:
+            self.socket.sendall(f"{len(payload):04X}".encode("ascii") + payload)
+        except OSError as error:
+            raise SnapOError(f"Failed to write to ADB server: {error}") from error
         status = self.read_exact(4)
         if status == b"OKAY":
             return
@@ -333,7 +336,7 @@ class Session:
             except ValueError as error:
                 raise SnapOError("ADB returned an invalid failure response") from error
             message = self.read_exact(length).decode("utf-8", errors="replace")
-            raise SnapOError(f"ADB rejected the network connection: {message}")
+            raise SnapOError(f"ADB rejected the {self.feature} connection: {message}")
         raise SnapOError("ADB returned an invalid status response")
 
     def read_exact(self, count):
@@ -347,6 +350,18 @@ class Session:
                 raise SnapOError("ADB server closed the connection unexpectedly")
             data.extend(chunk)
         return bytes(data)
+
+
+class Session:
+    def __init__(self, port=None, adb=None, server=None, connect_timeout=5):
+        self.socket = LocalAbstractSocket(port, adb, server, connect_timeout).socket
+        self.buffer = bytearray()
+        self.next_id = 1
+        try:
+            self.send_bytes(b"HelloSnapO\n")
+        except BaseException:
+            self.socket.close()
+            raise
 
     def close(self):
         self.socket.close()
@@ -528,49 +543,15 @@ class TweakConnection:
             self.socket.close()
             self.socket = None
 
-    def _read_exact(self, count):
-        received = bytearray()
-        while len(received) < count:
-            try:
-                chunk = self.socket.recv(count - len(received))
-            except OSError as error:
-                raise SnapOError(f"Failed to read from ADB server: {error}") from error
-            if not chunk:
-                raise SnapOError("ADB server closed the connection unexpectedly")
-            received.extend(chunk)
-        return bytes(received)
-
-    def _adb_request(self, request):
-        payload = request.encode("utf-8")
-        if len(payload) > 0xFFFF:
-            raise SnapOError("ADB request is too large")
-        try:
-            self.socket.sendall(f"{len(payload):04X}".encode("ascii") + payload)
-        except OSError as error:
-            raise SnapOError(f"Failed to write to ADB server: {error}") from error
-        status = self._read_exact(4)
-        if status == b"OKAY":
-            return
-        if status == b"FAIL":
-            try:
-                length = int(self._read_exact(4), 16)
-            except ValueError as error:
-                raise SnapOError("ADB returned an invalid failure response") from error
-            message = self._read_exact(length).decode("utf-8", errors="replace")
-            raise SnapOError(f"ADB rejected the tweaks connection: {message}")
-        raise SnapOError("ADB returned an invalid status response")
-
     def _open_socket(self):
         explicit_endpoint = getattr(self.adb, "has_explicit_endpoint", False)
-        endpoint = self.adb.endpoint if explicit_endpoint else ("127.0.0.1", self.forward.port)
-        try:
-            self.socket = socket.create_connection(endpoint, timeout=self.timeout)
-        except OSError as error:
-            target = "ADB server" if explicit_endpoint else "forwarded Snap-O tweaks socket"
-            raise SnapOError(f"Failed to connect to {target}: {error}") from error
-        if explicit_endpoint:
-            self._adb_request(f"host:transport:{self.server.device_id}")
-            self._adb_request(f"localabstract:{self.server.socket_name}")
+        self.socket = LocalAbstractSocket(
+            port=None if explicit_endpoint else self.forward.port,
+            adb=self.adb if explicit_endpoint else None,
+            server=self.server,
+            timeout=self.timeout,
+            feature="tweaks",
+        ).socket
 
     def request(self, method, path, payload=None, stream=False):
         self.close()
