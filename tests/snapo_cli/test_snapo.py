@@ -76,6 +76,7 @@ class WireServer:
         self.port = self.listener.getsockname()[1]
         self.received = []
         self.failure = None
+        self.stopping = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def __enter__(self):
@@ -83,8 +84,14 @@ class WireServer:
         return self
 
     def __exit__(self, error_type, error, traceback):
+        if self.thread.is_alive():
+            self.stopping.set()
+            with socket.create_connection(("127.0.0.1", self.port), timeout=1):
+                pass
         self.thread.join(timeout=3)
         self.listener.close()
+        if error_type is not None:
+            return
         if self.failure:
             raise self.failure
         if self.thread.is_alive():
@@ -94,6 +101,8 @@ class WireServer:
         try:
             connection, _ = self.listener.accept()
             with connection:
+                if self.stopping.is_set():
+                    return
                 connection.settimeout(2)
                 stream = connection.makefile("rwb", buffering=0)
                 if self.adb_handshake:
@@ -138,6 +147,19 @@ class FakeADB:
             self.fail_forward = False
             raise snapo.SnapOError("port in use")
         return ""
+
+
+class WireServerTests(unittest.TestCase):
+    def test_idle_listener_stops_without_a_client_connection(self):
+        with WireServer(lambda stream, received: self.fail("handler should not run")) as server:
+            pass
+
+        self.assertFalse(server.thread.is_alive())
+
+    def test_idle_listener_preserves_an_exception_from_the_context(self):
+        with self.assertRaisesRegex(RuntimeError, "original test failure"):
+            with WireServer(lambda stream, received: self.fail("handler should not run")):
+                raise RuntimeError("original test failure")
 
 
 class FakeTweakADB(FakeADB):
@@ -1252,9 +1274,14 @@ class TweakCommandTests(unittest.TestCase):
             ("Motion/Enabled", "false", False),
             ("Palette/Accent color", "#3b82f6", "#3B82F6"),
             ("Preview/Text value", "true", "true"),
+            ("Preview/Text value", "-hello", "-hello"),
+            ("Preview/Text value", "-foo", "-foo"),
+            ("Preview/Text value", "--literal", "--literal"),
+            ("Preview/Text value", "-h", "-h"),
+            ("Preview/Text value", "--help", "--help"),
         )
         for name, raw, expected in cases:
-            with self.subTest(name=name):
+            with self.subTest(name=name, value=raw):
                 with TweakHTTPServer() as wire:
                     result, output, errors, adb = self.run_command(["set", name, raw, "--json"], wire)
 
