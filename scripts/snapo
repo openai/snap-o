@@ -117,13 +117,9 @@ class ADB:
     def devices(self):
         return parse_devices(self.command("devices", "-l"))
 
-    def sockets(self, serial):
+    def sockets(self, serial, prefix=SOCKET_PREFIX):
         output = self.command("shell", "cat /proc/net/unix", serial=serial)
-        return parse_sockets(output)
-
-    def tweak_sockets(self, serial):
-        output = self.command("shell", "cat /proc/net/unix", serial=serial)
-        return parse_tweak_sockets(output)
+        return parse_sockets(output, prefix)
 
     def package_hint(self, server):
         if server.pid is None:
@@ -157,16 +153,10 @@ def parse_sockets(output, prefix=SOCKET_PREFIX):
             continue
         name = fields[-1]
         if name.startswith("@" + prefix):
-            sockets.add(name[1:])
+            socket_name = name[1:]
+            if prefix != TWEAK_SOCKET_PREFIX or socket_name[len(prefix) :].isdigit():
+                sockets.add(socket_name)
     return sorted(sockets)
-
-
-def parse_tweak_sockets(output):
-    return [
-        name
-        for name in parse_sockets(output, TWEAK_SOCKET_PREFIX)
-        if name[len(TWEAK_SOCKET_PREFIX) :].isdigit()
-    ]
 
 
 def select_devices(devices, serial=None, usb=False, emulator=False):
@@ -191,7 +181,7 @@ def select_devices(devices, serial=None, usb=False, emulator=False):
     return devices
 
 
-def discover(adb, options):
+def discover(adb, options, prefix=SOCKET_PREFIX):
     devices = select_devices(
         adb.devices(),
         serial=options.serial,
@@ -203,25 +193,7 @@ def discover(adb, options):
     servers = []
     for device in devices:
         try:
-            servers.extend(Server(device, name) for name in adb.sockets(device))
-        except SnapOError:
-            continue
-    return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
-
-
-def discover_tweaks(adb, options):
-    devices = select_devices(
-        adb.devices(),
-        serial=options.serial,
-        usb=options.usb,
-        emulator=options.emulator,
-    )
-    if not devices:
-        raise SnapOError("No connected devices found")
-    servers = []
-    for device in devices:
-        try:
-            servers.extend(Server(device, name) for name in adb.tweak_sockets(device))
+            servers.extend(Server(device, name) for name in adb.sockets(device, prefix))
         except SnapOError:
             continue
     return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
@@ -1045,7 +1017,7 @@ def run_show(adb, options):
 
 
 def choose_tweak_server(adb, options):
-    return choose_server(discover_tweaks(adb, options), options.socket, feature="tweaks")
+    return choose_server(discover(adb, options, TWEAK_SOCKET_PREFIX), options.socket, feature="tweaks")
 
 
 def tweak_descriptors(document):
@@ -1138,7 +1110,7 @@ def emit_tweak_document(document, as_json):
 
 
 def run_tweak_apps(adb, options):
-    servers = discover_tweaks(adb, options)
+    servers = discover(adb, options, TWEAK_SOCKET_PREFIX)
     if not servers:
         raise SnapOError("No Snap-O tweaks servers found")
     found = False

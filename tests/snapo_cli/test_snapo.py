@@ -135,7 +135,7 @@ class FakeADB:
     def devices(self):
         return ["emulator-5554"]
 
-    def sockets(self, serial):
+    def sockets(self, serial, prefix=snapo.SOCKET_PREFIX):
         return ["snapo_network_42"]
 
     def package_hint(self, server):
@@ -171,7 +171,9 @@ class FakeTweakADB(FakeADB):
     def devices(self):
         return self.available_devices
 
-    def tweak_sockets(self, serial):
+    def sockets(self, serial, prefix=snapo.SOCKET_PREFIX):
+        if prefix != snapo.TWEAK_SOCKET_PREFIX:
+            return super().sockets(serial, prefix)
         value = self.available_sockets.get(serial, [])
         if isinstance(value, Exception):
             raise value
@@ -475,7 +477,7 @@ usb-phone device product:oriole
             def devices(self):
                 return ["disconnected-device", "emulator-5554"]
 
-            def sockets(self, serial):
+            def sockets(self, serial, prefix=snapo.SOCKET_PREFIX):
                 if serial == "disconnected-device":
                     raise snapo.SnapOError("device disconnected")
                 return ["snapo_network_42"]
@@ -497,8 +499,12 @@ class TweakDiscoveryTests(unittest.TestCase):
 3: 0 0 0 1 01 3 @unrelated
 4: 0 0 0 1 01 4 @snapo_tweaks_7
 5: 0 0 0 1 01 5 @snapo_tweaks_93
+6: 0 0 0 1 01 6 @snapo_tweaks_invalid
 """
-        self.assertEqual(snapo.parse_tweak_sockets(output), ["snapo_tweaks_7", "snapo_tweaks_93"])
+        self.assertEqual(
+            snapo.parse_sockets(output, snapo.TWEAK_SOCKET_PREFIX),
+            ["snapo_tweaks_7", "snapo_tweaks_93"],
+        )
         self.assertEqual(snapo.parse_sockets(output), ["snapo_network_42"])
 
     def test_adb_tweak_socket_discovery_reads_device_unix_sockets(self):
@@ -510,7 +516,7 @@ class TweakDiscoveryTests(unittest.TestCase):
             return type("Result", (), {"returncode": 0, "stdout": output, "stderr": ""})()
 
         adb = snapo.ADB("/configured/adb", run=run)
-        self.assertEqual(adb.tweak_sockets("emulator-5554"), ["snapo_tweaks_42"])
+        self.assertEqual(adb.sockets("emulator-5554", snapo.TWEAK_SOCKET_PREFIX), ["snapo_tweaks_42"])
         self.assertEqual(
             recorded,
             [["/configured/adb", "-s", "emulator-5554", "shell", "cat /proc/net/unix"]],
@@ -527,12 +533,15 @@ class TweakDiscoveryTests(unittest.TestCase):
         )
         options = snapo.parser().parse_args(["tweaks", "apps"])
         self.assertEqual(
-            snapo.discover_tweaks(adb, options),
+            snapo.discover(adb, options, snapo.TWEAK_SOCKET_PREFIX),
             [snapo.Server("emulator-5554", "snapo_tweaks_42"), snapo.Server("usb-phone", "snapo_tweaks_8")],
         )
 
         selected = snapo.parser().parse_args(["tweaks", "apps", "-s", "usb-phone"])
-        self.assertEqual(snapo.discover_tweaks(adb, selected), [snapo.Server("usb-phone", "snapo_tweaks_8")])
+        self.assertEqual(
+            snapo.discover(adb, selected, snapo.TWEAK_SOCKET_PREFIX),
+            [snapo.Server("usb-phone", "snapo_tweaks_8")],
+        )
 
     def test_parser_registers_every_tweak_command_and_shared_selectors(self):
         commands = {
