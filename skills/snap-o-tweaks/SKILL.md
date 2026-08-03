@@ -94,25 +94,19 @@ Inspect the descriptor first: the CLI parses `int`, `float`, `boolean`,
 spaces or `/`, string values containing spaces, and hex colors.
 
 ```bash
-"$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s <serial> -n <socket> --json
-"$SNAPO_BIN" tweaks set 'Motion/Show' false -s <serial> -n <socket> --json
-"$SNAPO_BIN" tweaks set 'Colors/Accent' '#3B82F6' -s <serial> -n <socket> --json
+"$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s <serial> -n <socket>
+"$SNAPO_BIN" tweaks set 'Motion/Show' false -s <serial> -n <socket>
+"$SNAPO_BIN" tweaks set 'Colors/Accent' '#3B82F6' -s <serial> -n <socket>
 ```
 
-Submit related updates together as one atomic JSON batch:
-
-```bash
-"$SNAPO_BIN" tweaks set \
-  --values-json '{"Typography/Font size":42,"Motion/Show":false}' \
-  -s <serial> -n <socket> --json
-```
+Successful updates and resets produce no output.
 
 Reset only the explicitly requested value, or use `--all` only for an explicit
 reset-everything request:
 
 ```bash
-"$SNAPO_BIN" tweaks reset 'Typography/Font size' -s <serial> -n <socket> --json
-"$SNAPO_BIN" tweaks reset --all -s <serial> -n <socket> --json
+"$SNAPO_BIN" tweaks reset 'Typography/Font size' -s <serial> -n <socket>
+"$SNAPO_BIN" tweaks reset --all -s <serial> -n <socket>
 ```
 
 ## Availability and failures
