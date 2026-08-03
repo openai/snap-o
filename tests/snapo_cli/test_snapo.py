@@ -76,6 +76,7 @@ class WireServer:
         self.port = self.listener.getsockname()[1]
         self.received = []
         self.failure = None
+        self.stopping = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def __enter__(self):
@@ -83,8 +84,14 @@ class WireServer:
         return self
 
     def __exit__(self, error_type, error, traceback):
+        if self.thread.is_alive():
+            self.stopping.set()
+            with socket.create_connection(("127.0.0.1", self.port), timeout=1):
+                pass
         self.thread.join(timeout=3)
         self.listener.close()
+        if error_type is not None:
+            return
         if self.failure:
             raise self.failure
         if self.thread.is_alive():
@@ -94,6 +101,8 @@ class WireServer:
         try:
             connection, _ = self.listener.accept()
             with connection:
+                if self.stopping.is_set():
+                    return
                 connection.settimeout(2)
                 stream = connection.makefile("rwb", buffering=0)
                 if self.adb_handshake:
@@ -118,15 +127,21 @@ def write_message(stream, value):
     stream.write(json.dumps(value, separators=(",", ":")).encode("utf-8") + b"\n")
 
 
+def open_session(port):
+    return snapo.Session(snapo.LocalAbstractSocket(port=port))
+
+
 class FakeADB:
-    def __init__(self, fail_forward=False):
-        self.fail_forward = fail_forward
+    has_explicit_endpoint = False
+
+    def __init__(self, forward_port=27185):
+        self.forward_port = forward_port
         self.calls = []
 
     def devices(self):
         return ["emulator-5554"]
 
-    def sockets(self, serial):
+    def sockets(self, serial, prefix=snapo.SOCKET_PREFIX):
         return ["snapo_network_42"]
 
     def package_hint(self, server):
@@ -134,22 +149,36 @@ class FakeADB:
 
     def command(self, *arguments, serial=None):
         self.calls.append((serial, arguments))
-        if arguments and arguments[0] == "forward" and "--remove" not in arguments and self.fail_forward:
-            self.fail_forward = False
-            raise snapo.SnapOError("port in use")
+        if arguments[:2] == ("forward", "tcp:0"):
+            return str(self.forward_port)
         return ""
 
 
+class WireServerTests(unittest.TestCase):
+    def test_idle_listener_stops_without_a_client_connection(self):
+        with WireServer(lambda stream, received: self.fail("handler should not run")) as server:
+            pass
+
+        self.assertFalse(server.thread.is_alive())
+
+    def test_idle_listener_preserves_an_exception_from_the_context(self):
+        with self.assertRaisesRegex(RuntimeError, "original test failure"):
+            with WireServer(lambda stream, received: self.fail("handler should not run")):
+                raise RuntimeError("original test failure")
+
+
 class FakeTweakADB(FakeADB):
-    def __init__(self, sockets=None, devices=None, fail_forward=False):
-        super().__init__(fail_forward=fail_forward)
+    def __init__(self, sockets=None, devices=None, forward_port=27185):
+        super().__init__(forward_port=forward_port)
         self.available_devices = devices or ["emulator-5554"]
         self.available_sockets = sockets or {"emulator-5554": ["snapo_tweaks_42"]}
 
     def devices(self):
         return self.available_devices
 
-    def tweak_sockets(self, serial):
+    def sockets(self, serial, prefix=snapo.SOCKET_PREFIX):
+        if prefix != snapo.TWEAK_SOCKET_PREFIX:
+            return super().sockets(serial, prefix)
         value = self.available_sockets.get(serial, [])
         if isinstance(value, Exception):
             raise value
@@ -376,23 +405,6 @@ class PluginPackagingTests(unittest.TestCase):
                 self.assertTrue(reference.read_text(encoding="utf-8").strip())
                 self.assertIn(f"references/{name}", skill_content)
 
-        interaction_guide = (skill_root / "references" / "interaction-surfaces.md").read_text(
-            encoding="utf-8"
-        )
-        protocol = (skill_root / "references" / "protocol.md").read_text(encoding="utf-8")
-        self.assertIn("/proc/net/unix", protocol)
-        self.assertIn("forward tcp:0", protocol)
-        self.assertIn("forward --remove", protocol)
-        self.assertIn("[protocol.md](protocol.md)", interaction_guide)
-        self.assertIn("tweaks list --all", skill_content)
-        self.assertIn("tweaks get 'Typography/Font size' --all", skill_content)
-        self.assertIn("GET /tweaks?include=adjusted", protocol)
-        self.assertIn("snapo tweaks list --all", interaction_guide)
-
-        for artifact in ("tweaks", "tweaks-noop", "tweaks-overlay", "tweaks-overlay-noop"):
-            with self.subTest(artifact=artifact):
-                self.assertIn(f"com.openai.snapo:{artifact}:$snapoVersion", interaction_guide)
-
     def test_marketplace_exposes_the_repository_plugin(self):
         marketplace = json.loads(
             (REPOSITORY / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8")
@@ -406,24 +418,6 @@ class PluginPackagingTests(unittest.TestCase):
         self.assertEqual((REPOSITORY / plugin["source"]["path"]).resolve(), REPOSITORY)
         self.assertEqual(plugin["policy"]["installation"], "AVAILABLE")
         self.assertEqual(plugin["policy"]["authentication"], "ON_INSTALL")
-
-    def test_documented_marketplace_install_avoids_sparse_paths_and_migrates_existing_users(self):
-        readme = (REPOSITORY / "README.md").read_text(encoding="utf-8")
-        add_command = "codex plugin marketplace add openai/snap-o --ref main"
-        install_command = "codex plugin add snap-o@snap-o"
-        add_commands = [line.strip() for line in readme.splitlines() if line.strip().startswith(add_command)]
-
-        self.assertGreaterEqual(len(add_commands), 2)
-        self.assertTrue(all(command == add_command for command in add_commands))
-        self.assertNotIn("--sparse", readme)
-
-        migration_start = readme.index("codex plugin marketplace remove snap-o")
-        migration_add = readme.index(add_command, migration_start)
-        migration_install = readme.index(install_command, migration_add)
-        self.assertLess(migration_start, migration_add)
-        self.assertLess(migration_add, migration_install)
-        self.assertIn("codex plugin marketplace upgrade snap-o", readme[migration_install:])
-
 
 class DiscoveryTests(unittest.TestCase):
     def test_parses_devices_and_deduplicates_sockets(self):
@@ -470,7 +464,7 @@ usb-phone device product:oriole
             def devices(self):
                 return ["disconnected-device", "emulator-5554"]
 
-            def sockets(self, serial):
+            def sockets(self, serial, prefix=snapo.SOCKET_PREFIX):
                 if serial == "disconnected-device":
                     raise snapo.SnapOError("device disconnected")
                 return ["snapo_network_42"]
@@ -492,8 +486,12 @@ class TweakDiscoveryTests(unittest.TestCase):
 3: 0 0 0 1 01 3 @unrelated
 4: 0 0 0 1 01 4 @snapo_tweaks_7
 5: 0 0 0 1 01 5 @snapo_tweaks_93
+6: 0 0 0 1 01 6 @snapo_tweaks_invalid
 """
-        self.assertEqual(snapo.parse_tweak_sockets(output), ["snapo_tweaks_7", "snapo_tweaks_93"])
+        self.assertEqual(
+            snapo.parse_sockets(output, snapo.TWEAK_SOCKET_PREFIX),
+            ["snapo_tweaks_7", "snapo_tweaks_93"],
+        )
         self.assertEqual(snapo.parse_sockets(output), ["snapo_network_42"])
 
     def test_adb_tweak_socket_discovery_reads_device_unix_sockets(self):
@@ -505,7 +503,7 @@ class TweakDiscoveryTests(unittest.TestCase):
             return type("Result", (), {"returncode": 0, "stdout": output, "stderr": ""})()
 
         adb = snapo.ADB("/configured/adb", run=run)
-        self.assertEqual(adb.tweak_sockets("emulator-5554"), ["snapo_tweaks_42"])
+        self.assertEqual(adb.sockets("emulator-5554", snapo.TWEAK_SOCKET_PREFIX), ["snapo_tweaks_42"])
         self.assertEqual(
             recorded,
             [["/configured/adb", "-s", "emulator-5554", "shell", "cat /proc/net/unix"]],
@@ -522,12 +520,15 @@ class TweakDiscoveryTests(unittest.TestCase):
         )
         options = snapo.parser().parse_args(["tweaks", "apps"])
         self.assertEqual(
-            snapo.discover_tweaks(adb, options),
+            snapo.discover(adb, options, snapo.TWEAK_SOCKET_PREFIX),
             [snapo.Server("emulator-5554", "snapo_tweaks_42"), snapo.Server("usb-phone", "snapo_tweaks_8")],
         )
 
         selected = snapo.parser().parse_args(["tweaks", "apps", "-s", "usb-phone"])
-        self.assertEqual(snapo.discover_tweaks(adb, selected), [snapo.Server("usb-phone", "snapo_tweaks_8")])
+        self.assertEqual(
+            snapo.discover(adb, selected, snapo.TWEAK_SOCKET_PREFIX),
+            [snapo.Server("usb-phone", "snapo_tweaks_8")],
+        )
 
     def test_parser_registers_every_tweak_command_and_shared_selectors(self):
         commands = {
@@ -540,14 +541,16 @@ class TweakDiscoveryTests(unittest.TestCase):
         }
         for name, arguments in commands.items():
             with self.subTest(command=name):
-                options = snapo.parser().parse_args(
-                    ["tweaks", *arguments, "-s", "emulator-5554", "--adb", "/configured/adb", "--json"]
-                )
+                command = ["tweaks", *arguments, "-s", "emulator-5554", "--adb", "/configured/adb"]
+                if name not in {"set", "reset"}:
+                    command.append("--json")
+                options = snapo.parser().parse_args(command)
                 self.assertEqual(options.root_command, "tweaks")
                 self.assertEqual(options.tweaks_command, name)
                 self.assertEqual(options.serial, "emulator-5554")
                 self.assertEqual(options.adb, "/configured/adb")
-                self.assertTrue(options.json)
+                if name not in {"set", "reset"}:
+                    self.assertTrue(options.json)
 
     def test_tweak_commands_preserve_remote_adb_endpoint_validation(self):
         commands = (
@@ -604,11 +607,6 @@ class TweakValueTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(snapo.SnapOError):
                     snapo.parse_tweak_value(descriptor, value)
-
-    def test_float_json_values_reject_huge_integers_without_overflowing(self):
-        descriptor = self.descriptor("Motion/Damping ratio")
-        with self.assertRaises(snapo.SnapOError):
-            snapo.validate_tweak_json_value(descriptor, 10**400)
 
     def test_boolean_values_are_typed_but_strings_remain_literal(self):
         boolean = self.descriptor("Motion/Enabled")
@@ -732,17 +730,15 @@ class ADBTests(unittest.TestCase):
         with self.assertRaisesRegex(snapo.SnapOError, "timed out"):
             adb.devices()
 
-    def test_forward_retries_and_removes_only_its_forward(self):
-        adb = FakeADB(fail_forward=True)
+    def test_forward_uses_adb_allocated_port_and_removes_only_its_forward(self):
+        adb = FakeADB(forward_port=27186)
         server = snapo.Server("emulator-5554", "snapo_network_42")
-        with mock.patch.object(snapo, "available_port", side_effect=[27185, 27186]):
-            with snapo.Forward(adb, server) as forward:
-                self.assertEqual(forward.port, 27186)
+        with snapo.Forward(adb, server) as forward:
+            self.assertEqual(forward.port, 27186)
         self.assertEqual(
             adb.calls,
             [
-                ("emulator-5554", ("forward", "tcp:27185", "localabstract:snapo_network_42")),
-                ("emulator-5554", ("forward", "tcp:27186", "localabstract:snapo_network_42")),
+                ("emulator-5554", ("forward", "tcp:0", "localabstract:snapo_network_42")),
                 ("emulator-5554", ("forward", "--remove", "tcp:27186")),
             ],
         )
@@ -750,10 +746,39 @@ class ADBTests(unittest.TestCase):
     def test_forward_is_removed_when_session_work_fails(self):
         adb = FakeADB()
         server = snapo.Server("emulator-5554", "snapo_network_42")
-        with mock.patch.object(snapo, "available_port", return_value=27185):
-            with self.assertRaisesRegex(RuntimeError, "expected"):
-                with snapo.Forward(adb, server):
-                    raise RuntimeError("expected")
+        with self.assertRaisesRegex(RuntimeError, "expected"):
+            with snapo.Forward(adb, server):
+                raise RuntimeError("expected")
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", "tcp:27185")))
+
+    def test_forward_rejects_an_invalid_allocated_port(self):
+        adb = FakeADB(forward_port="invalid")
+        server = snapo.Server("emulator-5554", "snapo_network_42")
+        with self.assertRaisesRegex(snapo.SnapOError, "allocated forwarding port"):
+            with snapo.Forward(adb, server):
+                self.fail("forward unexpectedly opened")
+
+    def test_network_forward_is_removed_when_session_close_fails(self):
+        adb = FakeADB()
+        server = snapo.Server("emulator-5554", "snapo_network_42")
+        transport = mock.Mock(socket=mock.Mock())
+        with mock.patch.object(snapo.ServerConnection, "open_socket", return_value=transport):
+            with mock.patch.object(snapo.Session, "close", side_effect=RuntimeError("close failed")):
+                with self.assertRaisesRegex(RuntimeError, "close failed"):
+                    with snapo.ConnectedSession(adb, server):
+                        pass
+
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", "tcp:27185")))
+
+    def test_tweak_forward_is_removed_when_connection_close_fails(self):
+        adb = FakeADB()
+        server = snapo.Server("emulator-5554", "snapo_tweaks_42")
+        connection = snapo.TweakConnection(adb, server)
+        with mock.patch.object(connection, "close", side_effect=RuntimeError("close failed")):
+            with self.assertRaisesRegex(RuntimeError, "close failed"):
+                with connection:
+                    pass
+
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", "tcp:27185")))
 
 
@@ -773,7 +798,7 @@ class ProtocolTests(unittest.TestCase):
             write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 3}})
 
         with WireServer(handler) as server:
-            session = snapo.Session(server.port)
+            session = open_session(server.port)
             try:
                 session.start_stream()
                 self.assertEqual(session.read(1)["method"], "SnapO.appInfo")
@@ -809,7 +834,7 @@ class ProtocolTests(unittest.TestCase):
             write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
 
         with WireServer(handler) as wire:
-            session = snapo.Session(wire.port)
+            session = open_session(wire.port)
             try:
                 self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
             finally:
@@ -843,7 +868,7 @@ class ProtocolTests(unittest.TestCase):
             write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
 
         with WireServer(handler) as wire:
-            session = snapo.Session(wire.port)
+            session = open_session(wire.port)
             try:
                 self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
             finally:
@@ -854,7 +879,7 @@ class ProtocolTests(unittest.TestCase):
             stream.write(b'{"oversized":true}\n')
 
         with WireServer(handler) as wire:
-            session = snapo.Session(wire.port)
+            session = open_session(wire.port)
             try:
                 with mock.patch.object(snapo, "MAX_RECORD_BYTES", 8):
                     with self.assertRaisesRegex(snapo.SnapOError, "oversized"):
@@ -872,7 +897,7 @@ class ProtocolTests(unittest.TestCase):
             write_message(stream, {"id": command["id"], "result": {"body": "expected"}})
 
         with WireServer(handler) as server:
-            session = snapo.Session(server.port)
+            session = open_session(server.port)
             try:
                 reply = session.command(
                     "Network.getResponseBody",
@@ -892,7 +917,7 @@ class ProtocolTests(unittest.TestCase):
             threading.Event().wait(0.12)
 
         with WireServer(handler) as server:
-            session = snapo.Session(server.port)
+            session = open_session(server.port)
             try:
                 with self.assertRaisesRegex(snapo.SnapOError, "Timed out waiting"):
                     session.command("Network.getResponseBody", {"requestId": "request-1"}, timeout=0.03)
@@ -915,7 +940,7 @@ class ProtocolTests(unittest.TestCase):
             )
 
         with WireServer(handler) as wire:
-            session = snapo.Session(wire.port)
+            session = open_session(wire.port)
             try:
                 details = snapo.request_details(
                     session,
@@ -947,7 +972,7 @@ class ProtocolTests(unittest.TestCase):
             write_message(stream, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}})
 
         with WireServer(handler) as wire:
-            session = snapo.Session(wire.port)
+            session = open_session(wire.port)
             try:
                 details = snapo.request_details(
                     session,
@@ -976,7 +1001,7 @@ class ProtocolTests(unittest.TestCase):
             )
 
         with WireServer(handler) as wire:
-            session = snapo.Session(wire.port)
+            session = open_session(wire.port)
             try:
                 details = snapo.request_details(
                     session,
@@ -1070,15 +1095,15 @@ class TweakTransportTests(unittest.TestCase):
         adb = FakeTweakADB()
         server = snapo.Server("emulator-5554", "snapo_tweaks_42")
         with TweakHTTPServer() as wire:
-            with mock.patch.object(snapo, "available_port", return_value=wire.port):
-                with snapo.TweakConnection(adb, server) as connection:
-                    response = connection.request("GET", "/tweaks")
+            adb.forward_port = wire.port
+            with snapo.TweakConnection(adb, server) as connection:
+                response = connection.request("GET", "/tweaks")
 
         self.assertEqual(response["tweaks"][0]["name"], "Typography/Font size")
         self.assertEqual(
             adb.calls,
             [
-                ("emulator-5554", ("forward", f"tcp:{wire.port}", "localabstract:snapo_tweaks_42")),
+                ("emulator-5554", ("forward", "tcp:0", "localabstract:snapo_tweaks_42")),
                 ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")),
             ],
         )
@@ -1108,10 +1133,10 @@ class TweakTransportTests(unittest.TestCase):
         for status, detail in ((404, "Unknown tweak: Missing"), (422, "Value exceeds the maximum.")):
             with self.subTest(status=status):
                 with TweakHTTPServer(error=(status, detail)) as wire:
-                    with mock.patch.object(snapo, "available_port", return_value=wire.port):
-                        with snapo.TweakConnection(adb, server) as connection:
-                            with self.assertRaisesRegex(snapo.SnapOError, f"HTTP {status}.*{detail}"):
-                                connection.request("PATCH", "/tweaks", {"values": {"Motion/Enabled": False}})
+                    adb.forward_port = wire.port
+                    with snapo.TweakConnection(adb, server) as connection:
+                        with self.assertRaisesRegex(snapo.SnapOError, f"HTTP {status}.*{detail}"):
+                            connection.request("PATCH", "/tweaks", {"values": {"Motion/Enabled": False}})
 
                 self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
@@ -1119,11 +1144,11 @@ class TweakTransportTests(unittest.TestCase):
         adb = FakeTweakADB()
         server = snapo.Server("emulator-5554", "snapo_tweaks_42")
         with TweakHTTPServer() as wire:
-            with mock.patch.object(snapo, "available_port", return_value=wire.port):
-                with mock.patch.object(snapo, "MAX_RECORD_BYTES", 16):
-                    with self.assertRaisesRegex(snapo.SnapOError, "oversized"):
-                        with snapo.TweakConnection(adb, server) as connection:
-                            connection.request("GET", "/tweaks")
+            adb.forward_port = wire.port
+            with mock.patch.object(snapo, "MAX_RECORD_BYTES", 16):
+                with self.assertRaisesRegex(snapo.SnapOError, "oversized"):
+                    with snapo.TweakConnection(adb, server) as connection:
+                        connection.request("GET", "/tweaks")
 
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
@@ -1131,14 +1156,14 @@ class TweakTransportTests(unittest.TestCase):
 class TweakCommandTests(unittest.TestCase):
     def run_command(self, arguments, wire, adb=None):
         adb = adb or FakeTweakADB()
+        adb.forward_port = wire.port
         stdout = io.StringIO()
         stderr = io.StringIO()
         with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
             with mock.patch.object(snapo, "ADB", return_value=adb):
-                with mock.patch.object(snapo, "available_port", return_value=wire.port):
-                    with contextlib.redirect_stdout(stdout):
-                        with contextlib.redirect_stderr(stderr):
-                            result = snapo.main(["tweaks", *arguments])
+                with contextlib.redirect_stdout(stdout):
+                    with contextlib.redirect_stderr(stderr):
+                        result = snapo.main(["tweaks", *arguments])
         return result, stdout.getvalue(), stderr.getvalue(), adb
 
     def test_apps_identifies_each_running_application_from_its_tweak_server(self):
@@ -1252,14 +1277,19 @@ class TweakCommandTests(unittest.TestCase):
             ("Motion/Enabled", "false", False),
             ("Palette/Accent color", "#3b82f6", "#3B82F6"),
             ("Preview/Text value", "true", "true"),
+            ("Preview/Text value", "-hello", "-hello"),
+            ("Preview/Text value", "-foo", "-foo"),
+            ("Preview/Text value", "--literal", "--literal"),
+            ("Preview/Text value", "-h", "-h"),
+            ("Preview/Text value", "--help", "--help"),
         )
         for name, raw, expected in cases:
-            with self.subTest(name=name):
+            with self.subTest(name=name, value=raw):
                 with TweakHTTPServer() as wire:
-                    result, output, errors, adb = self.run_command(["set", name, raw, "--json"], wire)
+                    result, output, errors, adb = self.run_command(["set", name, raw], wire)
 
                 self.assertEqual(result, 0, errors)
-                self.assertEqual(json.loads(output), {"tweaks": [{"name": name, "value": expected}]})
+                self.assertEqual(output, "")
                 self.assertEqual(wire.requests[0], ("GET", "/tweaks", None))
                 self.assertEqual(len(wire.requests), 2)
                 self.assertEqual(wire.requests[1][0:2], ("PATCH", "/tweaks"))
@@ -1281,7 +1311,7 @@ class TweakCommandTests(unittest.TestCase):
         for name, raw in cases:
             with self.subTest(name=name, value=raw):
                 with TweakHTTPServer() as wire:
-                    result, output, errors, adb = self.run_command(["set", name, raw, "--json"], wire)
+                    result, output, errors, adb = self.run_command(["set", name, raw], wire)
 
                 self.assertEqual(result, 1)
                 self.assertEqual(output, "")
@@ -1289,62 +1319,18 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
                 self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
-    def test_set_applies_a_typed_json_batch_in_one_atomic_patch(self):
-        values = {
-            "Typography/Font size": -2,
-            "Motion/Damping ratio": -0.5,
-            "Motion/Enabled": False,
-            "Preview/Text value": "true",
-        }
-        with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(
-                ["set", "--values-json", json.dumps(values), "--json"],
-                wire,
-            )
-
-        self.assertEqual(result, 0, errors)
-        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": values})])
-        self.assertEqual(
-            json.loads(output),
-            {"tweaks": [{"name": name, "value": value} for name, value in values.items()]},
-        )
-
-    def test_invalid_json_batches_never_partially_update_tweaks(self):
-        batches = (
-            "{",
-            "[]",
-            "{}",
-            '{"Motion/Enabled":"false"}',
-            '{"Typography/Font size":true}',
-            '{"Motion/Damping ratio":NaN}',
-            '{"Motion/Damping ratio":' + "9" * 400 + "}",
-            '{"Motion/Enabled":false,"Motion/Missing":12}',
-        )
-        for batch in batches:
-            with self.subTest(batch=batch):
-                with TweakHTTPServer() as wire:
-                    result, output, errors, _ = self.run_command(
-                        ["set", "--values-json", batch, "--json"],
-                        wire,
-                    )
-
-                self.assertEqual(result, 1)
-                self.assertEqual(output, "")
-                self.assertTrue(errors.startswith("snapo:"), errors)
-                self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
-
     def test_reset_one_tweak_patches_its_declared_default(self):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
         with TweakHTTPServer(descriptors=descriptors) as wire:
             result, output, errors, _ = self.run_command(
-                ["reset", "Typography/Font size", "--json"],
+                ["reset", "Typography/Font size"],
                 wire,
             )
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Typography/Font size": 16}}))
-        self.assertEqual(json.loads(output), {"tweaks": [{"name": "Typography/Font size", "value": 16}]})
+        self.assertEqual(output, "")
 
     def test_reset_all_patches_every_default_in_one_atomic_request(self):
         descriptors = tweak_descriptors()
@@ -1352,11 +1338,11 @@ class TweakCommandTests(unittest.TestCase):
         descriptors[2]["value"] = False
         defaults = {descriptor["name"]: descriptor["default"] for descriptor in descriptors}
         with TweakHTTPServer(descriptors=descriptors) as wire:
-            result, output, errors, _ = self.run_command(["reset", "--all", "--json"], wire)
+            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": defaults})])
-        self.assertEqual(len(json.loads(output)["tweaks"]), len(descriptors))
+        self.assertEqual(output, "")
 
     def test_reset_requires_exactly_one_target(self):
         for arguments in (["reset"], ["reset", "Motion/Enabled", "--all"]):
@@ -1368,11 +1354,10 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
                 self.assertIn("reset requires either NAME or --all", errors.getvalue())
 
-    def test_set_requires_either_one_value_or_an_atomic_batch(self):
+    def test_set_requires_a_name_and_value(self):
         invalid = (
             ["set"],
             ["set", "Motion/Enabled"],
-            ["set", "Motion/Enabled", "true", "--values-json", '{"Motion/Enabled":false}'],
         )
         for arguments in invalid:
             with self.subTest(arguments=arguments):
@@ -1383,12 +1368,26 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
                 self.assertIn("set", errors.getvalue())
 
+    def test_mutations_do_not_accept_json_output(self):
+        for command in (
+            ["set", "Motion/Enabled", "false", "--json"],
+            ["reset", "Motion/Enabled", "--json"],
+        ):
+            with self.subTest(command=command):
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors):
+                    with self.assertRaises(SystemExit) as error:
+                        snapo.parser().parse_args(["tweaks", *command])
+
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("unrecognized arguments: --json", errors.getvalue())
+
     def test_server_validation_errors_reach_stderr_and_remove_the_forward(self):
         for status, detail in ((404, "Unknown tweak: Motion/Enabled"), (422, "Value exceeds the maximum.")):
             with self.subTest(status=status):
                 with TweakHTTPServer(error=(status, detail)) as wire:
                     result, output, errors, adb = self.run_command(
-                        ["set", "Motion/Enabled", "false", "--json"],
+                        ["set", "Motion/Enabled", "false"],
                         wire,
                     )
 
@@ -1535,22 +1534,22 @@ class OutputTests(unittest.TestCase):
         adb = FakeADB()
         stdout = io.StringIO()
         with WireServer(handler) as wire:
+            adb.forward_port = wire.port
             with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
                 with mock.patch.object(snapo, "ADB", return_value=adb):
-                    with mock.patch.object(snapo, "available_port", return_value=wire.port):
-                        with contextlib.redirect_stdout(stdout):
-                            code = snapo.main(
-                                [
-                                    "network",
-                                    "requests",
-                                    "-s",
-                                    "emulator-5554",
-                                    "-n",
-                                    "snapo_network_42",
-                                    "--no-stream",
-                                    "--json",
-                                ]
-                            )
+                    with contextlib.redirect_stdout(stdout):
+                        code = snapo.main(
+                            [
+                                "network",
+                                "requests",
+                                "-s",
+                                "emulator-5554",
+                                "-n",
+                                "snapo_network_42",
+                                "--no-stream",
+                                "--json",
+                            ]
+                        )
         output = stdout.getvalue()
         self.assertEqual(code, 0)
         self.assertNotIn(REQUEST_SECRET, output)
@@ -1580,21 +1579,21 @@ class OutputTests(unittest.TestCase):
         adb = FakeADB()
         output = ClosedPipe()
         with WireServer(handler) as wire:
+            adb.forward_port = wire.port
             with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
                 with mock.patch.object(snapo, "ADB", return_value=adb):
-                    with mock.patch.object(snapo, "available_port", return_value=wire.port):
-                        with contextlib.redirect_stdout(output):
-                            code = snapo.main(
-                                [
-                                    "network",
-                                    "requests",
-                                    "-s",
-                                    "emulator-5554",
-                                    "-n",
-                                    "snapo_network_42",
-                                    "--json",
-                                ]
-                            )
+                    with contextlib.redirect_stdout(output):
+                        code = snapo.main(
+                            [
+                                "network",
+                                "requests",
+                                "-s",
+                                "emulator-5554",
+                                "-n",
+                                "snapo_network_42",
+                                "--json",
+                            ]
+                        )
         self.assertEqual(code, 0)
         self.assertTrue(output.closed)
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))

@@ -124,8 +124,8 @@ snapo network requests -s <serial> -n <socket> --no-stream --json
 snapo network show -s <serial> -n <socket> -r <request-id> --json
 snapo tweaks apps --json
 snapo tweaks list -s <serial> -n <socket> --json
-snapo tweaks set 'Typography/Font size' 42 -s <serial> -n <socket> --json
-snapo tweaks reset 'Typography/Font size' -s <serial> -n <socket> --json
+snapo tweaks set 'Typography/Font size' 42 -s <serial> -n <socket>
+snapo tweaks reset 'Typography/Font size' -s <serial> -n <socket>
 ```
 
 ## Why a web UI for the App Inspector?

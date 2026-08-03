@@ -117,13 +117,9 @@ class ADB:
     def devices(self):
         return parse_devices(self.command("devices", "-l"))
 
-    def sockets(self, serial):
+    def sockets(self, serial, prefix=SOCKET_PREFIX):
         output = self.command("shell", "cat /proc/net/unix", serial=serial)
-        return parse_sockets(output)
-
-    def tweak_sockets(self, serial):
-        output = self.command("shell", "cat /proc/net/unix", serial=serial)
-        return parse_tweak_sockets(output)
+        return parse_sockets(output, prefix)
 
     def package_hint(self, server):
         if server.pid is None:
@@ -157,16 +153,10 @@ def parse_sockets(output, prefix=SOCKET_PREFIX):
             continue
         name = fields[-1]
         if name.startswith("@" + prefix):
-            sockets.add(name[1:])
+            socket_name = name[1:]
+            if prefix != TWEAK_SOCKET_PREFIX or socket_name[len(prefix) :].isdigit():
+                sockets.add(socket_name)
     return sorted(sockets)
-
-
-def parse_tweak_sockets(output):
-    return [
-        name
-        for name in parse_sockets(output, TWEAK_SOCKET_PREFIX)
-        if name[len(TWEAK_SOCKET_PREFIX) :].isdigit()
-    ]
 
 
 def select_devices(devices, serial=None, usb=False, emulator=False):
@@ -191,7 +181,7 @@ def select_devices(devices, serial=None, usb=False, emulator=False):
     return devices
 
 
-def discover(adb, options):
+def discover(adb, options, prefix=SOCKET_PREFIX):
     devices = select_devices(
         adb.devices(),
         serial=options.serial,
@@ -203,25 +193,7 @@ def discover(adb, options):
     servers = []
     for device in devices:
         try:
-            servers.extend(Server(device, name) for name in adb.sockets(device))
-        except SnapOError:
-            continue
-    return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
-
-
-def discover_tweaks(adb, options):
-    devices = select_devices(
-        adb.devices(),
-        serial=options.serial,
-        usb=options.usb,
-        emulator=options.emulator,
-    )
-    if not devices:
-        raise SnapOError("No connected devices found")
-    servers = []
-    for device in devices:
-        try:
-            servers.extend(Server(device, name) for name in adb.tweak_sockets(device))
+            servers.extend(Server(device, name) for name in adb.sockets(device, prefix))
         except SnapOError:
             continue
     return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
@@ -253,36 +225,24 @@ def choose_server(servers, requested, feature="network"):
     return matches[0]
 
 
-def available_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
-        candidate.bind(("127.0.0.1", 0))
-        return candidate.getsockname()[1]
-
-
 class Forward:
-    def __init__(self, adb, server, attempts=4):
+    def __init__(self, adb, server):
         self.adb = adb
         self.server = server
-        self.attempts = attempts
         self.port = None
 
     def __enter__(self):
-        last_error = None
-        for _ in range(self.attempts):
-            port = available_port()
-            try:
-                self.adb.command(
-                    "forward",
-                    f"tcp:{port}",
-                    f"localabstract:{self.server.socket_name}",
-                    serial=self.server.device_id,
-                )
-            except SnapOError as error:
-                last_error = error
-                continue
-            self.port = port
-            return self
-        raise last_error or SnapOError("Unable to create an adb forward")
+        output = self.adb.command(
+            "forward",
+            "tcp:0",
+            f"localabstract:{self.server.socket_name}",
+            serial=self.server.device_id,
+        )
+        try:
+            self.port = int(output.strip())
+        except (TypeError, ValueError) as error:
+            raise SnapOError("ADB did not report the allocated forwarding port") from error
+        return self
 
     def __exit__(self, error_type, error, traceback):
         if self.port is None:
@@ -300,21 +260,17 @@ class Forward:
         return False
 
 
-class Session:
-    def __init__(self, port=None, adb=None, server=None, connect_timeout=5):
+class LocalAbstractSocket:
+    def __init__(self, port=None, adb=None, server=None, timeout=5):
         endpoint = ("127.0.0.1", port) if adb is None else adb.endpoint
         try:
-            self.socket = socket.create_connection(endpoint, timeout=connect_timeout)
+            self.socket = socket.create_connection(endpoint, timeout=timeout)
         except OSError as error:
-            target = "forwarded Snap-O socket" if adb is None else "ADB server"
-            raise SnapOError(f"Failed to connect to {target}: {error}") from error
-        self.buffer = bytearray()
-        self.next_id = 1
+            raise SnapOError(f"Failed to connect to Snap-O socket: {error}") from error
         try:
             if adb is not None:
                 self.adb_request(f"host:transport:{server.device_id}")
                 self.adb_request(f"localabstract:{server.socket_name}")
-            self.send_bytes(b"HelloSnapO\n")
         except BaseException:
             self.socket.close()
             raise
@@ -323,7 +279,10 @@ class Session:
         payload = request.encode("utf-8")
         if len(payload) > 0xFFFF:
             raise SnapOError("ADB request is too large")
-        self.send_bytes(f"{len(payload):04X}".encode("ascii") + payload)
+        try:
+            self.socket.sendall(f"{len(payload):04X}".encode("ascii") + payload)
+        except OSError as error:
+            raise SnapOError(f"Failed to write to ADB server: {error}") from error
         status = self.read_exact(4)
         if status == b"OKAY":
             return
@@ -333,7 +292,7 @@ class Session:
             except ValueError as error:
                 raise SnapOError("ADB returned an invalid failure response") from error
             message = self.read_exact(length).decode("utf-8", errors="replace")
-            raise SnapOError(f"ADB rejected the network connection: {message}")
+            raise SnapOError(f"ADB rejected the connection: {message}")
         raise SnapOError("ADB returned an invalid status response")
 
     def read_exact(self, count):
@@ -347,6 +306,44 @@ class Session:
                 raise SnapOError("ADB server closed the connection unexpectedly")
             data.extend(chunk)
         return bytes(data)
+
+
+class ServerConnection:
+    def __init__(self, adb, server):
+        self.adb = adb
+        self.server = server
+        self.forward = None
+
+    def __enter__(self):
+        if not self.adb.has_explicit_endpoint:
+            self.forward = Forward(self.adb, self.server)
+            self.forward.__enter__()
+        return self
+
+    def __exit__(self, error_type, error, traceback):
+        if self.forward is not None:
+            return self.forward.__exit__(error_type, error, traceback)
+        return False
+
+    def open_socket(self, timeout=5):
+        return LocalAbstractSocket(
+            port=self.forward.port if self.forward is not None else None,
+            adb=None if self.forward is not None else self.adb,
+            server=self.server,
+            timeout=timeout,
+        )
+
+
+class Session:
+    def __init__(self, transport):
+        self.socket = transport.socket
+        self.buffer = bytearray()
+        self.next_id = 1
+        try:
+            self.send_bytes(b"HelloSnapO\n")
+        except BaseException:
+            self.socket.close()
+            raise
 
     def close(self):
         self.socket.close()
@@ -476,48 +473,43 @@ def valid_response(response):
 
 class ConnectedSession:
     def __init__(self, adb, server):
-        self.forward = Forward(adb, server)
+        self.connection = ServerConnection(adb, server)
         self.session = None
 
     def __enter__(self):
-        if getattr(self.forward.adb, "has_explicit_endpoint", False):
-            self.session = Session(adb=self.forward.adb, server=self.forward.server)
-            return self.session
-        forward = self.forward.__enter__()
+        self.connection.__enter__()
         try:
-            self.session = Session(forward.port)
+            self.session = Session(self.connection.open_socket())
         except BaseException:
-            self.forward.__exit__(*sys.exc_info())
+            self.connection.__exit__(*sys.exc_info())
             raise
         return self.session
 
     def __exit__(self, error_type, error, traceback):
-        if self.session:
-            self.session.close()
-        if getattr(self.forward.adb, "has_explicit_endpoint", False):
-            return False
-        return self.forward.__exit__(error_type, error, traceback)
+        try:
+            if self.session:
+                self.session.close()
+        finally:
+            self.connection.__exit__(error_type, error, traceback)
+        return False
 
 
 class TweakConnection:
     def __init__(self, adb, server, timeout=10):
-        self.adb = adb
-        self.server = server
+        self.connection = ServerConnection(adb, server)
         self.timeout = timeout
-        self.forward = None
         self.socket = None
         self.response = None
 
     def __enter__(self):
-        if not getattr(self.adb, "has_explicit_endpoint", False):
-            self.forward = Forward(self.adb, self.server)
-            self.forward.__enter__()
+        self.connection.__enter__()
         return self
 
     def __exit__(self, error_type, error, traceback):
-        self.close()
-        if self.forward is not None:
-            return self.forward.__exit__(error_type, error, traceback)
+        try:
+            self.close()
+        finally:
+            self.connection.__exit__(error_type, error, traceback)
         return False
 
     def close(self):
@@ -528,49 +520,8 @@ class TweakConnection:
             self.socket.close()
             self.socket = None
 
-    def _read_exact(self, count):
-        received = bytearray()
-        while len(received) < count:
-            try:
-                chunk = self.socket.recv(count - len(received))
-            except OSError as error:
-                raise SnapOError(f"Failed to read from ADB server: {error}") from error
-            if not chunk:
-                raise SnapOError("ADB server closed the connection unexpectedly")
-            received.extend(chunk)
-        return bytes(received)
-
-    def _adb_request(self, request):
-        payload = request.encode("utf-8")
-        if len(payload) > 0xFFFF:
-            raise SnapOError("ADB request is too large")
-        try:
-            self.socket.sendall(f"{len(payload):04X}".encode("ascii") + payload)
-        except OSError as error:
-            raise SnapOError(f"Failed to write to ADB server: {error}") from error
-        status = self._read_exact(4)
-        if status == b"OKAY":
-            return
-        if status == b"FAIL":
-            try:
-                length = int(self._read_exact(4), 16)
-            except ValueError as error:
-                raise SnapOError("ADB returned an invalid failure response") from error
-            message = self._read_exact(length).decode("utf-8", errors="replace")
-            raise SnapOError(f"ADB rejected the tweaks connection: {message}")
-        raise SnapOError("ADB returned an invalid status response")
-
     def _open_socket(self):
-        explicit_endpoint = getattr(self.adb, "has_explicit_endpoint", False)
-        endpoint = self.adb.endpoint if explicit_endpoint else ("127.0.0.1", self.forward.port)
-        try:
-            self.socket = socket.create_connection(endpoint, timeout=self.timeout)
-        except OSError as error:
-            target = "ADB server" if explicit_endpoint else "forwarded Snap-O tweaks socket"
-            raise SnapOError(f"Failed to connect to {target}: {error}") from error
-        if explicit_endpoint:
-            self._adb_request(f"host:transport:{self.server.device_id}")
-            self._adb_request(f"localabstract:{self.server.socket_name}")
+        self.socket = self.connection.open_socket(self.timeout).socket
 
     def request(self, method, path, payload=None, stream=False):
         self.close()
@@ -811,6 +762,24 @@ def app_info(adb, server):
     return {}
 
 
+def emit_app(server, name, package, as_json, current_device, details=""):
+    if as_json:
+        print_json(
+            {
+                "server": server.identifier,
+                "deviceId": server.device_id,
+                "socketName": server.socket_name,
+                "packageName": package,
+                "appName": name,
+            }
+        )
+    else:
+        if current_device != server.device_id:
+            print(f"{server.device_id}:")
+        print(f"    {server.socket_name}{details}")
+    return server.device_id
+
+
 def run_list(adb, options):
     servers = discover(adb, options)
     if not servers:
@@ -820,22 +789,8 @@ def run_list(adb, options):
         info = app_info(adb, server) if options.include_app_info else {}
         package = info.get("packageName") or (adb.package_hint(server) if options.include_app_info else None)
         app_name = info.get("processName")
-        if options.json:
-            print_json(
-                {
-                    "server": server.identifier,
-                    "deviceId": server.device_id,
-                    "socketName": server.socket_name,
-                    "packageName": package,
-                    "appName": app_name,
-                }
-            )
-        else:
-            if current_device != server.device_id:
-                current_device = server.device_id
-                print(f"{current_device}:")
-            suffix = f"  pkg:{package or 'unknown'}" if options.include_app_info else ""
-            print(f"    {server.socket_name}{suffix}")
+        details = f"  pkg:{package or 'unknown'}" if options.include_app_info else ""
+        current_device = emit_app(server, app_name, package, options.json, current_device, details)
     return 0
 
 
@@ -1064,7 +1019,7 @@ def run_show(adb, options):
 
 
 def choose_tweak_server(adb, options):
-    return choose_server(discover_tweaks(adb, options), options.socket, feature="tweaks")
+    return choose_server(discover(adb, options, TWEAK_SOCKET_PREFIX), options.socket, feature="tweaks")
 
 
 def tweak_descriptors(document):
@@ -1119,32 +1074,6 @@ def parse_tweak_value(descriptor, raw):
     raise SnapOError(f"Tweak '{descriptor.get('name', '')}' has unsupported type '{kind}'")
 
 
-def validate_tweak_json_value(descriptor, value):
-    kind = descriptor["type"]
-    valid = {
-        "int": lambda item: isinstance(item, int) and not isinstance(item, bool),
-        "float": lambda item: (
-            isinstance(item, (int, float))
-            and not isinstance(item, bool)
-            and math.isfinite(item)
-        ),
-        "boolean": lambda item: isinstance(item, bool),
-        "color": lambda item: (
-            isinstance(item, str)
-            and re.fullmatch(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?", item) is not None
-        ),
-        "string": lambda item: isinstance(item, str),
-    }.get(kind)
-    if valid is None:
-        raise SnapOError(f"Tweak '{descriptor['name']}' has unsupported type '{kind}'")
-    try:
-        is_valid = valid(value)
-    except (OverflowError, TypeError, ValueError):
-        is_valid = False
-    if not is_valid:
-        raise SnapOError(f"Tweak '{descriptor['name']}' requires a {kind} value")
-
-
 def emit_tweak_document(document, as_json):
     if as_json:
         print_json(document)
@@ -1157,7 +1086,7 @@ def emit_tweak_document(document, as_json):
 
 
 def run_tweak_apps(adb, options):
-    servers = discover_tweaks(adb, options)
+    servers = discover(adb, options, TWEAK_SOCKET_PREFIX)
     if not servers:
         raise SnapOError("No Snap-O tweaks servers found")
     found = False
@@ -1173,21 +1102,7 @@ def run_tweak_apps(adb, options):
         if not isinstance(name, str) or not isinstance(package, str):
             continue
         found = True
-        if options.json:
-            print_json(
-                {
-                    "server": server.identifier,
-                    "deviceId": server.device_id,
-                    "socketName": server.socket_name,
-                    "packageName": package,
-                    "appName": name,
-                }
-            )
-        else:
-            if current_device != server.device_id:
-                current_device = server.device_id
-                print(f"{current_device}:")
-            print(f"    {server.socket_name}  {name}  pkg:{package}")
+        current_device = emit_app(server, name, package, options.json, current_device, f"  {name}  pkg:{package}")
     if not found:
         raise SnapOError("No reachable Snap-O tweaks apps found")
     return 0
@@ -1219,29 +1134,13 @@ def tweak_listing_path(options):
     return "/tweaks?include=adjusted" if options.all else "/tweaks"
 
 
-def tweak_json_values(raw):
-    try:
-        values = json.loads(raw, parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
-    except (TypeError, ValueError) as error:
-        raise SnapOError(f"--values-json must contain a valid JSON object: {error}") from error
-    if not isinstance(values, dict) or not values:
-        raise SnapOError("--values-json must contain a nonempty JSON object")
-    return values
-
-
 def run_tweak_set(adb, options):
     server = choose_tweak_server(adb, options)
     with TweakConnection(adb, server) as connection:
         descriptors = tweak_descriptors(connection.request("GET", "/tweaks"))
-        if options.values_json is not None:
-            values = tweak_json_values(options.values_json)
-            for name, value in values.items():
-                validate_tweak_json_value(find_tweak(descriptors, name), value)
-        else:
-            descriptor = find_tweak(descriptors, options.name)
-            values = {options.name: parse_tweak_value(descriptor, options.value)}
-        document = connection.request("PATCH", "/tweaks", {"values": values})
-    emit_tweak_document(document, options.json)
+        descriptor = find_tweak(descriptors, options.name)
+        values = {options.name: parse_tweak_value(descriptor, options.value)}
+        connection.request("PATCH", "/tweaks", {"values": values})
     return 0
 
 
@@ -1255,12 +1154,8 @@ def run_tweak_reset(adb, options):
             if "default" not in descriptor:
                 raise SnapOError(f"Tweak '{descriptor['name']}' does not provide a default value")
             values[descriptor["name"]] = descriptor["default"]
-        document = (
+        if values:
             connection.request("PATCH", "/tweaks", {"values": values})
-            if values
-            else {"tweaks": []}
-        )
-    emit_tweak_document(document, options.json)
     return 0
 
 
@@ -1310,7 +1205,7 @@ def run_tweak_watch(adb, options):
                 return 0
 
 
-def add_common_options(parser, socket_option=False):
+def add_common_options(parser, socket_option=False, json_option=True):
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("-s", "--serial")
     selection.add_argument("-d", dest="usb", action="store_true")
@@ -1320,7 +1215,8 @@ def add_common_options(parser, socket_option=False):
     parser.add_argument("--adb", help="path to the configured adb executable or shim")
     parser.add_argument("--adb-host", help="explicit ADB server host (requires --adb-port)")
     parser.add_argument("--adb-port", type=valid_port, help="explicit ADB server port (requires --adb-host)")
-    parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
+    if json_option:
+        parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
 
 
 def valid_port(value):
@@ -1336,6 +1232,8 @@ def valid_port(value):
 class SnapOArgumentParser(argparse.ArgumentParser):
     def parse_args(self, args=None, namespace=None):
         arguments = list(sys.argv[1:] if args is None else args)
+        if arguments[:2] == ["tweaks", "set"] and len(arguments) > 3 and arguments[3].startswith("-"):
+            arguments.extend(["--", arguments.pop(3)])
         for index in range(len(arguments) - 2, -1, -1):
             if arguments[index] != "--filter":
                 continue
@@ -1347,13 +1245,7 @@ class SnapOArgumentParser(argparse.ArgumentParser):
             self.error("--adb-host and --adb-port must be used together")
         if getattr(options, "root_command", None) == "tweaks":
             command = getattr(options, "tweaks_command", None)
-            if command == "set":
-                if options.values_json is not None:
-                    if options.name is not None or options.value is not None:
-                        self.error("set accepts either NAME VALUE or --values-json, not both")
-                elif options.name is None or options.value is None:
-                    self.error("set requires NAME VALUE or --values-json")
-            elif command == "reset" and (options.name is None) == (not options.all):
+            if command == "reset" and (options.name is None) == (not options.all):
                 self.error("reset requires either NAME or --all")
         return options
 
@@ -1398,15 +1290,14 @@ def parser():
     get.add_argument("--all", action="store_true", help="include previously adjusted inactive tweaks")
     get.set_defaults(handler=run_tweak_get)
 
-    set_tweak = tweaks_commands.add_parser("set", help="update one tweak or an atomic JSON batch")
-    add_common_options(set_tweak, socket_option=True)
-    set_tweak.add_argument("name", metavar="NAME", nargs="?")
-    set_tweak.add_argument("value", metavar="VALUE", nargs="?")
-    set_tweak.add_argument("--values-json", help="JSON object containing an atomic batch of tweak values")
+    set_tweak = tweaks_commands.add_parser("set", help="update one tweak")
+    add_common_options(set_tweak, socket_option=True, json_option=False)
+    set_tweak.add_argument("name", metavar="NAME")
+    set_tweak.add_argument("value", metavar="VALUE")
     set_tweak.set_defaults(handler=run_tweak_set)
 
     reset = tweaks_commands.add_parser("reset", help="reset one tweak or all tweaks to their defaults")
-    add_common_options(reset, socket_option=True)
+    add_common_options(reset, socket_option=True, json_option=False)
     reset.add_argument("name", metavar="NAME", nargs="?")
     reset.add_argument("--all", action="store_true", help="reset every currently registered tweak")
     reset.set_defaults(handler=run_tweak_reset)
