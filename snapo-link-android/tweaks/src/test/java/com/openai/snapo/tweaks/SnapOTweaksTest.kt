@@ -85,6 +85,32 @@ class SnapOTweaksTest {
     }
 
     @Test
+    fun `enum overlay values expose and update enum constant names`() {
+        val options = listOf("System", "Light", "Dark")
+        val descriptor = TweakDescriptor(
+            name = "Appearance/Theme",
+            type = TweakType.ENUM,
+            default = "System",
+            options = options,
+        )
+        val state = TweakRegistry.register(descriptor)
+        val entry = SnapOTweaks.activeTweakEntries().value.single()
+
+        assertEquals(SnapOTweakValue.Selection("System", options), entry.value.value)
+        assertEquals(SnapOTweakValue.Selection("System", options), entry.defaultValue)
+
+        SnapOTweaks.update(descriptor.name, SnapOTweakValue.Selection("Dark", options))
+
+        assertEquals("Dark", state.value)
+        assertEquals(SnapOTweakValue.Selection("Dark", options), entry.value.value)
+
+        SnapOTweaks.update(descriptor.name, entry.defaultValue)
+
+        assertEquals("System", state.value)
+        assertEquals(SnapOTweakValue.Selection("System", options), entry.value.value)
+    }
+
+    @Test
     fun `overlay updates remain available as adjusted history after leaving composition`() {
         val descriptor = TweakDescriptor(
             name = "Typography/Historical font size",

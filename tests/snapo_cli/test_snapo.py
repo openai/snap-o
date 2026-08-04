@@ -208,6 +208,13 @@ def tweak_descriptors():
         {"name": "Motion/Enabled", "type": "boolean", "default": True, "value": True},
         {"name": "Palette/Accent color", "type": "color", "default": "#5468FF", "value": "#5468FF"},
         {"name": "Preview/Text value", "type": "string", "default": "true", "value": "true"},
+        {
+            "name": "Appearance/Theme",
+            "type": "enum",
+            "default": "System",
+            "value": "System",
+            "options": ["System", "Light", "Dark"],
+        },
     ]
 
 
@@ -627,6 +634,36 @@ class TweakValueTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(snapo.SnapOError):
                     snapo.parse_tweak_value(descriptor, value)
+
+    def test_enums_accept_only_exact_declared_option_names(self):
+        descriptor = self.descriptor("Appearance/Theme")
+
+        self.assertEqual(snapo.parse_tweak_value(descriptor, "Dark"), "Dark")
+        self.assertEqual(snapo.parse_tweak_value(descriptor, "System"), "System")
+
+        for invalid in ("dark", "DARK", "Dark mode", "Unknown"):
+            with self.subTest(value=invalid):
+                with self.assertRaisesRegex(snapo.SnapOError, '"System", "Light", "Dark"'):
+                    snapo.parse_tweak_value(descriptor, invalid)
+
+    def test_enums_reject_malformed_option_descriptors(self):
+        original = self.descriptor("Appearance/Theme")
+        cases = (
+            ({"options": None}, "non-empty option list"),
+            ({"options": []}, "non-empty option list"),
+            ({"options": [" "]}, "nonblank strings"),
+            ({"options": [{"value": "System"}]}, "nonblank strings"),
+            ({"options": ["System", "System"]}, "must be unique"),
+            ({"value": "unknown"}, "the value must match"),
+            ({"default": "unknown"}, "the default must match"),
+        )
+
+        for changes, detail in cases:
+            with self.subTest(detail=detail):
+                descriptor = json.loads(json.dumps(original))
+                descriptor.update(changes)
+                with self.assertRaisesRegex(snapo.SnapOError, detail):
+                    snapo.tweak_descriptors({"tweaks": [descriptor]})
 
 
 class ADBTests(unittest.TestCase):
@@ -1221,6 +1258,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertIn("Typography/Font size = 16 [int]", output)
         self.assertIn("Motion/Enabled = true [boolean]", output)
         self.assertIn('Preview/Text value = "true" [string]', output)
+        self.assertIn('Appearance/Theme = "System" [enum]; options: ["System", "Light", "Dark"]', output)
 
     def test_get_accepts_tweak_names_with_slashes_and_spaces(self):
         with TweakHTTPServer() as wire:
@@ -1277,6 +1315,7 @@ class TweakCommandTests(unittest.TestCase):
             ("Motion/Enabled", "false", False),
             ("Palette/Accent color", "#3b82f6", "#3B82F6"),
             ("Preview/Text value", "true", "true"),
+            ("Appearance/Theme", "Dark", "Dark"),
             ("Preview/Text value", "-hello", "-hello"),
             ("Preview/Text value", "-foo", "-foo"),
             ("Preview/Text value", "--literal", "--literal"),
@@ -1307,6 +1346,9 @@ class TweakCommandTests(unittest.TestCase):
             ("Motion/Damping ratio", "inf"),
             ("Motion/Enabled", "probably"),
             ("Palette/Accent color", "#nothex"),
+            ("Appearance/Theme", "dark"),
+            ("Appearance/Theme", "DARK"),
+            ("Appearance/Theme", "Dark mode"),
         )
         for name, raw in cases:
             with self.subTest(name=name, value=raw):
@@ -1330,6 +1372,18 @@ class TweakCommandTests(unittest.TestCase):
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Typography/Font size": 16}}))
+        self.assertEqual(output, "")
+
+    def test_reset_enum_patches_its_declared_default_name(self):
+        descriptors = tweak_descriptors()
+        descriptor = next(item for item in descriptors if item["name"] == "Appearance/Theme")
+        descriptor["value"] = "Dark"
+
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["reset", "Appearance/Theme"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Appearance/Theme": "System"}}))
         self.assertEqual(output, "")
 
     def test_reset_all_patches_every_default_in_one_atomic_request(self):

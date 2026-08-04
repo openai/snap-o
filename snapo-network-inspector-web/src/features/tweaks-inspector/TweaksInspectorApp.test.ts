@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, type MouseEvent, type PointerEvent, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { SelectedAppInspector, TweakDescriptor } from "../../network/bridge-types";
@@ -11,6 +11,8 @@ import {
   parseTweakColor,
   reconcileStreamedTweaks,
   TweakColorField,
+  TweakEnumListbox,
+  TweakField,
   TweaksEmptyState,
   TweaksInspectorApp,
   tweakColorWithPreservedAlpha
@@ -166,6 +168,113 @@ describe("editable tweak colors", () => {
   });
 });
 
+describe("enumerated tweak values", () => {
+  it("shows the current enum name in an accessible listbox trigger", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakField, {
+        tweak: enumTweak(),
+        onChange() {}
+      })
+    );
+
+    expect(markup).toContain('aria-label="Appearance/Theme: System"');
+    expect(markup).toContain('aria-haspopup="listbox"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("<span>System</span>");
+  });
+
+  it("shows exact enum names and identifies the selected listbox option", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakEnumListbox, {
+        id: "appearance-theme-options",
+        tweak: enumTweak(),
+        onChange() {},
+        onClose() {}
+      })
+    );
+
+    expect(markup).toContain('role="listbox"');
+    expect(markup).toContain('role="option" aria-selected="true" data-option-index="0"');
+    expect(markup).toContain('role="option" aria-selected="false" data-option-index="1"');
+    expect(markup).toContain(">System</button>");
+    expect(markup).toContain(">Dark</button>");
+  });
+
+  it("sends a primary-pointer selection before dismissing the listbox", () => {
+    const events: string[] = [];
+    const preventDefault = vi.fn();
+    const option = enumListboxOption(1, {
+      onChange: (_tweak, value) => events.push(`change:${value}`),
+      onClose: () => events.push("close")
+    });
+
+    option.props.onPointerDown({ button: 0, preventDefault } as unknown as PointerEvent<HTMLButtonElement>);
+    option.props.onClick({ detail: 1 } as MouseEvent<HTMLButtonElement>);
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(events).toEqual(["change:Dark", "close"]);
+  });
+
+  it("ignores non-primary pointer selection", () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    const preventDefault = vi.fn();
+    const option = enumListboxOption(1, { onChange, onClose });
+
+    option.props.onPointerDown({ button: 2, preventDefault } as unknown as PointerEvent<HTMLButtonElement>);
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("commits changed keyboard or assistive-technology selections once", () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    const current = enumListboxOption(0, { onChange, onClose });
+    const changed = enumListboxOption(1, { onChange, onClose });
+
+    current.props.onClick({ detail: 0 } as MouseEvent<HTMLButtonElement>);
+    expect(onChange).not.toHaveBeenCalled();
+
+    changed.props.onClick({ detail: 0 } as MouseEvent<HTMLButtonElement>);
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(enumTweak(), "Dark");
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("updates the displayed selection when its enum name changes", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakField, {
+        tweak: { ...enumTweak(), value: "Dark" },
+        onChange() {}
+      })
+    );
+
+    expect(markup).toContain("<span>Dark</span>");
+    expect(markup).not.toContain("<span>System</span>");
+  });
+
+  it("recognizes changed and reset enum values", () => {
+    expect(canResetTweaks([enumTweak()])).toBe(false);
+    expect(canResetTweaks([{ ...enumTweak(), value: "Dark" }])).toBe(true);
+  });
+
+  it("preserves updated enum options while a local selection is pending", () => {
+    const current = [{ ...enumTweak(), value: "Dark" }];
+    const incoming = [
+      {
+        ...enumTweak(),
+        options: ["System", "Light", "Dark"]
+      }
+    ];
+
+    expect(reconcileStreamedTweaks(current, incoming, new Map([["Appearance/Theme", "Dark"]]), new Set())).toEqual([
+      { ...incoming[0], value: "Dark" }
+    ]);
+  });
+});
+
 describe("native reset toolbar state", () => {
   it("disables reset when no tweaks exist", () => {
     expect(canResetTweaks([])).toBe(false);
@@ -298,4 +407,32 @@ function colorTweak(): TweakDescriptor {
     default: "#5468FF80",
     value: "#5468FF80"
   };
+}
+
+function enumTweak(): TweakDescriptor {
+  return {
+    name: "Appearance/Theme",
+    type: "enum",
+    default: "System",
+    value: "System",
+    options: ["System", "Dark"]
+  };
+}
+
+function enumListboxOption(
+  index: number,
+  handlers: {
+    onChange(tweak: TweakDescriptor, value: TweakDescriptor["value"]): void;
+    onClose(): void;
+  }
+): ReactElement<{
+  onPointerDown(event: PointerEvent<HTMLButtonElement>): void;
+  onClick(event: MouseEvent<HTMLButtonElement>): void;
+}> {
+  const listbox = TweakEnumListbox({
+    id: "appearance-theme-options",
+    tweak: enumTweak(),
+    ...handlers
+  });
+  return listbox.props.children[index];
 }
