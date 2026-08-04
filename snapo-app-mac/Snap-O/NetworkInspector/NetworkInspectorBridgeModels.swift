@@ -78,6 +78,7 @@ struct TweakDescriptor: Codable {
   let min: TweakValue?
   let max: TweakValue?
   let step: TweakValue?
+  let options: [String]?
 }
 
 struct TweakList: Codable {

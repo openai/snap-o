@@ -183,6 +183,50 @@ class TweakRegistrationTest {
     }
 
     @Test
+    fun `enum tweak descriptors default to enum names in declaration order`() {
+        val descriptor = enumTweakDescriptor(
+            default = PreviewMode.Dark,
+            name = "Appearance/Preview mode",
+        )
+
+        assertEquals(TweakType.ENUM, descriptor.type)
+        assertEquals("Dark", descriptor.default)
+        assertEquals(listOf("System", "Light", "Dark"), descriptor.options)
+    }
+
+    @Test
+    fun `enum registrations decode updated constant names into their original type`() {
+        val descriptor = enumTweakDescriptor(
+            default = PreviewMode.Light,
+            name = "Appearance/Preview mode",
+        )
+        val registration = TweakRegistration(descriptor) { storedValue ->
+            PreviewMode.valueOf(storedValue as String)
+        }
+
+        assertEquals("Light", descriptor.default)
+        assertEquals(listOf("System", "Light", "Dark"), descriptor.options)
+        assertEquals(PreviewMode.Light, registration.value)
+
+        registration.onRemembered()
+        TweakRegistry.update(mapOf(descriptor.name to "Dark"))
+
+        assertEquals(PreviewMode.Dark, registration.value)
+        registration.onForgotten()
+    }
+
+    @Test
+    fun `enum tweaks discover every option when the default has a constant specific body`() {
+        val descriptor = enumTweakDescriptor(
+            default = SpecializedPreviewMode.Automatic,
+            name = "Appearance/Specialized preview mode",
+        )
+
+        assertEquals("Automatic", descriptor.default)
+        assertEquals(listOf("Automatic", "Manual"), descriptor.options)
+    }
+
+    @Test
     fun `registrations do not decode their values until observed`() {
         var decodes = 0
         val state = TweakRegistration(descriptor()) { value ->
@@ -421,4 +465,17 @@ class TweakRegistrationTest {
         type = TweakType.INT,
         default = 16,
     )
+
+    private enum class PreviewMode {
+        System,
+        Light,
+        Dark,
+    }
+
+    private enum class SpecializedPreviewMode {
+        Automatic {
+            override fun toString(): String = "Automatic"
+        },
+        Manual,
+    }
 }

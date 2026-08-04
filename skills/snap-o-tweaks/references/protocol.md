@@ -69,12 +69,28 @@ The tweak response has this shape:
       "type": "boolean",
       "default": true,
       "value": false
+    },
+    {
+      "name": "Appearance/Theme",
+      "type": "enum",
+      "default": "System",
+      "value": "Dark",
+      "options": ["System", "Light", "Dark"]
     }
   ]
 }
 ```
 
-The available types are `int`, `float`, `boolean`, `color`, and `string`. Preserve actual JSON types: booleans are not strings, integer values cannot be fractional, and floats accept whole or fractional finite numbers. Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may include `min`, `max`, and `step`; step alignment starts at `min`, or at `default` if there is no minimum.
+The available types are `int`, `float`, `boolean`, `color`, `string`, and
+`enum`. Preserve actual JSON types: booleans are not strings, integer values
+cannot be fractional, and floats accept whole or fractional finite numbers.
+Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may
+include `min`, `max`, and `step`; step alignment starts at `min`, or at
+`default` if there is no minimum.
+
+Enum descriptors include a nonempty, ordered `options` array containing unique,
+nonblank enum name strings. The `default` and current `value` are names from
+that list. Send an exact option name in `PATCH /tweaks`.
 
 Plain `GET /tweaks` includes only declarations active in Compose. Add
 `?include=adjusted` to include every tweak successfully adjusted by the user,
@@ -100,13 +116,13 @@ declarations return.
 ```bash
 curl -fsS -X PATCH "$base/tweaks" \
   -H 'Content-Type: application/json' \
-  -d '{"values":{"Motion/Duration":550,"Motion/Enabled":false}}'
+  -d '{"values":{"Motion/Duration":550,"Motion/Enabled":false,"Appearance/Theme":"Dark"}}'
 ```
 
 The response contains the changed names and their resulting values:
 
 ```json
-{"tweaks":[{"name":"Motion/Duration","value":550},{"name":"Motion/Enabled","value":false}]}
+{"tweaks":[{"name":"Motion/Duration","value":550},{"name":"Motion/Enabled","value":false},{"name":"Appearance/Theme","value":"Dark"}]}
 ```
 
 Every value is validated before any update is applied. An invalid, unknown, or
@@ -160,6 +176,6 @@ These relative URLs assume your host serves both the page and the proxy. The And
 
 ## Errors and security
 
-Errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints or inactive tweak names, `405` for unsupported methods, `413` for oversized bodies, and `422` for invalid JSON value types, numeric bounds, numeric steps, or color formats.
+Errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints or inactive tweak names, `405` for unsupported methods, `413` for oversized bodies, and `422` for invalid JSON value types, numeric bounds, numeric steps, color formats, or unknown enum option names.
 
 The socket is app-local and normally enabled only when the Android app is debuggable. Release activation requires an explicit `snapo.tweaks.allow_release` manifest opt-in; release no-op artifacts are preferred. There is no HTTP bearer-token layer: access is controlled by the local socket and the connected ADB boundary. Do not expose a forwarded port or proxy publicly, and treat tweak names and values as potentially sensitive.

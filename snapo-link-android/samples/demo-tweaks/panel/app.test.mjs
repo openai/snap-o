@@ -278,7 +278,14 @@ function jsonResponse(payload, status = 200) {
 
 test("browser panel renders, streams, validates, and resets live tweaks", async () => {
   const document = makeDocument();
-  const tweaks = structuredClone(descriptors);
+  const markerShape = {
+    name: "Motion/Marker shape",
+    type: "enum",
+    default: "Circle",
+    value: "Circle",
+    options: ["Circle", "RoundedSquare"],
+  };
+  const tweaks = [...structuredClone(descriptors), markerShape];
   const patches = [];
   const originalDocument = globalThis.document;
   const originalFetch = globalThis.fetch;
@@ -357,7 +364,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
       document.querySelector("#connection-status").getAttribute("aria-label"),
       "Connected",
     );
-    assert.equal(document.querySelector("#tweak-sections").childElementCount, 1);
+    assert.equal(document.querySelector("#tweak-sections").childElementCount, 2);
     assert.equal(findTweakList(document).childElementCount, 10);
     assert.equal(document.properties.has("--accent"), false);
     assert.equal(document.querySelector("#reset-button").disabled, true);
@@ -427,6 +434,15 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     spring.checked = false;
     await spring.emit("change");
 
+    const marker = findInput(findTweakList(document, "Motion"), markerShape.name);
+    assert.equal(marker.tagName, "SELECT");
+    assert.deepEqual(
+      marker.children.map((option) => [option.value, option.textContent]),
+      markerShape.options.map((option) => [option, option]),
+    );
+    marker.value = "RoundedSquare";
+    await marker.emit("change");
+
     const preview = findInput(appearance, "Preview text");
     preview.value = "A calmer direction.";
     await preview.emit("input");
@@ -444,6 +460,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
       "Spring stiffness": 400,
       "Spring damping": 0.8,
       "Use spring": false,
+      "Motion/Marker shape": "RoundedSquare",
       "Preview text": "A calmer direction.",
     });
     assert.equal(document.properties.has("--accent"), false);
@@ -456,6 +473,14 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.deepEqual(patches.at(-1), { "Accent color": "#5468FF" });
     assert.equal(resetAccent.hidden, true);
     assert.equal(document.properties.has("--accent"), false);
+
+    const resetMarker = findInput(findTweakList(document, "Motion"), "Reset Motion/Marker shape");
+    assert.equal(resetMarker.hidden, false);
+    await resetMarker.emit("click");
+    await delay(0);
+    assert.deepEqual(patches.at(-1), { "Motion/Marker shape": "Circle" });
+    assert.equal(marker.value, "Circle");
+    assert.equal(resetMarker.hidden, true);
 
     const patchesBeforeInvalid = patches.length;
     fontWeight.value = "701";
@@ -470,7 +495,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.equal(patches.length, patchesBeforeReset + 1);
     assert.deepEqual(
       patches.at(-1),
-      Object.fromEntries(descriptors.map((tweak) => [tweak.name, tweak.default])),
+      Object.fromEntries(tweaks.map((tweak) => [tweak.name, tweak.default])),
     );
     assert.equal(document.querySelector("#reset-button").disabled, true);
     assert.equal(document.properties.has("--accent"), false);
@@ -1189,6 +1214,13 @@ test("motion tweaks appear and disappear as the visibility tweak changes composi
 
 test("streams batched composition changes without polling tweak values", async () => {
   const document = makeDocument();
+  const markerShape = {
+    name: "Motion/Marker shape",
+    type: "enum",
+    default: "Circle",
+    value: "Circle",
+    options: ["Circle", "RoundedSquare"],
+  };
   const originalDocument = globalThis.document;
   const originalFetch = globalThis.fetch;
   const originalEventSource = globalThis.EventSource;
@@ -1275,6 +1307,26 @@ test("streams batched composition changes without polling tweak values", async (
       findInput(findTweakList(document, "Motion"), "Motion/Duration").value,
       "550",
     );
+
+    sources[0].emitTweaks([typography, motion, markerShape]);
+    let marker = findInput(findTweakList(document, "Motion"), markerShape.name);
+    document.activeElement = marker;
+    sources[0].emitTweaks([typography, motion, {
+      ...markerShape,
+      value: "RoundedSquare",
+    }]);
+    assert.equal(marker.value, "RoundedSquare");
+
+    const expandedOptions = ["Circle", "RoundedSquare", "Square"];
+    sources[0].emitTweaks([typography, motion, {
+      ...markerShape,
+      value: "Square",
+      options: expandedOptions,
+    }]);
+    marker = findInput(findTweakList(document, "Motion"), markerShape.name);
+    assert.equal(marker.value, "Square");
+    assert.deepEqual(marker.children.map((option) => option.value), expandedOptions);
+    document.activeElement = undefined;
 
     sources[0].emitTweaks([typography]);
 

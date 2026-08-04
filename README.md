@@ -28,7 +28,7 @@ Snap-O can replay network requests that happened before you opened Snap-O, so yo
 
 ## Tweaks (Alpha)
 
-Snap-O Tweaks lets you inspect and adjust Jetpack Compose UI values without rebuilding or restarting your app. Tweaks is an alpha feature; its APIs, behavior, and interface may change.
+Snap-O Tweaks lets you inspect and adjust Jetpack Compose UI values without rebuilding or restarting your app. It supports numbers, colors, booleans, strings, and type-safe enum pickers. Tweaks is an alpha feature; its APIs, behavior, and interface may change.
 
 Follow the [Tweaks developer guide](https://openai.github.io/snap-o/tweaks.html) for setup steps.
 
@@ -125,6 +125,7 @@ snapo network show -s <serial> -n <socket> -r <request-id> --json
 snapo tweaks apps --json
 snapo tweaks list -s <serial> -n <socket> --json
 snapo tweaks set 'Typography/Font size' 42 -s <serial> -n <socket>
+snapo tweaks set 'Motion/Marker shape' RoundedSquare -s <serial> -n <socket>
 snapo tweaks reset 'Typography/Font size' -s <serial> -n <socket>
 ```
 

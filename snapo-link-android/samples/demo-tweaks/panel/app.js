@@ -58,6 +58,13 @@ const mockTweaks = [
   { name: "Motion/Spring stiffness", type: "float", default: 280, value: 280, min: 80, max: 800, step: 20 },
   { name: "Motion/Spring damping", type: "float", default: 0.7, value: 0.7, min: 0.1, max: 1, step: 0.05 },
   { name: "Motion/Use spring", type: "boolean", default: true, value: true },
+  {
+    name: "Motion/Marker shape",
+    type: "enum",
+    default: "Circle",
+    value: "Circle",
+    options: ["Circle", "RoundedSquare", "Square"],
+  },
 ];
 
 let mockSelectedAppId = mockApps[0].id;
@@ -419,6 +426,7 @@ function updateTweakRow(tweak) {
   if (fields.hex) fields.hex.value = tweak.value;
   if (fields.text) fields.text.value = tweak.value;
   if (fields.checkbox) fields.checkbox.checked = tweak.value;
+  if (fields.selection) fields.selection.value = tweak.value;
 }
 
 function updateValue(tweak, value, delay = 75) {
@@ -652,6 +660,30 @@ function makeStringTweak(tweak) {
   });
 }
 
+function makeEnumTweak(tweak) {
+  const row = node("div", "tweak-row");
+  const { line, actions, reset } = makeTweakLine(tweak);
+  const input = node("select", "enum-input");
+
+  input.setAttribute("aria-label", tweak.name);
+  input.replaceChildren(...tweak.options.map((value) => {
+    const option = node("option", undefined, value);
+    option.value = value;
+    return option;
+  }));
+  input.value = tweak.value;
+  input.addEventListener("change", () => {
+    updateValue(tweak, input.value, 0);
+  });
+
+  actions.append(input);
+  row.append(line);
+  return registerTweakRow(tweak, row, {
+    reset,
+    selection: input,
+  });
+}
+
 function makeTweak(tweak) {
   switch (tweak.type) {
     case "int":
@@ -663,6 +695,8 @@ function makeTweak(tweak) {
       return makeBooleanTweak(tweak);
     case "string":
       return makeStringTweak(tweak);
+    case "enum":
+      return makeEnumTweak(tweak);
     default:
       return null;
   }
@@ -783,9 +817,19 @@ function sameTweakShape(current, incoming) {
       tweak.default === next.default &&
       tweak.min === next.min &&
       tweak.max === next.max &&
-      tweak.step === next.step
+      tweak.step === next.step &&
+      sameTweakOptions(tweak.options, next.options)
     );
   });
+}
+
+function sameTweakOptions(current, incoming) {
+  if (current === undefined || incoming === undefined) {
+    return current === incoming;
+  }
+
+  return current.length === incoming.length &&
+    current.every((option, index) => option === incoming[index]);
 }
 
 function applyTweakSnapshot(incoming) {
@@ -801,7 +845,11 @@ function applyTweakSnapshot(incoming) {
     }
 
     const fields = state.rows.get(next.name);
-    if (current && Object.values(fields ?? {}).includes(document.activeElement)) {
+    if (
+      current &&
+      fields?.selection !== document.activeElement &&
+      Object.values(fields ?? {}).includes(document.activeElement)
+    ) {
       return { ...next, value: current.value };
     }
 

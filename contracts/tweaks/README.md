@@ -137,6 +137,13 @@ Return a flat list of currently registered tweaks:
       "type": "string",
       "default": "Make it feel right.",
       "value": "Make it feel right."
+    },
+    {
+      "name": "Marker shape",
+      "type": "enum",
+      "default": "Circle",
+      "value": "Circle",
+      "options": ["Circle", "RoundedSquare", "Square"]
     }
   ]
 }
@@ -149,15 +156,20 @@ until its last usage leaves composition. Its most recently edited value remains
 available if the same complete declaration later returns, but inactive tweaks do
 not appear in default responses or event snapshots.
 
-Usages with the same name must agree on the tweak type, default, and
-constraints. Conflicting declarations are a configuration error.
+Usages with the same name must agree on the tweak type, default, constraints,
+and ordered enum options. Conflicting declarations are a configuration error.
 
-Supported types are `int`, `float`, `boolean`, `color`, and `string`. Integer
-tweaks accept only whole numbers; float tweaks accept whole or fractional
-numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include
-constraints actually supplied by the app. A `step` is relative to `min`, or to
-`default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when
-translucent.
+Supported types are `int`, `float`, `boolean`, `color`, `string`, and `enum`.
+Integer tweaks accept only whole numbers; float tweaks accept whole or
+fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only
+include constraints actually supplied by the app. A `step` is relative to
+`min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or
+`#RRGGBBAA` when translucent.
+
+Enum tweaks include an ordered, nonempty `options` array containing the unique
+enum constant names. The descriptor's `default`, current `value`, picker text,
+and `PATCH` values all use those exact names. Preserve declaration order when
+rendering pickers; reject any value not present in `options`.
 
 Compose color defaults keep their exact in-process identity, including color
 space, component precision, and `Color.Unspecified`. The HTTP protocol still
@@ -247,7 +259,8 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
       "Animation duration": 550,
       "Spring damping": 0.8,
       "Use spring": false,
-      "Preview text": "A calmer direction."
+      "Preview text": "A calmer direction.",
+      "Marker shape": "RoundedSquare"
     }
   }'
 ```
@@ -261,7 +274,8 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
     { "name": "Animation duration", "value": 550 },
     { "name": "Spring damping", "value": 0.8 },
     { "name": "Use spring", "value": false },
-    { "name": "Preview text", "value": "A calmer direction." }
+    { "name": "Preview text", "value": "A calmer direction." },
+    { "name": "Marker shape", "value": "RoundedSquare" }
   ]
 }
 ```
@@ -269,7 +283,8 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 Validate all values before changing any of them. Return `400` for malformed
 requests, `404` when an endpoint or requested tweak does not exist, `405`
 for an unsupported method, `413` for an oversized body, and `422` when a value
-has the wrong type or violates a constraint. Errors use a small JSON body:
+has the wrong type, violates a constraint, or is not one of the declared enum
+option values. Errors use a small JSON body:
 
 ```json
 {
@@ -285,6 +300,8 @@ any tweaks in that request. Reset a value by patching it with its default.
 ```kotlin
 import androidx.compose.runtime.getValue
 import com.openai.snapo.tweaks.tweak
+
+enum class MarkerShape { Circle, RoundedSquare, Square }
 
 @Composable
 fun TweakSpecimen() {
@@ -328,6 +345,7 @@ fun SpecimenAccessory() {
 @Composable
 fun MotionSpecimen() {
     val useSpring by tweak(true, "Use spring")
+    val markerShape by tweak(MarkerShape.Circle, "Marker shape")
 
     val animationSpec = if (useSpring) {
         val stiffness by tweak(280f, "Spring stiffness", 80f..800f, step = 20f)
@@ -340,7 +358,7 @@ fun MotionSpecimen() {
         tween<Float>(durationMillis = durationMillis)
     }
 
-    MotionContent(animationSpec)
+    MotionContent(animationSpec, markerShape)
 }
 ```
 
@@ -371,12 +389,14 @@ what appears in the default response without discarding edits; request
 screens that are no longer in composition.
 
 Provide overloaded `tweak(default, name)` functions for `Int`, `Float`,
-`Color`, `Boolean`, and `String` defaults; each returns its corresponding
+`Color`, `Boolean`, `String`, and enum defaults; each returns its corresponding
 `State<T>`. For strings, name the second argument to distinguish the label from
 the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept
-an optional range and `step` of the same type. Convert delegated integer values
-into Compose units at the call site, such as `fontSize.sp`. The real and no-op
-artifacts expose the same package and public Compose API.
+an optional range and `step` of the same type. Enum tweaks infer their options
+from declaration order and use each constant's name everywhere. Convert
+delegated integer values into Compose units at the call site, such as
+`fontSize.sp`. The real and no-op artifacts expose the same package and public
+Compose API.
 
 ## Setup
 
@@ -475,7 +495,7 @@ overlay. It does not enable Network Inspector, which has its own
 `snapo.network.allow_release` application flag. The no-op release artifacts are
 still recommended: they return default values, contain no provider, and let R8
 remove unused calls and tweak-name strings. Verify the release APK contains
-neither tweak-name strings nor the live provider, registry, server, or socket.
+neither tweak-only strings nor the live provider, registry, server, or socket.
 
 Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network
 protocol change, actions, groups, scopes, units, separate tweak IDs, or

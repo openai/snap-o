@@ -1,5 +1,5 @@
-import { RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
   AppInspectorOption,
   InspectableApp,
@@ -428,7 +428,7 @@ function TweakControl({
   );
 }
 
-function TweakField({
+export function TweakField({
   tweak,
   onChange,
   onOpenColorPanel
@@ -453,6 +453,10 @@ function TweakField({
     return <TweakColorField tweak={tweak} onChange={onChange} onOpenColorPanel={onOpenColorPanel} />;
   }
 
+  if (tweak.type === "enum") {
+    return <TweakEnumField tweak={tweak} onChange={onChange} />;
+  }
+
   if (tweak.type === "int" || tweak.type === "float") {
     return (
       <input
@@ -474,6 +478,154 @@ function TweakField({
   }
 
   return null;
+}
+
+function TweakEnumField({
+  tweak,
+  onChange
+}: {
+  tweak: TweakDescriptor;
+  onChange(tweak: TweakDescriptor, value: TweakValue): void;
+}): JSX.Element {
+  const [listboxStyle, setListboxStyle] = useState<CSSProperties | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = useId();
+  const options = tweak.options ?? [];
+  const expanded = listboxStyle !== null;
+  const close = useCallback(() => {
+    setListboxStyle(null);
+    triggerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!expanded) return;
+
+    const dismissOutside = (event: Event) => {
+      if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
+      setListboxStyle(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+    };
+
+    const controller = new AbortController();
+    const { signal } = controller;
+    window.addEventListener("pointerdown", dismissOutside, { signal });
+    window.addEventListener("keydown", closeOnEscape, { signal });
+    window.addEventListener("scroll", dismissOutside, { capture: true, signal });
+    window.addEventListener("resize", dismissOutside, { signal });
+    return () => controller.abort();
+  }, [close, expanded]);
+
+  const open = () => {
+    const bounds = triggerRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+
+    const availableBelow = window.innerHeight - bounds.bottom;
+    const openAbove = availableBelow < Math.min(options.length * 30 + 8, 240) && bounds.top > availableBelow;
+    setListboxStyle({
+      ...(openAbove ? { bottom: window.innerHeight - bounds.top + 4 } : { top: bounds.bottom + 4 }),
+      right: Math.max(8, window.innerWidth - bounds.right),
+      minWidth: bounds.width,
+      maxHeight: Math.max(80, (openAbove ? bounds.top : availableBelow) - 12)
+    });
+  };
+
+  const navigate = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || options.length === 0) return;
+
+    event.preventDefault();
+    const selected = options.indexOf(String(tweak.value));
+    const focused = Number((event.target as HTMLElement).dataset.optionIndex ?? selected);
+    const current = focused < 0 ? 0 : focused;
+    const index =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? options.length - 1
+          : Math.max(0, Math.min(options.length - 1, current + (expanded ? (event.key === "ArrowDown" ? 1 : -1) : 0)));
+
+    if (!expanded) open();
+    requestAnimationFrame(() => {
+      rootRef.current?.querySelector<HTMLButtonElement>(`[data-option-index="${index}"]`)?.focus();
+    });
+  };
+
+  return (
+    <div
+      className="tweaks-select-wrap"
+      ref={rootRef}
+      onKeyDown={navigate}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setListboxStyle(null);
+      }}
+    >
+      <button
+        className="tweaks-select"
+        type="button"
+        aria-label={`${tweak.name}: ${String(tweak.value)}`}
+        aria-haspopup="listbox"
+        aria-expanded={expanded}
+        aria-controls={expanded ? listboxId : undefined}
+        ref={triggerRef}
+        onClick={() => (expanded ? setListboxStyle(null) : open())}
+      >
+        <span>{String(tweak.value)}</span>
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+      {expanded ? (
+        <TweakEnumListbox id={listboxId} style={listboxStyle} tweak={tweak} onChange={onChange} onClose={close} />
+      ) : null}
+    </div>
+  );
+}
+
+export function TweakEnumListbox({
+  id,
+  style,
+  tweak,
+  onChange,
+  onClose
+}: {
+  id: string;
+  style?: CSSProperties;
+  tweak: TweakDescriptor;
+  onChange(tweak: TweakDescriptor, value: TweakValue): void;
+  onClose(): void;
+}): JSX.Element {
+  const select = (value: string) => {
+    if (value !== String(tweak.value)) onChange(tweak, value);
+    onClose();
+  };
+
+  return (
+    <div className="tweaks-select-listbox" id={id} role="listbox" aria-label={tweak.name} style={style}>
+      {(tweak.options ?? []).map((option, index) => (
+        <button
+          className="tweaks-select-option"
+          key={option}
+          type="button"
+          role="option"
+          aria-selected={option === String(tweak.value)}
+          data-option-index={index}
+          tabIndex={option === String(tweak.value) ? 0 : -1}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            select(option);
+          }}
+          onClick={(event) => {
+            if (event.detail === 0) select(option);
+          }}
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function TweakColorField({

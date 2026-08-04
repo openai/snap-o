@@ -94,6 +94,38 @@ fun tweak(
     default = default,
 ) { value -> value as String }
 
+/** Exposes every enum constant, in declaration order, as a selection using [Enum.name]. */
+@Composable
+fun <E : Enum<E>> tweak(
+    default: E,
+    name: String,
+): State<E> {
+    if (!TweaksRuntimePolicy.isAllowed) return rememberUpdatedState(default)
+
+    val enumClass = default.declaringJavaClass
+    val descriptor = remember(default, name) { enumTweakDescriptor(default, name) }
+    val decode = remember(enumClass) {
+        val decoder: (Any) -> E = { value ->
+            java.lang.Enum.valueOf(enumClass, value as String)
+        }
+        decoder
+    }
+
+    return rememberTweakState(descriptor, default, decode)
+}
+
+internal fun <E : Enum<E>> enumTweakDescriptor(
+    default: E,
+    name: String,
+): TweakDescriptor = TweakDescriptor(
+    name = name,
+    type = TweakType.ENUM,
+    default = default.name,
+    options = requireNotNull(default.declaringJavaClass.enumConstants).map { option ->
+        option.name
+    },
+)
+
 @Composable
 private fun <T> rememberTweakState(
     descriptor: TweakDescriptor,

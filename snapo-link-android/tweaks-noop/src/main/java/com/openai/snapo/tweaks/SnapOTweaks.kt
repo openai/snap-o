@@ -75,4 +75,11 @@ sealed interface SnapOTweakValue {
     @Immutable
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     data class Text(val value: String) : SnapOTweakValue
+
+    @Immutable
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    data class Selection(
+        val value: String,
+        val options: List<String>,
+    ) : SnapOTweakValue
 }

@@ -86,11 +86,14 @@ workflow needs every retained user adjustment, including inactive declarations.
 import androidx.compose.runtime.getValue
 import com.openai.snapo.tweaks.tweak
 
+enum class MotionStyle { Standard, Emphasized }
+
 @Composable
 fun AnimatedContent() {
     val duration by tweak(400, "Motion/Duration", 100..1500, step = 50)
     val enabled by tweak(true, "Motion/Enabled")
-    // Use duration and enabled when rendering the current screen.
+    val style by tweak(MotionStyle.Standard, "Motion/Style")
+    // Use duration, enabled, and style when rendering the current screen.
 }
 ```
 

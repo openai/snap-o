@@ -48,12 +48,13 @@ export type TweakValue = boolean | number | string;
 
 export interface TweakDescriptor {
   name: string;
-  type: "int" | "float" | "boolean" | "color" | "string";
+  type: "int" | "float" | "boolean" | "color" | "string" | "enum";
   default: TweakValue;
   value: TweakValue;
   min?: number;
   max?: number;
   step?: number;
+  options?: string[];
 }
 
 export interface TweakList {

@@ -81,6 +81,13 @@ sealed interface SnapOTweakValue {
     @Immutable
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     data class Text(val value: String) : SnapOTweakValue
+
+    @Immutable
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    data class Selection(
+        val value: String,
+        val options: List<String>,
+    ) : SnapOTweakValue
 }
 
 private fun TweakSnapshot.toSnapOTweak(): SnapOTweak = SnapOTweak(
@@ -107,6 +114,7 @@ internal fun TweakDescriptor.toSnapOTweakValue(value: Any): SnapOTweakValue = wh
     TweakType.BOOLEAN -> SnapOTweakValue.Toggle(value as Boolean)
     TweakType.COLOR -> SnapOTweakValue.ColorValue((value as TweakColorValue).color)
     TweakType.STRING -> SnapOTweakValue.Text(value as String)
+    TweakType.ENUM -> SnapOTweakValue.Selection(value as String, options)
 }
 
 private fun SnapOTweakValue.toRegistryValue(): Any = when (this) {
@@ -115,4 +123,5 @@ private fun SnapOTweakValue.toRegistryValue(): Any = when (this) {
     is SnapOTweakValue.Toggle -> value
     is SnapOTweakValue.ColorValue -> value.toTweakColorValue()
     is SnapOTweakValue.Text -> value
+    is SnapOTweakValue.Selection -> value
 }
