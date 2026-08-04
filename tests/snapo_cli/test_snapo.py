@@ -222,7 +222,11 @@ class TweakHTTPServer:
     def __init__(self, descriptors=None, app=None, error=None, stream_events=None, adjusted_descriptors=None):
         self.descriptors = json.loads(json.dumps(descriptors or tweak_descriptors()))
         self.adjusted_descriptors = self.descriptors if adjusted_descriptors is None else adjusted_descriptors
-        self.app = app or {"name": "Snap-O Tweaks Demo", "packageName": "com.example.tweaks"}
+        self.app = app or {
+            "name": "Snap-O Tweaks Demo",
+            "packageName": "com.example.tweaks",
+            "protocolVersion": 2,
+        }
         self.error = error
         self.stream_events = stream_events
         self.requests = []
@@ -278,6 +282,31 @@ class TweakHTTPServer:
                     descriptors[name]["value"] = value
                     updates.append({"name": name, "value": value})
                 self.send_json(200, {"tweaks": updates})
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                owner.requests.append(("POST", self.path, payload))
+                if owner.error is not None:
+                    status, message = owner.error
+                    self.send_json(status, {"error": message})
+                    return
+                if self.path != "/tweaks/action":
+                    self.send_json(404, {"error": f"Unknown endpoint: {self.path}"})
+                    return
+
+                actions = [
+                    item
+                    for item in owner.descriptors
+                    if item["name"] == payload.get("name") and item["type"] == "action"
+                ]
+                if not actions:
+                    self.send_json(404, {"error": f"Unknown action: {payload.get('name')}"})
+                    return
+                if len(actions) != 1 or actions[0].get("conflicted") is True:
+                    self.send_json(409, {"error": f"Conflicting action registrations: {payload.get('name')}"})
+                    return
+                self.send_json(200, {"name": payload["name"]})
 
             def send_json(self, status, payload):
                 body = json.dumps(payload).encode("utf-8")
@@ -543,20 +572,21 @@ class TweakDiscoveryTests(unittest.TestCase):
             "list": ["list", "-n", "snapo_tweaks_42"],
             "get": ["get", "Typography/Font size", "-n", "snapo_tweaks_42"],
             "set": ["set", "Typography/Font size", "-2", "-n", "snapo_tweaks_42"],
+            "action": ["action", "Preview/Refresh", "-n", "snapo_tweaks_42"],
             "reset": ["reset", "Typography/Font size", "-n", "snapo_tweaks_42"],
             "watch": ["watch", "--once", "-n", "snapo_tweaks_42"],
         }
         for name, arguments in commands.items():
             with self.subTest(command=name):
                 command = ["tweaks", *arguments, "-s", "emulator-5554", "--adb", "/configured/adb"]
-                if name not in {"set", "reset"}:
+                if name not in {"set", "action", "reset"}:
                     command.append("--json")
                 options = snapo.parser().parse_args(command)
                 self.assertEqual(options.root_command, "tweaks")
                 self.assertEqual(options.tweaks_command, name)
                 self.assertEqual(options.serial, "emulator-5554")
                 self.assertEqual(options.adb, "/configured/adb")
-                if name not in {"set", "reset"}:
+                if name not in {"set", "action", "reset"}:
                     self.assertTrue(options.json)
 
     def test_tweak_commands_preserve_remote_adb_endpoint_validation(self):
@@ -565,6 +595,7 @@ class TweakDiscoveryTests(unittest.TestCase):
             ["tweaks", "list"],
             ["tweaks", "get", "Motion/Enabled"],
             ["tweaks", "set", "Motion/Enabled", "false"],
+            ["tweaks", "action", "Preview/Refresh"],
             ["tweaks", "reset", "Motion/Enabled"],
             ["tweaks", "watch", "--once"],
         )
@@ -591,6 +622,7 @@ class TweakDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(result.exception.code, 0)
         self.assertIn("apps", stdout.getvalue())
+        self.assertIn("action", stdout.getvalue())
         self.assertIn("watch", stdout.getvalue())
 
 
@@ -1213,8 +1245,63 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(app["socketName"], "snapo_tweaks_42")
         self.assertEqual(app["appName"], "Snap-O Tweaks Demo")
         self.assertEqual(app["packageName"], "com.example.tweaks")
+        self.assertEqual(app["protocolVersion"], 2)
         self.assertEqual(wire.requests, [("GET", "/app", None)])
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_apps_infers_protocol_version_one_for_legacy_tweak_servers(self):
+        app = {"name": "Snap-O Tweaks Demo", "packageName": "com.example.tweaks"}
+        with TweakHTTPServer(app=app) as wire:
+            result, output, errors, _ = self.run_command(["apps", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output)["protocolVersion"], 1)
+
+    def test_apps_preserves_future_tweak_protocol_versions(self):
+        app = {
+            "name": "Snap-O Tweaks Demo",
+            "packageName": "com.example.tweaks",
+            "protocolVersion": 7,
+        }
+        with TweakHTTPServer(app=app) as wire:
+            result, output, errors, _ = self.run_command(["apps", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output)["protocolVersion"], 7)
+
+    def test_apps_rejects_malformed_tweak_protocol_versions(self):
+        for version in (True, False, "2", 2.0, None, 0, -1):
+            with self.subTest(version=version):
+                app = {
+                    "name": "Snap-O Tweaks Demo",
+                    "packageName": "com.example.tweaks",
+                    "protocolVersion": version,
+                }
+                with TweakHTTPServer(app=app) as wire:
+                    result, output, errors, _ = self.run_command(["apps", "--json"], wire)
+
+                self.assertEqual(result, 1)
+                self.assertEqual(output, "")
+                self.assertIn("No reachable Snap-O tweaks apps found", errors)
+
+    def test_apps_preserves_existing_human_readable_output(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, _ = self.run_command(["apps"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(
+            output,
+            "emulator-5554:\n    snapo_tweaks_42  Snap-O Tweaks Demo  pkg:com.example.tweaks\n",
+        )
+
+    def test_network_discovery_does_not_include_tweak_protocol_version(self):
+        options = snapo.parser().parse_args(["network", "list", "--no-app-info", "--json"])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = snapo.run_list(FakeADB(), options)
+
+        self.assertEqual(result, 0)
+        self.assertNotIn("protocolVersion", json.loads(output.getvalue()))
 
     def test_list_emits_one_complete_json_snapshot(self):
         with TweakHTTPServer() as wire:
@@ -1260,12 +1347,48 @@ class TweakCommandTests(unittest.TestCase):
         self.assertIn('Preview/Text value = "true" [string]', output)
         self.assertIn('Appearance/Theme = "System" [enum]; options: ["System", "Light", "Dark"]', output)
 
+    def test_list_renders_actions_without_fabricating_values_and_surfaces_conflicts(self):
+        descriptors = [
+            *tweak_descriptors(),
+            {"name": "Preview/Refresh", "type": "action"},
+            {"name": "Preview/Reload", "type": "action", "conflicted": True},
+        ]
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["list"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertIn("Preview/Refresh [action]", output)
+        self.assertIn("Preview/Reload [action, conflicted]", output)
+        self.assertNotIn("Preview/Refresh =", output)
+        self.assertNotIn("Preview/Reload =", output)
+
+    def test_list_preserves_complete_action_descriptors_in_json_snapshots(self):
+        descriptors = [
+            *tweak_descriptors(),
+            {"name": "Preview/Refresh", "type": "action"},
+            {"name": "Preview/Reload", "type": "action", "conflicted": True},
+        ]
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["list", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), {"tweaks": descriptors})
+
     def test_get_accepts_tweak_names_with_slashes_and_spaces(self):
         with TweakHTTPServer() as wire:
             result, output, errors, _ = self.run_command(["get", "Typography/Font size", "--json"], wire)
 
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), wire.descriptors[0])
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+
+    def test_get_displays_an_action_descriptor_without_a_value(self):
+        action = {"name": "Preview/Refresh", "type": "action"}
+        with TweakHTTPServer(descriptors=[action]) as wire:
+            result, output, errors, _ = self.run_command(["get", action["name"]], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(output, "Preview/Refresh [action]\n")
         self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
 
     def test_get_all_finds_a_previously_adjusted_inactive_tweak(self):
@@ -1361,6 +1484,48 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
                 self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
+    def test_set_rejects_actions_without_sending_a_patch(self):
+        action = {"name": "Preview/Refresh", "type": "action"}
+        with TweakHTTPServer(descriptors=[action]) as wire:
+            result, output, errors, adb = self.run_command(["set", action["name"], "true"], wire)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn(f"Action '{action['name']}' cannot be set", errors)
+        self.assertIn("snapo tweaks action NAME", errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_action_invokes_the_exact_app_owned_name_without_fetching_a_snapshot(self):
+        action = {"name": "Preview/Refresh visible content", "type": "action"}
+        with TweakHTTPServer(descriptors=[action]) as wire:
+            result, output, errors, adb = self.run_command(["action", action["name"]], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(output, "")
+        self.assertEqual(wire.requests, [("POST", "/tweaks/action", {"name": action["name"]})])
+        self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_action_surfaces_unknown_non_action_and_conflicting_registrations(self):
+        conflicted = {"name": "Preview/Reload", "type": "action", "conflicted": True}
+        value = tweak_descriptors()[0]
+        cases = (
+            ("Preview/Missing", 404, "Unknown action: Preview/Missing"),
+            (value["name"], 404, f"Unknown action: {value['name']}"),
+            (conflicted["name"], 409, f"Conflicting action registrations: {conflicted['name']}"),
+        )
+        for name, status, detail in cases:
+            with self.subTest(name=name):
+                with TweakHTTPServer(descriptors=[value, conflicted]) as wire:
+                    result, output, errors, adb = self.run_command(["action", name], wire)
+
+                self.assertEqual(result, 1)
+                self.assertEqual(output, "")
+                self.assertIn(f"HTTP {status}", errors)
+                self.assertIn(detail, errors)
+                self.assertEqual(wire.requests, [("POST", "/tweaks/action", {"name": name})])
+                self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
     def test_reset_one_tweak_patches_its_declared_default(self):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
@@ -1398,6 +1563,44 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": defaults})])
         self.assertEqual(output, "")
 
+    def test_reset_all_ignores_actions_without_defaults(self):
+        descriptors = [
+            *tweak_descriptors(),
+            {"name": "Preview/Refresh", "type": "action"},
+            {"name": "Preview/Reload", "type": "action", "conflicted": True},
+        ]
+        defaults = {
+            descriptor["name"]: descriptor["default"]
+            for descriptor in descriptors
+            if descriptor["type"] != "action"
+        }
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": defaults})])
+        self.assertEqual(output, "")
+
+    def test_reset_all_with_only_actions_sends_no_patch(self):
+        action = {"name": "Preview/Refresh", "type": "action"}
+        with TweakHTTPServer(descriptors=[action]) as wire:
+            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+        self.assertEqual(output, "")
+
+    def test_reset_rejects_an_action_without_sending_a_patch(self):
+        action = {"name": "Preview/Refresh", "type": "action"}
+        with TweakHTTPServer(descriptors=[action]) as wire:
+            result, output, errors, _ = self.run_command(["reset", action["name"]], wire)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn(f"Action '{action['name']}' cannot be reset", errors)
+        self.assertIn("snapo tweaks action NAME", errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None)])
+
     def test_reset_requires_exactly_one_target(self):
         for arguments in (["reset"], ["reset", "Motion/Enabled", "--all"]):
             with self.subTest(arguments=arguments):
@@ -1422,9 +1625,23 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
                 self.assertIn("set", errors.getvalue())
 
+    def test_action_requires_exactly_one_name(self):
+        for arguments in (["action"], ["action", "Preview/Refresh", "unexpected"]):
+            with self.subTest(arguments=arguments):
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors):
+                    with self.assertRaises(SystemExit) as error:
+                        snapo.parser().parse_args(["tweaks", *arguments])
+                self.assertEqual(error.exception.code, 2)
+                self.assertTrue(
+                    "required" in errors.getvalue() or "unrecognized arguments" in errors.getvalue(),
+                    errors.getvalue(),
+                )
+
     def test_mutations_do_not_accept_json_output(self):
         for command in (
             ["set", "Motion/Enabled", "false", "--json"],
+            ["action", "Preview/Refresh", "--json"],
             ["reset", "Motion/Enabled", "--json"],
         ):
             with self.subTest(command=command):
@@ -1460,6 +1677,15 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(len(output.splitlines()), 1)
         self.assertEqual(wire.requests, [("GET", "/tweaks/events", None)])
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
+
+    def test_watch_displays_action_descriptors_without_values(self):
+        action = {"name": "Preview/Refresh", "type": "action", "conflicted": True}
+        with TweakHTTPServer(descriptors=[action]) as wire:
+            result, output, errors, _ = self.run_command(["watch", "--once"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(output, "Preview/Refresh [action, conflicted]\n")
+        self.assertEqual(wire.requests, [("GET", "/tweaks/events", None)])
 
     def test_watch_rejects_malformed_snapshots_and_still_removes_its_forward(self):
         events = ["event: tweaks\ndata: {\"tweaks\":\"not-a-list\"}\n\n"]

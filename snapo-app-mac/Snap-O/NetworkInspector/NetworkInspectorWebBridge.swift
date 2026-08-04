@@ -81,6 +81,10 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "updateTweaks":
       let input = try Self.decode(UpdateTweaksInput.self, from: payload)
       return try await Self.jsonObject(service.updateTweaks(input))
+    case "invokeTweakAction":
+      let input = try Self.decode(InvokeTweakActionInput.self, from: payload)
+      try await service.invokeTweakAction(input)
+      return nil
     case "openNativeColorPanel":
       try openNativeColorPanel(Self.decode(NativeColorPanelInput.self, from: payload))
       return nil

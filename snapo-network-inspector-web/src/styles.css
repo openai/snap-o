@@ -1481,6 +1481,20 @@ pre {
   margin-left: auto;
 }
 
+.tweaks-action-button {
+  all: revert;
+  min-height: 27px;
+  padding-inline: 10px;
+  font: inherit;
+  font-size: 11px;
+}
+
+.tweaks-action-conflict {
+  margin: 0;
+  color: var(--error);
+  font-size: 11px;
+}
+
 .tweaks-number,
 .tweaks-hex,
 .tweaks-string,

@@ -52,3 +52,10 @@ fun <E : Enum<E>> tweak(
     default: E,
     name: String,
 ): State<E> = rememberUpdatedState(default)
+
+/** Returns Unit without exposing or invoking the supplied action in no-op builds. */
+@Composable
+fun TweakAction(
+    name: String,
+    onInvoke: () -> Unit,
+) = Unit

@@ -2,10 +2,11 @@
 
 Status: phase one. The network inspector protocol is unchanged.
 
-Snap-O Tweaks exposes adjustable values from the currently composed Android UI
-through an app-local socket, enabled by default only in debug builds. Agents
-and desktop tools can use HTTP to inspect those values and change them while
-the app runs.
+Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless
+actions from the currently composed Android UI through an app-local socket,
+enabled by default only in debug builds. Agents and desktop tools can use HTTP
+to inspect those values, change them, and invoke app-owned callbacks while the
+app runs.
 
 ## Transport
 
@@ -40,16 +41,22 @@ port, or `INTERNET` permission is needed.
 
 ### GET /app
 
-Return exactly the app's user-facing Android label and package name:
+Return the app's user-facing Android label, package name, and Tweaks protocol
+version:
 
 ```json
 {
   "name": "Snap-O Tweaks Demo",
-  "packageName": "com.openai.snapo.demo.tweaks"
+  "packageName": "com.openai.snapo.demo.tweaks",
+  "protocolVersion": 2
 }
 ```
 
-Resolve `name` from the actual Android app label.
+Resolve `name` from the actual Android app label. An absent `protocolVersion`
+identifies the original version 1, which exposes value tweaks only. Version 2
+adds action descriptors and `POST /tweaks/action`. The Tweaks protocol version
+is independent of the Network Inspector protocol version; hosts can use it to
+identify newer versions they do not support.
 
 ### GET /app/icon
 
@@ -144,6 +151,10 @@ Return a flat list of currently registered tweaks:
       "default": "Circle",
       "value": "Circle",
       "options": ["Circle", "RoundedSquare", "Square"]
+    },
+    {
+      "name": "Motion/Toggle animation",
+      "type": "action"
     }
   ]
 }
@@ -159,17 +170,36 @@ not appear in default responses or event snapshots.
 Usages with the same name must agree on the tweak type, default, constraints,
 and ordered enum options. Conflicting declarations are a configuration error.
 
-Supported types are `int`, `float`, `boolean`, `color`, `string`, and `enum`.
-Integer tweaks accept only whole numbers; float tweaks accept whole or
-fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only
-include constraints actually supplied by the app. A `step` is relative to
-`min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or
-`#RRGGBBAA` when translucent.
+Supported value types are `int`, `float`, `boolean`, `color`, `string`, and
+`enum`. The `action` type describes an explicitly registered parameterless
+app-owned callback. Actions do not have `value`, `default`, options, or numeric
+constraints; clients must not attempt to patch or reset them. Integer tweaks
+accept only whole numbers; float tweaks accept whole or fractional numbers.
+Numeric tweaks may include `min`, `max`, and `step`. Only include constraints
+actually supplied by the app. A `step` is relative to `min`, or to `default` if
+no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
 
 Enum tweaks include an ordered, nonempty `options` array containing the unique
 enum constant names. The descriptor's `default`, current `value`, picker text,
 and `PATCH` values all use those exact names. Preserve declaration order when
 rendering pickers; reject any value not present in `options`.
+
+Action names must be explicit, stable, and unique among live registrations.
+Register a shared action once at the composable that owns its behavior rather
+than registering separate callbacks with the same name in multiple consumers.
+If multiple live owners register the same action name, the descriptor becomes:
+
+```json
+{
+  "name": "Motion/Toggle animation",
+  "type": "action",
+  "conflicted": true
+}
+```
+
+Conflicting actions remain discoverable but cannot be invoked until exactly one
+owner remains. Callbacks are never silently deduplicated, replaced, or renamed
+with generated suffixes.
 
 Compose color defaults keep their exact in-process identity, including color
 space, component precision, and `Color.Unspecified`. The HTTP protocol still
@@ -211,8 +241,10 @@ create history entries. Adjustment history exists only for the current app
 process and is discarded when that process exits.
 
 Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only
-currently active names and returns `404` for an inactive name. Plain
-`GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported
+currently active names and returns `404` for an inactive name. Actions appear
+while active but never create adjusted-history entries because they have no
+editable or retained value. Plain `GET /tweaks` and
+`GET /tweaks/events` remain active-only. The only supported
 query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated,
 or additional query parameters and queries on other endpoints or methods
 return `400`.
@@ -236,7 +268,8 @@ data: {"tweaks":[{"name":"Motion/Show","type":"boolean","default":true,"value":f
 
 The response uses `Content-Type: text/event-stream`. Its first event contains
 the complete current tweak list. Each later event also contains a complete,
-ordered list using exactly the `GET /tweaks` response shape. Clients replace
+ordered list of value and action descriptors using exactly the `GET /tweaks`
+response shape. Clients replace
 their previous snapshot; a missing tweak has left composition.
 
 Changes are published after the current Android main-thread turn. Tweaks added,
@@ -294,11 +327,47 @@ option values. Errors use a small JSON body:
 
 Apply changes on the Android main thread. If any value is invalid, do not update
 any tweaks in that request. Reset a value by patching it with its default.
+Actions are not valid patch targets; attempting to patch one returns `422`
+without changing any value in the same request.
+
+### POST /tweaks/action
+
+Invoke one explicitly registered parameterless app-owned action:
+
+```bash
+curl -fsS -X POST http://127.0.0.1:43817/tweaks/action \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Motion/Toggle animation"}'
+```
+
+```json
+{
+  "name": "Motion/Toggle animation"
+}
+```
+
+The JSON body must contain exactly one nonblank string field named `name`.
+The registered callback executes synchronously on the Android main thread.
+This endpoint accepts no arguments, arbitrary code, or dynamic invocation
+targets; only explicitly registered app-owned callbacks are available.
+
+Return `400` for malformed bodies, unsupported content types, additional
+fields, blank names, or unsupported query parameters; `404` for an unknown
+action or a name belonging to a value tweak; `405` for methods other than
+`POST`; and `409` when more than one live owner registered the same name.
+Duplicate registration errors explain that the action must be registered
+once at its owner. Main-thread unavailability, callback failures, and timeouts
+return `503`, `500`, and `504`, respectively. Errors use the same
+`{"error":"..."}` response shape as tweak updates.
 
 ## Compose API
 
 ```kotlin
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.openai.snapo.tweaks.TweakAction
 import com.openai.snapo.tweaks.tweak
 
 enum class MarkerShape { Circle, RoundedSquare, Square }
@@ -344,6 +413,8 @@ fun SpecimenAccessory() {
 
 @Composable
 fun MotionSpecimen() {
+    var isAnimating by remember { mutableStateOf(false) }
+    TweakAction("Motion/Toggle animation") { isAnimating = !isAnimating }
     val useSpring by tweak(true, "Use spring")
     val markerShape by tweak(MarkerShape.Circle, "Marker shape")
 
@@ -397,6 +468,16 @@ from declaration order and use each constant's name everywhere. Convert
 delegated integer values into Compose units at the call site, such as
 `fontSize.sp`. The real and no-op artifacts expose the same package and public
 Compose API.
+
+Declare a parameterless action with the `TweakAction(name) { ... }` composable.
+It returns `Unit` and does not execute its callback during composition or return
+a callable function. The action is available only while its owning composable
+is in composition, always uses its most recent callback, and is exposed with
+its explicit name rather than an inferred or generated identifier. Register
+each action exactly once at the composable that owns the state or operation;
+multiple owners using the same name produce a visible conflict and all
+invocation attempts fail closed. The release/no-op implementation accepts the
+same API without retaining or invoking the callback.
 
 ## Setup
 
@@ -456,10 +537,11 @@ fun DeveloperSettings() {
 
 The setting persists between app launches. When enabled, a movable button
 appears only while at least one tweak is in composition. Tap it to inspect or
-edit the active tweaks, and minimize the panel to return to the button. The
-panel stays synchronized with host-side changes, remembers its position, and
-disappears when the last tweak leaves composition. The no-op overlay keeps the
-same wrapper and settings APIs without showing a panel in release builds.
+edit the active tweaks, run registered actions, and minimize the panel to return
+to the button. Conflicted actions are visible but cannot be run. The panel stays
+synchronized with host-side changes, remembers its position, and disappears when
+the last tweak or action leaves composition. The no-op overlay keeps the same
+wrapper and settings APIs without showing a panel in release builds.
 
 Install the standalone debug sample on a connected Android device:
 
@@ -498,5 +580,4 @@ remove unused calls and tweak-name strings. Verify the release APK contains
 neither tweak-only strings nor the live provider, registry, server, or socket.
 
 Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network
-protocol change, actions, groups, scopes, units, separate tweak IDs, or
-revisions.
+protocol change, groups, scopes, units, separate tweak IDs, or revisions.

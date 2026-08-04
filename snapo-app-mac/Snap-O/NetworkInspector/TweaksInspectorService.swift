@@ -8,12 +8,18 @@ actor TweaksInspectorService {
     let socketName: String
     let name: String
     let packageName: String
+    let protocolVersion: Int
     let appIconBase64: String?
   }
 
   private struct AppInfo: Decodable {
     let name: String
     let packageName: String
+    let protocolVersion: Int?
+  }
+
+  private struct ErrorResponse: Decodable {
+    let error: String
   }
 
   private struct Connection {
@@ -87,8 +93,19 @@ actor TweaksInspectorService {
     request.httpBody = try JSONEncoder().encode(TweakPatch(values: input.values))
 
     let (data, response) = try await URLSession.shared.data(for: request)
-    try Self.validate(response)
+    try Self.validate(response, data: data)
     return try JSONDecoder().decode(TweakUpdates.self, from: data)
+  }
+
+  func invokeTweakAction(_ input: InvokeTweakActionInput) async throws {
+    let connection = try connection(for: input.server)
+    var request = URLRequest(url: connection.baseURL.appending(path: "tweaks/action"))
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try JSONEncoder().encode(TweakAction(name: input.name))
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+    try Self.validate(response, data: data)
   }
 
   func streamTweaks(
@@ -151,6 +168,7 @@ actor TweaksInspectorService {
         socketName: socketName,
         name: info.name,
         packageName: info.packageName,
+        protocolVersion: info.protocolVersion ?? 1,
         appIconBase64: iconData?.base64EncodedString()
       )
       let key = Self.connectionKey(deviceID: deviceID, socketName: socketName)
@@ -190,15 +208,21 @@ actor TweaksInspectorService {
     let (data, response) = try await URLSession.shared.data(
       from: baseURL.appending(path: path)
     )
-    try Self.validate(response)
+    try Self.validate(response, data: data)
     return try JSONDecoder().decode(type, from: data)
   }
 
-  private static func validate(_ response: URLResponse) throws {
-    guard let response = response as? HTTPURLResponse,
-          (200 ... 299).contains(response.statusCode)
-    else {
+  private static func validate(_ response: URLResponse, data: Data? = nil) throws {
+    guard let response = response as? HTTPURLResponse else {
       throw NetworkInspectorError.invalidBridgeMessage
+    }
+    guard (200 ... 299).contains(response.statusCode) else {
+      let message = data.flatMap { try? JSONDecoder().decode(ErrorResponse.self, from: $0).error }
+        ?? "Tweak request failed (\(response.statusCode))."
+      throw NetworkInspectorError.tweakRequestFailed(
+        statusCode: response.statusCode,
+        message: message
+      )
     }
   }
 

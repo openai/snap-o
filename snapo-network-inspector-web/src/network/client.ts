@@ -2,6 +2,7 @@ import type {
   DebugInspectorPreset,
   InspectableApp,
   InspectorServerReference,
+  InvokeTweakActionInput,
   LoadBodiesInput,
   NativeInspectorState,
   NativeTweaksState,
@@ -32,6 +33,7 @@ export interface NetworkClient {
   listServers(): Promise<SnapOServer[]>;
   listTweaks(server: InspectorServerReference): Promise<TweakList>;
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
+  invokeTweakAction(input: InvokeTweakActionInput): Promise<void>;
   startTweakStream(server: InspectorServerReference): Promise<StreamStarted>;
   stopTweakStream(streamId: string): Promise<void>;
   onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
@@ -100,6 +102,10 @@ class WebKitNetworkClient implements NetworkClient {
 
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
     return this.invoke<TweakUpdates>("updateTweaks", input);
+  }
+
+  invokeTweakAction(input: InvokeTweakActionInput): Promise<void> {
+    return this.invoke<void>("invokeTweakAction", input);
   }
 
   startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
@@ -284,6 +290,32 @@ class HttpNetworkClient implements NetworkClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input)
     });
+  }
+
+  async invokeTweakAction(input: InvokeTweakActionInput): Promise<void> {
+    const response = await fetch("/api/inspector/tweaks/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    });
+    if (response.ok) return;
+
+    let message = `Request failed with ${response.status}`;
+    try {
+      const body: unknown = await response.json();
+      if (
+        body !== null &&
+        typeof body === "object" &&
+        "error" in body &&
+        typeof body.error === "string" &&
+        body.error.length > 0
+      ) {
+        message = body.error;
+      }
+    } catch {
+      // Preserve the HTTP status when the server did not return a JSON error.
+    }
+    throw new Error(message);
   }
 
   async startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {

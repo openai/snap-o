@@ -151,6 +151,18 @@ class SnapOTweaksTest {
     }
 
     @Test
+    fun `release invocations without an override do not run registered actions`() {
+        var invocations = 0
+        val registration = TweakRegistry.registerAction("Playback/Restart") { invocations += 1 }
+        TweaksRuntimePolicy.configure(isDebuggable = false, allowRelease = false)
+
+        SnapOTweaks.invokeAction("Playback/Restart")
+
+        assertEquals(0, invocations)
+        registration.close()
+    }
+
+    @Test
     fun `observable entries keep their identity while individual values update`() {
         val descriptor = TweakDescriptor(
             name = "Typography/Observable font size",

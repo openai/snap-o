@@ -26,6 +26,7 @@ export interface InspectorServerReference {
 export interface AppInspectorOption {
   kind: AppInspectorKind;
   server: InspectorServerReference;
+  protocolVersion?: number | null;
 }
 
 export interface InspectableApp {
@@ -46,7 +47,7 @@ export interface SelectedAppInspector {
 
 export type TweakValue = boolean | number | string;
 
-export interface TweakDescriptor {
+export interface TweakValueDescriptor {
   name: string;
   type: "int" | "float" | "boolean" | "color" | "string" | "enum";
   default: TweakValue;
@@ -56,6 +57,14 @@ export interface TweakDescriptor {
   step?: number;
   options?: string[];
 }
+
+export interface TweakActionDescriptor {
+  name: string;
+  type: "action";
+  conflicted?: boolean;
+}
+
+export type TweakDescriptor = TweakValueDescriptor | TweakActionDescriptor;
 
 export interface TweakList {
   tweaks: TweakDescriptor[];
@@ -83,6 +92,11 @@ export interface TweakUpdates {
 export interface UpdateTweaksInput {
   server: InspectorServerReference;
   values: Record<string, TweakValue>;
+}
+
+export interface InvokeTweakActionInput {
+  server: InspectorServerReference;
+  name: string;
 }
 
 export interface NativeInspectorState {

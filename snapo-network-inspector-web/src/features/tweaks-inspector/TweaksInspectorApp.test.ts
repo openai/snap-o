@@ -1,7 +1,12 @@
 import { createElement, type MouseEvent, type PointerEvent, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { SelectedAppInspector, TweakDescriptor } from "../../network/bridge-types";
+import type {
+  SelectedAppInspector,
+  TweakActionDescriptor,
+  TweakDescriptor,
+  TweakValueDescriptor
+} from "../../network/bridge-types";
 import { createNetworkClient, type NetworkClient } from "../../network/client";
 import {
   canResetTweaks,
@@ -10,6 +15,7 @@ import {
   nativePanelTweakColor,
   parseTweakColor,
   reconcileStreamedTweaks,
+  TweakActionControl,
   TweakColorField,
   TweakEnumListbox,
   TweakField,
@@ -294,6 +300,142 @@ describe("native reset toolbar state", () => {
     expect(canResetTweaks([{ ...fontSize, value: 2 }])).toBe(true);
     expect(canResetTweaks([fontSize])).toBe(false);
   });
+
+  it("does not treat an action without a value or default as resettable", () => {
+    expect(canResetTweaks([action("Motion/Toggle animation")])).toBe(false);
+  });
+
+  it("keeps changed value tweaks resettable when actions are present", () => {
+    expect(canResetTweaks([action("Motion/Toggle animation"), { ...tweak("Motion/Duration"), value: 2 }])).toBe(true);
+  });
+});
+
+describe("registered tweak actions", () => {
+  const server = { deviceId: "pixel", socketName: "snapo_tweaks_10" };
+
+  it("renders an action label with an accessible Run button on the right", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakActionControl, { action: action("Motion/Toggle animation"), onInvoke() {} })
+    );
+
+    expect(markup).toContain('class="tweaks-control-label">Toggle animation</span>');
+    expect(markup).toContain('class="tweaks-control-field"');
+    expect(markup).toContain('class="tweaks-action-button"');
+    expect(markup).toContain('aria-label="Run Motion/Toggle animation"');
+    expect(markup).toContain(">Run</button>");
+    expect(markup).not.toContain("tweaks-reset");
+    expect(markup).not.toContain("disabled");
+  });
+
+  it("passes the selected descriptor to the action invocation handler", () => {
+    const descriptor = action("Motion/Toggle animation");
+    const onInvoke = vi.fn();
+    const control = TweakActionControl({ action: descriptor, onInvoke });
+    const [, field] = control.props.children[0].props.children;
+    const button = field.props.children;
+
+    button.props.onClick();
+
+    expect(onInvoke).toHaveBeenCalledOnce();
+    expect(onInvoke).toHaveBeenCalledWith(descriptor);
+  });
+
+  it("disables conflicted registrations and explains why they cannot run", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakActionControl, {
+        action: action("Motion/Toggle animation", true),
+        onInvoke() {}
+      })
+    );
+
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('aria-label="Conflict Motion/Toggle animation"');
+    expect(markup).toContain(">Conflict</button>");
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain("Conflicting registrations. Use a unique action name.");
+  });
+
+  it("disables an action while its invocation is in flight", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweakActionControl, {
+        action: action("Motion/Toggle animation"),
+        invoking: true,
+        onInvoke() {}
+      })
+    );
+
+    expect(markup).toContain('disabled=""');
+  });
+
+  it("invokes actions through the native desktop bridge", async () => {
+    const postMessage = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("window", { webkit: { messageHandlers: { snapoNetwork: { postMessage } } } });
+
+    try {
+      await createNetworkClient().invokeTweakAction({ server, name: "Motion/Toggle animation" });
+
+      expect(postMessage).toHaveBeenCalledWith({
+        command: "invokeTweakAction",
+        payload: { server, name: "Motion/Toggle animation" }
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("posts named action invocations through the browser inspector proxy", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "Motion/Toggle animation" })
+    });
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("fetch", fetch);
+
+    try {
+      await createNetworkClient().invokeTweakAction({ server, name: "Motion/Toggle animation" });
+
+      expect(fetch).toHaveBeenCalledWith("/api/inspector/tweaks/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ server, name: "Motion/Toggle animation" })
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("preserves upstream conflict errors instead of replacing them with an HTTP status", async () => {
+    vi.stubGlobal("window", {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: "Action Motion/Toggle animation has conflicting registrations." })
+      })
+    );
+
+    try {
+      await expect(
+        createNetworkClient().invokeTweakAction({ server, name: "Motion/Toggle animation" })
+      ).rejects.toThrow("Action Motion/Toggle animation has conflicting registrations.");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("preserves generic HTTP status errors for unrelated network requests", async () => {
+    const json = vi.fn().mockResolvedValue({ error: "Unrelated conflict" });
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 409, json }));
+
+    try {
+      await expect(createNetworkClient().listServers()).rejects.toThrow("Request failed with 409");
+      expect(json).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("streamed tweak snapshots", () => {
@@ -332,6 +474,23 @@ describe("streamed tweak snapshots", () => {
     expect(reconcileStreamedTweaks(current, incoming, new Map([["Motion/Duration", 700]]), new Set())).toEqual([
       { ...incoming[0], value: 700 }
     ]);
+  });
+
+  it("adds and removes registered actions without assigning them a value", () => {
+    const current = [tweak("Motion/Duration")];
+    const incoming = [tweak("Motion/Duration"), action("Motion/Toggle animation")];
+
+    expect(reconcileStreamedTweaks(current, incoming, new Map(), new Set())).toEqual(incoming);
+    expect(reconcileStreamedTweaks(incoming, current, new Map(), new Set())).toEqual(current);
+  });
+
+  it("preserves action descriptors when a value update has the same name queued", () => {
+    const current = [action("Motion/Toggle animation")];
+    const incoming = [action("Motion/Toggle animation", true)];
+
+    expect(reconcileStreamedTweaks(current, incoming, new Map([["Motion/Toggle animation", 1]]), new Set())).toEqual(
+      incoming
+    );
   });
 });
 
@@ -389,9 +548,18 @@ describe("stable tweak section columns", () => {
 
     expect(columns.map((column) => column.map((section) => section.name))).toEqual([["Motion"], ["Colors"]]);
   });
+
+  it("keeps registered actions in the same named sections as value tweaks", () => {
+    const columns = groupTweaks([tweak("Motion/Duration"), action("Motion/Toggle animation")], "pixel:demo", new Map());
+
+    expect(columns[0][0].tweaks.map((descriptor) => descriptor.name)).toEqual([
+      "Motion/Duration",
+      "Motion/Toggle animation"
+    ]);
+  });
 });
 
-function tweak(name: string): TweakDescriptor {
+function tweak(name: string): TweakValueDescriptor {
   return {
     name,
     type: "int",
@@ -400,7 +568,7 @@ function tweak(name: string): TweakDescriptor {
   };
 }
 
-function colorTweak(): TweakDescriptor {
+function colorTweak(): TweakValueDescriptor {
   return {
     name: "Colors/Accent",
     type: "color",
@@ -409,7 +577,7 @@ function colorTweak(): TweakDescriptor {
   };
 }
 
-function enumTweak(): TweakDescriptor {
+function enumTweak(): TweakValueDescriptor {
   return {
     name: "Appearance/Theme",
     type: "enum",
@@ -422,7 +590,7 @@ function enumTweak(): TweakDescriptor {
 function enumListboxOption(
   index: number,
   handlers: {
-    onChange(tweak: TweakDescriptor, value: TweakDescriptor["value"]): void;
+    onChange(tweak: TweakValueDescriptor, value: TweakValueDescriptor["value"]): void;
     onClose(): void;
   }
 ): ReactElement<{
@@ -435,4 +603,12 @@ function enumListboxOption(
     ...handlers
   });
   return listbox.props.children[index];
+}
+
+function action(name: string, conflicted = false): TweakActionDescriptor {
+  return {
+    name,
+    type: "action",
+    ...(conflicted ? { conflicted: true } : {})
+  };
 }

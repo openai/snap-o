@@ -29,6 +29,13 @@ object SnapOTweaks {
 
         TweakRegistry.update(mapOf(name to value.toRegistryValue()))
     }
+
+    /** Invokes an explicitly registered application-owned action. */
+    fun invokeAction(name: String) {
+        if (!TweaksRuntimePolicy.isAllowed) return
+
+        TweakRegistry.invokeAction(name)
+    }
 }
 
 /** A stable active tweak whose current value can be observed independently. */
@@ -88,6 +95,11 @@ sealed interface SnapOTweakValue {
         val value: String,
         val options: List<String>,
     ) : SnapOTweakValue
+
+    /** Presentation-only marker for an action; actions do not have protocol values or defaults. */
+    @Immutable
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    data class Action(val conflicted: Boolean = false) : SnapOTweakValue
 }
 
 private fun TweakSnapshot.toSnapOTweak(): SnapOTweak = SnapOTweak(
@@ -115,6 +127,7 @@ internal fun TweakDescriptor.toSnapOTweakValue(value: Any): SnapOTweakValue = wh
     TweakType.COLOR -> SnapOTweakValue.ColorValue((value as TweakColorValue).color)
     TweakType.STRING -> SnapOTweakValue.Text(value as String)
     TweakType.ENUM -> SnapOTweakValue.Selection(value as String, options)
+    TweakType.ACTION -> value as? SnapOTweakValue.Action ?: SnapOTweakValue.Action()
 }
 
 private fun SnapOTweakValue.toRegistryValue(): Any = when (this) {
@@ -124,4 +137,5 @@ private fun SnapOTweakValue.toRegistryValue(): Any = when (this) {
     is SnapOTweakValue.ColorValue -> value.toTweakColorValue()
     is SnapOTweakValue.Text -> value
     is SnapOTweakValue.Selection -> value
+    is SnapOTweakValue.Action -> throw IllegalArgumentException("Actions cannot be updated.")
 }
