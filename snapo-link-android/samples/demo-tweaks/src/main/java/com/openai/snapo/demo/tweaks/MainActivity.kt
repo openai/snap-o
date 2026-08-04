@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openai.snapo.tweaks.TweakAction
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlaySettings
 import com.openai.snapo.tweaks.tweak
@@ -269,6 +270,7 @@ private fun TypographyDetails() {
 @Composable
 private fun MotionPreview() {
     var isStateB by rememberSaveable { mutableStateOf(false) }
+    TweakAction("Motion/Toggle animation") { isStateB = !isStateB }
     val useSpring by tweak(true, "Motion/Use spring")
 
     val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
