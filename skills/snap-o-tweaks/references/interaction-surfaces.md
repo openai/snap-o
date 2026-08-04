@@ -6,7 +6,9 @@ The same active Compose tweak registry can be inspected from several surfaces. C
 
 Use the dependency-free Snap-O CLI when a terminal, Codex agent, test script, or
 Linux/macOS workflow needs app discovery, typed value inspection or updates,
-atomic batches, resets, or live snapshots. Use `snapo tweaks list --all` or
+atomic batches, resets, app-owned action invocation, or live snapshots. Invoke
+an explicitly requested action with `snapo tweaks action NAME`; actions have no
+editable value, default, or arguments. Use `snapo tweaks list --all` or
 `snapo tweaks get NAME --all` to include previously adjusted tweaks no longer in
 composition; inactive historical tweaks are inspectable but not writable. Its
 tweaks workflow documents command selection and options. The CLI owns temporary
@@ -15,13 +17,22 @@ smart-socket transport.
 
 ## Snap-O macOS app: an existing desktop inspector
 
-Choose the Snap-O macOS app when someone wants an existing graphical inspector. Its app picker discovers connected devices and `snapo_tweaks_<pid>` servers, identifies each app through `/app`, and combines the Network and Tweaks inspector choices when one app supports both. The Tweaks inspector displays live values, streams changes, edits typed controls, and supports resetting changes.
+Choose the Snap-O macOS app when someone wants an existing graphical inspector.
+Its app picker discovers connected devices and `snapo_tweaks_<pid>` servers,
+identifies each app through `/app`, and combines the Network and Tweaks
+inspector choices when one app supports both. The Tweaks inspector displays live
+values and app-owned actions, streams changes, edits typed controls, invokes
+available action buttons, and supports resetting value changes. Conflicting
+actions are visible but cannot be invoked.
 
 The macOS app manages ADB forwarding and streaming itself. It is an existing interaction option, not a required proxy, dependency, or prerequisite for the standalone CLI and REST protocol.
 
 ## Optional in-app Compose overlay
 
-Choose the overlay when developers or designers should adjust values directly on the Android device without a separate desktop window. Add the published live artifacts to debug builds and matching no-op artifacts to release builds using the same Snap-O version:
+Choose the overlay when developers or designers should adjust values or invoke
+app-owned actions directly on the Android device without a separate desktop
+window. Add the published live artifacts to debug builds and matching no-op
+artifacts to release builds using the same Snap-O version:
 
 ```kotlin
 val snapoVersion = "<version>"
@@ -72,9 +83,12 @@ The CLI and Snap-O macOS app own socket discovery, forwarding, and cleanup. The 
 Build a custom surface when an existing CLI, desktop inspector, or in-app overlay
 does not match the desired controls or workflow. All external hosts should
 discover the tweak socket, establish an accessible ADB transport, read `/app`
-and `/tweaks`, send atomic `PATCH /tweaks` updates, and consume full active
-snapshots from `/tweaks/events`. Request `/tweaks?include=adjusted` when a
-workflow needs every retained user adjustment, including inactive declarations.
+and `/tweaks`, send atomic `PATCH /tweaks` value updates, invoke explicitly
+requested actions with `POST /tweaks/action`, and consume full active snapshots
+from `/tweaks/events`. Render actions without assuming `value` or `default`;
+disable invocation when `conflicted` is true. Request
+`/tweaks?include=adjusted` when a workflow needs every retained user value
+adjustment, including inactive declarations.
 
 - A browser interface can use `fetch` and `EventSource` through a same-origin proxy; see [protocol.md](protocol.md) for browser transport restrictions.
 - A Node host or terminal tool can use built-in `fetch` for requests and parse the response body as a standard SSE stream.
@@ -84,6 +98,7 @@ workflow needs every retained user adjustment, including inactive declarations.
 
 ```kotlin
 import androidx.compose.runtime.getValue
+import com.openai.snapo.tweaks.TweakAction
 import com.openai.snapo.tweaks.tweak
 
 enum class MotionStyle { Standard, Emphasized }
@@ -93,10 +108,22 @@ fun AnimatedContent() {
     val duration by tweak(400, "Motion/Duration", 100..1500, step = 50)
     val enabled by tweak(true, "Motion/Enabled")
     val style by tweak(MotionStyle.Standard, "Motion/Style")
+    TweakAction("Motion/Restart") { restartAnimation() }
     // Use duration, enabled, and style when rendering the current screen.
 }
 ```
 
-Those declarations are observable `State<T>` and update when any supported surface changes the shared registry. The registry-editing `SnapOTweaks` helpers are annotated `@RestrictTo(LIBRARY_GROUP)`; do not present them as a stable public app API for building arbitrary in-process inspectors. Use the supported overlay or an external REST client when an editable custom control surface is needed.
+Value declarations return observable `State<T>` and update when any supported
+surface changes the shared registry. `TweakAction` returns `Unit`, registers its
+parameterless callback only while its owner remains in composition, and does
+not execute the callback during composition. The registry-editing
+`SnapOTweaks` helpers are annotated
+`@RestrictTo(LIBRARY_GROUP)`; do not present them as a stable public app API for
+building arbitrary in-process inspectors. Use the supported overlay or an
+external REST client when an editable custom control surface is needed.
+
+Register each shared action once at its owning composable. Distinct callbacks
+must use explicit, stable, unique names; concurrent registrations of the same
+action name are surfaced as conflicts and cannot be invoked.
 
 For wire formats, transport cleanup, SSE semantics, validation, and security details, see [protocol.md](protocol.md).

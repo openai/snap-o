@@ -14,6 +14,7 @@ struct InspectorServerReference: Codable, Hashable {
 struct AppInspectorOption: Codable, Identifiable {
   let kind: AppInspectorKind
   let server: InspectorServerReference
+  let protocolVersion: Int?
 
   var id: String {
     "\(kind.rawValue):\(server.deviceId):\(server.socketName)"
@@ -73,12 +74,13 @@ enum TweakValue: Codable {
 struct TweakDescriptor: Codable {
   let name: String
   let type: String
-  let `default`: TweakValue
-  let value: TweakValue
+  let `default`: TweakValue?
+  let value: TweakValue?
   let min: TweakValue?
   let max: TweakValue?
   let step: TweakValue?
   let options: [String]?
+  let conflicted: Bool?
 }
 
 struct TweakList: Codable {
@@ -112,6 +114,15 @@ struct TweakPatch: Codable {
 struct UpdateTweaksInput: Codable {
   let server: InspectorServerReference
   let values: [String: TweakValue]
+}
+
+struct InvokeTweakActionInput: Codable {
+  let server: InspectorServerReference
+  let name: String
+}
+
+struct TweakAction: Codable {
+  let name: String
 }
 
 struct NetworkInspectorServer: Codable {
@@ -219,6 +230,7 @@ extension NetworkInspectorOutput: Sendable {}
 enum NetworkInspectorError: LocalizedError {
   case invalidBridgeMessage
   case serverNotConnected(NetworkServerReference)
+  case tweakRequestFailed(statusCode: Int, message: String)
 
   var errorDescription: String? {
     switch self {
@@ -226,6 +238,8 @@ enum NetworkInspectorError: LocalizedError {
       "Invalid Network Inspector bridge message."
     case .serverNotConnected(let server):
       "Snap-O server is not connected: \(server.deviceId)/\(server.socketName)"
+    case .tweakRequestFailed(_, let message):
+      message
     }
   }
 }

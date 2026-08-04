@@ -82,7 +82,8 @@ actor NetworkInspectorService {
         server: InspectorServerReference(
           deviceId: server.deviceId,
           socketName: server.socketName
-        )
+        ),
+        protocolVersion: server.protocolVersion
       )
       let appName = server.appName.flatMap { $0.isEmpty ? nil : $0 }
       apps[id] = InspectableApp(
@@ -103,7 +104,8 @@ actor NetworkInspectorService {
         server: InspectorServerReference(
           deviceId: app.deviceID,
           socketName: app.socketName
-        )
+        ),
+        protocolVersion: app.protocolVersion
       )
       let existing = apps[id]
       apps[id] = InspectableApp(
@@ -146,6 +148,10 @@ actor NetworkInspectorService {
 
   func updateTweaks(_ input: UpdateTweaksInput) async throws -> TweakUpdates {
     try await tweaksService.updateTweaks(input)
+  }
+
+  func invokeTweakAction(_ input: InvokeTweakActionInput) async throws {
+    try await tweaksService.invokeTweakAction(input)
   }
 
   func startTweakStream(_ reference: InspectorServerReference) async throws -> NetworkStreamStarted {

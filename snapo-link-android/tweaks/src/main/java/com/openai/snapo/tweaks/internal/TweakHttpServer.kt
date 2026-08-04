@@ -8,6 +8,7 @@ import android.os.Process
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
+import com.openai.snapo.tweaks.SnapOTweakValue
 import com.openai.snapo.tweaks.TweakColorValue
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -26,6 +27,8 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
+
+internal const val TweaksProtocolVersion: Int = 2
 
 private const val MaxHeaderBytes = 16 * 1024
 private const val MaxBodyBytes = 64 * 1024
@@ -151,6 +154,7 @@ internal class TweakHttpServer(
         "/app" -> routeApp(request)
         "/app/icon" -> routeAppIcon(request)
         "/tweaks", "/tweaks?include=adjusted" -> routeTweaks(request)
+        "/tweaks/action" -> routeTweakAction(request)
         "/tweaks/events" -> throw HttpFailure(
             statusCode = 405,
             message = "Unsupported method: ${request.method}",
@@ -243,6 +247,21 @@ internal class TweakHttpServer(
             message = "Unsupported method: ${request.method}",
             allowedMethods = "GET, PATCH",
         )
+    }
+
+    private fun routeTweakAction(request: HttpRequest): HttpResponse {
+        if (request.method != "POST") {
+            throw HttpFailure(
+                statusCode = 405,
+                message = "Unsupported method: ${request.method}",
+                allowedMethods = "POST",
+            )
+        }
+
+        requireJsonRequest(request)
+        val name = readActionName(request.body)
+        invokeActionOnMainThread(name)
+        return actionResponse(name)
     }
 
     private fun readRequest(input: InputStream): HttpRequest {
@@ -346,14 +365,32 @@ internal class TweakHttpServer(
 
     private fun requireJsonRequest(request: HttpRequest) {
         if (request.body.isEmpty()) {
-            throw HttpFailure(400, "PATCH requires a JSON request body.")
+            throw HttpFailure(400, "${request.method} requires a JSON request body.")
         }
 
         val contentType = request.headers["content-type"]
         if (contentType != null &&
             !contentType.substringBefore(';').trim().equals("application/json", ignoreCase = true)
         ) {
-            throw HttpFailure(400, "PATCH requires application/json.")
+            throw HttpFailure(400, "${request.method} requires application/json.")
+        }
+    }
+
+    private fun readActionName(body: ByteArray): String {
+        JsonReader(InputStreamReader(ByteArrayInputStream(body), StandardCharsets.UTF_8)).use { reader ->
+            reader.beginObject()
+            if (!reader.hasNext() || reader.nextName() != "name" || reader.peek() != JsonToken.STRING) {
+                invalidRequest("POST must contain exactly one action name string.")
+            }
+            val name = reader.nextString()
+            if (name.isBlank() || reader.hasNext()) {
+                invalidRequest("POST must contain exactly one non-blank action name string.")
+            }
+            reader.endObject()
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
+                invalidRequest("Unexpected content after the JSON request.")
+            }
+            return name
         }
     }
 
@@ -408,41 +445,41 @@ internal class TweakHttpServer(
         else -> throw HttpFailure(422, "Tweak values must be primitive JSON values.")
     }
 
-    private fun updateOnMainThread(values: Map<String, Any?>): List<TweakSnapshot> {
+    private fun updateOnMainThread(values: Map<String, Any?>): List<TweakSnapshot> =
+        runOnMainThread("update", "applied") { TweakRegistry.update(values) }
+
+    private fun invokeActionOnMainThread(name: String) =
+        runOnMainThread("action", "invoked") { TweakRegistry.invokeAction(name) }
+
+    private fun <T> runOnMainThread(
+        operationName: String,
+        failureVerb: String,
+        operation: () -> T,
+    ): T {
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            return TweakRegistry.update(values)
+            return operation()
         }
 
-        val update = FutureTask { TweakRegistry.update(values) }
-        if (!mainHandler.post(update)) {
+        val task = FutureTask { operation() }
+        if (!mainHandler.post(task)) {
             throw HttpFailure(503, "The Android main thread is unavailable.")
         }
 
-        return awaitUpdate(update)
-    }
-
-    private fun awaitUpdate(update: FutureTask<List<TweakSnapshot>>): List<TweakSnapshot> =
-        try {
-            update.get(MainThreadTimeoutMillis, TimeUnit.MILLISECONDS)
+        val failure = try {
+            return task.get(MainThreadTimeoutMillis, TimeUnit.MILLISECONDS)
         } catch (error: ExecutionException) {
-            throw updateFailure(error)
-        } catch (_: TimeoutException) {
-            update.cancel(false)
-            throw HttpFailure(504, "The tweak update timed out.")
-        } catch (_: InterruptedException) {
-            update.cancel(false)
+            error.cause as? TweakUpdateException
+                ?: HttpFailure(500, "The tweak $operationName could not be $failureVerb.", error)
+        } catch (error: TimeoutException) {
+            task.cancel(false)
+            HttpFailure(504, "The tweak $operationName timed out.", error)
+        } catch (error: InterruptedException) {
+            task.cancel(false)
             Thread.currentThread().interrupt()
-            throw HttpFailure(503, "The tweak update was interrupted.")
+            HttpFailure(503, "The tweak $operationName was interrupted.", error)
         }
 
-    private fun updateFailure(error: ExecutionException): Exception {
-        val cause = error.cause
-
-        return if (cause is TweakUpdateException) {
-            cause
-        } else {
-            HttpFailure(500, "The tweak update could not be applied.", error)
-        }
+        throw failure
     }
 
     private fun appInfoResponse(appInfo: TweakAppInfo): HttpResponse {
@@ -451,6 +488,7 @@ internal class TweakHttpServer(
             writer.beginObject()
             writer.name("name").value(appInfo.name)
             writer.name("packageName").value(appInfo.packageName)
+            writer.name("protocolVersion").value(TweaksProtocolVersion)
             writer.endObject()
         }
 
@@ -477,6 +515,16 @@ internal class TweakHttpServer(
         return HttpResponse(200, output.toString().toByteArray(StandardCharsets.UTF_8))
     }
 
+    private fun actionResponse(name: String): HttpResponse {
+        val output = StringWriter()
+        JsonWriter(output).use { writer ->
+            writer.beginObject()
+            writer.name("name").value(name)
+            writer.endObject()
+        }
+        return HttpResponse(200, output.toString().toByteArray(StandardCharsets.UTF_8))
+    }
+
     private fun writeTweak(
         writer: JsonWriter,
         tweak: TweakSnapshot,
@@ -487,12 +535,19 @@ internal class TweakHttpServer(
 
         if (includeDescriptor) {
             writer.name("type").value(tweak.descriptor.type.wireName)
-            writer.name("default")
-            writeJsonValue(writer, tweak.descriptor.default)
+            if (tweak.descriptor.type != TweakType.ACTION) {
+                writer.name("default")
+                writeJsonValue(writer, tweak.descriptor.default)
+            }
+            if ((tweak.value as? SnapOTweakValue.Action)?.conflicted == true) {
+                writer.name("conflicted").value(true)
+            }
         }
 
-        writer.name("value")
-        writeJsonValue(writer, tweak.value)
+        if (tweak.descriptor.type != TweakType.ACTION) {
+            writer.name("value")
+            writeJsonValue(writer, tweak.value)
+        }
 
         if (includeDescriptor) {
             writeConstraints(writer, tweak.descriptor)
@@ -570,6 +625,7 @@ internal class TweakHttpServer(
         404 -> "Not Found"
         405 -> "Method Not Allowed"
         408 -> "Request Timeout"
+        409 -> "Conflict"
         413 -> "Payload Too Large"
         422 -> "Unprocessable Entity"
         500 -> "Internal Server Error"

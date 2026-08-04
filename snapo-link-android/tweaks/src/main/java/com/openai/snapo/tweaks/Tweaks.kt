@@ -1,6 +1,7 @@
 package com.openai.snapo.tweaks
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
@@ -125,6 +126,21 @@ internal fun <E : Enum<E>> enumTweakDescriptor(
         option.name
     },
 )
+
+/** Declares a parameterless action while in composition, returning Unit without invoking it. */
+@Composable
+fun TweakAction(
+    name: String,
+    onInvoke: () -> Unit,
+) {
+    if (!TweaksRuntimePolicy.isAllowed) return
+
+    val currentOnInvoke = rememberUpdatedState(onInvoke)
+    DisposableEffect(name) {
+        val registration = TweakRegistry.registerAction(name) { currentOnInvoke.value() }
+        onDispose { registration.close() }
+    }
+}
 
 @Composable
 private fun <T> rememberTweakState(

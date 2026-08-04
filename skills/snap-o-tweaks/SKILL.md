@@ -1,13 +1,14 @@
 ---
 name: snap-o-tweaks
-description: Inspect, stream, and explicitly adjust live Android UI tweak values through Snap-O. Use when a request mentions Snap-O Tweaks, tweak-enabled Android apps, runtime UI parameters, Compose tweak or overlay controls, tweak discovery, previously adjusted or currently inactive tweaks, applying all user-made tweak changes, typed values, defaults or resets, atomic tweak batches, the Tweaks REST/SSE API, or selecting between CLI, macOS inspector, in-app overlay, and custom tweak interfaces.
+description: Inspect, stream, and explicitly adjust live Android UI tweak values or invoke app-owned actions through Snap-O. Use when a request mentions Snap-O Tweaks, tweak-enabled Android apps, runtime UI parameters, Compose tweak or action controls, tweak discovery, previously adjusted or currently inactive tweaks, applying all user-made tweak changes, typed values, defaults or resets, atomic tweak batches, explicitly registered actions, the Tweaks REST/SSE API, or selecting between CLI, macOS inspector, in-app overlay, and custom tweak interfaces.
 ---
 
 # Snap-O Tweaks
 
-Inspect live values exposed by a debug-enabled Android app. Discovery, reads,
-and streams are read-only; change or reset values only when explicitly
-requested. Reset everything only when explicitly requested.
+Inspect live values and app-owned actions exposed by a debug-enabled Android
+app. Discovery, reads, and streams are read-only; change or reset values, or
+invoke an action, only when explicitly requested. Reset everything only when
+explicitly requested.
 
 ## Choose the interaction surface
 
@@ -66,14 +67,15 @@ ADB resolves from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use
    "$SNAPO_BIN" tweaks get 'Typography/Font size' --all -s <serial> -n <socket> --json
    ```
 
-   The expanded list combines current tweaks with retained, previously adjusted
-   tweaks. Compare each descriptor's `value` with its `default` when the user
-   asks to apply all changes they made. Separate screens can reuse tweak names
-   with different declarations; preserve every descriptor from `list --all`
-   instead of deduplicating by name. `get NAME --all` reports an error when
-   multiple declarations match; use `list --all --json` to inspect them.
-   Historical tweaks can be inspected while inactive, but can only be changed
-   or reset when their declaration is active.
+   The expanded list combines current tweaks and actions with retained,
+   previously adjusted tweaks. Compare each value descriptor's `value` with its
+   `default` when the user asks to apply all changes they made; action
+   descriptors have neither field. Separate screens can reuse tweak names with
+   different declarations; preserve every descriptor from `list --all` instead
+   of deduplicating by name. `get NAME --all` reports an error when multiple
+   declarations match; use `list --all --json` to inspect them. Historical
+   tweaks can be inspected while inactive, but can only be changed or reset
+   when their declaration is active. Actions are active-only.
 
 4. Observe live complete snapshots:
 
@@ -83,9 +85,9 @@ ADB resolves from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use
    ```
 
    `--once` exits after the first complete snapshot. `--json` emits
-   newline-delimited JSON; `list` and `watch` emit complete tweak snapshots.
-   Event streams contain only currently active tweaks; use `list --all` for
-   historical adjustments.
+   newline-delimited JSON; `list` and `watch` emit complete tweak and action
+   snapshots. Event streams contain only currently active declarations; use
+   `list --all` for historical value adjustments.
 
 ## Change values only when requested
 
@@ -111,6 +113,26 @@ reset-everything request:
 "$SNAPO_BIN" tweaks reset 'Typography/Font size' -s <serial> -n <socket>
 "$SNAPO_BIN" tweaks reset --all -s <serial> -n <socket>
 ```
+
+## Invoke actions only when requested
+
+Apps declare actions with the `TweakAction(name) { ... }` composable, imported
+from `com.openai.snapo.tweaks.TweakAction`. The declaration returns `Unit`,
+registers its callback only while the owner remains in composition, and does
+not execute the callback during composition. Actions have `"type":"action"`,
+no `value`, and no `default`. Invoke an action only when the user explicitly
+requests its app-defined behavior:
+
+```bash
+"$SNAPO_BIN" tweaks action 'Preview/Refresh visible content' -s <serial> -n <socket>
+```
+
+The action command sends the registered name exactly as provided and does not
+accept arguments or execute arbitrary code. A descriptor marked
+`"conflicted":true` has multiple live owners and cannot be invoked; report the
+server's conflict and ask the app owner to register the shared action once or
+choose explicit, stable, unique names. Do not deduplicate callbacks or invent
+numeric suffixes. Reset-all ignores actions.
 
 ## Availability and failures
 

@@ -29,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -105,6 +106,15 @@ internal fun TweakOverlayControl(
             }
             is SnapOTweakValue.ColorValue -> TweakOverlayLabelRow(tweak) {
                 TweakColorField(tweak, onSelectColor)
+            }
+            is SnapOTweakValue.Action -> TweakOverlayLabelRow(tweak) {
+                val action = tweak.value.value as SnapOTweakValue.Action
+                TextButton(
+                    onClick = { SnapOTweaks.invokeAction(tweak.name) },
+                    enabled = !action.conflicted,
+                ) {
+                    Text(if (action.conflicted) "Conflict" else "Run")
+                }
             }
         }
     }

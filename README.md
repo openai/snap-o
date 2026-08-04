@@ -28,7 +28,23 @@ Snap-O can replay network requests that happened before you opened Snap-O, so yo
 
 ## Tweaks (Alpha)
 
-Snap-O Tweaks lets you inspect and adjust Jetpack Compose UI values without rebuilding or restarting your app. It supports numbers, colors, booleans, strings, and type-safe enum pickers. Tweaks is an alpha feature; its APIs, behavior, and interface may change.
+Snap-O Tweaks lets you inspect and adjust Jetpack Compose UI values or run explicitly registered app-owned actions without rebuilding or restarting your app. It supports numbers, colors, booleans, strings, and type-safe enum pickers. Tweaks is an alpha feature; its APIs, behavior, and interface may change.
+
+```kotlin
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import com.openai.snapo.tweaks.TweakAction
+import com.openai.snapo.tweaks.tweak
+
+@Composable
+fun MotionPreview() {
+    val duration by tweak(400, "Motion/Duration", 100..1500)
+    TweakAction("Motion/Restart animation") { restartAnimation() }
+}
+```
+
+`TweakAction` returns `Unit` and exposes its callback only while its owner is in
+composition; declaring the action does not run the callback.
 
 Follow the [Tweaks developer guide](https://openai.github.io/snap-o/tweaks.html) for setup steps.
 
@@ -127,6 +143,7 @@ snapo tweaks list -s <serial> -n <socket> --json
 snapo tweaks set 'Typography/Font size' 42 -s <serial> -n <socket>
 snapo tweaks set 'Motion/Marker shape' RoundedSquare -s <serial> -n <socket>
 snapo tweaks reset 'Typography/Font size' -s <serial> -n <socket>
+snapo tweaks action 'Motion/Toggle animation' -s <serial> -n <socket>
 ```
 
 ## Why a web UI for the App Inspector?
@@ -202,7 +219,7 @@ chmod +x ~/.local/bin/snapo
 
 This is the same CLI shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
 
-The script supports `snapo network list`, `requests`, and `show`, as well as `snapo tweaks apps`, `list`, `get`, `set`, `reset`, and `watch`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
+The script supports `snapo network list`, `requests`, and `show`, as well as `snapo tweaks apps`, `list`, `get`, `set`, `action`, `reset`, and `watch`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
 
 Verify that ADB can see your Android device, then inspect its available Snap-O servers:
 

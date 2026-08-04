@@ -23,6 +23,9 @@ object SnapOTweaks {
 
     /** Ignores tweak updates in a no-op build. */
     fun update(name: String, value: SnapOTweakValue) = Unit
+
+    /** Ignores action invocations in a no-op build. */
+    fun invokeAction(name: String) = Unit
 }
 
 /** The matching observable tweak shape from the live implementation. */
@@ -82,4 +85,9 @@ sealed interface SnapOTweakValue {
         val value: String,
         val options: List<String>,
     ) : SnapOTweakValue
+
+    /** Presentation-only marker matching the live action representation. */
+    @Immutable
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    data class Action(val conflicted: Boolean = false) : SnapOTweakValue
 }

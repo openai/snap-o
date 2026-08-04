@@ -6,6 +6,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import com.openai.snapo.tweaks.SnapOTweakEntry
+import com.openai.snapo.tweaks.SnapOTweakValue
 import com.openai.snapo.tweaks.TweakColorValue
 import com.openai.snapo.tweaks.toSnapOTweakValue
 import com.openai.snapo.tweaks.toTweakColorValue
@@ -20,6 +21,7 @@ internal enum class TweakType(val wireName: String) {
     COLOR("color"),
     STRING("string"),
     ENUM("enum"),
+    ACTION("action"),
 }
 
 internal data class TweakDescriptor(
@@ -48,6 +50,15 @@ internal class UnknownTweakException(name: String) :
 internal class InvalidTweakValueException(name: String, reason: String) :
     TweakUpdateException(422, "Invalid value for $name: $reason")
 
+internal class UnknownTweakActionException(name: String) :
+    TweakUpdateException(404, "Unknown action: $name")
+
+internal class ConflictingTweakActionException(name: String) :
+    TweakUpdateException(
+        409,
+        "Conflicting registrations for action: $name. Register the action once at its owner.",
+    )
+
 internal object TweakRegistry {
     private val lock = Any()
     private val tweaks = LinkedHashMap<String, RegisteredTweak>()
@@ -67,6 +78,9 @@ internal object TweakRegistry {
     fun register(descriptor: TweakDescriptor): State<Any> {
         var changed = false
         val state = synchronized(lock) {
+            require(descriptor.type != TweakType.ACTION) {
+                "Actions must be registered with their composition owner: ${descriptor.name}"
+            }
             validateDescriptor(descriptor)
 
             val existing = tweaks[descriptor.name]
@@ -84,15 +98,7 @@ internal object TweakRegistry {
                     },
                     references = 1,
                 )
-                val wasObserved = observedTweakOrder.containsKey(descriptor.name)
-                if (!wasObserved) {
-                    observedTweakOrder[descriptor.name] = nextTweakOrder++
-                }
-                tweaks[descriptor.name] = tweak
-                if (wasObserved) {
-                    restoreObservedTweakOrder()
-                }
-                publishActiveEntries()
+                addRegisteredTweak(tweak)
                 changed = true
                 tweak.state
             }
@@ -116,6 +122,71 @@ internal object TweakRegistry {
         if (changed) notifyObservers()
     }
 
+    fun registerAction(
+        name: String,
+        onInvoke: () -> Unit,
+    ): Closeable {
+        val owner = Any()
+        synchronized(lock) {
+            val descriptor = TweakDescriptor(name = name, type = TweakType.ACTION, default = Unit)
+            validateDescriptor(descriptor)
+
+            val existing = tweaks[name]
+            if (existing == null) {
+                val action = RegisteredTweak(
+                    descriptor = descriptor,
+                    state = mutableStateOf<Any>(SnapOTweakValue.Action()),
+                    actionCallbacks = linkedMapOf(owner to onInvoke),
+                )
+                addRegisteredTweak(action)
+            } else {
+                require(existing.descriptor.type == TweakType.ACTION) {
+                    "An action cannot share the name of a value tweak: $name"
+                }
+                val callbacks = requireNotNull(existing.actionCallbacks)
+                callbacks[owner] = onInvoke
+                updateActionConflict(existing)
+            }
+        }
+        notifyObservers()
+        return Closeable { unregisterAction(name, owner) }
+    }
+
+    private fun unregisterAction(
+        name: String,
+        owner: Any,
+    ) {
+        val changed = synchronized(lock) {
+            val action = tweaks[name]
+                ?.takeIf { it.descriptor.type == TweakType.ACTION }
+                ?: return@synchronized false
+            val callbacks = requireNotNull(action.actionCallbacks)
+            if (callbacks.remove(owner) == null) return@synchronized false
+
+            if (callbacks.isEmpty()) {
+                tweaks.remove(name)
+                publishActiveEntries()
+            } else {
+                updateActionConflict(action)
+            }
+            true
+        }
+        if (changed) notifyObservers()
+    }
+
+    fun invokeAction(name: String) {
+        val callback = synchronized(lock) {
+            val action = tweaks[name]
+                ?.takeIf { it.descriptor.type == TweakType.ACTION }
+                ?: throw UnknownTweakActionException(name)
+            val callbacks = requireNotNull(action.actionCallbacks)
+            if (callbacks.size != 1) throw ConflictingTweakActionException(name)
+
+            callbacks.values.single()
+        }
+        callback()
+    }
+
     fun activeEntries(): State<List<SnapOTweakEntry>> = activeEntries
 
     fun snapshot(includeAdjusted: Boolean = false): List<TweakSnapshot> = synchronized(lock) {
@@ -127,9 +198,7 @@ internal object TweakRegistry {
             tweaks.values
         }
 
-        registeredTweaks.map { tweak ->
-            TweakSnapshot(tweak.descriptor, tweak.state.value)
-        }
+        registeredTweaks.map { tweak -> TweakSnapshot(tweak.descriptor, tweak.state.value) }
     }
 
     fun update(values: Map<String, Any?>): List<TweakSnapshot> {
@@ -199,6 +268,29 @@ internal object TweakRegistry {
         activeEntries.value = tweaks.values.map(RegisteredTweak::entry)
     }
 
+    private fun addRegisteredTweak(tweak: RegisteredTweak) {
+        val name = tweak.descriptor.name
+        val wasObserved = observedTweakOrder.containsKey(name)
+        if (!wasObserved) {
+            observedTweakOrder[name] = nextTweakOrder++
+        }
+        tweaks[name] = tweak
+        if (wasObserved) {
+            restoreObservedTweakOrder()
+        }
+        publishActiveEntries()
+    }
+
+    private fun updateActionConflict(action: RegisteredTweak) {
+        val conflicted = requireNotNull(action.actionCallbacks).size > 1
+        val current = action.state.value as SnapOTweakValue.Action
+        if (current.conflicted != conflicted) {
+            Snapshot.withMutableSnapshot {
+                action.state.value = SnapOTweakValue.Action(conflicted)
+            }
+        }
+    }
+
     private fun restoreObservedTweakOrder() {
         val orderedTweaks = tweaks.entries.sortedBy { entry ->
             observedTweakOrder.getValue(entry.key)
@@ -230,6 +322,9 @@ internal object TweakRegistry {
             }
 
             TweakType.ENUM -> validateEnumDescriptor(descriptor)
+            TweakType.ACTION -> require(descriptor.default === Unit) {
+                "Actions must not declare a default value: ${descriptor.name}"
+            }
         }
 
         if (descriptor.type != TweakType.ENUM) {
@@ -346,39 +441,42 @@ internal object TweakRegistry {
             }
 
             TweakType.STRING, TweakType.ENUM -> validateStringValue(descriptor, value)
-            TweakType.COLOR -> {
-                val defaultColor = descriptor.default as TweakColorValue
+            TweakType.COLOR -> validateColorValue(descriptor, value)
 
-                when (value) {
-                    is TweakColorValue -> {
-                        val color = try {
-                            value.color.toTweakColorValue()
-                        } catch (_: IllegalArgumentException) {
-                            invalidValue(descriptor, "Expected a supported color.")
-                        }
-                        if (color.color == defaultColor.color) {
-                            defaultColor
-                        } else {
-                            color
-                        }
-                    }
+            TweakType.ACTION -> invalidValue(
+                descriptor,
+                "Actions cannot be patched. Invoke the registered action instead.",
+            )
+        }
 
-                    is String -> {
-                        if (!colorPattern.matches(value)) {
-                            invalidValue(descriptor, "Expected #RRGGBB or #RRGGBBAA.")
-                        }
-                        val normalized = value.uppercase()
-                        if (normalized == defaultColor.wireValue) {
-                            defaultColor
-                        } else {
-                            normalized.toTweakColorValue()
-                        }
-                    }
+    private fun validateColorValue(descriptor: TweakDescriptor, value: Any?): TweakColorValue {
+        val defaultColor = descriptor.default as TweakColorValue
 
-                    else -> invalidValue(descriptor, "Expected a color string.")
+        return when (value) {
+            is TweakColorValue -> {
+                val color = try {
+                    value.color.toTweakColorValue()
+                } catch (_: IllegalArgumentException) {
+                    invalidValue(descriptor, "Expected a supported color.")
+                }
+                if (color.color == defaultColor.color) defaultColor else color
+            }
+
+            is String -> {
+                if (!colorPattern.matches(value)) {
+                    invalidValue(descriptor, "Expected #RRGGBB or #RRGGBBAA.")
+                }
+                val normalized = value.uppercase()
+                if (normalized == defaultColor.wireValue) {
+                    defaultColor
+                } else {
+                    normalized.toTweakColorValue()
                 }
             }
+
+            else -> invalidValue(descriptor, "Expected a color string.")
         }
+    }
 
     private fun validateStringValue(descriptor: TweakDescriptor, value: Any?): String {
         val isEnum = descriptor.type == TweakType.ENUM
@@ -461,7 +559,8 @@ internal object TweakRegistry {
     private data class RegisteredTweak(
         val descriptor: TweakDescriptor,
         val state: MutableState<Any>,
-        var references: Int,
+        var references: Int = 0,
+        val actionCallbacks: LinkedHashMap<Any, () -> Unit>? = null,
     ) {
         val entry = SnapOTweakEntry(
             name = descriptor.name,

@@ -5,6 +5,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.openai.snapo.tweaks.SnapOTweakEntry
+import com.openai.snapo.tweaks.SnapOTweakValue
 import com.openai.snapo.tweaks.SnapOTweaks
 
 @Composable
@@ -67,4 +68,4 @@ internal class TweakOverlaySectionOrder {
 }
 
 internal val SnapOTweakEntry.isChanged: Boolean
-    get() = value.value != defaultValue
+    get() = value.value !is SnapOTweakValue.Action && value.value != defaultValue

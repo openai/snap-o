@@ -762,17 +762,18 @@ def app_info(adb, server):
     return {}
 
 
-def emit_app(server, name, package, as_json, current_device, details=""):
+def emit_app(server, name, package, as_json, current_device, details="", protocol_version=None):
     if as_json:
-        print_json(
-            {
-                "server": server.identifier,
-                "deviceId": server.device_id,
-                "socketName": server.socket_name,
-                "packageName": package,
-                "appName": name,
-            }
-        )
+        app = {
+            "server": server.identifier,
+            "deviceId": server.device_id,
+            "socketName": server.socket_name,
+            "packageName": package,
+            "appName": name,
+        }
+        if protocol_version is not None:
+            app["protocolVersion"] = protocol_version
+        print_json(app)
     else:
         if current_device != server.device_id:
             print(f"{server.device_id}:")
@@ -1065,6 +1066,11 @@ def find_tweak(descriptors, name):
 
 def parse_tweak_value(descriptor, raw):
     kind = descriptor.get("type")
+    if kind == "action":
+        raise SnapOError(
+            f"Action '{descriptor.get('name', '')}' cannot be set; "
+            "use 'snapo tweaks action NAME' to invoke it"
+        )
     if kind == "string":
         return raw
     if kind == "enum":
@@ -1108,6 +1114,10 @@ def emit_tweak_document(document, as_json):
         return
     tweaks = document.get("tweaks") if isinstance(document.get("tweaks"), list) else [document]
     for tweak in tweaks:
+        if tweak.get("type") == "action":
+            status = ", conflicted" if tweak.get("conflicted") is True else ""
+            print(f"{tweak.get('name', 'unknown')} [action{status}]", flush=True)
+            continue
         value = json.dumps(tweak.get("value"), ensure_ascii=False, allow_nan=False)
         options = ""
         if tweak.get("type") == "enum":
@@ -1130,10 +1140,24 @@ def run_tweak_apps(adb, options):
             continue
         name = info.get("name")
         package = info.get("packageName")
-        if not isinstance(name, str) or not isinstance(package, str):
+        protocol_version = info.get("protocolVersion", 1)
+        if (
+            not isinstance(name, str)
+            or not isinstance(package, str)
+            or type(protocol_version) is not int
+            or protocol_version < 1
+        ):
             continue
         found = True
-        current_device = emit_app(server, name, package, options.json, current_device, f"  {name}  pkg:{package}")
+        current_device = emit_app(
+            server,
+            name,
+            package,
+            options.json,
+            current_device,
+            f"  {name}  pkg:{package}",
+            protocol_version=protocol_version,
+        )
     if not found:
         raise SnapOError("No reachable Snap-O tweaks apps found")
     return 0
@@ -1175,13 +1199,29 @@ def run_tweak_set(adb, options):
     return 0
 
 
+def run_tweak_action(adb, options):
+    server = choose_tweak_server(adb, options)
+    with TweakConnection(adb, server) as connection:
+        connection.request("POST", "/tweaks/action", {"name": options.name})
+    return 0
+
+
 def run_tweak_reset(adb, options):
     server = choose_tweak_server(adb, options)
     with TweakConnection(adb, server) as connection:
         descriptors = tweak_descriptors(connection.request("GET", "/tweaks"))
-        selected = descriptors if options.all else [find_tweak(descriptors, options.name)]
+        selected = (
+            [descriptor for descriptor in descriptors if descriptor["type"] != "action"]
+            if options.all
+            else [find_tweak(descriptors, options.name)]
+        )
         values = {}
         for descriptor in selected:
+            if descriptor["type"] == "action":
+                raise SnapOError(
+                    f"Action '{descriptor['name']}' cannot be reset; "
+                    "use 'snapo tweaks action NAME' to invoke it"
+                )
             if "default" not in descriptor:
                 raise SnapOError(f"Tweak '{descriptor['name']}' does not provide a default value")
             values[descriptor["name"]] = descriptor["default"]
@@ -1326,6 +1366,11 @@ def parser():
     set_tweak.add_argument("name", metavar="NAME")
     set_tweak.add_argument("value", metavar="VALUE")
     set_tweak.set_defaults(handler=run_tweak_set)
+
+    action = tweaks_commands.add_parser("action", help="invoke one app-owned action")
+    add_common_options(action, socket_option=True, json_option=False)
+    action.add_argument("name", metavar="NAME")
+    action.set_defaults(handler=run_tweak_action)
 
     reset = tweaks_commands.add_parser("reset", help="reset one tweak or all tweaks to their defaults")
     add_common_options(reset, socket_option=True, json_option=False)

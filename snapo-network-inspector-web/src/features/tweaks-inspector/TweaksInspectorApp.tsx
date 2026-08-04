@@ -5,8 +5,10 @@ import type {
   InspectableApp,
   InspectorServerReference,
   SelectedAppInspector,
+  TweakActionDescriptor,
   TweakDescriptor,
-  TweakValue
+  TweakValue,
+  TweakValueDescriptor
 } from "../../network/bridge-types";
 import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
 import { AppInspectorPicker } from "../app-inspector/components/AppInspectorPicker";
@@ -24,7 +26,7 @@ interface TweakOrdering {
 }
 
 interface ActiveColorPanelSession {
-  tweak: TweakDescriptor;
+  tweak: TweakValueDescriptor;
   sessionId: string;
 }
 
@@ -46,6 +48,7 @@ export function TweaksInspectorApp({
   const [loadedServer, setLoadedServer] = useState<InspectorServerReference | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [invokingActions, setInvokingActions] = useState(() => new Set<string>());
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
   const activeColorPanel = useRef<ActiveColorPanelSession | null>(null);
   const server = selection.server;
@@ -60,7 +63,9 @@ export function TweaksInspectorApp({
           setTweaks((current) =>
             current.map((tweak) => {
               const update = updates.find((candidate) => candidate.name === tweak.name);
-              return update && !pending.has(tweak.name) ? { ...tweak, value: update.value } : tweak;
+              return tweak.type !== "action" && update && !pending.has(tweak.name)
+                ? { ...tweak, value: update.value }
+                : tweak;
             })
           );
         },
@@ -124,7 +129,7 @@ export function TweaksInspectorApp({
   }, [client, queue, server]);
 
   const openNativeColorPanel = useCallback(
-    (tweak: TweakDescriptor, present = true) => {
+    (tweak: TweakValueDescriptor, present = true) => {
       if (!hasNativeColorPanel || client.openNativeColorPanel === undefined) {
         activeColorPanel.current = null;
         return;
@@ -143,13 +148,15 @@ export function TweaksInspectorApp({
   );
 
   const updateTweak = useCallback(
-    (tweak: TweakDescriptor, value: TweakValue) => {
+    (tweak: TweakValueDescriptor, value: TweakValue) => {
       const active = activeColorPanel.current;
       if (active?.tweak.name === tweak.name && active.tweak.value !== value) {
         openNativeColorPanel({ ...tweak, value }, false);
       }
 
-      setTweaks((current) => current.map((item) => (item.name === tweak.name ? { ...item, value } : item)));
+      setTweaks((current) =>
+        current.map((item) => (item.name === tweak.name && item.type !== "action" ? { ...item, value } : item))
+      );
       queue.enqueue(tweak.name, value);
       void queue.flush();
     },
@@ -161,7 +168,7 @@ export function TweaksInspectorApp({
     if (active === null) return;
 
     const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
-    if (tweak === undefined) {
+    if (tweak === undefined || tweak.type === "action") {
       activeColorPanel.current = null;
       void client.closeNativeColorPanel?.(active.sessionId).catch((cause: unknown) => {
         if (activeColorPanel.current !== null) return;
@@ -199,11 +206,37 @@ export function TweaksInspectorApp({
     };
   }, [client, hasNativeColorPanel, updateTweak]);
 
+  const invokeAction = useCallback(
+    (action: TweakActionDescriptor) => {
+      if (action.conflicted) return;
+
+      setInvokingActions((current) => new Set(current).add(action.name));
+      setError(null);
+
+      void client
+        .invokeTweakAction({ server, name: action.name })
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : `Unable to invoke ${action.name}.`);
+        })
+        .finally(() => {
+          setInvokingActions((current) => {
+            const next = new Set(current);
+            next.delete(action.name);
+            return next;
+          });
+        });
+    },
+    [client, server]
+  );
+
   const resetAll = useCallback(() => {
     for (const tweak of tweaks) {
+      if (tweak.type === "action") continue;
       queue.enqueue(tweak.name, tweak.default);
     }
-    setTweaks((current) => current.map((tweak) => ({ ...tweak, value: tweak.default })));
+    setTweaks((current) =>
+      current.map((tweak) => (tweak.type === "action" ? tweak : { ...tweak, value: tweak.default }))
+    );
     void queue.flush();
   }, [queue, tweaks]);
 
@@ -263,6 +296,8 @@ export function TweaksInspectorApp({
                           key={tweak.name}
                           tweak={tweak}
                           onChange={updateTweak}
+                          onInvoke={invokeAction}
+                          invoking={invokingActions.has(tweak.name)}
                           onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
                         />
                       ))}
@@ -298,7 +333,7 @@ export function hasLoadedTweaksForServer(
 }
 
 export function canResetTweaks(tweaks: TweakDescriptor[]): boolean {
-  return tweaks.some((tweak) => tweak.value !== tweak.default);
+  return tweaks.some((tweak) => tweak.type !== "action" && tweak.value !== tweak.default);
 }
 
 export function reconcileStreamedTweaks(
@@ -311,7 +346,12 @@ export function reconcileStreamedTweaks(
 
   return incoming.map((tweak) => {
     const existing = currentByName.get(tweak.name);
-    if (existing && (pending.has(tweak.name) || inFlight.has(tweak.name))) {
+    if (
+      existing &&
+      existing.type !== "action" &&
+      tweak.type !== "action" &&
+      (pending.has(tweak.name) || inFlight.has(tweak.name))
+    ) {
       return { ...tweak, value: existing.value };
     }
     return tweak;
@@ -373,12 +413,20 @@ function tweakLabel(name: string): string {
 function TweakControl({
   tweak,
   onChange,
+  onInvoke,
+  invoking,
   onOpenColorPanel
 }: {
   tweak: TweakDescriptor;
-  onChange(tweak: TweakDescriptor, value: TweakValue): void;
-  onOpenColorPanel?(tweak: TweakDescriptor): void;
+  onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
+  onInvoke(action: TweakActionDescriptor): void;
+  invoking: boolean;
+  onOpenColorPanel?(tweak: TweakValueDescriptor): void;
 }): JSX.Element {
+  if (tweak.type === "action") {
+    return <TweakActionControl action={tweak} invoking={invoking} onInvoke={onInvoke} />;
+  }
+
   const label = tweakLabel(tweak.name);
   const changed = tweak.value !== tweak.default;
 
@@ -428,14 +476,48 @@ function TweakControl({
   );
 }
 
+export function TweakActionControl({
+  action,
+  invoking = false,
+  onInvoke
+}: {
+  action: TweakActionDescriptor;
+  invoking?: boolean;
+  onInvoke(action: TweakActionDescriptor): void;
+}): JSX.Element {
+  return (
+    <div className="tweaks-control">
+      <div className="tweaks-control-line">
+        <span className="tweaks-control-label">{tweakLabel(action.name)}</span>
+        <span className="tweaks-control-field">
+          <button
+            className="tweaks-action-button"
+            type="button"
+            aria-label={`${action.conflicted ? "Conflict" : "Run"} ${action.name}`}
+            disabled={Boolean(action.conflicted) || invoking}
+            onClick={() => onInvoke(action)}
+          >
+            {action.conflicted ? "Conflict" : "Run"}
+          </button>
+        </span>
+      </div>
+      {action.conflicted ? (
+        <p className="tweaks-action-conflict" role="alert">
+          Conflicting registrations. Use a unique action name.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function TweakField({
   tweak,
   onChange,
   onOpenColorPanel
 }: {
-  tweak: TweakDescriptor;
-  onChange(tweak: TweakDescriptor, value: TweakValue): void;
-  onOpenColorPanel?(tweak: TweakDescriptor): void;
+  tweak: TweakValueDescriptor;
+  onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
+  onOpenColorPanel?(tweak: TweakValueDescriptor): void;
 }): JSX.Element | null {
   if (tweak.type === "boolean") {
     return (
@@ -484,8 +566,8 @@ function TweakEnumField({
   tweak,
   onChange
 }: {
-  tweak: TweakDescriptor;
-  onChange(tweak: TweakDescriptor, value: TweakValue): void;
+  tweak: TweakValueDescriptor;
+  onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
 }): JSX.Element {
   const [listboxStyle, setListboxStyle] = useState<CSSProperties | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -592,8 +674,8 @@ export function TweakEnumListbox({
 }: {
   id: string;
   style?: CSSProperties;
-  tweak: TweakDescriptor;
-  onChange(tweak: TweakDescriptor, value: TweakValue): void;
+  tweak: TweakValueDescriptor;
+  onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
   onClose(): void;
 }): JSX.Element {
   const select = (value: string) => {
@@ -633,9 +715,9 @@ export function TweakColorField({
   onChange,
   onOpenColorPanel
 }: {
-  tweak: TweakDescriptor;
-  onChange(tweak: TweakDescriptor, value: TweakValue): void;
-  onOpenColorPanel?(tweak: TweakDescriptor): void;
+  tweak: TweakValueDescriptor;
+  onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
+  onOpenColorPanel?(tweak: TweakValueDescriptor): void;
 }): JSX.Element {
   const committed = String(tweak.value);
   const [draft, setDraft] = useState(() => ({ committed, value: committed }));
