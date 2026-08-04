@@ -58,6 +58,13 @@ const mockTweaks = [
   { name: "Motion/Spring stiffness", type: "float", default: 280, value: 280, min: 80, max: 800, step: 20 },
   { name: "Motion/Spring damping", type: "float", default: 0.7, value: 0.7, min: 0.1, max: 1, step: 0.05 },
   { name: "Motion/Use spring", type: "boolean", default: true, value: true },
+  {
+    name: "Motion/Marker shape",
+    type: "enum",
+    default: "Circle",
+    value: "Circle",
+    options: ["Circle", "RoundedSquare", "Square"],
+  },
 ];
 
 let mockSelectedAppId = mockApps[0].id;

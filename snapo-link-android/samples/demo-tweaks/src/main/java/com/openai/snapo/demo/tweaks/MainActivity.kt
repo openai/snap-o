@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -44,6 +45,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +60,12 @@ import kotlin.math.roundToInt
 private val DefaultTextColor = Color(0xFF18212F)
 private val DefaultBackgroundColor = Color(0xFFF7F8FA)
 private val DefaultAccentColor = Color(0xFF5468FF)
+
+private enum class MotionMarkerShape(val shape: Shape) {
+    Circle(CircleShape),
+    RoundedSquare(RoundedCornerShape(28)),
+    Square(RectangleShape),
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -315,6 +324,7 @@ private fun MotionTrack(
     val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
     val trackColor = accentColor.copy(alpha = 0.22f)
     val trackThickness by tweak(2f, "Motion/Track thickness", 1f..8f, step = 0.5f)
+    val markerShape by tweak(MotionMarkerShape.Circle, "Motion/Marker shape")
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -345,7 +355,7 @@ private fun MotionTrack(
                 modifier = Modifier
                     .motionMarkerOffset(progress)
                     .size(markerSize)
-                    .background(accentColor, CircleShape),
+                    .background(accentColor, markerShape.shape),
             )
         }
     }

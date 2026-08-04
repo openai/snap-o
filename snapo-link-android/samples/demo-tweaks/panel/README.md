@@ -84,6 +84,7 @@ To put a tweak in a section, use a `/` in its name:
 val fontSize by tweak(36, "Typography/Font size", 16..72)
 val isMotionEnabled by tweak(true, "Motion/Enabled")
 val animationDuration by tweak(400, "Motion/Duration", 100..1500)
+val markerShape by tweak(MotionMarkerShape.Circle, "Motion/Marker shape")
 ```
 
 The part before `/` is the section. The part after `/` is the label. A tweak
@@ -129,9 +130,10 @@ npm start -- --port 4176
 
 ## Change a live value
 
-Move a slider or choose a color. The app changes at once. The inspector waits
-for each request before it sends the next value or switches to another app.
-You can set one value or all values back.
+Move a slider, choose a color, or select a marker shape by its enum name. The
+app changes at once. The inspector waits for each request before it sends the
+next value or switches to another app. You can set one value or all values
+back.
 
 Turn off **Show** in the **Motion** section to hide the motion preview in the
 sample app. Its animation tweaks leave the composition and vanish from the
