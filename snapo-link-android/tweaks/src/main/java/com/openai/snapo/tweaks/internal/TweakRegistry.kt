@@ -19,6 +19,7 @@ internal enum class TweakType(val wireName: String) {
     BOOLEAN("boolean"),
     COLOR("color"),
     STRING("string"),
+    ENUM("enum"),
 }
 
 internal data class TweakDescriptor(
@@ -28,6 +29,7 @@ internal data class TweakDescriptor(
     val min: Number? = null,
     val max: Number? = null,
     val step: Number? = null,
+    val options: List<String> = emptyList(),
 )
 
 internal data class TweakSnapshot(
@@ -226,6 +228,14 @@ internal object TweakRegistry {
             TweakType.STRING -> require(descriptor.default is String) {
                 "String tweaks must have a string default: ${descriptor.name}"
             }
+
+            TweakType.ENUM -> validateEnumDescriptor(descriptor)
+        }
+
+        if (descriptor.type != TweakType.ENUM) {
+            require(descriptor.options.isEmpty()) {
+                "Only enum tweaks can define selectable options: ${descriptor.name}"
+            }
         }
 
         if (descriptor.type != TweakType.INT && descriptor.type != TweakType.FLOAT) {
@@ -234,6 +244,24 @@ internal object TweakRegistry {
             ) {
                 "Only numeric tweaks can define numeric constraints: ${descriptor.name}"
             }
+        }
+    }
+
+    private fun validateEnumDescriptor(descriptor: TweakDescriptor) {
+        require(descriptor.default is String) {
+            "Enum tweaks must have an enum-name default: ${descriptor.name}"
+        }
+        require(descriptor.options.isNotEmpty()) {
+            "Enum tweaks must define at least one option: ${descriptor.name}"
+        }
+        require(descriptor.options.all { option -> option.isNotBlank() }) {
+            "Enum option values must not be blank: ${descriptor.name}"
+        }
+        require(descriptor.options.distinct().size == descriptor.options.size) {
+            "Enum option values must be unique: ${descriptor.name}"
+        }
+        require(descriptor.default in descriptor.options) {
+            "Enum tweak defaults must match a declared option: ${descriptor.name}"
         }
     }
 
@@ -317,10 +345,7 @@ internal object TweakRegistry {
                 value as? Boolean ?: invalidValue(descriptor, "Expected a boolean.")
             }
 
-            TweakType.STRING -> {
-                value as? String ?: invalidValue(descriptor, "Expected a string.")
-            }
-
+            TweakType.STRING, TweakType.ENUM -> validateStringValue(descriptor, value)
             TweakType.COLOR -> {
                 val defaultColor = descriptor.default as TweakColorValue
 
@@ -354,6 +379,20 @@ internal object TweakRegistry {
                 }
             }
         }
+
+    private fun validateStringValue(descriptor: TweakDescriptor, value: Any?): String {
+        val isEnum = descriptor.type == TweakType.ENUM
+        val selection = value as? String
+            ?: invalidValue(
+                descriptor,
+                if (isEnum) "Expected an enum name." else "Expected a string.",
+            )
+        if (isEnum && selection !in descriptor.options) {
+            invalidValue(descriptor, "Expected one of the declared enum options.")
+        }
+
+        return selection
+    }
 
     private fun validateNumericValue(descriptor: TweakDescriptor, value: Any?): Number {
         val number = value as? Number

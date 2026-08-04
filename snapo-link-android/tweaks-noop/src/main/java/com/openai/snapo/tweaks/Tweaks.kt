@@ -45,3 +45,10 @@ fun tweak(
     default: String,
     name: String,
 ): State<String> = rememberUpdatedState(default)
+
+/** Returns observable release-build state for the current enum default. */
+@Composable
+fun <E : Enum<E>> tweak(
+    default: E,
+    name: String,
+): State<E> = rememberUpdatedState(default)

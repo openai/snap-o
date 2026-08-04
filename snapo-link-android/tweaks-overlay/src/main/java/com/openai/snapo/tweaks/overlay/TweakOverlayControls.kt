@@ -1,6 +1,7 @@
 package com.openai.snapo.tweaks.overlay
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,12 +14,15 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -92,6 +99,9 @@ internal fun TweakOverlayControl(
             }
             is SnapOTweakValue.Toggle -> TweakOverlayLabelRow(tweak) {
                 TweakToggleField(tweak)
+            }
+            is SnapOTweakValue.Selection -> TweakOverlayLabelRow(tweak) {
+                TweakSelectionField(tweak)
             }
             is SnapOTweakValue.ColorValue -> TweakOverlayLabelRow(tweak) {
                 TweakColorField(tweak, onSelectColor)
@@ -270,6 +280,66 @@ private fun TweakToggleField(tweak: SnapOTweakEntry) {
             uncheckedColor = TweakOverlayColors.secondary,
         ),
     )
+}
+
+@Composable
+private fun TweakSelectionField(tweak: SnapOTweakEntry) {
+    val selection = tweak.value.value as SnapOTweakValue.Selection
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        Row(
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .clickable(
+                    role = Role.Button,
+                    onClick = { expanded = true },
+                )
+                .semantics {
+                    contentDescription = "Choose option for ${tweak.name}. Current value: ${selection.value}"
+                }
+                .padding(start = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            TweakFieldText(selection.value)
+            Text(text = "▾", color = TweakOverlayColors.secondary, fontSize = 11.sp)
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(TweakOverlayColors.surface),
+        ) {
+            selection.options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = option,
+                            color = TweakOverlayColors.foreground,
+                            fontSize = 13.sp,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        SnapOTweaks.update(tweak.name, selection.copy(value = option))
+                    },
+                    trailingIcon = if (option == selection.value) {
+                        {
+                            Icon(
+                                painter = painterResource(R.drawable.snapo_tweaks_check),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = TweakOverlayColors.foreground,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable

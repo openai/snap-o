@@ -1461,12 +1461,16 @@ pre {
   gap: 9px;
 }
 
-.tweaks-control-label {
-  min-width: 0;
+.tweaks-control-label,
+.tweaks-select span {
   overflow: hidden;
-  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tweaks-control-label {
+  min-width: 0;
+  font-size: 12px;
 }
 
 .tweaks-control-field {
@@ -1479,7 +1483,8 @@ pre {
 
 .tweaks-number,
 .tweaks-hex,
-.tweaks-string {
+.tweaks-string,
+.tweaks-select {
   min-width: 0;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -1503,6 +1508,47 @@ pre {
 .tweaks-string {
   width: 100%;
   min-height: 32px;
+}
+
+.tweaks-select-wrap {
+  min-width: 0;
+}
+
+.tweaks-select {
+  display: flex;
+  max-width: 176px;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+}
+
+.tweaks-select-listbox {
+  position: fixed;
+  z-index: 30;
+  max-width: min(240px, calc(100vw - 16px));
+  overflow-y: auto;
+  border: 1px solid var(--outline);
+  border-radius: 4px;
+  background: var(--surface-bright);
+  padding: 4px;
+}
+
+.tweaks-select-option {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  padding: 5px 8px;
+  color: var(--on-surface);
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tweaks-select-option:is(:hover, :focus-visible, [aria-selected="true"]) {
+  background: var(--surface-container-high);
 }
 
 .tweaks-range {

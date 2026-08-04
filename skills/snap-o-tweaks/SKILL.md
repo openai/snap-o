@@ -90,13 +90,16 @@ ADB resolves from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use
 ## Change values only when requested
 
 Inspect the descriptor first: the CLI parses `int`, `float`, `boolean`,
-`color`, and `string` according to their declared types. Quote names containing
-spaces or `/`, string values containing spaces, and hex colors.
+`color`, `string`, and `enum` according to their declared types. Enum
+descriptors include an ordered list of enum names in `options`; use an exact
+option name when setting one. Quote names containing spaces or `/`, string
+values containing spaces, and hex colors.
 
 ```bash
 "$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s <serial> -n <socket>
 "$SNAPO_BIN" tweaks set 'Motion/Show' false -s <serial> -n <socket>
 "$SNAPO_BIN" tweaks set 'Colors/Accent' '#3B82F6' -s <serial> -n <socket>
+"$SNAPO_BIN" tweaks set 'Appearance/Theme' Dark -s <serial> -n <socket>
 ```
 
 Successful updates and resets produce no output.

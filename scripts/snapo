@@ -1031,7 +1031,29 @@ def tweak_descriptors(document):
         for tweak in descriptors
     ):
         raise SnapOError("Snap-O tweaks server returned an invalid tweak list")
+    for descriptor in descriptors:
+        if descriptor["type"] == "enum":
+            validate_enum_tweak(descriptor)
     return descriptors
+
+
+def validate_enum_tweak(descriptor):
+    name = descriptor.get("name", "")
+    options = descriptor.get("options")
+
+    def invalid(reason):
+        raise SnapOError(f"Tweak '{name}' has invalid enum options: {reason}")
+
+    if not isinstance(options, list) or not options:
+        invalid("expected a non-empty option list")
+    if any(not isinstance(option, str) or not option.strip() for option in options):
+        invalid("option names must be nonblank strings")
+    if len(set(options)) != len(options):
+        invalid("option names must be unique")
+
+    for key in ("value", "default"):
+        if not isinstance(descriptor.get(key), str) or descriptor[key] not in options:
+            invalid(f"the {key} must match an option name")
 
 
 def find_tweak(descriptors, name):
@@ -1044,6 +1066,12 @@ def find_tweak(descriptors, name):
 def parse_tweak_value(descriptor, raw):
     kind = descriptor.get("type")
     if kind == "string":
+        return raw
+    if kind == "enum":
+        options = descriptor["options"]
+        if raw not in options:
+            choices = ", ".join(json.dumps(option, ensure_ascii=False) for option in options)
+            raise SnapOError(f"Tweak '{descriptor.get('name', '')}' requires one of: {choices}")
         return raw
     if kind == "boolean":
         value = raw.lower()
@@ -1081,8 +1109,11 @@ def emit_tweak_document(document, as_json):
     tweaks = document.get("tweaks") if isinstance(document.get("tweaks"), list) else [document]
     for tweak in tweaks:
         value = json.dumps(tweak.get("value"), ensure_ascii=False, allow_nan=False)
+        options = ""
+        if tweak.get("type") == "enum":
+            options = f"; options: {json.dumps(tweak['options'], ensure_ascii=False)}"
         kind = f" [{tweak['type']}]" if isinstance(tweak.get("type"), str) else ""
-        print(f"{tweak.get('name', 'unknown')} = {value}{kind}", flush=True)
+        print(f"{tweak.get('name', 'unknown')} = {value}{kind}{options}", flush=True)
 
 
 def run_tweak_apps(adb, options):

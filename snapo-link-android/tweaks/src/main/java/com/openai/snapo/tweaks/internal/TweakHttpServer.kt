@@ -496,6 +496,7 @@ internal class TweakHttpServer(
 
         if (includeDescriptor) {
             writeConstraints(writer, tweak.descriptor)
+            writeOptions(writer, tweak.descriptor)
         }
 
         writer.endObject()
@@ -505,6 +506,16 @@ internal class TweakHttpServer(
         descriptor.min?.let { minimum -> writer.name("min").value(minimum) }
         descriptor.max?.let { maximum -> writer.name("max").value(maximum) }
         descriptor.step?.let { increment -> writer.name("step").value(increment) }
+    }
+
+    private fun writeOptions(writer: JsonWriter, descriptor: TweakDescriptor) {
+        if (descriptor.type != TweakType.ENUM) return
+
+        writer.name("options").beginArray()
+        descriptor.options.forEach { option ->
+            writer.value(option)
+        }
+        writer.endArray()
     }
 
     private fun writeJsonValue(writer: JsonWriter, value: Any) {
