@@ -29,10 +29,12 @@ actor TweaksInspectorService {
   }
 
   private static let socketPrefix = "snapo_tweaks_"
+  private static let discoveryRequestTimeout: TimeInterval = 2
 
   private let adbService: ADBService
   private let deviceTracker: DeviceTracker
   private var connections: [String: Connection] = [:]
+  private var connectingKeys = Set<String>()
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -44,22 +46,26 @@ actor TweaksInspectorService {
     let adb = await adbService.exec()
     var activeKeys = Set<String>()
 
-    for device in devices {
-      guard let output = try? await adb.listUnixSockets(deviceID: device.id) else {
-        continue
-      }
+    await withTaskGroup(of: Void.self) { group in
+      for device in devices {
+        guard let output = try? await adb.listUnixSockets(deviceID: device.id) else {
+          continue
+        }
 
-      for socketName in Self.socketNames(in: output) {
-        let key = Self.connectionKey(deviceID: device.id, socketName: socketName)
-        activeKeys.insert(key)
+        for socketName in Self.socketNames(in: output) {
+          let key = Self.connectionKey(deviceID: device.id, socketName: socketName)
+          activeKeys.insert(key)
 
-        if connections[key] == nil {
-          await connect(
-            deviceID: device.id,
-            deviceDisplayTitle: device.displayTitle,
-            socketName: socketName,
-            using: adb
-          )
+          if connections[key] == nil {
+            group.addTask {
+              await self.connect(
+                deviceID: device.id,
+                deviceDisplayTitle: device.displayTitle,
+                socketName: socketName,
+                using: adb
+              )
+            }
+          }
         }
       }
     }
@@ -147,6 +153,12 @@ actor TweaksInspectorService {
     socketName: String,
     using adb: ADBClient
   ) async {
+    let key = Self.connectionKey(deviceID: deviceID, socketName: socketName)
+    guard connections[key] == nil, connectingKeys.insert(key).inserted else {
+      return
+    }
+    defer { connectingKeys.remove(key) }
+
     var forward: ADBForwardHandle?
 
     do {
@@ -160,7 +172,12 @@ actor TweaksInspectorService {
         throw NetworkInspectorError.invalidBridgeMessage
       }
 
-      let info = try await load(AppInfo.self, path: "app", baseURL: baseURL)
+      let info = try await load(
+        AppInfo.self,
+        path: "app",
+        baseURL: baseURL,
+        timeoutInterval: Self.discoveryRequestTimeout
+      )
       let iconData = await loadIcon(baseURL: baseURL)
       let app = App(
         deviceID: deviceID,
@@ -171,7 +188,6 @@ actor TweaksInspectorService {
         protocolVersion: info.protocolVersion ?? 1,
         appIconBase64: iconData?.base64EncodedString()
       )
-      let key = Self.connectionKey(deviceID: deviceID, socketName: socketName)
       connections[key] = Connection(app: app, forward: handle, baseURL: baseURL)
     } catch {
       if let forward {
@@ -181,8 +197,12 @@ actor TweaksInspectorService {
   }
 
   private func loadIcon(baseURL: URL) async -> Data? {
+    let request = URLRequest(
+      url: baseURL.appending(path: "app/icon"),
+      timeoutInterval: Self.discoveryRequestTimeout
+    )
     guard let (data, response) = try? await URLSession.shared.data(
-      from: baseURL.appending(path: "app/icon")
+      for: request
     ),
       let httpResponse = response as? HTTPURLResponse,
       (200 ... 299).contains(httpResponse.statusCode)
@@ -203,11 +223,15 @@ actor TweaksInspectorService {
   private func load<T: Decodable>(
     _ type: T.Type,
     path: String,
-    baseURL: URL
+    baseURL: URL,
+    timeoutInterval: TimeInterval? = nil
   ) async throws -> T {
-    let (data, response) = try await URLSession.shared.data(
-      from: baseURL.appending(path: path)
-    )
+    var request = URLRequest(url: baseURL.appending(path: path))
+    if let timeoutInterval {
+      request.timeoutInterval = timeoutInterval
+    }
+
+    let (data, response) = try await URLSession.shared.data(for: request)
     try Self.validate(response, data: data)
     return try JSONDecoder().decode(type, from: data)
   }
