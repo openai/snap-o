@@ -4,68 +4,43 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.openai.snapo.tweaks.TweakAction
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlaySettings
-import com.openai.snapo.tweaks.tweak
-import kotlin.math.roundToInt
 
 private val DefaultTextColor = Color(0xFF18212F)
 private val DefaultBackgroundColor = Color(0xFFF7F8FA)
 private val DefaultAccentColor = Color(0xFF5468FF)
 
-private enum class MotionMarkerShape(val shape: Shape) {
-    Circle(CircleShape),
-    RoundedSquare(RoundedCornerShape(28)),
-    Square(RectangleShape),
+private enum class DemoDestination(val label: String) {
+    Overview("Overview"),
+    Shared("Shared"),
 }
 
 class MainActivity : ComponentActivity() {
@@ -82,8 +57,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun TweakDemo() {
-    var isTweakableContentVisible by rememberSaveable { mutableStateOf(true) }
-
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = DefaultAccentColor,
@@ -95,108 +68,100 @@ private fun TweakDemo() {
         ),
     ) {
         SnapOTweakOverlay {
-            if (isTweakableContentVisible) {
-                TweakDemoContent(
-                    onToggleTweakableContent = {
-                        isTweakableContentVisible = !isTweakableContentVisible
-                    },
-                )
-            } else {
-                TweakDemoScreen(
-                    isTweakableContentVisible = false,
-                    onToggleTweakableContent = {
-                        isTweakableContentVisible = !isTweakableContentVisible
-                    },
-                )
-            }
+            TweakDemoScreen()
         }
     }
 }
 
 @Composable
-private fun TweakDemoContent(
-    onToggleTweakableContent: () -> Unit,
-) {
-    val textColor by tweak(DefaultTextColor, "Colors/Text")
-    val backgroundColor by tweak(DefaultBackgroundColor, "Colors/Background")
-    val accentColor by tweak(DefaultAccentColor, "Colors/Accent")
+private fun TweakDemoScreen() {
+    var isTweakableContentVisible by rememberSaveable { mutableStateOf(true) }
+    var destination by rememberSaveable { mutableStateOf(DemoDestination.Overview) }
 
-    MaterialTheme(
-        colorScheme = lightColorScheme(
-            primary = accentColor,
-            onPrimary = Color.White,
-            background = backgroundColor,
-            onBackground = textColor,
-            surface = backgroundColor,
-            onSurface = textColor,
-        ),
-    ) {
-        TweakDemoScreen(
-            isTweakableContentVisible = true,
-            onToggleTweakableContent = onToggleTweakableContent,
-        )
-    }
-}
-
-@Composable
-private fun TweakDemoScreen(
-    isTweakableContentVisible: Boolean,
-    onToggleTweakableContent: () -> Unit,
-) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
         contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        val dividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 28.dp, vertical = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(30.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
-            DemoHeader()
-            OverlayEnableSwitch()
-            Button(onClick = onToggleTweakableContent) {
-                Text(
-                    if (isTweakableContentVisible) {
-                        "Hide tweakable UI"
-                    } else {
-                        "Show tweakable UI"
-                    },
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp)
+                    .padding(top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                DestinationTabs(
+                    destination = destination,
+                    onDestinationSelected = { destination = it },
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OverlayEnableSwitch()
+                    TextButton(
+                        onClick = {
+                            isTweakableContentVisible = !isTweakableContentVisible
+                        },
+                    ) {
+                        Text(if (isTweakableContentVisible) "Hide content" else "Show content")
+                    }
+                }
             }
 
-            if (isTweakableContentVisible) {
-                HorizontalDivider(color = dividerColor)
-                TypographyPreview()
-                MotionSection(dividerColor)
+            val contentModifier = Modifier.weight(1f)
+            if (!isTweakableContentVisible) {
+                Text(
+                    text = "Tweakable UI is hidden.",
+                    modifier = contentModifier.padding(horizontal = 28.dp, vertical = 26.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            } else {
+                when (destination) {
+                    DemoDestination.Overview -> OverviewScreen(modifier = contentModifier)
+                    DemoDestination.Shared -> SharedScreen(modifier = contentModifier)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MotionSection(dividerColor: Color) {
-    val isVisible by tweak(true, "Motion/Show")
-    if (isVisible) {
-        HorizontalDivider(color = dividerColor)
-        MotionPreview()
+private fun DestinationTabs(
+    destination: DemoDestination,
+    onDestinationSelected: (DemoDestination) -> Unit,
+) {
+    PrimaryTabRow(
+        selectedTabIndex = destination.ordinal,
+        containerColor = Color.Transparent,
+        divider = {
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+        },
+    ) {
+        DemoDestination.entries.forEach { tabDestination ->
+            Tab(
+                selected = destination == tabDestination,
+                onClick = { onDestinationSelected(tabDestination) },
+                text = { Text(tabDestination.label) },
+            )
+        }
     }
 }
 
 @Composable
 private fun OverlayEnableSwitch() {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "In-app overlay",
+            text = "Overlay",
             style = MaterialTheme.typography.bodyLarge,
         )
         Switch(
@@ -204,199 +169,4 @@ private fun OverlayEnableSwitch() {
             onCheckedChange = { SnapOTweakOverlaySettings.isEnabled = it },
         )
     }
-}
-
-@Composable
-private fun DemoHeader() {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "Snap-O Tweaks",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-        )
-        Text(
-            text = "Live tweaks",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = "Type, color, and motion respond instantly.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-        )
-    }
-}
-
-@Composable
-private fun TypographyPreview() {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = "Typography",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        TweakableTypographyPreview()
-        TypographyDetails()
-    }
-}
-
-@Composable
-private fun TweakableTypographyPreview() {
-    val fontSize by tweak(36, "Typography/Font size", 16..72, step = 1)
-    val fontWeight by tweak(600, "Typography/Font weight", 100..900, step = 100)
-    val previewText by tweak("Make it feel right.", name = "Typography/Preview text")
-
-    Text(
-        text = previewText,
-        color = MaterialTheme.colorScheme.onSurface,
-        fontSize = fontSize.sp,
-        fontWeight = FontWeight(fontWeight),
-        lineHeight = (fontSize * 1.2f).sp,
-    )
-}
-
-@Composable
-private fun TypographyDetails() {
-    val fontSize by tweak(36, "Typography/Font size", 16..72, step = 1)
-    val fontWeight by tweak(600, "Typography/Font weight", 100..900, step = 100)
-
-    Text(
-        text = "$fontSize sp · $fontWeight",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-    )
-}
-
-@Composable
-private fun MotionPreview() {
-    var isStateB by rememberSaveable { mutableStateOf(false) }
-    TweakAction("Motion/Toggle animation") { isStateB = !isStateB }
-    val useSpring by tweak(true, "Motion/Use spring")
-
-    val animationSpec: FiniteAnimationSpec<Float> = if (useSpring) {
-        val stiffness by tweak(280f, "Motion/Spring stiffness", 80f..800f, step = 20f)
-        val dampingRatio by tweak(0.7f, "Motion/Spring damping", 0.1f..1f, step = 0.05f)
-
-        spring(
-            dampingRatio = dampingRatio,
-            stiffness = stiffness,
-            visibilityThreshold = 0.001f,
-        )
-    } else {
-        val durationMillis by tweak(400, "Motion/Duration", 100..1500, step = 50)
-
-        tween(
-            durationMillis = durationMillis,
-            easing = FastOutSlowInEasing,
-        )
-    }
-    val progress = animateFloatAsState(
-        targetValue = if (isStateB) 1f else 0f,
-        animationSpec = animationSpec,
-        label = "Snap-O Tweaks transition",
-    )
-
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(
-            text = "Motion",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        MotionTrack(
-            progress = progress,
-            isStateB = isStateB,
-            onToggle = { isStateB = !isStateB },
-        )
-        Button(onClick = { isStateB = !isStateB }) {
-            Text("Tap to animate")
-        }
-        AnimationDetails(
-            isStateB = isStateB,
-        )
-    }
-}
-
-@Composable
-private fun MotionTrack(
-    progress: State<Float>,
-    isStateB: Boolean,
-    onToggle: () -> Unit,
-) {
-    val accentColor = MaterialTheme.colorScheme.primary
-    val mutedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-    val trackColor = accentColor.copy(alpha = 0.22f)
-    val trackThickness by tweak(2f, "Motion/Track thickness", 1f..8f, step = 0.5f)
-    val markerShape by tweak(MotionMarkerShape.Circle, "Motion/Marker shape")
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("State A", color = if (isStateB) mutedColor else accentColor)
-            Text("State B", color = if (isStateB) accentColor else mutedColor)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .clickable(role = Role.Button, onClick = onToggle)
-                .drawBehind {
-                    drawLine(
-                        color = trackColor,
-                        start = Offset(x = 0f, y = center.y),
-                        end = Offset(x = size.width, y = center.y),
-                        strokeWidth = trackThickness.dp.toPx(),
-                    )
-                },
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            val markerSize = 40.dp
-
-            Box(
-                modifier = Modifier
-                    .motionMarkerOffset(progress)
-                    .size(markerSize)
-                    .background(accentColor, markerShape.shape),
-            )
-        }
-    }
-}
-
-@Composable
-private fun Modifier.motionMarkerOffset(progress: State<Float>): Modifier =
-    layout { measurable, constraints ->
-        val marker = measurable.measure(constraints)
-        val travel = (constraints.maxWidth - marker.width).coerceAtLeast(0)
-
-        layout(marker.width, marker.height) {
-            marker.placeRelative(
-                x = (travel * progress.value).roundToInt(),
-                y = 0,
-            )
-        }
-    }
-
-@Composable
-private fun AnimationDetails(
-    isStateB: Boolean,
-) {
-    val useSpring by tweak(true, "Motion/Use spring")
-    val description = if (useSpring) {
-        val stiffness by tweak(280f, "Motion/Spring stiffness", 80f..800f, step = 20f)
-        val dampingRatio by tweak(0.7f, "Motion/Spring damping", 0.1f..1f, step = 0.05f)
-
-        "Spring · $stiffness stiffness · $dampingRatio damping"
-    } else {
-        val durationMillis by tweak(400, "Motion/Duration", 100..1500, step = 50)
-
-        "Tween · $durationMillis ms"
-    }
-    val selectedState = if (isStateB) "State B" else "State A"
-
-    Text(
-        text = "$description · $selectedState",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-    )
 }
