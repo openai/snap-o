@@ -6,8 +6,9 @@ import SnapODeviceClient
 @MainActor
 final class NetworkInspectorHostModel {
   private enum Keys {
+    static let exclusionFilters = "networkInspector.exclusionFilters"
+    static let exclusionFiltersDidChange = Notification.Name("networkInspector.exclusionFiltersDidChange")
     static let hiddenHosts = "networkInspector.hiddenHosts"
-    static let hiddenHostsDidChange = Notification.Name("networkInspector.hiddenHostsDidChange")
   }
 
   private(set) var servers: [NetworkInspectorServer] = []
@@ -19,7 +20,7 @@ final class NetworkInspectorHostModel {
   private(set) var preferredInspectorKind: AppInspectorKind?
   private(set) var isRestoringInspector = false
   private(set) var searchText = ""
-  private(set) var hiddenHosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
+  private(set) var exclusionFilters = NetworkInspectorHostModel.loadExclusionFilters()
   private(set) var sortNewestFirst = false
   private(set) var hasClearableItems = false
   private(set) var hasResettableTweaks = false
@@ -29,7 +30,7 @@ final class NetworkInspectorHostModel {
 
   @ObservationIgnored let webContainer: NetworkInspectorWebContainer
   @ObservationIgnored private var outputTask: Task<Void, Never>?
-  @ObservationIgnored private var hiddenHostsObserver: NSObjectProtocol?
+  @ObservationIgnored private var exclusionFiltersObserver: NSObjectProtocol?
 
   init(service: NetworkInspectorService) {
     let bridge = NetworkInspectorWebBridge(service: service)
@@ -44,26 +45,29 @@ final class NetworkInspectorHostModel {
     bridge.tweaksStateChangedHandler = { [weak self] state in
       self?.apply(state)
     }
-    bridge.hiddenHostsHandler = { [weak self] in
-      self?.hiddenHosts ?? []
+    bridge.exclusionFiltersHandler = { [weak self] in
+      self?.exclusionFilters ?? []
     }
-    bridge.addHiddenHostHandler = { [weak self] host in
-      self?.addHiddenHost(host)
+    bridge.addExclusionFilterHandler = { [weak self] filter in
+      self?.addExclusionFilter(filter)
+    }
+    bridge.removeExclusionFilterHandler = { [weak self] filter in
+      self?.removeExclusionFilter(filter)
     }
     webContainer.pageReadinessChangedHandler = { [weak self] isReady in
       guard let self else { return }
       isPageReady = isReady
       if isReady {
-        sendPageEvent(name: "network:hidden-hosts", payload: hiddenHosts)
+        sendPageEvent(name: "network:exclusion-filters", payload: exclusionFilters)
       }
     }
-    hiddenHostsObserver = NotificationCenter.default.addObserver(
-      forName: Keys.hiddenHostsDidChange,
+    exclusionFiltersObserver = NotificationCenter.default.addObserver(
+      forName: Keys.exclusionFiltersDidChange,
       object: nil,
       queue: .main
     ) { [weak self] _ in
       Task { @MainActor [weak self] in
-        self?.reloadHiddenHosts()
+        self?.reloadExclusionFilters()
       }
     }
     webContainer.start()
@@ -76,9 +80,9 @@ final class NetworkInspectorHostModel {
   func stop() {
     outputTask?.cancel()
     outputTask = nil
-    if let hiddenHostsObserver {
-      NotificationCenter.default.removeObserver(hiddenHostsObserver)
-      self.hiddenHostsObserver = nil
+    if let exclusionFiltersObserver {
+      NotificationCenter.default.removeObserver(exclusionFiltersObserver)
+      self.exclusionFiltersObserver = nil
     }
     webContainer.stop()
   }
@@ -100,23 +104,23 @@ final class NetworkInspectorHostModel {
     sendPageEvent(name: "network:search-text", payload: searchText)
   }
 
-  func addHiddenHost(_ value: String) {
-    guard let host = Self.normalizedHost(value) else { return }
+  func addExclusionFilter(_ value: String) {
+    guard let filter = Self.normalizedExclusionFilter(value) else { return }
 
-    var hosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
-    guard !hosts.contains(host) else { return }
+    var filters = Self.loadExclusionFilters()
+    guard !filters.contains(filter) else { return }
 
-    hosts.append(host)
-    hosts.sort()
-    saveHiddenHosts(hosts)
+    filters.append(filter)
+    filters.sort()
+    saveExclusionFilters(filters)
   }
 
-  func removeHiddenHost(_ host: String) {
-    var hosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
-    guard let index = hosts.firstIndex(of: host) else { return }
+  func removeExclusionFilter(_ filter: String) {
+    var filters = Self.loadExclusionFilters()
+    guard let index = filters.firstIndex(of: filter) else { return }
 
-    hosts.remove(at: index)
-    saveHiddenHosts(hosts)
+    filters.remove(at: index)
+    saveExclusionFilters(filters)
   }
 
   func setSortNewestFirst(_ sortNewestFirst: Bool) {
@@ -217,40 +221,31 @@ final class NetworkInspectorHostModel {
     webContainer.sendPageEvent(name: name, payload: payload)
   }
 
-  private func saveHiddenHosts(_ hosts: [String]) {
-    hiddenHosts = hosts
-    UserDefaults.standard.set(hosts, forKey: Keys.hiddenHosts)
-    sendPageEvent(name: "network:hidden-hosts", payload: hiddenHosts)
-    NotificationCenter.default.post(name: Keys.hiddenHostsDidChange, object: nil)
+  private func saveExclusionFilters(_ filters: [String]) {
+    exclusionFilters = filters
+    UserDefaults.standard.set(filters, forKey: Keys.exclusionFilters)
+    sendPageEvent(name: "network:exclusion-filters", payload: filters)
+    NotificationCenter.default.post(name: Keys.exclusionFiltersDidChange, object: nil)
   }
 
-  private func reloadHiddenHosts() {
-    let hosts = UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts) ?? []
-    guard hiddenHosts != hosts else { return }
+  private func reloadExclusionFilters() {
+    let filters = Self.loadExclusionFilters()
+    guard exclusionFilters != filters else { return }
 
-    hiddenHosts = hosts
-    sendPageEvent(name: "network:hidden-hosts", payload: hosts)
+    exclusionFilters = filters
+    sendPageEvent(name: "network:exclusion-filters", payload: filters)
   }
 
-  private static func normalizedHost(_ value: String) -> String? {
-    var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.hasPrefix("*.") {
-      trimmed.removeFirst(2)
-    }
+  private static func loadExclusionFilters() -> [String] {
+    let stored = UserDefaults.standard.stringArray(forKey: Keys.exclusionFilters)
+      ?? UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts)
+      ?? []
+    return Array(Set(stored.compactMap(normalizedExclusionFilter))).sorted()
+  }
+
+  private static func normalizedExclusionFilter(_ value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
-
-    let input = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
-    guard let components = URLComponents(string: input),
-          let scheme = components.scheme?.lowercased(),
-          ["http", "https", "ws", "wss"].contains(scheme),
-          components.user == nil,
-          components.password == nil,
-          let rawHost = components.host?.lowercased()
-    else {
-      return nil
-    }
-
-    let host = rawHost.hasSuffix(".") ? String(rawHost.dropLast()) : rawHost
-    return host.isEmpty ? nil : host
+    return trimmed.hasPrefix("-") ? trimmed.lowercased() : "-\(trimmed.lowercased())"
   }
 }

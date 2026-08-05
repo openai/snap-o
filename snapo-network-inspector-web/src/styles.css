@@ -440,10 +440,6 @@ body.split-pane-resizing {
   color: var(--on-surface-variant);
 }
 
-.host-filter-control > .toolbar-icon-button {
-  position: relative;
-}
-
 .toolbar-icon-button:disabled {
   color: rgb(107 107 107 / 40%);
 }
@@ -456,36 +452,30 @@ body.split-pane-resizing {
   background: var(--surface-container-highest);
 }
 
-.host-filter-control {
-  position: static;
-}
-
-.host-filter-active {
-  color: var(--accent-blue);
-}
-
-.host-filter-count {
-  position: absolute;
-  top: 0;
-  right: 0;
-  min-width: 14px;
-  height: 14px;
-  display: inline-flex;
+.exclusion-filter-row {
+  position: relative;
+  min-height: 28px;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  background: var(--accent-blue);
-  color: var(--surface-bright);
-  padding: 0 3px;
-  font-size: 9px;
-  line-height: 14px;
-  font-weight: 600;
+  justify-content: space-between;
+  padding: 0 9px 0 12px;
 }
 
-.host-filter-popup {
+.exclusion-filter-summary {
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.exclusion-filter-settings {
+  width: 24px;
+  height: 24px;
+}
+
+.exclusion-filter-popup {
   position: absolute;
   z-index: 30;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   right: 8px;
   width: min(300px, calc(100% - 16px));
   border: 1px solid var(--outline);
@@ -495,28 +485,69 @@ body.split-pane-resizing {
   box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
 }
 
-.host-filter-heading {
+.exclusion-filter-heading {
   color: var(--on-surface);
   font-size: 13px;
   line-height: 18px;
   font-weight: 600;
 }
 
-.host-filter-description {
+.exclusion-filter-description {
   margin: 4px 0 10px;
   color: var(--on-surface-variant);
   font-size: 12px;
   line-height: 16px;
 }
 
-.host-filter-empty {
+.exclusion-filter-form {
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--outline);
+  border-radius: 5px;
+}
+
+.exclusion-filter-form:focus-within {
+  border-color: var(--accent-blue);
+}
+
+.exclusion-filter-form input {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--on-surface);
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.exclusion-filter-form input::placeholder {
+  color: var(--on-surface-variant);
+  opacity: 1;
+}
+
+.exclusion-filter-add {
+  flex: 0 0 auto;
+  color: var(--accent-blue);
+}
+
+.exclusion-filter-add:disabled {
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+}
+
+.exclusion-filter-empty {
   margin: 12px 0 0;
   color: var(--on-surface-variant);
   font-size: 12px;
   line-height: 16px;
 }
 
-.host-filter-list {
+.exclusion-filter-list {
   max-height: 200px;
   overflow-y: auto;
   margin: 8px 0 0;
@@ -524,7 +555,7 @@ body.split-pane-resizing {
   list-style: none;
 }
 
-.host-filter-item {
+.exclusion-filter-item {
   min-height: 30px;
   display: flex;
   align-items: center;
@@ -532,7 +563,7 @@ body.split-pane-resizing {
   gap: 8px;
 }
 
-.host-filter-hostname {
+.exclusion-filter-expression {
   min-width: 0;
   overflow: hidden;
   color: var(--on-surface);
@@ -542,7 +573,7 @@ body.split-pane-resizing {
   white-space: nowrap;
 }
 
-.host-filter-remove {
+.exclusion-filter-remove {
   flex: 0 0 auto;
 }
 

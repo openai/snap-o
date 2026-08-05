@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { RequestRecord, WebSocketRecord } from "../../../network/cdp";
 import {
+  countExcludedRecordsForServer,
   filterRecords,
   responseBodyCaptureMetadata,
   shouldRequestRequestBody,
   shouldRequestResponseBody
 } from "./records";
 
-describe("persistent host filtering", () => {
-  it("hides requests to excluded hosts and their subdomains", () => {
+describe("persistent exclusion filters", () => {
+  it("hides requests with Snap-O's regular minus-prefixed filter syntax", () => {
     const hidden = request({ requestId: "hidden", url: "https://events.example.com/track" });
     const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
 
-    expect(filterRecords([hidden, visible], server, "", false, ["example.com"])).toEqual([visible]);
+    expect(filterRecords([hidden, visible], server, "", false, ["-example.com"])).toEqual([visible]);
   });
 
   it("hides WebSocket connections to excluded hosts", () => {
@@ -32,7 +33,7 @@ describe("persistent host filtering", () => {
     };
     const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
 
-    expect(filterRecords([hidden, visible], server, "", false, ["example.com"])).toEqual([visible]);
+    expect(filterRecords([hidden, visible], server, "", false, ["-example.com"])).toEqual([visible]);
   });
 
   it("continues applying keyword filters to hosts that are not hidden", () => {
@@ -40,9 +41,28 @@ describe("persistent host filtering", () => {
     const matching = request({ requestId: "matching", url: "https://api.openai.com/conversation" });
     const unrelated = request({ requestId: "unrelated", url: "https://api.openai.com/models" });
 
-    expect(filterRecords([hidden, matching, unrelated], server, "conversation", false, ["example.com"])).toEqual([
+    expect(filterRecords([hidden, matching, unrelated], server, "conversation", false, ["-example.com"])).toEqual([
       matching
     ]);
+  });
+
+  it("applies generic exclusion filters to the same searchable metadata as ordinary filters", () => {
+    const hidden = request({ requestId: "hidden", method: "POST", url: "https://api.openai.com/messages" });
+    const visible = request({ requestId: "visible", method: "GET", url: "https://api.openai.com/messages" });
+
+    expect(filterRecords([hidden, visible], server, "", false, ["-post"])).toEqual([visible]);
+  });
+
+  it("counts only excluded requests belonging to the selected server", () => {
+    const hidden = request({ requestId: "hidden", url: "https://events.example.com/track" });
+    const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
+    const anotherServer = request({
+      requestId: "another-server",
+      server: { deviceId: "another-device", socketName: "socket", instanceId: "instance" },
+      url: "https://events.example.com/track"
+    });
+
+    expect(countExcludedRecordsForServer([hidden, visible, anotherServer], server, ["-example.com"])).toBe(1);
   });
 });
 

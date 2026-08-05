@@ -3,27 +3,40 @@ import { createNetworkClient } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("native persistent host filter bridge", () => {
-  it("explicitly restores hidden hosts instead of relying on an early page event", async () => {
-    const postMessage = vi.fn().mockResolvedValue(["example.com", "statsig.com"]);
+describe("native persistent exclusion filter bridge", () => {
+  it("explicitly restores conventional exclusion filters instead of relying on an early page event", async () => {
+    const postMessage = vi.fn().mockResolvedValue(["-example.com", "-statsig.com"]);
     stubNativeBridge(postMessage);
 
     const client = createNetworkClient();
 
-    await expect(client.listHiddenHosts()).resolves.toEqual(["example.com", "statsig.com"]);
-    expect(postMessage).toHaveBeenCalledWith({ command: "listHiddenHosts", payload: undefined });
+    await expect(client.listExclusionFilters()).resolves.toEqual(["-example.com", "-statsig.com"]);
+    expect(postMessage).toHaveBeenCalledWith({ command: "listExclusionFilters", payload: undefined });
   });
 
-  it("persists a right-clicked host through the native application", async () => {
+  it("persists a right-clicked exclusion filter through the native application", async () => {
     const postMessage = vi.fn().mockResolvedValue(undefined);
     stubNativeBridge(postMessage);
 
     const client = createNetworkClient();
 
-    await expect(client.addHiddenHost("api.example.com")).resolves.toBeUndefined();
+    await expect(client.addExclusionFilter("-api.example.com")).resolves.toBeUndefined();
     expect(postMessage).toHaveBeenCalledWith({
-      command: "addHiddenHost",
-      payload: { host: "api.example.com" }
+      command: "addExclusionFilter",
+      payload: { filter: "-api.example.com" }
+    });
+  });
+
+  it("removes exclusion filters through the native application", async () => {
+    const postMessage = vi.fn().mockResolvedValue(undefined);
+    stubNativeBridge(postMessage);
+
+    const client = createNetworkClient();
+
+    await expect(client.removeExclusionFilter("-api.example.com")).resolves.toBeUndefined();
+    expect(postMessage).toHaveBeenCalledWith({
+      command: "removeExclusionFilter",
+      payload: { filter: "-api.example.com" }
     });
   });
 });
