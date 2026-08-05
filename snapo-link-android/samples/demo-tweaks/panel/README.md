@@ -1,11 +1,8 @@
 # Snap-O Tweaks inspector demo
 
-A model built this inspector as one way to find running apps and change live
-values. Each app must use Snap-O Tweaks.
+A model built this inspector as one way to find running apps and change live values. Each app must use Snap-O Tweaks.
 
-This is only a demo, not part of the feature or the expected way to use it.
-You do not need this inspector. Any tool can use `/app`, `/tweaks`,
-`/tweaks?include=adjusted`, and `/tweaks/events` to build its own live UI.
+This is only a demo, not part of the feature or the expected way to use it. You do not need this inspector. Any tool can use `/app`, `/tweaks`, `/tweaks?include=adjusted`, and `/tweaks/events` to build its own live UI.
 
 ## What you need
 
@@ -41,25 +38,15 @@ npm start
 
 Open `http://127.0.0.1:4175`.
 
-To preview the app and inspector menu without a device, open
-`http://127.0.0.1:4175/?mock`. The mock stays in the browser and does not
-run `adb` or connect to an Android app. Apps appear under **Network** and
-**Tweaks**. Each row shows the app and its phone or emulator. Hover over a
-row to see the app's package name.
+To preview the app and inspector menu without a device, open `http://127.0.0.1:4175/?mock`. The mock stays in the browser and does not run `adb` or connect to an Android app. Apps appear under **Network** and **Tweaks**. Each row shows the app and its phone or emulator. Hover over a row to see the app's package name.
 
-To compare a second layout with compact app headings and larger inspector
-rows, open `http://127.0.0.1:4175/?mock=apps`.
+To compare a second layout with compact app headings and larger inspector rows, open `http://127.0.0.1:4175/?mock=apps`.
 
-There is no install or build step. The inspector sets up its own `adb` port
-forwards. It can also start before an Android app is open.
+There is no install or build step. The inspector sets up its own `adb` port forwards. It can also start before an Android app is open.
 
 ## Find and switch apps
 
-The inspector finds every running Snap-O Tweaks app on each connected device.
-The app picker shows the app name, icon, and device. Its menu shows each app
-once, with a short app-and-device heading above a **Tweaks** row. Select that
-row to see and change the app's values. The picker becomes a menu only when
-more than one app is available.
+The inspector finds every running Snap-O Tweaks app on each connected device. The app picker shows the app name, icon, and device. Its menu shows each app once, with a short app-and-device heading above a **Tweaks** row. Select that row to see and change the app's values. The picker becomes a menu only when more than one app is available.
 
 To find apps, the inspector:
 
@@ -69,12 +56,9 @@ To find apps, the inspector:
 4. Uses or creates an `adb` port forward.
 5. Reads `/app` to get the app name and package.
 
-It checks for new apps every few seconds. Tweak and screen changes stream from
-the app as they happen. If an app starts again, the inspector keeps the same app
-selected when possible. If no app is running, it shows an empty state and waits.
+It checks for new apps every few seconds. Tweak and screen changes stream from the app as they happen. If an app starts again, the inspector keeps the same app selected when possible. If no app is running, it shows an empty state and waits.
 
-App discovery and selection belong to this demo server. `/apps` and
-`/apps/selection` are not part of the Android Snap-O Tweaks protocol.
+App discovery and selection belong to this demo server. `/apps` and `/apps/selection` are not part of the Android Snap-O Tweaks protocol.
 
 ## Group tweaks
 
@@ -87,12 +71,9 @@ val animationDuration by tweak(400, "Motion/Duration", 100..1500)
 val markerShape by tweak(MotionMarkerShape.Circle, "Motion/Marker shape")
 ```
 
-The part before `/` is the section. The part after `/` is the label. A tweak
-without `/` has no section. The full name is still used for changes.
+The part before `/` is the section. The part after `/` is the label. A tweak without `/` has no section. The full name is still used for changes.
 
-Sections and tweaks keep the order in which the app first shows them. If one
-goes away and comes back, it returns to the same place. On wide screens,
-sections stack in two stable columns and do not move between them.
+Sections and tweaks keep the order in which the app first shows them. If one goes away and comes back, it returns to the same place. On wide screens, sections stack in two stable columns and do not move between them.
 
 ## Use a different device or app
 
@@ -121,8 +102,7 @@ To use a local endpoint:
 npm start -- --target http://127.0.0.1:43817
 ```
 
-A target set this way will not follow an app that starts again. To use a
-different port:
+A target set this way will not follow an app that starts again. To use a different port:
 
 ```bash
 npm start -- --port 4176
@@ -130,25 +110,17 @@ npm start -- --port 4176
 
 ## Change a live value
 
-Move a slider, choose a color, or select a marker shape by its enum name. The
-app changes at once. The inspector waits for each request before it sends the
-next value or switches to another app. You can set one value or all values
-back.
+Move a slider, choose a color, or select a marker shape by its enum name. The app changes at once. The inspector waits for each request before it sends the next value or switches to another app. You can set one value or all values back.
 
-Turn off **Show** in the **Motion** section to hide the motion preview in the
-sample app. Its animation tweaks leave the composition and vanish from the
-inspector. Turn it back on to see them appear again.
+Turn off **Show** in the **Motion** section to hide the motion preview in the sample app. Its animation tweaks leave the composition and vanish from the inspector. Turn it back on to see them appear again.
 
-The inspector continues to display only active tweaks. To inspect retained
-values the user previously adjusted, including tweaks that have since left
-composition, request the expanded view through the demo server:
+The inspector continues to display only active tweaks. To inspect retained values the user previously adjusted, including tweaks that have since left composition, request the expanded view through the demo server:
 
 ```bash
 curl -fsS 'http://127.0.0.1:4175/tweaks?include=adjusted'
 ```
 
-Inactive historical tweaks can be inspected, but cannot be changed or reset
-until they return to composition.
+Inactive historical tweaks can be inspected, but cannot be changed or reset until they return to composition.
 
 ## Test the panel
 
