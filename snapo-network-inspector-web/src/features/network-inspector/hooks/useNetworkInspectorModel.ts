@@ -18,14 +18,15 @@ import { useInspectorUiState } from "./useInspectorUiState";
 import { applyDebugInspectorPreset } from "../lib/debug";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
 import {
-  HiddenHostsRevision,
-  loadHiddenHosts,
-  normalizeHiddenHost,
-  normalizeHiddenHosts,
-  saveHiddenHosts
-} from "../lib/hostFilters";
+  ExclusionFiltersRevision,
+  loadExclusionFilters,
+  normalizeExclusionFilter,
+  normalizeExclusionFilters,
+  saveExclusionFilters
+} from "../lib/exclusionFilters";
 import {
   clearCompleted,
+  countExcludedRecordsForServer,
   countRecordsForServer,
   filterRecords,
   isCompletedRecord,
@@ -52,7 +53,8 @@ export interface NetworkInspectorModel {
   allRecords: InspectorRecord[];
   sidebarPlaceholder: string | null;
   searchText: string;
-  hiddenHosts: string[];
+  exclusionFilters: string[];
+  hiddenRequestCount: number;
   sortNewestFirst: boolean;
   serverRecordCount: number;
   hasClearableItems: boolean;
@@ -61,8 +63,8 @@ export interface NetworkInspectorModel {
   selectReplacementServer(server: SnapOServer): void;
   selectRecord(id: string): void;
   setSearchText(value: string): void;
-  addHiddenHost(value: string): void;
-  removeHiddenHost(host: string): void;
+  addExclusionFilter(value: string): void;
+  removeExclusionFilter(filter: string): void;
   toggleSortOrder(): void;
   clearCompletedRecords(): void;
   openDocs(): void;
@@ -77,10 +79,10 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const selectedServerRef = useRef<ServerId | null>(null);
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [hiddenHosts, setHiddenHosts] = useState<string[]>(() =>
-    client.usesNativeServerPicker ? [] : loadHiddenHosts()
+  const [exclusionFilters, setExclusionFilters] = useState<string[]>(() =>
+    client.usesNativeServerPicker ? [] : loadExclusionFilters()
   );
-  const [hiddenHostsRevision] = useState(() => new HiddenHostsRevision());
+  const [exclusionFiltersRevision] = useState(() => new ExclusionFiltersRevision());
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const [debugPreset, setDebugPreset] = useState<DebugInspectorPreset>("live");
   const [, setBodyCacheRevision] = useState(0);
@@ -95,34 +97,46 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const { bodyCache, bodyLoader } = bodyHydration;
   const toggleSortOrder = useCallback(() => setSortNewestFirst((value) => !value), []);
   const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
-  const addHiddenHost = useCallback(
+  const addExclusionFilter = useCallback(
     (value: string) => {
-      const host = normalizeHiddenHost(value);
-      if (host == null) return;
+      const filter = normalizeExclusionFilter(value);
+      if (filter == null) return;
 
-      hiddenHostsRevision.invalidate();
-      setHiddenHosts((current) => (current.includes(host) ? current : [...current, host].sort()));
+      exclusionFiltersRevision.invalidate();
+      setExclusionFilters((current) => (current.includes(filter) ? current : [...current, filter].sort()));
 
       if (client.usesNativeServerPicker) {
-        void client.addHiddenHost(host).catch(() => {
-          const revision = hiddenHostsRevision.capture();
-          void client.listHiddenHosts().then(
-            (hosts) => {
-              if (hiddenHostsRevision.isCurrent(revision)) setHiddenHosts(normalizeHiddenHosts(hosts));
+        void client.addExclusionFilter(filter).catch(() => {
+          const revision = exclusionFiltersRevision.capture();
+          void client.listExclusionFilters().then(
+            (filters) => {
+              if (exclusionFiltersRevision.isCurrent(revision)) setExclusionFilters(normalizeExclusionFilters(filters));
             },
             () => {}
           );
         });
       }
     },
-    [client, hiddenHostsRevision]
+    [client, exclusionFiltersRevision]
   );
-  const removeHiddenHost = useCallback(
-    (host: string) => {
-      hiddenHostsRevision.invalidate();
-      setHiddenHosts((current) => current.filter((value) => value !== host));
+  const removeExclusionFilter = useCallback(
+    (filter: string) => {
+      exclusionFiltersRevision.invalidate();
+      setExclusionFilters((current) => current.filter((value) => value !== filter));
+
+      if (client.usesNativeServerPicker) {
+        void client.removeExclusionFilter(filter).catch(() => {
+          const revision = exclusionFiltersRevision.capture();
+          void client.listExclusionFilters().then(
+            (filters) => {
+              if (exclusionFiltersRevision.isCurrent(revision)) setExclusionFilters(normalizeExclusionFilters(filters));
+            },
+            () => {}
+          );
+        });
+      }
     },
-    [hiddenHostsRevision]
+    [client, exclusionFiltersRevision]
   );
 
   useEffect(() => {
@@ -156,11 +170,11 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   useEffect(() => client.onNativeSearchText(setSearchText), [client]);
   useEffect(
     () =>
-      client.onNativeHiddenHosts((hosts) => {
-        hiddenHostsRevision.invalidate();
-        setHiddenHosts(normalizeHiddenHosts(hosts));
+      client.onNativeExclusionFilters((filters) => {
+        exclusionFiltersRevision.invalidate();
+        setExclusionFilters(normalizeExclusionFilters(filters));
       }),
-    [client, hiddenHostsRevision]
+    [client, exclusionFiltersRevision]
   );
   useEffect(() => client.onNativeSortOrder(setSortNewestFirst), [client]);
   useEffect(() => client.onNativeClearCompleted(clearCompletedRecords), [clearCompletedRecords, client]);
@@ -169,10 +183,12 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     if (!client.usesNativeServerPicker) return;
 
     let disposed = false;
-    const revision = hiddenHostsRevision.capture();
-    void client.listHiddenHosts().then(
-      (hosts) => {
-        if (!disposed && hiddenHostsRevision.isCurrent(revision)) setHiddenHosts(normalizeHiddenHosts(hosts));
+    const revision = exclusionFiltersRevision.capture();
+    void client.listExclusionFilters().then(
+      (filters) => {
+        if (!disposed && exclusionFiltersRevision.isCurrent(revision)) {
+          setExclusionFilters(normalizeExclusionFilters(filters));
+        }
       },
       () => {}
     );
@@ -180,11 +196,11 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     return () => {
       disposed = true;
     };
-  }, [client, hiddenHostsRevision]);
+  }, [client, exclusionFiltersRevision]);
 
   useEffect(() => {
-    if (!client.usesNativeServerPicker) saveHiddenHosts(hiddenHosts);
-  }, [client, hiddenHosts]);
+    if (!client.usesNativeServerPicker) saveExclusionFilters(exclusionFilters);
+  }, [client, exclusionFilters]);
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -262,8 +278,13 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
 
   const visibleRecords = useMemo(
-    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst, hiddenHosts),
-    [allRecords, hiddenHosts, searchText, selectedServer, sortNewestFirst]
+    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst, exclusionFilters),
+    [allRecords, exclusionFilters, searchText, selectedServer, sortNewestFirst]
+  );
+
+  const hiddenRequestCount = useMemo(
+    () => countExcludedRecordsForServer(allRecords, selectedServer, exclusionFilters),
+    [allRecords, exclusionFilters, selectedServer]
   );
 
   const serverRecordCount = useMemo(
@@ -420,7 +441,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     allRecords,
     sidebarPlaceholder,
     searchText,
-    hiddenHosts,
+    exclusionFilters,
+    hiddenRequestCount,
     sortNewestFirst,
     serverRecordCount,
     hasClearableItems,
@@ -429,8 +451,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     selectReplacementServer,
     selectRecord,
     setSearchText,
-    addHiddenHost,
-    removeHiddenHost,
+    addExclusionFilter,
+    removeExclusionFilter,
     toggleSortOrder,
     clearCompletedRecords,
     openDocs

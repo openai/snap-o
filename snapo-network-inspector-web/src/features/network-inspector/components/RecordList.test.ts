@@ -3,49 +3,62 @@ import type { NetworkClient } from "../../../network/client";
 import type { RequestRecord, WebSocketRecord } from "../../../network/cdp";
 import { sidebarContextMenuItems } from "./RecordList";
 
-describe("network request host filter context menu", () => {
+describe("network request exclusion filter context menu", () => {
   const client = {
     copyText: vi.fn()
   } as unknown as NetworkClient;
 
-  it("adds a request host to the persistent filtered hosts list", () => {
+  it("adds a request host as a persistent conventional exclusion filter", () => {
     const record = request("https://API.Example.COM:443/events");
-    const addHiddenHost = vi.fn();
+    const addExclusionFilter = vi.fn();
 
-    const items = sidebarContextMenuItems(record, null, [record], client, addHiddenHost);
-    const item = items.find((entry) => entry.label === "Add to filtered hosts");
+    const items = sidebarContextMenuItems(record, null, [record], client, addExclusionFilter);
+    const item = items.find((entry) => entry.label === "Add host to exclusion filter");
 
     expect(item?.disabled).toBe(false);
     item?.action();
 
-    expect(addHiddenHost).toHaveBeenCalledOnce();
-    expect(addHiddenHost).toHaveBeenCalledWith("api.example.com");
+    expect(addExclusionFilter).toHaveBeenCalledOnce();
+    expect(addExclusionFilter).toHaveBeenCalledWith("-api.example.com");
   });
 
-  it("adds a WebSocket host to the same persistent filtered hosts list", () => {
-    const record = webSocket("wss://stream.example.com/live");
-    const addHiddenHost = vi.fn();
+  it("places exclusions after both copy actions and before export", () => {
+    const record = request("https://api.example.com/events");
 
-    const items = sidebarContextMenuItems(record, null, [record], client, addHiddenHost);
-    const item = items.find((entry) => entry.label === "Add to filtered hosts");
+    const items = sidebarContextMenuItems(record, null, [record], client, vi.fn());
+
+    expect(items.map(({ label }) => label)).toEqual([
+      "Copy URL",
+      "Copy as cURL",
+      "Add host to exclusion filter",
+      "Export HAR (sanitized)..."
+    ]);
+  });
+
+  it("adds a WebSocket host to the same persistent exclusion filters", () => {
+    const record = webSocket("wss://stream.example.com/live");
+    const addExclusionFilter = vi.fn();
+
+    const items = sidebarContextMenuItems(record, null, [record], client, addExclusionFilter);
+    const item = items.find((entry) => entry.label === "Add host to exclusion filter");
 
     expect(item?.disabled).toBe(false);
     item?.action();
 
-    expect(addHiddenHost).toHaveBeenCalledWith("stream.example.com");
+    expect(addExclusionFilter).toHaveBeenCalledWith("-stream.example.com");
   });
 
   it("disables host filtering for records without a valid host", () => {
     const record = request("Request unfinished");
-    const addHiddenHost = vi.fn();
+    const addExclusionFilter = vi.fn();
 
-    const items = sidebarContextMenuItems(record, null, [record], client, addHiddenHost);
-    const item = items.find((entry) => entry.label === "Add to filtered hosts");
+    const items = sidebarContextMenuItems(record, null, [record], client, addExclusionFilter);
+    const item = items.find((entry) => entry.label === "Add host to exclusion filter");
 
     expect(item?.disabled).toBe(true);
     item?.action();
 
-    expect(addHiddenHost).not.toHaveBeenCalled();
+    expect(addExclusionFilter).not.toHaveBeenCalled();
   });
 });
 
