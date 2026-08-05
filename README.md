@@ -43,23 +43,20 @@ fun MotionPreview() {
 }
 ```
 
-`TweakAction` returns `Unit` and exposes its callback only while its owner is in
-composition; declaring the action does not run the callback.
+`TweakAction` returns `Unit` and exposes its callback only while its owner is in composition; declaring the action does not run the callback.
 
 Follow the [Tweaks developer guide](https://openai.github.io/snap-o/tweaks.html) for setup steps.
 
 ## Why build an Android inspection system?
 
-Capturing visuals and validating traffic for teammates or pull requests adds many small paper cuts.
-You might like Snap-O if you've ever wished you could:
+Capturing visuals and validating traffic for teammates or pull requests adds many small paper cuts. You might like Snap-O if you've ever wished you could:
 
 - Share screenshots and recordings without littering your disk with throwaway files
 - Preview a recording instantly without saving it first
 - Scrub frame by frame to confirm an animation behaves as expected
 - Use something that feels faster than the default capture tools
 
-I've built variations of this tool a few times over the last decade; this is the first one
-I'm open-sourcing.
+I've built variations of this tool a few times over the last decade; this is the first one I'm open-sourcing.
 
 ## Usage
 
@@ -85,9 +82,7 @@ snapo tweaks list --all -s <serial> -n <socket> --json
 snapo tweaks get 'Motion/Duration' --all -s <serial> -n <socket> --json
 ```
 
-The equivalent API is `GET /tweaks?include=adjusted`. Inactive tweaks remain
-read-only. See the [Tweaks protocol guide](contracts/tweaks/README.md) for
-descriptors and updates.
+The equivalent API is `GET /tweaks?include=adjusted`. Inactive tweaks remain read-only. See the [Tweaks protocol guide](contracts/tweaks/README.md) for descriptors and updates.
 
 ### Drag and Drop
 
@@ -233,10 +228,7 @@ With the default ADB configuration, the CLI opens a localhost forward for the se
 
 ## Community
 
-Bug reports and small patches are welcome, but there is no formal roadmap. If
-you do decide to contribute, please take a quick look at
-[CONTRIBUTING.md](CONTRIBUTING.md) and the
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Bug reports and small patches are welcome, but there is no formal roadmap. If you do decide to contribute, please take a quick look at [CONTRIBUTING.md](CONTRIBUTING.md) and the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 

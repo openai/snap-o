@@ -2,11 +2,7 @@
 
 Status: phase one. The network inspector protocol is unchanged.
 
-Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless
-actions from the currently composed Android UI through an app-local socket,
-enabled by default only in debug builds. Agents and desktop tools can use HTTP
-to inspect those values, change them, and invoke app-owned callbacks while the
-app runs.
+Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless actions from the currently composed Android UI through an app-local socket, enabled by default only in debug builds. Agents and desktop tools can use HTTP to inspect those values, change them, and invoke app-owned callbacks while the app runs.
 
 ## Transport
 
@@ -29,20 +25,13 @@ ADB prints the assigned localhost port:
 curl -fsS http://127.0.0.1:43817/tweaks
 ```
 
-Implement HTTP with Android `LocalServerSocket`, standard streams, and Android
-`JsonReader`/`JsonWriter`. Use JSON for app and tweak responses, PNG for
-`/app/icon`, and server-sent events for `/tweaks/events`. Ordinary responses
-include `Content-Length` and close their connection. Event streams keep their
-connection open. Bound request sizes and concurrent connections, and apply a
-read timeout while receiving each request. No server dependency, Android TCP
-port, or `INTERNET` permission is needed.
+Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `JsonReader`/`JsonWriter`. Use JSON for app and tweak responses, PNG for `/app/icon`, and server-sent events for `/tweaks/events`. Ordinary responses include `Content-Length` and close their connection. Event streams keep their connection open. Bound request sizes and concurrent connections, and apply a read timeout while receiving each request. No server dependency, Android TCP port, or `INTERNET` permission is needed.
 
 ## REST API
 
 ### GET /app
 
-Return the app's user-facing Android label, package name, and Tweaks protocol
-version:
+Return the app's user-facing Android label, package name, and Tweaks protocol version:
 
 ```json
 {
@@ -52,16 +41,11 @@ version:
 }
 ```
 
-Resolve `name` from the actual Android app label. An absent `protocolVersion`
-identifies the original version 1, which exposes value tweaks only. Version 2
-adds action descriptors and `POST /tweaks/action`. The Tweaks protocol version
-is independent of the Network Inspector protocol version; hosts can use it to
-identify newer versions they do not support.
+Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to identify newer versions they do not support.
 
 ### GET /app/icon
 
-Lazily return the app icon as a 96 × 96 PNG with `Content-Type: image/png`.
-Return `404` when the icon is unavailable.
+Lazily return the app icon as a 96 × 96 PNG with `Content-Type: image/png`. Return `404` when the icon is unavailable.
 
 ### GET /tweaks
 
@@ -160,34 +144,15 @@ Return a flat list of currently registered tweaks:
 }
 ```
 
-A tweak name represents one shared value, not one composable. Multiple active
-composables may register the same name; the tweak appears only once, and an
-update changes the value observed by every usage. A tweak remains registered
-until its last usage leaves composition. Its most recently edited value remains
-available if the same complete declaration later returns, but inactive tweaks do
-not appear in default responses or event snapshots.
+A tweak name represents one shared value, not one composable. Multiple active composables may register the same name; the tweak appears only once, and an update changes the value observed by every usage. A tweak remains registered until its last usage leaves composition. Its most recently edited value remains available if the same complete declaration later returns, but inactive tweaks do not appear in default responses or event snapshots.
 
-Usages with the same name must agree on the tweak type, default, constraints,
-and ordered enum options. Conflicting declarations are a configuration error.
+Usages with the same name must agree on the tweak type, default, constraints, and ordered enum options. Conflicting declarations are a configuration error.
 
-Supported value types are `int`, `float`, `boolean`, `color`, `string`, and
-`enum`. The `action` type describes an explicitly registered parameterless
-app-owned callback. Actions do not have `value`, `default`, options, or numeric
-constraints; clients must not attempt to patch or reset them. Integer tweaks
-accept only whole numbers; float tweaks accept whole or fractional numbers.
-Numeric tweaks may include `min`, `max`, and `step`. Only include constraints
-actually supplied by the app. A `step` is relative to `min`, or to `default` if
-no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
+Supported value types are `int`, `float`, `boolean`, `color`, `string`, and `enum`. The `action` type describes an explicitly registered parameterless app-owned callback. Actions do not have `value`, `default`, options, or numeric constraints; clients must not attempt to patch or reset them. Integer tweaks accept only whole numbers; float tweaks accept whole or fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include constraints actually supplied by the app. A `step` is relative to `min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
 
-Enum tweaks include an ordered, nonempty `options` array containing the unique
-enum constant names. The descriptor's `default`, current `value`, picker text,
-and `PATCH` values all use those exact names. Preserve declaration order when
-rendering pickers; reject any value not present in `options`.
+Enum tweaks include an ordered, nonempty `options` array containing the unique enum constant names. The descriptor's `default`, current `value`, picker text, and `PATCH` values all use those exact names. Preserve declaration order when rendering pickers; reject any value not present in `options`.
 
-Action names must be explicit, stable, and unique among live registrations.
-Register a shared action once at the composable that owns its behavior rather
-than registering separate callbacks with the same name in multiple consumers.
-If multiple live owners register the same action name, the descriptor becomes:
+Action names must be explicit, stable, and unique among live registrations. Register a shared action once at the composable that owns its behavior rather than registering separate callbacks with the same name in multiple consumers. If multiple live owners register the same action name, the descriptor becomes:
 
 ```json
 {
@@ -197,57 +162,25 @@ If multiple live owners register the same action name, the descriptor becomes:
 }
 ```
 
-Conflicting actions remain discoverable but cannot be invoked until exactly one
-owner remains. Callbacks are never silently deduplicated, replaced, or renamed
-with generated suffixes.
+Conflicting actions remain discoverable but cannot be invoked until exactly one owner remains. Callbacks are never silently deduplicated, replaced, or renamed with generated suffixes.
 
-Compose color defaults keep their exact in-process identity, including color
-space, component precision, and `Color.Unspecified`. The HTTP protocol still
-presents colors as sRGB hex; non-sRGB defaults are projected, and
-`Color.Unspecified` appears as `#00000000`. Patching a color with that presented
-default remains the legacy reset operation, so the same projected hex cannot
-also express a distinct sRGB edit for a non-round-trippable default.
+Compose color defaults keep their exact in-process identity, including color space, component precision, and `Color.Unspecified`. The HTTP protocol still presents colors as sRGB hex; non-sRGB defaults are projected, and `Color.Unspecified` appears as `#00000000`. Patching a color with that presented default remains the legacy reset operation, so the same projected hex cannot also express a distinct sRGB edit for a non-round-trippable default.
 
-Numeric JSON values may contain at most 128 characters and 64 significant
-digits, with a decimal scale between -64 and 64. Reject values outside those
-limits with `422` before changing any tweaks.
+Numeric JSON values may contain at most 128 characters and 64 significant digits, with a decimal scale between -64 and 64. Reject values outside those limits with `422` before changing any tweaks.
 
 ### GET /tweaks?include=adjusted
 
-Opt in to a complete list of active tweaks and previously adjusted tweaks that
-have since left composition:
+Opt in to a complete list of active tweaks and previously adjusted tweaks that have since left composition:
 
 ```bash
 curl -fsS 'http://127.0.0.1:43817/tweaks?include=adjusted'
 ```
 
-The response uses the same `{"tweaks":[...]}` shape and complete tweak
-descriptors as `GET /tweaks`. Include every currently active tweak, whether or
-not it has been adjusted, and every inactive tweak whose value was actually
-changed by a successful user adjustment. Preserve the tweak's original
-declaration, constraints, and latest value after its final usage leaves
-composition. Separate screens may reuse a name with different declarations;
-include each independently adjusted complete descriptor, even when names
-repeat. Repeated names occur only for distinct complete descriptors; active-only
-listings and updates still resolve at most one active descriptor per name.
-Order names by first observation, regardless of later activation or adjustment.
-For repeated names, list the active declaration first, followed by historical
-declarations in stable adjustment order.
+The response uses the same `{"tweaks":[...]}` shape and complete tweak descriptors as `GET /tweaks`. Include every currently active tweak, whether or not it has been adjusted, and every inactive tweak whose value was actually changed by a successful user adjustment. Preserve the tweak's original declaration, constraints, and latest value after its final usage leaves composition. Separate screens may reuse a name with different declarations; include each independently adjusted complete descriptor, even when names repeat. Repeated names occur only for distinct complete descriptors; active-only listings and updates still resolve at most one active descriptor per name. Order names by first observation, regardless of later activation or adjustment. For repeated names, list the active declaration first, followed by historical declarations in stable adjustment order.
 
-An adjusted tweak remains in this history even after its value is reset to its
-default. An inactive tweak that was never changed, a no-op update that leaves
-its value unchanged, and a rejected or atomically rolled-back update do not
-create history entries. Adjustment history exists only for the current app
-process and is discarded when that process exits.
+An adjusted tweak remains in this history even after its value is reset to its default. An inactive tweak that was never changed, a no-op update that leaves its value unchanged, and a rejected or atomically rolled-back update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
 
-Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only
-currently active names and returns `404` for an inactive name. Actions appear
-while active but never create adjusted-history entries because they have no
-editable or retained value. Plain `GET /tweaks` and
-`GET /tweaks/events` remain active-only. The only supported
-query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated,
-or additional query parameters and queries on other endpoints or methods
-return `400`.
+Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names and returns `404` for an inactive name. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
 
 ### GET /tweaks/events
 
@@ -266,18 +199,9 @@ data: {"tweaks":[{"name":"Motion/Show","type":"boolean","default":true,"value":f
 
 ```
 
-The response uses `Content-Type: text/event-stream`. Its first event contains
-the complete current tweak list. Each later event also contains a complete,
-ordered list of value and action descriptors using exactly the `GET /tweaks`
-response shape. Clients replace
-their previous snapshot; a missing tweak has left composition.
+The response uses `Content-Type: text/event-stream`. Its first event contains the complete current tweak list. Each later event also contains a complete, ordered list of value and action descriptors using exactly the `GET /tweaks` response shape. Clients replace their previous snapshot; a missing tweak has left composition.
 
-Changes are published after the current Android main-thread turn. Tweaks added,
-removed, or changed during the same Compose update appear together in one
-event. Value changes are streamed whether they originated from an HTTP request
-or a Compose snapshot. Idle connections receive occasional SSE comments as
-keep-alives. A slow client receives the latest complete snapshot rather than
-an unbounded queue of intermediate states.
+Changes are published after the current Android main-thread turn. Tweaks added, removed, or changed during the same Compose update appear together in one event. Value changes are streamed whether they originated from an HTTP request or a Compose snapshot. Idle connections receive occasional SSE comments as keep-alives. A slow client receives the latest complete snapshot rather than an unbounded queue of intermediate states.
 
 ### PATCH /tweaks
 
@@ -313,11 +237,7 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 }
 ```
 
-Validate all values before changing any of them. Return `400` for malformed
-requests, `404` when an endpoint or requested tweak does not exist, `405`
-for an unsupported method, `413` for an oversized body, and `422` when a value
-has the wrong type, violates a constraint, or is not one of the declared enum
-option values. Errors use a small JSON body:
+Validate all values before changing any of them. Return `400` for malformed requests, `404` when an endpoint or requested tweak does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` when a value has the wrong type, violates a constraint, or is not one of the declared enum option values. Errors use a small JSON body:
 
 ```json
 {
@@ -325,10 +245,7 @@ option values. Errors use a small JSON body:
 }
 ```
 
-Apply changes on the Android main thread. If any value is invalid, do not update
-any tweaks in that request. Reset a value by patching it with its default.
-Actions are not valid patch targets; attempting to patch one returns `422`
-without changing any value in the same request.
+Apply changes on the Android main thread. If any value is invalid, do not update any tweaks in that request. Reset a value by patching it with its default. Actions are not valid patch targets; attempting to patch one returns `422` without changing any value in the same request.
 
 ### POST /tweaks/action
 
@@ -346,19 +263,9 @@ curl -fsS -X POST http://127.0.0.1:43817/tweaks/action \
 }
 ```
 
-The JSON body must contain exactly one nonblank string field named `name`.
-The registered callback executes synchronously on the Android main thread.
-This endpoint accepts no arguments, arbitrary code, or dynamic invocation
-targets; only explicitly registered app-owned callbacks are available.
+The JSON body must contain exactly one nonblank string field named `name`. The registered callback executes synchronously on the Android main thread. This endpoint accepts no arguments, arbitrary code, or dynamic invocation targets; only explicitly registered app-owned callbacks are available.
 
-Return `400` for malformed bodies, unsupported content types, additional
-fields, blank names, or unsupported query parameters; `404` for an unknown
-action or a name belonging to a value tweak; `405` for methods other than
-`POST`; and `409` when more than one live owner registered the same name.
-Duplicate registration errors explain that the action must be registered
-once at its owner. Main-thread unavailability, callback failures, and timeouts
-return `503`, `500`, and `504`, respectively. Errors use the same
-`{"error":"..."}` response shape as tweak updates.
+Return `400` for malformed bodies, unsupported content types, additional fields, blank names, or unsupported query parameters; `404` for an unknown action or a name belonging to a value tweak; `405` for methods other than `POST`; and `409` when more than one live owner registered the same name. Duplicate registration errors explain that the action must be registered once at its owner. Main-thread unavailability, callback failures, and timeouts return `503`, `500`, and `504`, respectively. Errors use the same `{"error":"..."}` response shape as tweak updates.
 
 ## Compose API
 
@@ -433,14 +340,7 @@ fun MotionSpecimen() {
 }
 ```
 
-Each tweak function returns `State<T>`. Read it with `.value`, or delegate it
-with `by`; `androidx.compose.runtime.getValue` supplies the delegate operator.
-Theme colors are intentionally read at the theme boundary; font, text, and
-animation changes recompose their respective leaf composables rather than the
-entire screen. Both typography composables read the same Font size state, so
-one host update changes both. When a value only affects layout or drawing,
-read the delegated value inside the corresponding callback instead of
-composition:
+Each tweak function returns `State<T>`. Read it with `.value`, or delegate it with `by`; `androidx.compose.runtime.getValue` supplies the delegate operator. Theme colors are intentionally read at the theme boundary; font, text, and animation changes recompose their respective leaf composables rather than the entire screen. Both typography composables read the same Font size state, so one host update changes both. When a value only affects layout or drawing, read the delegated value inside the corresponding callback instead of composition:
 
 ```kotlin
 val horizontalOffset by tweak(0, "Horizontal offset", 0..200)
@@ -452,32 +352,11 @@ Box(
 )
 ```
 
-Each remembered usage registers with composition and removes the tweak from
-the active list only after its final usage leaves. Returning declarations
-restore their previously edited values. Screen navigation therefore determines
-what appears in the default response without discarding edits; request
-`GET /tweaks?include=adjusted` to also recover previously adjusted values from
-screens that are no longer in composition.
+Each remembered usage registers with composition and removes the tweak from the active list only after its final usage leaves. Returning declarations restore their previously edited values. Screen navigation therefore determines what appears in the default response without discarding edits; request `GET /tweaks?include=adjusted` to also recover previously adjusted values from screens that are no longer in composition.
 
-Provide overloaded `tweak(default, name)` functions for `Int`, `Float`,
-`Color`, `Boolean`, `String`, and enum defaults; each returns its corresponding
-`State<T>`. For strings, name the second argument to distinguish the label from
-the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept
-an optional range and `step` of the same type. Enum tweaks infer their options
-from declaration order and use each constant's name everywhere. Convert
-delegated integer values into Compose units at the call site, such as
-`fontSize.sp`. The real and no-op artifacts expose the same package and public
-Compose API.
+Provide overloaded `tweak(default, name)` functions for `Int`, `Float`, `Color`, `Boolean`, `String`, and enum defaults; each returns its corresponding `State<T>`. For strings, name the second argument to distinguish the label from the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept an optional range and `step` of the same type. Enum tweaks infer their options from declaration order and use each constant's name everywhere. Convert delegated integer values into Compose units at the call site, such as `fontSize.sp`. The real and no-op artifacts expose the same package and public Compose API.
 
-Declare a parameterless action with the `TweakAction(name) { ... }` composable.
-It returns `Unit` and does not execute its callback during composition or return
-a callable function. The action is available only while its owning composable
-is in composition, always uses its most recent callback, and is exposed with
-its explicit name rather than an inferred or generated identifier. Register
-each action exactly once at the composable that owns the state or operation;
-multiple owners using the same name produce a visible conflict and all
-invocation attempts fail closed. The release/no-op implementation accepts the
-same API without retaining or invoking the callback.
+Declare a parameterless action with the `TweakAction(name) { ... }` composable. It returns `Unit` and does not execute its callback during composition or return a callable function. The action is available only while its owning composable is in composition, always uses its most recent callback, and is exposed with its explicit name rather than an inferred or generated identifier. Register each action exactly once at the composable that owns the state or operation; multiple owners using the same name produce a visible conflict and all invocation attempts fail closed. The release/no-op implementation accepts the same API without retaining or invoking the callback.
 
 ## Setup
 
@@ -516,8 +395,7 @@ fun App() {
 }
 ```
 
-The overlay is disabled by default. Expose its app-wide setting from a
-developer-settings screen:
+The overlay is disabled by default. Expose its app-wide setting from a developer-settings screen:
 
 ```kotlin
 import androidx.compose.material3.Switch
@@ -535,13 +413,7 @@ fun DeveloperSettings() {
 }
 ```
 
-The setting persists between app launches. When enabled, a movable button
-appears only while at least one tweak is in composition. Tap it to inspect or
-edit the active tweaks, run registered actions, and minimize the panel to return
-to the button. Conflicted actions are visible but cannot be run. The panel stays
-synchronized with host-side changes, remembers its position, and disappears when
-the last tweak or action leaves composition. The no-op overlay keeps the same
-wrapper and settings APIs without showing a panel in release builds.
+The setting persists between app launches. When enabled, a movable button appears only while at least one tweak is in composition. Tap it to inspect or edit the active tweaks, run registered actions, and minimize the panel to return to the button. Conflicted actions are visible but cannot be run. The panel stays synchronized with host-side changes, remembers its position, and disappears when the last tweak or action leaves composition. The no-op overlay keeps the same wrapper and settings APIs without showing a panel in release builds.
 
 Install the standalone debug sample on a connected Android device:
 
@@ -555,16 +427,9 @@ From the repository root, start the sample's optional host-side tweak panel:
 node snapo-link-android/samples/demo-tweaks/panel/server.mjs
 ```
 
-Open `http://127.0.0.1:4175`. The dependency-free panel discovers connected
-devices and live tweak sockets, creates its own ADB forward, displays the app
-icon and tweaks, and reconnects when the app process changes. It is a model-built
-demo, not a required setup step or the expected way to use Snap-O Tweaks. Any
-agent or host can use the same endpoints to create its own UI. See the sample
-panel's README for device and package selection.
+Open `http://127.0.0.1:4175`. The dependency-free panel discovers connected devices and live tweak sockets, creates its own ADB forward, displays the app icon and tweaks, and reconnects when the app process changes. It is a model-built demo, not a required setup step or the expected way to use Snap-O Tweaks. Any agent or host can use the same endpoints to create its own UI. See the sample panel's README for device and package selection.
 
-A non-exported `ContentProvider` in the live artifact starts the runtime by
-default only when `ApplicationInfo.FLAG_DEBUGGABLE` is set. To intentionally
-enable live Snap-O Tweaks in a non-debuggable app, set its application flag:
+A non-exported `ContentProvider` in the live artifact starts the runtime by default only when `ApplicationInfo.FLAG_DEBUGGABLE` is set. To intentionally enable live Snap-O Tweaks in a non-debuggable app, set its application flag:
 
 ```xml
 <application>
@@ -572,12 +437,6 @@ enable live Snap-O Tweaks in a non-debuggable app, set its application flag:
 </application>
 ```
 
-This flag allows the Tweaks server and, if installed and enabled, the in-app
-overlay. It does not enable Network Inspector, which has its own
-`snapo.network.allow_release` application flag. The no-op release artifacts are
-still recommended: they return default values, contain no provider, and let R8
-remove unused calls and tweak-name strings. Verify the release APK contains
-neither tweak-only strings nor the live provider, registry, server, or socket.
+This flag allows the Tweaks server and, if installed and enabled, the in-app overlay. It does not enable Network Inspector, which has its own `snapo.network.allow_release` application flag. The no-op release artifacts are still recommended: they return default values, contain no provider, and let R8 remove unused calls and tweak-name strings. Verify the release APK contains neither tweak-only strings nor the live provider, registry, server, or socket.
 
-Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network
-protocol change, groups, scopes, units, separate tweak IDs, or revisions.
+Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network protocol change, groups, scopes, units, separate tweak IDs, or revisions.
