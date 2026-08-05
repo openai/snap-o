@@ -375,22 +375,26 @@ dependencies {
 :tweaks                 Compose API, live registry, HTTP, and abstract socket.
 :tweaks-noop            Matching Compose API that returns default values.
 :tweaks-overlay         Optional floating Compose tweak inspector.
-:tweaks-overlay-noop    Matching overlay wrapper without the inspector.
+:tweaks-overlay-noop    Matching no-op overlay without the inspector.
 :samples:demo-tweaks    Standalone Compose sample with no network integration.
 ```
 
 ### Optional in-app overlay
 
-Wrap the app's root content with `SnapOTweakOverlay`:
+Place `SnapOTweakOverlay` after the app content in a fullscreen `Box`:
 
 ```kotlin
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
 
 @Composable
 fun App() {
-    SnapOTweakOverlay {
+    Box(modifier = Modifier.fillMaxSize()) {
         AppContent()
+        SnapOTweakOverlay(modifier = Modifier.fillMaxSize())
     }
 }
 ```
@@ -413,7 +417,7 @@ fun DeveloperSettings() {
 }
 ```
 
-The setting persists between app launches. When enabled, a movable button appears only while at least one tweak is in composition. Tap it to inspect or edit the active tweaks, run registered actions, and minimize the panel to return to the button. Conflicted actions are visible but cannot be run. The panel stays synchronized with host-side changes, remembers its position, and disappears when the last tweak or action leaves composition. The no-op overlay keeps the same wrapper and settings APIs without showing a panel in release builds.
+The setting persists between app launches. When enabled, a movable button appears only while at least one tweak is in composition. Tap it to inspect or edit the active tweaks, run registered actions, and minimize the panel to return to the button. Conflicted actions are visible but cannot be run. The panel stays synchronized with host-side changes, remembers its position, and disappears when the last tweak or action leaves composition. The no-op overlay keeps the same composable and settings APIs without showing a panel in release builds.
 
 Install the standalone debug sample on a connected Android device:
 

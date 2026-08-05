@@ -75,33 +75,19 @@ internal object TweakOverlayColors {
 
 /** Draws a compact, movable tweak inspector over application content. */
 @Composable
-fun SnapOTweakOverlay(
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
+fun SnapOTweakOverlay(modifier: Modifier = Modifier) {
     val appContext = LocalContext.current.applicationContext
     LaunchedEffect(appContext) {
         SnapOTweakOverlaySettings.initialize(appContext)
     }
 
-    Box(
-        modifier = modifier,
-        propagateMinConstraints = true,
-    ) {
-        content()
-        TweakOverlayPresence()
-    }
-}
-
-@Composable
-private fun BoxScope.TweakOverlayPresence() {
     if (!SnapOTweakOverlaySettings.isEnabled) return
 
     val tweaks = rememberActiveOverlayTweaks()
     if (tweaks.isNotEmpty()) {
         TweakOverlayLayer(
             tweaks = tweaks,
-            modifier = Modifier.matchParentSize(),
+            modifier = modifier.fillMaxSize(),
         )
     }
 }

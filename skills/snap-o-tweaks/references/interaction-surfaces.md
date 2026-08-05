@@ -28,15 +28,20 @@ dependencies {
 }
 ```
 
-Wrap the app root with the optional overlay:
+Place the optional overlay after the app content in a fullscreen `Box`:
 
 ```kotlin
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import com.openai.snapo.tweaks.overlay.SnapOTweakOverlay
 
 @Composable
 fun App() {
-    SnapOTweakOverlay {
+    Box(modifier = Modifier.fillMaxSize()) {
         AppContent()
+        SnapOTweakOverlay(modifier = Modifier.fillMaxSize())
     }
 }
 ```
@@ -54,7 +59,7 @@ Switch(
 )
 ```
 
-The setting persists across launches in live builds. When enabled, the floating inspector appears only while at least one tweak is active. The release no-op overlay preserves the same wrapper and settings API but never displays a panel. It is separate from release server activation; avoid enabling live release tweaks unless explicitly required.
+The setting persists across launches in live builds. When enabled, the floating inspector appears only while at least one tweak is active. The release no-op overlay preserves the same composable and settings API but never displays a panel. It is separate from release server activation; avoid enabling live release tweaks unless explicitly required.
 
 ## Transport ownership
 
