@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -67,8 +68,9 @@ private fun TweakDemo() {
             onSurface = DefaultTextColor,
         ),
     ) {
-        SnapOTweakOverlay {
+        Box(modifier = Modifier.fillMaxSize()) {
             TweakDemoScreen()
+            SnapOTweakOverlay(modifier = Modifier.fillMaxSize())
         }
     }
 }

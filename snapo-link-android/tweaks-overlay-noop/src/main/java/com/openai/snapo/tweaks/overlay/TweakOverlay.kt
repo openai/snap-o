@@ -1,19 +1,11 @@
 package com.openai.snapo.tweaks.overlay
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-/** Renders application content without including the in-app tweak inspector. */
+/** Does not render an in-app tweak inspector in release builds. */
 @Composable
 fun SnapOTweakOverlay(
+    @Suppress("UNUSED_PARAMETER")
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    Box(
-        modifier = modifier,
-        propagateMinConstraints = true,
-    ) {
-        content()
-    }
-}
+) = Unit
