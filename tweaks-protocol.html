@@ -6,7 +6,7 @@
     <title>Tweaks Protocol · Snap-O</title>
     <meta
       name="description"
-      content="Reference for the Snap-O Tweaks HTTP and event-stream protocol, including every endpoint, example requests, JSON responses, updates, resets, and errors."
+      content="Reference for the Snap-O Tweaks HTTP and event-stream protocol, including protocol versions, endpoints, JSON responses, updates, resets, actions, and errors."
     />
     <link rel="icon" type="image/png" href="assets/icon-64.png" />
     <style>
@@ -497,9 +497,9 @@
             </nav>
             <h1>Tweaks Protocol</h1>
             <p class="lead">
-              Read live Compose values, change them, reset defaults, and
-              subscribe to updates through the Snap-O Tweaks HTTP and
-              event-stream protocol.
+              Read live Compose values, change or reset them, invoke app-owned
+              actions, and subscribe to updates through the Snap-O Tweaks HTTP
+              and event-stream protocol.
             </p>
           </div>
         </div>
@@ -533,6 +533,7 @@ adb -s "$serial" shell cat /proc/net/unix
 port="$(adb -s "$serial" forward tcp:0 "localabstract:$socket")"
 base="http://127.0.0.1:$port"
 
+curl -fsS "$base/app"
 curl -fsS "$base/tweaks"</code></pre>
               </div>
 
@@ -597,7 +598,7 @@ curl -fsS "$base/tweaks"</code></pre>
                     <tr>
                       <td><code>GET</code></td>
                       <td><code>/app</code></td>
-                      <td>Read the app name and package name.</td>
+                      <td>Read app metadata and the supported protocol version.</td>
                     </tr>
                     <tr>
                       <td><code>GET</code></td>
@@ -607,7 +608,12 @@ curl -fsS "$base/tweaks"</code></pre>
                     <tr>
                       <td><code>GET</code></td>
                       <td><code>/tweaks</code></td>
-                      <td>List currently composed tweaks and descriptors.</td>
+                      <td>List currently composed value tweaks and actions.</td>
+                    </tr>
+                    <tr>
+                      <td><code>GET</code></td>
+                      <td><code>/tweaks?include=adjusted</code></td>
+                      <td>Include inactive, previously adjusted value tweaks.</td>
                     </tr>
                     <tr>
                       <td><code>PATCH</code></td>
@@ -615,20 +621,24 @@ curl -fsS "$base/tweaks"</code></pre>
                       <td>Update or reset one or more live values.</td>
                     </tr>
                     <tr>
+                      <td><code>POST</code></td>
+                      <td><code>/tweaks/action</code></td>
+                      <td>Invoke a registered, parameterless app-owned action.</td>
+                    </tr>
+                    <tr>
                       <td><code>GET</code></td>
                       <td><code>/tweaks/events</code></td>
-                      <td>Subscribe to live tweak snapshots.</td>
+                      <td>Subscribe to complete live tweak and action snapshots.</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
               <p class="notice">
-                <strong>Composition determines visibility.</strong> A tweak
-                can be listed, changed, or streamed only while at least one
-                composable using its name is in composition. Its last edited
-                value is retained within the app process and restored when the
-                same declaration returns.
+                <strong>Composition determines visibility.</strong> Value
+                tweaks and actions can be changed, invoked, or streamed only
+                while their owners are in composition. The adjusted-history
+                endpoint can also return inactive, read-only value snapshots.
               </p>
             </div>
           </section>
@@ -640,9 +650,9 @@ curl -fsS "$base/tweaks"</code></pre>
             </div>
             <div class="section-body">
               <p class="prose">
-                Read the running app’s user-visible name and Android package
-                name. Use this endpoint to identify which app a client has
-                connected to.
+                Read the running app’s user-visible name, Android package name,
+                and supported Tweaks protocol version. Request this endpoint
+                first so your client can select compatible behavior.
               </p>
 
               <div class="code-block">
@@ -661,9 +671,44 @@ Host: 127.0.0.1</code></pre>
                 </div>
                 <pre><code class="syntax-code" data-language="json">{
   "name": "Snap-O Tweaks Demo",
-  "packageName": "com.openai.snapo.demo.tweaks"
+  "packageName": "com.openai.snapo.demo.tweaks",
+  "protocolVersion": 4
 }</code></pre>
               </div>
+
+              <div class="table-scroll">
+                <table class="config-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Version</th>
+                      <th scope="col">Behavior</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>1</code></td>
+                      <td>Value tweaks only. Updates are atomic, and resets send the reported default. A missing <code>protocolVersion</code> means version 1.</td>
+                    </tr>
+                    <tr>
+                      <td><code>2</code></td>
+                      <td>Adds action descriptors and <code>POST /tweaks/action</code>. Batch updates and resets retain version-1 behavior.</td>
+                    </tr>
+                    <tr>
+                      <td><code>3</code></td>
+                      <td>Applies valid batch items independently and reports rejected items in <code>errors</code>. Resets still send the reported default.</td>
+                    </tr>
+                    <tr>
+                      <td><code>4</code></td>
+                      <td>Adds explicit <code>null</code> resets and authoritative, sparse <code>modified: true</code> status.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p class="prose">
+                The Tweaks protocol version is independent of the Network
+                Inspector protocol version.
+              </p>
             </div>
           </section>
 
@@ -713,10 +758,11 @@ Content-Type: &lt;image media type&gt;
             </div>
             <div class="section-body">
               <p class="prose">
-                List the controls currently in composition. Each descriptor
-                includes its full name, value type, default, and current
-                value. Numeric controls also include any configured
-                <code>min</code>, <code>max</code>, and <code>step</code>.
+                List value tweaks and app-owned actions currently in
+                composition. Value descriptors include their full name, type,
+                default, and current value. Numeric controls also include any
+                configured <code>min</code>, <code>max</code>, and
+                <code>step</code>.
               </p>
 
               <div class="code-block">
@@ -739,7 +785,8 @@ Host: 127.0.0.1</code></pre>
       "name": "Typography/Font size",
       "type": "int",
       "default": 36,
-      "value": 36,
+      "value": 48,
+      "modified": true,
       "min": 16,
       "max": 72,
       "step": 1
@@ -755,25 +802,58 @@ Host: 127.0.0.1</code></pre>
       "type": "boolean",
       "default": true,
       "value": true
+    },
+    {
+      "name": "Appearance/Theme",
+      "type": "enum",
+      "default": "System",
+      "value": "Dark",
+      "modified": true,
+      "options": ["System", "Light", "Dark"]
+    },
+    {
+      "name": "Motion/Toggle animation",
+      "type": "action"
     }
   ]
 }</code></pre>
               </div>
 
               <p class="prose">
-                Supported <code>type</code> values are <code>int</code>,
-                <code>float</code>, <code>boolean</code>,
-                <code>color</code>, and <code>string</code>. Colors use
-                <code>#RRGGBB</code> or <code>#RRGGBBAA</code>.
+                Supported value types are <code>int</code>,
+                <code>float</code>, <code>boolean</code>, <code>color</code>,
+                <code>string</code>, and <code>enum</code>. Colors use
+                <code>#RRGGBB</code> or <code>#RRGGBBAA</code>. Enum
+                descriptors include an ordered, nonempty <code>options</code>
+                array; their default, value, and updates use an exact option
+                name. Preserve the declared option order in clients.
+              </p>
+
+              <p class="prose">
+                Actions use <code>"type": "action"</code> and have no
+                <code>default</code>, <code>value</code>,
+                <code>modified</code>, options, or numeric constraints.
+                Invoke them through <code>POST /tweaks/action</code> rather
+                than patching their descriptors.
+              </p>
+
+              <p class="notice">
+                <strong>Modification status is authoritative in version 4.</strong>
+                Only modified values include <code>"modified": true</code>.
+                An absent field means false, even if <code>value</code>
+                differs from <code>default</code>. App-owned settings report
+                whether their own override exists; do not infer their status
+                from their effective value. Versions 1–3 omit this field, so
+                compare <code>value</code> with <code>default</code> instead.
               </p>
 
               <p class="prose">
                 Compose color defaults retain their original color space and
                 precision in the app, while HTTP represents them as sRGB
                 hex. <code>Color.Unspecified</code> appears as
-                <code>#00000000</code>. Updating a color with its reported
-                default restores the original Compose value, including when
-                that value does not round-trip through its sRGB hex form.
+                <code>#00000000</code>. An explicit version-4 reset restores
+                the original Compose value, including when that value does not
+                round-trip through its sRGB hex form.
               </p>
 
               <p class="prose">
@@ -781,15 +861,99 @@ Host: 127.0.0.1</code></pre>
                 may be whole or fractional. When present, a numeric
                 <code>step</code> is relative to <code>min</code>, or to the
                 tweak's <code>default</code> when no minimum is specified.
-                Reusing a name shares one value across active composables;
-                its type, default, and constraints must match everywhere.
+                Reusing an ordinary tweak name shares one value across active
+                composables; its type, default, constraints, and enum options
+                must match. App-owned sources sharing a name must represent
+                the same setting and value type. Their first active source
+                owns the value until it leaves composition.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="adjusted-tweaks">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">5</span>
+              <h2>GET /tweaks?include=adjusted</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Include previously adjusted value tweaks after their owners
+                leave composition. The response retains the same descriptor
+                shape as <code>GET /tweaks</code> and includes every active
+                value and action as well as inactive, adjusted value snapshots.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">GET /tweaks?include=adjusted HTTP/1.1
+Host: 127.0.0.1</code></pre>
+              </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "tweaks": [
+    {
+      "name": "Typography/Font size",
+      "type": "int",
+      "default": 36,
+      "value": 48,
+      "modified": true,
+      "min": 16,
+      "max": 72,
+      "step": 1
+    },
+    {
+      "name": "Settings/Reduce motion",
+      "type": "boolean",
+      "default": false,
+      "value": true
+    }
+  ]
+}</code></pre>
+              </div>
+
+              <p class="prose">
+                Each retained snapshot preserves its complete descriptor,
+                latest effective value, and modification status. History can
+                remain after a reset; an app-owned value may then differ from
+                its captured default without being modified, as shown above.
+                Separate screens may reuse a name with different descriptors,
+                so preserve repeated names instead of deduplicating them.
+                An active descriptor takes precedence over its matching
+                historical snapshot.
+              </p>
+
+              <p class="notice">
+                <strong>Inactive history is read-only.</strong> Only active
+                value tweaks can be updated or reset. App-owned history keeps
+                an immutable snapshot, not its source or observers, and never
+                replays an old value into a returning source. Actions do not
+                create adjustment history. Retention ends when the app process
+                exits.
+              </p>
+
+              <p class="prose">
+                Unchanged tweaks, no-op adjustments, and rejected updates do
+                not create history entries. Plain
+                <code>GET /tweaks</code> and event snapshots remain
+                active-only. The only supported query is exactly
+                <code>include=adjusted</code> on <code>GET /tweaks</code>;
+                unsupported, repeated, or additional query parameters return
+                <code>400 Bad Request</code>.
               </p>
             </div>
           </section>
 
           <section class="guide-section" id="patch-tweaks">
             <div class="section-heading">
-              <span class="step" aria-hidden="true">5</span>
+              <span class="step" aria-hidden="true">6</span>
               <h2>PATCH /tweaks</h2>
             </div>
             <div class="section-body">
@@ -797,7 +961,8 @@ Host: 127.0.0.1</code></pre>
                 Update one or more registered tweaks in a single request.
                 Send <code>application/json</code> and put the complete tweak
                 names and their new primitive values in a
-                <code>values</code> object.
+                <code>values</code> object. In version 4, use
+                <code>null</code> for an explicit reset.
               </p>
 
               <div class="code-block">
@@ -827,48 +992,193 @@ Content-Length: 78
   "tweaks": [
     {
       "name": "Typography/Font size",
-      "value": 48
+      "value": 48,
+      "modified": true
     },
     {
       "name": "Motion/Show",
-      "value": false
+      "value": false,
+      "modified": true
     }
   ]
 }</code></pre>
               </div>
 
               <p class="notice">
-                <strong>Updates are validated together.</strong> Every tweak
-                must exist, match its declared type, and satisfy its numeric
-                bounds and step before any value is changed. A successful
-                response includes only the updated names and values.
+                <strong>Version 3 and later use best-effort batches.</strong>
+                Valid changes remain applied even if another item fails. A
+                valid request returns <code>200 OK</code> with successful
+                items in <code>tweaks</code> and rejected items in an optional
+                <code>errors</code> array. Versions 1 and 2 validate the whole
+                batch before applying it and reject every change if any item
+                fails.
               </p>
 
-              <h3>Reset to the default</h3>
+              <h3>Partial success</h3>
               <p class="prose">
-                There is no separate reset endpoint. Send the
-                <code>default</code> reported by <code>GET /tweaks</code>
-                through the same update request.
+                Unknown or inactive names, invalid values, and action targets
+                become per-item errors without rolling back successful values.
+                Every error contains only its tweak <code>name</code> and
+                <code>error</code> message. The <code>errors</code> field is
+                absent when every item succeeds.
               </p>
 
               <div class="code-block">
                 <div class="code-head">
-                  <span>Example Request · Reset</span>
+                  <span>Example Response · 200 OK · Partial Success</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "tweaks": [
+    {
+      "name": "Typography/Font size",
+      "value": 48,
+      "modified": true
+    }
+  ],
+  "errors": [
+    {
+      "name": "Motion/Show",
+      "error": "Invalid value for Motion/Show: Expected a boolean."
+    }
+  ]
+}</code></pre>
+              </div>
+
+              <h3>Reset a value</h3>
+              <p class="prose">
+                In version 4, reset an active value by sending
+                <code>null</code>. Updates and resets can appear in the same
+                request. Actions cannot be patched or reset.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request · Version 4 Reset</span>
                   <button class="copy-button" type="button">Copy</button>
                 </div>
                 <pre><code class="syntax-code" data-language="json">{
   "values": {
-    "Typography/Font size": 36,
-    "Motion/Show": true
+    "Typography/Font size": null,
+    "Motion/Show": null
   }
 }</code></pre>
               </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "tweaks": [
+    {
+      "name": "Typography/Font size",
+      "value": 36
+    },
+    {
+      "name": "Motion/Show",
+      "value": true
+    }
+  ]
+}</code></pre>
+              </div>
+
+              <p class="prose">
+                Ordinary tweaks reset to their original defaults. App-owned
+                tweaks call their source’s <code>reset()</code> behavior,
+                such as removing a stored override, and return its current
+                effective value. That value can differ from the default first
+                observed by Snap-O; writing the captured default would create
+                an override instead of clearing it. Reset all only active,
+                non-action values marked <code>"modified": true</code>.
+              </p>
+
+              <p class="prose">
+                Versions 1, 2, and 3 do not support explicit
+                <code>null</code> resets. Reset their changed values by
+                sending each descriptor’s reported <code>default</code>
+                instead.
+              </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="tweak-actions">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">7</span>
+              <h2>POST /tweaks/action</h2>
+            </div>
+            <div class="section-body">
+              <p class="prose">
+                Invoke one app-owned, parameterless action registered with
+                <code>TweakAction</code>. Actions are available from protocol
+                version 2 and run synchronously on the Android main thread.
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Request</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="http">POST /tweaks/action HTTP/1.1
+Host: 127.0.0.1
+Content-Type: application/json
+Content-Length: 39
+
+{
+  "name": "Motion/Toggle animation"
+}</code></pre>
+              </div>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Response · 200 OK</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "name": "Motion/Toggle animation"
+}</code></pre>
+              </div>
+
+              <p class="prose">
+                The JSON body must contain exactly one nonblank string field,
+                <code>name</code>. Unknown names and value-only names return
+                <code>404 Not Found</code>. Additional fields, arguments,
+                blank names, and malformed requests return
+                <code>400 Bad Request</code>.
+              </p>
+
+              <h3>Conflicting actions</h3>
+              <p class="prose">
+                When more than one live owner registers the same action name,
+                its descriptor remains visible but is marked as conflicted:
+              </p>
+
+              <div class="code-block">
+                <div class="code-head">
+                  <span>Example Descriptor · Conflicting Action</span>
+                  <button class="copy-button" type="button">Copy</button>
+                </div>
+                <pre><code class="syntax-code" data-language="json">{
+  "name": "Motion/Toggle animation",
+  "type": "action",
+  "conflicted": true
+}</code></pre>
+              </div>
+
+              <p class="notice">
+                <strong>Conflicting actions cannot run.</strong> Invoking one
+                returns <code>409 Conflict</code> until exactly one owner
+                remains. Register each shared action once at the composable
+                that owns its behavior. The server never chooses between
+                callbacks or executes arbitrary code.
+              </p>
             </div>
           </section>
 
           <section class="guide-section" id="tweak-events">
             <div class="section-heading">
-              <span class="step" aria-hidden="true">6</span>
+              <span class="step" aria-hidden="true">8</span>
               <h2>GET /tweaks/events</h2>
             </div>
             <div class="section-body">
@@ -899,28 +1209,30 @@ Content-Type: text/event-stream; charset=utf-8
 Cache-Control: no-cache
 
 event: tweaks
-data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":36,"min":16,"max":72,"step":1}]}
+data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":36,"min":16,"max":72,"step":1},{"name":"Motion/Toggle animation","type":"action"}]}
 
 event: tweaks
-data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":48,"min":16,"max":72,"step":1}]}
+data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":48,"modified":true,"min":16,"max":72,"step":1},{"name":"Motion/Toggle animation","type":"action"}]}
 
 : keep-alive</code></pre>
               </div>
 
               <p class="notice">
                 Each <code>tweaks</code> event contains a complete current
-                snapshot, not a patch. Replace your client’s current control
-                list with the received <code>tweaks</code> array. Lines
-                starting with <code>:</code> are keep-alive comments.
+                snapshot of active values and actions, not a patch. Replace
+                your client’s current control list with the received
+                <code>tweaks</code> array. Lines starting with
+                <code>:</code> are keep-alive comments.
               </p>
 
               <p class="prose">
                 The first event arrives immediately. Later changes made within
                 the same Android main-thread turn are combined into one
                 ordered snapshot, including values changed by the on-device
-                overlay. An omitted tweak has left composition. Slow clients
-                receive the newest complete snapshot instead of accumulating
-                every intermediate state.
+                overlay or an app-owned source. An omitted tweak or action has
+                left composition. Inactive adjustment history never appears
+                in event snapshots. Slow clients receive the newest complete
+                snapshot instead of accumulating every intermediate state.
               </p>
 
               <p class="notice">
@@ -935,13 +1247,16 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 
           <section class="guide-section" id="errors">
             <div class="section-heading">
-              <span class="step" aria-hidden="true">7</span>
+              <span class="step" aria-hidden="true">9</span>
               <h2>Error responses</h2>
             </div>
             <div class="section-body">
               <p class="prose">
-                Errors return a JSON object containing an
+                Request-level failures return a JSON object containing an
                 <code>error</code> message and the relevant HTTP status.
+                These failures are distinct from the per-item
+                <code>errors</code> returned inside successful version-3 and
+                version-4 batch responses.
               </p>
 
               <div class="code-block">
@@ -950,7 +1265,7 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
                   <button class="copy-button" type="button">Copy</button>
                 </div>
                 <pre><code class="syntax-code" data-language="json">{
-  "error": "Invalid value for Typography/Font size: Value exceeds the maximum."
+  "error": "Tweak values must be primitive JSON values."
 }</code></pre>
               </div>
 
@@ -965,11 +1280,11 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
                   <tbody>
                     <tr>
                       <td><code>400 Bad Request</code></td>
-                      <td>Malformed request, invalid JSON, or a missing <code>values</code> object.</td>
+                      <td>Malformed request, unsupported query, invalid JSON, or an invalid update or action request body.</td>
                     </tr>
                     <tr>
                       <td><code>404 Not Found</code></td>
-                      <td>Unknown endpoint, unavailable icon, or tweak not currently in composition.</td>
+                      <td>Unknown endpoint, unavailable icon, unknown action, or a version-1 or version-2 tweak not currently in composition.</td>
                     </tr>
                     <tr>
                       <td><code>405 Method Not Allowed</code></td>
@@ -980,16 +1295,20 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
                       <td>The request did not complete within the server’s timeout.</td>
                     </tr>
                     <tr>
+                      <td><code>409 Conflict</code></td>
+                      <td>More than one live owner registered the requested action name.</td>
+                    </tr>
+                    <tr>
                       <td><code>413 Payload Too Large</code></td>
                       <td>The JSON request exceeds the server’s maximum request size.</td>
                     </tr>
                     <tr>
                       <td><code>422 Unprocessable Entity</code></td>
-                      <td>A value has the wrong type, invalid color, or violates its bounds or step.</td>
+                      <td>An invalid numeric literal or nonprimitive value; versions 1 and 2 also reject an invalid tweak value at the request level.</td>
                     </tr>
                     <tr>
                       <td><code>500 Internal Server Error</code></td>
-                      <td>An unexpected failure occurred while processing a tweak update.</td>
+                      <td>An unexpected failure occurred while updating a tweak or invoking an action callback.</td>
                     </tr>
                     <tr>
                       <td><code>503 Service Unavailable</code></td>
@@ -997,11 +1316,20 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
                     </tr>
                     <tr>
                       <td><code>504 Gateway Timeout</code></td>
-                      <td>A tweak update timed out waiting for the Android main thread.</td>
+                      <td>A tweak update, initial snapshot, or action timed out waiting for the Android main thread.</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
+
+              <p class="notice">
+                <strong>Inspect both the HTTP status and the response body.</strong>
+                In versions 3 and 4, an invalid, unknown, inactive, or action
+                update can appear in <code>errors</code> even when the response
+                status is <code>200 OK</code>. Each item contains only
+                <code>name</code> and <code>error</code>; it does not include
+                a separate HTTP status or error code.
+              </p>
             </div>
           </section>
         </article>
@@ -1013,7 +1341,9 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
               <li><a class="quick-jump-link" href="#get-app">GET /app</a></li>
               <li><a class="quick-jump-link" href="#get-app-icon">GET /app/icon</a></li>
               <li><a class="quick-jump-link" href="#get-tweaks">GET /tweaks</a></li>
+              <li><a class="quick-jump-link" href="#adjusted-tweaks">Adjusted history</a></li>
               <li><a class="quick-jump-link" href="#patch-tweaks">PATCH /tweaks</a></li>
+              <li><a class="quick-jump-link" href="#tweak-actions">POST /tweaks/action</a></li>
               <li><a class="quick-jump-link" href="#tweak-events">GET /tweaks/events</a></li>
               <li><a class="quick-jump-link" href="#errors">Error responses</a></li>
             </ol>
