@@ -7,6 +7,7 @@ import type {
   SelectedAppInspector,
   TweakActionDescriptor,
   TweakDescriptor,
+  TweakUpdate,
   TweakValue,
   TweakValueDescriptor
 } from "../../network/bridge-types";
@@ -32,6 +33,7 @@ interface ActiveColorPanelSession {
 
 let nextColorPanelSession = 0;
 const docsUrl = "https://openai.github.io/snap-o/tweaks.html#expose-values";
+const modifiedTweakProtocolVersion = 4;
 
 export function TweaksInspectorApp({
   client,
@@ -52,6 +54,7 @@ export function TweaksInspectorApp({
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
   const activeColorPanel = useRef<ActiveColorPanelSession | null>(null);
   const server = selection.server;
+  const protocolVersion = selection.protocolVersion ?? 1;
   const hasNativeColorPanel =
     client.usesNativeServerPicker &&
     typeof client.openNativeColorPanel === "function" &&
@@ -60,14 +63,7 @@ export function TweaksInspectorApp({
     () =>
       new TweakUpdateQueue(client, server, {
         onUpdate(updates, pending) {
-          setTweaks((current) =>
-            current.map((tweak) => {
-              const update = updates.find((candidate) => candidate.name === tweak.name);
-              return tweak.type !== "action" && update && !pending.has(tweak.name)
-                ? { ...tweak, value: update.value }
-                : tweak;
-            })
-          );
+          setTweaks((current) => applyTweakUpdates(current, updates, pending, protocolVersion));
         },
         onRejected(_errors, pending, inFlight, isCurrent) {
           void client
@@ -84,7 +80,7 @@ export function TweaksInspectorApp({
         onError: setError,
         onSavingChange: setSaving
       }),
-    [client, server]
+    [client, protocolVersion, server]
   );
 
   useEffect(() => {
@@ -167,7 +163,9 @@ export function TweaksInspectorApp({
       }
 
       setTweaks((current) =>
-        current.map((item) => (item.name === tweak.name && item.type !== "action" ? { ...item, value } : item))
+        current.map((item) =>
+          item.name === tweak.name && item.type !== "action" ? { ...item, value, modified: true } : item
+        )
       );
       queue.enqueue(tweak.name, value);
       void queue.flush();
@@ -241,16 +239,22 @@ export function TweaksInspectorApp({
     [client, server]
   );
 
+  const resetTweak = useCallback(
+    (tweak: TweakValueDescriptor) => {
+      queue.enqueue(tweak.name, tweakResetValue(tweak, protocolVersion));
+      void queue.flush();
+    },
+    [protocolVersion, queue]
+  );
+
   const resetAll = useCallback(() => {
     for (const tweak of tweaks) {
-      if (tweak.type === "action") continue;
-      queue.enqueue(tweak.name, tweak.default);
+      if (tweak.type !== "action" && isModified(tweak, protocolVersion)) {
+        queue.enqueue(tweak.name, tweakResetValue(tweak, protocolVersion));
+      }
     }
-    setTweaks((current) =>
-      current.map((tweak) => (tweak.type === "action" ? tweak : { ...tweak, value: tweak.default }))
-    );
     void queue.flush();
-  }, [queue, tweaks]);
+  }, [protocolVersion, queue, tweaks]);
 
   useEffect(() => client.onNativeTweaksReset(resetAll), [client, resetAll]);
 
@@ -258,7 +262,7 @@ export function TweaksInspectorApp({
     () => groupTweaks(tweaks, selection.appId, orderByApp),
     [orderByApp, selection.appId, tweaks]
   );
-  const hasChanges = canResetTweaks(tweaks);
+  const hasChanges = canResetTweaks(tweaks, protocolVersion);
 
   useEffect(() => {
     client.nativeTweaksStateChanged({
@@ -307,9 +311,11 @@ export function TweaksInspectorApp({
                         <TweakControl
                           key={tweak.name}
                           tweak={tweak}
+                          protocolVersion={protocolVersion}
                           onChange={updateTweak}
                           onInvoke={invokeAction}
                           invoking={invokingActions.has(tweak.name)}
+                          onReset={resetTweak}
                           onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
                         />
                       ))}
@@ -344,14 +350,46 @@ export function hasLoadedTweaksForServer(
   return loadedServer?.deviceId === server.deviceId && loadedServer.socketName === server.socketName;
 }
 
-export function canResetTweaks(tweaks: TweakDescriptor[]): boolean {
-  return tweaks.some((tweak) => tweak.type !== "action" && tweak.value !== tweak.default);
+export function canResetTweaks(tweaks: TweakDescriptor[], protocolVersion = modifiedTweakProtocolVersion): boolean {
+  return tweaks.some((tweak) => tweak.type !== "action" && isModified(tweak, protocolVersion));
+}
+
+function isModified(tweak: TweakValueDescriptor, protocolVersion: number): boolean {
+  return protocolVersion < modifiedTweakProtocolVersion ? tweak.value !== tweak.default : tweak.modified === true;
+}
+
+export function tweakResetValue(
+  tweak: TweakValueDescriptor,
+  protocolVersion: number | null | undefined
+): TweakValue | null {
+  return (protocolVersion ?? 1) < modifiedTweakProtocolVersion ? tweak.default : null;
+}
+
+export function applyTweakUpdates(
+  tweaks: TweakDescriptor[],
+  updates: TweakUpdate[],
+  pending: ReadonlyMap<string, TweakValue | null>,
+  protocolVersion = modifiedTweakProtocolVersion
+): TweakDescriptor[] {
+  return tweaks.map((tweak) => {
+    if (tweak.type === "action") return tweak;
+
+    const update = updates.find((candidate) => candidate.name === tweak.name);
+    return update && !pending.has(tweak.name)
+      ? {
+          ...tweak,
+          value: update.value,
+          modified:
+            protocolVersion < modifiedTweakProtocolVersion ? update.value !== tweak.default : update.modified === true
+        }
+      : tweak;
+  });
 }
 
 export function reconcileStreamedTweaks(
   current: TweakDescriptor[],
   incoming: TweakDescriptor[],
-  pending: ReadonlyMap<string, TweakValue>,
+  pending: ReadonlyMap<string, TweakValue | null>,
   inFlight: ReadonlySet<string>
 ): TweakDescriptor[] {
   const currentByName = new Map(current.map((tweak) => [tweak.name, tweak]));
@@ -364,7 +402,7 @@ export function reconcileStreamedTweaks(
       tweak.type !== "action" &&
       (pending.has(tweak.name) || inFlight.has(tweak.name))
     ) {
-      return { ...tweak, value: existing.value };
+      return { ...tweak, value: existing.value, modified: existing.modified };
     }
     return tweak;
   });
@@ -424,15 +462,19 @@ function tweakLabel(name: string): string {
 
 function TweakControl({
   tweak,
+  protocolVersion,
   onChange,
   onInvoke,
   invoking,
+  onReset,
   onOpenColorPanel
 }: {
   tweak: TweakDescriptor;
+  protocolVersion: number;
   onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
   onInvoke(action: TweakActionDescriptor): void;
   invoking: boolean;
+  onReset(tweak: TweakValueDescriptor): void;
   onOpenColorPanel?(tweak: TweakValueDescriptor): void;
 }): JSX.Element {
   if (tweak.type === "action") {
@@ -440,7 +482,7 @@ function TweakControl({
   }
 
   const label = tweakLabel(tweak.name);
-  const changed = tweak.value !== tweak.default;
+  const changed = isModified(tweak, protocolVersion);
 
   return (
     <div className="tweaks-control">
@@ -452,7 +494,7 @@ function TweakControl({
             type="button"
             aria-label={`Reset ${tweak.name}`}
             title={`Reset ${label}`}
-            onClick={() => onChange(tweak, tweak.default)}
+            onClick={() => onReset(tweak)}
           >
             <RotateCcw size={13} aria-hidden="true" />
           </button>

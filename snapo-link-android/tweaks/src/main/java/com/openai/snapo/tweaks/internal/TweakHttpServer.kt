@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
 
-internal const val TweaksProtocolVersion: Int = 3
+internal const val TweaksProtocolVersion: Int = 4
 
 internal data class TweakBatchError(
     val name: String,
@@ -593,6 +593,9 @@ internal class TweakHttpServer(
         if (tweak.descriptor.type != TweakType.ACTION) {
             writer.name("value")
             writeJsonValue(writer, tweak.value)
+            if (tweak.modified) {
+                writer.name("modified").value(true)
+            }
         }
 
         if (includeDescriptor) {

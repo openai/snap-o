@@ -32,10 +32,10 @@ describe("app-scoped tweak updates", () => {
       values: { "Typography/Font size": 36 }
     });
 
-    secondRequest.resolve({ tweaks: [{ name: "Typography/Font size", value: 36 }] });
+    secondRequest.resolve({ tweaks: [{ name: "Typography/Font size", value: 36, modified: true }] });
     await secondFlush;
 
-    firstRequest.resolve({ tweaks: [{ name: "Typography/Font size", value: 24 }] });
+    firstRequest.resolve({ tweaks: [{ name: "Typography/Font size", value: 24, modified: true }] });
     await firstFlush;
 
     expect(client.updateTweaks).toHaveBeenCalledTimes(2);
@@ -60,7 +60,7 @@ describe("app-scoped tweak updates", () => {
 
     expect(client.updateTweaks).toHaveBeenCalledTimes(1);
 
-    firstRequest.resolve({ tweaks: [{ name: "Motion/Duration", value: 400 }] });
+    firstRequest.resolve({ tweaks: [{ name: "Motion/Duration", value: 400, modified: true }] });
     await vi.waitFor(() => {
       expect(client.updateTweaks).toHaveBeenCalledTimes(2);
     });
@@ -70,8 +70,129 @@ describe("app-scoped tweak updates", () => {
       values: { "Motion/Duration": 500 }
     });
 
-    secondRequest.resolve({ tweaks: [{ name: "Motion/Duration", value: 500 }] });
+    secondRequest.resolve({ tweaks: [{ name: "Motion/Duration", value: 500, modified: true }] });
     await flush;
+  });
+
+  it("sends a null value to reset a tweak", async () => {
+    const client = {
+      updateTweaks: vi.fn().mockResolvedValue({
+        tweaks: [{ name: "Motion/Duration", value: 300, modified: false }]
+      })
+    };
+    const server = { deviceId: "pixel", socketName: "snapo_tweaks_demo" };
+    const handlers = callbacks();
+    const queue = new TweakUpdateQueue(client, server, handlers);
+
+    queue.enqueue("Motion/Duration", null);
+    await queue.flush();
+
+    expect(client.updateTweaks).toHaveBeenCalledWith({
+      server,
+      values: { "Motion/Duration": null }
+    });
+    expect(handlers.onUpdate).toHaveBeenCalledWith(
+      [{ name: "Motion/Duration", value: 300, modified: false }],
+      new Map()
+    );
+  });
+
+  it("reports a rejected reset without leaving the request in flight", async () => {
+    const client = { updateTweaks: vi.fn().mockRejectedValue(new Error("Invalid tweak value for Motion/Duration.")) };
+    const server = { deviceId: "pixel", socketName: "snapo_tweaks_demo" };
+    const handlers = callbacks();
+    const queue = new TweakUpdateQueue(client, server, handlers);
+
+    queue.enqueue("Motion/Duration", null);
+    await expect(queue.flush()).resolves.toBeUndefined();
+
+    expect(handlers.onError).toHaveBeenCalledWith("Invalid tweak value for Motion/Duration.");
+    expect(queue.pending.size).toBe(0);
+    expect(queue.inFlight.size).toBe(0);
+    expect(handlers.onSavingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("retries a rejected reset", async () => {
+    const result = { tweaks: [{ name: "Motion/Duration", value: 300 }] };
+    const client = {
+      updateTweaks: vi.fn().mockRejectedValueOnce(new Error("Reset failed.")).mockResolvedValueOnce(result)
+    };
+    const handlers = callbacks();
+    const queue = new TweakUpdateQueue(client, { deviceId: "pixel", socketName: "snapo_tweaks_demo" }, handlers);
+
+    queue.enqueue("Motion/Duration", null);
+    await queue.flush();
+    queue.enqueue("Motion/Duration", null);
+    await queue.flush();
+
+    expect(client.updateTweaks).toHaveBeenCalledTimes(2);
+    expect(handlers.onUpdate).toHaveBeenCalledWith(result.tweaks, new Map());
+  });
+
+  it("lets a reset replace a queued value update", async () => {
+    const client = { updateTweaks: vi.fn().mockResolvedValue({ tweaks: [] }) };
+    const server = { deviceId: "pixel", socketName: "snapo_tweaks_demo" };
+    const queue = new TweakUpdateQueue(client, server, callbacks());
+
+    queue.enqueue("Motion/Duration", 500);
+    queue.enqueue("Motion/Duration", null);
+    await queue.flush();
+
+    expect(client.updateTweaks).toHaveBeenCalledOnce();
+    expect(client.updateTweaks).toHaveBeenCalledWith({ server, values: { "Motion/Duration": null } });
+  });
+
+  it("lets a new value replace a queued reset", async () => {
+    const client = { updateTweaks: vi.fn().mockResolvedValue({ tweaks: [] }) };
+    const server = { deviceId: "pixel", socketName: "snapo_tweaks_demo" };
+    const queue = new TweakUpdateQueue(client, server, callbacks());
+
+    queue.enqueue("Motion/Duration", null);
+    queue.enqueue("Motion/Duration", 500);
+    await queue.flush();
+
+    expect(client.updateTweaks).toHaveBeenCalledOnce();
+    expect(client.updateTweaks).toHaveBeenCalledWith({ server, values: { "Motion/Duration": 500 } });
+  });
+
+  it("waits for an in-flight value update before resetting it", async () => {
+    const firstRequest = deferred<TweakUpdates>();
+    const secondRequest = deferred<TweakUpdates>();
+    const client = {
+      updateTweaks: vi.fn().mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise)
+    };
+    const server = { deviceId: "pixel", socketName: "snapo_tweaks_demo" };
+    const queue = new TweakUpdateQueue(client, server, callbacks());
+
+    queue.enqueue("Motion/Duration", 500);
+    const flush = queue.flush();
+    queue.enqueue("Motion/Duration", null);
+    void queue.flush();
+
+    firstRequest.resolve({ tweaks: [{ name: "Motion/Duration", value: 500, modified: true }] });
+    await vi.waitFor(() => {
+      expect(client.updateTweaks).toHaveBeenCalledTimes(2);
+    });
+
+    expect(client.updateTweaks).toHaveBeenNthCalledWith(2, { server, values: { "Motion/Duration": null } });
+    secondRequest.resolve({ tweaks: [{ name: "Motion/Duration", value: 300, modified: false }] });
+    await flush;
+  });
+
+  it("sends value changes and resets together", async () => {
+    const client = { updateTweaks: vi.fn().mockResolvedValue({ tweaks: [] }) };
+    const server = { deviceId: "pixel", socketName: "snapo_tweaks_demo" };
+    const queue = new TweakUpdateQueue(client, server, callbacks());
+
+    queue.enqueue("Motion/Duration", 500);
+    queue.enqueue("Motion/Show", null);
+    await queue.flush();
+
+    expect(client.updateTweaks).toHaveBeenCalledOnce();
+    expect(client.updateTweaks).toHaveBeenCalledWith({
+      server,
+      values: { "Motion/Duration": 500, "Motion/Show": null }
+    });
   });
 
   it("applies successful values and reports each rejected value in the same batch", async () => {

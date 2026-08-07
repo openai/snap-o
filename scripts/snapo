@@ -1230,16 +1230,35 @@ def run_tweak_reset(adb, options):
             if options.all
             else [find_tweak(descriptors, options.name)]
         )
-        values = {}
         for descriptor in selected:
             if descriptor["type"] == "action":
                 raise SnapOError(
                     f"Action '{descriptor['name']}' cannot be reset; "
                     "use 'snapo tweaks action NAME' to invoke it"
                 )
-            if "default" not in descriptor:
-                raise SnapOError(f"Tweak '{descriptor['name']}' does not provide a default value")
-            values[descriptor["name"]] = descriptor["default"]
+        if not selected:
+            return 0
+
+        app = connection.request("GET", "/app")
+        protocol_version = app.get("protocolVersion", 1)
+        if type(protocol_version) is not int or protocol_version < 1:
+            raise SnapOError("Snap-O tweaks server returned an invalid protocol version")
+
+        explicit_resets = protocol_version >= 4
+        if options.all:
+            selected = [
+                descriptor
+                for descriptor in selected
+                if (
+                    descriptor.get("modified") is True
+                    if explicit_resets
+                    else descriptor.get("value") != descriptor.get("default")
+                )
+            ]
+        values = {
+            descriptor["name"]: None if explicit_resets else descriptor["default"]
+            for descriptor in selected
+        }
         if values:
             require_successful_tweak_updates(connection.request("PATCH", "/tweaks", {"values": values}))
     return 0
@@ -1387,10 +1406,10 @@ def parser():
     action.add_argument("name", metavar="NAME")
     action.set_defaults(handler=run_tweak_action)
 
-    reset = tweaks_commands.add_parser("reset", help="reset one tweak or all tweaks to their defaults")
+    reset = tweaks_commands.add_parser("reset", help="reset one tweak or all tweaks")
     add_common_options(reset, socket_option=True, json_option=False)
     reset.add_argument("name", metavar="NAME", nargs="?")
-    reset.add_argument("--all", action="store_true", help="reset every currently registered tweak")
+    reset.add_argument("--all", action="store_true", help="reset every modified tweak")
     reset.set_defaults(handler=run_tweak_reset)
 
     watch = tweaks_commands.add_parser("watch", help="stream current tweak snapshots")

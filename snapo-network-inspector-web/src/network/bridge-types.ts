@@ -43,6 +43,7 @@ export interface SelectedAppInspector {
   appId: string;
   kind: AppInspectorKind;
   server: InspectorServerReference;
+  protocolVersion?: number | null;
 }
 
 export type TweakValue = boolean | number | string;
@@ -52,6 +53,7 @@ export interface TweakValueDescriptor {
   type: "int" | "float" | "boolean" | "color" | "string" | "enum";
   default: TweakValue;
   value: TweakValue;
+  modified?: boolean;
   min?: number;
   max?: number;
   step?: number;
@@ -83,6 +85,7 @@ export interface NativeTweaksState {
 export interface TweakUpdate {
   name: string;
   value: TweakValue;
+  modified?: boolean;
 }
 
 export interface TweakUpdateError {
@@ -97,7 +100,7 @@ export interface TweakUpdates {
 
 export interface UpdateTweaksInput {
   server: InspectorServerReference;
-  values: Record<string, TweakValue>;
+  values: Record<string, TweakValue | null>;
 }
 
 export interface InvokeTweakActionInput {

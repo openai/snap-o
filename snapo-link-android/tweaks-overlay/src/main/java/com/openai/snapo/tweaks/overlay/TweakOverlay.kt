@@ -280,7 +280,7 @@ private fun TweakOverlayActions(
         hasChanges = hasChanges,
         onReset = {
             tweaks.filter { tweak -> tweak.isChanged }.forEach { tweak ->
-                SnapOTweaks.update(tweak.name, tweak.defaultValue)
+                SnapOTweaks.reset(tweak.name)
             }
         },
         resetContentDescription = "Reset all tweaks",
@@ -304,7 +304,7 @@ private fun TweakColorOverlayActions(
     TweakOverlayHeader(
         title = tweak.name.substringAfter('/'),
         hasChanges = hasChanges,
-        onReset = { SnapOTweaks.update(tweak.name, tweak.defaultValue) },
+        onReset = { SnapOTweaks.reset(tweak.name) },
         resetContentDescription = "Reset ${tweak.name}",
         onTrailingAction = onClose,
         trailingIcon = R.drawable.snapo_tweaks_check,

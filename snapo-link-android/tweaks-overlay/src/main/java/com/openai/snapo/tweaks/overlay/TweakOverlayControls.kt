@@ -241,7 +241,7 @@ private fun TweakOverlayLabelRow(
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     IconButton(
-                        onClick = { SnapOTweaks.update(tweak.name, tweak.defaultValue) },
+                        onClick = { SnapOTweaks.reset(tweak.name) },
                         modifier = Modifier
                             .size(48.dp)
                             .offset(x = spacing - 12.dp),

@@ -86,6 +86,7 @@ const demoApp = {
   packageName: "com.openai.snapo.demo.tweaks",
   deviceName: "Pixel 9 Pro XL",
   deviceSerial: "PIXEL123",
+  protocolVersion: 4,
 };
 
 class FakeElement {
@@ -276,6 +277,27 @@ function jsonResponse(payload, status = 200) {
   };
 }
 
+function applyTweakUpdates(tweaks, values) {
+  return Object.entries(values).map(([name, value]) => {
+    const tweak = tweaks.find((candidate) => candidate.name === name);
+    assert.ok(tweak);
+
+    if (value === null) {
+      tweak.value = tweak.default;
+      delete tweak.modified;
+    } else {
+      tweak.value = value;
+      tweak.modified = true;
+    }
+
+    return {
+      name,
+      value: tweak.value,
+      ...(tweak.modified === true ? { modified: true } : {}),
+    };
+  });
+}
+
 test("browser panel renders, streams, validates, and resets live tweaks", async () => {
   const document = makeDocument();
   const markerShape = {
@@ -310,17 +332,8 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
       const { values } = JSON.parse(options.body);
       patches.push(values);
 
-      for (const tweak of tweaks) {
-        if (Object.hasOwn(values, tweak.name)) {
-          tweak.value = values[tweak.name];
-        }
-      }
-
       return jsonResponse({
-        tweaks: Object.entries(values).map(([name, value]) => ({
-          name,
-          value,
-        })),
+        tweaks: applyTweakUpdates(tweaks, values),
       });
     }
 
@@ -470,7 +483,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.equal(resetAccent.hidden, false);
     await resetAccent.emit("click");
     await delay(0);
-    assert.deepEqual(patches.at(-1), { "Accent color": "#5468FF" });
+    assert.deepEqual(patches.at(-1), { "Accent color": null });
     assert.equal(resetAccent.hidden, true);
     assert.equal(document.properties.has("--accent"), false);
 
@@ -478,7 +491,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.equal(resetMarker.hidden, false);
     await resetMarker.emit("click");
     await delay(0);
-    assert.deepEqual(patches.at(-1), { "Motion/Marker shape": "Circle" });
+    assert.deepEqual(patches.at(-1), { "Motion/Marker shape": null });
     assert.equal(marker.value, "Circle");
     assert.equal(resetMarker.hidden, true);
 
@@ -490,12 +503,13 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
     assert.equal(patches.length, patchesBeforeInvalid);
 
     const patchesBeforeReset = patches.length;
+    const modifiedTweaks = tweaks.filter((tweak) => tweak.modified === true);
     await document.querySelector("#reset-button").emit("click");
 
     assert.equal(patches.length, patchesBeforeReset + 1);
     assert.deepEqual(
       patches.at(-1),
-      Object.fromEntries(tweaks.map((tweak) => [tweak.name, tweak.default])),
+      Object.fromEntries(modifiedTweaks.map((tweak) => [tweak.name, null])),
     );
     assert.equal(document.querySelector("#reset-button").disabled, true);
     assert.equal(document.properties.has("--accent"), false);
@@ -504,6 +518,433 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
   } finally {
     globalThis.document = originalDocument;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("mock tweaks clear modified status when written or reset to their defaults", async () => {
+  const document = makeDocument();
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+
+  globalThis.document = document;
+  globalThis.window = {
+    location: { search: "?mock" },
+    addEventListener() {},
+  };
+
+  try {
+    await import(`./app.js?mock-default-status=${Date.now()}`);
+    await delay(0);
+
+    const typography = findTweakList(document, "Typography");
+    const fontSize = findInput(typography, "Typography/Font size");
+    const resetFontSize = findInput(typography, "Reset Typography/Font size");
+    const fontSizeRow = typography.children.find((row) =>
+      findInput(row, "Typography/Font size")
+    );
+
+    assert.equal(fontSizeRow.dataset.changed, "false");
+    assert.equal(resetFontSize.hidden, true);
+
+    fontSize.value = "48";
+    await fontSize.emit("input");
+    await delay(0);
+
+    assert.equal(fontSizeRow.dataset.changed, "true");
+    assert.equal(resetFontSize.hidden, false);
+    assert.equal(document.querySelector("#reset-button").disabled, false);
+
+    fontSize.value = "36";
+    await fontSize.emit("input");
+    await delay(0);
+
+    assert.equal(fontSizeRow.dataset.changed, "false");
+    assert.equal(resetFontSize.hidden, true);
+    assert.equal(document.querySelector("#reset-button").disabled, true);
+
+    fontSize.value = "48";
+    await fontSize.emit("input");
+    await delay(0);
+    await resetFontSize.emit("click");
+    await delay(0);
+
+    assert.equal(fontSize.value, "36");
+    assert.equal(fontSizeRow.dataset.changed, "false");
+    assert.equal(resetFontSize.hidden, true);
+    assert.equal(document.querySelector("#reset-button").disabled, true);
+  } finally {
+    globalThis.document = originalDocument;
+
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test("legacy tweak protocols reset changed values using their defaults", async () => {
+  for (const protocolVersion of [undefined, 2, 3]) {
+    const document = makeDocument();
+    const app = { ...demoApp };
+    if (protocolVersion === undefined) delete app.protocolVersion;
+    else app.protocolVersion = protocolVersion;
+
+    const tweaks = [
+      { name: "Settings/Show hints", type: "boolean", default: false, value: true },
+      { name: "Settings/Use compact layout", type: "boolean", default: true, value: false },
+      { name: "Settings/Show labels", type: "boolean", default: true, value: true },
+    ];
+    const patches = [];
+    const originalDocument = globalThis.document;
+    const originalFetch = globalThis.fetch;
+
+    globalThis.document = document;
+    globalThis.fetch = async (pathname, options) => {
+      if (pathname === "/apps") {
+        return jsonResponse({ apps: [app], selectedAppId: app.id });
+      }
+
+      if (pathname === "/app") return jsonResponse(app);
+
+      if (pathname === "/tweaks" && options?.method === "PATCH") {
+        const { values } = JSON.parse(options.body);
+        patches.push(values);
+
+        return jsonResponse({
+          tweaks: Object.entries(values).map(([name, value]) => {
+            assert.notEqual(value, null);
+            const tweak = tweaks.find((candidate) => candidate.name === name);
+            tweak.value = value;
+            return { name, value };
+          }),
+        });
+      }
+
+      if (pathname === "/tweaks") return jsonResponse({ tweaks });
+
+      return jsonResponse({ error: "Not found." }, 404);
+    };
+
+    try {
+      await import(`./app.js?legacy-reset-${protocolVersion}-${Date.now()}`);
+      await delay(0);
+
+      const settings = findTweakList(document, "Settings");
+      const hintsReset = findInput(settings, "Reset Settings/Show hints");
+      const compactReset = findInput(settings, "Reset Settings/Use compact layout");
+      const labelsReset = findInput(settings, "Reset Settings/Show labels");
+
+      assert.equal(hintsReset.hidden, false);
+      assert.equal(compactReset.hidden, false);
+      assert.equal(labelsReset.hidden, true);
+      assert.equal(document.querySelector("#reset-button").disabled, false);
+
+      await hintsReset.emit("click");
+      await delay(0);
+
+      assert.deepEqual(patches, [{ "Settings/Show hints": false }]);
+      assert.equal(hintsReset.hidden, true);
+      assert.equal(compactReset.hidden, false);
+
+      await document.querySelector("#reset-button").emit("click");
+
+      assert.deepEqual(patches.at(-1), { "Settings/Use compact layout": true });
+      assert.equal(document.querySelector("#reset-button").disabled, true);
+    } finally {
+      globalThis.document = originalDocument;
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test("mixed tweak updates keep successful changes and restore rejected rows", async () => {
+  for (const protocolVersion of [3, 4]) {
+    const document = makeDocument();
+    const app = { ...demoApp, protocolVersion };
+    const tweaks = [
+      { name: "Settings/First label", type: "string", default: "before", value: "before" },
+      { name: "Settings/Second label", type: "string", default: "before", value: "before" },
+    ];
+    const patches = [];
+    const originalDocument = globalThis.document;
+    const originalFetch = globalThis.fetch;
+
+    globalThis.document = document;
+    globalThis.fetch = async (pathname, options) => {
+      if (pathname === "/apps") {
+        return jsonResponse({ apps: [app], selectedAppId: app.id });
+      }
+      if (pathname === "/app") return jsonResponse(app);
+      if (pathname === "/tweaks" && options?.method === "PATCH") {
+        const { values } = JSON.parse(options.body);
+        patches.push(values);
+        tweaks[0].value = values[tweaks[0].name];
+        if (protocolVersion >= 4) tweaks[0].modified = true;
+        return jsonResponse({
+          tweaks: [{
+            name: tweaks[0].name,
+            value: tweaks[0].value,
+            ...(protocolVersion >= 4 ? { modified: true } : {}),
+          }],
+          errors: [{
+            name: tweaks[1].name,
+            error: "This setting could not be changed.",
+          }],
+        });
+      }
+      if (pathname === "/tweaks") return jsonResponse({ tweaks });
+      return jsonResponse({ error: "Not found." }, 404);
+    };
+
+    try {
+      await import(`./app.js?partial-update-${protocolVersion}-${Date.now()}`);
+      await delay(0);
+
+      const settings = findTweakList(document, "Settings");
+      const first = findInput(settings, tweaks[0].name);
+      const second = findInput(settings, tweaks[1].name);
+      first.value = "first changed";
+      await first.emit("input");
+      second.value = "second changed";
+      await second.emit("input");
+      await delay(160);
+
+      assert.deepEqual(patches, [{
+        "Settings/First label": "first changed",
+        "Settings/Second label": "second changed",
+      }]);
+      assert.equal(findInput(findTweakList(document, "Settings"), tweaks[0].name).value, "first changed");
+      assert.equal(findInput(findTweakList(document, "Settings"), tweaks[1].name).value, "before");
+      assert.equal(document.querySelector("#status-text").textContent, "Some updates failed");
+      assert.equal(
+        document.querySelector("#error-message").textContent,
+        "Settings/Second label: This setting could not be changed.",
+      );
+    } finally {
+      globalThis.document = originalDocument;
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test("mixed tweak resets keep successful changes and report rejected names", async () => {
+  for (const protocolVersion of [3, 4]) {
+    const document = makeDocument();
+    const app = { ...demoApp, protocolVersion };
+    const tweaks = [
+      { name: "Settings/First option", type: "boolean", default: false, value: true },
+      { name: "Settings/Second option", type: "boolean", default: false, value: true },
+    ];
+    if (protocolVersion >= 4) {
+      tweaks[0].modified = true;
+      tweaks[1].modified = true;
+    }
+    const patches = [];
+    const originalDocument = globalThis.document;
+    const originalFetch = globalThis.fetch;
+
+    globalThis.document = document;
+    globalThis.fetch = async (pathname, options) => {
+      if (pathname === "/apps") {
+        return jsonResponse({ apps: [app], selectedAppId: app.id });
+      }
+      if (pathname === "/app") return jsonResponse(app);
+      if (pathname === "/tweaks" && options?.method === "PATCH") {
+        const { values } = JSON.parse(options.body);
+        patches.push(values);
+        tweaks[0].value = false;
+        delete tweaks[0].modified;
+        return jsonResponse({
+          tweaks: [{ name: tweaks[0].name, value: false }],
+          errors: [{
+            name: tweaks[1].name,
+            error: "This setting could not be reset.",
+          }],
+        });
+      }
+      if (pathname === "/tweaks") return jsonResponse({ tweaks });
+      return jsonResponse({ error: "Not found." }, 404);
+    };
+
+    try {
+      await import(`./app.js?partial-reset-${protocolVersion}-${Date.now()}`);
+      await delay(0);
+      await document.querySelector("#reset-button").emit("click");
+
+      assert.deepEqual(patches, [{
+        "Settings/First option": protocolVersion >= 4 ? null : false,
+        "Settings/Second option": protocolVersion >= 4 ? null : false,
+      }]);
+      const settings = findTweakList(document, "Settings");
+      assert.equal(findInput(settings, tweaks[0].name).checked, false);
+      assert.equal(findInput(settings, tweaks[1].name).checked, true);
+      assert.equal(findInput(settings, `Reset ${tweaks[0].name}`).hidden, true);
+      assert.equal(findInput(settings, `Reset ${tweaks[1].name}`).hidden, false);
+      assert.equal(document.querySelector("#status-text").textContent, "Some resets failed");
+      assert.equal(
+        document.querySelector("#error-message").textContent,
+        "Settings/Second option: This setting could not be reset.",
+      );
+    } finally {
+      globalThis.document = originalDocument;
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test("owner status controls null resets independently of the initial default", async () => {
+  const document = makeDocument();
+  const ownedSetting = {
+    name: "Settings/Show hints",
+    type: "boolean",
+    default: false,
+    value: false,
+    modified: true,
+  };
+  const upstreamSetting = {
+    name: "Settings/Use compact layout",
+    type: "boolean",
+    default: false,
+    value: true,
+  };
+  const tweaks = [ownedSetting, upstreamSetting];
+  const patches = [];
+  const sources = [];
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const originalEventSource = globalThis.EventSource;
+  let finishFirstReset;
+
+  class FakeEventSource {
+    constructor() {
+      this.listeners = new Map();
+      sources.push(this);
+    }
+
+    addEventListener(name, listener) {
+      this.listeners.set(name, listener);
+    }
+
+    emitTweaks(snapshot) {
+      this.listeners.get("tweaks")?.({
+        data: JSON.stringify({ tweaks: snapshot }),
+      });
+    }
+
+    close() {}
+  }
+
+  globalThis.document = document;
+  globalThis.EventSource = FakeEventSource;
+  globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") {
+      return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    }
+
+    if (pathname === "/app") {
+      return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
+    }
+
+    if (pathname === "/tweaks" && options?.method === "PATCH") {
+      const { values } = JSON.parse(options.body);
+      patches.push(values);
+
+      const respond = () => jsonResponse({
+        tweaks: Object.entries(values).map(([name, value]) => {
+          const tweak = tweaks.find((candidate) => candidate.name === name);
+          assert.ok(tweak);
+
+          if (value === null) {
+            tweak.value = true;
+            delete tweak.modified;
+          } else {
+            tweak.value = value;
+            tweak.modified = true;
+          }
+
+          return {
+            name,
+            value: tweak.value,
+            ...(tweak.modified === true ? { modified: true } : {}),
+          };
+        }),
+      });
+
+      if (patches.length === 1) {
+        return new Promise((resolve) => {
+          finishFirstReset = () => resolve(respond());
+        });
+      }
+
+      return respond();
+    }
+
+    if (pathname === "/tweaks") return jsonResponse({ tweaks });
+
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?owner-reset-status-test=${Date.now()}`);
+    await delay(0);
+
+    const settings = findTweakList(document, "Settings");
+    const ownedRow = settings.children[0];
+    const upstreamRow = settings.children[1];
+    const ownedToggle = findInput(settings, ownedSetting.name);
+    const ownedReset = findInput(settings, `Reset ${ownedSetting.name}`);
+    const upstreamReset = findInput(settings, `Reset ${upstreamSetting.name}`);
+
+    assert.equal(ownedRow.dataset.changed, "true");
+    assert.equal(ownedReset.hidden, false);
+    assert.equal(upstreamRow.dataset.changed, "false");
+    assert.equal(upstreamReset.hidden, true);
+    assert.equal(document.querySelector("#reset-button").disabled, false);
+
+    await ownedReset.emit("click");
+    assert.deepEqual(patches, [{ [ownedSetting.name]: null }]);
+    assert.equal(ownedReset.hidden, true);
+    assert.equal(ownedToggle.checked, false);
+
+    sources[0].emitTweaks(structuredClone(tweaks));
+    assert.equal(ownedRow.dataset.changed, "false");
+    assert.equal(ownedReset.hidden, true);
+
+    finishFirstReset();
+    finishFirstReset = undefined;
+    await delay(0);
+
+    assert.equal(ownedToggle.checked, true);
+    assert.equal(ownedRow.dataset.changed, "false");
+    assert.equal(upstreamRow.dataset.changed, "false");
+    assert.equal(document.querySelector("#reset-button").disabled, true);
+
+    ownedToggle.checked = false;
+    await ownedToggle.emit("change");
+    await delay(0);
+
+    assert.deepEqual(patches.at(-1), { [ownedSetting.name]: false });
+    assert.equal(ownedToggle.checked, false);
+    assert.equal(ownedRow.dataset.changed, "true");
+    assert.equal(ownedReset.hidden, false);
+    assert.equal(document.querySelector("#reset-button").disabled, false);
+
+    await document.querySelector("#reset-button").emit("click");
+
+    assert.deepEqual(patches.at(-1), { [ownedSetting.name]: null });
+    assert.equal(findInput(findTweakList(document, "Settings"), ownedSetting.name).checked, true);
+    assert.equal(document.querySelector("#reset-button").disabled, true);
+  } finally {
+    if (finishFirstReset) {
+      finishFirstReset();
+      await delay(0);
+    }
+
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+    if (originalEventSource === undefined) {
+      delete globalThis.EventSource;
+    } else {
+      globalThis.EventSource = originalEventSource;
+    }
   }
 });
 
@@ -594,18 +1035,9 @@ test("sliders stream immediately and wait for each request before sending the la
       );
 
       const finish = () => {
-        for (const tweak of tweaks) {
-          if (Object.hasOwn(values, tweak.name)) {
-            tweak.value = values[tweak.name];
-          }
-        }
-
         requestsInFlight -= 1;
         return jsonResponse({
-          tweaks: Object.entries(values).map(([name, value]) => ({
-            name,
-            value,
-          })),
+          tweaks: applyTweakUpdates(tweaks, values),
         });
       };
 
@@ -717,12 +1149,8 @@ test("groups tweaks only by explicit folder paths and patches their full names",
       const { values } = JSON.parse(options.body);
       patches.push(values);
 
-      for (const tweak of tweaks) {
-        if (Object.hasOwn(values, tweak.name)) tweak.value = values[tweak.name];
-      }
-
       return jsonResponse({
-        tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+        tweaks: applyTweakUpdates(tweaks, values),
       });
     }
 
@@ -980,7 +1408,11 @@ test("switches apps only after pending slider updates finish", async () => {
       patches.push({ appId: selectedId, values });
 
       const result = jsonResponse({
-        tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+        tweaks: Object.entries(values).map(([name, value]) => ({
+          name,
+          value,
+          modified: true,
+        })),
       });
 
       if (patches.length === 1) {
@@ -1105,6 +1537,7 @@ test("automatic refresh replaces tweaks when the app changes screens", async () 
         type: "int",
         default: 300,
         value: 450,
+        modified: true,
         min: 100,
         max: 1_000,
         step: 50,
@@ -1151,13 +1584,8 @@ test("motion tweaks appear and disappear as the visibility tweak changes composi
 
     if (pathname === "/tweaks" && options?.method === "PATCH") {
       const { values } = JSON.parse(options.body);
-
-      if (Object.hasOwn(values, visibility.name)) {
-        visibility.value = values[visibility.name];
-      }
-
       return jsonResponse({
-        tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+        tweaks: applyTweakUpdates([visibility], values),
       });
     }
 
@@ -1342,119 +1770,5 @@ test("streams batched composition changes without polling tweak values", async (
     } else {
       globalThis.EventSource = originalEventSource;
     }
-  }
-});
-
-test("mixed tweak updates keep successful changes and restore rejected rows", async () => {
-  const document = makeDocument();
-  const tweaks = [
-    { name: "Settings/First label", type: "string", default: "before", value: "before" },
-    { name: "Settings/Second label", type: "string", default: "before", value: "before" },
-  ];
-  const patches = [];
-  const originalDocument = globalThis.document;
-  const originalFetch = globalThis.fetch;
-
-  globalThis.document = document;
-  globalThis.fetch = async (pathname, options) => {
-    if (pathname === "/apps") return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
-    if (pathname === "/app") return jsonResponse(demoApp);
-    if (pathname === "/tweaks" && options?.method === "PATCH") {
-      const { values } = JSON.parse(options.body);
-      patches.push(values);
-      tweaks[0].value = values[tweaks[0].name];
-      return jsonResponse({
-        tweaks: [{ name: tweaks[0].name, value: tweaks[0].value }],
-        errors: [{
-          name: tweaks[1].name,
-          error: "This setting could not be changed.",
-        }],
-      });
-    }
-    if (pathname === "/tweaks") return jsonResponse({ tweaks });
-    return jsonResponse({ error: "Not found." }, 404);
-  };
-
-  try {
-    await import(`./app.js?foundation-partial-update-${Date.now()}`);
-    await delay(0);
-    const settings = findTweakList(document, "Settings");
-    const first = findInput(settings, tweaks[0].name);
-    const second = findInput(settings, tweaks[1].name);
-    first.value = "first changed";
-    await first.emit("input");
-    second.value = "second changed";
-    await second.emit("input");
-    await delay(160);
-
-    assert.deepEqual(patches, [{
-      "Settings/First label": "first changed",
-      "Settings/Second label": "second changed",
-    }]);
-    assert.equal(findInput(findTweakList(document, "Settings"), tweaks[0].name).value, "first changed");
-    assert.equal(findInput(findTweakList(document, "Settings"), tweaks[1].name).value, "before");
-    assert.equal(document.querySelector("#status-text").textContent, "Some updates failed");
-    assert.equal(
-      document.querySelector("#error-message").textContent,
-      "Settings/Second label: This setting could not be changed.",
-    );
-  } finally {
-    globalThis.document = originalDocument;
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("mixed tweak resets keep successful changes and report rejected names", async () => {
-  const document = makeDocument();
-  const tweaks = [
-    { name: "Settings/First option", type: "boolean", default: false, value: true },
-    { name: "Settings/Second option", type: "boolean", default: false, value: true },
-  ];
-  const patches = [];
-  const originalDocument = globalThis.document;
-  const originalFetch = globalThis.fetch;
-
-  globalThis.document = document;
-  globalThis.fetch = async (pathname, options) => {
-    if (pathname === "/apps") return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
-    if (pathname === "/app") return jsonResponse(demoApp);
-    if (pathname === "/tweaks" && options?.method === "PATCH") {
-      const { values } = JSON.parse(options.body);
-      patches.push(values);
-      tweaks[0].value = false;
-      return jsonResponse({
-        tweaks: [{ name: tweaks[0].name, value: false }],
-        errors: [{
-          name: tweaks[1].name,
-          error: "This setting could not be reset.",
-        }],
-      });
-    }
-    if (pathname === "/tweaks") return jsonResponse({ tweaks });
-    return jsonResponse({ error: "Not found." }, 404);
-  };
-
-  try {
-    await import(`./app.js?foundation-partial-reset-${Date.now()}`);
-    await delay(0);
-    await document.querySelector("#reset-button").emit("click");
-
-    assert.deepEqual(patches, [{
-      "Settings/First option": false,
-      "Settings/Second option": false,
-    }]);
-    const settings = findTweakList(document, "Settings");
-    assert.equal(findInput(settings, tweaks[0].name).checked, false);
-    assert.equal(findInput(settings, tweaks[1].name).checked, true);
-    assert.equal(findInput(settings, `Reset ${tweaks[0].name}`).hidden, true);
-    assert.equal(findInput(settings, `Reset ${tweaks[1].name}`).hidden, false);
-    assert.equal(document.querySelector("#status-text").textContent, "Some resets failed");
-    assert.equal(
-      document.querySelector("#error-message").textContent,
-      "Settings/Second option: This setting could not be reset.",
-    );
-  } finally {
-    globalThis.document = originalDocument;
-    globalThis.fetch = originalFetch;
   }
 });

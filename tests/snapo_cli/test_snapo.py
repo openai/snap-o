@@ -206,7 +206,12 @@ def tweak_descriptors():
             "step": 0.1,
         },
         {"name": "Motion/Enabled", "type": "boolean", "default": True, "value": True},
-        {"name": "Palette/Accent color", "type": "color", "default": "#5468FF", "value": "#5468FF"},
+        {
+            "name": "Palette/Accent color",
+            "type": "color",
+            "default": "#5468FF",
+            "value": "#5468FF",
+        },
         {"name": "Preview/Text value", "type": "string", "default": "true", "value": "true"},
         {
             "name": "Appearance/Theme",
@@ -233,7 +238,7 @@ class TweakHTTPServer:
         self.app = app or {
             "name": "Snap-O Tweaks Demo",
             "packageName": "com.example.tweaks",
-            "protocolVersion": 3,
+            "protocolVersion": 4,
         }
         self.error = error
         self.update_errors = update_errors or {}
@@ -279,12 +284,17 @@ class TweakHTTPServer:
                     return
 
                 descriptors = {item["name"]: item for item in owner.descriptors}
+                if set(payload) != {"values"} or not isinstance(payload["values"], dict):
+                    self.send_json(400, {"error": "Invalid tweak mutation request"})
+                    return
+
+                protocol_version = owner.app.get("protocolVersion", 1)
                 updates = []
                 errors = []
                 for name, value in payload["values"].items():
                     if name not in descriptors:
                         message = f"Unknown tweak: {name}"
-                        if owner.app.get("protocolVersion", 1) < 3:
+                        if protocol_version < 3:
                             self.send_json(404, {"error": message})
                             return
                         errors.append({"name": name, "error": message})
@@ -293,10 +303,26 @@ class TweakHTTPServer:
                         message = owner.update_errors[name]
                         errors.append({"name": name, "error": message})
                         continue
+                    if value is None:
+                        if protocol_version < 4:
+                            message = "Expected a non-null tweak value."
+                            if protocol_version < 3:
+                                self.send_json(422, {"error": message})
+                                return
+                            errors.append({"name": name, "error": message})
+                            continue
+                        value = descriptors[name]["default"]
                     if descriptors[name]["type"] == "color":
                         value = value.upper()
                     descriptors[name]["value"] = value
-                    updates.append({"name": name, "value": value})
+                    modified = value != descriptors[name]["default"]
+                    update = {"name": name, "value": value}
+                    if modified and protocol_version >= 4:
+                        descriptors[name]["modified"] = True
+                        update["modified"] = True
+                    else:
+                        descriptors[name].pop("modified", None)
+                    updates.append(update)
                 response = {"tweaks": updates}
                 if errors:
                     response["errors"] = errors
@@ -1264,7 +1290,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(app["socketName"], "snapo_tweaks_42")
         self.assertEqual(app["appName"], "Snap-O Tweaks Demo")
         self.assertEqual(app["packageName"], "com.example.tweaks")
-        self.assertEqual(app["protocolVersion"], 3)
+        self.assertEqual(app["protocolVersion"], 4)
         self.assertEqual(wire.requests, [("GET", "/app", None)])
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
@@ -1333,7 +1359,7 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_list_all_includes_previously_adjusted_inactive_tweaks(self):
         active = tweak_descriptors()[0]
-        inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7}
+        inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7, "modified": True}
 
         with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, inactive]) as wire:
             result, output, errors, adb = self.run_command(["list", "--all", "--json"], wire)
@@ -1345,7 +1371,7 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_list_all_preserves_independently_adjusted_tweaks_with_the_same_name(self):
         active = tweak_descriptors()[1]
-        first = {**tweak_descriptors()[0], "value": 20}
+        first = {**tweak_descriptors()[0], "value": 20, "modified": True}
         second = {**first, "default": 24, "value": 32, "max": 64}
         expanded = [active, first, second]
 
@@ -1393,6 +1419,28 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(result, 0, errors)
         self.assertEqual(json.loads(output), {"tweaks": descriptors})
 
+    def test_list_does_not_infer_missing_modified_state_from_value(self):
+        descriptors = tweak_descriptors()
+        descriptors[0]["value"] = 20
+
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["list", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), {"tweaks": descriptors})
+        self.assertNotIn("modified", json.loads(output)["tweaks"][0])
+
+    def test_list_preserves_modified_state_when_value_matches_default(self):
+        descriptors = tweak_descriptors()
+        descriptors[0]["modified"] = True
+
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["list", "--json"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(json.loads(output), {"tweaks": descriptors})
+        self.assertTrue(json.loads(output)["tweaks"][0]["modified"])
+
     def test_get_accepts_tweak_names_with_slashes_and_spaces(self):
         with TweakHTTPServer() as wire:
             result, output, errors, _ = self.run_command(["get", "Typography/Font size", "--json"], wire)
@@ -1412,7 +1460,7 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_get_all_finds_a_previously_adjusted_inactive_tweak(self):
         active = tweak_descriptors()[0]
-        inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7}
+        inactive = {**tweak_descriptors()[1], "name": "Motion/Historical duration", "value": 0.7, "modified": True}
 
         with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, inactive]) as wire:
             result, output, errors, adb = self.run_command(
@@ -1427,7 +1475,7 @@ class TweakCommandTests(unittest.TestCase):
 
     def test_get_all_rejects_independently_adjusted_tweaks_with_the_same_name(self):
         active = tweak_descriptors()[1]
-        first = {**tweak_descriptors()[0], "value": 20}
+        first = {**tweak_descriptors()[0], "value": 20, "modified": True}
         second = {**first, "default": 24, "value": 32, "max": 64}
 
         with TweakHTTPServer(descriptors=[active], adjusted_descriptors=[active, first, second]) as wire:
@@ -1545,37 +1593,40 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(wire.requests, [("POST", "/tweaks/action", {"name": name})])
                 self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
+    def test_set_updates_the_modified_state(self):
+        with TweakHTTPServer() as wire:
+            result, output, errors, _ = self.run_command(["set", "Typography/Font size", "24"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(output, "")
+        self.assertEqual(wire.descriptors[0]["value"], 24)
+        self.assertTrue(wire.descriptors[0]["modified"])
+
     def test_set_reports_a_named_batch_error(self):
         name = "Motion/Enabled"
-        with TweakHTTPServer(update_errors={name: "The value could not be changed."}) as wire:
-            result, output, errors, _ = self.run_command(["set", name, "false"], wire)
+        for version in (3, 4):
+            with self.subTest(version=version):
+                app = {
+                    "name": "Snap-O Tweaks Demo",
+                    "packageName": "com.example.tweaks",
+                    "protocolVersion": version,
+                }
+                with TweakHTTPServer(
+                    app=app,
+                    update_errors={name: "The value could not be changed."},
+                ) as wire:
+                    result, output, errors, _ = self.run_command(["set", name, "false"], wire)
 
-        self.assertEqual(result, 1)
-        self.assertEqual(output, "")
-        self.assertIn(name, errors)
-        self.assertIn("The value could not be changed.", errors)
+                self.assertEqual(result, 1)
+                self.assertEqual(output, "")
+                self.assertIn(name, errors)
+                self.assertIn("The value could not be changed.", errors)
+                self.assertTrue(next(item for item in wire.descriptors if item["name"] == name)["value"])
 
-    def test_reset_all_keeps_successful_changes_and_reports_named_batch_errors(self):
+    def test_reset_one_tweak_sends_a_null_value(self):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
-        descriptors[2]["value"] = False
-        failed_name = descriptors[2]["name"]
-        with TweakHTTPServer(
-            descriptors=descriptors,
-            update_errors={failed_name: "This value could not be reset."},
-        ) as wire:
-            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
-
-        self.assertEqual(result, 1)
-        self.assertEqual(output, "")
-        self.assertIn(failed_name, errors)
-        self.assertIn("This value could not be reset.", errors)
-        self.assertEqual(wire.descriptors[0]["value"], 16)
-        self.assertFalse(wire.descriptors[2]["value"])
-
-    def test_reset_one_tweak_patches_its_declared_default(self):
-        descriptors = tweak_descriptors()
-        descriptors[0]["value"] = 24
+        descriptors[0]["modified"] = True
         with TweakHTTPServer(descriptors=descriptors) as wire:
             result, output, errors, _ = self.run_command(
                 ["reset", "Typography/Font size"],
@@ -1583,10 +1634,12 @@ class TweakCommandTests(unittest.TestCase):
             )
 
         self.assertEqual(result, 0, errors)
-        self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Typography/Font size": 16}}))
+        self.assertEqual(wire.requests[2], ("PATCH", "/tweaks", {"values": {"Typography/Font size": None}}))
+        self.assertEqual(wire.descriptors[0]["value"], 16)
+        self.assertNotIn("modified", wire.descriptors[0])
         self.assertEqual(output, "")
 
-    def test_reset_enum_patches_its_declared_default_name(self):
+    def test_reset_enum_sends_a_null_value(self):
         descriptors = tweak_descriptors()
         descriptor = next(item for item in descriptors if item["name"] == "Appearance/Theme")
         descriptor["value"] = "Dark"
@@ -1595,19 +1648,138 @@ class TweakCommandTests(unittest.TestCase):
             result, output, errors, _ = self.run_command(["reset", "Appearance/Theme"], wire)
 
         self.assertEqual(result, 0, errors)
-        self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Appearance/Theme": "System"}}))
+        self.assertEqual(wire.requests[2], ("PATCH", "/tweaks", {"values": {"Appearance/Theme": None}}))
+        self.assertEqual(
+            next(item for item in wire.descriptors if item["name"] == "Appearance/Theme")["value"],
+            "System",
+        )
         self.assertEqual(output, "")
 
-    def test_reset_all_patches_every_default_in_one_request(self):
+    def test_reset_legacy_tweak_sends_its_default_value(self):
+        for version in (None, 2, 3):
+            with self.subTest(version=version):
+                descriptors = tweak_descriptors()
+                descriptors[0]["value"] = 24
+                app = {"name": "Snap-O Tweaks Demo", "packageName": "com.example.tweaks"}
+                if version is not None:
+                    app["protocolVersion"] = version
+
+                with TweakHTTPServer(descriptors=descriptors, app=app) as wire:
+                    result, output, errors, _ = self.run_command(
+                        ["reset", "Typography/Font size"],
+                        wire,
+                    )
+
+                self.assertEqual(result, 0, errors)
+                self.assertEqual(
+                    wire.requests,
+                    [
+                        ("GET", "/tweaks", None),
+                        ("GET", "/app", None),
+                        ("PATCH", "/tweaks", {"values": {"Typography/Font size": 16}}),
+                    ],
+                )
+                self.assertEqual(wire.descriptors[0]["value"], 16)
+                self.assertEqual(output, "")
+
+    def test_reset_all_legacy_tweaks_uses_only_changed_defaults(self):
+        for version in (2, 3):
+            with self.subTest(version=version):
+                descriptors = tweak_descriptors()
+                descriptors[0]["value"] = 24
+                descriptors[2]["value"] = False
+                descriptors.append({"name": "Preview/Refresh", "type": "action"})
+                app = {
+                    "name": "Snap-O Tweaks Demo",
+                    "packageName": "com.example.tweaks",
+                    "protocolVersion": version,
+                }
+
+                with TweakHTTPServer(descriptors=descriptors, app=app) as wire:
+                    result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+
+                self.assertEqual(result, 0, errors)
+                self.assertEqual(
+                    wire.requests,
+                    [
+                        ("GET", "/tweaks", None),
+                        ("GET", "/app", None),
+                        (
+                            "PATCH",
+                            "/tweaks",
+                            {"values": {"Typography/Font size": 16, "Motion/Enabled": True}},
+                        ),
+                    ],
+                )
+                self.assertEqual(wire.descriptors[0]["value"], 16)
+                self.assertTrue(wire.descriptors[2]["value"])
+                self.assertEqual(output, "")
+
+    def test_reset_all_keeps_successful_changes_and_reports_named_batch_errors(self):
+        for version in (3, 4):
+            with self.subTest(version=version):
+                descriptors = tweak_descriptors()
+                descriptors[0]["value"] = 24
+                descriptors[2]["value"] = False
+                if version >= 4:
+                    descriptors[0]["modified"] = True
+                    descriptors[2]["modified"] = True
+                app = {
+                    "name": "Snap-O Tweaks Demo",
+                    "packageName": "com.example.tweaks",
+                    "protocolVersion": version,
+                }
+                failed_name = descriptors[2]["name"]
+
+                with TweakHTTPServer(
+                    descriptors=descriptors,
+                    app=app,
+                    update_errors={failed_name: "The owner rejected this value."},
+                ) as wire:
+                    result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+
+                self.assertEqual(result, 1)
+                self.assertEqual(output, "")
+                self.assertIn(failed_name, errors)
+                self.assertIn("The owner rejected this value.", errors)
+                self.assertEqual(wire.descriptors[0]["value"], 16)
+                self.assertFalse(wire.descriptors[2]["value"])
+                self.assertEqual(
+                    wire.requests[-1],
+                    (
+                        "PATCH",
+                        "/tweaks",
+                        {
+                            "values": {
+                                "Typography/Font size": None if version >= 4 else 16,
+                                failed_name: None if version >= 4 else True,
+                            },
+                        },
+                    ),
+                )
+
+    def test_reset_all_sends_only_modified_names_with_null_values(self):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
+        descriptors[0]["modified"] = True
+        descriptors[1]["value"] = 0.7
         descriptors[2]["value"] = False
-        defaults = {descriptor["name"]: descriptor["default"] for descriptor in descriptors}
+        descriptors[2]["modified"] = True
+        values = {
+            descriptor["name"]: None
+            for descriptor in descriptors
+            if descriptor.get("modified") is True
+        }
         with TweakHTTPServer(descriptors=descriptors) as wire:
             result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
-        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": defaults})])
+        self.assertEqual(
+            wire.requests,
+            [("GET", "/tweaks", None), ("GET", "/app", None), ("PATCH", "/tweaks", {"values": values})],
+        )
+        self.assertEqual(wire.descriptors[1]["value"], 0.7)
+        self.assertTrue(all("modified" not in descriptor for descriptor in wire.descriptors))
         self.assertEqual(output, "")
 
     def test_reset_all_ignores_actions_without_defaults(self):
@@ -1616,16 +1788,48 @@ class TweakCommandTests(unittest.TestCase):
             {"name": "Preview/Refresh", "type": "action"},
             {"name": "Preview/Reload", "type": "action", "conflicted": True},
         ]
-        defaults = {
-            descriptor["name"]: descriptor["default"]
+        descriptors[0]["value"] = 24
+        descriptors[0]["modified"] = True
+        values = {
+            descriptor["name"]: None
             for descriptor in descriptors
-            if descriptor["type"] != "action"
+            if descriptor["type"] != "action" and descriptor.get("modified") is True
         }
         with TweakHTTPServer(descriptors=descriptors) as wire:
             result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
-        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("PATCH", "/tweaks", {"values": defaults})])
+        self.assertEqual(
+            wire.requests,
+            [("GET", "/tweaks", None), ("GET", "/app", None), ("PATCH", "/tweaks", {"values": values})],
+        )
+        self.assertEqual(output, "")
+
+    def test_reset_all_with_no_modified_tweaks_sends_no_patch(self):
+        descriptors = tweak_descriptors()
+        descriptors[0]["value"] = 24
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("GET", "/app", None)])
+        self.assertEqual(wire.descriptors[0]["value"], 24)
+        self.assertEqual(output, "")
+
+    def test_reset_one_unmodified_tweak_still_sends_a_null_value(self):
+        descriptors = tweak_descriptors()
+        with TweakHTTPServer(descriptors=descriptors) as wire:
+            result, output, errors, _ = self.run_command(["reset", "Typography/Font size"], wire)
+
+        self.assertEqual(result, 0, errors)
+        self.assertEqual(
+            wire.requests,
+            [
+                ("GET", "/tweaks", None),
+                ("GET", "/app", None),
+                ("PATCH", "/tweaks", {"values": {"Typography/Font size": None}}),
+            ],
+        )
         self.assertEqual(output, "")
 
     def test_reset_all_with_only_actions_sends_no_patch(self):

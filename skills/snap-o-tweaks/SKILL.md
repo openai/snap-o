@@ -53,7 +53,7 @@ ADB resolves from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <pat
    "$SNAPO_BIN" tweaks get 'Typography/Font size' --all -s <serial> -n <socket> --json
    ```
 
-   The expanded list combines current tweaks and actions with retained, previously adjusted tweaks. Compare each value descriptor's `value` with its `default` when the user asks to apply all changes they made; action descriptors have neither field. Separate screens can reuse tweak names with different declarations; preserve every descriptor from `list --all` instead of deduplicating by name. `get NAME --all` reports an error when multiple declarations match; use `list --all --json` to inspect them. Historical tweaks can be inspected while inactive, but can only be changed or reset when their declaration is active. Actions are active-only.
+   The expanded list combines current tweaks and actions with retained, previously adjusted tweaks. In protocol version 4, use `"modified": true` to identify outstanding changes; a missing field always means false. For versions 1, 2, and 3, compare `value` with `default` instead. Actions never include `modified`. Separate screens can reuse tweak names with different declarations; preserve every descriptor from `list --all` instead of deduplicating by name. `get NAME --all` reports an error when multiple declarations match; use `list --all --json` to inspect them. Historical tweaks can be inspected while inactive, but can only be changed or reset when their declaration is active. Actions are active-only.
 
 4. Observe live complete snapshots:
 
@@ -77,7 +77,7 @@ Inspect the descriptor first: the CLI parses `int`, `float`, `boolean`, `color`,
 
 Successful updates and resets produce no output.
 
-Reset only the explicitly requested value, or use `--all` only for an explicit reset-everything request:
+Reset only the explicitly requested value, or use `--all` only when the user explicitly requests resetting every modified tweak:
 
 ```bash
 "$SNAPO_BIN" tweaks reset 'Typography/Font size' -s <serial> -n <socket>

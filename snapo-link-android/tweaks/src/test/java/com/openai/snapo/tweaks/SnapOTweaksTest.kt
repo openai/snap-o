@@ -111,6 +111,26 @@ class SnapOTweaksTest {
     }
 
     @Test
+    fun `overlay reset restores the original value and clears modified state`() {
+        val descriptor = TweakDescriptor(
+            name = "Typography/Reset font size",
+            type = TweakType.INT,
+            default = 16,
+        )
+        val state = TweakRegistry.register(descriptor)
+        val entry = SnapOTweaks.activeTweakEntries().value.single()
+
+        assertEquals(false, entry.modified.value)
+        SnapOTweaks.update(descriptor.name, SnapOTweakValue.Integer(20))
+        assertEquals(true, entry.modified.value)
+
+        SnapOTweaks.reset(descriptor.name)
+
+        assertEquals(16, state.value)
+        assertEquals(false, entry.modified.value)
+    }
+
+    @Test
     fun `overlay updates remain available as adjusted history after leaving composition`() {
         val descriptor = TweakDescriptor(
             name = "Typography/Historical font size",
@@ -131,6 +151,15 @@ class SnapOTweaksTest {
         TweaksRuntimePolicy.configure(isDebuggable = false, allowRelease = false)
 
         SnapOTweaks.update("Typography/Unavailable font size", SnapOTweakValue.Integer(20))
+
+        assertTrue(SnapOTweaks.activeTweaks().isEmpty())
+    }
+
+    @Test
+    fun `release resets without an override ignore unavailable tweaks`() {
+        TweaksRuntimePolicy.configure(isDebuggable = false, allowRelease = false)
+
+        SnapOTweaks.reset("Typography/Unavailable font size")
 
         assertTrue(SnapOTweaks.activeTweaks().isEmpty())
     }

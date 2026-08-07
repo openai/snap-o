@@ -220,7 +220,7 @@ class TweakRegistryLifecycleTest {
         TweakRegistry.unregister(descriptor.name)
 
         assertEquals(
-            TweakSnapshot(descriptor, descriptor.default),
+            TweakSnapshot(descriptor, descriptor.default, modified = false),
             TweakRegistry.snapshot(includeAdjusted = true).single(),
         )
     }
@@ -281,7 +281,10 @@ class TweakRegistryLifecycleTest {
         TweakRegistry.unregister(replacement.name)
 
         assertEquals(
-            listOf(TweakSnapshot(original, 20), TweakSnapshot(replacement, 32)),
+            listOf(
+                TweakSnapshot(original, 20, modified = true),
+                TweakSnapshot(replacement, 32, modified = true),
+            ),
             TweakRegistry.snapshot(includeAdjusted = true),
         )
     }
@@ -298,22 +301,28 @@ class TweakRegistryLifecycleTest {
 
         assertEquals(
             listOf(
-                TweakSnapshot(replacement, replacement.default),
-                TweakSnapshot(original, 20),
+                TweakSnapshot(replacement, replacement.default, modified = false),
+                TweakSnapshot(original, 20, modified = true),
             ),
             TweakRegistry.snapshot(includeAdjusted = true),
         )
 
         TweakRegistry.update(mapOf(replacement.name to 32))
         assertEquals(
-            listOf(TweakSnapshot(replacement, 32), TweakSnapshot(original, 20)),
+            listOf(
+                TweakSnapshot(replacement, 32, modified = true),
+                TweakSnapshot(original, 20, modified = true),
+            ),
             TweakRegistry.snapshot(includeAdjusted = true),
         )
 
         TweakRegistry.unregister(replacement.name)
 
         assertEquals(
-            listOf(TweakSnapshot(original, 20), TweakSnapshot(replacement, 32)),
+            listOf(
+                TweakSnapshot(original, 20, modified = true),
+                TweakSnapshot(replacement, 32, modified = true),
+            ),
             TweakRegistry.snapshot(includeAdjusted = true),
         )
     }
@@ -334,8 +343,8 @@ class TweakRegistryLifecycleTest {
 
         assertEquals(
             listOf(
-                TweakSnapshot(original, original.default),
-                TweakSnapshot(replacement, replacement.default),
+                TweakSnapshot(original, original.default, modified = false),
+                TweakSnapshot(replacement, replacement.default, modified = false),
             ),
             TweakRegistry.snapshot(includeAdjusted = true),
         )
