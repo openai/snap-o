@@ -103,8 +103,14 @@ struct TweakUpdate: Codable {
   let value: TweakValue
 }
 
+struct TweakUpdateError: Codable {
+  let name: String
+  let error: String
+}
+
 struct TweakUpdates: Codable {
   let tweaks: [TweakUpdate]
+  let errors: [TweakUpdateError]?
 }
 
 struct TweakPatch: Codable {

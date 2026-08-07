@@ -69,6 +69,18 @@ export function TweaksInspectorApp({
             })
           );
         },
+        onRejected(_errors, pending, inFlight, isCurrent) {
+          void client
+            .listTweaks(server)
+            .then((response) => {
+              if (!isCurrent()) return;
+              setTweaks((current) => reconcileStreamedTweaks(current, response.tweaks, pending, inFlight));
+            })
+            .catch((cause: unknown) => {
+              if (!isCurrent()) return;
+              setError(cause instanceof Error ? cause.message : "Unable to reload tweaks.");
+            });
+        },
         onError: setError,
         onSavingChange: setSaving
       }),

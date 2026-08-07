@@ -1344,3 +1344,117 @@ test("streams batched composition changes without polling tweak values", async (
     }
   }
 });
+
+test("mixed tweak updates keep successful changes and restore rejected rows", async () => {
+  const document = makeDocument();
+  const tweaks = [
+    { name: "Settings/First label", type: "string", default: "before", value: "before" },
+    { name: "Settings/Second label", type: "string", default: "before", value: "before" },
+  ];
+  const patches = [];
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    if (pathname === "/app") return jsonResponse(demoApp);
+    if (pathname === "/tweaks" && options?.method === "PATCH") {
+      const { values } = JSON.parse(options.body);
+      patches.push(values);
+      tweaks[0].value = values[tweaks[0].name];
+      return jsonResponse({
+        tweaks: [{ name: tweaks[0].name, value: tweaks[0].value }],
+        errors: [{
+          name: tweaks[1].name,
+          error: "This setting could not be changed.",
+        }],
+      });
+    }
+    if (pathname === "/tweaks") return jsonResponse({ tweaks });
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?foundation-partial-update-${Date.now()}`);
+    await delay(0);
+    const settings = findTweakList(document, "Settings");
+    const first = findInput(settings, tweaks[0].name);
+    const second = findInput(settings, tweaks[1].name);
+    first.value = "first changed";
+    await first.emit("input");
+    second.value = "second changed";
+    await second.emit("input");
+    await delay(160);
+
+    assert.deepEqual(patches, [{
+      "Settings/First label": "first changed",
+      "Settings/Second label": "second changed",
+    }]);
+    assert.equal(findInput(findTweakList(document, "Settings"), tweaks[0].name).value, "first changed");
+    assert.equal(findInput(findTweakList(document, "Settings"), tweaks[1].name).value, "before");
+    assert.equal(document.querySelector("#status-text").textContent, "Some updates failed");
+    assert.equal(
+      document.querySelector("#error-message").textContent,
+      "Settings/Second label: This setting could not be changed.",
+    );
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("mixed tweak resets keep successful changes and report rejected names", async () => {
+  const document = makeDocument();
+  const tweaks = [
+    { name: "Settings/First option", type: "boolean", default: false, value: true },
+    { name: "Settings/Second option", type: "boolean", default: false, value: true },
+  ];
+  const patches = [];
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+
+  globalThis.document = document;
+  globalThis.fetch = async (pathname, options) => {
+    if (pathname === "/apps") return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
+    if (pathname === "/app") return jsonResponse(demoApp);
+    if (pathname === "/tweaks" && options?.method === "PATCH") {
+      const { values } = JSON.parse(options.body);
+      patches.push(values);
+      tweaks[0].value = false;
+      return jsonResponse({
+        tweaks: [{ name: tweaks[0].name, value: false }],
+        errors: [{
+          name: tweaks[1].name,
+          error: "This setting could not be reset.",
+        }],
+      });
+    }
+    if (pathname === "/tweaks") return jsonResponse({ tweaks });
+    return jsonResponse({ error: "Not found." }, 404);
+  };
+
+  try {
+    await import(`./app.js?foundation-partial-reset-${Date.now()}`);
+    await delay(0);
+    await document.querySelector("#reset-button").emit("click");
+
+    assert.deepEqual(patches, [{
+      "Settings/First option": false,
+      "Settings/Second option": false,
+    }]);
+    const settings = findTweakList(document, "Settings");
+    assert.equal(findInput(settings, tweaks[0].name).checked, false);
+    assert.equal(findInput(settings, tweaks[1].name).checked, true);
+    assert.equal(findInput(settings, `Reset ${tweaks[0].name}`).hidden, true);
+    assert.equal(findInput(settings, `Reset ${tweaks[1].name}`).hidden, false);
+    assert.equal(document.querySelector("#status-text").textContent, "Some resets failed");
+    assert.equal(
+      document.querySelector("#error-message").textContent,
+      "Settings/Second option: This setting could not be reset.",
+    );
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  }
+});

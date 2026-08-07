@@ -32,17 +32,17 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 | Request | Result |
 | --- | --- |
-| `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":2}`. |
+| `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":3}`. |
 | `GET /app/icon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
 | `GET /tweaks?include=adjusted` | Active descriptors plus all previously adjusted value tweaks retained outside composition. |
-| `PATCH /tweaks` | One atomic update containing one or more named values. |
+| `PATCH /tweaks` | One update containing one or more named values. Version 3 applies valid entries and reports individual errors. |
 | `POST /tweaks/action` | Invoke one explicitly registered parameterless app-owned action by name. |
 | `GET /tweaks/events` | Server-sent events containing complete current tweak and action snapshots. |
 
 Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
 
-`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. A version newer than the host supports may require a compatibility warning.
+`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Use the reported version to select compatible update behavior.
 
 ### Read metadata and active values
 
@@ -98,7 +98,7 @@ Plain `GET /tweaks` includes only value and action declarations active in Compos
 
 Names may contain spaces and `/`; send the entire name unchanged. Two active declarations of the same complete value descriptor observe the same value. Repeated value names in expanded results represent distinct complete descriptors; active-only snapshots and updates still resolve at most one currently active value descriptor per name. Historical descriptors are read-only while inactive: `PATCH /tweaks` still rejects their names until their declarations return. Separate active callbacks with the same action name are not interchangeable and are reported as conflicted.
 
-### Update or reset values atomically
+### Update or reset values
 
 ```bash
 curl -fsS -X PATCH "$base/tweaks" \
@@ -112,7 +112,13 @@ The response contains the changed names and their resulting values:
 {"tweaks":[{"name":"Motion/Duration","value":550},{"name":"Motion/Enabled","value":false},{"name":"Appearance/Theme","value":"Dark"}]}
 ```
 
-Every value is validated before any update is applied. An invalid, unknown, or inactive entry prevents the entire batch from changing. Reset by fetching `GET /tweaks` and sending the target descriptor's `default` value back in a patch; reset all by patching every active value name to its own default in one request. Actions cannot be patched or reset and are excluded from reset-all. There is no separate get-by-name, reset, delete, or grouping endpoint.
+Protocol version 3 applies valid entries independently. Invalid, unknown, inactive, or action entries appear in `errors` with their tweak names and error messages, while successful changes remain applied:
+
+```json
+{"tweaks":[{"name":"Motion/Duration","value":550}],"errors":[{"name":"Motion/Enabled","error":"Invalid value for Motion/Enabled: Expected a boolean."}]}
+```
+
+The `errors` field is absent when every entry succeeds. Versions 1 and 2 reject the entire batch if any entry is invalid. Reset by fetching `GET /tweaks` and sending the target descriptor's `default` value back in a patch; reset all by patching every active value name to its own default in one request. Actions cannot be patched or reset and are excluded from reset-all. There is no separate get-by-name, reset, delete, or grouping endpoint.
 
 ### Invoke an app-owned action
 
@@ -168,6 +174,6 @@ These relative URLs assume your host serves both the page and the proxy. The And
 
 ## Errors and security
 
-Errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints or inactive tweak names, `405` for unsupported methods, `409` for conflicting action registrations, `413` for oversized bodies, and `422` for invalid JSON value types, numeric bounds, numeric steps, color formats, or unknown enum option names.
+Request-level errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints, `405` for unsupported methods, `409` for conflicting action registrations, `413` for oversized bodies, and `422` for invalid numeric literals or nonprimitive values. Versions 1 and 2 also return `404` for inactive tweaks and `422` for invalid values. Versions 3 and later report unknown or invalid tweaks as named per-item errors in an HTTP 200 response.
 
 The socket is app-local and normally enabled only when the Android app is debuggable. Release activation requires an explicit `snapo.tweaks.allow_release` manifest opt-in; release no-op artifacts are preferred. There is no HTTP bearer-token layer: access is controlled by the local socket and the connected ADB boundary. Do not expose a forwarded port or proxy publicly, and treat tweak names and values as potentially sensitive.

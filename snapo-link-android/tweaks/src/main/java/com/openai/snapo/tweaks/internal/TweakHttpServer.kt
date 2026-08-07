@@ -28,7 +28,37 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
 
-internal const val TweaksProtocolVersion: Int = 2
+internal const val TweaksProtocolVersion: Int = 3
+
+internal data class TweakBatchError(
+    val name: String,
+    val error: String,
+)
+
+internal data class TweakBatchResult(
+    val tweaks: List<TweakSnapshot>,
+    val errors: List<TweakBatchError>,
+)
+
+internal fun applyTweakBatch(
+    values: Map<String, Any?>,
+    update: (Map<String, Any?>) -> List<TweakSnapshot> = TweakRegistry::update,
+): TweakBatchResult {
+    val tweaks = ArrayList<TweakSnapshot>(values.size)
+    val errors = ArrayList<TweakBatchError>()
+
+    values.forEach { (name, value) ->
+        try {
+            tweaks.add(update(mapOf(name to value)).single())
+        } catch (failure: TweakUpdateException) {
+            errors.add(TweakBatchError(name, failure.message ?: "Invalid tweak update."))
+        } catch (_: Exception) {
+            errors.add(TweakBatchError(name, "The tweak could not be updated."))
+        }
+    }
+
+    return TweakBatchResult(tweaks, errors)
+}
 
 private const val MaxHeaderBytes = 16 * 1024
 private const val MaxBodyBytes = 64 * 1024
@@ -239,7 +269,12 @@ internal class TweakHttpServer(
         "PATCH" -> {
             requireJsonRequest(request)
             val changes = readPatchValues(request.body)
-            tweaksResponse(updateOnMainThread(changes), includeDescriptors = false)
+            val result = updateOnMainThread(changes)
+            tweaksResponse(
+                result.tweaks,
+                includeDescriptors = false,
+                errors = result.errors,
+            )
         }
 
         else -> throw HttpFailure(
@@ -445,8 +480,8 @@ internal class TweakHttpServer(
         else -> throw HttpFailure(422, "Tweak values must be primitive JSON values.")
     }
 
-    private fun updateOnMainThread(values: Map<String, Any?>): List<TweakSnapshot> =
-        runOnMainThread("update", "applied") { TweakRegistry.update(values) }
+    private fun updateOnMainThread(values: Map<String, Any?>): TweakBatchResult =
+        runOnMainThread("update", "applied") { applyTweakBatch(values) }
 
     private fun invokeActionOnMainThread(name: String) =
         runOnMainThread("action", "invoked") { TweakRegistry.invokeAction(name) }
@@ -498,6 +533,7 @@ internal class TweakHttpServer(
     private fun tweaksResponse(
         tweaks: List<TweakSnapshot>,
         includeDescriptors: Boolean,
+        errors: List<TweakBatchError> = emptyList(),
     ): HttpResponse {
         val output = StringWriter()
         JsonWriter(output).use { writer ->
@@ -509,6 +545,16 @@ internal class TweakHttpServer(
             }
 
             writer.endArray()
+            if (errors.isNotEmpty()) {
+                writer.name("errors").beginArray()
+                errors.forEach { error ->
+                    writer.beginObject()
+                    writer.name("name").value(error.name)
+                    writer.name("error").value(error.error)
+                    writer.endObject()
+                }
+                writer.endArray()
+            }
             writer.endObject()
         }
 

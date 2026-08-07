@@ -219,15 +219,24 @@ def tweak_descriptors():
 
 
 class TweakHTTPServer:
-    def __init__(self, descriptors=None, app=None, error=None, stream_events=None, adjusted_descriptors=None):
+    def __init__(
+        self,
+        descriptors=None,
+        app=None,
+        error=None,
+        stream_events=None,
+        adjusted_descriptors=None,
+        update_errors=None,
+    ):
         self.descriptors = json.loads(json.dumps(descriptors or tweak_descriptors()))
         self.adjusted_descriptors = self.descriptors if adjusted_descriptors is None else adjusted_descriptors
         self.app = app or {
             "name": "Snap-O Tweaks Demo",
             "packageName": "com.example.tweaks",
-            "protocolVersion": 2,
+            "protocolVersion": 3,
         }
         self.error = error
+        self.update_errors = update_errors or {}
         self.stream_events = stream_events
         self.requests = []
         owner = self
@@ -270,18 +279,28 @@ class TweakHTTPServer:
                     return
 
                 descriptors = {item["name"]: item for item in owner.descriptors}
-                unknown = next((name for name in payload["values"] if name not in descriptors), None)
-                if unknown is not None:
-                    self.send_json(404, {"error": f"Unknown tweak: {unknown}"})
-                    return
-
                 updates = []
+                errors = []
                 for name, value in payload["values"].items():
+                    if name not in descriptors:
+                        message = f"Unknown tweak: {name}"
+                        if owner.app.get("protocolVersion", 1) < 3:
+                            self.send_json(404, {"error": message})
+                            return
+                        errors.append({"name": name, "error": message})
+                        continue
+                    if name in owner.update_errors:
+                        message = owner.update_errors[name]
+                        errors.append({"name": name, "error": message})
+                        continue
                     if descriptors[name]["type"] == "color":
                         value = value.upper()
                     descriptors[name]["value"] = value
                     updates.append({"name": name, "value": value})
-                self.send_json(200, {"tweaks": updates})
+                response = {"tweaks": updates}
+                if errors:
+                    response["errors"] = errors
+                self.send_json(200, response)
 
             def do_POST(self):
                 length = int(self.headers.get("Content-Length", "0"))
@@ -1245,7 +1264,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(app["socketName"], "snapo_tweaks_42")
         self.assertEqual(app["appName"], "Snap-O Tweaks Demo")
         self.assertEqual(app["packageName"], "com.example.tweaks")
-        self.assertEqual(app["protocolVersion"], 2)
+        self.assertEqual(app["protocolVersion"], 3)
         self.assertEqual(wire.requests, [("GET", "/app", None)])
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
@@ -1526,6 +1545,34 @@ class TweakCommandTests(unittest.TestCase):
                 self.assertEqual(wire.requests, [("POST", "/tweaks/action", {"name": name})])
                 self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
+    def test_set_reports_a_named_batch_error(self):
+        name = "Motion/Enabled"
+        with TweakHTTPServer(update_errors={name: "The value could not be changed."}) as wire:
+            result, output, errors, _ = self.run_command(["set", name, "false"], wire)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn(name, errors)
+        self.assertIn("The value could not be changed.", errors)
+
+    def test_reset_all_keeps_successful_changes_and_reports_named_batch_errors(self):
+        descriptors = tweak_descriptors()
+        descriptors[0]["value"] = 24
+        descriptors[2]["value"] = False
+        failed_name = descriptors[2]["name"]
+        with TweakHTTPServer(
+            descriptors=descriptors,
+            update_errors={failed_name: "This value could not be reset."},
+        ) as wire:
+            result, output, errors, _ = self.run_command(["reset", "--all"], wire)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(output, "")
+        self.assertIn(failed_name, errors)
+        self.assertIn("This value could not be reset.", errors)
+        self.assertEqual(wire.descriptors[0]["value"], 16)
+        self.assertFalse(wire.descriptors[2]["value"])
+
     def test_reset_one_tweak_patches_its_declared_default(self):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
@@ -1551,7 +1598,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(wire.requests[1], ("PATCH", "/tweaks", {"values": {"Appearance/Theme": "System"}}))
         self.assertEqual(output, "")
 
-    def test_reset_all_patches_every_default_in_one_atomic_request(self):
+    def test_reset_all_patches_every_default_in_one_request(self):
         descriptors = tweak_descriptors()
         descriptors[0]["value"] = 24
         descriptors[2]["value"] = False

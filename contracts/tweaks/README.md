@@ -37,11 +37,11 @@ Return the app's user-facing Android label, package name, and Tweaks protocol ve
 {
   "name": "Snap-O Tweaks Demo",
   "packageName": "com.openai.snapo.demo.tweaks",
-  "protocolVersion": 2
+  "protocolVersion": 3
 }
 ```
 
-Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to identify newer versions they do not support.
+Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
 
 ### GET /app/icon
 
@@ -178,9 +178,9 @@ curl -fsS 'http://127.0.0.1:43817/tweaks?include=adjusted'
 
 The response uses the same `{"tweaks":[...]}` shape and complete tweak descriptors as `GET /tweaks`. Include every currently active tweak, whether or not it has been adjusted, and every inactive tweak whose value was actually changed by a successful user adjustment. Preserve the tweak's original declaration, constraints, and latest value after its final usage leaves composition. Separate screens may reuse a name with different declarations; include each independently adjusted complete descriptor, even when names repeat. Repeated names occur only for distinct complete descriptors; active-only listings and updates still resolve at most one active descriptor per name. Order names by first observation, regardless of later activation or adjustment. For repeated names, list the active declaration first, followed by historical declarations in stable adjustment order.
 
-An adjusted tweak remains in this history even after its value is reset to its default. An inactive tweak that was never changed, a no-op update that leaves its value unchanged, and a rejected or atomically rolled-back update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
+An adjusted tweak remains in this history even after its value is reset to its default. An inactive tweak that was never changed, a no-op update that leaves its value unchanged, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
 
-Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names and returns `404` for an inactive name. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
+Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names. Versions 1 and 2 return `404` for an inactive name; later versions report a named per-item error. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
 
 ### GET /tweaks/events
 
@@ -237,7 +237,23 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 }
 ```
 
-Validate all values before changing any of them. Return `400` for malformed requests, `404` when an endpoint or requested tweak does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` when a value has the wrong type, violates a constraint, or is not one of the declared enum option values. Errors use a small JSON body:
+In protocol version 3, each value is applied separately on the Android main thread. A valid request returns HTTP 200 with successful changes in `tweaks` and any rejected changes in `errors`; earlier successful changes are not rolled back. Each error contains only its tweak `name` and `error` message. The `errors` field is omitted when every change succeeds:
+
+```json
+{
+  "tweaks": [
+    { "name": "Font size", "value": 48 }
+  ],
+  "errors": [
+    {
+      "name": "Font weight",
+      "error": "Invalid value for Font weight: Expected an integer."
+    }
+  ]
+}
+```
+
+Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or nonprimitive values. In protocol versions 1 and 2, an unknown tweak returns `404`, an invalid value returns `422`, and the entire batch is rejected. In version 3, unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
 
 ```json
 {
@@ -245,7 +261,7 @@ Validate all values before changing any of them. Return `400` for malformed requ
 }
 ```
 
-Apply changes on the Android main thread. If any value is invalid, do not update any tweaks in that request. Reset a value by patching it with its default. Actions are not valid patch targets; attempting to patch one returns `422` without changing any value in the same request.
+Reset a value by patching it with its default. Actions are not valid patch targets. In version 3, an action target produces a named per-item error while other valid changes are applied.
 
 ### POST /tweaks/action
 

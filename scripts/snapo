@@ -1189,13 +1189,28 @@ def tweak_listing_path(options):
     return "/tweaks?include=adjusted" if options.all else "/tweaks"
 
 
+def require_successful_tweak_updates(document):
+    errors = document.get("errors", [])
+    if not isinstance(errors, list):
+        raise SnapOError("Snap-O tweaks server returned invalid update errors")
+    if not errors:
+        return
+
+    details = []
+    for error in errors:
+        if not isinstance(error, dict) or not isinstance(error.get("name"), str) or not isinstance(error.get("error"), str):
+            raise SnapOError("Snap-O tweaks server returned an invalid update error")
+        details.append(f"{error['name']}: {error['error']}")
+    raise SnapOError("Some tweak updates failed: " + "; ".join(details))
+
+
 def run_tweak_set(adb, options):
     server = choose_tweak_server(adb, options)
     with TweakConnection(adb, server) as connection:
         descriptors = tweak_descriptors(connection.request("GET", "/tweaks"))
         descriptor = find_tweak(descriptors, options.name)
         values = {options.name: parse_tweak_value(descriptor, options.value)}
-        connection.request("PATCH", "/tweaks", {"values": values})
+        require_successful_tweak_updates(connection.request("PATCH", "/tweaks", {"values": values}))
     return 0
 
 
@@ -1226,7 +1241,7 @@ def run_tweak_reset(adb, options):
                 raise SnapOError(f"Tweak '{descriptor['name']}' does not provide a default value")
             values[descriptor["name"]] = descriptor["default"]
         if values:
-            connection.request("PATCH", "/tweaks", {"values": values})
+            require_successful_tweak_updates(connection.request("PATCH", "/tweaks", {"values": values}))
     return 0
 
 

@@ -1,8 +1,14 @@
-import type { InspectorServerReference, TweakUpdate, TweakValue } from "../../network/bridge-types";
+import type { InspectorServerReference, TweakUpdate, TweakUpdateError, TweakValue } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
 
 interface TweakUpdateQueueCallbacks {
   onUpdate(tweaks: TweakUpdate[], pending: ReadonlyMap<string, TweakValue>): void;
+  onRejected?(
+    errors: TweakUpdateError[],
+    pending: ReadonlyMap<string, TweakValue>,
+    inFlight: ReadonlySet<string>,
+    isCurrent: () => boolean
+  ): void;
   onError(error: string | null): void;
   onSavingChange(saving: boolean): void;
 }
@@ -34,6 +40,7 @@ export class TweakUpdateQueue {
     if (this.saving || this.pending.size === 0) return;
 
     const generation = this.generation;
+    const errors: TweakUpdateError[] = [];
     this.saving = true;
     this.callbacks.onSavingChange(true);
 
@@ -53,9 +60,15 @@ export class TweakUpdateQueue {
 
         if (generation !== this.generation) return;
         this.callbacks.onUpdate(result.tweaks, this.pending);
+        if (result.errors?.length) {
+          errors.push(...result.errors);
+          this.callbacks.onRejected?.(result.errors, this.pending, this.inFlight, () => generation === this.generation);
+        }
       }
 
-      if (generation === this.generation) this.callbacks.onError(null);
+      if (generation === this.generation) {
+        this.callbacks.onError(errors.length ? errors.map(({ name, error }) => `${name}: ${error}`).join("; ") : null);
+      }
     } catch (cause: unknown) {
       if (generation !== this.generation) return;
       this.pending.clear();
