@@ -24,9 +24,9 @@ const isAppGroupedMock = isMockMode &&
 
 const mockApps = [
   {
-    id: "mock:chatgpt",
-    name: "ChatGPT",
-    packageName: "com.openai.chatgpt",
+    id: "mock:notes",
+    name: "Notes Demo",
+    packageName: "com.example.notes",
     deviceName: "Pixel 9 Pro XL",
     views: ["network", "tweaks"],
   },
@@ -38,9 +38,9 @@ const mockApps = [
     views: ["tweaks"],
   },
   {
-    id: "mock:emulator:chatgpt",
-    name: "ChatGPT",
-    packageName: "com.openai.chatgpt",
+    id: "mock:emulator:notes",
+    name: "Notes Demo",
+    packageName: "com.example.notes",
     deviceName: "Android Emulator",
     views: ["network"],
   },
@@ -103,6 +103,11 @@ function setStatus(value, label = value) {
 function setError(message) {
   elements.error.hidden = !message;
   elements.error.textContent = message ?? "";
+}
+
+function updateError(result) {
+  if (!result.errors?.length) return undefined;
+  return result.errors.map(({ name, error }) => `${name}: ${error}`).join("; ");
 }
 
 async function request(path, options) {
@@ -473,8 +478,15 @@ async function flushPending() {
       }
     }
 
-    setError();
-    setStatus("connected", "Connected");
+    const error = updateError(result);
+    if (error) {
+      await reloadTweaks();
+      setError(error);
+      setStatus("error", "Some updates failed");
+    } else {
+      setError();
+      setStatus("connected", "Connected");
+    }
   } catch (error) {
     setError(error.message);
     setStatus("error", "Update failed");
@@ -1049,15 +1061,21 @@ async function resetTweaks() {
       state.tweaks.map((tweak) => [tweak.name, tweak.default]),
     );
 
-    await request("/tweaks", {
+    const result = await request("/tweaks", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ values }),
     });
 
     await reloadTweaks();
-    setError();
-    setStatus("connected", "Connected");
+    const error = updateError(result);
+    if (error) {
+      setError(error);
+      setStatus("error", "Some resets failed");
+    } else {
+      setError();
+      setStatus("connected", "Connected");
+    }
   } catch (error) {
     setError(error.message);
     setStatus("error", "Reset failed");

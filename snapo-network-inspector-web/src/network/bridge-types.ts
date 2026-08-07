@@ -85,8 +85,14 @@ export interface TweakUpdate {
   value: TweakValue;
 }
 
+export interface TweakUpdateError {
+  name: string;
+  error: string;
+}
+
 export interface TweakUpdates {
   tweaks: TweakUpdate[];
+  errors?: TweakUpdateError[];
 }
 
 export interface UpdateTweaksInput {

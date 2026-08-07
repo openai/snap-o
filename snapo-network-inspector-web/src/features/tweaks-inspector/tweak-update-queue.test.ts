@@ -74,6 +74,58 @@ describe("app-scoped tweak updates", () => {
     await flush;
   });
 
+  it("applies successful values and reports each rejected value in the same batch", async () => {
+    const first = { name: "Motion/Duration", error: "Value exceeds the maximum." };
+    const second = { name: "Motion/Show", error: "Unknown tweak." };
+    const update = { name: "Typography/Font size", value: 24 };
+    const client = { updateTweaks: vi.fn().mockResolvedValue({ tweaks: [update], errors: [first, second] }) };
+    const handlers = callbacks();
+    const queue = new TweakUpdateQueue(client, { deviceId: "pixel", socketName: "snapo_tweaks_demo" }, handlers);
+
+    queue.enqueue(update.name, update.value);
+    queue.enqueue(first.name, 1_000);
+    queue.enqueue(second.name, true);
+    await queue.flush();
+
+    expect(handlers.onUpdate).toHaveBeenCalledWith([update], new Map());
+    expect(handlers.onRejected).toHaveBeenCalledWith([first, second], new Map(), new Set(), expect.any(Function));
+    expect(handlers.onError).toHaveBeenLastCalledWith(
+      "Motion/Duration: Value exceeds the maximum.; Motion/Show: Unknown tweak."
+    );
+    expect(queue.inFlight.size).toBe(0);
+  });
+
+  it("reports a batch with no successful values without leaving rejected values in flight", async () => {
+    const error = { name: "Motion/Duration", error: "Invalid value." };
+    const client = { updateTweaks: vi.fn().mockResolvedValue({ tweaks: [], errors: [error] }) };
+    const handlers = callbacks();
+    const queue = new TweakUpdateQueue(client, { deviceId: "pixel", socketName: "snapo_tweaks_demo" }, handlers);
+
+    queue.enqueue(error.name, 900);
+    await queue.flush();
+
+    expect(handlers.onUpdate).toHaveBeenCalledWith([], new Map());
+    expect(handlers.onRejected).toHaveBeenCalledOnce();
+    expect(handlers.onError).toHaveBeenLastCalledWith("Motion/Duration: Invalid value.");
+    expect(queue.pending.size).toBe(0);
+    expect(queue.inFlight.size).toBe(0);
+  });
+
+  it("invalidates an authoritative reload when the selected app changes", async () => {
+    const error = { name: "Motion/Duration", error: "Invalid value." };
+    const client = { updateTweaks: vi.fn().mockResolvedValue({ tweaks: [], errors: [error] }) };
+    const handlers = callbacks();
+    const queue = new TweakUpdateQueue(client, { deviceId: "pixel", socketName: "snapo_tweaks_demo" }, handlers);
+
+    queue.enqueue(error.name, 900);
+    await queue.flush();
+    const isCurrent = handlers.onRejected.mock.calls[0]?.[3] as () => boolean;
+
+    expect(isCurrent()).toBe(true);
+    queue.cancel();
+    expect(isCurrent()).toBe(false);
+  });
+
   it("does not report an old app's request failure after switching apps", async () => {
     const request = deferred<TweakUpdates>();
     const client = { updateTweaks: vi.fn().mockReturnValue(request.promise) };
@@ -94,6 +146,7 @@ describe("app-scoped tweak updates", () => {
 function callbacks() {
   return {
     onUpdate: vi.fn(),
+    onRejected: vi.fn(),
     onError: vi.fn(),
     onSavingChange: vi.fn()
   };

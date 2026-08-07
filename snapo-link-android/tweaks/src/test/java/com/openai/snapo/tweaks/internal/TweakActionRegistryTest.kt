@@ -16,6 +16,11 @@ class TweakActionRegistryTest {
     }
 
     @Test
+    fun `protocol version distinguishes best effort tweak batches`() {
+        assertEquals(3, TweaksProtocolVersion)
+    }
+
+    @Test
     fun `registered actions appear alongside value tweaks in composition order`() {
         val first = TweakDescriptor("Typography/Size", TweakType.INT, 16)
         val second = TweakDescriptor("Motion/Enabled", TweakType.BOOLEAN, true)
