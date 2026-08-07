@@ -80,14 +80,14 @@ class TweakRegistryLifecycleTest {
         )
         var notifications = 0
         val subscription = TweakRegistry.observeChanges { notifications += 1 }
-        val initialEntries = TweakRegistry.activeEntries().value
+        val initialEntries = TweakRegistry.activeEntries.value
 
         val state = TweakRegistry.stateFor(descriptor)
 
         assertEquals(16, state.value)
         assertEquals(0, notifications)
         assertTrue(TweakRegistry.snapshot().isEmpty())
-        assertSame(initialEntries, TweakRegistry.activeEntries().value)
+        assertSame(initialEntries, TweakRegistry.activeEntries.value)
         assertTrue(SnapOTweaks.activeTweaks().isEmpty())
         assertTrue(SnapOTweaks.activeTweakEntries().value.isEmpty())
 
@@ -114,7 +114,7 @@ class TweakRegistryLifecycleTest {
         assertEquals(16, TweakRegistry.stateFor(descriptor).value)
         assertEquals(0, notifications)
         assertTrue(TweakRegistry.snapshot().isEmpty())
-        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertTrue(TweakRegistry.activeEntries.value.isEmpty())
         assertTrue(SnapOTweaks.activeTweaks().isEmpty())
         assertTrue(SnapOTweaks.activeTweakEntries().value.isEmpty())
 
@@ -167,7 +167,7 @@ class TweakRegistryLifecycleTest {
         TweakRegistry.unregister(descriptor.name)
 
         assertTrue(TweakRegistry.snapshot().isEmpty())
-        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertTrue(TweakRegistry.activeEntries.value.isEmpty())
         assertSame(original, TweakRegistry.stateFor(descriptor))
         assertEquals(24, TweakRegistry.stateFor(descriptor).value)
 
@@ -385,7 +385,7 @@ class TweakRegistryLifecycleTest {
         )
         val replacement = outgoing.copy(default = 24)
         TweakRegistry.register(outgoing)
-        val activeEntries = TweakRegistry.activeEntries().value
+        val activeEntries = TweakRegistry.activeEntries.value
         var notifications = 0
         val observer = TweakRegistry.observeChanges { notifications += 1 }
 
@@ -393,14 +393,14 @@ class TweakRegistryLifecycleTest {
 
         assertEquals(24, replacementState.value)
         assertEquals(16, TweakRegistry.snapshot().single().value)
-        assertSame(activeEntries, TweakRegistry.activeEntries().value)
+        assertSame(activeEntries, TweakRegistry.activeEntries.value)
         assertEquals(listOf(outgoing.name), SnapOTweaks.activeTweaks().map { it.name })
         assertEquals(0, notifications)
 
         TweakRegistry.unregister(outgoing.name)
 
         assertTrue(TweakRegistry.snapshot().isEmpty())
-        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertTrue(TweakRegistry.activeEntries.value.isEmpty())
         assertTrue(SnapOTweaks.activeTweaks().isEmpty())
         assertEquals(1, notifications)
         assertSame(replacementState, TweakRegistry.register(replacement))
@@ -465,7 +465,7 @@ class TweakRegistryLifecycleTest {
             type = TweakType.INT,
             default = 16,
         )
-        val entries = TweakRegistry.activeEntries()
+        val entries = TweakRegistry.activeEntries
         val state = TweakRegistry.register(descriptor)
         val registeredEntries = entries.value
         val entry = registeredEntries.single()
@@ -506,7 +506,7 @@ class TweakRegistryLifecycleTest {
 
         assertEquals(
             listOf(first.name, third.name),
-            TweakRegistry.activeEntries().value.map { it.name },
+            TweakRegistry.activeEntries.value.map { it.name },
         )
 
         TweakRegistry.register(second)
@@ -517,7 +517,7 @@ class TweakRegistryLifecycleTest {
         )
         assertEquals(
             listOf(first.name, second.name, third.name),
-            TweakRegistry.activeEntries().value.map { it.name },
+            TweakRegistry.activeEntries.value.map { it.name },
         )
     }
 
@@ -535,7 +535,7 @@ class TweakRegistryLifecycleTest {
 
         assertEquals(
             listOf(first.name, second.name),
-            TweakRegistry.activeEntries().value.map { it.name },
+            TweakRegistry.activeEntries.value.map { it.name },
         )
     }
 
@@ -552,7 +552,7 @@ class TweakRegistryLifecycleTest {
 
         assertEquals(
             listOf(second.name, first.name),
-            TweakRegistry.activeEntries().value.map { it.name },
+            TweakRegistry.activeEntries.value.map { it.name },
         )
     }
 
@@ -568,7 +568,7 @@ class TweakRegistryLifecycleTest {
 
         TweakRegistry.clear()
 
-        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertTrue(TweakRegistry.activeEntries.value.isEmpty())
     }
 
     @Test

@@ -144,11 +144,11 @@ Return a flat list of currently registered tweaks:
 }
 ```
 
-A tweak name represents one shared value, not one composable. Multiple active composables may register the same name; the tweak appears only once, and an update changes the value observed by every usage. A tweak remains registered until its last usage leaves composition. Its most recently edited value remains available if the same complete declaration later returns, but inactive tweaks do not appear in default responses or event snapshots.
+A tweak name represents one shared value, not one composable. Multiple active composables may register the same name; the tweak appears only once, and an update changes the value observed by every usage. A tweak remains registered until its last usage leaves composition. Registry-owned tweaks restore their most recently edited value if the same complete declaration returns. App-owned sources remain authoritative and control their own persistence; historical snapshots are never replayed into a returning source. Inactive tweaks do not appear in default responses or event snapshots.
 
-Usages with the same name must agree on the tweak type, default, constraints, and ordered enum options. Conflicting declarations are a configuration error.
+Registry-owned usages with the same name must agree on the tweak type, default, constraints, and ordered enum options. App-owned sources with the same name must use the same setting and value type.
 
-In protocol version 4, only modified value tweaks include `"modified": true`; otherwise the field is absent. A missing field always means false. A tweak is modified when its value differs from its default. Versions 1, 2, and 3 omit this field; determine their modification status by comparing `value` with `default`. Action descriptors never include `modified`.
+In protocol version 4, only modified value tweaks include `"modified": true`; otherwise the field is absent. A missing field always means false, even when `value` differs from `default`. Standard tweaks compare value and default. App-owned tweaks report whether their own override exists. Versions 1, 2, and 3 omit this field; determine their modification status by comparing `value` with `default`. Action descriptors never include `modified`.
 
 Supported value types are `int`, `float`, `boolean`, `color`, `string`, and `enum`. The `action` type describes an explicitly registered parameterless app-owned callback. Actions do not have `value`, `default`, options, or numeric constraints; clients must not attempt to patch or reset them. Integer tweaks accept only whole numbers; float tweaks accept whole or fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include constraints actually supplied by the app. A `step` is relative to `min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
 
@@ -172,15 +172,15 @@ Numeric JSON values may contain at most 128 characters and 64 significant digits
 
 ### GET /tweaks?include=adjusted
 
-Opt in to a complete list of active tweaks and previously adjusted tweaks that have since left composition:
+Opt in to a complete list of active tweaks and previously adjusted ordinary or app-owned tweaks that have since left composition:
 
 ```bash
 curl -fsS 'http://127.0.0.1:43817/tweaks?include=adjusted'
 ```
 
-The response uses the same `{"tweaks":[...]}` shape and complete tweak descriptors as `GET /tweaks`. Include every currently active tweak, whether or not it has been adjusted, and every inactive tweak whose value was actually changed by a successful user adjustment. Preserve the tweak's original declaration, constraints, and latest value after its final usage leaves composition. Separate screens may reuse a name with different declarations; include each independently adjusted complete descriptor, even when names repeat. Repeated names occur only for distinct complete descriptors; active-only listings and updates still resolve at most one active descriptor per name. Order names by first observation, regardless of later activation or adjustment. For repeated names, list the active declaration first, followed by historical declarations in stable adjustment order.
+The response uses the same `{"tweaks":[...]}` shape and complete tweak descriptors as `GET /tweaks`. Include every currently active tweak, whether or not it has been adjusted, and every inactive ordinary or app-owned tweak whose effective value or modification status changed after a successful inspector adjustment. Preserve its complete descriptor, last effective value, and authoritative modification status after its final usage leaves composition. App-owned history retains only an immutable snapshot, never its source, callbacks, or observers; a returning source supplies its own current value. Separate screens may reuse a name with different declarations; include each independently adjusted complete descriptor, even when names repeat. An active descriptor takes precedence over its matching historical snapshot. Order names by first observation, regardless of later activation or adjustment. For repeated names, list the active declaration first, followed by historical declarations in stable adjustment order.
 
-An adjusted tweak remains in this history even after it is reset. An inactive tweak that was never changed, a no-op update that leaves its value unchanged, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
+An adjusted tweak remains in this history even after it is reset. An app-owned reset can leave an effective value different from the captured default while its modification status is false. An inactive tweak that was never adjusted, a no-op update that changes neither its value nor its modification status, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
 
 Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names. Versions 1 and 2 return `404` for an inactive name; later versions report a named per-item error. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
 
@@ -272,7 +272,7 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 }
 ```
 
-For protocol version 4, use `null` to reset a tweak; a request can mix changes and resets. Reset all only active, non-action tweaks marked `"modified": true`. For versions 1, 2, and 3, reset each changed tweak by sending its `default` value instead.
+For protocol version 4, use `null` to reset a tweak; a request can mix changes and resets. App-owned tweaks call their source's `reset()` method and return the current effective value. Reset all only active, non-action tweaks marked `"modified": true`. For versions 1, 2, and 3, reset each changed tweak by sending its `default` value instead.
 
 Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or nonprimitive values. In protocol versions 1 and 2, an unknown tweak returns `404`, an invalid value returns `422`, and the entire batch is rejected. In versions 3 and later, unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
 
@@ -389,11 +389,58 @@ Box(
 )
 ```
 
-Each remembered usage registers with composition and removes the tweak from the active list only after its final usage leaves. Returning declarations restore their previously edited values. Screen navigation therefore determines what appears in the default response without discarding edits; request `GET /tweaks?include=adjusted` to also recover previously adjusted values from screens that are no longer in composition.
+Each remembered usage registers with composition and removes the tweak from the active list only after its final usage leaves. Returning registry-owned declarations restore their previously edited values; app-owned sources control their own persistence. Request `GET /tweaks?include=adjusted` to inspect prior ordinary or app-owned adjustments from screens no longer in composition.
 
 Provide overloaded `tweak(default, name)` functions for `Int`, `Float`, `Color`, `Boolean`, `String`, and enum defaults; each returns its corresponding `State<T>`. For strings, name the second argument to distinguish the label from the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept an optional range and `step` of the same type. Enum tweaks infer their options from declaration order and use each constant's name everywhere. Convert delegated integer values into Compose units at the call site, such as `fontSize.sp`. The real and no-op artifacts expose the same package and public Compose API.
 
 Declare a parameterless action with the `TweakAction(name) { ... }` composable. It returns `Unit` and does not execute its callback during composition or return a callable function. The action is available only while its owning composable is in composition, always uses its most recent callback, and is exposed with its explicit name rather than an inferred or generated identifier. Register each action exactly once at the composable that owns the state or operation; multiple owners using the same name produce a visible conflict and all invocation attempts fail closed. The release/no-op implementation accepts the same API without retaining or invoking the callback.
+
+App-owned tweaks implement `TweakSource<T>`, supporting `Boolean`, `Int`, `Float`, `String`, and `Color`. The source owns its current value, reset behavior, modification status, and change notifications:
+
+```kotlin
+private class SharedPreferencesBooleanSource(
+    private val preferences: SharedPreferences,
+    private val key: String,
+    private val default: Boolean,
+) : TweakSource<Boolean> {
+    override var value: Boolean
+        get() = preferences.getBoolean(key, default)
+        set(value) {
+            preferences.edit().putBoolean(key, value).apply()
+        }
+
+    override val isModified: Boolean
+        get() = preferences.contains(key)
+
+    override fun reset() {
+        preferences.edit().remove(key).apply()
+    }
+
+    override fun observe(): Flow<Unit> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+            if (changedKey == key || changedKey == null) trySend(Unit)
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+}
+
+@Composable
+private fun SharedPreferences.tweak(
+    key: String,
+    default: Boolean,
+    name: String = key,
+): State<Boolean> {
+    val source = remember(this, key, default) {
+        SharedPreferencesBooleanSource(this, key, default)
+    }
+    return tweak(source, name)
+}
+```
+
+The inspector captures the source's initial value when first observed. Snap-O accesses the source and updates its observable value and modification status on the Android main thread. The first app read or inspector request initializes this snapshot and may wait for the main thread; later inspector requests use cached values without accessing the source, even when the main thread is blocked. Reset calls `reset()`, and `isModified` reports whether the setting is stored. Source changes update the snapshot and stream when `observe()` emits; no polling is needed. Previously adjusted sources leave immutable history without retaining their sources or restoring values into returning sources. Both live and no-op artifacts defer reading the source until its value or default is observed. The no-op artifact never registers a tweak, edits the source, or observes it.
+
+Multiple composables can expose the same app-owned tweak. The first active source handles its value, updates, resets, and modification status. Only its `observe()` flow is collected. When it leaves composition, the next active source takes over. Sources with the same name must use the same setting and value type. Conflicts are not checked and can cause wrong values or runtime errors.
 
 ## Setup
 

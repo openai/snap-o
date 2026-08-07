@@ -4,8 +4,31 @@ package com.openai.snapo.tweaks
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.Color
+
+/**
+ * Returns the current application-owned value without observing or modifying its source.
+ *
+ * In live builds, sources with the same name must use the same setting and value type.
+ * The first active source handles values, updates, resets, status, and observation.
+ * When it leaves, the next active source takes over.
+ * Conflicts are not checked and can cause wrong values or runtime errors.
+ */
+@Composable
+fun <T : Any> tweak(
+    source: TweakSource<T>,
+    name: String,
+): State<T> {
+    val latestSource = rememberUpdatedState(source)
+    return remember {
+        object : State<T> {
+            override val value: T
+                get() = latestSource.value.value
+        }
+    }
+}
 
 /** Returns observable release-build state for the current floating-point default. */
 @Composable

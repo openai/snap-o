@@ -1,5 +1,6 @@
 package com.openai.snapo.tweaks
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import com.openai.snapo.tweaks.internal.TweakDescriptor
@@ -131,6 +132,34 @@ class SnapOTweaksTest {
     }
 
     @Test
+    fun `overlay reset uses delegated owner reset and override status`() {
+        val name = "Settings/Delegated reset"
+        val override = mutableStateOf<Boolean?>(null)
+        TweakRegistry.register(
+            testTweakBinding(
+                name = name,
+                source = testTweakSource(
+                    read = { override.value ?: false },
+                    onValueChange = { override.value = it },
+                    onReset = { override.value = null },
+                    modified = { override.value != null },
+                ),
+            ),
+        )
+        val entry = SnapOTweaks.activeTweakEntries().value.single()
+
+        SnapOTweaks.update(name, SnapOTweakValue.Toggle(false))
+
+        assertEquals(true, entry.modified.value)
+        assertEquals(false, override.value)
+
+        SnapOTweaks.reset(name)
+
+        assertEquals(false, entry.modified.value)
+        assertEquals(null, override.value)
+    }
+
+    @Test
     fun `overlay updates remain available as adjusted history after leaving composition`() {
         val descriptor = TweakDescriptor(
             name = "Typography/Historical font size",
@@ -214,6 +243,31 @@ class SnapOTweaksTest {
         assertSame(entry, entries.value.single())
         assertSame(value, entry.value)
         assertEquals(SnapOTweakValue.Integer(20, 12, 32), value.value)
+    }
+
+    @Test
+    fun `observable entries defer and cache application owned defaults`() {
+        var defaultReads = 0
+        val value = mutableStateOf<SnapOTweakValue>(SnapOTweakValue.Toggle(true))
+        val entry = SnapOTweakEntry(
+            name = "Settings/Lazy default",
+            value = value,
+            defaultValue = {
+                defaultReads += 1
+                SnapOTweakValue.Toggle(false)
+            },
+            isModified = { value.value != SnapOTweakValue.Toggle(false) },
+        )
+
+        assertEquals("Settings/Lazy default", entry.name)
+        assertSame(value, entry.value)
+        assertEquals(0, defaultReads)
+
+        assertEquals(SnapOTweakValue.Toggle(false), entry.defaultValue)
+        assertEquals(1, defaultReads)
+
+        assertEquals(SnapOTweakValue.Toggle(false), entry.defaultValue)
+        assertEquals(1, defaultReads)
     }
 
     @Test
