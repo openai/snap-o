@@ -40,6 +40,9 @@ export interface NetworkClient {
   openNativeColorPanel?(color: string, sessionId: string, present?: boolean): Promise<void>;
   closeNativeColorPanel?(sessionId: string): Promise<void>;
   onNativeColorPanelChange?(callback: (event: NativeColorPanelChange) => void): () => void;
+  listExclusionFilters(): Promise<string[]>;
+  addExclusionFilter(filter: string): Promise<void>;
+  removeExclusionFilter(filter: string): Promise<void>;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
   startStream(input: StartStreamInput): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
@@ -58,6 +61,7 @@ export interface NetworkClient {
   onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void;
   onNativeTweaksReset(callback: () => void): () => void;
   onNativeSearchText(callback: (searchText: string) => void): () => void;
+  onNativeExclusionFilters(callback: (filters: string[]) => void): () => void;
   onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void;
   onNativeClearCompleted(callback: () => void): () => void;
   onNativeCopySelectedUrl(callback: () => void): () => void;
@@ -132,6 +136,18 @@ class WebKitNetworkClient implements NetworkClient {
     return listenWebKitEvent<NativeColorPanelChange>("tweaks:color-panel-changed", callback);
   }
 
+  listExclusionFilters(): Promise<string[]> {
+    return this.invoke<string[]>("listExclusionFilters");
+  }
+
+  addExclusionFilter(filter: string): Promise<void> {
+    return this.invoke<void>("addExclusionFilter", { filter });
+  }
+
+  removeExclusionFilter(filter: string): Promise<void> {
+    return this.invoke<void>("removeExclusionFilter", { filter });
+  }
+
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
     return this.invoke<RequestBodies>("loadBodies", input);
   }
@@ -202,6 +218,10 @@ class WebKitNetworkClient implements NetworkClient {
 
   onNativeSearchText(callback: (searchText: string) => void): () => void {
     return listenWebKitEvent<string>("network:search-text", callback);
+  }
+
+  onNativeExclusionFilters(callback: (filters: string[]) => void): () => void {
+    return listenWebKitEvent<string[]>("network:exclusion-filters", callback);
   }
 
   onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void {
@@ -346,6 +366,18 @@ class HttpNetworkClient implements NetworkClient {
     return () => this.tweakCallbacks.delete(callback);
   }
 
+  async listExclusionFilters(): Promise<string[]> {
+    return [];
+  }
+
+  async addExclusionFilter(filter: string): Promise<void> {
+    void filter;
+  }
+
+  async removeExclusionFilter(filter: string): Promise<void> {
+    void filter;
+  }
+
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
     return fetchJson("/api/network/bodies", {
       method: "POST",
@@ -455,6 +487,11 @@ class HttpNetworkClient implements NetworkClient {
   }
 
   onNativeSearchText(callback: (searchText: string) => void): () => void {
+    void callback;
+    return () => {};
+  }
+
+  onNativeExclusionFilters(callback: (filters: string[]) => void): () => void {
     void callback;
     return () => {};
   }

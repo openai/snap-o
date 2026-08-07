@@ -18,7 +18,15 @@ import { useInspectorUiState } from "./useInspectorUiState";
 import { applyDebugInspectorPreset } from "../lib/debug";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
 import {
+  ExclusionFiltersRevision,
+  loadExclusionFilters,
+  normalizeExclusionFilter,
+  normalizeExclusionFilters,
+  saveExclusionFilters
+} from "../lib/exclusionFilters";
+import {
   clearCompleted,
+  countExcludedRecordsForServer,
   countRecordsForServer,
   filterRecords,
   isCompletedRecord,
@@ -45,6 +53,8 @@ export interface NetworkInspectorModel {
   allRecords: InspectorRecord[];
   sidebarPlaceholder: string | null;
   searchText: string;
+  exclusionFilters: string[];
+  hiddenRequestCount: number;
   sortNewestFirst: boolean;
   serverRecordCount: number;
   hasClearableItems: boolean;
@@ -53,6 +63,8 @@ export interface NetworkInspectorModel {
   selectReplacementServer(server: SnapOServer): void;
   selectRecord(id: string): void;
   setSearchText(value: string): void;
+  addExclusionFilter(value: string): void;
+  removeExclusionFilter(filter: string): void;
   toggleSortOrder(): void;
   clearCompletedRecords(): void;
   openDocs(): void;
@@ -67,6 +79,10 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const selectedServerRef = useRef<ServerId | null>(null);
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [exclusionFilters, setExclusionFilters] = useState<string[]>(() =>
+    client.usesNativeServerPicker ? [] : loadExclusionFilters()
+  );
+  const [exclusionFiltersRevision] = useState(() => new ExclusionFiltersRevision());
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const [debugPreset, setDebugPreset] = useState<DebugInspectorPreset>("live");
   const [, setBodyCacheRevision] = useState(0);
@@ -81,6 +97,47 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const { bodyCache, bodyLoader } = bodyHydration;
   const toggleSortOrder = useCallback(() => setSortNewestFirst((value) => !value), []);
   const clearCompletedRecords = useCallback(() => setState(clearCompleted), []);
+  const addExclusionFilter = useCallback(
+    (value: string) => {
+      const filter = normalizeExclusionFilter(value);
+      if (filter == null) return;
+
+      exclusionFiltersRevision.invalidate();
+      setExclusionFilters((current) => (current.includes(filter) ? current : [...current, filter].sort()));
+
+      if (client.usesNativeServerPicker) {
+        void client.addExclusionFilter(filter).catch(() => {
+          const revision = exclusionFiltersRevision.capture();
+          void client.listExclusionFilters().then(
+            (filters) => {
+              if (exclusionFiltersRevision.isCurrent(revision)) setExclusionFilters(normalizeExclusionFilters(filters));
+            },
+            () => {}
+          );
+        });
+      }
+    },
+    [client, exclusionFiltersRevision]
+  );
+  const removeExclusionFilter = useCallback(
+    (filter: string) => {
+      exclusionFiltersRevision.invalidate();
+      setExclusionFilters((current) => current.filter((value) => value !== filter));
+
+      if (client.usesNativeServerPicker) {
+        void client.removeExclusionFilter(filter).catch(() => {
+          const revision = exclusionFiltersRevision.capture();
+          void client.listExclusionFilters().then(
+            (filters) => {
+              if (exclusionFiltersRevision.isCurrent(revision)) setExclusionFilters(normalizeExclusionFilters(filters));
+            },
+            () => {}
+          );
+        });
+      }
+    },
+    [client, exclusionFiltersRevision]
+  );
 
   useEffect(() => {
     return () => bodyLoader.dispose();
@@ -111,8 +168,39 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
 
   useEffect(() => client.onNativeSelectedServer(selectServer), [client, selectServer]);
   useEffect(() => client.onNativeSearchText(setSearchText), [client]);
+  useEffect(
+    () =>
+      client.onNativeExclusionFilters((filters) => {
+        exclusionFiltersRevision.invalidate();
+        setExclusionFilters(normalizeExclusionFilters(filters));
+      }),
+    [client, exclusionFiltersRevision]
+  );
   useEffect(() => client.onNativeSortOrder(setSortNewestFirst), [client]);
   useEffect(() => client.onNativeClearCompleted(clearCompletedRecords), [clearCompletedRecords, client]);
+
+  useEffect(() => {
+    if (!client.usesNativeServerPicker) return;
+
+    let disposed = false;
+    const revision = exclusionFiltersRevision.capture();
+    void client.listExclusionFilters().then(
+      (filters) => {
+        if (!disposed && exclusionFiltersRevision.isCurrent(revision)) {
+          setExclusionFilters(normalizeExclusionFilters(filters));
+        }
+      },
+      () => {}
+    );
+
+    return () => {
+      disposed = true;
+    };
+  }, [client, exclusionFiltersRevision]);
+
+  useEffect(() => {
+    if (!client.usesNativeServerPicker) saveExclusionFilters(exclusionFilters);
+  }, [client, exclusionFilters]);
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -190,8 +278,13 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
 
   const visibleRecords = useMemo(
-    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst),
-    [allRecords, searchText, selectedServer, sortNewestFirst]
+    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst, exclusionFilters),
+    [allRecords, exclusionFilters, searchText, selectedServer, sortNewestFirst]
+  );
+
+  const hiddenRequestCount = useMemo(
+    () => countExcludedRecordsForServer(allRecords, selectedServer, exclusionFilters),
+    [allRecords, exclusionFilters, selectedServer]
   );
 
   const serverRecordCount = useMemo(
@@ -348,6 +441,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     allRecords,
     sidebarPlaceholder,
     searchText,
+    exclusionFilters,
+    hiddenRequestCount,
     sortNewestFirst,
     serverRecordCount,
     hasClearableItems,
@@ -356,6 +451,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     selectReplacementServer,
     selectRecord,
     setSearchText,
+    addExclusionFilter,
+    removeExclusionFilter,
     toggleSortOrder,
     clearCompletedRecords,
     openDocs

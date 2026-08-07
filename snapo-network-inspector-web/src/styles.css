@@ -392,6 +392,7 @@ body.split-pane-resizing {
 }
 
 .filter-frame {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -449,6 +450,131 @@ body.split-pane-resizing {
 
 .toolbar-icon-button:active:not(:disabled) {
   background: var(--surface-container-highest);
+}
+
+.exclusion-filter-row {
+  position: relative;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 9px 0 12px;
+}
+
+.exclusion-filter-summary {
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.exclusion-filter-settings {
+  width: 24px;
+  height: 24px;
+}
+
+.exclusion-filter-popup {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 8px;
+  width: min(300px, calc(100% - 16px));
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-bright);
+  padding: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+}
+
+.exclusion-filter-heading {
+  color: var(--on-surface);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.exclusion-filter-description {
+  margin: 4px 0 10px;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.exclusion-filter-form {
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--outline);
+  border-radius: 5px;
+}
+
+.exclusion-filter-form:focus-within {
+  border-color: var(--accent-blue);
+}
+
+.exclusion-filter-form input {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--on-surface);
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.exclusion-filter-form input::placeholder {
+  color: var(--on-surface-variant);
+  opacity: 1;
+}
+
+.exclusion-filter-add {
+  flex: 0 0 auto;
+  color: var(--accent-blue);
+}
+
+.exclusion-filter-add:disabled {
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+}
+
+.exclusion-filter-empty {
+  margin: 12px 0 0;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.exclusion-filter-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exclusion-filter-item {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.exclusion-filter-expression {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--on-surface);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exclusion-filter-remove {
+  flex: 0 0 auto;
 }
 
 .record-list-frame {
