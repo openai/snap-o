@@ -696,7 +696,7 @@
                     <button class="copy-button" type="button">Copy</button>
                   </div>
                   <pre><code class="syntax-code" data-language="toml" data-emphasis-lines="2,5,6,8,9,10">[versions]
-snapo = "4.0.0"
+snapo = "4.1.0"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -735,12 +735,12 @@ snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", v
                     <button class="copy-button" type="button">Copy</button>
                   </div>
                   <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3,5,6,7">dependencies {
-    debugImplementation("com.openai.snapo:tweaks:4.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:4.0.0")
+    debugImplementation("com.openai.snapo:tweaks:4.1.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:4.1.0")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:4.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:4.0.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:4.1.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:4.1.0")
 }</code></pre>
                 </div>
               </div>
@@ -1369,10 +1369,19 @@ codex plugin add snap-o@snap-o</code></pre>
 
 "$SNAPO_BIN" tweaks apps --json
 "$SNAPO_BIN" tweaks list -s emulator-5554 -n snapo_tweaks_12345 --json
-"$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345 --json
-"$SNAPO_BIN" tweaks reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345 --json
+"$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" tweaks action 'Motion/Toggle animation' -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" tweaks reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345
 "$SNAPO_BIN" tweaks watch -s emulator-5554 -n snapo_tweaks_12345 --once --json</code></pre>
               </div>
+
+              <p class="prose">
+                Successful <code>set</code>, <code>reset</code>, and
+                <code>action</code> commands produce no output and do not accept
+                <code>--json</code>. For batch updates, replace the former
+                <code>set --values-json</code> option with
+                <a href="tweaks-protocol.html#patch-tweaks">PATCH /tweaks</a>.
+              </p>
 
               <p class="notice">
                 The CLI manages Android socket discovery, forwarding, and
@@ -1443,6 +1452,14 @@ codex plugin add snap-o@snap-o</code></pre>
                 the current composition. Its matching no-op artifact draws
                 nothing in release, so this code belongs in your shared
                 source set.
+              </p>
+
+              <p class="notice">
+                <strong>Upgrading from 4.0.0?</strong> The overlay no longer
+                wraps app content. Replace
+                <code>SnapOTweakOverlay { ... }</code> with a fullscreen
+                <code>Box</code> containing your content followed by
+                <code>SnapOTweakOverlay()</code>.
               </p>
 
               <div class="code-block">
