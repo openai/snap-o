@@ -40,6 +40,25 @@ internal data class TweakSnapshot(
     val modified: Boolean,
 )
 
+internal class UninitializedTweakSnapshotException : IllegalStateException()
+
+internal interface ExternalTweakBacking : State<Any> {
+    val name: String
+    val descriptor: TweakDescriptor
+
+    fun onValueChange(value: Any)
+
+    fun onReset()
+
+    fun isModified(): Boolean
+}
+
+internal interface SelectedTweakState : State<Any> {
+    fun isSelected(owner: State<Any>): Boolean
+
+    fun notifyChanged(owner: State<Any>)
+}
+
 internal open class TweakUpdateException(
     val statusCode: Int,
     message: String,
@@ -64,9 +83,11 @@ internal object TweakRegistry {
     private val lock = Any()
     private val tweaks = LinkedHashMap<String, RegisteredTweak>()
     private val observedTweakOrder = HashMap<String, Long>()
-    private val adjustedTweaks = LinkedHashMap<TweakDescriptor, RegisteredTweak>()
+    private val adjustedTweaks = LinkedHashMap<TweakDescriptor, TweakSnapshot>()
     private val tweakStates = HashMap<TweakDescriptor, MutableState<Any>>()
-    private val activeEntries = mutableStateOf<List<SnapOTweakEntry>>(emptyList())
+    private val mutableActiveEntries = mutableStateOf<List<SnapOTweakEntry>>(emptyList())
+    val activeEntries: State<List<SnapOTweakEntry>>
+        get() = mutableActiveEntries
     private val observers = LinkedHashMap<Long, () -> Unit>()
     private var nextObserverId = 0L
     private var nextTweakOrder = 0L
@@ -76,28 +97,58 @@ internal object TweakRegistry {
         tweakStates.getOrPut(descriptor) { mutableStateOf(descriptor.default) }
     }
 
-    fun register(descriptor: TweakDescriptor): State<Any> {
+    fun register(descriptor: TweakDescriptor): State<Any> = registerBacking(
+        name = descriptor.name,
+        descriptorFactory = { descriptor },
+    )
+
+    fun register(backing: ExternalTweakBacking): State<Any> = registerBacking(
+        name = backing.name,
+        descriptorFactory = { backing.descriptor },
+        externalBacking = backing,
+    )
+
+    private fun registerBacking(
+        name: String,
+        descriptorFactory: () -> TweakDescriptor,
+        externalBacking: ExternalTweakBacking? = null,
+    ): State<Any> {
         var changed = false
         val state = synchronized(lock) {
-            require(descriptor.type != TweakType.ACTION) {
-                "Actions must be registered with their composition owner: ${descriptor.name}"
+            require(name.isNotBlank()) { "Tweak names must not be blank." }
+            val ownedDescriptor = if (externalBacking == null) {
+                descriptorFactory().also { descriptor ->
+                    require(descriptor.type != TweakType.ACTION) {
+                        "Actions must be registered with their composition owner: $name"
+                    }
+                    validateDescriptor(descriptor)
+                }
+            } else {
+                null
             }
-            validateDescriptor(descriptor)
 
-            val existing = tweaks[descriptor.name]
+            val existing = tweaks[name]
             if (existing != null) {
-                require(existing.descriptor == descriptor) {
-                    "Conflicting declarations for tweak: ${descriptor.name}"
+                require(
+                    existing.actionCallbacks == null &&
+                        (existing.externalBacking != null) == (externalBacking != null),
+                ) {
+                    "Conflicting declarations for tweak: $name"
+                }
+                if (externalBacking == null) {
+                    require(existing.descriptor == ownedDescriptor) {
+                        "Conflicting declarations for tweak: $name"
+                    }
+                } else {
+                    existing.addExternalBacking(externalBacking)
                 }
                 existing.references += 1
                 existing.state
             } else {
                 val tweak = RegisteredTweak(
-                    descriptor = descriptor,
-                    state = tweakStates.getOrPut(descriptor) {
-                        mutableStateOf(descriptor.default)
-                    },
-                    references = 1,
+                    name = name,
+                    descriptorFactory = { ownedDescriptor ?: descriptorFactory() },
+                    initialExternalBacking = externalBacking,
                 )
                 addRegisteredTweak(tweak)
                 changed = true
@@ -108,16 +159,29 @@ internal object TweakRegistry {
         return state
     }
 
-    fun unregister(name: String) {
+    fun unregister(name: String, state: State<Any>? = null) {
         val changed = synchronized(lock) {
             val tweak = tweaks[name] ?: return@synchronized false
+            val previousBacking = tweak.externalBacking
+            if (previousBacking != null && !tweak.removeExternalBacking(state)) {
+                return@synchronized false
+            }
+            if (state != null && previousBacking == null) return@synchronized false
             tweak.references -= 1
             if (tweak.references == 0) {
+                if (previousBacking != null && tweak.wasAdjusted) {
+                    val value = previousBacking.value
+                    adjustedTweaks[tweak.descriptor] = TweakSnapshot(
+                        descriptor = tweak.descriptor,
+                        value = value,
+                        modified = previousBacking.isModified(),
+                    )
+                }
                 tweaks.remove(name)
                 publishActiveEntries()
                 true
             } else {
-                false
+                previousBacking !== tweak.externalBacking
             }
         }
         if (changed) notifyObservers()
@@ -135,13 +199,13 @@ internal object TweakRegistry {
             val existing = tweaks[name]
             if (existing == null) {
                 val action = RegisteredTweak(
-                    descriptor = descriptor,
-                    state = mutableStateOf<Any>(SnapOTweakValue.Action()),
+                    name = name,
+                    descriptorFactory = { descriptor },
                     actionCallbacks = linkedMapOf(owner to onInvoke),
                 )
                 addRegisteredTweak(action)
             } else {
-                require(existing.descriptor.type == TweakType.ACTION) {
+                require(existing.actionCallbacks != null) {
                     "An action cannot share the name of a value tweak: $name"
                 }
                 val callbacks = requireNotNull(existing.actionCallbacks)
@@ -188,24 +252,20 @@ internal object TweakRegistry {
         callback()
     }
 
-    fun activeEntries(): State<List<SnapOTweakEntry>> = activeEntries
-
-    fun snapshot(includeAdjusted: Boolean = false): List<TweakSnapshot> = synchronized(lock) {
-        val registeredTweaks = if (includeAdjusted) {
-            (tweaks.values + adjustedTweaks.values)
-                .distinctBy(RegisteredTweak::descriptor)
-                .sortedBy { tweak -> observedTweakOrder.getValue(tweak.descriptor.name) }
-        } else {
-            tweaks.values
+    fun snapshot(
+        includeAdjusted: Boolean = false,
+        cachedOnly: Boolean = false,
+    ): List<TweakSnapshot> = synchronized(lock) {
+        val activeSnapshots = tweaks.values.map { tweak ->
+            tweak.snapshot(cachedOnly)
         }
 
-        registeredTweaks.map { tweak ->
-            val value = tweak.state.value
-            TweakSnapshot(
-                tweak.descriptor,
-                value,
-                tweak.descriptor.type != TweakType.ACTION && value != tweak.descriptor.default,
-            )
+        if (includeAdjusted) {
+            (activeSnapshots + adjustedTweaks.values)
+                .distinctBy(TweakSnapshot::descriptor)
+                .sortedBy { snapshot -> observedTweakOrder.getValue(snapshot.descriptor.name) }
+        } else {
+            activeSnapshots
         }
     }
 
@@ -222,27 +282,32 @@ internal object TweakRegistry {
                         "Actions cannot be patched. Invoke the registered action instead.",
                     )
                 }
-                tweak to (value?.let { validateValue(descriptor, it) } ?: descriptor.default)
+                tweak to value?.let { validateValue(descriptor, it) }
             }
 
             val changedTweaks = ArrayList<RegisteredTweak>()
             Snapshot.withMutableSnapshot {
                 changes.forEach { (tweak, value) ->
-                    if (tweak.state.value != value) {
-                        tweak.state.value = value
-                        changedTweaks.add(tweak)
-                        changed = true
+                    val previous = tweak.snapshot(cachedOnly = false)
+                    if (tweak.externalBacking != null ||
+                        previous.value != (value ?: tweak.descriptor.default)
+                    ) {
+                        tweak.update(value)
+                        if (tweak.snapshot(cachedOnly = false) != previous) {
+                            changedTweaks.add(tweak)
+                            changed = true
+                        }
                     }
                 }
             }
+            val updatedSnapshots = changes.map { (tweak, _) ->
+                tweak.snapshot(cachedOnly = false)
+            }
             changedTweaks.forEach { tweak ->
-                adjustedTweaks[tweak.descriptor] = tweak
+                adjustedTweaks[tweak.descriptor] = tweak.snapshot(cachedOnly = false)
+                tweak.wasAdjusted = true
             }
-
-            changes.map { (tweak, _) ->
-                val value = tweak.state.value
-                TweakSnapshot(tweak.descriptor, value, value != tweak.descriptor.default)
-            }
+            updatedSnapshots
         }
         if (changed) notifyObservers()
         return snapshots
@@ -281,11 +346,11 @@ internal object TweakRegistry {
     }
 
     private fun publishActiveEntries() {
-        activeEntries.value = tweaks.values.map(RegisteredTweak::entry)
+        mutableActiveEntries.value = tweaks.values.map(RegisteredTweak::entry)
     }
 
     private fun addRegisteredTweak(tweak: RegisteredTweak) {
-        val name = tweak.descriptor.name
+        val name = tweak.name
         val wasObserved = observedTweakOrder.containsKey(name)
         if (!wasObserved) {
             observedTweakOrder[name] = nextTweakOrder++
@@ -302,7 +367,8 @@ internal object TweakRegistry {
         val current = action.state.value as SnapOTweakValue.Action
         if (current.conflicted != conflicted) {
             Snapshot.withMutableSnapshot {
-                action.state.value = SnapOTweakValue.Action(conflicted)
+                @Suppress("UNCHECKED_CAST")
+                (action.state as MutableState<Any>).value = SnapOTweakValue.Action(conflicted)
             }
         }
     }
@@ -572,16 +638,125 @@ internal object TweakRegistry {
         else -> runCatching { BigDecimal(toString()) }.getOrNull()
     }
 
-    private data class RegisteredTweak(
-        val descriptor: TweakDescriptor,
-        val state: MutableState<Any>,
-        var references: Int = 0,
+    private class RegisteredTweak(
+        val name: String,
+        descriptorFactory: () -> TweakDescriptor,
+        initialExternalBacking: ExternalTweakBacking? = null,
         val actionCallbacks: LinkedHashMap<Any, () -> Unit>? = null,
     ) {
+        private val externalBackings = initialExternalBacking?.let { arrayListOf(it) }
+        private val selectedExternalBacking = initialExternalBacking?.let { mutableStateOf(it) }
+        private val externalSnapshot = initialExternalBacking?.let {
+            mutableStateOf<TweakSnapshot?>(null)
+        }
+
+        val externalBacking: ExternalTweakBacking?
+            get() = selectedExternalBacking?.value
+
+        val descriptor: TweakDescriptor by lazy {
+            (externalBacking?.descriptor ?: descriptorFactory()).also { descriptor ->
+                require(descriptor.name == name) {
+                    "Tweak descriptor name does not match its registration: $name"
+                }
+                if (externalBacking != null) validateDescriptor(descriptor)
+            }
+        }
+        val state: State<Any> = when {
+            selectedExternalBacking != null -> object : SelectedTweakState {
+                override val value: Any
+                    get() = snapshot(cachedOnly = false).value
+
+                override fun isSelected(owner: State<Any>): Boolean =
+                    selectedExternalBacking.value === owner
+
+                override fun notifyChanged(owner: State<Any>) {
+                    val selected = synchronized(lock) {
+                        val active = tweaks[name] === this@RegisteredTweak && isSelected(owner)
+                        if (active && requireNotNull(externalSnapshot).value != null) {
+                            refreshExternalSnapshot()
+                        }
+                        active
+                    }
+                    if (selected) notifyObservers()
+                }
+            }
+            actionCallbacks != null -> mutableStateOf(SnapOTweakValue.Action())
+            else -> stateFor(descriptor)
+        }
+        var references = if (actionCallbacks == null) 1 else 0
+        var wasAdjusted = false
         val entry = SnapOTweakEntry(
-            name = descriptor.name,
+            name = name,
             value = derivedStateOf { descriptor.toSnapOTweakValue(state.value) },
-            defaultValue = descriptor.toSnapOTweakValue(descriptor.default),
+            defaultValue = { descriptor.toSnapOTweakValue(descriptor.default) },
+            isModified = when {
+                actionCallbacks != null -> { { false } }
+                selectedExternalBacking != null -> { { snapshot(cachedOnly = false).modified } }
+                else -> { { state.value != descriptor.default } }
+            },
         )
+
+        fun snapshot(cachedOnly: Boolean): TweakSnapshot {
+            val mirror = externalSnapshot
+            if (mirror != null) {
+                return mirror.value ?: if (cachedOnly) {
+                    throw UninitializedTweakSnapshotException()
+                } else {
+                    refreshExternalSnapshot()
+                }
+            }
+
+            val value = state.value
+            return TweakSnapshot(
+                descriptor,
+                value,
+                modified = actionCallbacks == null && value != descriptor.default,
+            )
+        }
+
+        fun addExternalBacking(backing: ExternalTweakBacking) {
+            requireNotNull(externalBackings).add(backing)
+        }
+
+        fun removeExternalBacking(state: State<Any>?): Boolean {
+            val backings = externalBackings ?: return false
+            val index = if (state == null) {
+                0
+            } else {
+                backings.indexOfFirst { backing -> backing === state }
+            }
+            if (index < 0) return false
+
+            backings.removeAt(index)
+            if (index == 0 && backings.isNotEmpty()) {
+                requireNotNull(selectedExternalBacking).value = backings.first()
+                if (requireNotNull(externalSnapshot).value != null) {
+                    refreshExternalSnapshot()
+                }
+            }
+            return true
+        }
+
+        fun update(value: Any?) {
+            val backing = externalBacking
+            if (backing == null) {
+                @Suppress("UNCHECKED_CAST")
+                (state as MutableState<Any>).value = value ?: descriptor.default
+            } else if (value == null) {
+                backing.onReset()
+                refreshExternalSnapshot()
+            } else {
+                backing.onValueChange(value)
+                refreshExternalSnapshot()
+            }
+        }
+
+        private fun refreshExternalSnapshot(): TweakSnapshot {
+            val backing = requireNotNull(externalBacking)
+            val value = backing.value
+            val snapshot = TweakSnapshot(descriptor, value, backing.isModified())
+            requireNotNull(externalSnapshot).value = snapshot
+            return snapshot
+        }
     }
 }

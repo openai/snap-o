@@ -75,7 +75,14 @@ internal class TweakHttpServer(
     private val lifecycleLock = Any()
     private val connectionPermits = Semaphore(MaximumConcurrentConnections)
     private val activeSockets = LinkedHashSet<LocalSocket>()
-    private val changePublisher = TweakChangePublisher(mainHandler::post)
+    private val changePublisher = TweakChangePublisher(
+        schedule = mainHandler::post,
+        snapshot = {
+            TweakRegistry.snapshot(
+                cachedOnly = Looper.myLooper() != Looper.getMainLooper(),
+            )
+        },
+    )
 
     @Volatile
     private var running = false
@@ -194,7 +201,13 @@ internal class TweakHttpServer(
     }
 
     private fun streamTweaks(output: OutputStream) {
-        changePublisher.subscribe().use { subscription ->
+        val subscription = try {
+            changePublisher.subscribe()
+        } catch (_: UninitializedTweakSnapshotException) {
+            runOnMainThread("snapshot", "loaded", changePublisher::subscribe)
+        }
+
+        subscription.use {
             output.write(
                 (
                     "HTTP/1.1 200 OK\r\n" +
@@ -263,7 +276,7 @@ internal class TweakHttpServer(
 
     private fun routeTweaks(request: HttpRequest): HttpResponse = when (request.method) {
         "GET" -> tweaksResponse(
-            TweakRegistry.snapshot(includeAdjusted = request.path != "/tweaks"),
+            snapshotForRequest(includeAdjusted = request.path != "/tweaks"),
             includeDescriptors = true,
         )
         "PATCH" -> {
@@ -482,6 +495,14 @@ internal class TweakHttpServer(
 
     private fun updateOnMainThread(values: Map<String, Any?>): TweakBatchResult =
         runOnMainThread("update", "applied") { applyTweakBatch(values) }
+
+    private fun snapshotForRequest(includeAdjusted: Boolean): List<TweakSnapshot> = try {
+        TweakRegistry.snapshot(includeAdjusted = includeAdjusted, cachedOnly = true)
+    } catch (_: UninitializedTweakSnapshotException) {
+        runOnMainThread("snapshot", "loaded") {
+            TweakRegistry.snapshot(includeAdjusted = includeAdjusted)
+        }
+    }
 
     private fun invokeActionOnMainThread(name: String) =
         runOnMainThread("action", "invoked") { TweakRegistry.invokeAction(name) }

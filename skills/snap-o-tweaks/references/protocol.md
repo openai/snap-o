@@ -35,7 +35,7 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 | `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":4}`. |
 | `GET /app/icon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
-| `GET /tweaks?include=adjusted` | Active descriptors plus all previously adjusted value tweaks retained outside composition. |
+| `GET /tweaks?include=adjusted` | Active descriptors plus previously adjusted ordinary or app-owned value snapshots retained outside composition. |
 | `PATCH /tweaks` | One update containing one or more named values. Version 3 and later apply valid entries and report individual errors. |
 | `POST /tweaks/action` | Invoke one explicitly registered parameterless app-owned action by name. |
 | `GET /tweaks/events` | Server-sent events containing complete current tweak and action snapshots. |
@@ -91,7 +91,7 @@ The tweak response has this shape:
 }
 ```
 
-In protocol version 4, only modified value tweaks include `"modified": true`. A missing `modified` field always means false; never infer version-4 status by comparing `value` and `default`. In versions 1, 2, and 3, `modified` is absent; compare `value` with `default` instead. Actions never include `modified`.
+In protocol version 4, only modified value tweaks include `"modified": true`. A missing `modified` field always means false, even when `value` differs from `default`; never infer version-4 status by comparing those fields. Registry-owned tweaks compare their current value with their default, while app-owned tweaks report whether their owner has an override. In versions 1, 2, and 3, `modified` is absent; compare `value` with `default` instead. Actions never include `modified`.
 
 The available value types are `int`, `float`, `boolean`, `color`, `string`, and `enum`. Preserve actual JSON types: booleans are not strings, integer values cannot be fractional, and floats accept whole or fractional finite numbers. Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may include `min`, `max`, and `step`; step alignment starts at `min`, or at `default` if there is no minimum. Actions use `"type":"action"` and have no `value`, `default`, or `options`.
 
@@ -99,9 +99,9 @@ Enum descriptors include a nonempty, ordered `options` array containing unique, 
 
 An action descriptor with `"conflicted":true` has multiple live registrations for the same name. It remains visible so clients can surface the conflict, but the server rejects invocation instead of choosing a callback, merging owners, or inventing unstable names. Register a shared action once at its owner, or use explicit, stable, unique names for distinct actions.
 
-Plain `GET /tweaks` includes only value and action declarations active in Compose. Add `?include=adjusted` to include every tweak successfully adjusted by the user, including retained descriptors whose declarations have since left composition. The expanded response uses the same descriptor shape and also includes current active tweaks and actions; actions have no adjustment history. Separate screens can reuse a value tweak name with different complete declarations; preserve every returned descriptor instead of deduplicating by name. A tweak that was adjusted and later reset can still appear with its default value. In version 4, use `"modified": true` to identify outstanding changes; a missing field always means false. Retention lasts for the current app process and is cleared with the registry; it is not persistent storage across app restarts.
+Plain `GET /tweaks` includes only value and action declarations active in Compose. An app-owned tweak's first observation initializes its value and modification status on the Android main thread; subsequent inspector requests read an immutable cached snapshot without accessing its source. Add `?include=adjusted` to include ordinary or app-owned tweaks successfully adjusted through the inspector, including immutable snapshots whose declarations have since left composition. Each snapshot preserves its complete descriptor, effective value, and authoritative modification status; app-owned sources, callbacks, and observers are not retained, and values are not replayed into returning sources. Untouched tweaks, no-op adjustments, and rejected updates do not create history. The expanded response also includes current active tweaks and actions; actions have no adjustment history. Separate screens can reuse a value tweak name with different complete declarations; preserve every returned descriptor instead of deduplicating by name. An active descriptor takes precedence over its matching historical snapshot. An adjusted tweak that was later reset can remain in the history without `modified`, even if its effective value differs from its captured default. Retention lasts for the current app process and is cleared with the registry.
 
-Names may contain spaces and `/`; send the entire name unchanged. Two active declarations of the same complete value descriptor observe the same value. Repeated value names in expanded results represent distinct complete descriptors; active-only snapshots and updates still resolve at most one currently active value descriptor per name. Historical descriptors are read-only while inactive: `PATCH /tweaks` still rejects their names until their declarations return. Separate active callbacks with the same action name are not interchangeable and are reported as conflicted.
+Names may contain spaces and `/`; send the entire name unchanged. Two active declarations of the same complete value descriptor observe the same value. App-owned sources with the same name must use the same setting and value type. The first active source handles their value, updates, resets, and modification status. Only its `observe()` flow is collected. When it leaves composition, the next active source takes over. Conflicts are not checked and can cause wrong values or runtime errors. Repeated value names in expanded results represent distinct complete descriptors; active-only snapshots and updates still resolve at most one currently active value descriptor per name. Historical descriptors are read-only while inactive: `PATCH /tweaks` still rejects their names until their declarations return. Separate active callbacks with the same action name are not interchangeable and are reported as conflicted.
 
 ### Update or reset values
 
@@ -131,7 +131,7 @@ curl -fsS -X PATCH "$base/tweaks" \
   -d '{"values":{"Motion/Enabled":null}}'
 ```
 
-A version-4 reset restores the original default. Reset all by sending `null` only for active, non-action descriptors with `"modified": true`. For versions 1, 2, and 3, compare each value with its default and reset changed values by sending their defaults. Actions cannot be patched or reset. There is no separate get-by-name, reset, delete, or grouping endpoint.
+A version-4 registry-owned reset restores its original default. An app-owned reset calls the source's `reset()` method and returns its current effective value, which may differ from the captured default. For version 4, reset all by sending `null` only for active, non-action descriptors with `"modified": true`. For versions 1, 2, and 3, compare each value with its default and reset changed values by sending their defaults. Actions cannot be patched or reset. There is no separate get-by-name, reset, delete, or grouping endpoint.
 
 ### Invoke an app-owned action
 

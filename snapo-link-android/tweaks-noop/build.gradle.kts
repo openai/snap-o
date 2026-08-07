@@ -19,4 +19,5 @@ dependencies {
     api(platform(libs.androidx.compose.bom))
     api("androidx.compose.runtime:runtime")
     api(libs.androidx.compose.ui.graphics)
+    api(libs.kotlinx.coroutines.core)
 }

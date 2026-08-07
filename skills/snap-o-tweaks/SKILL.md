@@ -46,14 +46,14 @@ ADB resolves from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <pat
 
    Select devices with `-s <serial>`, `-d` (USB), or `-e` (emulator). Use `-n <socket>` for every subcommand except `apps` when selection is ambiguous.
 
-3. Include every tweak the user has adjusted, even when its declaration is not currently in composition:
+3. Include ordinary or app-owned tweaks the user has adjusted, even when their declarations are not currently in composition:
 
    ```bash
    "$SNAPO_BIN" tweaks list --all -s <serial> -n <socket> --json
    "$SNAPO_BIN" tweaks get 'Typography/Font size' --all -s <serial> -n <socket> --json
    ```
 
-   The expanded list combines current tweaks and actions with retained, previously adjusted tweaks. In protocol version 4, use `"modified": true` to identify outstanding changes; a missing field always means false. For versions 1, 2, and 3, compare `value` with `default` instead. Actions never include `modified`. Separate screens can reuse tweak names with different declarations; preserve every descriptor from `list --all` instead of deduplicating by name. `get NAME --all` reports an error when multiple declarations match; use `list --all --json` to inspect them. Historical tweaks can be inspected while inactive, but can only be changed or reset when their declaration is active. Actions are active-only.
+   The expanded list combines current tweaks and actions with retained snapshots of previously adjusted ordinary or app-owned tweaks. App-owned history preserves the effective value and modification status, not the source, callbacks, or observers. In protocol version 4, use `"modified": true` to identify outstanding changes; a missing field always means false, even when `value` differs from `default`. For versions 1, 2, and 3, compare `value` with `default` instead. Actions never include `modified`. Separate screens can reuse tweak names with different declarations; preserve every descriptor from `list --all` instead of deduplicating by name. `get NAME --all` reports an error when multiple declarations match; use `list --all --json` to inspect them. Historical tweaks can be inspected while inactive, but can only be changed or reset when their declaration is active. Actions are active-only.
 
 4. Observe live complete snapshots:
 

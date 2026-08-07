@@ -22,12 +22,13 @@ internal class TweakChangePublisher(
     fun subscribe(): Subscription = synchronized(lock) {
         check(!closed) { "The tweak change publisher is closed." }
 
+        val initial = snapshot()
         val id = nextSubscriptionId++
         val events = LinkedBlockingDeque<List<TweakSnapshot>>(1)
         subscriptions[id] = events
 
         Subscription(
-            initial = snapshot(),
+            initial = initial,
             events = events,
             onClose = { synchronized(lock) { subscriptions.remove(id) } },
         )
@@ -61,7 +62,7 @@ internal class TweakChangePublisher(
 
     private fun publish() {
         synchronized(lock) {
-            if (closed) {
+            if (closed || subscriptions.isEmpty()) {
                 publicationScheduled = false
                 return
             }

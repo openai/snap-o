@@ -4,7 +4,7 @@ The same active Compose tweak registry can be inspected from several surfaces. C
 
 ## Command line: agents, automation, and repeatable checks
 
-Use the dependency-free Snap-O CLI when a terminal, Codex agent, test script, or Linux/macOS workflow needs app discovery, typed value inspection or updates, batched changes, resets, app-owned action invocation, or live snapshots. Invoke an explicitly requested action with `snapo tweaks action NAME`; actions have no editable value, default, or arguments. Use `snapo tweaks list --all` or `snapo tweaks get NAME --all` to include previously adjusted tweaks no longer in composition; inactive historical tweaks are inspectable but not writable. Its tweaks workflow documents command selection and options. The CLI owns temporary local forwarding and cleanup; explicit remote ADB endpoints use direct smart-socket transport.
+Use the dependency-free Snap-O CLI when a terminal, Codex agent, test script, or Linux/macOS workflow needs app discovery, typed value inspection or updates, batched changes, resets, app-owned action invocation, or live snapshots. Invoke an explicitly requested action with `snapo tweaks action NAME`; actions have no editable value, default, or arguments. Use `snapo tweaks list --all` or `snapo tweaks get NAME --all` to include previously adjusted ordinary or app-owned tweaks no longer in composition; inactive historical snapshots are inspectable but not writable. Its tweaks workflow documents command selection and options. The CLI owns temporary local forwarding and cleanup; explicit remote ADB endpoints use direct smart-socket transport.
 
 ## Snap-O macOS app: an existing desktop inspector
 
@@ -67,7 +67,7 @@ The CLI and Snap-O macOS app own socket discovery, forwarding, and cleanup. The 
 
 ## Custom interfaces: browsers, Node, Swift, and Compose
 
-Build a custom surface when an existing CLI, desktop inspector, or in-app overlay does not match the desired controls or workflow. All external hosts should discover the tweak socket, establish an accessible ADB transport, read `/app` and `/tweaks`, send batched `PATCH /tweaks` value updates, invoke explicitly requested actions with `POST /tweaks/action`, and consume full active snapshots from `/tweaks/events`. Render actions without assuming `value` or `default`; disable invocation when `conflicted` is true. Request `/tweaks?include=adjusted` when a workflow needs every retained user value adjustment, including inactive declarations.
+Build a custom surface when an existing CLI, desktop inspector, or in-app overlay does not match the desired controls or workflow. All external hosts should discover the tweak socket, establish an accessible ADB transport, read `/app` and `/tweaks`, send batched `PATCH /tweaks` value updates, invoke explicitly requested actions with `POST /tweaks/action`, and consume full active snapshots from `/tweaks/events`. Render actions without assuming `value` or `default`; disable invocation when `conflicted` is true. Request `/tweaks?include=adjusted` when a workflow needs retained ordinary or app-owned adjustment snapshots, including inactive declarations.
 
 - A browser interface can use `fetch` and `EventSource` through a same-origin proxy; see [protocol.md](protocol.md) for browser transport restrictions.
 - A Node host or terminal tool can use built-in `fetch` for requests and parse the response body as a standard SSE stream.

@@ -40,9 +40,9 @@ class TweakActionRegistryTest {
         assertEquals(false, snapshots[1].modified)
         assertEquals(
             SnapOTweakValue.Action(),
-            TweakRegistry.activeEntries().value[1].value.value,
+            TweakRegistry.activeEntries.value[1].value.value,
         )
-        assertEquals(false, TweakRegistry.activeEntries().value[1].modified.value)
+        assertEquals(false, TweakRegistry.activeEntries.value[1].modified.value)
     }
 
     @Test
@@ -78,7 +78,7 @@ class TweakActionRegistryTest {
         )
         assertEquals(
             SnapOTweakValue.Action(conflicted = true),
-            TweakRegistry.activeEntries().value.single().value.value,
+            TweakRegistry.activeEntries.value.single().value.value,
         )
     }
 
@@ -98,7 +98,7 @@ class TweakActionRegistryTest {
         assertEquals(SnapOTweakValue.Action(), TweakRegistry.snapshot().single().value)
         assertEquals(
             SnapOTweakValue.Action(),
-            TweakRegistry.activeEntries().value.single().value.value,
+            TweakRegistry.activeEntries.value.single().value.value,
         )
 
         TweakRegistry.invokeAction("Playback/Restart")
@@ -116,15 +116,15 @@ class TweakActionRegistryTest {
             }
         }
         TweakRegistry.registerAction("Playback/Restart") {}
-        val entry = TweakRegistry.activeEntries().value.single()
+        val entry = TweakRegistry.activeEntries.value.single()
 
         val duplicateRegistration = TweakRegistry.registerAction("Playback/Restart") {}
 
-        assertSame(entry, TweakRegistry.activeEntries().value.single())
+        assertSame(entry, TweakRegistry.activeEntries.value.single())
 
         duplicateRegistration.close()
 
-        assertSame(entry, TweakRegistry.activeEntries().value.single())
+        assertSame(entry, TweakRegistry.activeEntries.value.single())
         assertEquals(listOf(false, true, false), conflicts)
         observer.close()
     }

@@ -75,14 +75,14 @@ Note: Snap‑O uses the macOS Hardened Runtime. It will run the `adb` binary you
 
 ### Previously adjusted Tweaks
 
-Include previously adjusted values even after their declarations leave composition:
+Include previously adjusted ordinary or app-owned values even after their declarations leave composition:
 
 ```bash
 snapo tweaks list --all -s <serial> -n <socket> --json
 snapo tweaks get 'Motion/Duration' --all -s <serial> -n <socket> --json
 ```
 
-The equivalent API is `GET /tweaks?include=adjusted`. Inactive tweaks remain read-only. See the [Tweaks protocol guide](contracts/tweaks/README.md) for descriptors and updates.
+The equivalent API is `GET /tweaks?include=adjusted`. Inactive tweaks remain read-only; app-owned history retains a value snapshot, not its source. See the [Tweaks protocol guide](contracts/tweaks/README.md) for descriptors and updates.
 
 ### Drag and Drop
 

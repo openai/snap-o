@@ -17,7 +17,7 @@ import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 object SnapOTweaks {
 
     /** Returns observable active tweaks in the order in which they entered composition. */
-    fun activeTweakEntries(): State<List<SnapOTweakEntry>> = TweakRegistry.activeEntries()
+    fun activeTweakEntries(): State<List<SnapOTweakEntry>> = TweakRegistry.activeEntries
 
     /** Returns active tweaks in the order in which they entered composition. */
     internal fun activeTweaks(): List<SnapOTweak> = TweakRegistry.snapshot().map { snapshot ->
@@ -52,11 +52,11 @@ object SnapOTweaks {
 class SnapOTweakEntry internal constructor(
     val name: String,
     val value: State<SnapOTweakValue>,
-    val defaultValue: SnapOTweakValue,
+    defaultValue: () -> SnapOTweakValue,
+    isModified: () -> Boolean,
 ) {
-    val modified: State<Boolean> = derivedStateOf {
-        value.value !is SnapOTweakValue.Action && value.value != defaultValue
-    }
+    val defaultValue: SnapOTweakValue by lazy(LazyThreadSafetyMode.NONE, defaultValue)
+    val modified: State<Boolean> = derivedStateOf(isModified)
 }
 
 /** A tweak currently available in the composed application. */

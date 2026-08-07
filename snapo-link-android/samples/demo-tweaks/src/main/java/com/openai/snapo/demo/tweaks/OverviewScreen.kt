@@ -1,5 +1,6 @@
 package com.openai.snapo.demo.tweaks
 
+import android.content.Context
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -150,7 +153,15 @@ private fun TypographyDetails() {
 
 @Composable
 private fun MotionSection(dividerColor: Color) {
-    val isVisible by tweak(true, "Motion/Show")
+    val context = LocalContext.current
+    val settings = remember(context) {
+        context.getSharedPreferences("snapo_tweak_demo", Context.MODE_PRIVATE)
+    }
+    val isVisible by settings.tweak(
+        key = "motion_show",
+        default = true,
+        name = "Motion/Show",
+    )
     if (isVisible) {
         HorizontalDivider(color = dividerColor)
         MotionPreview()

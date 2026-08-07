@@ -1,10 +1,15 @@
 package com.openai.snapo.tweaks.internal
 
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,6 +29,77 @@ class TweakChangePublisherTest {
             assertEquals(listOf("Typography/Size"), subscription.initial.names())
             assertNull(subscription.events.poll())
         }
+    }
+
+    @Test
+    fun `cold cached subscriptions fail without retaining a subscriber or reading owners`() {
+        var reads = 0
+        val owner = object : State<Any> {
+            override val value: Any
+                get() = false.also { reads += 1 }
+        }
+        TweakRegistry.register(booleanBacking("Settings/Cold cached hints", owner))
+        val scheduled = mutableListOf<Runnable>()
+        val publisher = TweakChangePublisher(
+            schedule = { runnable -> scheduled.add(runnable) },
+            snapshot = { TweakRegistry.snapshot(cachedOnly = true) },
+        )
+
+        assertThrows(UninitializedTweakSnapshotException::class.java) {
+            publisher.subscribe()
+        }
+        publisher.notifyChanged()
+
+        assertEquals(0, reads)
+        assertTrue(scheduled.isEmpty())
+
+        TweakRegistry.snapshot()
+        publisher.subscribe().use { subscription ->
+            assertEquals(false, subscription.initial.single().value)
+        }
+        assertEquals(1, reads)
+    }
+
+    @Test
+    fun `lazy tweak registrations wait for scheduled publication`() {
+        var reads = 0
+        val initialValue = lazy {
+            reads += 1
+            false
+        }
+        val state = object : State<Any> {
+            override val value: Any
+                get() = initialValue.value
+        }
+        val scheduled = mutableListOf<Runnable>()
+        val publisher = TweakChangePublisher { runnable -> scheduled.add(runnable) }
+        val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
+
+        publisher.subscribe().use { subscription ->
+            TweakRegistry.register(
+                booleanBacking(
+                    name = "Settings/Show hints later",
+                    owner = state,
+                    descriptorFactory = {
+                        TweakDescriptor(
+                            "Settings/Show hints later",
+                            TweakType.BOOLEAN,
+                            initialValue.value,
+                        )
+                    },
+                ),
+            )
+
+            assertEquals(0, reads)
+            assertEquals(1, scheduled.size)
+
+            scheduled.single().run()
+
+            assertEquals(1, reads)
+            assertEquals(false, subscription.events.poll()?.single()?.value)
+        }
+
+        observer.close()
     }
 
     @Test
@@ -221,6 +297,76 @@ class TweakChangePublisherTest {
     }
 
     @Test
+    fun `selected owner flow emissions publish external values and override status`() = runBlocking {
+        var current = false
+        var modified = false
+        var reads = 0
+        val owner = object : State<Any> {
+            override val value: Any
+                get() = current.also { reads += 1 }
+        }
+        val backing = booleanBacking(
+            name = "Settings/Observable hints",
+            owner = owner,
+            modified = { modified },
+        )
+        val selected = TweakRegistry.register(backing) as SelectedTweakState
+        val scheduled = mutableListOf<Runnable>()
+        val publisher = TweakChangePublisher { runnable -> scheduled.add(runnable) }
+        val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
+        assertEquals(0, reads)
+
+        publisher.subscribe().use { subscription ->
+            assertEquals(1, reads)
+            current = true
+            assertTrue(scheduled.isEmpty())
+
+            flowOf(Unit).collect { selected.notifyChanged(backing) }
+            scheduled.removeAt(0).run()
+
+            val update = requireNotNull(subscription.events.poll()).single()
+            assertEquals(true, update.value)
+            assertEquals(false, update.modified)
+
+            modified = true
+            flowOf(Unit).collect { selected.notifyChanged(backing) }
+            scheduled.removeAt(0).run()
+
+            val statusOnly = requireNotNull(subscription.events.poll()).single()
+            assertEquals(true, statusOnly.value)
+            assertEquals(true, statusOnly.modified)
+        }
+
+        val readsAfterClose = reads
+        current = false
+        flowOf(Unit).collect { selected.notifyChanged(backing) }
+        assertEquals(readsAfterClose + 1, reads)
+        assertEquals(false, TweakRegistry.snapshot(cachedOnly = true).single().value)
+        assertTrue(scheduled.isEmpty())
+        observer.close()
+    }
+
+    @Test
+    fun `queued publications do not read owners after the last subscriber leaves`() {
+        var reads = 0
+        val owner = object : State<Any> {
+            override val value: Any
+                get() = false.also { reads += 1 }
+        }
+        TweakRegistry.register(booleanBacking("Settings/Queued hints", owner))
+        val scheduled = mutableListOf<Runnable>()
+        val publisher = TweakChangePublisher { runnable -> scheduled.add(runnable) }
+        val subscription = publisher.subscribe()
+
+        publisher.notifyChanged()
+        subscription.close()
+        scheduled.removeAt(0).run()
+
+        assertEquals(1, reads)
+        assertTrue(scheduled.isEmpty())
+    }
+
+    @Test
     fun `unrelated compose state changes do not publish tweak snapshots`() {
         TweakRegistry.register(descriptor("Motion/Duration", 400))
         val scheduled = mutableListOf<Runnable>()
@@ -249,6 +395,26 @@ class TweakChangePublisherTest {
         type = TweakType.INT,
         default = default,
     )
+
+    private fun booleanBacking(
+        name: String,
+        owner: State<Any>,
+        modified: () -> Boolean = { false },
+        descriptorFactory: () -> TweakDescriptor = {
+            TweakDescriptor(name, TweakType.BOOLEAN, false)
+        },
+    ): ExternalTweakBacking = object : ExternalTweakBacking {
+        override val name: String = name
+        override val descriptor: TweakDescriptor by lazy(descriptorFactory)
+        override val value: Any
+            get() = owner.value
+
+        override fun onValueChange(value: Any) = Unit
+
+        override fun onReset() = Unit
+
+        override fun isModified(): Boolean = modified()
+    }
 
     private fun List<TweakSnapshot>.names(): List<String> = map { it.descriptor.name }
 }

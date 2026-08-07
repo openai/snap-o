@@ -1,5 +1,6 @@
 package com.openai.snapo.tweaks
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.colorspace.ColorSpaces
@@ -240,6 +241,235 @@ class TweakRegistrationTest {
     }
 
     @Test
+    fun `the first application state read captures its default with one getter call`() {
+        var ownerValue = 16
+        var reads = 0
+        var secondaryReads = 0
+        val binding = testTweakBinding(
+            name = "Lifecycle lazy application state",
+            source = testTweakSource(
+                read = {
+                    reads += 1
+                    ownerValue
+                },
+                onValueChange = { ownerValue = it },
+                onReset = { ownerValue = 16 },
+                modified = { ownerValue != 16 },
+            ),
+        )
+        val registration = TweakRegistration(binding)
+        val secondary = TweakRegistration(
+            testTweakBinding(
+                name = binding.name,
+                source = testTweakSource(
+                    read = {
+                        secondaryReads += 1
+                        32
+                    },
+                ),
+            ),
+        )
+
+        assertEquals(0, reads)
+        registration.onRemembered()
+        secondary.onRemembered()
+
+        assertEquals(0, reads)
+        assertEquals(0, secondaryReads)
+        assertEquals(binding.name, TweakRegistry.activeEntries.value.single().name)
+        assertEquals(0, reads)
+        assertEquals(16, registration.value)
+        assertEquals(1, reads)
+        assertEquals(16, binding.descriptor.default)
+        assertEquals(1, reads)
+
+        ownerValue = 24
+        registration.notifyChanged()
+
+        assertEquals(24, registration.value)
+        assertEquals(2, reads)
+        assertEquals(16, binding.descriptor.default)
+        assertEquals(0, secondaryReads)
+
+        registration.onForgotten()
+
+        assertEquals(32, secondary.value)
+        assertEquals(1, secondaryReads)
+        secondary.onForgotten()
+    }
+
+    @Test
+    fun `externally backed registrations read and update application owned values`() {
+        var ownerValue = false
+        var secondaryValue = true
+        var setterCalls = 0
+        var secondarySetterCalls = 0
+        var secondaryResetCalls = 0
+        val state = testTweakBinding(
+            name = "Lifecycle application-owned tweak",
+            source = testTweakSource(
+                read = { ownerValue },
+                onValueChange = {
+                    setterCalls += 1
+                    ownerValue = it
+                },
+                onReset = { ownerValue = false },
+                modified = { ownerValue },
+            ),
+        )
+        val registration = TweakRegistration(state)
+        val secondary = TweakRegistration(
+            testTweakBinding(
+                name = state.name,
+                source = testTweakSource(
+                    read = { secondaryValue },
+                    onValueChange = {
+                        secondarySetterCalls += 1
+                        secondaryValue = it
+                    },
+                    onReset = {
+                        secondaryResetCalls += 1
+                        secondaryValue = true
+                    },
+                    modified = { !secondaryValue },
+                ),
+            ),
+        )
+
+        registration.onRemembered()
+        secondary.onRemembered()
+
+        assertEquals(false, secondary.value)
+
+        secondary.onForgotten()
+        secondary.onRemembered()
+
+        ownerValue = true
+        registration.notifyChanged()
+
+        assertEquals(true, secondary.value)
+
+        TweakRegistry.update(mapOf(state.descriptor.name to false))
+
+        assertEquals(1, setterCalls)
+
+        registration.onForgotten()
+
+        assertEquals(true, secondary.value)
+
+        val changed = TweakRegistry.update(mapOf(state.name to false)).single()
+
+        assertEquals(false, secondaryValue)
+        assertEquals(1, secondarySetterCalls)
+        assertEquals(true, changed.modified)
+
+        val reset = TweakRegistry.update(mapOf(state.name to null)).single()
+
+        assertEquals(true, secondaryValue)
+        assertEquals(1, secondaryResetCalls)
+        assertEquals(false, reset.modified)
+
+        secondary.onForgotten()
+        assertNoActiveTweaks()
+    }
+
+    @Test
+    fun `externally backed registrations use their latest owner source`() {
+        var firstOwner = 16
+        var secondOwner = 24
+        var firstResetCalls = 0
+        var secondResetCalls = 0
+        val latestSource = mutableStateOf(
+            testTweakSource(
+                read = { firstOwner },
+                onValueChange = { firstOwner = it },
+                onReset = {
+                    firstResetCalls += 1
+                    firstOwner = 16
+                },
+                modified = { firstOwner != 16 },
+            ),
+        )
+        val state = ExternalTweakBinding(
+            name = "Lifecycle latest source",
+            latestSource = latestSource,
+        )
+        val registration = TweakRegistration(state)
+        registration.onRemembered()
+
+        latestSource.value = testTweakSource(
+            read = { secondOwner },
+            onValueChange = { secondOwner = it },
+            onReset = {
+                secondResetCalls += 1
+                secondOwner = 24
+            },
+            modified = { secondOwner != 24 },
+        )
+
+        assertEquals(24, registration.value)
+
+        TweakRegistry.update(mapOf(state.descriptor.name to 32))
+
+        assertEquals(16, firstOwner)
+        assertEquals(32, secondOwner)
+        assertEquals(32, registration.value)
+        assertTrue(TweakRegistry.snapshot().single().modified)
+
+        val reset = TweakRegistry.update(mapOf(state.descriptor.name to null)).single()
+
+        assertEquals(0, firstResetCalls)
+        assertEquals(1, secondResetCalls)
+        assertEquals(24, secondOwner)
+        assertEquals(false, reset.modified)
+    }
+
+    @Test
+    fun `external tweak bindings support existing values and preserve exact colors`() {
+        val exactColor = Color(
+            red = 0.25f,
+            green = 0.5f,
+            blue = 0.75f,
+            alpha = 0.3f,
+            colorSpace = ColorSpaces.DisplayP3,
+        )
+        val supportedValues = listOf(
+            false to TweakType.BOOLEAN,
+            16 to TweakType.INT,
+            0.5f to TweakType.FLOAT,
+            "hello" to TweakType.STRING,
+            exactColor to TweakType.COLOR,
+        )
+
+        supportedValues.forEach { (default, type) ->
+            val state = ExternalTweakBinding(
+                name = "Lifecycle external $type",
+                latestSource = mutableStateOf(testTweakSource(read = { default })),
+            )
+
+            assertEquals(type, state.descriptor.type)
+            assertEquals(default, state.decode(state.value))
+            if (default is Color) {
+                assertEquals(default, (state.descriptor.default as TweakColorValue).color)
+            }
+        }
+    }
+
+    @Test
+    fun `unsupported externally backed value types fail with a clear error`() {
+        val binding = ExternalTweakBinding(
+            name = "Lifecycle unsupported external value",
+            latestSource = mutableStateOf(testTweakSource(read = { 16L })),
+        )
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            binding.value
+        }
+
+        assertTrue(error.message.orEmpty().contains("java.lang.Long"))
+        assertTrue(error.message.orEmpty().contains("Boolean, Int, Float, String, and Color"))
+    }
+
+    @Test
     fun `new same-name registrations do not observe existing state during composition`() {
         val descriptor = descriptor()
         val existing = registration(descriptor)
@@ -410,7 +640,7 @@ class TweakRegistrationTest {
 
     private fun assertNoActiveTweaks() {
         assertTrue(TweakRegistry.snapshot().isEmpty())
-        assertTrue(TweakRegistry.activeEntries().value.isEmpty())
+        assertTrue(TweakRegistry.activeEntries.value.isEmpty())
         assertTrue(SnapOTweaks.activeTweaks().isEmpty())
         assertTrue(SnapOTweaks.activeTweakEntries().value.isEmpty())
     }
