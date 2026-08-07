@@ -4,6 +4,7 @@ import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.Color
 import com.openai.snapo.tweaks.internal.TweakDescriptor
 import com.openai.snapo.tweaks.internal.TweakRegistry
@@ -36,6 +37,13 @@ object SnapOTweaks {
 
         TweakRegistry.invokeAction(name)
     }
+
+    /** Resets an active tweak through the same registry used by the host inspector. */
+    fun reset(name: String) {
+        if (!TweaksRuntimePolicy.isAllowed) return
+
+        TweakRegistry.update(mapOf(name to null))
+    }
 }
 
 /** A stable active tweak whose current value can be observed independently. */
@@ -45,7 +53,11 @@ class SnapOTweakEntry internal constructor(
     val name: String,
     val value: State<SnapOTweakValue>,
     val defaultValue: SnapOTweakValue,
-)
+) {
+    val modified: State<Boolean> = derivedStateOf {
+        value.value !is SnapOTweakValue.Action && value.value != defaultValue
+    }
+}
 
 /** A tweak currently available in the composed application. */
 @Immutable

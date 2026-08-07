@@ -24,8 +24,13 @@ class TweakEnumValidationTest {
         assertInvalidUpdate(descriptor.name, "DARK")
         assertInvalidUpdate(descriptor.name, "Stale")
         assertInvalidUpdate(descriptor.name, true)
-        assertInvalidUpdate(descriptor.name, null)
         assertEquals("Dark", state.value)
+
+        val reset = TweakRegistry.update(mapOf(descriptor.name to null)).single()
+
+        assertEquals("System", state.value)
+        assertEquals("System", reset.value)
+        assertEquals(false, reset.modified)
     }
 
     @Test

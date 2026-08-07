@@ -6,6 +6,7 @@ import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 
@@ -26,6 +27,9 @@ object SnapOTweaks {
 
     /** Ignores action invocations in a no-op build. */
     fun invokeAction(name: String) = Unit
+
+    /** Ignores tweak resets in a no-op build. */
+    fun reset(name: String) = Unit
 }
 
 /** The matching observable tweak shape from the live implementation. */
@@ -35,7 +39,9 @@ class SnapOTweakEntry internal constructor(
     val name: String,
     val value: State<SnapOTweakValue>,
     val defaultValue: SnapOTweakValue,
-)
+) {
+    val modified: State<Boolean> = derivedStateOf { value.value != defaultValue }
+}
 
 /** A tweak value exposed by the matching live implementation. */
 @Immutable

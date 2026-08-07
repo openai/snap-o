@@ -37,6 +37,7 @@ internal data class TweakDescriptor(
 internal data class TweakSnapshot(
     val descriptor: TweakDescriptor,
     val value: Any,
+    val modified: Boolean,
 )
 
 internal open class TweakUpdateException(
@@ -198,7 +199,14 @@ internal object TweakRegistry {
             tweaks.values
         }
 
-        registeredTweaks.map { tweak -> TweakSnapshot(tweak.descriptor, tweak.state.value) }
+        registeredTweaks.map { tweak ->
+            val value = tweak.state.value
+            TweakSnapshot(
+                tweak.descriptor,
+                value,
+                tweak.descriptor.type != TweakType.ACTION && value != tweak.descriptor.default,
+            )
+        }
     }
 
     fun update(values: Map<String, Any?>): List<TweakSnapshot> {
@@ -207,7 +215,14 @@ internal object TweakRegistry {
             val changes = values.map { (name, value) ->
                 val tweak = tweaks[name]
                     ?: throw UnknownTweakException(name)
-                tweak to validateValue(tweak.descriptor, value)
+                val descriptor = tweak.descriptor
+                if (descriptor.type == TweakType.ACTION) {
+                    invalidValue(
+                        descriptor,
+                        "Actions cannot be patched. Invoke the registered action instead.",
+                    )
+                }
+                tweak to (value?.let { validateValue(descriptor, it) } ?: descriptor.default)
             }
 
             val changedTweaks = ArrayList<RegisteredTweak>()
@@ -225,7 +240,8 @@ internal object TweakRegistry {
             }
 
             changes.map { (tweak, _) ->
-                TweakSnapshot(tweak.descriptor, tweak.state.value)
+                val value = tweak.state.value
+                TweakSnapshot(tweak.descriptor, value, value != tweak.descriptor.default)
             }
         }
         if (changed) notifyObservers()

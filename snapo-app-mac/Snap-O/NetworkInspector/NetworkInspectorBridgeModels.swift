@@ -35,6 +35,7 @@ struct SelectedAppInspector: Codable {
   let appId: String
   let kind: AppInspectorKind
   let server: InspectorServerReference
+  let protocolVersion: Int?
 }
 
 enum TweakValue: Codable {
@@ -76,6 +77,7 @@ struct TweakDescriptor: Codable {
   let type: String
   let `default`: TweakValue?
   let value: TweakValue?
+  let modified: Bool?
   let min: TweakValue?
   let max: TweakValue?
   let step: TweakValue?
@@ -101,6 +103,7 @@ struct TweaksInspectorNativeState: Codable {
 struct TweakUpdate: Codable {
   let name: String
   let value: TweakValue
+  let modified: Bool?
 }
 
 struct TweakUpdateError: Codable {
@@ -114,12 +117,12 @@ struct TweakUpdates: Codable {
 }
 
 struct TweakPatch: Codable {
-  let values: [String: TweakValue]
+  let values: [String: TweakValue?]
 }
 
 struct UpdateTweaksInput: Codable {
   let server: InspectorServerReference
-  let values: [String: TweakValue]
+  let values: [String: TweakValue?]
 }
 
 struct InvokeTweakActionInput: Codable {

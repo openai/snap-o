@@ -16,8 +16,8 @@ class TweakActionRegistryTest {
     }
 
     @Test
-    fun `protocol version distinguishes best effort tweak batches`() {
-        assertEquals(3, TweaksProtocolVersion)
+    fun `protocol version distinguishes reset and modification aware clients`() {
+        assertEquals(4, TweaksProtocolVersion)
     }
 
     @Test
@@ -37,10 +37,12 @@ class TweakActionRegistryTest {
         )
         assertEquals(TweakType.ACTION, snapshots[1].descriptor.type)
         assertEquals(SnapOTweakValue.Action(), snapshots[1].value)
+        assertEquals(false, snapshots[1].modified)
         assertEquals(
             SnapOTweakValue.Action(),
             TweakRegistry.activeEntries().value[1].value.value,
         )
+        assertEquals(false, TweakRegistry.activeEntries().value[1].modified.value)
     }
 
     @Test
@@ -175,6 +177,22 @@ class TweakActionRegistryTest {
         val error = assertThrows(InvalidTweakValueException::class.java) {
             TweakRegistry.update(
                 linkedMapOf(value.name to 20, "Playback/Restart" to "run"),
+            )
+        }
+
+        assertEquals(422, error.statusCode)
+        assertEquals(16, TweakRegistry.snapshot().first().value)
+    }
+
+    @Test
+    fun `actions reject reset patches without changing other tweaks`() {
+        val value = TweakDescriptor("Typography/Size", TweakType.INT, 16)
+        TweakRegistry.register(value)
+        TweakRegistry.registerAction("Playback/Restart") {}
+
+        val error = assertThrows(InvalidTweakValueException::class.java) {
+            TweakRegistry.update(
+                linkedMapOf(value.name to 20, "Playback/Restart" to null),
             )
         }
 

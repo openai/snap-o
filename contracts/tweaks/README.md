@@ -37,11 +37,11 @@ Return the app's user-facing Android label, package name, and Tweaks protocol ve
 {
   "name": "Snap-O Tweaks Demo",
   "packageName": "com.openai.snapo.demo.tweaks",
-  "protocolVersion": 3
+  "protocolVersion": 4
 }
 ```
 
-Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
+Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
 
 ### GET /app/icon
 
@@ -148,6 +148,8 @@ A tweak name represents one shared value, not one composable. Multiple active co
 
 Usages with the same name must agree on the tweak type, default, constraints, and ordered enum options. Conflicting declarations are a configuration error.
 
+In protocol version 4, only modified value tweaks include `"modified": true`; otherwise the field is absent. A missing field always means false. A tweak is modified when its value differs from its default. Versions 1, 2, and 3 omit this field; determine their modification status by comparing `value` with `default`. Action descriptors never include `modified`.
+
 Supported value types are `int`, `float`, `boolean`, `color`, `string`, and `enum`. The `action` type describes an explicitly registered parameterless app-owned callback. Actions do not have `value`, `default`, options, or numeric constraints; clients must not attempt to patch or reset them. Integer tweaks accept only whole numbers; float tweaks accept whole or fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include constraints actually supplied by the app. A `step` is relative to `min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
 
 Enum tweaks include an ordered, nonempty `options` array containing the unique enum constant names. The descriptor's `default`, current `value`, picker text, and `PATCH` values all use those exact names. Preserve declaration order when rendering pickers; reject any value not present in `options`.
@@ -164,7 +166,7 @@ Action names must be explicit, stable, and unique among live registrations. Regi
 
 Conflicting actions remain discoverable but cannot be invoked until exactly one owner remains. Callbacks are never silently deduplicated, replaced, or renamed with generated suffixes.
 
-Compose color defaults keep their exact in-process identity, including color space, component precision, and `Color.Unspecified`. The HTTP protocol still presents colors as sRGB hex; non-sRGB defaults are projected, and `Color.Unspecified` appears as `#00000000`. Patching a color with that presented default remains the legacy reset operation, so the same projected hex cannot also express a distinct sRGB edit for a non-round-trippable default.
+Compose color defaults keep their exact in-process identity, including color space, component precision, and `Color.Unspecified`. The HTTP protocol still presents colors as sRGB hex; non-sRGB defaults are projected, and `Color.Unspecified` appears as `#00000000`. An explicit reset restores the original in-process color, even when its wire representation is projected.
 
 Numeric JSON values may contain at most 128 characters and 64 significant digits, with a decimal scale between -64 and 64. Reject values outside those limits with `422` before changing any tweaks.
 
@@ -178,7 +180,7 @@ curl -fsS 'http://127.0.0.1:43817/tweaks?include=adjusted'
 
 The response uses the same `{"tweaks":[...]}` shape and complete tweak descriptors as `GET /tweaks`. Include every currently active tweak, whether or not it has been adjusted, and every inactive tweak whose value was actually changed by a successful user adjustment. Preserve the tweak's original declaration, constraints, and latest value after its final usage leaves composition. Separate screens may reuse a name with different declarations; include each independently adjusted complete descriptor, even when names repeat. Repeated names occur only for distinct complete descriptors; active-only listings and updates still resolve at most one active descriptor per name. Order names by first observation, regardless of later activation or adjustment. For repeated names, list the active declaration first, followed by historical declarations in stable adjustment order.
 
-An adjusted tweak remains in this history even after its value is reset to its default. An inactive tweak that was never changed, a no-op update that leaves its value unchanged, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
+An adjusted tweak remains in this history even after it is reset. An inactive tweak that was never changed, a no-op update that leaves its value unchanged, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
 
 Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names. Versions 1 and 2 return `404` for an inactive name; later versions report a named per-item error. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
 
@@ -195,7 +197,7 @@ event: tweaks
 data: {"tweaks":[{"name":"Motion/Show","type":"boolean","default":true,"value":true},{"name":"Motion/Duration","type":"int","default":400,"value":400,"min":100,"max":1500,"step":50}]}
 
 event: tweaks
-data: {"tweaks":[{"name":"Motion/Show","type":"boolean","default":true,"value":false}]}
+data: {"tweaks":[{"name":"Motion/Show","type":"boolean","default":true,"value":false,"modified":true}]}
 
 ```
 
@@ -225,24 +227,24 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 ```json
 {
   "tweaks": [
-    { "name": "Font size", "value": 48 },
-    { "name": "Font weight", "value": 700 },
-    { "name": "Accent color", "value": "#3B82F6" },
-    { "name": "Animation duration", "value": 550 },
-    { "name": "Spring damping", "value": 0.8 },
-    { "name": "Use spring", "value": false },
-    { "name": "Preview text", "value": "A calmer direction." },
-    { "name": "Marker shape", "value": "RoundedSquare" }
+    { "name": "Font size", "value": 48, "modified": true },
+    { "name": "Font weight", "value": 700, "modified": true },
+    { "name": "Accent color", "value": "#3B82F6", "modified": true },
+    { "name": "Animation duration", "value": 550, "modified": true },
+    { "name": "Spring damping", "value": 0.8, "modified": true },
+    { "name": "Use spring", "value": false, "modified": true },
+    { "name": "Preview text", "value": "A calmer direction.", "modified": true },
+    { "name": "Marker shape", "value": "RoundedSquare", "modified": true }
   ]
 }
 ```
 
-In protocol version 3, each value is applied separately on the Android main thread. A valid request returns HTTP 200 with successful changes in `tweaks` and any rejected changes in `errors`; earlier successful changes are not rolled back. Each error contains only its tweak `name` and `error` message. The `errors` field is omitted when every change succeeds:
+In protocol versions 3 and later, each value is applied separately on the Android main thread. A valid request returns HTTP 200 with successful changes in `tweaks` and any rejected changes in `errors`; earlier successful changes are not rolled back. Each error contains only its tweak `name` and `error` message. The `errors` field is omitted when every change succeeds:
 
 ```json
 {
   "tweaks": [
-    { "name": "Font size", "value": 48 }
+    { "name": "Font size", "value": 48, "modified": true }
   ],
   "errors": [
     {
@@ -253,7 +255,26 @@ In protocol version 3, each value is applied separately on the Android main thre
 }
 ```
 
-Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or nonprimitive values. In protocol versions 1 and 2, an unknown tweak returns `404`, an invalid value returns `422`, and the entire batch is rejected. In version 3, unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
+Reset tweaks explicitly:
+
+```bash
+curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
+  -H 'Content-Type: application/json' \
+  -d '{"values":{"Accent color":null,"Use spring":null}}'
+```
+
+```json
+{
+  "tweaks": [
+    { "name": "Accent color", "value": "#5468FF" },
+    { "name": "Use spring", "value": true }
+  ]
+}
+```
+
+For protocol version 4, use `null` to reset a tweak; a request can mix changes and resets. Reset all only active, non-action tweaks marked `"modified": true`. For versions 1, 2, and 3, reset each changed tweak by sending its `default` value instead.
+
+Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or nonprimitive values. In protocol versions 1 and 2, an unknown tweak returns `404`, an invalid value returns `422`, and the entire batch is rejected. In versions 3 and later, unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
 
 ```json
 {
@@ -261,7 +282,7 @@ Return `400` for malformed requests, `404` when an endpoint does not exist, `405
 }
 ```
 
-Reset a value by patching it with its default. Actions are not valid patch targets. In version 3, an action target produces a named per-item error while other valid changes are applied.
+Actions are not valid patch or reset targets. For versions 3 and later, an action target produces a named per-item error while other valid changes are applied.
 
 ### POST /tweaks/action
 

@@ -68,4 +68,4 @@ internal class TweakOverlaySectionOrder {
 }
 
 internal val SnapOTweakEntry.isChanged: Boolean
-    get() = value.value !is SnapOTweakValue.Action && value.value != defaultValue
+    get() = value.value !is SnapOTweakValue.Action && modified.value

@@ -276,7 +276,7 @@ class TweakValidationTest {
     }
 
     @Test
-    fun `string tweaks accept only strings`() {
+    fun `string tweaks accept strings and reset when the update is null`() {
         val descriptor = TweakDescriptor(
             name = "Validation string",
             type = TweakType.STRING,
@@ -288,8 +288,13 @@ class TweakValidationTest {
 
         assertEquals("after", state.value)
         assertInvalidUpdate(descriptor.name, false)
-        assertInvalidUpdate(descriptor.name, null)
         assertEquals("after", state.value)
+
+        val reset = TweakRegistry.update(mapOf(descriptor.name to null)).single()
+
+        assertEquals("before", state.value)
+        assertEquals("before", reset.value)
+        assertEquals(false, reset.modified)
     }
 
     @Test

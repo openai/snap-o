@@ -2,10 +2,10 @@ import type { InspectorServerReference, TweakUpdate, TweakUpdateError, TweakValu
 import type { NetworkClient } from "../../network/client";
 
 interface TweakUpdateQueueCallbacks {
-  onUpdate(tweaks: TweakUpdate[], pending: ReadonlyMap<string, TweakValue>): void;
+  onUpdate(tweaks: TweakUpdate[], pending: ReadonlyMap<string, TweakValue | null>): void;
   onRejected?(
     errors: TweakUpdateError[],
-    pending: ReadonlyMap<string, TweakValue>,
+    pending: ReadonlyMap<string, TweakValue | null>,
     inFlight: ReadonlySet<string>,
     isCurrent: () => boolean
   ): void;
@@ -14,7 +14,7 @@ interface TweakUpdateQueueCallbacks {
 }
 
 export class TweakUpdateQueue {
-  readonly pending = new Map<string, TweakValue>();
+  readonly pending = new Map<string, TweakValue | null>();
   readonly inFlight = new Set<string>();
 
   private saving = false;
@@ -26,7 +26,7 @@ export class TweakUpdateQueue {
     private readonly callbacks: TweakUpdateQueueCallbacks
   ) {}
 
-  enqueue(name: string, value: TweakValue): void {
+  enqueue(name: string, value: TweakValue | null): void {
     this.pending.set(name, value);
   }
 

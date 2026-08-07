@@ -59,7 +59,8 @@ final class NetworkInspectorHostModel {
     let selection = SelectedAppInspector(
       appId: app.id,
       kind: option.kind,
-      server: option.server
+      server: option.server,
+      protocolVersion: option.protocolVersion
     )
     if selectedInspector?.appId != selection.appId
       || selectedInspector?.kind != selection.kind
@@ -141,11 +142,13 @@ final class NetworkInspectorHostModel {
     inspectorApps = apps
 
     if let selection = selectedInspector,
-       apps.contains(where: { app in
-         app.id == selection.appId && app.inspectors.contains {
-           $0.kind == selection.kind && $0.server == selection.server
-         }
+       let app = apps.first(where: { $0.id == selection.appId }),
+       let option = app.inspectors.first(where: {
+         $0.kind == selection.kind && $0.server == selection.server
        }) {
+      if selection.protocolVersion != option.protocolVersion {
+        selectInspector(app, option: option)
+      }
       return
     }
 

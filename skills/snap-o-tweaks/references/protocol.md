@@ -32,17 +32,17 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 | Request | Result |
 | --- | --- |
-| `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":3}`. |
+| `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":4}`. |
 | `GET /app/icon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
 | `GET /tweaks?include=adjusted` | Active descriptors plus all previously adjusted value tweaks retained outside composition. |
-| `PATCH /tweaks` | One update containing one or more named values. Version 3 applies valid entries and reports individual errors. |
+| `PATCH /tweaks` | One update containing one or more named values. Version 3 and later apply valid entries and report individual errors. |
 | `POST /tweaks/action` | Invoke one explicitly registered parameterless app-owned action by name. |
 | `GET /tweaks/events` | Server-sent events containing complete current tweak and action snapshots. |
 
 Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
 
-`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Use the reported version to select compatible update behavior.
+`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Use the reported version to select compatible update, status, and reset behavior.
 
 ### Read metadata and active values
 
@@ -63,6 +63,7 @@ The tweak response has this shape:
       "type": "int",
       "default": 400,
       "value": 550,
+      "modified": true,
       "min": 100,
       "max": 1500,
       "step": 50
@@ -71,13 +72,15 @@ The tweak response has this shape:
       "name": "Motion/Enabled",
       "type": "boolean",
       "default": true,
-      "value": false
+      "value": false,
+      "modified": true
     },
     {
       "name": "Appearance/Theme",
       "type": "enum",
       "default": "System",
       "value": "Dark",
+      "modified": true,
       "options": ["System", "Light", "Dark"]
     },
     {
@@ -88,13 +91,15 @@ The tweak response has this shape:
 }
 ```
 
+In protocol version 4, only modified value tweaks include `"modified": true`. A missing `modified` field always means false; never infer version-4 status by comparing `value` and `default`. In versions 1, 2, and 3, `modified` is absent; compare `value` with `default` instead. Actions never include `modified`.
+
 The available value types are `int`, `float`, `boolean`, `color`, `string`, and `enum`. Preserve actual JSON types: booleans are not strings, integer values cannot be fractional, and floats accept whole or fractional finite numbers. Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may include `min`, `max`, and `step`; step alignment starts at `min`, or at `default` if there is no minimum. Actions use `"type":"action"` and have no `value`, `default`, or `options`.
 
 Enum descriptors include a nonempty, ordered `options` array containing unique, nonblank enum name strings. The `default` and current `value` are names from that list. Send an exact option name in `PATCH /tweaks`.
 
 An action descriptor with `"conflicted":true` has multiple live registrations for the same name. It remains visible so clients can surface the conflict, but the server rejects invocation instead of choosing a callback, merging owners, or inventing unstable names. Register a shared action once at its owner, or use explicit, stable, unique names for distinct actions.
 
-Plain `GET /tweaks` includes only value and action declarations active in Compose. Add `?include=adjusted` to include every tweak successfully adjusted by the user, including retained descriptors whose declarations have since left composition. The expanded response uses the same descriptor shape and also includes current active tweaks and actions; actions have no adjustment history. Separate screens can reuse a value tweak name with different complete declarations; preserve every returned descriptor instead of deduplicating by name. A tweak that was adjusted and later reset can still appear with its default value; compare `value` and `default` to identify outstanding user changes. Retention lasts for the current app process and is cleared with the registry; it is not persistent storage across app restarts.
+Plain `GET /tweaks` includes only value and action declarations active in Compose. Add `?include=adjusted` to include every tweak successfully adjusted by the user, including retained descriptors whose declarations have since left composition. The expanded response uses the same descriptor shape and also includes current active tweaks and actions; actions have no adjustment history. Separate screens can reuse a value tweak name with different complete declarations; preserve every returned descriptor instead of deduplicating by name. A tweak that was adjusted and later reset can still appear with its default value. In version 4, use `"modified": true` to identify outstanding changes; a missing field always means false. Retention lasts for the current app process and is cleared with the registry; it is not persistent storage across app restarts.
 
 Names may contain spaces and `/`; send the entire name unchanged. Two active declarations of the same complete value descriptor observe the same value. Repeated value names in expanded results represent distinct complete descriptors; active-only snapshots and updates still resolve at most one currently active value descriptor per name. Historical descriptors are read-only while inactive: `PATCH /tweaks` still rejects their names until their declarations return. Separate active callbacks with the same action name are not interchangeable and are reported as conflicted.
 
@@ -109,16 +114,24 @@ curl -fsS -X PATCH "$base/tweaks" \
 The response contains the changed names and their resulting values:
 
 ```json
-{"tweaks":[{"name":"Motion/Duration","value":550},{"name":"Motion/Enabled","value":false},{"name":"Appearance/Theme","value":"Dark"}]}
+{"tweaks":[{"name":"Motion/Duration","value":550,"modified":true},{"name":"Motion/Enabled","value":false,"modified":true},{"name":"Appearance/Theme","value":"Dark","modified":true}]}
 ```
 
-Protocol version 3 applies valid entries independently. Invalid, unknown, inactive, or action entries appear in `errors` with their tweak names and error messages, while successful changes remain applied:
+Protocol versions 3 and later apply valid entries independently. Invalid, unknown, inactive, or action entries appear in `errors` with their tweak names and error messages, while successful changes remain applied:
 
 ```json
-{"tweaks":[{"name":"Motion/Duration","value":550}],"errors":[{"name":"Motion/Enabled","error":"Invalid value for Motion/Enabled: Expected a boolean."}]}
+{"tweaks":[{"name":"Motion/Duration","value":550,"modified":true}],"errors":[{"name":"Motion/Enabled","error":"Invalid value for Motion/Enabled: Expected a boolean."}]}
 ```
 
-The `errors` field is absent when every entry succeeds. Versions 1 and 2 reject the entire batch if any entry is invalid. Reset by fetching `GET /tweaks` and sending the target descriptor's `default` value back in a patch; reset all by patching every active value name to its own default in one request. Actions cannot be patched or reset and are excluded from reset-all. There is no separate get-by-name, reset, delete, or grouping endpoint.
+The `errors` field is absent when every entry succeeds. Versions 1 and 2 reject the entire batch if any entry is invalid. In version 4, reset a value by sending `null` instead of a replacement value:
+
+```bash
+curl -fsS -X PATCH "$base/tweaks" \
+  -H 'Content-Type: application/json' \
+  -d '{"values":{"Motion/Enabled":null}}'
+```
+
+A version-4 reset restores the original default. Reset all by sending `null` only for active, non-action descriptors with `"modified": true`. For versions 1, 2, and 3, compare each value with its default and reset changed values by sending their defaults. Actions cannot be patched or reset. There is no separate get-by-name, reset, delete, or grouping endpoint.
 
 ### Invoke an app-owned action
 
@@ -149,7 +162,7 @@ data: {"tweaks":[{"name":"Motion/Enabled","type":"boolean","default":true,"value
 : keep-alive
 
 event: tweaks
-data: {"tweaks":[{"name":"Motion/Enabled","type":"boolean","default":true,"value":false}]}
+data: {"tweaks":[{"name":"Motion/Enabled","type":"boolean","default":true,"value":false,"modified":true}]}
 
 ```
 

@@ -9,6 +9,7 @@ import type {
 } from "../../network/bridge-types";
 import { createNetworkClient, type NetworkClient } from "../../network/client";
 import {
+  applyTweakUpdates,
   canResetTweaks,
   groupTweaks,
   hasLoadedTweaksForServer,
@@ -21,13 +22,14 @@ import {
   TweakField,
   TweaksEmptyState,
   TweaksInspectorApp,
-  tweakColorWithPreservedAlpha
+  tweakColorWithPreservedAlpha,
+  tweakResetValue
 } from "./TweaksInspectorApp";
 
 describe("empty tweaks inspector", () => {
   const client = { usesNativeServerPicker: true, openExternal: async () => {} } as unknown as NetworkClient;
   const selection: SelectedAppInspector = {
-    appId: "pixel:com.openai.chatgpt",
+    appId: "pixel:com.example.settings",
     kind: "tweaks",
     server: { deviceId: "pixel", socketName: "snapo_tweaks_10" }
   };
@@ -263,11 +265,11 @@ describe("enumerated tweak values", () => {
 
   it("recognizes changed and reset enum values", () => {
     expect(canResetTweaks([enumTweak()])).toBe(false);
-    expect(canResetTweaks([{ ...enumTweak(), value: "Dark" }])).toBe(true);
+    expect(canResetTweaks([{ ...enumTweak(), value: "Dark", modified: true }])).toBe(true);
   });
 
   it("preserves updated enum options while a local selection is pending", () => {
-    const current = [{ ...enumTweak(), value: "Dark" }];
+    const current = [{ ...enumTweak(), value: "Dark", modified: true }];
     const incoming = [
       {
         ...enumTweak(),
@@ -276,7 +278,7 @@ describe("enumerated tweak values", () => {
     ];
 
     expect(reconcileStreamedTweaks(current, incoming, new Map([["Appearance/Theme", "Dark"]]), new Set())).toEqual([
-      { ...incoming[0], value: "Dark" }
+      { ...incoming[0], value: "Dark", modified: true }
     ]);
   });
 });
@@ -286,19 +288,40 @@ describe("native reset toolbar state", () => {
     expect(canResetTweaks([])).toBe(false);
   });
 
-  it("disables reset when all tweaks are at their defaults", () => {
+  it("disables reset when no tweaks are modified", () => {
     expect(canResetTweaks([tweak("Typography/Font size"), tweak("Motion/Duration")])).toBe(false);
   });
 
-  it("enables reset immediately when a tweak changes", () => {
-    expect(canResetTweaks([{ ...tweak("Typography/Font size"), value: 2 }])).toBe(true);
+  it("enables reset when a tweak is marked modified", () => {
+    expect(canResetTweaks([{ ...tweak("Typography/Font size"), value: 2, modified: true }])).toBe(true);
   });
 
-  it("disables reset when every changed tweak returns to its default", () => {
+  it("uses explicit modification status when the value equals its default", () => {
     const fontSize = tweak("Typography/Font size");
 
-    expect(canResetTweaks([{ ...fontSize, value: 2 }])).toBe(true);
+    expect(canResetTweaks([{ ...fontSize, modified: true }])).toBe(true);
+    expect(canResetTweaks([{ ...fontSize, value: 2, modified: false }])).toBe(false);
     expect(canResetTweaks([fontSize])).toBe(false);
+  });
+
+  it("infers modification status from legacy tweak values", () => {
+    const fontSize = tweak("Typography/Font size");
+
+    expect(canResetTweaks([{ ...fontSize, value: 2 }], 2)).toBe(true);
+    expect(canResetTweaks([{ ...fontSize, modified: true }], 2)).toBe(false);
+  });
+
+  it("resets legacy tweaks by restoring their descriptor defaults", () => {
+    const fontSize = { ...tweak("Typography/Font size"), value: 2 };
+
+    expect(tweakResetValue(fontSize, undefined)).toBe(fontSize.default);
+    expect(tweakResetValue(fontSize, 1)).toBe(fontSize.default);
+    expect(tweakResetValue(fontSize, 2)).toBe(fontSize.default);
+    expect(tweakResetValue(fontSize, 3)).toBe(fontSize.default);
+  });
+
+  it("resets current tweaks using the owner-aware null operation", () => {
+    expect(tweakResetValue(tweak("Typography/Font size"), 4)).toBeNull();
   });
 
   it("does not treat an action without a value or default as resettable", () => {
@@ -306,7 +329,22 @@ describe("native reset toolbar state", () => {
   });
 
   it("keeps changed value tweaks resettable when actions are present", () => {
-    expect(canResetTweaks([action("Motion/Toggle animation"), { ...tweak("Motion/Duration"), value: 2 }])).toBe(true);
+    expect(
+      canResetTweaks([action("Motion/Toggle animation"), { ...tweak("Motion/Duration"), value: 2, modified: true }])
+    ).toBe(true);
+  });
+
+  it("treats an omitted modification flag as false even when the value changed", () => {
+    const upstreamSetting: TweakDescriptor = {
+      name: "Settings/Show hints",
+      type: "boolean",
+      default: false,
+      value: true
+    };
+
+    expect(canResetTweaks([upstreamSetting], 4)).toBe(false);
+    expect(canResetTweaks([upstreamSetting], 3)).toBe(true);
+    expect(canResetTweaks([upstreamSetting], 2)).toBe(true);
   });
 });
 
@@ -439,6 +477,44 @@ describe("registered tweak actions", () => {
 });
 
 describe("streamed tweak snapshots", () => {
+  it("treats an omitted modification flag in mutation responses as false", () => {
+    const current: TweakDescriptor = {
+      name: "Settings/Show hints",
+      type: "boolean",
+      default: false,
+      value: true,
+      modified: true
+    };
+
+    expect(applyTweakUpdates([current], [{ name: current.name, value: true }], new Map())).toEqual([
+      { ...current, modified: false }
+    ]);
+  });
+
+  it("infers legacy modification status from an authoritative mutation response", () => {
+    const current = { ...tweak("Motion/Duration"), value: 2, modified: true };
+
+    expect(applyTweakUpdates([current], [{ name: current.name, value: current.default }], new Map(), 3)).toEqual([
+      { ...current, value: current.default, modified: false }
+    ]);
+    expect(applyTweakUpdates([current], [{ name: current.name, value: 3 }], new Map(), 3)).toEqual([
+      { ...current, value: 3, modified: true }
+    ]);
+  });
+
+  it("restores rejected optimistic values without discarding successful batch updates", () => {
+    const current = [
+      { ...tweak("Motion/Duration"), value: 550, modified: true },
+      { ...tweak("Typography/Font size"), value: 32, modified: true }
+    ];
+    const authoritative = [
+      { ...tweak("Motion/Duration"), value: 550, modified: true },
+      { ...tweak("Typography/Font size"), value: 1 }
+    ];
+
+    expect(reconcileStreamedTweaks(current, authoritative, new Map(), new Set())).toEqual(authoritative);
+  });
+
   it("adds and removes a section in one update", () => {
     const current = [tweak("Typography/Font size"), tweak("Motion/Duration")];
     const incoming = [tweak("Typography/Font size"), tweak("Colors/Accent")];
@@ -468,11 +544,11 @@ describe("streamed tweak snapshots", () => {
   });
 
   it("preserves new descriptor metadata while keeping a pending local value", () => {
-    const current = [{ ...tweak("Motion/Duration"), value: 700 }];
+    const current = [{ ...tweak("Motion/Duration"), value: 700, modified: true }];
     const incoming: TweakDescriptor[] = [{ ...tweak("Motion/Duration"), value: 550, max: 1500 }];
 
     expect(reconcileStreamedTweaks(current, incoming, new Map([["Motion/Duration", 700]]), new Set())).toEqual([
-      { ...incoming[0], value: 700 }
+      { ...incoming[0], value: 700, modified: true }
     ]);
   });
 
@@ -492,6 +568,24 @@ describe("streamed tweak snapshots", () => {
       incoming
     );
   });
+
+  it("preserves a pending reset until its authoritative response arrives", () => {
+    const current = [{ ...tweak("Motion/Duration"), value: 700, modified: true }];
+    const incoming = [{ ...tweak("Motion/Duration"), value: 550, modified: false }];
+
+    expect(reconcileStreamedTweaks(current, incoming, new Map([["Motion/Duration", null]]), new Set())).toEqual(
+      current
+    );
+    expect(canResetTweaks(current)).toBe(true);
+    expect(applyTweakUpdates(current, [{ name: "Motion/Duration", value: 550 }], new Map())).toEqual(incoming);
+  });
+
+  it("accepts owner modification status from a streamed update", () => {
+    const current = [{ ...tweak("Motion/Duration"), modified: false }];
+    const incoming = [{ ...tweak("Motion/Duration"), modified: true }];
+
+    expect(reconcileStreamedTweaks(current, incoming, new Map(), new Set())).toEqual(incoming);
+  });
 });
 
 describe("stable tweak section columns", () => {
@@ -499,7 +593,7 @@ describe("stable tweak section columns", () => {
     const ordering = new Map();
     const columns = groupTweaks(
       [tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")],
-      "pixel:chatgpt",
+      "pixel:settings",
       ordering
     );
 
@@ -511,7 +605,7 @@ describe("stable tweak section columns", () => {
 
   it("keeps sections in their original columns when another section disappears", () => {
     const ordering = new Map();
-    const app = "pixel:chatgpt";
+    const app = "pixel:settings";
 
     groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")], app, ordering);
 
@@ -522,7 +616,7 @@ describe("stable tweak section columns", () => {
 
   it("restores a returning section to its original column", () => {
     const ordering = new Map();
-    const app = "pixel:chatgpt";
+    const app = "pixel:settings";
 
     groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")], app, ordering);
     groupTweaks([tweak("Colors/Text"), tweak("Typography/Font size")], app, ordering);
@@ -542,7 +636,7 @@ describe("stable tweak section columns", () => {
   it("remembers section order independently for each app", () => {
     const ordering = new Map();
 
-    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration")], "pixel:chatgpt", ordering);
+    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration")], "pixel:settings", ordering);
 
     const columns = groupTweaks([tweak("Motion/Duration"), tweak("Colors/Text")], "pixel:demo", ordering);
 
@@ -564,7 +658,8 @@ function tweak(name: string): TweakValueDescriptor {
     name,
     type: "int",
     default: 1,
-    value: 1
+    value: 1,
+    modified: false
   };
 }
 
@@ -573,7 +668,8 @@ function colorTweak(): TweakValueDescriptor {
     name: "Colors/Accent",
     type: "color",
     default: "#5468FF80",
-    value: "#5468FF80"
+    value: "#5468FF80",
+    modified: false
   };
 }
 
@@ -583,6 +679,7 @@ function enumTweak(): TweakValueDescriptor {
     type: "enum",
     default: "System",
     value: "System",
+    modified: false,
     options: ["System", "Dark"]
   };
 }

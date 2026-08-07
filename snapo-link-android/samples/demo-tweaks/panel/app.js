@@ -2,6 +2,7 @@ const state = {
   apps: [],
   selectedAppId: undefined,
   selectedView: "tweaks",
+  protocolVersion: 1,
   tweaks: [],
   rows: new Map(),
   orderingByApp: new Map(),
@@ -29,6 +30,7 @@ const mockApps = [
     packageName: "com.example.notes",
     deviceName: "Pixel 9 Pro XL",
     views: ["network", "tweaks"],
+    protocolVersion: 4,
   },
   {
     id: "mock:tweaks-demo",
@@ -36,6 +38,7 @@ const mockApps = [
     packageName: "com.openai.snapo.demo.tweaks",
     deviceName: "Pixel 9 Pro XL",
     views: ["tweaks"],
+    protocolVersion: 4,
   },
   {
     id: "mock:emulator:notes",
@@ -43,6 +46,7 @@ const mockApps = [
     packageName: "com.example.notes",
     deviceName: "Android Emulator",
     views: ["network"],
+    protocolVersion: 4,
   },
 ];
 
@@ -105,11 +109,6 @@ function setError(message) {
   elements.error.textContent = message ?? "";
 }
 
-function updateError(result) {
-  if (!result.errors?.length) return undefined;
-  return result.errors.map(({ name, error }) => `${name}: ${error}`).join("; ");
-}
-
 async function request(path, options) {
   if (isMockMode) return mockRequest(path, options);
 
@@ -149,11 +148,27 @@ function mockRequest(path, options) {
     const { values } = JSON.parse(options.body);
 
     for (const tweak of mockTweaks) {
-      if (Object.hasOwn(values, tweak.name)) tweak.value = values[tweak.name];
+      if (!Object.hasOwn(values, tweak.name)) continue;
+
+      const value = values[tweak.name];
+      tweak.value = value ?? tweak.default;
+
+      if (tweak.value !== tweak.default) {
+        tweak.modified = true;
+      } else {
+        delete tweak.modified;
+      }
     }
 
     return {
-      tweaks: Object.entries(values).map(([name, value]) => ({ name, value })),
+      tweaks: Object.keys(values).map((name) => {
+        const tweak = mockTweaks.find((candidate) => candidate.name === name);
+        return {
+          name,
+          value: tweak.value,
+          ...(tweak.modified === true ? { modified: true } : {}),
+        };
+      }),
     };
   }
 
@@ -169,12 +184,29 @@ function mockRequest(path, options) {
   throw new Error("The mock route is not available.");
 }
 
+function isModified(tweak) {
+  return tweak.type !== "action" && (
+    state.protocolVersion >= 4
+      ? tweak.modified === true
+      : tweak.value !== tweak.default
+  );
+}
+
+function resetValue(tweak) {
+  return state.protocolVersion >= 4 ? null : tweak.default;
+}
+
+function updateError(result) {
+  if (!result.errors?.length) return undefined;
+  return result.errors.map(({ name, error }) => `${name}: ${error}`).join("; ");
+}
+
 function updateResetButton() {
   elements.reset.disabled =
     state.saving ||
     state.switching ||
     state.tweaks.length === 0 ||
-    state.tweaks.every((tweak) => tweak.value === tweak.default);
+    state.tweaks.every((tweak) => !isModified(tweak));
 }
 
 function setAppMenuOpen(open) {
@@ -421,7 +453,7 @@ function updateTweakRow(tweak) {
   const fields = state.rows.get(tweak.name);
   if (!fields) return;
 
-  const changed = tweak.value !== tweak.default;
+  const changed = isModified(tweak);
   fields.row.dataset.changed = String(changed);
   fields.reset.hidden = !changed;
 
@@ -436,7 +468,10 @@ function updateTweakRow(tweak) {
 
 function updateValue(tweak, value, delay = 75) {
   if (state.switching) return;
-  tweak.value = value;
+  if (value !== null) tweak.value = value;
+  tweak.modified = value !== null && (
+    state.protocolVersion >= 4 || tweak.value !== tweak.default
+  );
   state.pending.set(tweak.name, value);
   updateTweakRow(tweak);
   updateResetButton();
@@ -474,6 +509,9 @@ async function flushPending() {
       const tweak = state.tweaks.find((item) => item.name === update.name);
       if (tweak && !state.pending.has(update.name)) {
         tweak.value = update.value;
+        tweak.modified = state.protocolVersion >= 4
+          ? update.modified === true
+          : update.value !== tweak.default;
         updateTweakRow(tweak);
       }
     }
@@ -510,12 +548,12 @@ function makeTweakLine(tweak) {
   const actions = node("div", "tweak-actions");
   const reset = node("button", "tweak-reset");
   reset.type = "button";
-  reset.hidden = tweak.value === tweak.default;
+  reset.hidden = !isModified(tweak);
   reset.setAttribute("aria-label", `Reset ${tweak.name}`);
   reset.setAttribute("title", `Reset ${tweakLabel(tweak.name)}`);
   reset.append(mockIcon("rotate-ccw", "tweak-reset-icon"));
   reset.addEventListener("click", () => {
-    updateValue(tweak, tweak.default, 0);
+    updateValue(tweak, resetValue(tweak), 0);
   });
 
   content.append(node("span", "tweak-label", tweakLabel(tweak.name)), reset, actions);
@@ -853,7 +891,7 @@ function applyTweakSnapshot(incoming) {
       current &&
       (state.pending.has(next.name) || state.inFlight.has(next.name))
     ) {
-      return { ...next, value: current.value };
+      return { ...next, value: current.value, modified: current.modified };
     }
 
     const fields = state.rows.get(next.name);
@@ -876,8 +914,14 @@ function applyTweakSnapshot(incoming) {
 
   for (const next of nextTweaks) {
     const current = existing.get(next.name);
-    if (current && current.value !== next.value) {
+    if (
+      current &&
+      (current.value !== next.value || isModified(current) !== isModified(next))
+    ) {
       current.value = next.value;
+      current.modified = state.protocolVersion >= 4
+        ? next.modified === true
+        : next.value !== next.default;
       updateTweakRow(current);
     }
   }
@@ -989,6 +1033,7 @@ async function load({ refreshApps = true } = {}) {
     ]);
 
     const selected = state.apps.find((candidate) => candidate.id === state.selectedAppId);
+    state.protocolVersion = app.protocolVersion ?? selected?.protocolVersion ?? 1;
     updateAppIdentity({ ...selected, ...app });
     state.tweaks = result.tweaks;
     renderTweaks();
@@ -1050,15 +1095,25 @@ async function selectApp(id) {
 }
 
 async function resetTweaks() {
+  const tweaksToReset = state.tweaks.filter(
+    (tweak) => isModified(tweak),
+  );
+  if (state.saving || state.switching || tweaksToReset.length === 0) return;
+
   clearTimeout(state.timer);
   state.pending.clear();
+  for (const tweak of tweaksToReset) {
+    tweak.modified = false;
+    state.inFlight.add(tweak.name);
+    updateTweakRow(tweak);
+  }
   state.saving = true;
   setStatus("connected", "Resetting…");
   updateResetButton();
 
   try {
     const values = Object.fromEntries(
-      state.tweaks.map((tweak) => [tweak.name, tweak.default]),
+      tweaksToReset.map((tweak) => [tweak.name, resetValue(tweak)]),
     );
 
     const result = await request("/tweaks", {
@@ -1066,6 +1121,17 @@ async function resetTweaks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ values }),
     });
+
+    for (const update of result.tweaks) {
+      const tweak = state.tweaks.find((item) => item.name === update.name);
+      if (!tweak) continue;
+
+      tweak.value = update.value;
+      tweak.modified = state.protocolVersion >= 4
+        ? update.modified === true
+        : update.value !== tweak.default;
+      updateTweakRow(tweak);
+    }
 
     await reloadTweaks();
     const error = updateError(result);
@@ -1079,7 +1145,9 @@ async function resetTweaks() {
   } catch (error) {
     setError(error.message);
     setStatus("error", "Reset failed");
+    await reloadTweaks();
   } finally {
+    for (const tweak of tweaksToReset) state.inFlight.delete(tweak.name);
     state.saving = false;
     updateResetButton();
   }

@@ -10,7 +10,7 @@ export function App(): JSX.Element {
   const [selection, setSelection] = useState<SelectedAppInspector | null>(null);
 
   const selectInspector = useCallback((app: InspectableApp, option: AppInspectorOption) => {
-    setSelection({ appId: app.id, kind: option.kind, server: option.server });
+    setSelection({ appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion });
   }, []);
 
   useEffect(() => {
@@ -23,25 +23,26 @@ export function App(): JSX.Element {
 
         setApps(discovered);
         setSelection((current) => {
-          if (
-            current &&
-            discovered.some(
-              (app) =>
-                app.id === current.appId &&
-                app.inspectors.some(
-                  (option) =>
-                    option.kind === current.kind &&
-                    option.server.deviceId === current.server.deviceId &&
-                    option.server.socketName === current.server.socketName
-                )
-            )
-          ) {
-            return current;
+          if (current) {
+            const selectedApp = discovered.find((app) => app.id === current.appId);
+            const selectedOption = selectedApp?.inspectors.find(
+              (option) =>
+                option.kind === current.kind &&
+                option.server.deviceId === current.server.deviceId &&
+                option.server.socketName === current.server.socketName
+            );
+            if (selectedOption) {
+              return selectedOption.protocolVersion === current.protocolVersion
+                ? current
+                : { ...current, protocolVersion: selectedOption.protocolVersion };
+            }
           }
 
           const app = discovered[0];
           const option = app?.inspectors[0];
-          return app && option ? { appId: app.id, kind: option.kind, server: option.server } : null;
+          return app && option
+            ? { appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion }
+            : null;
         });
       } catch {
         if (!disposed) setApps([]);
