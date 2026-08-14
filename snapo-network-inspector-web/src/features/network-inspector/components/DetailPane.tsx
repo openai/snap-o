@@ -45,7 +45,7 @@ export const DetailContent = memo(function DetailContent({
     );
   }
 
-  if (record.kind === "websocket") return <WebSocketDetail record={record} uiState={uiState} />;
+  if (record.kind === "websocket") return <WebSocketDetail client={client} record={record} uiState={uiState} />;
   return <RequestDetail client={client} record={record} uiState={uiState} />;
 });
 

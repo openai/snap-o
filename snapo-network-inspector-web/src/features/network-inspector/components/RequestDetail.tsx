@@ -92,9 +92,10 @@ export const RequestDetail = memo(function RequestDetail({
           title="Server-Sent Events"
           storageKey={`${prefix}:stream`}
           uiState={uiState}
-          trailing={<SseCopyAllButton events={record.streamEvents} />}
+          trailing={<SseCopyAllButton client={client} events={record.streamEvents} />}
         >
           <SseEventList
+            client={client}
             events={record.streamEvents}
             closed={record.streamClosed}
             storageKey={`${prefix}:stream`}

@@ -1,4 +1,5 @@
 import { memo } from "react";
+import type { NetworkClient } from "../../../network/client";
 import { recordId, type WebSocketRecord } from "../../../network/cdp";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
@@ -7,9 +8,11 @@ import { FailureMessage, StatusBadge } from "./Status";
 import { WebSocketMessageCard } from "./WebSocketMessages";
 
 export const WebSocketDetail = memo(function WebSocketDetail({
+  client,
   record,
   uiState
 }: {
+  client: NetworkClient;
   record: WebSocketRecord;
   uiState: InspectorUiState;
 }): JSX.Element {
@@ -52,6 +55,7 @@ export const WebSocketDetail = memo(function WebSocketDetail({
             {record.messages.map((message) => (
               <WebSocketMessageCard
                 key={message.id}
+                client={client}
                 message={message}
                 storageKey={`${prefix}:message:${message.id}`}
                 uiState={uiState}

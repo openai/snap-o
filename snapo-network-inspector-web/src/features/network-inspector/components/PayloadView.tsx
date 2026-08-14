@@ -26,10 +26,13 @@ export function BodySection({
   uiState: InspectorUiState;
 }): JSX.Element {
   if (isImagePayload(payload)) return <ImagePreview client={client} payload={payload} />;
-  return <PayloadView payload={payload} storageKey={storageKey} uiState={uiState} prettyInitiallyExpanded />;
+  return (
+    <PayloadView client={client} payload={payload} storageKey={storageKey} uiState={uiState} prettyInitiallyExpanded />
+  );
 }
 
 export function PayloadView({
+  client,
   payload,
   storageKey,
   uiState,
@@ -38,6 +41,7 @@ export function PayloadView({
   prettyInitiallyExpanded = true,
   embedded = false
 }: {
+  client: NetworkClient;
   payload: BodyPayload;
   storageKey: string;
   uiState: InspectorUiState;
@@ -56,7 +60,7 @@ export function PayloadView({
         : null,
     [payload.jsonFormat, payload.prettyText, pretty]
   );
-  const copyFeedback = useCopyFeedback(displayText);
+  const copyFeedback = useCopyFeedback(client, displayText);
   const hasToggle = showsToggle && payload.prettyText != null;
   const hasCopy = showsCopyButton && displayText.length > 0;
   const controls =
@@ -89,6 +93,7 @@ export function PayloadView({
           )
         ) : (
           <JsonOutline
+            client={client}
             node={jsonRoot}
             storageKey={`${storageKey}:json`}
             uiState={uiState}
@@ -138,6 +143,7 @@ export function InlineCopyButton({
 export { payloadMetadata };
 
 function JsonOutline({
+  client,
   node,
   storageKey,
   uiState,
@@ -145,6 +151,7 @@ function JsonOutline({
   initiallyExpanded,
   trailing
 }: {
+  client: NetworkClient;
   node: JsonNode;
   storageKey: string;
   uiState: InspectorUiState;
@@ -190,6 +197,7 @@ function JsonOutline({
             x: event.clientX,
             y: event.clientY,
             items: jsonContextMenuItems({
+              client,
               node,
               rowKey,
               descendantRowKeys,
@@ -229,6 +237,7 @@ function JsonOutline({
           {node.children.map((child) => (
             <JsonOutline
               key={child.key}
+              client={client}
               node={child}
               storageKey={storageKey}
               uiState={uiState}
@@ -384,6 +393,7 @@ function jsonStringLineForDisplay(value: string): string {
 }
 
 function jsonContextMenuItems({
+  client,
   node,
   rowKey,
   descendantRowKeys,
@@ -391,6 +401,7 @@ function jsonContextMenuItems({
   expandable,
   uiState
 }: {
+  client: NetworkClient;
   node: JsonNode;
   rowKey: string;
   descendantRowKeys: string[];
@@ -403,7 +414,7 @@ function jsonContextMenuItems({
   const items: ContextMenuItem[] = [
     {
       label: "Copy Value",
-      action: () => void navigator.clipboard.writeText(jsonNodeCopyText(node))
+      action: () => void client.copyText(jsonNodeCopyText(node))
     }
   ];
 
@@ -447,8 +458,8 @@ function jsonNodeCopyText(node: JsonNode): string {
 
 function ImagePreview({ client, payload }: { client: NetworkClient; payload: BodyPayload }): JSX.Element | null {
   const dataUrl = dataUrlForImage(payload);
-  const copyFeedback = useCopyFeedback("image");
-  const saveFeedback = useCopyFeedback("save-image");
+  const copyFeedback = useCopyFeedback(client, "image");
+  const saveFeedback = useCopyFeedback(client, "save-image");
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
 
   useEffect(() => {
