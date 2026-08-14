@@ -1,4 +1,5 @@
 import { memo } from "react";
+import type { NetworkClient } from "../../../network/client";
 import type { RequestRecord } from "../../../network/cdp";
 import { makeBodyPayload } from "../../../network/payload";
 import { streamEventsRaw } from "../../../network/exporters";
@@ -8,12 +9,14 @@ import { formatTime } from "../lib/format";
 import { InlineCopyButton, InlineTextToggle, PayloadView } from "./PayloadView";
 
 export const SseCopyAllButton = memo(function SseCopyAllButton({
+  client,
   events
 }: {
+  client: NetworkClient;
   events: RequestRecord["streamEvents"];
 }): JSX.Element {
   const text = streamEventsRaw(events);
-  const copyFeedback = useCopyFeedback(text);
+  const copyFeedback = useCopyFeedback(client, text);
   return (
     <button
       className="inline-action section-action"
@@ -27,11 +30,13 @@ export const SseCopyAllButton = memo(function SseCopyAllButton({
 });
 
 export const SseEventList = memo(function SseEventList({
+  client,
   events,
   closed,
   storageKey,
   uiState
 }: {
+  client: NetworkClient;
   events: RequestRecord["streamEvents"];
   closed?: RequestRecord["streamClosed"];
   storageKey: string;
@@ -45,6 +50,7 @@ export const SseEventList = memo(function SseEventList({
         events.map((event) => (
           <SseEventCard
             key={event.sequence}
+            client={client}
             event={event}
             storageKey={`${storageKey}:event:${event.sequence}`}
             uiState={uiState}
@@ -57,10 +63,12 @@ export const SseEventList = memo(function SseEventList({
 });
 
 const SseEventCard = memo(function SseEventCard({
+  client,
   event,
   storageKey,
   uiState
 }: {
+  client: NetworkClient;
   event: RequestRecord["streamEvents"][number];
   storageKey: string;
   uiState: InspectorUiState;
@@ -70,7 +78,7 @@ const SseEventCard = memo(function SseEventCard({
   const prettyText = payload?.prettyText ?? null;
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
   const displayText = pretty && prettyText != null ? prettyText : rawText;
-  const copyFeedback = useCopyFeedback(displayText);
+  const copyFeedback = useCopyFeedback(client, displayText);
 
   return (
     <div className="event-row">
@@ -92,6 +100,7 @@ const SseEventCard = memo(function SseEventCard({
         <pre>{event.raw || "<empty>"}</pre>
       ) : (
         <PayloadView
+          client={client}
           payload={payload}
           storageKey={storageKey}
           uiState={uiState}

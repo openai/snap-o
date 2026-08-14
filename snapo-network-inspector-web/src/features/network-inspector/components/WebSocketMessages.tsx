@@ -1,5 +1,6 @@
 import { Inbox, Send } from "lucide-react";
 import { memo } from "react";
+import type { NetworkClient } from "../../../network/client";
 import type { WebSocketMessageRecord } from "../../../network/cdp";
 import { formatBytes, makeBodyPayload } from "../../../network/payload";
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
@@ -8,10 +9,12 @@ import { formatTime } from "../lib/format";
 import { InlineCopyButton, InlineTextToggle, PayloadView } from "./PayloadView";
 
 export const WebSocketMessageCard = memo(function WebSocketMessageCard({
+  client,
   message,
   storageKey,
   uiState
 }: {
+  client: NetworkClient;
   message: WebSocketMessageRecord;
   storageKey: string;
   uiState: InspectorUiState;
@@ -21,7 +24,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
   const prettyText = payload?.prettyText ?? null;
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
   const displayText = pretty && prettyText != null ? prettyText : preview;
-  const copyFeedback = useCopyFeedback(displayText);
+  const copyFeedback = useCopyFeedback(client, displayText);
 
   return (
     <div className="message-card">
@@ -53,6 +56,7 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
       </div>
       {payload == null ? null : (
         <PayloadView
+          client={client}
           payload={payload}
           storageKey={storageKey}
           uiState={uiState}
