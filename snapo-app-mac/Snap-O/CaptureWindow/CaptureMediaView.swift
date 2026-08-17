@@ -20,7 +20,7 @@ struct CaptureMediaView<Host: LivePreviewHosting>: View {
           ) { makeTempDragFile() }
 
         case .livePreview:
-          LiveCaptureView(host: livePreviewHost, capture: capture)
+          LiveCaptureView(host: livePreviewHost, capture: capture, fileStore: fileStore)
         }
       }
       .frame(width: proxy.size.width, height: proxy.size.height)

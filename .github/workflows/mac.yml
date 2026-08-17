@@ -13,9 +13,6 @@ on:
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
-    branches:
-      - main
-      - master
     paths:
       - 'snapo-app-mac/**'
       - 'snapo-network-inspector-web/**'
@@ -81,6 +78,9 @@ jobs:
       - name: Test shared device client
         working-directory: snapo-app-mac/SnapODeviceClient
         run: swift test
+      - name: Test live preview frame export
+        working-directory: snapo-app-mac
+        run: sh scripts/test-live-preview-frame-export.sh
       - name: Build Snap-O
         working-directory: snapo-app-mac
         run: |
