@@ -89,7 +89,9 @@ function mergeBodies(existing: RequestBodies | undefined, incoming: RequestBodie
     requestBody: incoming.requestBody ?? existing?.requestBody,
     responseBody: incoming.responseBody ?? existing?.responseBody,
     responseBodyBase64Encoded: incoming.responseBodyBase64Encoded ?? existing?.responseBodyBase64Encoded,
-    responseBodyLoadCompleted: incoming.responseBodyLoadCompleted ?? existing?.responseBodyLoadCompleted
+    responseBodyLoadCompleted: incoming.responseBodyLoadCompleted ?? existing?.responseBodyLoadCompleted,
+    responseBodyLoadError:
+      incoming.responseBodyLoadError !== undefined ? incoming.responseBodyLoadError : existing?.responseBodyLoadError
   };
 }
 

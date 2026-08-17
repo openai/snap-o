@@ -176,6 +176,22 @@ struct NetworkRequestBodies: Codable {
   let requestBody: String?
   let responseBody: String?
   let responseBodyBase64Encoded: Bool?
+  let responseBodyLoadError: NetworkResponseBodyLoadError?
+}
+
+enum NetworkResponseBodyLoadError: String, Codable {
+  case unavailable
+  case failed
+
+  static func resolve(_ response: NetworkCDPMessage?) -> Self? {
+    if response?.error == nil, response?.result?["body"]?.stringValue != nil { return nil }
+    if let error = response?.error,
+       error.code == -32000,
+       error.message.hasPrefix("No response body captured for ") {
+      return .unavailable
+    }
+    return .failed
+  }
 }
 
 struct NetworkStreamStarted: Codable {

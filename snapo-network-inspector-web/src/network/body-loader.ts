@@ -85,6 +85,13 @@ export class RequestBodyLoader {
     }
   }
 
+  forgetJob(key: string): void {
+    const entry = this.entries.get(key);
+    if (entry == null) return;
+    entry.cancelled = true;
+    this.entries.delete(key);
+  }
+
   dispose(): void {
     this.disposed = true;
     for (const entry of this.entries.values()) entry.cancelled = true;
@@ -103,7 +110,13 @@ export class RequestBodyLoader {
           if (!this.disposed && !entry.cancelled && this.retainedRecordKeys.has(entry.recordKey)) {
             this.didLoadBodies(entry.recordKey, {
               ...bodies,
-              ...(entry.input.includeResponseBody ? { responseBodyLoadCompleted: true } : {})
+              ...(entry.input.includeResponseBody
+                ? {
+                    responseBodyLoadCompleted: true,
+                    responseBodyLoadError:
+                      bodies.responseBody != null ? null : (bodies.responseBodyLoadError ?? "failed")
+                  }
+                : {})
             });
           }
         })
@@ -116,7 +129,8 @@ export class RequestBodyLoader {
           ) {
             this.didLoadBodies(entry.recordKey, {
               requestId: entry.input.requestId,
-              responseBodyLoadCompleted: true
+              responseBodyLoadCompleted: true,
+              responseBodyLoadError: "failed"
             });
           }
         })

@@ -728,7 +728,8 @@ body.split-pane-resizing {
 .header-value,
 .headers-empty,
 .pending-response,
-.messages-empty {
+.messages-empty,
+.body-load-message {
   font-size: 12px;
   line-height: 16px;
 }
@@ -771,6 +772,15 @@ body.split-pane-resizing {
 .body-loading-spinner {
   flex: 0 0 auto;
   animation: spin 1s linear infinite;
+}
+
+.body-load-message {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--on-surface-variant);
 }
 
 .messages-empty {
