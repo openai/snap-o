@@ -53,20 +53,12 @@ struct SnapOCommands: Commands {
         .disabled(captureController?.canStartRecordingNow != true)
       }
 
-      if captureController?.isLivePreviewActive == true || captureController?.isStoppingLivePreview == true {
-        Button("Stop Live Preview") {
-          Task { await captureController?.stopLivePreview() }
-        }
-        .keyboardShortcut(.escape, modifiers: [])
-        .disabled(captureController?.isStoppingLivePreview == true)
-      } else {
-        Button("Start Live Preview") {
-          workspaceController?.revealCapture()
-          Task { await captureController?.startLivePreview() }
-        }
-        .keyboardShortcut("l", modifiers: [.command, .shift])
-        .disabled(captureController?.canStartLivePreviewNow != true)
+      Button("Live Preview") {
+        workspaceController?.revealCapture()
+        Task { await captureController?.startLivePreview() }
       }
+      .keyboardShortcut("l", modifiers: [.command, .shift])
+      .disabled(captureController?.canSelectLivePreview != true)
     }
 
     CommandGroup(before: .saveItem) {

@@ -11,7 +11,6 @@ final class LivePreviewMode {
   private let mediaDisplayMode: MediaDisplayMode
   private let preferredDeviceIDProvider: @MainActor () -> String?
   private let onMediaApplied: @MainActor () -> Void
-  private let errorHandler: @MainActor (Error) -> Void
   private var manager: LivePreviewManager?
   @ObservationIgnored private var stopTask: Task<Void, Never>?
   private(set) var isStopping: Bool = false
@@ -22,8 +21,7 @@ final class LivePreviewMode {
     options: LivePreviewOptions,
     mediaDisplayMode: MediaDisplayMode,
     preferredDeviceIDProvider: @escaping @MainActor () -> String?,
-    onMediaApplied: @escaping @MainActor () -> Void,
-    errorHandler: @escaping @MainActor (Error) -> Void
+    onMediaApplied: @escaping @MainActor () -> Void
   ) {
     self.livePreviewService = livePreviewService
     self.adbService = adbService
@@ -31,7 +29,6 @@ final class LivePreviewMode {
     self.mediaDisplayMode = mediaDisplayMode
     self.preferredDeviceIDProvider = preferredDeviceIDProvider
     self.onMediaApplied = onMediaApplied
-    self.errorHandler = errorHandler
   }
 
   func start(with devices: [Device]) async {
@@ -62,12 +59,7 @@ final class LivePreviewMode {
     guard let manager else {
       throw LivePreviewModeError.inactive
     }
-    do {
-      return try await manager.makeRenderer(for: deviceID)
-    } catch {
-      errorHandler(error)
-      throw error
-    }
+    return try await manager.makeRenderer(for: deviceID)
   }
 
   func stopRenderer(_ renderer: LivePreviewRenderer) async {

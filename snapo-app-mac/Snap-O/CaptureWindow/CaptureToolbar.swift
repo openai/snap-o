@@ -204,16 +204,17 @@ struct CaptureToolbar: View {
   private func captureControls() -> some View {
     if controller.isRecording {
       recordingControls()
-    } else if controller.isLivePreviewActive || controller.isStoppingLivePreview {
-      livePreviewControls()
     } else {
-      IdleToolbarControls(
+      CaptureActionToolbarControls(
         screenshot: { Task { await controller.captureScreenshots() } },
         canCaptureNow: controller.canCaptureNow,
+        isShowingScreenshot: !controller.isLivePreviewActive && controller.currentCapture?.media.isImage == true,
         startRecording: { Task { await controller.startRecording() } },
         canStartRecordingNow: controller.canStartRecordingNow,
+        isShowingRecording: !controller.isLivePreviewActive && controller.currentCapture?.media.isVideo == true,
         startLivePreview: { Task { await controller.startLivePreview() } },
-        canStartLivePreviewNow: controller.canStartLivePreviewNow
+        canSelectLivePreview: controller.canSelectLivePreview,
+        isLivePreviewActive: controller.isLivePreviewActive
       )
     }
   }
@@ -243,21 +244,6 @@ struct CaptureToolbar: View {
       .help("Stop Recording (⎋)")
       .keyboardShortcut(.escape, modifiers: [])
     }
-  }
-
-  private func livePreviewControls() -> some View {
-    Button {
-      Task { await controller.stopLivePreview() }
-    } label: {
-      Label("Live", systemImage: "play.circle")
-        .labelStyle(.iconOnly)
-        .font(SnapOToolbarStyle.iconFont)
-        .symbolEffect(.pulse)
-        .foregroundStyle(.blue)
-    }
-    .help("Stop Live Preview (⎋)")
-    .keyboardShortcut(.escape, modifiers: [])
-    .disabled(controller.isStoppingLivePreview)
   }
 
   private func captureToggle() -> some View {
@@ -312,36 +298,35 @@ struct CaptureToolbar: View {
 
   private func captureProgress(_ progress: String) -> some View {
     let isCaptureInFlight = controller.isProcessing || controller.isRecording
+    let canBrowseCaptures = !isCaptureInFlight && controller.hasAlternativeMedia()
 
-    return Text(progress)
-      .font(.system(size: 12, weight: .semibold, design: .rounded))
-      .padding(.horizontal, 10)
-      .padding(.vertical, 5)
-      .fixedSize()
-      .background(.regularMaterial, in: Capsule())
+    return CaptureSelectionPill(position: progress)
       .opacity(isCaptureInFlight ? 0.45 : 1)
       .allowsHitTesting(!isCaptureInFlight)
       .onHover { hovering in
-        guard !isCaptureInFlight else {
+        guard canBrowseCaptures else {
           if !hovering { controller.setProgressHovering(false) }
           return
         }
         controller.setProgressHovering(hovering)
       }
-      .onChange(of: isCaptureInFlight) {
-        guard isCaptureInFlight else { return }
+      .onChange(of: canBrowseCaptures) {
+        guard !canBrowseCaptures else { return }
         controller.setProgressHovering(false)
       }
   }
 }
 
-struct IdleToolbarControls: View {
+struct CaptureActionToolbarControls: View {
   let screenshot: @MainActor () -> Void
   let canCaptureNow: Bool
+  let isShowingScreenshot: Bool
   let startRecording: @MainActor () -> Void
   let canStartRecordingNow: Bool
+  let isShowingRecording: Bool
   let startLivePreview: @MainActor () -> Void
-  let canStartLivePreviewNow: Bool
+  let canSelectLivePreview: Bool
+  let isLivePreviewActive: Bool
   @Environment(AppSettings.self)
   private var settings
 
@@ -354,6 +339,7 @@ struct IdleToolbarControls: View {
           .labelStyle(.iconOnly)
           .font(SnapOToolbarStyle.iconFont)
           .frame(width: 34, height: 32)
+          .modifier(CaptureSelectionHighlight(isSelected: isShowingScreenshot))
       }
       .help("New Screenshot (⌘R)")
       .disabled(!canCaptureNow)
@@ -367,6 +353,7 @@ struct IdleToolbarControls: View {
           Label("Record", systemImage: "ant.circle")
             .font(SnapOToolbarStyle.iconFont)
             .frame(width: 34, height: 32)
+            .modifier(CaptureSelectionHighlight(isSelected: isShowingRecording))
         } primaryAction: {
           startRecording()
         }
@@ -386,6 +373,7 @@ struct IdleToolbarControls: View {
           Label("Record", systemImage: "record.circle")
             .font(SnapOToolbarStyle.iconFont)
             .frame(width: 34, height: 32)
+            .modifier(CaptureSelectionHighlight(isSelected: isShowingRecording))
         }
         .help("Start Recording (⌘⇧R)")
         .disabled(!canStartRecordingNow)
@@ -394,15 +382,29 @@ struct IdleToolbarControls: View {
       Button {
         startLivePreview()
       } label: {
-        Label("Live", systemImage: "play.circle")
+        Label("Live Preview", systemImage: "play.circle")
           .font(SnapOToolbarStyle.iconFont)
           .frame(width: 34, height: 32)
+          .symbolEffect(.pulse, isActive: isLivePreviewActive)
+          .modifier(CaptureSelectionHighlight(isSelected: isLivePreviewActive))
       }
-      .help("Live Preview (⌘⇧L)")
-      .disabled(!canStartLivePreviewNow)
+      .help("Live Preview (⌘⇧L). Option-drag the preview to capture a frame.")
+      .disabled(!canSelectLivePreview)
     }
     .labelStyle(.iconOnly)
     .controlSize(.extraLarge)
     .snapOToolbarGroupStyle()
+  }
+}
+
+private struct CaptureSelectionHighlight: ViewModifier {
+  let isSelected: Bool
+
+  func body(content: Content) -> some View {
+    if isSelected {
+      content.foregroundStyle(.blue)
+    } else {
+      content
+    }
   }
 }

@@ -122,15 +122,19 @@ final class CaptureWindowController {
   }
 
   var canCaptureNow: Bool {
-    !isTornDown && !isProcessing && !isRecording && !isLivePreviewActive && hasDevices
+    !isTornDown && !isProcessing && !isRecording && !isStoppingLivePreview && hasDevices
   }
 
   var canStartRecordingNow: Bool {
-    !isTornDown && !isProcessing && !isRecording && !isLivePreviewActive && hasDevices
+    canCaptureNow
   }
 
   var canStartLivePreviewNow: Bool {
-    !isTornDown && !isProcessing && !isRecording && !isLivePreviewActive && hasDevices
+    canCaptureNow && !isLivePreviewActive
+  }
+
+  var canSelectLivePreview: Bool {
+    !isStoppingLivePreview && (isLivePreviewActive || canStartLivePreviewNow)
   }
 
   var mediaList: [CaptureMedia] {
@@ -198,6 +202,7 @@ final class CaptureWindowController {
     guard canCaptureNow else { return }
     cancelPreloadConsumptionIfNeeded()
     isProcessing = true
+    guard await stopLivePreviewForCapture() else { return }
     lastError = nil
     screenshotFailures = []
     if pendingPreferredDeviceID == nil {
@@ -223,11 +228,12 @@ final class CaptureWindowController {
   func startRecording() async {
     guard canStartRecordingNow else { return }
     cancelPreloadConsumptionIfNeeded()
-    let devices = knownDevices
     isProcessing = true
+    guard await stopLivePreviewForCapture() else { return }
+    let devices = knownDevices
     lastError = nil
     screenshotFailures = []
-    pendingPreferredDeviceID = currentCapture?.device.id
+    pendingPreferredDeviceID = pendingPreferredDeviceID ?? currentCapture?.device.id ?? lastViewedDeviceID
     mediaDisplayMode.updateMediaList(
       [],
       preserveDeviceID: nil,
@@ -283,13 +289,12 @@ final class CaptureWindowController {
     screenshotFailures = []
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices.first?.id
     pendingPreferredDeviceID = preferredDeviceID
+    let options = LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
 
     let livePreviewMode = LivePreviewMode(
       livePreviewService: livePreviewService,
       adbService: adbService,
-      options: LivePreviewOptions(
-        showsTouches: AppSettings.shared.showTouchesDuringCapture
-      ),
+      options: options,
       mediaDisplayMode: mediaDisplayMode,
       preferredDeviceIDProvider: { [weak self] in
         guard let self else { return nil }
@@ -303,37 +308,33 @@ final class CaptureWindowController {
         return nil
       },
       onMediaApplied: { [weak self] in
-        guard let self, !isTornDown else { return }
+        guard let self, !isTornDown, !isStoppingLivePreview else { return }
         isProcessing = false
         pendingPreferredDeviceID = nil
-      },
-      errorHandler: { [weak self] error in
-        self?.lastError = error.localizedDescription
       }
     )
     mode = .livePreview(livePreviewMode)
     await livePreviewMode.start(with: knownDevices)
-    guard !isTornDown else { return }
+    guard !isTornDown, !livePreviewMode.isStopping,
+          case .livePreview(let currentMode) = mode, currentMode === livePreviewMode else { return }
     isProcessing = false
   }
 
-  func stopLivePreview() async {
-    guard case .livePreview(let livePreviewMode) = mode else { return }
-    guard !livePreviewMode.isStopping else { return }
+  private func stopLivePreviewForCapture() async -> Bool {
+    guard case .livePreview(let livePreviewMode) = mode else { return !isTornDown }
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
     await livePreviewMode.stop()
-    guard !isTornDown else { return }
+    guard !isTornDown,
+          case .livePreview(let currentMode) = mode, currentMode === livePreviewMode else { return false }
     pendingPreferredDeviceID = preferredDeviceID
     if let preferredDeviceID { mediaDisplayMode.updateLastViewedDeviceID(preferredDeviceID) }
-    if !hasDevices {
+    mode = .idle
+    guard hasDevices else {
       isProcessing = false
       pendingPreferredDeviceID = nil
-      mode = .idle
-      return
+      return false
     }
-    if isProcessing { isProcessing = false }
-    mode = .idle
-    await captureScreenshots()
+    return true
   }
 
   func tearDown() async {
@@ -481,7 +482,7 @@ final class CaptureWindowController {
       guard case .livePreview(let currentMode) = mode,
             currentMode === livePreviewMode,
             !currentMode.isStopping else {
-        _ = await livePreviewService.stop(renderer.operation)
+        await livePreviewMode.stopRenderer(renderer)
         return nil
       }
       lastError = nil
