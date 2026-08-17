@@ -55,6 +55,17 @@ final class NetworkInspectorHostModel {
     )
   }
 
+  func selectApp(_ app: InspectableApp) {
+    let currentOption = app.inspectors.first {
+      app.id == selectedInspector?.appId
+        && $0.kind == selectedInspector?.kind
+        && $0.server == selectedInspector?.server
+    }
+    let matchingKind = app.inspectors.first { $0.kind == selectedInspector?.kind }
+    guard let option = currentOption ?? matchingKind ?? app.inspectors.first else { return }
+    selectInspector(app, option: option)
+  }
+
   func selectInspector(_ app: InspectableApp, option: AppInspectorOption) {
     let selection = SelectedAppInspector(
       appId: app.id,
@@ -142,13 +153,22 @@ final class NetworkInspectorHostModel {
     inspectorApps = apps
 
     if let selection = selectedInspector,
-       let app = apps.first(where: { $0.id == selection.appId }),
+       let app = apps.first(where: { app in
+         app.inspectors.contains { $0.kind == selection.kind && $0.server == selection.server }
+       }),
        let option = app.inspectors.first(where: {
          $0.kind == selection.kind && $0.server == selection.server
        }) {
-      if selection.protocolVersion != option.protocolVersion {
+      if selection.appId != app.id || selection.protocolVersion != option.protocolVersion {
         selectInspector(app, option: option)
       }
+      return
+    }
+
+    if let selection = selectedInspector,
+       let app = apps.first(where: { $0.id == selection.appId }),
+       !app.inspectors.isEmpty {
+      selectApp(app)
       return
     }
 

@@ -3,6 +3,7 @@ import type { AppInspectorOption, InspectableApp, SelectedAppInspector } from ".
 import { createNetworkClient } from "./network/client";
 import { NetworkInspectorApp } from "./features/network-inspector/NetworkInspectorApp";
 import { TweaksInspectorApp } from "./features/tweaks-inspector/TweaksInspectorApp";
+import { isInspectorMetadataPending, reconcileInspectorSelection } from "./features/app-inspector/selection";
 
 export function App(): JSX.Element {
   const client = useMemo(() => createNetworkClient(), []);
@@ -22,28 +23,7 @@ export function App(): JSX.Element {
         if (disposed) return;
 
         setApps(discovered);
-        setSelection((current) => {
-          if (current) {
-            const selectedApp = discovered.find((app) => app.id === current.appId);
-            const selectedOption = selectedApp?.inspectors.find(
-              (option) =>
-                option.kind === current.kind &&
-                option.server.deviceId === current.server.deviceId &&
-                option.server.socketName === current.server.socketName
-            );
-            if (selectedOption) {
-              return selectedOption.protocolVersion === current.protocolVersion
-                ? current
-                : { ...current, protocolVersion: selectedOption.protocolVersion };
-            }
-          }
-
-          const app = discovered[0];
-          const option = app?.inspectors[0];
-          return app && option
-            ? { appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion }
-            : null;
-        });
+        setSelection((current) => reconcileInspectorSelection(discovered, current));
       } catch {
         if (!disposed) setApps([]);
       }
@@ -64,7 +44,13 @@ export function App(): JSX.Element {
 
   return (
     <div className="window-frame">
-      {selection?.kind === "tweaks" ? (
+      {selection && isInspectorMetadataPending(selection, client.usesNativeServerPicker) ? (
+        <main className="tweaks-inspector">
+          <div className="tweaks-inspector-content" role="status">
+            Loading inspector…
+          </div>
+        </main>
+      ) : selection?.kind === "tweaks" ? (
         <TweaksInspectorApp client={client} apps={apps} selection={selection} onSelect={selectInspector} />
       ) : (
         <NetworkInspectorApp inspectorApps={apps} inspectorSelection={selection} onInspectorSelect={selectInspector} />

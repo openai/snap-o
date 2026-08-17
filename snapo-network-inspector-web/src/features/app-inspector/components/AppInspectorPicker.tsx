@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Network, SlidersHorizontal } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { AppInspectorOption, InspectableApp, SelectedAppInspector } from "../../../network/bridge-types";
+import { preferredInspector } from "../selection";
 
 export function AppInspectorPicker({
   apps,
@@ -40,7 +41,7 @@ export function AppInspectorPicker({
         <button
           className="inspector-app-picker-button"
           type="button"
-          aria-label="Select an app and inspector"
+          aria-label="Select an app"
           aria-haspopup="menu"
           aria-expanded={expanded}
           aria-controls={menuId}
@@ -124,43 +125,56 @@ export function AppInspectorMenu({
   onSelect(app: InspectableApp, option: AppInspectorOption): void;
 }): JSX.Element {
   return (
-    <div className="inspector-app-menu" id={id} role="menu" aria-label="Apps and inspectors">
-      {apps.map((app) => (
-        <div className="inspector-app-group" key={app.id}>
-          <div className="inspector-app-heading" title={app.packageName}>
-            <AppIcon app={app} size={16} />
-            <span className="inspector-app-heading-name">{app.name}</span>
-            <span className="inspector-app-heading-device">{app.deviceDisplayTitle}</span>
+    <div className="inspector-app-menu" id={id} role="menu" aria-label="Apps">
+      {apps.map((app) => {
+        const option = preferredInspector(app, selection);
+        const selected = selection?.appId === app.id;
+
+        return (
+          <div className="inspector-app-row" data-selected={selected} key={app.id} role="presentation">
+            <button
+              className="inspector-app-option"
+              style={{ paddingRight: 16 + app.inspectors.length * 28 }}
+              type="button"
+              role="menuitemradio"
+              aria-checked={selected}
+              aria-label={`${app.name}, ${app.deviceDisplayTitle}`}
+              title={app.packageName}
+              disabled={!option}
+              onClick={() => {
+                if (option) onSelect(app, option);
+              }}
+            >
+              <Check className="inspector-app-option-check" size={15} aria-hidden="true" />
+              <AppIcon app={app} size={28} />
+              <span className="inspector-app-picker-text">
+                <span className="inspector-app-picker-name">{app.name}</span>
+                <span className="inspector-app-picker-device">{app.deviceDisplayTitle}</span>
+              </span>
+            </button>
+            <div className="inspector-app-shortcuts" role="presentation">
+              {app.inspectors.map((inspector) => {
+                const title = inspector.kind === "network" ? "Network" : "Tweaks";
+                const Icon = inspector.kind === "network" ? Network : SlidersHorizontal;
+
+                return (
+                  <button
+                    className="inspector-app-shortcut"
+                    key={`${inspector.kind}:${inspector.server.socketName}`}
+                    type="button"
+                    role="menuitem"
+                    aria-label={`Open ${title} for ${app.name}, ${app.deviceDisplayTitle}`}
+                    title={`Open ${title}`}
+                    onClick={() => onSelect(app, inspector)}
+                  >
+                    <Icon size={15} aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
-
-          {app.inspectors.map((option) => {
-            const selected =
-              selection?.appId === app.id &&
-              selection.kind === option.kind &&
-              selection.server.deviceId === option.server.deviceId &&
-              selection.server.socketName === option.server.socketName;
-            const Icon = option.kind === "network" ? Network : SlidersHorizontal;
-            const title = option.kind === "network" ? "Network" : "Tweaks";
-
-            return (
-              <button
-                className="inspector-app-option"
-                data-selected={selected}
-                key={`${option.kind}:${option.server.socketName}`}
-                type="button"
-                role="menuitemradio"
-                aria-checked={selected}
-                aria-label={`${app.name}, ${title}, ${app.deviceDisplayTitle}`}
-                onClick={() => onSelect(app, option)}
-              >
-                <Icon size={16} aria-hidden="true" />
-                <span>{title}</span>
-                <Check className="inspector-app-option-check" size={15} aria-hidden="true" />
-              </button>
-            );
-          })}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

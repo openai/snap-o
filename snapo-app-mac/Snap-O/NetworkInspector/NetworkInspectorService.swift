@@ -70,56 +70,59 @@ actor NetworkInspectorService {
   }
 
   func listInspectorApps() async -> [InspectableApp] {
-    let networkServers = await listServers()
-    let tweakApps = await tweaksService.listApps()
-    var apps: [String: InspectableApp] = [:]
-
-    for server in networkServers {
-      let packageName = server.packageName ?? server.displayName
-      let id = "\(server.deviceId):\(packageName)"
-      let option = AppInspectorOption(
+    async let networkServers = listServers()
+    async let tweakApps = tweaksService.listApps()
+    let networkEndpoints = await networkServers.map { server in
+      InspectorEndpoint(
         kind: .network,
-        server: InspectorServerReference(
+        reference: NetworkServerReference(
           deviceId: server.deviceId,
           socketName: server.socketName
         ),
-        protocolVersion: server.protocolVersion
-      )
-      let appName = server.appName.flatMap { $0.isEmpty ? nil : $0 }
-      apps[id] = InspectableApp(
-        id: id,
-        name: appName ?? server.displayName,
-        packageName: packageName,
-        deviceId: server.deviceId,
         deviceDisplayTitle: server.deviceDisplayTitle,
-        appIconBase64: server.appIconBase64,
-        inspectors: [option]
+        protocolVersion: server.protocolVersion,
+        metadata: InspectorAppMetadata(
+          processName: server.appName,
+          packageName: server.hasAppInfo ? server.packageName : nil,
+          packageNameHint: server.packageName,
+          appIconBase64: server.appIconBase64
+        )
       )
     }
-
-    for app in tweakApps {
-      let id = "\(app.deviceID):\(app.packageName)"
-      let option = AppInspectorOption(
+    let tweakEndpoints = await tweakApps.map { app in
+      InspectorEndpoint(
         kind: .tweaks,
-        server: InspectorServerReference(
+        reference: NetworkServerReference(
           deviceId: app.deviceID,
           socketName: app.socketName
         ),
-        protocolVersion: app.protocolVersion
-      )
-      let existing = apps[id]
-      apps[id] = InspectableApp(
-        id: id,
-        name: app.name,
-        packageName: app.packageName,
-        deviceId: app.deviceID,
         deviceDisplayTitle: app.deviceDisplayTitle,
-        appIconBase64: app.appIconBase64 ?? existing?.appIconBase64,
-        inspectors: (existing?.inspectors ?? []) + [option]
+        protocolVersion: app.protocolVersion,
+        metadata: InspectorAppMetadata(
+          appName: app.name,
+          packageName: app.packageName,
+          appIconBase64: app.appIconBase64
+        )
       )
     }
-
-    return orderedInspectorApps(Array(apps.values))
+    let apps = InspectorDiscovery.processes(from: networkEndpoints + tweakEndpoints).map { process in
+      InspectableApp(
+        id: process.id,
+        name: process.name,
+        packageName: process.metadata.packageName ?? process.metadata.packageNameHint ?? process.name,
+        deviceId: process.deviceId,
+        deviceDisplayTitle: process.deviceDisplayTitle,
+        appIconBase64: process.metadata.appIconBase64,
+        inspectors: process.inspectors.map { endpoint in
+          AppInspectorOption(
+            kind: endpoint.kind,
+            server: endpoint.reference,
+            protocolVersion: endpoint.protocolVersion
+          )
+        }
+      )
+    }
+    return orderedInspectorApps(apps)
   }
 
   private func orderedInspectorApps(_ apps: [InspectableApp]) -> [InspectableApp] {
@@ -136,7 +139,7 @@ actor NetworkInspectorService {
       if first.deviceId != second.deviceId {
         return first.deviceId < second.deviceId
       }
-      return first.packageName < second.packageName
+      return first.id < second.id
     }
     inspectorServerOrder = orderedApps.flatMap { $0.inspectors.map(\.server) }
     return orderedApps

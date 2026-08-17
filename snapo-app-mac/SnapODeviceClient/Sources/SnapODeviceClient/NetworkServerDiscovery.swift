@@ -19,8 +19,7 @@ public enum NetworkServerDiscovery {
   }
 
   public static func pid(inSocketName socketName: String) -> Int? {
-    guard socketName.hasPrefix(socketPrefix) else { return nil }
-    return Int(socketName.dropFirst(socketPrefix.count))
+    InspectorKind.network.pid(inSocketName: socketName)
   }
 
   public static func packageName(inCmdline output: String) -> String? {
