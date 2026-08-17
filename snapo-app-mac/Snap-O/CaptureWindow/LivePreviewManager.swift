@@ -13,6 +13,8 @@ final class LivePreviewManager {
   private let options: LivePreviewOptions
   private let mediaDidChange: @MainActor ([CaptureMedia]) -> Void
   private let pointerInjector: LivePreviewPointerInjector
+  private var preparedLivePreview: PreparedLivePreview?
+  private var preparedMediaTask: Task<Void, Never>?
 
   private var deviceOrder: [String] = []
   private var deviceInfo: [String: Device] = [:]
@@ -29,11 +31,13 @@ final class LivePreviewManager {
     livePreviewService: LivePreviewService,
     adbService: ADBService,
     options: LivePreviewOptions,
+    preparedLivePreview: PreparedLivePreview? = nil,
     mediaDidChange: @escaping @MainActor ([CaptureMedia]) -> Void
   ) {
     self.livePreviewService = livePreviewService
     self.adbService = adbService
     self.options = options
+    self.preparedLivePreview = preparedLivePreview
     self.mediaDidChange = mediaDidChange
     pointerInjector = LivePreviewPointerInjector(adb: adbService)
   }
@@ -41,6 +45,21 @@ final class LivePreviewManager {
   func start(with devices: [Device]) async {
     guard !isStopped else { return }
     updateDeviceOrder(with: devices)
+    for device in devices {
+      deviceInfo[device.id] = device
+    }
+    if let prepared = preparedLivePreview {
+      preparedMediaTask = Task { [weak self] in
+        guard let media = await prepared.waitUntilReady(),
+              !Task.isCancelled,
+              let self,
+              !self.isStopped,
+              let device = deviceInfo[prepared.deviceID]
+        else { return }
+        Perf.step(.appFirstSnapshot, "preloaded live preview ready")
+        storeMedia(media, for: device)
+      }
+    }
     await syncDevices(with: devices)
   }
 
@@ -72,7 +91,7 @@ final class LivePreviewManager {
       }
     }
 
-    let operation = try await livePreviewService.start(for: deviceID, options: options)
+    let operation = try await takeOrStartOperation(for: deviceID)
     guard !isStopped,
           !Task.isCancelled,
           deviceInfo[deviceID] != nil
@@ -119,6 +138,24 @@ final class LivePreviewManager {
     return renderer
   }
 
+  private func takeOrStartOperation(for deviceID: String) async throws -> LivePreviewOperationHandle {
+    if let prepared = preparedLivePreview {
+      preparedLivePreview = nil
+      if prepared.deviceID == deviceID, prepared.options == options {
+        if let operation = await prepared.take() {
+          Perf.step(.appFirstSnapshot, "reuse preloaded live preview")
+          return operation
+        }
+      } else {
+        await prepared.discard()
+      }
+    }
+    guard !isStopped, !Task.isCancelled, deviceInfo[deviceID] != nil else {
+      throw CancellationError()
+    }
+    return try await livePreviewService.start(for: deviceID, options: options)
+  }
+
   func stopRenderer(_ renderer: LivePreviewRenderer) async {
     let operationID = renderer.operation.id
     guard activeOperations.removeValue(forKey: operationID) != nil else { return }
@@ -133,12 +170,17 @@ final class LivePreviewManager {
   func stop() async {
     guard !isStopped else { return }
     isStopped = true
+    preparedMediaTask?.cancel()
+    preparedMediaTask = nil
+    let prepared = preparedLivePreview
+    preparedLivePreview = nil
     let operations = Array(activeOperations.values)
     activeOperations.removeAll()
     mediaByDeviceID.removeAll()
     captureIDs.removeAll()
     lastDisplayInfo.removeAll()
     notifyMediaChanged()
+    await prepared?.discard()
     await pointerInjector.stopAll()
 
     for operation in operations {
@@ -169,6 +211,13 @@ final class LivePreviewManager {
       captureIDs.removeValue(forKey: id)
     }
 
+    if let prepared = preparedLivePreview, !currentIDs.contains(prepared.deviceID) {
+      preparedLivePreview = nil
+      let cleanupID = UUID()
+      stoppingRendererIDs.insert(cleanupID)
+      await prepared.discard()
+      stoppingRendererIDs.remove(cleanupID)
+    }
     for operation in removedOperations {
       _ = await livePreviewService.stop(operation)
       stoppingRendererIDs.remove(operation.id)

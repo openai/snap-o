@@ -36,7 +36,7 @@ final class LivePreviewSession {
   private var streamTask: Task<Void, Never>?
   private var hasStopped = false
 
-  private var readyContinuation: CheckedContinuation<Media, Error>?
+  private var readyContinuations: [CheckedContinuation<Media, Error>] = []
   private var stopContinuation: CheckedContinuation<Error?, Never>?
   private var readyResult: Media?
   private var stopResult: Error??
@@ -56,8 +56,9 @@ final class LivePreviewSession {
 
   func waitUntilReady() async throws -> Media {
     if let readyResult { return readyResult }
+    if let stopResult { throw stopResult ?? CancellationError() }
     return try await withCheckedThrowingContinuation { continuation in
-      readyContinuation = continuation
+      readyContinuations.append(continuation)
     }
   }
 
@@ -92,8 +93,11 @@ final class LivePreviewSession {
         )
         self.media = media
         self.readyResult = media
-        self.readyContinuation?.resume(returning: media)
-        self.readyContinuation = nil
+        let continuations = self.readyContinuations
+        self.readyContinuations.removeAll()
+        for continuation in continuations {
+          continuation.resume(returning: media)
+        }
       }
     }
     self.decoder = decoder
@@ -172,8 +176,11 @@ final class LivePreviewSession {
     stopContinuation = nil
 
     if readyResult == nil {
-      readyContinuation?.resume(throwing: error ?? CancellationError())
-      readyContinuation = nil
+      let continuations = readyContinuations
+      readyContinuations.removeAll()
+      for continuation in continuations {
+        continuation.resume(throwing: error ?? CancellationError())
+      }
     }
   }
 }

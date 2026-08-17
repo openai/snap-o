@@ -84,6 +84,9 @@ jobs:
       - name: Test capture mode transitions
         working-directory: snapo-app-mac
         run: sh scripts/test-capture-modes.sh
+      - name: Test capture startup
+        working-directory: snapo-app-mac
+        run: sh scripts/test-startup-capture.sh
       - name: Build Snap-O
         working-directory: snapo-app-mac
         run: |
