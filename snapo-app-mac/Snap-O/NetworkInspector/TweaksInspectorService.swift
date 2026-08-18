@@ -27,6 +27,7 @@ actor TweaksInspectorService {
     var app: App
     let forward: ADBForwardHandle
     let baseURL: URL
+    var hasLoadedIcon = false
     var metadataTask: Task<Void, Never>?
   }
 
@@ -223,7 +224,7 @@ actor TweaksInspectorService {
 
   private func populateMetadata(for key: String) {
     guard let connection = connections[key],
-          connection.app.protocolVersion == nil || connection.app.appIconBase64 == nil,
+          connection.app.protocolVersion == nil || !connection.hasLoadedIcon,
           connection.metadataTask == nil else { return }
     connections[key]?.metadataTask = Task { [weak self] in
       await self?.loadMetadata(for: key, connectionID: connection.id)
@@ -253,27 +254,27 @@ actor TweaksInspectorService {
       connections[key] = current
     }
 
-    guard !Task.isCancelled, connection.app.appIconBase64 == nil,
-          let icon = await loadIcon(baseURL: connection.baseURL),
-          !Task.isCancelled,
-          var current = connections[key], current.id == connectionID else { return }
-    current.app.appIconBase64 = icon.base64EncodedString()
-    connections[key] = current
+    guard !Task.isCancelled, !connection.hasLoadedIcon else { return }
+    do {
+      let icon = try await loadIcon(baseURL: connection.baseURL)
+      guard !Task.isCancelled,
+            var current = connections[key], current.id == connectionID else { return }
+      current.app.appIconBase64 = icon?.base64EncodedString()
+      current.hasLoadedIcon = true
+      connections[key] = current
+    } catch {
+      // Retry transient failures on the next discovery refresh.
+    }
   }
 
-  private func loadIcon(baseURL: URL) async -> Data? {
+  private func loadIcon(baseURL: URL) async throws -> Data? {
     let request = URLRequest(
       url: baseURL.appending(path: "app/icon"),
       timeoutInterval: Self.discoveryRequestTimeout
     )
-    guard let (data, response) = try? await URLSession.shared.data(
-      for: request
-    ),
-      let httpResponse = response as? HTTPURLResponse,
-      (200 ... 299).contains(httpResponse.statusCode)
-    else {
-      return nil
-    }
+    let (data, response) = try await URLSession.shared.data(for: request)
+    if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
+    try Self.validate(response, data: data)
     return data
   }
 
