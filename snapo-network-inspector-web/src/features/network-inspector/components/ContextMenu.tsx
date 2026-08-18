@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
 export interface ContextMenuState {
   x: number;
@@ -35,8 +35,60 @@ export function contextMenuPosition({
   };
 }
 
-export function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose: () => void }): JSX.Element {
+export function ContextMenu({
+  menu,
+  autoFocus = false,
+  onClose
+}: {
+  menu: ContextMenuState;
+  autoFocus?: boolean;
+  onClose: () => void;
+}): JSX.Element {
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (autoFocus) menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }, [autoFocus, menu]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Callers dismiss menus on window keydown. Let the menu finish handling its own keys first.
+    event.stopPropagation();
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey)
+      return;
+
+    if (event.key === "Escape" || event.key === "Tab") {
+      if (event.key === "Escape") event.preventDefault();
+      onClose();
+      return;
+    }
+
+    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+    const current = items.findIndex((item) => item === document.activeElement);
+    let next: number;
+    switch (event.key) {
+      case "ArrowDown":
+        next = (current + 1) % items.length;
+        break;
+      case "ArrowUp":
+        next = current < 0 ? items.length - 1 : (current + items.length - 1) % items.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = items.length - 1;
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        items[current]?.click();
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    items[next]?.focus();
+  };
 
   useLayoutEffect(() => {
     const element = menuRef.current;
@@ -65,13 +117,17 @@ export function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose
     <div
       ref={menuRef}
       className="context-menu"
+      role="menu"
       style={{ left: menu.x, top: menu.y }}
       onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={handleKeyDown}
     >
       {menu.items.map((item) => (
         <button
           className="context-menu-item"
           type="button"
+          role="menuitem"
+          tabIndex={autoFocus ? -1 : undefined}
           disabled={item.disabled}
           key={item.label}
           onClick={() => {

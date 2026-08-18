@@ -1139,7 +1139,8 @@ pre {
   line-height: 16px;
 }
 
-.context-menu-item:hover {
+.context-menu-item:hover,
+.context-menu-item:focus-visible {
   background: var(--surface-container-high);
 }
 

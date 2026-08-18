@@ -1,4 +1,14 @@
-import { memo, useCallback, useEffect, useState, type MouseEvent, type UIEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type UIEvent
+} from "react";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type InspectorRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
@@ -21,20 +31,87 @@ export const RecordList = memo(function RecordList({
   onSelect(id: string): void;
   client: NetworkClient;
 }): JSX.Element {
-  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const listId = useId();
+  const listRef = useRef<HTMLDivElement>(null);
+  const selectedIndex = records.findIndex((record) => recordId(record) === selectedRecordId);
+  const [menu, setMenu] = useState<(ContextMenuState & { keyboard: boolean }) | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
-  const handleContextMenu = useCallback(
-    (record: InspectorRecord, event: MouseEvent) => {
-      const id = recordId(record);
-      event.preventDefault();
+  const selectRecord = useCallback(
+    (id: string) => {
+      // WebKit does not always focus buttons on click. Keep keyboard ownership on the list.
+      listRef.current?.focus({ preventScroll: true });
       onSelect(id);
+    },
+    [onSelect]
+  );
+  const openContextMenu = useCallback(
+    (record: InspectorRecord, x: number, y: number, keyboard: boolean) => {
+      selectRecord(recordId(record));
       setMenu({
-        x: event.clientX,
-        y: event.clientY,
+        x,
+        y,
+        keyboard,
         items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client)
       });
     },
-    [allRecords, client, onSelect, selectedRecordId]
+    [allRecords, client, selectRecord, selectedRecordId]
+  );
+  const openActiveContextMenu = () => {
+    const record = records[selectedIndex];
+    const row = listRef.current?.children.item(selectedIndex);
+    if (record == null || row == null) return false;
+    row.scrollIntoView({ block: "nearest" });
+    const { left, bottom } = row.getBoundingClientRect();
+    openContextMenu(record, left, bottom, true);
+    return true;
+  };
+  const closeContextMenu = () => {
+    setMenu(null);
+    listRef.current?.focus({ preventScroll: true });
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey)
+      return;
+    if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+      if (openActiveContextMenu()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+    if (event.shiftKey) return;
+    if (records.length === 0) return;
+
+    let nextIndex: number;
+    switch (event.key) {
+      case "ArrowDown":
+        nextIndex = Math.min(selectedIndex + 1, records.length - 1);
+        break;
+      case "ArrowUp":
+        nextIndex = selectedIndex < 0 ? records.length - 1 : Math.max(selectedIndex - 1, 0);
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = records.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    const id = recordId(records[nextIndex]);
+    if (id !== selectedRecordId) selectRecord(id);
+    listRef.current?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
+  };
+  const handleContextMenu = useCallback(
+    (record: InspectorRecord, event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openContextMenu(record, event.clientX, event.clientY, false);
+    },
+    [openContextMenu]
   );
 
   useEffect(() => {
@@ -52,23 +129,39 @@ export const RecordList = memo(function RecordList({
 
   return (
     <div className="record-list-frame">
-      <div className="record-list" onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}>
-        {records.map((record) => {
+      <div
+        ref={listRef}
+        className="record-list"
+        role="listbox"
+        aria-label="Network requests"
+        aria-activedescendant={selectedIndex < 0 ? undefined : `${listId}-${selectedIndex}`}
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onContextMenu={(event) => {
+          if (event.target === event.currentTarget && openActiveContextMenu()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+        onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}
+      >
+        {records.map((record, index) => {
           const id = recordId(record);
           return (
             <RecordRow
               key={id}
               id={id}
+              optionId={`${listId}-${index}`}
               record={record}
               selected={selectedRecordId === id}
-              onSelect={onSelect}
+              onSelect={selectRecord}
               onContextMenu={handleContextMenu}
             />
           );
         })}
       </div>
       <div className={showTopFade ? "record-list-top-fade visible" : "record-list-top-fade"} />
-      {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {menu == null ? null : <ContextMenu menu={menu} autoFocus={menu.keyboard} onClose={closeContextMenu} />}
     </div>
   );
 });
@@ -79,12 +172,14 @@ function handleRecordListScroll(event: UIEvent<HTMLDivElement>, setShowTopFade: 
 
 const RecordRow = memo(function RecordRow({
   id,
+  optionId,
   record,
   selected,
   onSelect,
   onContextMenu
 }: {
   id: string;
+  optionId: string;
   record: InspectorRecord;
   selected: boolean;
   onSelect(id: string): void;
@@ -93,7 +188,11 @@ const RecordRow = memo(function RecordRow({
   const path = splitUrl(record.url);
   return (
     <button
+      id={optionId}
       type="button"
+      role="option"
+      aria-selected={selected}
+      tabIndex={-1}
       className={`record-row ${selected ? "selected" : ""}`}
       onClick={() => onSelect(id)}
       onContextMenu={(event) => onContextMenu(record, event)}
