@@ -8,8 +8,15 @@ final class LivePreviewFrameExporter {
     let image: NSImage
   }
 
-  private enum ExportError: Error {
+  private enum ExportError: LocalizedError {
     case imageUnavailable
+
+    var errorDescription: String? {
+      switch self {
+      case .imageUnavailable:
+        "Could not create a PNG from the current live preview frame."
+      }
+    }
   }
 
   private let imageContext = CIContext()
