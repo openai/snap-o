@@ -209,7 +209,10 @@ final class CaptureWindowController {
       preloadedTask?.cancel()
       return
     }
-    guard await stopLivePreviewForCapture() else { return }
+    guard await stopLivePreviewForCapture() else {
+      preloadedTask?.cancel()
+      return
+    }
     lastError = nil
     screenshotFailures = []
     if pendingPreferredDeviceID == nil {
