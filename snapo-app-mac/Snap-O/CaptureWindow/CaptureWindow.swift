@@ -106,7 +106,7 @@ struct CaptureWindow: View {
       )
       .background(
         WindowLevelController(
-          shouldFloat: controller.isRecording || controller.isLivePreviewActive
+          shouldFloat: controller.isRecording
         )
         .frame(width: 0, height: 0)
       )

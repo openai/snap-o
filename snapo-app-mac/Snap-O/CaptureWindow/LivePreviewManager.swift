@@ -21,6 +21,8 @@ final class LivePreviewManager {
   private var lastDisplayInfo: [String: DisplayInfo] = [:]
   private var activeOperations: [UUID: LivePreviewOperationHandle] = [:]
   private var inFlightRendererRequestIDs: Set<UUID> = []
+  private var stoppingRendererIDs: Set<UUID> = []
+  private var deviceSyncID = UUID()
   private var isStopped = false
 
   init(
@@ -39,13 +41,13 @@ final class LivePreviewManager {
   func start(with devices: [Device]) async {
     guard !isStopped else { return }
     updateDeviceOrder(with: devices)
-    await syncDevices(with: devices, requireRefresh: true)
+    await syncDevices(with: devices)
   }
 
   func updateDevices(_ devices: [Device]) async {
     guard !isStopped else { return }
     updateDeviceOrder(with: devices)
-    await syncDevices(with: devices, requireRefresh: false)
+    await syncDevices(with: devices)
   }
 
   func makeRenderer(for deviceID: String) async throws -> LivePreviewRenderer {
@@ -70,10 +72,7 @@ final class LivePreviewManager {
       }
     }
 
-    let operation = try await livePreviewService.start(
-      for: deviceID,
-      options: options
-    )
+    let operation = try await livePreviewService.start(for: deviceID, options: options)
     guard !isStopped,
           !Task.isCancelled,
           deviceInfo[deviceID] != nil
@@ -99,17 +98,15 @@ final class LivePreviewManager {
     }
 
     let session = operation.session
-    Task.detached(priority: .userInitiated) { [weak self] in
-      guard let self else { return }
+    Task { [weak self] in
       do {
         let media = try await session.waitUntilReady()
-        await MainActor.run {
-          if !self.isStopped,
-             self.activeOperations[operation.id] != nil,
-             let latestDevice = self.deviceInfo[deviceID] {
-            self.storeMedia(media, for: latestDevice)
-          }
-        }
+        guard let self,
+              !isStopped,
+              activeOperations[operation.id] != nil,
+              let device = deviceInfo[deviceID]
+        else { return }
+        storeMedia(media, for: device)
       } catch {
         if !(error is CancellationError) {
           SnapOLog.ui.error(
@@ -123,7 +120,10 @@ final class LivePreviewManager {
   }
 
   func stopRenderer(_ renderer: LivePreviewRenderer) async {
-    activeOperations.removeValue(forKey: renderer.operation.id)
+    let operationID = renderer.operation.id
+    guard activeOperations.removeValue(forKey: operationID) != nil else { return }
+    stoppingRendererIDs.insert(operationID)
+    defer { stoppingRendererIDs.remove(operationID) }
     _ = await livePreviewService.stop(renderer.operation)
     if !activeOperations.values.contains(where: { $0.deviceID == renderer.deviceID }) {
       await pointerInjector.stopDevice(renderer.deviceID)
@@ -144,30 +144,24 @@ final class LivePreviewManager {
     for operation in operations {
       _ = await livePreviewService.stop(operation)
     }
-    while !inFlightRendererRequestIDs.isEmpty {
+    while !inFlightRendererRequestIDs.isEmpty || !stoppingRendererIDs.isEmpty {
       await Task.yield()
     }
   }
 
   // MARK: - Device + Media Management
 
-  private func syncDevices(with devices: [Device], requireRefresh: Bool) async {
+  private func syncDevices(with devices: [Device]) async {
+    let syncID = UUID()
+    deviceSyncID = syncID
     let currentIDs = Set(devices.map(\.id))
     let removedDeviceIDs = Set(deviceInfo.keys).subtracting(currentIDs)
     let removedOperations = activeOperations.values.filter { !currentIDs.contains($0.deviceID) }
     for operation in removedOperations {
       activeOperations.removeValue(forKey: operation.id)
-      _ = await livePreviewService.stop(operation)
+      stoppingRendererIDs.insert(operation.id)
     }
-    for deviceID in removedDeviceIDs {
-      await pointerInjector.stopDevice(deviceID)
-    }
-
-    guard !isStopped else { return }
-
-    for id in Array(deviceInfo.keys) where !currentIDs.contains(id) {
-      deviceInfo.removeValue(forKey: id)
-    }
+    deviceInfo = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
     for id in Array(lastDisplayInfo.keys) where !currentIDs.contains(id) {
       lastDisplayInfo.removeValue(forKey: id)
     }
@@ -175,20 +169,22 @@ final class LivePreviewManager {
       captureIDs.removeValue(forKey: id)
     }
 
-    for device in devices {
-      deviceInfo[device.id] = device
+    for operation in removedOperations {
+      _ = await livePreviewService.stop(operation)
+      stoppingRendererIDs.remove(operation.id)
+    }
+    for deviceID in removedDeviceIDs {
+      await pointerInjector.stopDevice(deviceID)
     }
 
-    let devicesToFetch: [Device] = if requireRefresh {
-      devices
-    } else {
-      devices.filter { lastDisplayInfo[$0.id] == nil }
-    }
+    guard !isStopped, deviceSyncID == syncID else { return }
+
+    let devicesToFetch = devices.filter { lastDisplayInfo[$0.id] == nil }
 
     if !devicesToFetch.isEmpty {
       let fetched = await fetchDisplayInfos(for: devicesToFetch)
-      guard !isStopped else { return }
-      for (id, info) in fetched {
+      guard !isStopped, deviceSyncID == syncID else { return }
+      for (id, info) in fetched where deviceInfo[id] != nil && lastDisplayInfo[id] == nil {
         lastDisplayInfo[id] = info
       }
     }
