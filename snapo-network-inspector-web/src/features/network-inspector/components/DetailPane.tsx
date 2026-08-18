@@ -16,7 +16,8 @@ export const DetailContent = memo(function DetailContent({
   serverScopedItems,
   streamIsRetrying,
   uiState,
-  onOpenDocs
+  onOpenDocs,
+  onRetryResponseBody
 }: {
   client: NetworkClient;
   record: InspectorRecord | null;
@@ -26,6 +27,7 @@ export const DetailContent = memo(function DetailContent({
   streamIsRetrying: boolean;
   uiState: InspectorUiState;
   onOpenDocs(): void;
+  onRetryResponseBody(): void;
 }): JSX.Element {
   if (record == null) {
     const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems, streamIsRetrying });
@@ -46,7 +48,7 @@ export const DetailContent = memo(function DetailContent({
   }
 
   if (record.kind === "websocket") return <WebSocketDetail client={client} record={record} uiState={uiState} />;
-  return <RequestDetail client={client} record={record} uiState={uiState} />;
+  return <RequestDetail client={client} record={record} uiState={uiState} onRetryResponseBody={onRetryResponseBody} />;
 });
 
 function EmptyState({

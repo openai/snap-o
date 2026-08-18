@@ -1,4 +1,4 @@
-import type { CdpMessage, RequestBodies, SnapOServer } from "./bridge-types";
+import type { CdpMessage, RequestBodies, ResponseBodyLoadError, SnapOServer } from "./bridge-types";
 import type { Protocol } from "devtools-protocol";
 import { isLikelyStreamingRequest } from "./request-classification";
 
@@ -48,6 +48,7 @@ export interface RequestRecord {
   responseBodyBase64Encoded?: boolean | null;
   responseBodyTruncatedBytes?: number | null;
   responseBodyLoadCompleted?: boolean;
+  responseBodyLoadError?: ResponseBodyLoadError | null;
   responseType?: string | null;
   hasReceivedResponse?: boolean;
   streamEvents: StreamEventRecord[];
@@ -489,7 +490,9 @@ export function applyRequestBodies(record: RequestRecord, bodies: RequestBodies)
     requestBody: bodies.requestBody ?? record.requestBody,
     responseBody: bodies.responseBody ?? record.responseBody,
     responseBodyBase64Encoded: bodies.responseBodyBase64Encoded ?? record.responseBodyBase64Encoded,
-    responseBodyLoadCompleted: bodies.responseBodyLoadCompleted ?? record.responseBodyLoadCompleted
+    responseBodyLoadCompleted: bodies.responseBodyLoadCompleted ?? record.responseBodyLoadCompleted,
+    responseBodyLoadError:
+      bodies.responseBodyLoadError !== undefined ? bodies.responseBodyLoadError : record.responseBodyLoadError
   };
 }
 

@@ -12,6 +12,7 @@ describe("Response Body loading state", () => {
         client={{} as NetworkClient}
         record={request({ encodedDataLength: 7_340_032 })}
         uiState={expandedUiState}
+        onRetryResponseBody={() => {}}
       />
     );
 
@@ -29,6 +30,7 @@ describe("Response Body loading state", () => {
         client={{} as NetworkClient}
         record={request({ encodedDataLength: 9_437_184, responseBodyTruncatedBytes: 4_194_304 })}
         uiState={expandedUiState}
+        onRetryResponseBody={() => {}}
       />
     );
 
@@ -37,17 +39,53 @@ describe("Response Body loading state", () => {
     expect(markup).toContain("Loading...");
   });
 
-  it("does not leave a loading indicator behind when a body is unavailable", () => {
+  it("explains when a body is no longer available", () => {
     const markup = renderToStaticMarkup(
       <RequestDetail
         client={{} as NetworkClient}
-        record={request({ encodedDataLength: 7_340_032, responseBodyLoadCompleted: true })}
+        record={request({
+          encodedDataLength: 7_340_032,
+          responseBodyLoadCompleted: true,
+          responseBodyLoadError: "unavailable"
+        })}
         uiState={expandedUiState}
+        onRetryResponseBody={() => {}}
       />
     );
 
-    expect(markup).not.toContain("Response Body");
+    expect(markup).toContain("Response Body");
+    expect(markup).toContain("This response is no longer available. Try making the request again.");
+    expect(markup).not.toContain("Captured 7.3 MB");
+    expect(markup).not.toContain("Retry");
     expect(markup).not.toContain("Loading...");
+  });
+
+  it("offers a retry after a temporary failure", () => {
+    const markup = renderToStaticMarkup(
+      <RequestDetail
+        client={{} as NetworkClient}
+        record={request({ responseBodyLoadCompleted: true, responseBodyLoadError: "failed" })}
+        uiState={expandedUiState}
+        onRetryResponseBody={() => {}}
+      />
+    );
+    expect(markup).toContain("Couldn’t load the response. Try again.");
+    expect(markup).toContain('type="button">Retry</button>');
+    expect(markup).not.toContain("no longer available");
+    expect(markup).not.toContain("Loading...");
+  });
+
+  it("does not label a genuinely empty response as unavailable", () => {
+    const markup = renderToStaticMarkup(
+      <RequestDetail
+        client={{} as NetworkClient}
+        record={request({ status: { kind: "success", code: 204 }, encodedDataLength: 0 })}
+        uiState={expandedUiState}
+        onRetryResponseBody={() => {}}
+      />
+    );
+    expect(markup).not.toContain("Response Body");
+    expect(markup).not.toContain("no longer available");
   });
 });
 

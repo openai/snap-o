@@ -87,6 +87,7 @@ export function NetworkInspectorApp({
           streamIsRetrying={model.streamIsRetrying}
           uiState={model.uiState}
           onOpenDocs={model.openDocs}
+          onRetryResponseBody={model.retryResponseBody}
         />
       </main>
     </div>

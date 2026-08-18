@@ -108,7 +108,64 @@ describe("RequestBodyLoader", () => {
     loader.schedule([request]);
     await nextTask();
 
-    expect(loaded).toEqual([{ requestId: "request", responseBodyLoadCompleted: true }]);
+    expect(loaded).toEqual([
+      { requestId: "request", responseBodyLoadCompleted: true, responseBodyLoadError: "failed" }
+    ]);
+    loader.dispose();
+  });
+
+  it("preserves a confirmed unavailable response", async () => {
+    const loaded: RequestBodies[] = [];
+    const request = job("request", bodyLoadPriority.selected);
+    request.input.includeResponseBody = true;
+    const loader = new RequestBodyLoader(
+      async (input) => ({ requestId: input.requestId, responseBodyLoadError: "unavailable" }),
+      (_recordKey, bodies) => loaded.push(bodies)
+    );
+    loader.retainRecords(new Set([request.recordKey]));
+    loader.schedule([request]);
+    await nextTask();
+    expect(loaded).toEqual([
+      { requestId: "request", responseBodyLoadCompleted: true, responseBodyLoadError: "unavailable" }
+    ]);
+    loader.dispose();
+  });
+
+  it("retries only the failed response job and clears its error after success", async () => {
+    const loaded: RequestBodies[] = [];
+    const started: string[] = [];
+    const request = job("request", bodyLoadPriority.selected);
+    const response: BodyLoadJob = {
+      ...request,
+      key: "request:response",
+      input: { ...request.input, includeRequestBody: false, includeResponseBody: true }
+    };
+    let failResponse = true;
+    const loader = new RequestBodyLoader(
+      async (input) => {
+        started.push(input.includeResponseBody ? "response" : "request");
+        if (!input.includeResponseBody) return { requestId: input.requestId, requestBody: "input" };
+        if (failResponse) throw new Error("temporary failure");
+        return { requestId: input.requestId, responseBody: "output" };
+      },
+      (_recordKey, bodies) => loaded.push(bodies)
+    );
+    loader.retainRecords(new Set([request.recordKey]));
+    loader.schedule([request, response]);
+    await nextTask();
+    loader.schedule([response]);
+    expect(started).toEqual(["request", "response"]);
+    failResponse = false;
+    loader.forgetJob(response.key);
+    loader.schedule([request, response]);
+    await nextTask();
+    expect(started).toEqual(["request", "response", "response"]);
+    expect(loaded.at(-1)).toEqual({
+      requestId: "request",
+      responseBody: "output",
+      responseBodyLoadCompleted: true,
+      responseBodyLoadError: null
+    });
     loader.dispose();
   });
 });

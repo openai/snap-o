@@ -265,13 +265,16 @@ actor NetworkInspectorService {
 
   func loadBodies(_ input: NetworkLoadBodiesInput) async -> NetworkRequestBodies {
     let reference = NetworkServerReference(deviceId: input.deviceId, socketName: input.socketName)
+    let currentInstanceID = Self.instanceID(for: servers[reference.key]?.appInfo)
     if let requestedInstanceID = input.serverInstanceId,
-       requestedInstanceID != Self.instanceID(for: servers[reference.key]?.appInfo) {
+       requestedInstanceID != currentInstanceID {
       return NetworkRequestBodies(
         requestId: input.requestId,
         requestBody: nil,
         responseBody: nil,
-        responseBodyBase64Encoded: nil
+        responseBodyBase64Encoded: nil,
+        responseBodyLoadError: input.includeResponseBody == false ? nil :
+          (currentInstanceID == nil ? .failed : .unavailable)
       )
     }
 
@@ -293,7 +296,8 @@ actor NetworkInspectorService {
       requestId: input.requestId,
       requestBody: request?.result?["postData"]?.stringValue,
       responseBody: response?.result?["body"]?.stringValue,
-      responseBodyBase64Encoded: response?.result?["base64Encoded"]?.boolValue
+      responseBodyBase64Encoded: response?.result?["base64Encoded"]?.boolValue,
+      responseBodyLoadError: input.includeResponseBody == false ? nil : .resolve(response)
     )
   }
 

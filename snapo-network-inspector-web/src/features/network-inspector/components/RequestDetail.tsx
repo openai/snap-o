@@ -15,11 +15,13 @@ import { SseCopyAllButton, SseEventList } from "./StreamEvents";
 export const RequestDetail = memo(function RequestDetail({
   client,
   record,
-  uiState
+  uiState,
+  onRetryResponseBody
 }: {
   client: NetworkClient;
   record: RequestRecord;
   uiState: InspectorUiState;
+  onRetryResponseBody(): void;
 }): JSX.Element {
   const isSseResponse = isLikelyStreamingRequest(record);
   const requestBodyDisplayText = useRequestBodyDisplayText(record);
@@ -38,6 +40,7 @@ export const RequestDetail = memo(function RequestDetail({
         totalBytes: record.encodedDataLength
       });
   const isResponseBodyLoading = !isSseResponse && shouldRequestResponseBody(record);
+  const responseBodyLoadError = !isSseResponse && responseBody == null ? record.responseBodyLoadError : null;
   const prefix = `request:${recordId(record)}`;
   const timingText = useAdaptiveTimingText(record.startedAt, record.endedAt, record.status);
 
@@ -103,14 +106,33 @@ export const RequestDetail = memo(function RequestDetail({
           />
         </Section>
       ) : null}
-      {responseBody == null && !isResponseBodyLoading ? null : (
+      {responseBody == null && !isResponseBodyLoading && responseBodyLoadError == null ? null : (
         <Section
           title="Response Body"
-          meta={responseBody == null ? responseBodyCaptureMetadata(record) : payloadMetadata(responseBody)}
+          meta={
+            responseBodyLoadError != null
+              ? null
+              : responseBody == null
+                ? responseBodyCaptureMetadata(record)
+                : payloadMetadata(responseBody)
+          }
           storageKey={`${prefix}:responseBody`}
           uiState={uiState}
         >
-          {responseBody == null ? (
+          {responseBodyLoadError != null ? (
+            <div className="body-load-message" role="status">
+              <span>
+                {responseBodyLoadError === "unavailable"
+                  ? "This response is no longer available. Try making the request again."
+                  : "Couldn’t load the response. Try again."}
+              </span>
+              {responseBodyLoadError === "failed" ? (
+                <button className="text-button" type="button" onClick={onRetryResponseBody}>
+                  Retry
+                </button>
+              ) : null}
+            </div>
+          ) : responseBody == null ? (
             <div className="payload-card">
               <div className="body-loading" role="status">
                 <LoaderCircle className="body-loading-spinner" size={14} aria-hidden="true" />

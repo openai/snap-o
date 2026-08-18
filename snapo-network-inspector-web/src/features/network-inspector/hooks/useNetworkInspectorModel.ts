@@ -55,6 +55,7 @@ export interface NetworkInspectorModel {
   setSearchText(value: string): void;
   toggleSortOrder(): void;
   clearCompletedRecords(): void;
+  retryResponseBody(): void;
   openDocs(): void;
 }
 
@@ -213,6 +214,20 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [selectedRecordId, visibleRecords]);
   const selectedRequestKey = selectedRecord?.kind === "request" ? selectedRecordId : null;
 
+  const retryResponseBody = useCallback(() => {
+    if (selectedRecord?.kind !== "request" || selectedRecord.responseBodyLoadError !== "failed") return;
+    const recordKey = requestRecordKey(selectedRecord.server, selectedRecord.requestId);
+    bodyLoader.forgetJob(`${recordKey}\u0000response`);
+    bodyLoader.forgetRecords(
+      bodyCache.put(recordKey, {
+        requestId: selectedRecord.requestId,
+        responseBodyLoadCompleted: false,
+        responseBodyLoadError: null
+      })
+    );
+    setBodyCacheRevision((revision) => revision + 1);
+  }, [bodyCache, bodyLoader, selectedRecord]);
+
   useEffect(() => {
     bodyLoader.forgetRecords(bodyCache.select(selectedRequestKey));
   }, [bodyCache, bodyLoader, selectedRequestKey]);
@@ -358,6 +373,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     setSearchText,
     toggleSortOrder,
     clearCompletedRecords,
+    retryResponseBody,
     openDocs
   };
 }

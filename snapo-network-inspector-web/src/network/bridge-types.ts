@@ -131,12 +131,15 @@ export interface CdpMessage {
   };
 }
 
+export type ResponseBodyLoadError = "unavailable" | "failed";
+
 export interface RequestBodies {
   requestId: string;
   requestBody?: string | null;
   responseBody?: string | null;
   responseBodyBase64Encoded?: boolean | null;
   responseBodyLoadCompleted?: boolean;
+  responseBodyLoadError?: ResponseBodyLoadError | null;
 }
 
 export interface LoadBodiesInput {

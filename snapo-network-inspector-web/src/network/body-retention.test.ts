@@ -60,4 +60,26 @@ describe("RequestBodyCache", () => {
     expect(cache.peek("b")?.requestBody).toBe("b");
     expect(evicted).toEqual(["a"]);
   });
+
+  it("clears a response failure for retry without losing the request body", () => {
+    const cache = new RequestBodyCache(100);
+    cache.put("request", {
+      requestId: "request",
+      requestBody: "input",
+      responseBodyLoadCompleted: true,
+      responseBodyLoadError: "failed"
+    });
+    cache.put("request", { requestId: "request", requestBody: "input" });
+    expect(cache.peek("request")?.responseBodyLoadError).toBe("failed");
+    cache.put("request", {
+      requestId: "request",
+      responseBodyLoadCompleted: false,
+      responseBodyLoadError: null
+    });
+    expect(cache.peek("request")).toMatchObject({
+      requestBody: "input",
+      responseBodyLoadCompleted: false,
+      responseBodyLoadError: null
+    });
+  });
 });
