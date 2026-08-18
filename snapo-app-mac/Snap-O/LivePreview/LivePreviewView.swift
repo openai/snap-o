@@ -18,9 +18,10 @@ struct LivePreviewRenderer {
 
 struct LivePreviewRendererView: NSViewRepresentable {
   let renderer: LivePreviewRenderer
+  let fileStore: FileStore
 
   func makeNSView(context: Context) -> LivePreviewDisplayView {
-    let view = LivePreviewDisplayView()
+    let view = LivePreviewDisplayView(fileStore: fileStore)
     view.wantsLayer = true
     if view.layer == nil { view.layer = CALayer() }
     return view
@@ -35,7 +36,9 @@ struct LivePreviewRendererView: NSViewRepresentable {
   }
 }
 
-final class LivePreviewDisplayView: NSView {
+final class LivePreviewDisplayView: NSView, NSDraggingSource {
+  private let fileStore: FileStore
+  private let frameExporter = LivePreviewFrameExporter()
   private var renderer: LivePreviewRenderer?
   private var trackingArea: NSTrackingArea?
   private let displayLayer = AVSampleBufferDisplayLayer()
@@ -44,15 +47,19 @@ final class LivePreviewDisplayView: NSView {
   private var pointerState = PointerState()
   private let hoverThrottleInterval: TimeInterval = 1.0 / 45.0
   private let dragThrottleInterval: TimeInterval = 1.0 / 60.0
+  private var frameDragOrigin: CGPoint?
+  private var isDraggingFrame = false
 
-  override init(frame frameRect: NSRect) {
-    super.init(frame: frameRect)
+  init(fileStore: FileStore) {
+    self.fileStore = fileStore
+    super.init(frame: .zero)
     configureLayerIfNeeded()
+    toolTip = "Option-drag to capture the current frame"
   }
 
+  @available(*, unavailable)
   required init?(coder: NSCoder) {
-    super.init(coder: coder)
-    configureLayerIfNeeded()
+    nil
   }
 
   override var acceptsFirstResponder: Bool {
@@ -109,6 +116,9 @@ final class LivePreviewDisplayView: NSView {
   }
 
   private func detachSession() {
+    frameDragOrigin = nil
+    isDraggingFrame = false
+    pointerState = PointerState()
     renderer?.session.sampleBufferHandler = nil
     displayLayer.sampleBufferRenderer.stopRequestingMediaData()
     displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
@@ -152,21 +162,71 @@ final class LivePreviewDisplayView: NSView {
   }
 
   override func mouseDown(with event: NSEvent) {
+    if event.modifierFlags.contains(.option) {
+      isDraggingFrame = true
+      if convertToDevicePoint(event: event) != nil {
+        frameDragOrigin = convert(event.locationInWindow, from: nil)
+      }
+      return
+    }
     handlePointer(.down, event: event)
   }
 
   override func mouseDragged(with event: NSEvent) {
+    if isDraggingFrame {
+      startFrameDragIfNeeded(with: event)
+      return
+    }
     handlePointer(.drag, event: event)
   }
 
   override func mouseUp(with event: NSEvent) {
+    if isDraggingFrame {
+      frameDragOrigin = nil
+      isDraggingFrame = false
+      return
+    }
     handlePointer(.up, event: event)
+  }
+
+  private func startFrameDragIfNeeded(with event: NSEvent) {
+    guard let origin = frameDragOrigin else { return }
+    let point = convert(event.locationInWindow, from: nil)
+    guard hypot(point.x - origin.x, point.y - origin.y) >= 3 else { return }
+    frameDragOrigin = nil
+
+    guard let pixelBuffer = displayLayer.sampleBufferRenderer.displayedPixelBuffer() else {
+      NSSound.beep()
+      return
+    }
+    do {
+      let frame = try frameExporter.export(pixelBuffer, to: fileStore)
+      let item = NSDraggingItem(pasteboardWriter: frame.url as NSURL)
+      item.setDraggingFrame(fittedMediaRect(contentSize: frame.image.size, in: bounds), contents: frame.image)
+      beginDraggingSession(with: [item], event: event, source: self)
+    } catch {
+      SnapOLog.ui.error("Unable to export live frame: \(error.localizedDescription, privacy: .public)")
+      NSSound.beep()
+    }
+  }
+
+  func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+    .copy
+  }
+
+  func ignoreModifierKeys(for session: NSDraggingSession) -> Bool {
+    true
+  }
+
+  func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+    frameDragOrigin = nil
+    isDraggingFrame = false
   }
 
   private enum PointerPhase { case hoverEnter, hoverMove, hoverExit, down, drag, up }
 
   private func handlePointer(_ phase: PointerPhase, event: NSEvent) {
-    guard renderer != nil else { return }
+    guard renderer != nil, !isDraggingFrame else { return }
     let devicePoint = convertToDevicePoint(event: event)
 
     switch phase {

@@ -11,6 +11,7 @@ protocol LivePreviewHosting: AnyObject {
 struct LiveCaptureView<Host: LivePreviewHosting>: View {
   let host: Host
   let capture: CaptureMedia
+  let fileStore: FileStore
 
   @State private var renderer: LivePreviewRenderer?
   @State private var streamTask: Task<Void, Never>?
@@ -19,7 +20,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   var body: some View {
     ZStack {
       if let renderer {
-        LivePreviewRendererView(renderer: renderer)
+        LivePreviewRendererView(renderer: renderer, fileStore: fileStore)
       } else {
         Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
       }
