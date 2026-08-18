@@ -21,8 +21,6 @@ actor ScreenshotService {
   private let timestampSource = CaptureTimestampSource()
 
   private var activeTasks: [UUID: Task<ScreenshotCaptureResult, Never>] = [:]
-  private var preloadedTask: Task<ScreenshotCaptureResult, Never>?
-  private var didStartPreload = false
   private var isShuttingDown = false
   private var shutdownTask: Task<Void, Never>?
 
@@ -62,32 +60,6 @@ actor ScreenshotService {
     return result
   }
 
-  func preload(for devices: [Device]) {
-    guard !isShuttingDown, !didStartPreload, !devices.isEmpty else { return }
-
-    Perf.step(.appFirstSnapshot, "Preloading first screenshot")
-    didStartPreload = true
-    preloadedTask = Task { [weak self] in
-      guard let self else { return Self.emptyResult }
-      return await capture(for: devices)
-    }
-  }
-
-  func consumePreloaded() async -> [CaptureMedia] {
-    guard let task = preloadedTask else { return [] }
-    preloadedTask = nil
-    let result = await withTaskCancellationHandler {
-      await task.value
-    } onCancel: {
-      task.cancel()
-    }
-    guard !Task.isCancelled else { return [] }
-    let fresh = result.media.filter { Date().timeIntervalSince($0.media.capturedAt) <= 1 }
-    guard !fresh.isEmpty else { return [] }
-    Perf.step(.appFirstSnapshot, "return media")
-    return fresh
-  }
-
   func shutdown() async {
     if let shutdownTask {
       await shutdownTask.value
@@ -101,15 +73,10 @@ actor ScreenshotService {
   }
 
   private func performShutdown() async {
-    let preloadTask = preloadedTask
-    preloadedTask = nil
-    preloadTask?.cancel()
-
     let tasks = Array(activeTasks.values)
     for task in tasks {
       task.cancel()
     }
-    _ = await preloadTask?.value
     for task in tasks {
       _ = await task.value
     }

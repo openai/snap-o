@@ -1,4 +1,6 @@
 import Foundation
+import Observation
+import SnapODeviceClient
 
 /// App-scoped services and their startup lifecycle.
 @MainActor
@@ -12,6 +14,7 @@ final class AppRuntime {
 
   private var startupTask: Task<Void, Never>?
   private var shutdownTask: Task<Void, Never>?
+  private var startupDevices: [Device] = []
 
   init() {
     let adbService = ADBService()
@@ -36,7 +39,8 @@ final class AppRuntime {
     captureServices = CaptureServices(
       screenshots: screenshots,
       recording: recording,
-      livePreview: livePreview
+      livePreview: livePreview,
+      startup: StartupCapturePreparation(screenshots: screenshots, livePreview: livePreview)
     )
   }
 
@@ -44,19 +48,38 @@ final class AppRuntime {
     guard startupTask == nil, shutdownTask == nil else { return }
 
     Perf.step(.appFirstSnapshot, "services start")
+    observeStartupSettings()
 
     let deviceTracker = deviceTracker
-    let screenshots = captureServices.screenshots
-    startupTask = Task {
+    startupTask = Task { [weak self] in
       await deviceTracker.startTracking()
-      guard !Task.isCancelled else { return }
-      Perf.step(.appFirstSnapshot, "start preload task")
       let stream = await deviceTracker.deviceStream()
-      Perf.step(.appFirstSnapshot, "query device stream")
-      for await devices in stream where !devices.isEmpty {
-        guard !Task.isCancelled else { return }
-        await screenshots.preload(for: devices)
-        break
+      for await devices in stream {
+        guard !Task.isCancelled, let self, captureServices.startup.isAvailable else { return }
+        startupDevices = devices
+        refreshStartupPreparation()
+      }
+    }
+  }
+
+  private func refreshStartupPreparation() {
+    guard shutdownTask == nil else { return }
+    captureServices.startup.prepare(
+      mode: AppSettings.shared.startupCaptureMode,
+      devices: startupDevices,
+      liveOptions: LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
+    )
+  }
+
+  private func observeStartupSettings() {
+    guard shutdownTask == nil, captureServices.startup.isAvailable else { return }
+    withObservationTracking {
+      _ = AppSettings.shared.startupCaptureMode
+      _ = AppSettings.shared.showTouchesDuringCapture
+    } onChange: { [weak self] in
+      Task { @MainActor [weak self] in
+        self?.refreshStartupPreparation()
+        self?.observeStartupSettings()
       }
     }
   }
@@ -75,6 +98,7 @@ final class AppRuntime {
     let captureServices = captureServices
     let task = Task {
       await captureCoordinator.beginShutdown()
+      await captureServices.startup.discard()
       await withTaskGroup(of: Void.self) { group in
         group.addTask {
           await activeStartupTask?.value

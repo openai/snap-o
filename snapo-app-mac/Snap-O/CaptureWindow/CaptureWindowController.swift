@@ -10,6 +10,7 @@ final class CaptureWindowController {
   @ObservationIgnored private let screenshotService: ScreenshotService
   @ObservationIgnored private let recordingService: RecordingService
   @ObservationIgnored private let livePreviewService: LivePreviewService
+  @ObservationIgnored private let startupPreparation: StartupCapturePreparation
   @ObservationIgnored private let deviceTracker: DeviceTracker
   @ObservationIgnored private let adbService: ADBService
   let fileStore: FileStore
@@ -26,8 +27,7 @@ final class CaptureWindowController {
   private var knownDevices: [Device] = []
   @ObservationIgnored private var deviceStreamTask: Task<Void, Never>?
   private var pendingPreferredDeviceID: String?
-  @ObservationIgnored private var isPreloadConsumptionActive = false
-  @ObservationIgnored private var hasAttemptedInitialPreload = false
+  @ObservationIgnored private var hasStartedInitialCapture = false
   @ObservationIgnored private var cachedCaptureProgressText: String?
   @ObservationIgnored private var isTornDown = false
 
@@ -40,6 +40,7 @@ final class CaptureWindowController {
     screenshotService = captureServices.screenshots
     recordingService = captureServices.recording
     livePreviewService = captureServices.livePreview
+    startupPreparation = captureServices.startup
     self.deviceTracker = deviceTracker
     self.fileStore = fileStore
     self.adbService = adbService
@@ -198,11 +199,20 @@ final class CaptureWindowController {
     return currentCapture?.media.common.display
   }
 
-  func captureScreenshots() async {
+  func captureScreenshots(useStartupPreparation: Bool = false) async {
     guard canCaptureNow else { return }
-    cancelPreloadConsumptionIfNeeded()
+    hasStartedInitialCapture = true
     isProcessing = true
-    guard await stopLivePreviewForCapture() else { return }
+    let preloadedTask = useStartupPreparation ? startupPreparation.claimScreenshots(for: knownDevices) : nil
+    if preloadedTask == nil { await startupPreparation.discard() }
+    guard !isTornDown else {
+      preloadedTask?.cancel()
+      return
+    }
+    guard await stopLivePreviewForCapture() else {
+      preloadedTask?.cancel()
+      return
+    }
     lastError = nil
     screenshotFailures = []
     if pendingPreferredDeviceID == nil {
@@ -216,7 +226,8 @@ final class CaptureWindowController {
 
     let screenshotMode = PreparingScreenshotMode(
       screenshotService: screenshotService,
-      devices: knownDevices
+      devices: knownDevices,
+      preloadedTask: preloadedTask
     ) { [weak self] result in
       guard let self, !isTornDown else { return }
       applyScreenshotCaptureResult(result)
@@ -227,8 +238,10 @@ final class CaptureWindowController {
 
   func startRecording() async {
     guard canStartRecordingNow else { return }
-    cancelPreloadConsumptionIfNeeded()
+    hasStartedInitialCapture = true
     isProcessing = true
+    await startupPreparation.discard()
+    guard !isTornDown else { return }
     guard await stopLivePreviewForCapture() else { return }
     let devices = knownDevices
     lastError = nil
@@ -281,20 +294,31 @@ final class CaptureWindowController {
     await recordingMode.finish()
   }
 
-  func startLivePreview() async {
+  func startLivePreview(useStartupPreparation: Bool = false) async {
     guard canStartLivePreviewNow else { return }
-    cancelPreloadConsumptionIfNeeded()
+    hasStartedInitialCapture = true
     isProcessing = true
     lastError = nil
     screenshotFailures = []
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices.first?.id
     pendingPreferredDeviceID = preferredDeviceID
     let options = LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
+    let prepared: PreparedLivePreview? = if useStartupPreparation, let device = knownDevices.first(where: { $0.id == preferredDeviceID }) {
+      startupPreparation.claimLivePreview(for: device, options: options)
+    } else {
+      nil
+    }
+    if prepared == nil { await startupPreparation.discard() }
+    guard !isTornDown else {
+      await prepared?.discard()
+      return
+    }
 
     let livePreviewMode = LivePreviewMode(
       livePreviewService: livePreviewService,
       adbService: adbService,
       options: options,
+      preparedLivePreview: prepared,
       mediaDisplayMode: mediaDisplayMode,
       preferredDeviceIDProvider: { [weak self] in
         guard let self else { return nil }
@@ -349,17 +373,13 @@ final class CaptureWindowController {
     if case .preparingScreenshot(let screenshotMode) = activeMode {
       screenshotMode.cancel()
     }
-    if case .checkingPreload(let preloadMode) = activeMode {
-      preloadMode.cancel()
-    }
     if case .recording(let recordingMode) = activeMode {
       await recordingMode.cancel()
     }
     if case .livePreview(let livePreviewMode) = activeMode {
       await livePreviewMode.stop()
     }
-    isPreloadConsumptionActive = false
-    hasAttemptedInitialPreload = false
+    hasStartedInitialCapture = false
     mediaDisplayMode.tearDown()
   }
 
@@ -370,15 +390,6 @@ final class CaptureWindowController {
     else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.writeObjects([image])
-  }
-
-  private func applyPreloadedMedia(_ mediaList: [CaptureMedia]) {
-    mediaDisplayMode.updateMediaList(
-      mediaList,
-      preserveDeviceID: mediaList.first?.device.id,
-      shouldSort: false
-    )
-    mode = .displaying(mediaDisplayMode)
   }
 
   private func applyScreenshotCaptureResult(_ result: ScreenshotCaptureResult) {
@@ -427,7 +438,7 @@ final class CaptureWindowController {
       mediaDisplayMode.clearSelection()
     }
     if !devices.isEmpty {
-      startPreloadConsumptionIfNeeded()
+      startInitialCaptureIfNeeded()
     }
     Task { @MainActor [weak self] in
       guard let self else { return }
@@ -440,38 +451,18 @@ final class CaptureWindowController {
     }
   }
 
-  private func startPreloadConsumptionIfNeeded() {
-    guard !isPreloadConsumptionActive else { return }
-    guard !hasAttemptedInitialPreload else { return }
+  private func startInitialCaptureIfNeeded() {
+    guard !hasStartedInitialCapture else { return }
     guard mediaList.isEmpty else { return }
     guard case .idle = mode else { return }
-    isPreloadConsumptionActive = true
-    hasAttemptedInitialPreload = true
-    let preloadMode = CheckPreloadMode(
-      screenshotService: screenshotService,
-      devices: knownDevices
-    ) { [weak self] outcome in
-      guard let self, !isTornDown else { return }
-      guard case .checkingPreload = mode else { return }
-      isPreloadConsumptionActive = false
-      switch outcome {
-      case .found(let media):
-        applyPreloadedMedia(media)
-        isProcessing = false
-      case .missing:
-        Task { [weak self] in
-          await self?.captureScreenshots()
-        }
+    hasStartedInitialCapture = true
+    Task { [weak self] in
+      guard let self, !isTornDown, case .idle = mode else { return }
+      switch AppSettings.shared.startupCaptureMode {
+      case .livePreview: await startLivePreview(useStartupPreparation: true)
+      case .screenshot: await captureScreenshots(useStartupPreparation: true)
       }
     }
-    mode = .checkingPreload(preloadMode)
-    preloadMode.start()
-  }
-
-  private func cancelPreloadConsumptionIfNeeded() {
-    guard case .checkingPreload(let preloadMode) = mode else { return }
-    preloadMode.cancel()
-    isPreloadConsumptionActive = false
   }
 
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {

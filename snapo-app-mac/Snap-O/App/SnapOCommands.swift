@@ -129,6 +129,11 @@ struct SnapOCommands: Commands {
       .disabled(!hasAlternativeMedia)
       Divider()
       @Bindable var settings = settings
+      Picker("Start With", selection: $settings.startupCaptureMode) {
+        ForEach(StartupCaptureMode.allCases) { mode in
+          Text(mode.title).tag(mode)
+        }
+      }
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }

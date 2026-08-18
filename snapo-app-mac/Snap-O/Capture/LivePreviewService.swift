@@ -1,6 +1,6 @@
 import Foundation
 
-struct LivePreviewOptions {
+struct LivePreviewOptions: Equatable {
   let showsTouches: Bool
 }
 

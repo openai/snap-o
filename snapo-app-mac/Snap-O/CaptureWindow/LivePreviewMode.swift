@@ -11,6 +11,7 @@ final class LivePreviewMode {
   private let mediaDisplayMode: MediaDisplayMode
   private let preferredDeviceIDProvider: @MainActor () -> String?
   private let onMediaApplied: @MainActor () -> Void
+  private var preparedLivePreview: PreparedLivePreview?
   private var manager: LivePreviewManager?
   @ObservationIgnored private var stopTask: Task<Void, Never>?
   private(set) var isStopping: Bool = false
@@ -19,6 +20,7 @@ final class LivePreviewMode {
     livePreviewService: LivePreviewService,
     adbService: ADBService,
     options: LivePreviewOptions,
+    preparedLivePreview: PreparedLivePreview? = nil,
     mediaDisplayMode: MediaDisplayMode,
     preferredDeviceIDProvider: @escaping @MainActor () -> String?,
     onMediaApplied: @escaping @MainActor () -> Void
@@ -26,6 +28,7 @@ final class LivePreviewMode {
     self.livePreviewService = livePreviewService
     self.adbService = adbService
     self.options = options
+    self.preparedLivePreview = preparedLivePreview
     self.mediaDisplayMode = mediaDisplayMode
     self.preferredDeviceIDProvider = preferredDeviceIDProvider
     self.onMediaApplied = onMediaApplied
@@ -36,7 +39,8 @@ final class LivePreviewMode {
     let manager = LivePreviewManager(
       livePreviewService: livePreviewService,
       adbService: adbService,
-      options: options
+      options: options,
+      preparedLivePreview: preparedLivePreview
     ) { [weak self] media in
       guard let self else { return }
       let preferredDeviceID = preferredDeviceIDProvider()
@@ -47,6 +51,7 @@ final class LivePreviewMode {
       )
       onMediaApplied()
     }
+    preparedLivePreview = nil
     self.manager = manager
     await manager.start(with: devices)
   }
@@ -74,8 +79,11 @@ final class LivePreviewMode {
 
     isStopping = true
     let activeManager = manager
+    let prepared = preparedLivePreview
+    preparedLivePreview = nil
     manager = nil
     let task = Task {
+      await prepared?.discard()
       if let activeManager {
         await activeManager.stop()
       }
