@@ -34,7 +34,7 @@ export const RecordList = memo(function RecordList({
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const selectedIndex = records.findIndex((record) => recordId(record) === selectedRecordId);
-  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [menu, setMenu] = useState<(ContextMenuState & { keyboard: boolean }) | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
   const selectRecord = useCallback(
     (id: string) => {
@@ -44,16 +44,42 @@ export const RecordList = memo(function RecordList({
     },
     [onSelect]
   );
+  const openContextMenu = useCallback(
+    (record: InspectorRecord, x: number, y: number, keyboard: boolean) => {
+      selectRecord(recordId(record));
+      setMenu({
+        x,
+        y,
+        keyboard,
+        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client)
+      });
+    },
+    [allRecords, client, selectRecord, selectedRecordId]
+  );
+  const openActiveContextMenu = () => {
+    const record = records[selectedIndex];
+    const row = listRef.current?.children.item(selectedIndex);
+    if (record == null || row == null) return false;
+    row.scrollIntoView({ block: "nearest" });
+    const { left, bottom } = row.getBoundingClientRect();
+    openContextMenu(record, left, bottom, true);
+    return true;
+  };
+  const closeContextMenu = () => {
+    setMenu(null);
+    listRef.current?.focus({ preventScroll: true });
+  };
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (
-      event.defaultPrevented ||
-      event.nativeEvent.isComposing ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.shiftKey
-    )
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey)
       return;
+    if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+      if (openActiveContextMenu()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+    if (event.shiftKey) return;
     if (records.length === 0) return;
 
     let nextIndex: number;
@@ -81,16 +107,11 @@ export const RecordList = memo(function RecordList({
   };
   const handleContextMenu = useCallback(
     (record: InspectorRecord, event: MouseEvent) => {
-      const id = recordId(record);
       event.preventDefault();
-      selectRecord(id);
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client)
-      });
+      event.stopPropagation();
+      openContextMenu(record, event.clientX, event.clientY, false);
     },
-    [allRecords, client, selectRecord, selectedRecordId]
+    [openContextMenu]
   );
 
   useEffect(() => {
@@ -116,6 +137,12 @@ export const RecordList = memo(function RecordList({
         aria-activedescendant={selectedIndex < 0 ? undefined : `${listId}-${selectedIndex}`}
         tabIndex={0}
         onKeyDown={handleKeyDown}
+        onContextMenu={(event) => {
+          if (event.target === event.currentTarget && openActiveContextMenu()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         onScroll={(event) => handleRecordListScroll(event, setShowTopFade)}
       >
         {records.map((record, index) => {
@@ -134,7 +161,7 @@ export const RecordList = memo(function RecordList({
         })}
       </div>
       <div className={showTopFade ? "record-list-top-fade visible" : "record-list-top-fade"} />
-      {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {menu == null ? null : <ContextMenu menu={menu} autoFocus={menu.keyboard} onClose={closeContextMenu} />}
     </div>
   );
 });
