@@ -20,6 +20,7 @@ import type {
   TweakUpdates,
   UpdateTweaksInput
 } from "./bridge-types";
+import { inspectorProcessId } from "./inspector-process";
 
 export interface NativeColorPanelChange {
   color: string;
@@ -256,7 +257,7 @@ class HttpNetworkClient implements NetworkClient {
     } catch {
       const servers = await this.listServers();
       return servers.map((server) => ({
-        id: `${server.deviceId}:${server.packageName ?? server.displayName}`,
+        id: inspectorProcessId("network", server),
         name: server.appName || server.displayName,
         packageName: server.packageName ?? server.displayName,
         deviceId: server.deviceId,
@@ -265,7 +266,8 @@ class HttpNetworkClient implements NetworkClient {
         inspectors: [
           {
             kind: "network" as const,
-            server: { deviceId: server.deviceId, socketName: server.socketName }
+            server: { deviceId: server.deviceId, socketName: server.socketName },
+            protocolVersion: server.protocolVersion
           }
         ]
       }));

@@ -8,7 +8,7 @@ Use the dependency-free Snap-O CLI when a terminal, Codex agent, test script, or
 
 ## Snap-O macOS app: an existing desktop inspector
 
-Choose the Snap-O macOS app when someone wants an existing graphical inspector. Its app picker discovers connected devices and `snapo_tweaks_<pid>` servers, identifies each app through `/app`, and combines the Network and Tweaks inspector choices when one app supports both. The Tweaks inspector displays live values and app-owned actions, streams changes, edits typed controls, invokes available action buttons, and supports resetting value changes. Conflicting actions are visible but cannot be invoked.
+Choose the Snap-O macOS app when someone wants an existing graphical inspector. Its app picker groups Network and Tweaks sockets by device and PID before app metadata loads, then fills in the best available name and icon. Each process has one row; click a trailing inspector icon to open it directly, or click the row to keep the current inspector type when available. The Tweaks inspector displays live values and app-owned actions, streams changes, edits typed controls, invokes available action buttons, and supports resetting value changes. Conflicting actions are visible but cannot be invoked.
 
 The macOS app manages ADB forwarding and streaming itself. It is an existing interaction option, not a required proxy, dependency, or prerequisite for the standalone CLI and REST protocol.
 

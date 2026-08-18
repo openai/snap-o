@@ -10,6 +10,15 @@ Snap-O is a fast, tidy macOS app for Android inspection. Originally built for st
 
 It runs on macOS 15 or later and requires `adb` from the Android Platform Tools.
 
+## App Inspector
+
+The app picker shows one row per running app process. Click the row to keep your current inspector type when available, or click a Network or Tweaks icon on the right to open that inspector directly. You can also switch inspectors beside the selected app in the toolbar.
+
+<p>
+  <img src=".github/app-inspector-demo.png" width="360" alt="App picker with a leading selection checkmark and Network and Tweaks shortcuts">
+  <br><em>Native picker rendered with synthetic demo data.</em>
+</p>
+
 ## Network Inspector
 
 Curious about mirroring app traffic into the macOS client? Check the [Network Inspector guide](https://openai.github.io/snap-o/network-inspector.html) for setup steps, dependency coordinates, and configuration tips.

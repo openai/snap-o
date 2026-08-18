@@ -4,12 +4,12 @@ import SnapODeviceClient
 actor TweaksInspectorService {
   struct App {
     let deviceID: String
-    let deviceDisplayTitle: String
+    var deviceDisplayTitle: String
     let socketName: String
-    let name: String
-    let packageName: String
-    let protocolVersion: Int
-    let appIconBase64: String?
+    var name: String?
+    var packageName: String?
+    var protocolVersion: Int?
+    var appIconBase64: String?
   }
 
   private struct AppInfo: Decodable {
@@ -23,9 +23,12 @@ actor TweaksInspectorService {
   }
 
   private struct Connection {
-    let app: App
+    let id: UUID
+    var app: App
     let forward: ADBForwardHandle
     let baseURL: URL
+    var hasLoadedIcon = false
+    var metadataTask: Task<Void, Never>?
   }
 
   private static let socketPrefix = "snapo_tweaks_"
@@ -34,7 +37,8 @@ actor TweaksInspectorService {
   private let adbService: ADBService
   private let deviceTracker: DeviceTracker
   private var connections: [String: Connection] = [:]
-  private var connectingKeys = Set<String>()
+  private var refreshTask: Task<Void, Never>?
+  private var isStopped = false
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -42,13 +46,35 @@ actor TweaksInspectorService {
   }
 
   func listApps() async -> [App] {
+    guard !isStopped else { return [] }
+    if let refreshTask {
+      await refreshTask.value
+    } else {
+      let task = Task<Void, Never> { [weak self] in
+        await self?.refreshNow()
+      }
+      refreshTask = task
+      await task.value
+      refreshTask = nil
+    }
+
+    return connections.values.map(\.app).sorted {
+      if $0.deviceID != $1.deviceID {
+        return $0.deviceID < $1.deviceID
+      }
+      return $0.socketName < $1.socketName
+    }
+  }
+
+  private func refreshNow() async {
     let devices = await deviceTracker.latestDevices
     let adb = await adbService.exec()
     var activeKeys = Set<String>()
 
     await withTaskGroup(of: Void.self) { group in
       for device in devices {
-        guard let output = try? await adb.listUnixSockets(deviceID: device.id) else {
+        guard !Task.isCancelled, !isStopped,
+              let output = try? await adb.listUnixSockets(deviceID: device.id) else {
           continue
         }
 
@@ -56,7 +82,11 @@ actor TweaksInspectorService {
           let key = Self.connectionKey(deviceID: device.id, socketName: socketName)
           activeKeys.insert(key)
 
-          if connections[key] == nil {
+          if var connection = connections[key] {
+            connection.app.deviceDisplayTitle = device.displayTitle
+            connections[key] = connection
+            populateMetadata(for: key)
+          } else {
             group.addTask {
               await self.connect(
                 deviceID: device.id,
@@ -70,19 +100,14 @@ actor TweaksInspectorService {
       }
     }
 
+    guard !Task.isCancelled, !isStopped else { return }
     let removedKeys = connections.keys.filter { !activeKeys.contains($0) }
     for key in removedKeys {
       guard let connection = connections.removeValue(forKey: key) else {
         continue
       }
+      connection.metadataTask?.cancel()
       await adb.removeForward(connection.forward)
-    }
-
-    return connections.values.map(\.app).sorted {
-      if $0.deviceID != $1.deviceID {
-        return $0.deviceID < $1.deviceID
-      }
-      return $0.packageName < $1.packageName
     }
   }
 
@@ -138,6 +163,13 @@ actor TweaksInspectorService {
   }
 
   func stop() async {
+    guard !isStopped else { return }
+    isStopped = true
+    refreshTask?.cancel()
+    refreshTask = nil
+    for connection in connections.values {
+      connection.metadataTask?.cancel()
+    }
     let adb = await adbService.exec()
     let forwards = connections.values.map(\.forward)
     connections.removeAll()
@@ -154,10 +186,9 @@ actor TweaksInspectorService {
     using adb: ADBClient
   ) async {
     let key = Self.connectionKey(deviceID: deviceID, socketName: socketName)
-    guard connections[key] == nil, connectingKeys.insert(key).inserted else {
+    guard !Task.isCancelled, !isStopped, connections[key] == nil else {
       return
     }
-    defer { connectingKeys.remove(key) }
 
     var forward: ADBForwardHandle?
 
@@ -168,27 +199,22 @@ actor TweaksInspectorService {
       )
       forward = handle
 
+      guard !Task.isCancelled, !isStopped else {
+        await adb.removeForward(handle)
+        return
+      }
+
       guard let baseURL = URL(string: "http://127.0.0.1:\(handle.port)/") else {
         throw NetworkInspectorError.invalidBridgeMessage
       }
 
-      let info = try await load(
-        AppInfo.self,
-        path: "app",
-        baseURL: baseURL,
-        timeoutInterval: Self.discoveryRequestTimeout
-      )
-      let iconData = await loadIcon(baseURL: baseURL)
       let app = App(
         deviceID: deviceID,
         deviceDisplayTitle: deviceDisplayTitle,
-        socketName: socketName,
-        name: info.name,
-        packageName: info.packageName,
-        protocolVersion: info.protocolVersion ?? 1,
-        appIconBase64: iconData?.base64EncodedString()
+        socketName: socketName
       )
-      connections[key] = Connection(app: app, forward: handle, baseURL: baseURL)
+      connections[key] = Connection(id: UUID(), app: app, forward: handle, baseURL: baseURL)
+      populateMetadata(for: key)
     } catch {
       if let forward {
         await adb.removeForward(forward)
@@ -196,19 +222,59 @@ actor TweaksInspectorService {
     }
   }
 
-  private func loadIcon(baseURL: URL) async -> Data? {
+  private func populateMetadata(for key: String) {
+    guard let connection = connections[key],
+          connection.app.protocolVersion == nil || !connection.hasLoadedIcon,
+          connection.metadataTask == nil else { return }
+    connections[key]?.metadataTask = Task { [weak self] in
+      await self?.loadMetadata(for: key, connectionID: connection.id)
+    }
+  }
+
+  private func loadMetadata(for key: String, connectionID: UUID) async {
+    defer {
+      if connections[key]?.id == connectionID {
+        connections[key]?.metadataTask = nil
+      }
+    }
+    guard let connection = connections[key], connection.id == connectionID else { return }
+
+    if connection.app.protocolVersion == nil,
+       let info = try? await load(
+         AppInfo.self,
+         path: "app",
+         baseURL: connection.baseURL,
+         timeoutInterval: Self.discoveryRequestTimeout
+       ),
+       !Task.isCancelled,
+       var current = connections[key], current.id == connectionID {
+      current.app.name = info.name
+      current.app.packageName = info.packageName
+      current.app.protocolVersion = info.protocolVersion ?? 1
+      connections[key] = current
+    }
+
+    guard !Task.isCancelled, !connection.hasLoadedIcon else { return }
+    do {
+      let icon = try await loadIcon(baseURL: connection.baseURL)
+      guard !Task.isCancelled,
+            var current = connections[key], current.id == connectionID else { return }
+      current.app.appIconBase64 = icon?.base64EncodedString()
+      current.hasLoadedIcon = true
+      connections[key] = current
+    } catch {
+      // Retry transient failures on the next discovery refresh.
+    }
+  }
+
+  private func loadIcon(baseURL: URL) async throws -> Data? {
     let request = URLRequest(
       url: baseURL.appending(path: "app/icon"),
       timeoutInterval: Self.discoveryRequestTimeout
     )
-    guard let (data, response) = try? await URLSession.shared.data(
-      for: request
-    ),
-      let httpResponse = response as? HTTPURLResponse,
-      (200 ... 299).contains(httpResponse.statusCode)
-    else {
-      return nil
-    }
+    let (data, response) = try await URLSession.shared.data(for: request)
+    if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
+    try Self.validate(response, data: data)
     return data
   }
 
@@ -260,7 +326,7 @@ actor TweaksInspectorService {
         return nil
       }
       let name = String(socket.dropFirst())
-      guard Int(name.dropFirst(socketPrefix.count)) != nil else {
+      guard InspectorKind.tweaks.pid(inSocketName: name) != nil else {
         return nil
       }
       return name

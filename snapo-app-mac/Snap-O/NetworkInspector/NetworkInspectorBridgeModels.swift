@@ -1,15 +1,8 @@
 import Foundation
 import SnapODeviceClient
 
-enum AppInspectorKind: String, Codable {
-  case network
-  case tweaks
-}
-
-struct InspectorServerReference: Codable, Hashable {
-  let deviceId: String
-  let socketName: String
-}
+typealias AppInspectorKind = InspectorKind
+typealias InspectorServerReference = NetworkServerReference
 
 struct AppInspectorOption: Codable, Identifiable {
   let kind: AppInspectorKind
@@ -243,7 +236,6 @@ extension NetworkRequestBodies: Sendable {}
 extension NetworkStreamStarted: Sendable {}
 extension NetworkStreamEvent: Sendable {}
 extension NetworkStreamStatus: Sendable {}
-extension InspectorServerReference: Sendable {}
 extension TweakValue: Sendable {}
 extension TweakDescriptor: Sendable {}
 extension TweakList: Sendable {}

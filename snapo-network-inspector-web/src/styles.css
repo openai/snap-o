@@ -1230,9 +1230,7 @@ pre {
 }
 
 .inspector-app-picker-name,
-.inspector-app-picker-device,
-.inspector-app-heading-name,
-.inspector-app-heading-device {
+.inspector-app-picker-device {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1294,7 +1292,7 @@ pre {
   z-index: 20;
   top: 100%;
   left: 0;
-  width: min(320px, calc(100vw - 24px));
+  width: min(380px, calc(100vw - 24px));
   max-height: 320px;
   overflow-y: auto;
   border: 1px solid var(--outline);
@@ -1302,63 +1300,66 @@ pre {
   padding: 4px;
 }
 
-.inspector-app-group + .inspector-app-group {
-  border-top: 1px solid var(--outline-variant);
-  margin-top: 4px;
-  padding-top: 4px;
-}
-
-.inspector-app-heading {
-  display: flex;
-  height: 30px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 7px;
-}
-
-.inspector-app-heading-name {
-  min-width: 0;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 16px;
-}
-
-.inspector-app-heading-device {
-  min-width: 0;
-  margin-left: auto;
-  color: var(--on-surface-variant);
-  font-size: 10px;
-  line-height: 16px;
+.inspector-app-row {
+  position: relative;
+  border-radius: 4px;
 }
 
 .inspector-app-option {
   display: flex;
   width: 100%;
-  height: 38px;
+  min-height: 48px;
   align-items: center;
   gap: 9px;
   border: 0;
   border-radius: 4px;
   background: transparent;
-  padding: 0 8px 0 24px;
+  padding: 7px 8px;
   color: var(--on-surface);
   text-align: left;
   font-size: 12px;
 }
 
-.inspector-app-option:hover,
-.inspector-app-option:focus-visible,
-.inspector-app-option[data-selected="true"] {
+.inspector-app-row:hover,
+.inspector-app-row:focus-within,
+.inspector-app-row[data-selected="true"] {
   background: color-mix(in srgb, var(--on-surface) 7%, transparent);
 }
 
 .inspector-app-option-check {
-  margin-left: auto;
+  flex: none;
   opacity: 0;
 }
 
-.inspector-app-option[data-selected="true"] .inspector-app-option-check {
+.inspector-app-row[data-selected="true"] .inspector-app-option-check {
   opacity: 1;
+}
+
+.inspector-app-shortcuts {
+  position: absolute;
+  inset: 0 8px 0 auto;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.inspector-app-shortcut {
+  display: grid;
+  width: 28px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0;
+  color: var(--on-surface-variant);
+  pointer-events: auto;
+}
+
+.inspector-app-shortcut:hover,
+.inspector-app-shortcut:focus-visible {
+  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  color: var(--on-surface);
 }
 
 .tweaks-inspector {

@@ -42,12 +42,11 @@ struct AppInspectorPicker: View {
     .buttonStyle(.plain)
     .fixedSize()
     .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-      AppInspectorPickerPopover(model: model) { app, option in
-        model.selectInspector(app, option: option)
+      AppInspectorPickerPopover(model: model) {
         isPresented = false
       }
     }
-    .help("Select an app and inspector")
+    .help("Select an app")
   }
 
   private var selectedTitle: String {
@@ -97,11 +96,11 @@ private struct AppInspectorPickerPopover: View {
   private enum Metrics {
     static let minimumWidth: CGFloat = 320
     static let maximumWidth: CGFloat = 480
-    static let nonTextWidth: CGFloat = 160
+    static let nonTextWidth: CGFloat = 103
   }
 
   @Bindable var model: NetworkInspectorHostModel
-  let selectInspector: (InspectableApp, AppInspectorOption) -> Void
+  let dismiss: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -115,17 +114,18 @@ private struct AppInspectorPickerPopover: View {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(model.inspectorApps) { app in
-              ForEach(app.inspectors) { option in
-                AppInspectorPickerOptionRow(
-                  app: app,
-                  option: option,
-                  isSelected: model.selectedInspector?.appId == app.id
-                    && model.selectedInspector?.kind == option.kind
-                    && model.selectedInspector?.server == option.server
-                ) {
-                  selectInspector(app, option)
+              AppInspectorPickerAppRow(
+                app: app,
+                isSelected: model.selectedInspector?.appId == app.id,
+                selectApp: {
+                  model.selectApp(app)
+                  dismiss()
+                },
+                selectInspector: { option in
+                  model.selectInspector(app, option: option)
+                  dismiss()
                 }
-              }
+              )
             }
           }
           .padding(6)
@@ -140,15 +140,11 @@ private struct AppInspectorPickerPopover: View {
   private var preferredWidth: CGFloat {
     let appFont = NSFont.systemFont(ofSize: 12, weight: .medium)
     let deviceFont = NSFont.systemFont(ofSize: 12)
-    let inspectorFont = NSFont.systemFont(ofSize: 11)
-    let contentWidth = model.inspectorApps.flatMap { app in
-      let appWidth = max(
+    let contentWidth = model.inspectorApps.map { app in
+      max(
         textWidth(app.name, font: appFont),
         textWidth(app.deviceDisplayTitle, font: deviceFont)
-      )
-      return app.inspectors.map { option in
-        appWidth + textWidth(option.kind.title, font: inspectorFont) + Metrics.nonTextWidth
-      }
+      ) + Metrics.nonTextWidth + CGFloat(app.inspectors.count) * AppInspectorPickerAppRow.shortcutWidth
     }.max() ?? Metrics.minimumWidth
 
     return min(max(ceil(contentWidth), Metrics.minimumWidth), Metrics.maximumWidth)
@@ -159,17 +155,24 @@ private struct AppInspectorPickerPopover: View {
   }
 }
 
-private struct AppInspectorPickerOptionRow: View {
+private struct AppInspectorPickerAppRow: View {
+  static let shortcutWidth: CGFloat = 28
+
   let app: InspectableApp
-  let option: AppInspectorOption
   let isSelected: Bool
-  let select: () -> Void
+  let selectApp: () -> Void
+  let selectInspector: (AppInspectorOption) -> Void
 
   @State private var isHovering = false
 
   var body: some View {
-    Button(action: select) {
+    Button(action: selectApp) {
       HStack(spacing: 10) {
+        Image(systemName: "checkmark")
+          .font(.system(size: 11, weight: .semibold))
+          .frame(width: 15)
+          .opacity(isSelected ? 1 : 0)
+
         AppInspectorIcon(app: app, size: 32, statusSize: 0)
 
         AppInspectorPickerText(
@@ -177,16 +180,7 @@ private struct AppInspectorPickerOptionRow: View {
           deviceName: app.deviceDisplayTitle
         )
 
-        Spacer(minLength: 8)
-
-        Label(option.kind.title, systemImage: option.kind.systemImage)
-          .font(.system(size: 11))
-          .foregroundStyle(.secondary)
-          .fixedSize()
-
-        Image(systemName: "checkmark")
-          .font(.system(size: 11, weight: .semibold))
-          .opacity(isSelected ? 1 : 0)
+        Spacer(minLength: CGFloat(app.inspectors.count) * Self.shortcutWidth + 8)
       }
       .padding(.horizontal, 8)
       .frame(height: 52)
@@ -199,7 +193,50 @@ private struct AppInspectorPickerOptionRow: View {
       }
     }
     .buttonStyle(.plain)
+    .disabled(app.inspectors.isEmpty)
     .help(app.packageName)
+    .overlay(alignment: .trailing) {
+      HStack(spacing: 0) {
+        ForEach(app.inspectors) { option in
+          AppInspectorPickerShortcut(
+            option: option,
+            appName: app.name
+          ) {
+            selectInspector(option)
+          }
+        }
+      }
+      .padding(.trailing, 8)
+    }
+    .onHover { isHovering = $0 }
+  }
+}
+
+private struct AppInspectorPickerShortcut: View {
+  let option: AppInspectorOption
+  let appName: String
+  let select: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: select) {
+      Label(option.kind.title, systemImage: option.kind.systemImage)
+        .labelStyle(.iconOnly)
+        .font(.system(size: 13))
+        .foregroundStyle(.secondary)
+        .frame(width: AppInspectorPickerAppRow.shortcutWidth, height: 32)
+        .contentShape(Rectangle())
+        .background {
+          if isHovering {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+              .fill(Color.primary.opacity(0.08))
+          }
+        }
+    }
+    .buttonStyle(.plain)
+    .help("Open \(option.kind.title)")
+    .accessibilityLabel("Open \(option.kind.title) for \(appName)")
     .onHover { isHovering = $0 }
   }
 }
