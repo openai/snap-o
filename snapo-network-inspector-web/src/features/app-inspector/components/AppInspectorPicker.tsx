@@ -1,21 +1,29 @@
 import { Check, ChevronDown, Network, SlidersHorizontal } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { AppInspectorOption, InspectableApp, SelectedAppInspector } from "../../../network/bridge-types";
-import { preferredInspector } from "../selection";
+import type {
+  AppInspectorKind,
+  AppInspectorOption,
+  InspectableApp,
+  SelectedAppInspector
+} from "../../../network/bridge-types";
 
 export function AppInspectorPicker({
   apps,
   selection,
+  selectedApp: rememberedApp,
+  preferredKind,
   onSelect
 }: {
   apps: InspectableApp[];
   selection: SelectedAppInspector | null;
-  onSelect(app: InspectableApp, option: AppInspectorOption): void;
+  selectedApp?: InspectableApp | null;
+  preferredKind?: AppInspectorKind | null;
+  onSelect(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
-  const selectedApp = apps.find((app) => app.id === selection?.appId);
+  const selectedApp = rememberedApp ?? apps.find((app) => app.id === selection?.appId);
 
   useEffect(() => {
     if (!expanded) return;
@@ -71,7 +79,14 @@ export function AppInspectorPicker({
         ) : null}
       </div>
 
-      {selectedApp ? <AppInspectorViewPicker app={selectedApp} selection={selection} onSelect={onSelect} /> : null}
+      {selectedApp ? (
+        <AppInspectorViewPicker
+          app={selectedApp}
+          selection={selection}
+          preferredKind={preferredKind}
+          onSelect={onSelect}
+        />
+      ) : null}
     </div>
   );
 }
@@ -79,25 +94,27 @@ export function AppInspectorPicker({
 export function AppInspectorViewPicker({
   app,
   selection,
+  preferredKind,
   onSelect
 }: {
   app: InspectableApp;
   selection: SelectedAppInspector | null;
-  onSelect(app: InspectableApp, option: AppInspectorOption): void;
+  preferredKind?: AppInspectorKind | null;
+  onSelect(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element | null {
-  if (app.inspectors.length < 2) return null;
+  if (app.inspectors.length === 0 || (app.inspectors.length < 2 && selection != null)) return null;
 
   return (
     <div className="inspector-app-segments" role="radiogroup" aria-label="Inspector">
       {app.inspectors.map((option) => {
-        const selected = selection?.appId === app.id && selection.kind === option.kind;
+        const selected = (preferredKind ?? (selection?.appId === app.id ? selection.kind : null)) === option.kind;
         const title = option.kind === "network" ? "Network" : "Tweaks";
         const Icon = option.kind === "network" ? Network : SlidersHorizontal;
 
         return (
           <button
             className="inspector-app-segment"
-            key={`${option.kind}:${option.server.socketName}`}
+            key={option.kind}
             type="button"
             role="radio"
             aria-label={title}
@@ -122,12 +139,12 @@ export function AppInspectorMenu({
   id?: string;
   apps: InspectableApp[];
   selection: SelectedAppInspector | null;
-  onSelect(app: InspectableApp, option: AppInspectorOption): void;
+  onSelect(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
   return (
     <div className="inspector-app-menu" id={id} role="menu" aria-label="Apps">
       {apps.map((app) => {
-        const option = preferredInspector(app, selection);
+        const option = app.inspectors[0];
         const selected = selection?.appId === app.id;
 
         return (
@@ -142,7 +159,7 @@ export function AppInspectorMenu({
               title={app.packageName}
               disabled={!option}
               onClick={() => {
-                if (option) onSelect(app, option);
+                if (option) onSelect(app);
               }}
             >
               <Check className="inspector-app-option-check" size={15} aria-hidden="true" />

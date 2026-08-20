@@ -5,6 +5,24 @@ import type { InspectableApp, SelectedAppInspector } from "../../../network/brid
 import { AppInspectorMenu, AppInspectorPicker, AppInspectorViewPicker } from "./AppInspectorPicker";
 
 describe("app-first inspector menu", () => {
+  it("keeps the remembered inspector controls visible offline without a spinner", () => {
+    const markup = renderToStaticMarkup(
+      <AppInspectorPicker apps={[]} selection={null} selectedApp={apps[0]} preferredKind="tweaks" onSelect={vi.fn()} />
+    );
+    expect(markup).not.toContain("body-loading-spinner");
+    expect(markup).toContain('aria-label="Network" aria-checked="false"');
+    expect(markup).toContain('aria-label="Tweaks" aria-checked="true"');
+    expect(markup).toContain(apps[0].name);
+  });
+
+  it("uses cached types instead of a partial live app in the toolbar", () => {
+    const partial = { ...apps[0], inspectors: [apps[0].inspectors[1]] };
+    const markup = renderToStaticMarkup(
+      <AppInspectorPicker apps={[partial]} selection={selection} selectedApp={apps[0]} onSelect={vi.fn()} />
+    );
+    expect(markup).toContain('aria-label="Network"');
+    expect(markup).toContain('aria-label="Tweaks"');
+  });
   it("shows one selectable row per app without separate inspector rows", () => {
     const markup = renderToStaticMarkup(<AppInspectorMenu apps={apps} selection={selection} onSelect={vi.fn()} />);
 
@@ -56,24 +74,24 @@ describe("app-first inspector menu", () => {
     }
   });
 
-  it("keeps the inspector kind when the app row is clicked", () => {
+  it("delegates an app-row choice to the selection owner", () => {
     const onSelect = vi.fn();
     const otherAppSelection = { appId: apps[1].id, ...apps[1].inspectors[0] };
     const buttons = menuButtons(AppInspectorMenu({ apps, selection: otherAppSelection, onSelect }));
 
     buttons.get("ChatGPT, Pixel 9 Pro XL")!();
 
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith(apps[0], apps[0].inspectors[1]);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(apps[0]);
   });
 
-  it("falls back to the first available inspector when the app row is clicked", () => {
+  it("delegates a single-inspector app choice to the selection owner", () => {
     const onSelect = vi.fn();
     const networkSelection = { appId: apps[0].id, ...apps[0].inspectors[0] };
     const buttons = menuButtons(AppInspectorMenu({ apps, selection: networkSelection, onSelect }));
 
     buttons.get("Snap-O Tweaks Demo, Android Emulator")!();
 
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith(apps[1], apps[1].inspectors[0]);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(apps[1]);
   });
 
   it("checks only the selected app", () => {

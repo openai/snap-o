@@ -138,7 +138,7 @@ struct CaptureToolbar: View {
 
         if let networkModel {
           HStack(spacing: 8) {
-            if networkModel.selectedInspector?.kind == .tweaks {
+            if networkModel.preferredInspectorKind == .tweaks {
               tweaksInspectorControls(model: networkModel)
             } else {
               NetworkInspectorToolbarControls(
@@ -154,7 +154,7 @@ struct CaptureToolbar: View {
 
         Spacer()
 
-        if let networkModel, networkModel.selectedInspector?.kind != .tweaks {
+        if let networkModel, networkModel.preferredInspectorKind != .tweaks {
           NetworkInspectorExportMenu(model: networkModel)
         }
 

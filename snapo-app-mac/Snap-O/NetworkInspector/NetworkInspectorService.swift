@@ -43,10 +43,7 @@ actor NetworkInspectorService {
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
     self.deviceTracker = deviceTracker
-    tweaksService = TweaksInspectorService(
-      adbService: adbService,
-      deviceTracker: deviceTracker
-    )
+    tweaksService = TweaksInspectorService(adbService: adbService)
   }
 
   func outputStream() -> AsyncStream<NetworkInspectorOutput> {
@@ -70,9 +67,9 @@ actor NetworkInspectorService {
   }
 
   func listInspectorApps() async -> [InspectableApp] {
-    async let networkServers = listServers()
-    async let tweakApps = tweaksService.listApps()
-    let networkEndpoints = await networkServers.map { server in
+    await refresh()
+    let tweakApps = await tweaksService.currentApps()
+    let networkEndpoints = currentServers().map { server in
       InspectorEndpoint(
         kind: .network,
         reference: NetworkServerReference(
@@ -82,14 +79,14 @@ actor NetworkInspectorService {
         deviceDisplayTitle: server.deviceDisplayTitle,
         protocolVersion: server.protocolVersion,
         metadata: InspectorAppMetadata(
-          processName: server.appName,
+          processName: server.appName ?? server.packageName,
           packageName: server.hasAppInfo ? server.packageName : nil,
           packageNameHint: server.packageName,
           appIconBase64: server.appIconBase64
         )
       )
     }
-    let tweakEndpoints = await tweakApps.map { app in
+    let tweakEndpoints = tweakApps.map { app in
       InspectorEndpoint(
         kind: .tweaks,
         reference: NetworkServerReference(
@@ -100,6 +97,7 @@ actor NetworkInspectorService {
         protocolVersion: app.protocolVersion,
         metadata: InspectorAppMetadata(
           appName: app.name,
+          processName: app.processName,
           packageName: app.packageName,
           appIconBase64: app.appIconBase64
         )
@@ -110,6 +108,7 @@ actor NetworkInspectorService {
         id: process.id,
         name: process.name,
         packageName: process.metadata.packageName ?? process.metadata.packageNameHint ?? process.name,
+        processName: process.metadata.processName ?? process.metadata.packageNameHint,
         deviceId: process.deviceId,
         deviceDisplayTitle: process.deviceDisplayTitle,
         appIconBase64: process.metadata.appIconBase64,
@@ -409,12 +408,16 @@ actor NetworkInspectorService {
   private func refreshNow() async {
     let devices = await deviceTracker.latestDevices
     let adb = await adbService.exec()
-    let references = await NetworkServerDiscovery.discover(
+    let sockets = await InspectorDiscovery.discover(
       on: devices.map(\.id),
       using: adb
     )
     guard !Task.isCancelled, !isStopped else { return }
 
+    let references = sockets.filter { $0.kind == .network }.map(\.reference)
+    async let refreshedTweaks: Void = tweaksService.refresh(
+      devices: devices, references: sockets.filter { $0.kind == .tweaks }.map(\.reference), using: adb
+    )
     let devicesByID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
     let seenKeys = Set(references.map(\.key))
     for reference in references {
@@ -433,6 +436,7 @@ actor NetworkInspectorService {
     for key in removedKeys {
       await removeServer(key, message: nil)
     }
+    await refreshedTweaks
   }
 
   private func connect(
@@ -473,7 +477,7 @@ actor NetworkInspectorService {
         appInfo: nil,
         packageNameHint: nil
       )
-      populatePackageNameHint(reference: reference, connectionID: connectionID, using: adb)
+      await populatePackageNameHint(reference: reference, connectionID: connectionID, using: adb)
     } catch {
       return
     }
@@ -483,21 +487,9 @@ actor NetworkInspectorService {
     reference: NetworkServerReference,
     connectionID: UUID,
     using adb: ADBClient
-  ) {
-    Task { [weak self] in
-      guard let packageName = await NetworkServerDiscovery.packageNameHint(
-        for: reference,
-        using: adb
-      )
-      else {
-        return
-      }
-      await self?.setPackageNameHint(
-        packageName,
-        reference: reference,
-        connectionID: connectionID
-      )
-    }
+  ) async {
+    guard let packageName = await NetworkServerDiscovery.packageNameHint(for: reference, using: adb) else { return }
+    setPackageNameHint(packageName, reference: reference, connectionID: connectionID)
   }
 
   private func setPackageNameHint(

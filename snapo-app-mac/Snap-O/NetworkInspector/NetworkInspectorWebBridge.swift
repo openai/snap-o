@@ -14,7 +14,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   private weak static var colorPanelOwner: NetworkInspectorWebBridge?
 
   var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
-  var inspectorAppsChangedHandler: (([InspectableApp]) -> Void)?
+  var appInspectorStateChangedHandler: ((AppInspectorState) -> Void)?
   var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
   var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
 
@@ -72,9 +72,16 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "listServers":
       return try await Self.jsonObject(service.listServers())
     case "listInspectorApps":
-      let apps = await service.listInspectorApps()
-      inspectorAppsChangedHandler?(apps)
-      return try Self.jsonObject(apps)
+      return try await Self.jsonObject(service.listInspectorApps())
+    case "loadInspectorPreferences":
+      return UserDefaults.standard.string(forKey: "inspectorPreferences")
+    case "saveInspectorPreferences":
+      let input = try Self.decode(InspectorPreferencesInput.self, from: payload)
+      UserDefaults.standard.set(input.value, forKey: "inspectorPreferences")
+      return nil
+    case "appInspectorStateChanged":
+      try appInspectorStateChangedHandler?(Self.decode(AppInspectorState.self, from: payload))
+      return nil
     case "listTweaks":
       let reference = try Self.decode(InspectorServerReference.self, from: payload)
       return try await Self.jsonObject(service.listTweaks(for: reference))
@@ -269,6 +276,10 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     }
     let data = try JSONSerialization.data(withJSONObject: payload)
     return try JSONDecoder().decode(type, from: data)
+  }
+
+  private struct InspectorPreferencesInput: Decodable {
+    let value: String
   }
 
   private struct StreamIdentifier: Decodable {

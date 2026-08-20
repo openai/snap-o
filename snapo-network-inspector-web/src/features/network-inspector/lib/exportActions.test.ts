@@ -5,6 +5,28 @@ import type { InspectorRecord, RequestRecord, StreamEventRecord } from "../../..
 import { copyCurl, exportAsHar, hydrateRecordsForHar } from "./exportActions";
 
 describe("export body readiness", () => {
+  it("copies and exports cached data without querying an offline server", async () => {
+    const client = {
+      loadBodies: vi.fn(),
+      copyText: vi.fn(async () => {}),
+      appVersion: vi.fn(async () => "test"),
+      saveFile: vi.fn(async () => ({ saved: true }))
+    } as unknown as NetworkClient;
+    const complete = request("offline", {
+      method: "POST",
+      requestHasPostData: true,
+      requestBodySize: 4,
+      hasReceivedResponse: true,
+      responseBody: "cached-response"
+    });
+    await copyCurl(client, complete, false);
+    await exportAsHar(client, [complete], undefined, false);
+    expect(client.loadBodies).not.toHaveBeenCalled();
+    expect(client.copyText).toHaveBeenCalledOnce();
+    expect(client.saveFile).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.stringContaining("cached-response") })
+    );
+  });
   it("does not query a request body before its upload is known to be complete", async () => {
     const client = {
       loadBodies: vi.fn(),

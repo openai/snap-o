@@ -4,13 +4,29 @@ import Testing
 
 @Suite("Inspector process discovery")
 struct InspectorDiscoveryTests {
+  @Test("discovers both inspector kinds from one socket snapshot")
+  func parsesSharedSnapshot() {
+    let output = """
+    1: 0 @snapo_tweaks_42
+    2: 0 @snapo_network_42
+    3: 0 @snapo_tweaks_42
+    4: 0 @snapo_network_invalid
+    5: 0 @snapo_unknown_42
+    6: 0 @snapo_tweaks_0
+    """
+    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
+    #expect(sockets.map(\.kind) == [.network, .tweaks])
+    #expect(sockets.map(\.reference.deviceId) == ["phone", "phone"])
+    #expect(sockets.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42"])
+  }
+
   @Test("shared inspector types preserve the web bridge wire format")
   func preservesBridgeEncoding() throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = .sortedKeys
-    #expect(try String(decoding: encoder.encode(InspectorKind.tweaks), as: UTF8.self) == "\"tweaks\"")
+    #expect(try String(bytes: encoder.encode(InspectorKind.tweaks), encoding: .utf8) == "\"tweaks\"")
     let server = NetworkServerReference(deviceId: "device", socketName: "snapo_tweaks_42")
-    #expect(try String(decoding: encoder.encode(server), as: UTF8.self)
+    #expect(try String(bytes: encoder.encode(server), encoding: .utf8)
       == "{\"deviceId\":\"device\",\"socketName\":\"snapo_tweaks_42\"}")
   }
 

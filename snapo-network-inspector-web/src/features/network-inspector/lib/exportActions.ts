@@ -7,9 +7,9 @@ import { shouldRequestRequestBody, shouldRequestResponseBody } from "./records";
 
 const exportBodyLoadConcurrency = 3;
 
-export async function copyCurl(client: NetworkClient, request: RequestRecord): Promise<void> {
+export async function copyCurl(client: NetworkClient, request: RequestRecord, loadMissingBodies = true): Promise<void> {
   let hydrated = request;
-  if (shouldRequestRequestBody(request)) {
+  if (loadMissingBodies && shouldRequestRequestBody(request)) {
     try {
       hydrated = applyRequestBodies(
         request,
@@ -32,10 +32,11 @@ export async function copyCurl(client: NetworkClient, request: RequestRecord): P
 export async function exportAsHar(
   client: NetworkClient,
   records: InspectorRecord[],
-  maximumBodyBytes = hydratedBodyRetentionLimitBytes
+  maximumBodyBytes = hydratedBodyRetentionLimitBytes,
+  loadMissingBodies = true
 ): Promise<void> {
   if (records.length === 0) return;
-  const hydrated = await hydrateRecordsForHar(client, records, maximumBodyBytes);
+  const hydrated = await hydrateRecordsForHar(client, records, maximumBodyBytes, loadMissingBodies);
   const appVersion = await client.appVersion();
   await client.saveFile({
     defaultPath: harFileName(hydrated.length),
@@ -48,7 +49,8 @@ export async function exportAsHar(
 export async function hydrateRecordsForHar(
   client: Pick<NetworkClient, "loadBodies">,
   records: InspectorRecord[],
-  maximumBodyBytes = hydratedBodyRetentionLimitBytes
+  maximumBodyBytes = hydratedBodyRetentionLimitBytes,
+  loadMissingBodies = true
 ): Promise<InspectorRecord[]> {
   if (!Number.isSafeInteger(maximumBodyBytes) || maximumBodyBytes < 0) {
     throw new Error("HAR body budget must be a non-negative integer");
@@ -77,7 +79,7 @@ export async function hydrateRecordsForHar(
     return [index];
   });
 
-  let canHydrateMissingBodies = retainedBodyBytes < maximumBodyBytes;
+  let canHydrateMissingBodies = loadMissingBodies && retainedBodyBytes < maximumBodyBytes;
   for (
     let offset = 0;
     offset < hydrationIndexes.length && canHydrateMissingBodies;

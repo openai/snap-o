@@ -33,6 +33,7 @@ export interface InspectableApp {
   id: string;
   name: string;
   packageName: string;
+  processName?: string | null;
   deviceId: string;
   deviceDisplayTitle: string;
   appIconBase64?: string | null;
@@ -44,6 +45,16 @@ export interface SelectedAppInspector {
   kind: AppInspectorKind;
   server: InspectorServerReference;
   protocolVersion?: number | null;
+}
+
+export interface AppInspectorState {
+  apps: InspectableApp[];
+  selection: SelectedAppInspector | null;
+  displayedNetwork: SelectedAppInspector | null;
+  displayedTweaks: SelectedAppInspector | null;
+  selectedApp: InspectableApp | null;
+  preferredKind: AppInspectorKind | null;
+  isRestoring: boolean;
 }
 
 export type TweakValue = boolean | number | string;

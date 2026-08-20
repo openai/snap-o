@@ -20,7 +20,7 @@ struct AppInspectorPicker: View {
         AppInspectorIcon(
           app: model.selectedInspectorApp,
           size: Metrics.iconSize,
-          statusSize: Metrics.statusSize
+          statusSize: model.isRestoringInspector ? 0 : Metrics.statusSize
         )
 
         HStack(spacing: 6) {
@@ -71,7 +71,8 @@ struct AppInspectorViewPicker: View {
   @Bindable var model: NetworkInspectorHostModel
 
   var body: some View {
-    if let app = model.selectedInspectorApp, app.inspectors.count > 1 {
+    if let app = model.selectedInspectorApp,
+       app.inspectors.count > 1 || (model.selectedInspector == nil && !app.inspectors.isEmpty) {
       HStack(spacing: 0) {
         ForEach(app.inspectors) { option in
           Button {
@@ -80,7 +81,7 @@ struct AppInspectorViewPicker: View {
             Label(option.kind.title, systemImage: option.kind.systemImage)
               .labelStyle(.iconOnly)
               .font(.system(size: 15, weight: .medium))
-              .foregroundStyle(model.selectedInspector?.kind == option.kind ? Color.accentColor : Color.primary)
+              .foregroundStyle(model.preferredInspectorKind == option.kind ? Color.accentColor : Color.primary)
               .frame(width: 34, height: 32)
           }
           .help(option.kind.title)

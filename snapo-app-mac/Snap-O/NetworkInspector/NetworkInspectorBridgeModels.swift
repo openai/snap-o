@@ -18,6 +18,7 @@ struct InspectableApp: Codable, Identifiable {
   let id: String
   let name: String
   let packageName: String
+  let processName: String?
   let deviceId: String
   let deviceDisplayTitle: String
   let appIconBase64: String?
@@ -29,6 +30,16 @@ struct SelectedAppInspector: Codable {
   let kind: AppInspectorKind
   let server: InspectorServerReference
   let protocolVersion: Int?
+}
+
+struct AppInspectorState: Codable {
+  let apps: [InspectableApp]
+  let selection: SelectedAppInspector?
+  let displayedNetwork: SelectedAppInspector?
+  let displayedTweaks: SelectedAppInspector?
+  let selectedApp: InspectableApp?
+  let preferredKind: AppInspectorKind?
+  let isRestoring: Bool
 }
 
 enum TweakValue: Codable {

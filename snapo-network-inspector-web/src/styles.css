@@ -769,6 +769,19 @@ body.split-pane-resizing {
   line-height: 16px;
 }
 
+.inspector-loading-shell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.inspector-loading {
+  display: grid;
+  flex: 1;
+  place-items: center;
+}
+
 .body-loading-spinner {
   flex: 0 0 auto;
   animation: spin 1s linear infinite;
@@ -1424,6 +1437,17 @@ pre {
 
 .tweaks-inspector > .empty-detail {
   grid-row: 2;
+}
+
+.tweaks-fields {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.tweaks-fields:disabled {
+  opacity: 0.5;
 }
 
 .tweaks-error {

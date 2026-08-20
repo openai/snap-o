@@ -22,7 +22,8 @@ export const RecordList = memo(function RecordList({
   placeholder,
   selectedRecordId,
   onSelect,
-  client
+  client,
+  isConnected = true
 }: {
   records: InspectorRecord[];
   allRecords: InspectorRecord[];
@@ -30,6 +31,7 @@ export const RecordList = memo(function RecordList({
   selectedRecordId: string | null;
   onSelect(id: string): void;
   client: NetworkClient;
+  isConnected?: boolean;
 }): JSX.Element {
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
@@ -51,10 +53,10 @@ export const RecordList = memo(function RecordList({
         x,
         y,
         keyboard,
-        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client)
+        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client, isConnected)
       });
     },
-    [allRecords, client, selectRecord, selectedRecordId]
+    [allRecords, client, isConnected, selectRecord, selectedRecordId]
   );
   const openActiveContextMenu = () => {
     const record = records[selectedIndex];
@@ -211,13 +213,17 @@ function sidebarContextMenuItems(
   clicked: InspectorRecord,
   selectedRecordId: string | null,
   allRecords: InspectorRecord[],
-  client: NetworkClient
+  client: NetworkClient,
+  isConnected: boolean
 ): ContextMenuItem[] {
   const exportRecords = contextMenuExportSelection(clicked, selectedRecordId, allRecords);
   const items: ContextMenuItem[] = [{ label: "Copy URL", action: () => void client.copyText(clicked.url) }];
   if (clicked.kind === "request") {
-    items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked) });
+    items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked, isConnected) });
   }
-  items.push({ label: "Export HAR (sanitized)...", action: () => void exportAsHar(client, exportRecords) });
+  items.push({
+    label: "Export HAR (sanitized)...",
+    action: () => void exportAsHar(client, exportRecords, undefined, isConnected)
+  });
   return items;
 }
