@@ -82,6 +82,7 @@ export function TweaksInspectorApp({
             .then((response) => {
               if (!isCurrent()) return;
               setTweaks((current) => reconcileStreamedTweaks(current, response.tweaks, pending, inFlight));
+              setError(null);
             })
             .catch((cause: unknown) => {
               if (!isCurrent()) return;
@@ -104,6 +105,7 @@ export function TweaksInspectorApp({
     const applySnapshot = (incoming: TweakDescriptor[]) => {
       setTweaks((current) => reconcileStreamedTweaks(current, incoming, queue.pending, queue.inFlight));
       setHasSnapshot(true);
+      setError(null);
     };
 
     const unsubscribe = client.onTweaksChanged((event) => {

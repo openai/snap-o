@@ -15,6 +15,9 @@ const selection: SelectedAppInspector = {
 const response: TweakList = {
   tweaks: [{ name: "Demo title", type: "string", value: "Recovered", default: "Default" }]
 };
+const modifiedResponse: TweakList = {
+  tweaks: [{ name: "Demo title", type: "string", value: "Changed", default: "Default", modified: true }]
+};
 const connectionError = new Error("Could not connect to the server.");
 
 describe("Tweaks connection recovery", () => {
@@ -95,6 +98,53 @@ describe("Tweaks connection recovery", () => {
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
     await act(async () => receive({ streamId: "stream-1", server: selection.server, tweaks: [] }));
+    expect(container.textContent).toContain("No tweaks on screen");
+  });
+
+  it("clears an update error only after accepting a fresh stream snapshot", async () => {
+    vi.mocked(client.listTweaks).mockResolvedValue(modifiedResponse);
+    vi.mocked(client.updateTweaks).mockRejectedValueOnce(new Error("Update failed"));
+    await render();
+    await act(async () => reset());
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Update failed");
+    await act(async () => receive({ streamId: "other-stream", server: selection.server, tweaks: [] }));
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Update failed");
+    await act(async () => receive({ streamId: "stream-1", server: selection.server, tweaks: [] }));
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).toContain("No tweaks on screen");
+  });
+
+  it("clears an action error when the inspector reconnects", async () => {
+    vi.mocked(client.listTweaks).mockResolvedValue({ tweaks: [{ name: "Refresh preview", type: "action" }] });
+    vi.mocked(client.invokeTweakAction).mockRejectedValueOnce(new Error("Action failed"));
+    await render();
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Run Refresh preview"]')!.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Action failed");
+    await render(selection, false);
+    vi.mocked(client.listTweaks).mockResolvedValue({ tweaks: [] });
+    await render();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).toContain("No tweaks on screen");
+  });
+
+  it("clears a rejected-update error after its reload succeeds", async () => {
+    vi.mocked(client.listTweaks).mockResolvedValue(modifiedResponse);
+    vi.mocked(client.updateTweaks).mockResolvedValueOnce({
+      tweaks: [],
+      errors: [{ name: "Demo title", error: "Rejected" }]
+    });
+    await render();
+    let finish!: (value: TweakList) => void;
+    vi.mocked(client.listTweaks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await act(async () => reset());
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Demo title: Rejected");
+    await act(async () => finish({ tweaks: [] }));
+    expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).toContain("No tweaks on screen");
   });
 
