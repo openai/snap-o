@@ -343,25 +343,10 @@ struct CaptureWindow: View {
     controller: CaptureWindowController,
     layout: WorkspaceLayout
   ) -> some View {
-    captureSurface(controller: controller, layout: layout)
-      .background(captureAreaBackground)
-  }
-
-  private func captureSurface(
-    controller: CaptureWindowController,
-    layout: WorkspaceLayout
-  ) -> some View {
-    Group {
-      if layout.showsNetwork, let displayInfo = controller.displayInfoForSizing {
-        ZStack {
-          captureLetterboxBackground
-          captureContent(controller: controller)
-            .aspectRatio(displayInfo.aspectRatio, contentMode: .fit)
-        }
-      } else {
-        captureContent(controller: controller)
-      }
+    CaptureSurfaceView(aspectRatio: layout.showsNetwork ? controller.displayInfoForSizing?.aspectRatio : nil) {
+      captureContent(controller: controller)
     }
+    .background(captureAreaBackground)
   }
 
   private var captureAreaBackground: Color {
