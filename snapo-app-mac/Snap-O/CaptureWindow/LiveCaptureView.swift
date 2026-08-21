@@ -16,6 +16,8 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   @State private var renderer: LivePreviewRenderer?
   @State private var streamTask: Task<Void, Never>?
   @State private var streamLifecycleID: UUID?
+  @State private var isViewVisible = false
+  @State private var isWindowVisible = false
 
   var body: some View {
     ZStack {
@@ -26,8 +28,29 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .onAppear { startStreamIfNeeded() }
-    .onDisappear { stopStream() }
+    .background {
+      WindowVisibilityReader { isVisible in
+        isWindowVisible = isVisible
+        updateStreamVisibility()
+      }
+      .frame(width: 0, height: 0)
+    }
+    .onAppear {
+      isViewVisible = true
+      updateStreamVisibility()
+    }
+    .onDisappear {
+      isViewVisible = false
+      stopStream()
+    }
+  }
+
+  private func updateStreamVisibility() {
+    if isViewVisible, isWindowVisible {
+      startStreamIfNeeded()
+    } else {
+      stopStream()
+    }
   }
 
   private func startStreamIfNeeded() {

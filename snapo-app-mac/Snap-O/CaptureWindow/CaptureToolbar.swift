@@ -390,7 +390,6 @@ struct CaptureActionToolbarControls: View {
         Label("Live Preview", systemImage: "play.circle")
           .font(SnapOToolbarStyle.iconFont)
           .frame(width: 34, height: 32)
-          .symbolEffect(.pulse, isActive: isLivePreviewActive)
           .modifier(CaptureSelectionHighlight(isSelected: isLivePreviewActive))
       }
       .help("Live Preview (⌘⇧L). Option-drag the preview to capture a frame.")
