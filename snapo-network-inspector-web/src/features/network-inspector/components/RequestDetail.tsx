@@ -26,6 +26,8 @@ export const RequestDetail = memo(function RequestDetail({
   onRetryResponseBody(): void;
 }): JSX.Element {
   const isSseResponse = isLikelyStreamingRequest(record);
+  const streamClosedWithError =
+    isSseResponse && record.streamClosed != null && record.streamClosed.reason !== "completed";
   const requestBodyDisplayText = useRequestBodyDisplayText(record);
   const requestBody = makeBodyPayload({
     body: record.requestBody,
@@ -59,7 +61,7 @@ export const RequestDetail = memo(function RequestDetail({
           <StatusBadge record={record} />
           <span>{timingText}</span>
         </div>
-        <FailureMessage status={record.status} />
+        {streamClosedWithError ? null : <FailureMessage status={record.status} />}
       </header>
 
       {record.requestHeaders.length === 0 ? null : (
@@ -96,7 +98,14 @@ export const RequestDetail = memo(function RequestDetail({
       )}
       {isSseResponse ? (
         <Section
-          title="Server-Sent Events"
+          title={
+            <>
+              Server-Sent Events
+              <span className="section-status">
+                · {record.streamClosed != null ? "Closed" : isConnected ? "Streaming" : "Offline"}
+              </span>
+            </>
+          }
           storageKey={`${prefix}:stream`}
           uiState={uiState}
           trailing={<SseCopyAllButton client={client} events={record.streamEvents} />}
@@ -105,6 +114,7 @@ export const RequestDetail = memo(function RequestDetail({
             client={client}
             events={record.streamEvents}
             closed={record.streamClosed}
+            isConnected={isConnected}
             storageKey={`${prefix}:stream`}
             uiState={uiState}
           />

@@ -33,19 +33,23 @@ export const SseEventList = memo(function SseEventList({
   client,
   events,
   closed,
+  isConnected = true,
   storageKey,
   uiState
 }: {
   client: NetworkClient;
   events: RequestRecord["streamEvents"];
   closed?: RequestRecord["streamClosed"];
+  isConnected?: boolean;
   storageKey: string;
   uiState: InspectorUiState;
 }): JSX.Element {
   return (
     <div className="event-list">
       {events.length === 0 ? (
-        <div className="messages-empty">Awaiting events...</div>
+        <div className="messages-empty">
+          {closed != null || !isConnected ? "No events received." : "Awaiting events..."}
+        </div>
       ) : (
         events.map((event) => (
           <SseEventCard
@@ -57,7 +61,7 @@ export const SseEventList = memo(function SseEventList({
           />
         ))
       )}
-      {closed == null ? null : <StreamClosedInfo closed={closed} />}
+      {closed == null ? null : <StreamCloseMessage closed={closed} />}
     </div>
   );
 });
@@ -83,9 +87,11 @@ const SseEventCard = memo(function SseEventCard({
   return (
     <div className="event-row">
       <div className="event-meta">
-        <span>#{event.sequence}</span>
-        <span>{formatTime(event.timestamp)}</span>
-        {event.eventName ? <span className="event-name">{event.eventName}</span> : null}
+        <div className="event-info">
+          <span>#{event.sequence}</span>
+          <span>{formatTime(event.timestamp)}</span>
+          {event.eventName ? <span className="event-name">{event.eventName}</span> : null}
+        </div>
         <span className="event-actions">
           {prettyText == null ? null : (
             <InlineTextToggle
@@ -107,6 +113,7 @@ const SseEventCard = memo(function SseEventCard({
           showsToggle={false}
           showsCopyButton={false}
           prettyInitiallyExpanded={false}
+          embedded
         />
       )}
       <SseEventMetadata event={event} />
@@ -125,16 +132,12 @@ function SseEventMetadata({ event }: { event: RequestRecord["streamEvents"][numb
   );
 }
 
-function StreamClosedInfo({ closed }: { closed: NonNullable<RequestRecord["streamClosed"]> }): JSX.Element {
+function StreamCloseMessage({ closed }: { closed: NonNullable<RequestRecord["streamClosed"]> }): JSX.Element | null {
+  if (closed.reason === "completed") return null;
+  const message = closed.message?.trim() || (closed.reason === "error" ? "Connection error." : closed.reason);
   return (
-    <div className="stream-closed-info">
-      <div>
-        Stream closed ({closed.reason}) at {formatTime(closed.timestamp)}
-      </div>
-      {closed.message == null || closed.message.length === 0 ? null : <div>Message: {closed.message}</div>}
-      <div>
-        Total events: {closed.totalEvents ?? 0} • Total bytes: {closed.totalBytes ?? 0}
-      </div>
+    <div className="stream-close-message" role="status">
+      Stream closed: {message}
     </div>
   );
 }

@@ -18,6 +18,12 @@ npm run dev
 
 Running the renderer by itself uses the HTTP endpoints under `/api/network/...` and `/api/inspector/...`. To use the native WebKit bridge and inspect a connected device, build and run the Swift app in `snapo-app-mac`.
 
+### Request detail preview
+
+With the development server running, open `/preview.html` to review the request detail layout with synthetic data. The selector includes JSON, HTTP error, server-sent event, and connection failure examples. Sections, JSON expansion, and copy controls use the real detail component. No device or API server is needed.
+
+The preview uses a separate HTML entry point and is not included in the production build. Changes to the shared detail components and styles appear through hot reload.
+
 ## Validation
 
 ```bash

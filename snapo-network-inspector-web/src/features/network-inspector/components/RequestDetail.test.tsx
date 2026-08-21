@@ -117,6 +117,90 @@ describe("Response Body loading state", () => {
   });
 });
 
+describe("SSE stream status", () => {
+  it("shows a closed status without a completion footer or totals", () => {
+    const markup = renderStream({
+      streamClosed: { timestamp: 2, reason: "completed", totalEvents: 1, totalBytes: 128 }
+    });
+
+    expect(markup).toContain("· Closed");
+    expect(markup).toContain("sample-event");
+    expect(markup).not.toContain("Stream closed");
+    expect(markup).not.toContain("Total events");
+    expect(markup).not.toContain("Total bytes");
+  });
+
+  it("shows streaming while waiting for the first event", () => {
+    const markup = renderStream({ streamEvents: [], streamEventCount: 0 });
+
+    expect(markup).toContain("· Streaming");
+    expect(markup).toContain("Awaiting events...");
+    expect(markup).not.toContain("Stream closed");
+  });
+
+  it("does not keep waiting after an empty stream closes", () => {
+    const markup = renderStream({
+      streamEvents: [],
+      streamEventCount: 0,
+      streamClosed: { timestamp: 2, reason: "completed" }
+    });
+
+    expect(markup).toContain("· Closed");
+    expect(markup).toContain("No events received.");
+    expect(markup).not.toContain("Awaiting events");
+  });
+
+  it("shows a stream failure once, below the retained events", () => {
+    const markup = renderStream({
+      status: { kind: "failure", message: "Read timed out." },
+      streamClosed: { timestamp: 2, reason: "error", message: "Read timed out." }
+    });
+
+    expect(markup).toContain("· Closed");
+    expect(markup).toContain('role="status">Stream closed: Read timed out.</div>');
+    expect(markup.match(/Read timed out\./g)).toHaveLength(1);
+    expect(markup.indexOf("Stream closed:")).toBeGreaterThan(markup.indexOf("sample-event"));
+  });
+
+  it.each([
+    { reason: "error", message: undefined, expected: "Connection error." },
+    { reason: "error", message: "  ", expected: "Connection error." },
+    { reason: "cancelled", message: undefined, expected: "cancelled" }
+  ])("keeps an abnormal close reason when its message is $message", ({ reason, message, expected }) => {
+    const markup = renderStream({ streamClosed: { timestamp: 2, reason, message } });
+
+    expect(markup).toContain(`Stream closed: ${expected}`);
+  });
+
+  it("does not describe a disconnected stream as streaming or closed without evidence", () => {
+    const markup = renderStream({ streamEvents: [], streamEventCount: 0 }, false);
+
+    expect(markup).toContain("· Offline");
+    expect(markup).toContain("No events received.");
+    expect(markup).not.toContain("· Streaming");
+    expect(markup).not.toContain("· Closed");
+    expect(markup).not.toContain("Awaiting events");
+  });
+});
+
+function renderStream(overrides: Partial<RequestRecord>, isConnected = true): string {
+  return renderToStaticMarkup(
+    <RequestDetail
+      client={{} as NetworkClient}
+      record={request({
+        endedAt: undefined,
+        responseHeaders: [{ name: "Content-Type", value: "text/event-stream" }],
+        streamEvents: [{ sequence: 1, timestamp: 1, data: "sample-event", raw: "data: sample-event\n\n" }],
+        streamEventCount: 1,
+        ...overrides
+      })}
+      uiState={expandedUiState}
+      isConnected={isConnected}
+      onRetryResponseBody={() => {}}
+    />
+  );
+}
+
 const expandedUiState: InspectorUiState = {
   sectionExpanded: () => true,
   setSectionExpanded: () => {},

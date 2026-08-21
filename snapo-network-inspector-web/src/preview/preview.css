@@ -1,0 +1,30 @@
+body {
+  min-width: var(--detail-min-width);
+}
+
+.request-preview {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface-bright);
+  font-size: 12px;
+}
+
+.preview-toolbar select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.preview-toolbar > span {
+  margin-left: auto;
+  color: var(--on-surface-variant);
+}
