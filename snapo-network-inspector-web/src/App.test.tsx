@@ -161,10 +161,10 @@ describe("app inspector restoration UI", () => {
     vi.useRealTimers();
   });
 
-  it("shows only an accessible spinner until the remembered inspector appears", async () => {
+  it("shows a spinner and status text until the remembered inspector appears", async () => {
     await act(async () => root.render(<App />));
     expect(container.querySelector('[role="status"] svg')).not.toBeNull();
-    expect(container.textContent).toBe("");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for inspector");
     expect(container.querySelector("[data-inspector]")).toBeNull();
 
     discovered = [app(20, ["network", "tweaks"])];

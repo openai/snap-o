@@ -72,6 +72,26 @@ describe("Tweaks connection recovery", () => {
     );
   }
 
+  it.each([true, false])("shows status text while loading with native picker %s", async (usesNativeServerPicker) => {
+    Object.assign(client, { usesNativeServerPicker });
+    let finish!: (value: TweakList) => void;
+    vi.mocked(client.listTweaks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await render();
+    const status = container.querySelector('[role="status"]');
+    expect(status?.textContent).toBe("Waiting for inspector");
+    expect(status?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(container.querySelector(".tweaks-inspector-toolbar") != null).toBe(!usesNativeServerPicker);
+
+    await act(async () => finish(response));
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+  });
+
   it("retries a failed initial request without changing the selected inspector", async () => {
     vi.mocked(client.listTweaks).mockRejectedValueOnce(connectionError);
     await render();
