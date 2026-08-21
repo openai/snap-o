@@ -11,11 +11,7 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
   private let adb: ADBService
   private let deviceID: String
   private let touchscreen: ADBVirtualTouchscreen
-  private var displayViewport: ADBDisplayViewport?
-  private var viewportUpdatedAt = ContinuousClock.now
-  private var viewportRefresh: Task<ADBDisplayViewport, Error>?
-  private var idleRefresh: Task<Void, Never>?
-  private var isPointerDown = false
+  private var displayRotation: ADBDisplayRotation
   private var isStopped = false
 
   static func start(
@@ -24,13 +20,11 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
   ) async throws -> UInputLivePreviewPointerBackend {
     let exec = await adb.exec()
     let touchscreen = try await exec.startVirtualTouchscreen(deviceID: deviceID)
-    let backend = UInputLivePreviewPointerBackend(
+    return UInputLivePreviewPointerBackend(
       adb: adb,
       deviceID: deviceID,
       touchscreen: touchscreen
     )
-    await backend.startIdleRefresh()
-    return backend
   }
 
   private init(
@@ -41,7 +35,7 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
     self.adb = adb
     self.deviceID = deviceID
     self.touchscreen = touchscreen
-    displayViewport = touchscreen.initialDisplayViewport
+    displayRotation = touchscreen.initialDisplayRotation
   }
 
   func send(_ event: LivePreviewPointerEvent) async throws {
@@ -51,14 +45,11 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
     }
 
     if event.action == .down {
-      isPointerDown = true
-      let sizeChanged = displayViewport?.width != Int(event.displaySize.width.rounded()) ||
-        displayViewport?.height != Int(event.displaySize.height.rounded())
-      if viewportRefresh != nil || sizeChanged || viewportUpdatedAt.duration(to: .now) >= .seconds(1) {
-        displayViewport = try await refreshViewport()
-      }
+      let exec = await adb.exec()
+      let refreshedRotation = try await exec.displayRotation(deviceID: deviceID)
+      guard !isStopped else { throw CancellationError() }
+      displayRotation = refreshedRotation
     }
-    guard !isStopped, let displayViewport else { throw CancellationError() }
 
     try touchscreen.send(
       action: event.virtualTouchAction,
@@ -66,64 +57,13 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
       y: event.location.y,
       displayWidth: event.displaySize.width,
       displayHeight: event.displaySize.height,
-      rotation: displayViewport.rotation
+      rotation: displayRotation
     )
-    if event.action == .up || event.action == .cancel {
-      isPointerDown = false
-    }
-  }
-
-  private func startIdleRefresh() {
-    idleRefresh = Task { [weak self] in
-      while !Task.isCancelled {
-        do {
-          try await Task.sleep(for: .milliseconds(250))
-        } catch {
-          return
-        }
-        guard let self else { return }
-        await refreshIfIdle()
-      }
-    }
-  }
-
-  private func refreshIfIdle() async {
-    guard !isStopped, !isPointerDown else { return }
-    do {
-      _ = try await refreshViewport()
-    } catch is CancellationError {
-      // Stopping the preview cancels its refresh request.
-    } catch {
-      SnapOLog.ui.debug("Unable to refresh drag rotation: \(error.localizedDescription, privacy: .public)")
-    }
-  }
-
-  private func refreshViewport() async throws -> ADBDisplayViewport {
-    if let viewportRefresh { return try await viewportRefresh.value }
-    let task = Task { [adb, deviceID] in
-      let exec = await adb.exec()
-      return try await exec.displayViewport(deviceID: deviceID)
-    }
-    viewportRefresh = task
-    defer { viewportRefresh = nil }
-    do {
-      let viewport = try await task.value
-      guard !isStopped else { throw CancellationError() }
-      displayViewport = viewport
-      viewportUpdatedAt = .now
-      return viewport
-    } catch {
-      displayViewport = nil
-      throw error
-    }
   }
 
   func stop() async {
     guard !isStopped else { return }
     isStopped = true
-    idleRefresh?.cancel()
-    idleRefresh = nil
-    viewportRefresh?.cancel()
     touchscreen.close()
   }
 }

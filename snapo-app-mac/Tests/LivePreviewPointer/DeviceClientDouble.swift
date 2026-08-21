@@ -4,21 +4,9 @@ public enum ADBDisplayRotation: Sendable { case rotation0, rotation90, rotation1
 public enum ADBVirtualTouchAction: Sendable { case down, move, up, cancel }
 public enum ADBError: Error { case protocolFailure(String) }
 
-public struct ADBDisplayViewport: Sendable {
-  public let rotation: ADBDisplayRotation
-  public let width: Int
-  public let height: Int
-
-  public init(rotation: ADBDisplayRotation = .rotation0, width: Int = 100, height: Int = 200) {
-    self.rotation = rotation
-    self.width = width
-    self.height = height
-  }
-}
-
 public final class ADBVirtualTouchscreen: @unchecked Sendable {
   public let supportsSynchronization = true
-  public let initialDisplayViewport = ADBDisplayViewport()
+  public let initialDisplayRotation = ADBDisplayRotation.rotation0
   private let lock = NSLock()
   private var recordedActions: [ADBVirtualTouchAction] = []
   private var recordedRotations: [ADBDisplayRotation] = []
@@ -57,7 +45,7 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
 public actor ADBClient {
   public let touchscreen = ADBVirtualTouchscreen()
   public private(set) var queryCount = 0
-  private var viewport = ADBDisplayViewport()
+  private var rotation = ADBDisplayRotation.rotation0
   private var queryGate: CheckedContinuation<Void, Never>?
   private var shouldHoldQuery = false
   private var shouldFail = false
@@ -68,8 +56,8 @@ public actor ADBClient {
     touchscreen
   }
 
-  public func setViewport(_ viewport: ADBDisplayViewport) {
-    self.viewport = viewport
+  public func setRotation(_ rotation: ADBDisplayRotation) {
+    self.rotation = rotation
   }
 
   public func holdQuery() {
@@ -86,13 +74,13 @@ public actor ADBClient {
     queryGate = nil
   }
 
-  public func displayViewport(deviceID: String) async throws -> ADBDisplayViewport {
+  public func displayRotation(deviceID: String) async throws -> ADBDisplayRotation {
     queryCount += 1
     if shouldHoldQuery {
       await withCheckedContinuation { queryGate = $0 }
     }
     try Task.checkCancellation()
-    if shouldFail { throw ADBError.protocolFailure("Test viewport unavailable") }
-    return viewport
+    if shouldFail { throw ADBError.protocolFailure("Test rotation unavailable") }
+    return rotation
   }
 }

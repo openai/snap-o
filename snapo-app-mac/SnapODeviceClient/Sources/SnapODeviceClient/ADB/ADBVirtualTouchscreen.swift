@@ -14,19 +14,10 @@ public enum ADBVirtualTouchAction: Sendable {
   case cancel
 }
 
-public struct ADBDisplayViewport: Equatable, Sendable {
-  public let rotation: ADBDisplayRotation
-  public let width: Int
-  public let height: Int
-}
-
 /// A virtual direct-touch device backed by a persistent Android `uinput` process.
 public final class ADBVirtualTouchscreen: @unchecked Sendable {
-  public let initialDisplayViewport: ADBDisplayViewport
+  public let initialDisplayRotation: ADBDisplayRotation
   public let supportsSynchronization: Bool
-  public var initialDisplayRotation: ADBDisplayRotation {
-    initialDisplayViewport.rotation
-  }
 
   private let connection: ADBSocketConnection
   private var activeGeometry: UInputTouchscreenProtocol.Geometry?
@@ -36,11 +27,11 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
 
   fileprivate init(
     connection: ADBSocketConnection,
-    initialDisplayViewport: ADBDisplayViewport,
+    initialDisplayRotation: ADBDisplayRotation,
     supportsSynchronization: Bool
   ) {
     self.connection = connection
-    self.initialDisplayViewport = initialDisplayViewport
+    self.initialDisplayRotation = initialDisplayRotation
     self.supportsSynchronization = supportsSynchronization
   }
 
@@ -150,10 +141,10 @@ public extension ADBClient {
       try connection.sendTransport(to: deviceID)
       try connection.sendShell("exec /system/bin/uinput -")
       try connection.writeLine(registerCommand)
-      let viewport = try await waitForVirtualTouchscreen(deviceID: deviceID, name: name)
+      let rotation = try await waitForVirtualTouchscreen(deviceID: deviceID, name: name)
       return ADBVirtualTouchscreen(
         connection: connection,
-        initialDisplayViewport: viewport,
+        initialDisplayRotation: rotation,
         supportsSynchronization: supportsSynchronization
       )
     } catch {
@@ -163,24 +154,20 @@ public extension ADBClient {
   }
 
   func displayRotation(deviceID: String) async throws -> ADBDisplayRotation {
-    try await displayViewport(deviceID: deviceID).rotation
-  }
-
-  func displayViewport(deviceID: String) async throws -> ADBDisplayViewport {
     let output = try await runShellString(
       deviceID: deviceID,
       command: "dumpsys input | grep -m 1 'Viewport INTERNAL: displayId=0'"
     )
-    guard let viewport = UInputTouchscreenProtocol.displayViewport(from: output) else {
-      throw ADBError.parseFailure("Unable to determine display viewport")
+    guard let rotation = UInputTouchscreenProtocol.displayRotation(from: output) else {
+      throw ADBError.parseFailure("Unable to determine display rotation")
     }
-    return viewport
+    return rotation
   }
 
   private func waitForVirtualTouchscreen(
     deviceID: String,
     name: String
-  ) async throws -> ADBDisplayViewport {
+  ) async throws -> ADBDisplayRotation {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: .seconds(2))
 
@@ -188,8 +175,8 @@ public extension ADBClient {
       try Task.checkCancellation()
       let output = try await runShellString(deviceID: deviceID, command: "dumpsys input")
       if UInputTouchscreenProtocol.isRegisteredTouchscreen(named: name, in: output),
-         let viewport = UInputTouchscreenProtocol.displayViewport(from: output) {
-        return viewport
+         let rotation = UInputTouchscreenProtocol.displayRotation(from: output) {
+        return rotation
       }
       guard clock.now < deadline else { break }
       try await Task.sleep(for: .milliseconds(50))
@@ -367,18 +354,6 @@ enum UInputTouchscreenProtocol {
     let suffix = viewport[marker.upperBound...]
     guard let value = suffix.first?.wholeNumberValue else { return nil }
     return ADBDisplayRotation(rawValue: value)
-  }
-
-  static func displayViewport(from output: String) -> ADBDisplayViewport? {
-    guard let line = output.split(separator: "\n").first(where: {
-      $0.contains("Viewport INTERNAL: displayId=0")
-    }),
-      let rotation = displayRotation(from: String(line)),
-      let frame = line.firstMatch(of: /logicalFrame=\[\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/),
-      let left = Int(frame.1), let top = Int(frame.2),
-      let right = Int(frame.3), let bottom = Int(frame.4),
-      right > left, bottom > top else { return nil }
-    return ADBDisplayViewport(rotation: rotation, width: right - left, height: bottom - top)
   }
 
   static func isRegisteredTouchscreen(named name: String, in output: String) -> Bool {

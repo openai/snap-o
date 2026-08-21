@@ -127,12 +127,12 @@ struct LivePreviewPointerTests {
         await reconnectIgnoresOldSend(action, failing: failing)
       }
     }
-    try await freshRotationDoesNotQueryOnDown()
-    try await activeDragPausesRefreshAndNextDragChecksStaleRotation()
+    try await rotationIsQueriedOncePerGesture()
+    try await rotationStaysFixedUntilNextGesture()
     try await changedSizeRefreshesBeforeDown()
-    try await idleRefreshFindsHalfTurn()
-    try await stopDuringRefreshDoesNotSend()
-    try await failedRefreshDoesNotReuseOldRotation()
+    try await immediateHalfTurnRefreshesBeforeDown()
+    try await stopDuringRotationQueryDoesNotSend()
+    try await failedRotationQueryDoesNotReuseOldRotation()
     print("Live preview pointer tests passed (23 cases)")
   }
 
@@ -371,7 +371,7 @@ struct LivePreviewPointerTests {
     await sender.stopAll()
   }
 
-  private static func freshRotationDoesNotQueryOnDown() async throws {
+  private static func rotationIsQueriedOncePerGesture() async throws {
     let client = ADBClient()
     let backend = try await UInputLivePreviewPointerBackend.start(adb: ADBService(client: client), deviceID: "test-device")
     precondition(backend.minimumMoveInterval == .nanoseconds(8_333_334))
@@ -379,7 +379,7 @@ struct LivePreviewPointerTests {
     try await backend.send(event(.move, x: 20))
     try await backend.send(event(.up, x: 30))
     let count = await client.queryCount
-    precondition(count == 0)
+    precondition(count == 1)
     let touchscreen = await client.touchscreen
     precondition(touchscreen.actions == [.down, .move, .up])
     await backend.stop()
@@ -387,7 +387,7 @@ struct LivePreviewPointerTests {
 
   private static func changedSizeRefreshesBeforeDown() async throws {
     let client = ADBClient()
-    await client.setViewport(ADBDisplayViewport(rotation: .rotation90, width: 200, height: 100))
+    await client.setRotation(.rotation90)
     let backend = try await UInputLivePreviewPointerBackend.start(adb: ADBService(client: client), deviceID: "test-device")
     try await backend.send(event(.down, size: CGSize(width: 200, height: 100)))
     let count = await client.queryCount
@@ -396,41 +396,45 @@ struct LivePreviewPointerTests {
     await backend.stop()
   }
 
-  private static func activeDragPausesRefreshAndNextDragChecksStaleRotation() async throws {
+  private static func rotationStaysFixedUntilNextGesture() async throws {
     let client = ADBClient()
     let backend = try await UInputLivePreviewPointerBackend.start(adb: ADBService(client: client), deviceID: "test-device")
     try await backend.send(event(.down))
-    await client.setViewport(ADBDisplayViewport(rotation: .rotation180))
-    try await Task.sleep(for: .milliseconds(1050))
+    await client.setRotation(.rotation180)
     try await backend.send(event(.move, x: 20))
-    let idleQueries = await client.queryCount
-    precondition(idleQueries == 0)
+    let activeQueries = await client.queryCount
+    precondition(activeQueries == 1)
     try await backend.send(event(.up))
     try await backend.send(event(.down))
     let count = await client.queryCount
     let touchscreen = await client.touchscreen
-    precondition(count == 1)
+    precondition(count == 2)
     precondition(touchscreen.rotations == [.rotation0, .rotation0, .rotation0, .rotation180])
     await backend.stop()
   }
 
-  private static func idleRefreshFindsHalfTurn() async throws {
+  private static func immediateHalfTurnRefreshesBeforeDown() async throws {
     let client = ADBClient()
     let backend = try await UInputLivePreviewPointerBackend.start(adb: ADBService(client: client), deviceID: "test-device")
-    await client.setViewport(ADBDisplayViewport(rotation: .rotation180))
-    await waitUntil { await client.queryCount > 0 }
     try await backend.send(event(.down))
+    try await backend.send(event(.up))
+    await client.setRotation(.rotation180)
+    try await backend.send(event(.down))
+    try await backend.send(event(.move, x: 20))
+    try await backend.send(event(.up, x: 30))
+    let count = await client.queryCount
     let touchscreen = await client.touchscreen
-    precondition(touchscreen.rotations == [.rotation180])
+    precondition(count == 2)
+    precondition(touchscreen.rotations == [.rotation0, .rotation0, .rotation180, .rotation180, .rotation180])
     await backend.stop()
   }
 
-  private static func stopDuringRefreshDoesNotSend() async throws {
+  private static func stopDuringRotationQueryDoesNotSend() async throws {
     let client = ADBClient()
     await client.holdQuery()
     let backend = try await UInputLivePreviewPointerBackend.start(adb: ADBService(client: client), deviceID: "test-device")
-    await waitUntil { await client.queryCount > 0 }
     let send = Task { try await backend.send(event(.down)) }
+    await waitUntil { await client.queryCount == 1 }
     await backend.stop()
     await client.releaseQuery()
     do {
@@ -441,17 +445,20 @@ struct LivePreviewPointerTests {
     precondition(touchscreen.actions.isEmpty && touchscreen.isClosed)
   }
 
-  private static func failedRefreshDoesNotReuseOldRotation() async throws {
+  private static func failedRotationQueryDoesNotReuseOldRotation() async throws {
     let client = ADBClient()
     let backend = try await UInputLivePreviewPointerBackend.start(adb: ADBService(client: client), deviceID: "test-device")
+    try await backend.send(event(.down))
+    try await backend.send(event(.up))
+    await client.setRotation(.rotation180)
     await client.failQueries()
-    await waitUntil { await client.queryCount > 0 }
     do {
       try await backend.send(event(.down))
-      preconditionFailure("Failed refresh reused an old rotation")
+      preconditionFailure("Failed query reused an old rotation")
     } catch ADBError.protocolFailure {}
     let touchscreen = await client.touchscreen
-    precondition(touchscreen.actions.isEmpty)
+    let count = await client.queryCount
+    precondition(count == 2 && touchscreen.actions == [.down, .up])
     await backend.stop()
   }
 }

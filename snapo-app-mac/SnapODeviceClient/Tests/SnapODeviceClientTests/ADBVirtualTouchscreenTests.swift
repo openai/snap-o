@@ -227,8 +227,14 @@ struct ADBVirtualTouchscreenTests {
 
   @Test("parses the active display rotation")
   func displayRotation() {
-    let viewport = "Viewport INTERNAL: displayId=0, port=0, orientation=3, logicalFrame=[0, 0, 2400, 1080]"
+    let viewport = """
+    Viewport EXTERNAL: displayId=1, orientation=1, logicalFrame=[0, 0, 900, 600]
+    Viewport INTERNAL: displayId=0, port=0, orientation=3, logicalFrame=[0, 0, 2400, 1080]
+    """
     #expect(UInputTouchscreenProtocol.displayRotation(from: viewport) == .rotation270)
+    #expect(UInputTouchscreenProtocol.displayRotation(
+      from: "Viewport INTERNAL: displayId=0, orientation=2"
+    ) == .rotation180)
     #expect(UInputTouchscreenProtocol.displayRotation(from: "orientation=unknown") == nil)
   }
 
@@ -242,22 +248,6 @@ struct ADBVirtualTouchscreenTests {
       3, 47, 0, 3, 57, -1, 1, 330, 0, 1, 325, 0, 0, 0, 0
     ])
     #expect(cancel.events == Array(up.events.suffix(15)))
-  }
-
-  @Test("parses viewport size and rotation from the same internal display")
-  func displayViewport() throws {
-    let output = """
-    Viewport EXTERNAL: displayId=1, orientation=1, logicalFrame=[0, 0, 900, 600]
-    Viewport INTERNAL: displayId=0, orientation=3, logicalFrame=[10, 20, 2410, 1100]
-    """
-    let viewport = try #require(UInputTouchscreenProtocol.displayViewport(from: output))
-    #expect(viewport.rotation == .rotation270)
-    #expect(viewport.width == 2400)
-    #expect(viewport.height == 1080)
-    #expect(UInputTouchscreenProtocol.displayViewport(from: "Viewport INTERNAL: displayId=0, orientation=0") == nil)
-    #expect(UInputTouchscreenProtocol.displayViewport(
-      from: "Viewport INTERNAL: displayId=0, orientation=0, logicalFrame=[0, 0, 0, 1080]"
-    ) == nil)
   }
 
   private func decodeInject(_ value: String) throws -> InjectCommand {
