@@ -120,9 +120,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
     isDraggingFrame = false
     pointerState = PointerState()
     renderer?.session.sampleBufferHandler = nil
-    displayLayer.sampleBufferRenderer.stopRequestingMediaData()
     displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
-    displayLayer.sampleBufferRenderer.requestMediaDataWhenReady(on: .main) {}
     endedLivePreviewTrace = false
   }
 
