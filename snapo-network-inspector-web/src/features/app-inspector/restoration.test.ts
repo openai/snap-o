@@ -194,10 +194,33 @@ describe("inspector restoration", () => {
     const owner = new InspectorRestoration();
     expect(owner.reconcile([{ ...app(), processName: null }])).toMatchObject({
       selection: null,
+      selectedApp: null,
       isRestoring: true
     });
     expect(JSON.parse(owner.serialize()).last).toBeNull();
     expect(owner.reconcile([app()]).selection?.kind).toBe("network");
+  });
+
+  it("selects an identified replacement when an unidentified process exits", () => {
+    const owner = new InspectorRestoration();
+    owner.reconcile([{ ...app(), processName: null }]);
+    expect(owner.reconcile([])).toMatchObject({ selection: null, selectedApp: null, isRestoring: false });
+    expect(owner.reconcile([app(20)])).toMatchObject({
+      selection: { appId: "phone:pid:20", kind: "network" },
+      isRestoring: false
+    });
+  });
+
+  it("does not let an unidentified process delay another identified app", () => {
+    const owner = new InspectorRestoration();
+    const ready = app(20);
+    expect(owner.reconcile([{ ...app(), processName: null }, ready]).selection?.appId).toBe(ready.id);
+  });
+
+  it("ignores identified apps without an available inspector", () => {
+    const owner = new InspectorRestoration();
+    expect(owner.reconcile([app(10, [])])).toMatchObject({ selection: null, isRestoring: false });
+    expect(owner.reconcile([app(10, []), app(20)]).selection?.appId).toBe("phone:pid:20");
   });
 
   it("does not restore by an unverified display name", () => {

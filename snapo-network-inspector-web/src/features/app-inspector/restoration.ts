@@ -91,7 +91,9 @@ export class InspectorRestoration {
       displayedTweaks: this.kind === "tweaks" ? (this.retained.tweaks ?? null) : null,
       selectedApp: this.target,
       preferredKind: this.kind,
-      isRestoring: this.awaitingAppIdentity || (this.kind != null && this.current == null)
+      isRestoring:
+        this.awaitingAppIdentity ||
+        (this.current == null && (this.kind != null || this.apps.some((app) => app.inspectors.length > 0)))
     };
   }
 
@@ -116,7 +118,7 @@ export class InspectorRestoration {
       const option = app.inspectors.find((candidate) => candidate.kind === this.kind);
       this.setCurrent(app, option);
     } else if (this.kind == null) {
-      const first = apps.find((candidate) => candidate.inspectors.length > 0);
+      const first = apps.find((candidate) => identity(candidate) && candidate.inspectors.length > 0);
       if (first) this.selectApp(first);
     } else {
       this.current = null;

@@ -189,6 +189,24 @@ describe("app inspector restoration UI", () => {
     expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
   });
 
+  it("waits without selecting a placeholder, then opens its identified replacement", async () => {
+    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(null);
+    discovered = [{ ...app(10, ["network"]), processName: null, name: "snapo_network_10" }];
+    await act(async () => root.render(<App />));
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    expect(container.querySelector("[data-inspector]")).toBeNull();
+    expect(mocks.client.startStream).not.toHaveBeenCalled();
+    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selectedApp: null, selection: null, isRestoring: true })
+    );
+
+    discovered = [app(20, ["network"])];
+    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
+    expect(mocks.client.startStream).toHaveBeenCalledWith({ deviceId: "phone", socketName: "snapo_network_20" });
+  });
+
   it("keeps a browser picker available during restoration", async () => {
     Object.assign(mocks.client, { usesNativeServerPicker: false });
     await act(async () => root.render(<App />));

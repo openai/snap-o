@@ -232,4 +232,96 @@ describe("Tweaks connection recovery", () => {
     expect(client.stopTweakStream).toHaveBeenCalledWith("old-stream");
     expect(client.startTweakStream).toHaveBeenLastCalledWith(other.server);
   });
+
+  it("ignores a late old-stream event while reconnecting the same endpoint", async () => {
+    await render();
+    await render(selection, false);
+    let finish!: (value: TweakList) => void;
+    vi.mocked(client.listTweaks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await render();
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    await act(async () => receive({ streamId: "stream-1", server: selection.server, tweaks: modifiedResponse.tweaks }));
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    await act(async () => finish(response));
+  });
+
+  it("preserves an initial snapshot that arrives before stream startup resolves", async () => {
+    let finish!: (value: { streamId: string }) => void;
+    vi.mocked(client.startTweakStream).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await render();
+    await act(async () =>
+      receive({ streamId: "new-stream", server: selection.server, tweaks: modifiedResponse.tweaks })
+    );
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    await act(async () => finish({ streamId: "new-stream" }));
+    expect(container.querySelector("fieldset")?.disabled).toBe(false);
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Changed");
+  });
+
+  it("ignores an old stream while the new stream start is pending", async () => {
+    let finish!: (value: { streamId: string }) => void;
+    vi.mocked(client.startTweakStream).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await render();
+    await act(async () =>
+      receive({ streamId: "old-stream", server: selection.server, tweaks: modifiedResponse.tweaks })
+    );
+    await act(async () => finish({ streamId: "new-stream" }));
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+  });
+
+  it("ignores early events when stream startup fails", async () => {
+    let reject!: (cause: Error) => void;
+    vi.mocked(client.startTweakStream).mockImplementationOnce(
+      () =>
+        new Promise((_, fail) => {
+          reject = fail;
+        })
+    );
+    await render();
+    await act(async () =>
+      receive({ streamId: "new-stream", server: selection.server, tweaks: modifiedResponse.tweaks })
+    );
+    await act(async () => reject(connectionError));
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    await act(async () => vi.advanceTimersByTimeAsync(250));
+    expect(client.startTweakStream).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("fieldset")?.disabled).toBe(false);
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+  });
+
+  it("discards early events and stops a late stream exactly once after unmount", async () => {
+    let finish!: (value: { streamId: string }) => void;
+    vi.mocked(client.startTweakStream).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await render();
+    await act(async () =>
+      receive({ streamId: "new-stream", server: selection.server, tweaks: modifiedResponse.tweaks })
+    );
+    await act(async () => root.render(null));
+    await act(async () => finish({ streamId: "new-stream" }));
+    expect(client.stopTweakStream).toHaveBeenCalledExactlyOnceWith("new-stream");
+    expect(container.textContent).toBe("");
+  });
 });
