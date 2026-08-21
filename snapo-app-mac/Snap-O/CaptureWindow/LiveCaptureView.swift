@@ -15,6 +15,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
 
   @State private var renderer: LivePreviewRenderer?
   @State private var streamTask: Task<Void, Never>?
+  @State private var cleanupTask: Task<Void, Never>?
   @State private var streamLifecycleID: UUID?
   @State private var isViewVisible = false
   @State private var isWindowVisible = false
@@ -55,30 +56,36 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
 
   private func startStreamIfNeeded() {
     guard streamTask == nil else { return }
-    restartStream()
-  }
-
-  private func restartStream() {
-    stopStream()
 
     let deviceID = capture.device.id
     let lifecycleID = UUID()
+    let previousCleanup = cleanupTask
     streamLifecycleID = lifecycleID
     streamTask = Task(priority: .userInitiated) { @MainActor in
+      await previousCleanup?.value
+      guard isLifecycleActive(lifecycleID) else { return }
+      cleanupTask = nil
       await runRendererLifecycle(deviceID: deviceID, lifecycleID: lifecycleID)
     }
   }
 
   private func stopStream() {
     streamLifecycleID = nil
-    streamTask?.cancel()
+    let taskToStop = streamTask
+    taskToStop?.cancel()
     streamTask = nil
     let rendererToStop = renderer
     renderer = nil
-    if let rendererToStop {
-      Task {
+    guard taskToStop != nil || rendererToStop != nil else { return }
+
+    let previousCleanup = cleanupTask
+    cleanupTask = Task {
+      await previousCleanup?.value
+      if let rendererToStop {
         await host.stopLivePreviewStream(rendererToStop)
       }
+      // Startup or a spontaneous stop may still own the device after the renderer is cleared.
+      await taskToStop?.value
     }
   }
 
