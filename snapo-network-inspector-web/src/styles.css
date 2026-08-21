@@ -479,9 +479,9 @@ body.split-pane-resizing {
   right: 8px;
   width: min(300px, calc(100% - 16px));
   border: 1px solid var(--outline);
-  border-radius: 8px;
+  border-radius: 16px;
   background: var(--surface-bright);
-  padding: 12px;
+  padding: 16px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
 }
 
@@ -505,7 +505,13 @@ body.split-pane-resizing {
   display: flex;
   align-items: center;
   border: 1px solid var(--outline);
-  border-radius: 5px;
+  border-radius: 8px;
+}
+
+.exclusion-filter-settings,
+.exclusion-filter-add,
+.exclusion-filter-remove {
+  border-radius: 6px;
 }
 
 .exclusion-filter-form:focus-within {

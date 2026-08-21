@@ -102,7 +102,7 @@ export function ExclusionFilterPopover({
         Exclusion filters
       </div>
       <p className="exclusion-filter-description">
-        Exclude any matching text, or right-click a request and choose “Add host to exclusion filter”. Filters are saved
+        Exclude any matching text, or right-click a request to add its host to the exclusion filter. Filters are saved
         permanently.
       </p>
 

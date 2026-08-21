@@ -55,7 +55,7 @@ describe("persistent exclusion filter controls", () => {
       />
     );
 
-    expect(markup).toContain("Add host to exclusion filter");
+    expect(markup).toContain("right-click a request to add its host to the exclusion filter");
     expect(markup).toContain("Exclude any matching text");
     expect(markup).toContain("Filters are saved permanently");
     expect(markup).toContain("No exclusion filters");

@@ -227,7 +227,7 @@ export function sidebarContextMenuItems(
     items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked, isConnected) });
   }
   items.push({
-    label: "Add host to exclusion filter",
+    label: `Add ${exclusionFilter?.slice(1) ?? "host"} to exclusion filter`,
     action: () => {
       if (exclusionFilter != null) onAddExclusionFilter(exclusionFilter);
     },

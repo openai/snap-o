@@ -13,7 +13,7 @@ describe("network request exclusion filter context menu", () => {
     const addExclusionFilter = vi.fn();
 
     const items = sidebarContextMenuItems(record, null, [record], client, addExclusionFilter);
-    const item = items.find((entry) => entry.label === "Add host to exclusion filter");
+    const item = items.find((entry) => entry.label === "Add api.example.com to exclusion filter");
 
     expect(item?.disabled).toBe(false);
     item?.action();
@@ -30,7 +30,7 @@ describe("network request exclusion filter context menu", () => {
     expect(items.map(({ label }) => label)).toEqual([
       "Copy URL",
       "Copy as cURL",
-      "Add host to exclusion filter",
+      "Add api.example.com to exclusion filter",
       "Export HAR (sanitized)..."
     ]);
   });
@@ -40,12 +40,28 @@ describe("network request exclusion filter context menu", () => {
     const addExclusionFilter = vi.fn();
 
     const items = sidebarContextMenuItems(record, null, [record], client, addExclusionFilter);
-    const item = items.find((entry) => entry.label === "Add host to exclusion filter");
+    const item = items.find((entry) => entry.label === "Add stream.example.com to exclusion filter");
 
     expect(item?.disabled).toBe(false);
     item?.action();
 
     expect(addExclusionFilter).toHaveBeenCalledWith("-stream.example.com");
+  });
+
+  it.each([
+    ["https://api.example.com.:8443/events", "api.example.com"],
+    ["http://[::1]:8080/events", "[::1]"]
+  ])("shows the normalized host for %s", (url, host) => {
+    const record = request(url);
+    const addExclusionFilter = vi.fn();
+
+    const items = sidebarContextMenuItems(record, null, [record], client, addExclusionFilter);
+    const item = items.find((entry) => entry.label === `Add ${host} to exclusion filter`);
+
+    expect(item?.disabled).toBe(false);
+    item?.action();
+
+    expect(addExclusionFilter).toHaveBeenCalledWith(`-${host}`);
   });
 
   it("disables host filtering for records without a valid host", () => {
