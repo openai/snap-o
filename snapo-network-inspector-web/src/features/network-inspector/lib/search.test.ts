@@ -3,6 +3,19 @@ import type { InspectorRecord, RequestRecord, WebSocketRecord } from "../../../n
 import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
 describe("network inspector search", () => {
+  it("does not index an unknown HTTP result as a pending response", () => {
+    const record = request({
+      streamEvents: [{ sequence: 1, timestamp: 2, raw: "data: sample-event", data: "sample-event" }],
+      streamEventCount: 1
+    });
+
+    expect(matchesNetworkSearch(record, parseNetworkSearchQuery("Pending"))).toBe(false);
+    expect(matchesNetworkSearch(record, parseNetworkSearchQuery("sample-event"))).toBe(true);
+    expect(matchesNetworkSearch(webSocket({ status: { kind: "pending" } }), parseNetworkSearchQuery("Pending"))).toBe(
+      true
+    );
+  });
+
   it("does not change HTTP matches when lazy bodies are hydrated", () => {
     const bodyless = request();
     const hydrated: RequestRecord = {

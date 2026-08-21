@@ -8,6 +8,15 @@ import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTime } from "../lib/format";
 import { InlineCopyButton, InlineTextToggle, PayloadView } from "./PayloadView";
 
+const emptyStreamMessages = {
+  Pending: "Waiting for response",
+  Streaming: "Awaiting events",
+  Closed: "No events received",
+  Offline: "No events received"
+};
+
+export type SseStatus = keyof typeof emptyStreamMessages;
+
 export const SseCopyAllButton = memo(function SseCopyAllButton({
   client,
   events
@@ -33,23 +42,21 @@ export const SseEventList = memo(function SseEventList({
   client,
   events,
   closed,
-  isConnected = true,
+  status,
   storageKey,
   uiState
 }: {
   client: NetworkClient;
   events: RequestRecord["streamEvents"];
   closed?: RequestRecord["streamClosed"];
-  isConnected?: boolean;
+  status: SseStatus;
   storageKey: string;
   uiState: InspectorUiState;
 }): JSX.Element {
   return (
     <div className="event-list">
       {events.length === 0 ? (
-        <div className="messages-empty">
-          {closed != null || !isConnected ? "No events received." : "Awaiting events..."}
-        </div>
+        <div className="messages-empty">{emptyStreamMessages[status]}</div>
       ) : (
         events.map((event) => (
           <SseEventCard

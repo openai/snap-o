@@ -638,10 +638,6 @@ body.split-pane-resizing {
   color: var(--warning);
 }
 
-.status-streaming {
-  color: var(--accent-blue);
-}
-
 .failure-message {
   margin-top: 8px;
   color: var(--error);
