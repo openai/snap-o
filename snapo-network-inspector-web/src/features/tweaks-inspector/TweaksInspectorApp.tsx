@@ -1,4 +1,4 @@
-import { ChevronDown, LoaderCircle, RotateCcw } from "lucide-react";
+import { ChevronDown, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
   AppInspectorOption,
@@ -13,6 +13,7 @@ import type {
 } from "../../network/bridge-types";
 import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
 import { AppInspectorPicker } from "../app-inspector/components/AppInspectorPicker";
+import { InspectorWaitingState } from "../app-inspector/components/InspectorWaitingState";
 import { TweakUpdateQueue } from "./tweak-update-queue";
 
 interface TweakSection {
@@ -326,9 +327,7 @@ export function TweaksInspectorApp({
       ) : null}
 
       {!hasSnapshot && !connectionError ? (
-        <div className="inspector-loading" role="status" aria-label="Connecting to inspector">
-          <LoaderCircle className="body-loading-spinner" size={20} aria-hidden="true" />
-        </div>
+        <InspectorWaitingState />
       ) : hasSnapshot && !error && tweaks.length === 0 ? (
         <TweaksEmptyState onOpenDocs={() => void client.openExternal(docsUrl)} />
       ) : (

@@ -1,10 +1,10 @@
-import { LoaderCircle } from "lucide-react";
 import { useMemo } from "react";
 import { createNetworkClient } from "./network/client";
 import { NetworkInspectorApp } from "./features/network-inspector/NetworkInspectorApp";
 import { useNetworkInspectorModel } from "./features/network-inspector/hooks/useNetworkInspectorModel";
 import { TweaksInspectorApp } from "./features/tweaks-inspector/TweaksInspectorApp";
 import { AppInspectorPicker } from "./features/app-inspector/components/AppInspectorPicker";
+import { InspectorWaitingState } from "./features/app-inspector/components/InspectorWaitingState";
 import { isInspectorMetadataPending } from "./features/app-inspector/selection";
 import { useAppInspector } from "./features/app-inspector/useAppInspector";
 
@@ -45,9 +45,7 @@ export function App(): JSX.Element {
               onSelect={select}
             />
           ) : null}
-          <div className="inspector-loading" role="status" aria-label="Connecting to inspector">
-            <LoaderCircle className="body-loading-spinner" size={20} aria-hidden="true" />
-          </div>
+          <InspectorWaitingState />
         </main>
       ) : displayedTweaks ? (
         <TweaksInspectorApp
