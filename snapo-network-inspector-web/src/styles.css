@@ -574,11 +574,11 @@ body.split-pane-resizing {
 .detail-scroll {
   min-height: 100%;
   overflow: visible;
-  padding: 16px;
+  padding: 14px 16px;
 }
 
 .detail-header {
-  padding: 0 4px 8px;
+  padding: 0 0 8px;
 }
 
 .title-row {
@@ -636,10 +636,6 @@ body.split-pane-resizing {
 
 .status-warning {
   color: var(--warning);
-}
-
-.status-streaming {
-  color: var(--accent-blue);
 }
 
 .failure-message {
@@ -705,6 +701,14 @@ body.split-pane-resizing {
   font-size: 10px;
   line-height: 12px;
   font-weight: 500;
+}
+
+.section-status {
+  margin-left: 8px;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .section-action {
@@ -1037,6 +1041,7 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-top: 4px;
   padding-bottom: 8px;
 }
 
@@ -1060,7 +1065,18 @@ pre {
 }
 
 .event-meta {
+  align-items: flex-start;
   gap: 12px;
+  margin-bottom: 0;
+}
+
+.event-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 4px 12px;
+  overflow-wrap: anywhere;
 }
 
 .message-meta {
@@ -1076,6 +1092,10 @@ pre {
   gap: 6px;
 }
 
+.event-actions {
+  flex-shrink: 0;
+}
+
 .event-name {
   color: var(--on-surface);
   font-weight: 500;
@@ -1086,7 +1106,6 @@ pre {
 }
 
 .stream-event-metadata,
-.stream-closed-info,
 .close-details {
   margin-top: 6px;
   color: var(--on-surface-variant);
@@ -1095,8 +1114,11 @@ pre {
   line-height: 16px;
 }
 
-.stream-closed-info {
-  margin-top: 0;
+.stream-close-message {
+  color: var(--error);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
 }
 
 .message-direction {

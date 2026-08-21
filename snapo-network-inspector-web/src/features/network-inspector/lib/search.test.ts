@@ -3,6 +3,19 @@ import type { InspectorRecord, RequestRecord, WebSocketRecord } from "../../../n
 import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
 describe("network inspector search", () => {
+  it("does not index an unknown HTTP result as a pending response", () => {
+    const record = request({
+      streamEvents: [{ sequence: 1, timestamp: 2, raw: "data: sample-event", data: "sample-event" }],
+      streamEventCount: 1
+    });
+
+    expect(matchesNetworkSearch(record, parseNetworkSearchQuery("Pending"))).toBe(false);
+    expect(matchesNetworkSearch(record, parseNetworkSearchQuery("sample-event"))).toBe(true);
+    expect(matchesNetworkSearch(webSocket({ status: { kind: "pending" } }), parseNetworkSearchQuery("Pending"))).toBe(
+      true
+    );
+  });
+
   it("does not change HTTP matches when lazy bodies are hydrated", () => {
     const bodyless = request();
     const hydrated: RequestRecord = {
@@ -49,6 +62,46 @@ describe("network inspector search", () => {
     ]) {
       expect(matchesNetworkSearch(record, parseNetworkSearchQuery(searchText))).toBe(true);
     }
+  });
+
+  it.each(["completed", "error"])("does not index hidden totals for %s streams", (reason) => {
+    const record = request({
+      streamClosed: { timestamp: 2, reason, totalEvents: 47281, totalBytes: 938471 }
+    });
+
+    for (const searchText of ["47281", "938471"]) {
+      expect(matchesNetworkSearch(record, parseNetworkSearchQuery(searchText))).toBe(false);
+    }
+  });
+
+  it("does not index the removed completion reason or message", () => {
+    const record = request({
+      streamClosed: { timestamp: 2, reason: "completed", message: "hidden-completion-message" }
+    });
+
+    for (const searchText of ["completed", "hidden-completion-message"]) {
+      expect(matchesNetworkSearch(record, parseNetworkSearchQuery(searchText))).toBe(false);
+    }
+  });
+
+  it.each([
+    { reason: "error", message: "Read timed out.", visibleText: "Read timed out." },
+    { reason: "error", message: undefined, visibleText: "Connection error." },
+    { reason: "error", message: "  ", visibleText: "Connection error." },
+    { reason: "cancelled", message: undefined, visibleText: "cancelled" }
+  ])("keeps the visible close message searchable: $visibleText", ({ reason, message, visibleText }) => {
+    const record = request({ streamClosed: { timestamp: 2, reason, message } });
+
+    expect(matchesNetworkSearch(record, parseNetworkSearchQuery(visibleText))).toBe(true);
+  });
+
+  it("does not index a close reason replaced by its visible message", () => {
+    const record = request({
+      streamClosed: { timestamp: 2, reason: "cancelled", message: "Request stopped by the client." }
+    });
+
+    expect(matchesNetworkSearch(record, parseNetworkSearchQuery("cancelled"))).toBe(false);
+    expect(matchesNetworkSearch(record, parseNetworkSearchQuery("Request stopped by the client."))).toBe(true);
   });
 
   it("searches retained WebSocket message and lifecycle data", () => {

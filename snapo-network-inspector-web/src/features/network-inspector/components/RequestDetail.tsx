@@ -10,7 +10,7 @@ import { responseBodyCaptureMetadata, shouldRequestResponseBody } from "../lib/r
 import { BodySection, payloadMetadata } from "./PayloadView";
 import { HeadersTable, Section } from "./Section";
 import { FailureMessage, StatusBadge } from "./Status";
-import { SseCopyAllButton, SseEventList } from "./StreamEvents";
+import { SseCopyAllButton, SseEventList, type SseStatus } from "./StreamEvents";
 
 export const RequestDetail = memo(function RequestDetail({
   client,
@@ -26,6 +26,9 @@ export const RequestDetail = memo(function RequestDetail({
   onRetryResponseBody(): void;
 }): JSX.Element {
   const isSseResponse = isLikelyStreamingRequest(record);
+  const streamStatus = sseStatus(record, isConnected);
+  const streamClosedWithError =
+    isSseResponse && record.streamClosed != null && record.streamClosed.reason !== "completed";
   const requestBodyDisplayText = useRequestBodyDisplayText(record);
   const requestBody = makeBodyPayload({
     body: record.requestBody,
@@ -59,7 +62,7 @@ export const RequestDetail = memo(function RequestDetail({
           <StatusBadge record={record} />
           <span>{timingText}</span>
         </div>
-        <FailureMessage status={record.status} />
+        {streamClosedWithError ? null : <FailureMessage status={record.status} />}
       </header>
 
       {record.requestHeaders.length === 0 ? null : (
@@ -88,7 +91,9 @@ export const RequestDetail = memo(function RequestDetail({
           />
         </Section>
       )}
-      {record.status.kind === "pending" ? <div className="pending-response">Waiting for response...</div> : null}
+      {!isSseResponse && isConnected && record.status.kind === "pending" && !record.hasReceivedResponse ? (
+        <div className="pending-response">Waiting for response</div>
+      ) : null}
       {record.responseHeaders.length === 0 ? null : (
         <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
           <HeadersTable headers={record.responseHeaders} />
@@ -96,7 +101,12 @@ export const RequestDetail = memo(function RequestDetail({
       )}
       {isSseResponse ? (
         <Section
-          title="Server-Sent Events"
+          title={
+            <>
+              Server-Sent Events
+              <span className="section-status">· {streamStatus}</span>
+            </>
+          }
           storageKey={`${prefix}:stream`}
           uiState={uiState}
           trailing={<SseCopyAllButton client={client} events={record.streamEvents} />}
@@ -105,6 +115,7 @@ export const RequestDetail = memo(function RequestDetail({
             client={client}
             events={record.streamEvents}
             closed={record.streamClosed}
+            status={streamStatus}
             storageKey={`${prefix}:stream`}
             uiState={uiState}
           />
@@ -144,7 +155,7 @@ export const RequestDetail = memo(function RequestDetail({
             <div className="payload-card">
               <div className="body-loading" role="status">
                 <LoaderCircle className="body-loading-spinner" size={14} aria-hidden="true" />
-                <span>Loading...</span>
+                <span>Loading</span>
               </div>
             </div>
           ) : (
@@ -160,6 +171,13 @@ export const RequestDetail = memo(function RequestDetail({
     </div>
   );
 });
+
+function sseStatus(record: RequestRecord, isConnected: boolean): SseStatus {
+  if (record.streamClosed != null) return "Closed";
+  if (!isConnected) return "Offline";
+  if (record.hasReceivedResponse || record.streamEvents.length > 0) return "Streaming";
+  return "Pending";
+}
 
 function useRequestBodyDisplayText(record: RequestRecord): string | null {
   const contentEncoding = requestHeaderValue(record.requestHeaders, "content-encoding");

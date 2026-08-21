@@ -14,7 +14,7 @@ const HighlightScopes = [
   ".json-outline",
   ".event-name",
   ".stream-event-metadata",
-  ".stream-closed-info",
+  ".stream-close-message",
   ".close-details",
   ".message-payload-size",
   ".message-enqueue-state",

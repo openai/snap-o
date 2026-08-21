@@ -10,7 +10,7 @@ export function Section({
   trailing,
   children
 }: {
-  title: string;
+  title: ReactNode;
   meta?: string | null;
   storageKey: string;
   uiState: InspectorUiState;

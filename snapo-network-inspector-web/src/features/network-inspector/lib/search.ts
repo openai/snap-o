@@ -4,7 +4,7 @@ import {
   type KeywordSearchDocument,
   type KeywordSearchQuery
 } from "../../../network/keyword-search";
-import type { Header, InspectorRecord, RequestStatus } from "../../../network/cdp";
+import type { Header, InspectorRecord } from "../../../network/cdp";
 import { formatBytes } from "../../../network/payload";
 import { statusDisplayName } from "./format";
 
@@ -19,7 +19,7 @@ export function matchesNetworkSearch(record: InspectorRecord, query: NetworkSear
 }
 
 export function searchDocumentForRecord(record: InspectorRecord): KeywordSearchDocument {
-  const parts = [record.url, record.method, statusSearchText(record.status)];
+  const parts = [record.url, record.method, statusSearchText(record)];
   parts.push(...headersSearchText(record.requestHeaders), ...headersSearchText(record.responseHeaders));
 
   if (record.kind === "request") {
@@ -33,13 +33,9 @@ export function searchDocumentForRecord(record: InspectorRecord): KeywordSearchD
         event.retryMillis == null ? "" : String(event.retryMillis)
       );
     }
-    if (record.streamClosed != null) {
-      parts.push(
-        record.streamClosed.reason,
-        record.streamClosed.message ?? "",
-        record.streamClosed.totalEvents == null ? "" : String(record.streamClosed.totalEvents),
-        record.streamClosed.totalBytes == null ? "" : String(record.streamClosed.totalBytes)
-      );
+    const closed = record.streamClosed;
+    if (closed != null && closed.reason !== "completed") {
+      parts.push(closed.message?.trim() || (closed.reason === "error" ? "Connection error." : closed.reason));
     }
   } else {
     for (const message of record.messages) {
@@ -70,8 +66,9 @@ function headersSearchText(headers: Header[]): string[] {
   return headers.flatMap((header) => [header.name, header.value, `${header.name}: ${header.value}`]);
 }
 
-function statusSearchText(status: RequestStatus): string {
-  if (status.kind === "pending") return "Pending";
+function statusSearchText(record: InspectorRecord): string {
+  const status = record.status;
+  if (status.kind === "pending") return record.kind === "websocket" ? "Pending" : "";
   if (status.kind === "failure") return `Error ${status.message ?? ""}`;
   return `${status.code} ${statusDisplayName(status.code)}`;
 }
