@@ -20,8 +20,10 @@ struct ShellLivePreviewPointerBackend: LivePreviewPointerBackend {
 private actor RecordingBackend: LivePreviewPointerBackend {
   let minimumMoveInterval: Duration
   private(set) var events: [LivePreviewPointerEvent] = []
+  private(set) var isStopped = false
   private var gate: CheckedContinuation<Void, Never>?
   private var holdFirstSend: Bool
+  private var failNextSend = false
 
   init(holdFirstSend: Bool = false, minimumMoveInterval: Duration = .nanoseconds(16_666_667)) {
     self.holdFirstSend = holdFirstSend
@@ -29,16 +31,44 @@ private actor RecordingBackend: LivePreviewPointerBackend {
   }
 
   func send(_ event: LivePreviewPointerEvent) async throws {
+    let shouldFail = failNextSend
+    failNextSend = false
     events.append(event)
     if holdFirstSend {
       holdFirstSend = false
       await withCheckedContinuation { gate = $0 }
     }
+    if shouldFail { throw ADBError.protocolFailure("Test send failed") }
+  }
+
+  func holdNextSend(failing: Bool) {
+    holdFirstSend = true
+    failNextSend = failing
+  }
+
+  func resetEvents() {
+    events.removeAll()
+  }
+
+  func stop() async {
+    isStopped = true
   }
 
   func release() {
     gate?.resume()
     gate = nil
+  }
+}
+
+private actor BackendSequence {
+  private var backends: [RecordingBackend]
+
+  init(_ backends: [RecordingBackend]) {
+    self.backends = backends
+  }
+
+  func next() -> RecordingBackend {
+    backends.removeFirst()
   }
 }
 
@@ -88,13 +118,22 @@ struct LivePreviewPointerTests {
     await gestureBoundariesStayOrdered()
     await stopDiscardsWaitingMove()
     await hoverIsNotPaced()
+    for endAction in [LivePreviewPointerAction.up, .cancel] {
+      await preferredGestureEnds(endAction)
+    }
+    for action in [LivePreviewPointerAction.move, .up, .cancel] {
+      await preferredFailureWaitsForNextGesture(action)
+      for failing in [false, true] {
+        await reconnectIgnoresOldSend(action, failing: failing)
+      }
+    }
     try await freshRotationDoesNotQueryOnDown()
     try await activeDragPausesRefreshAndNextDragChecksStaleRotation()
     try await changedSizeRefreshesBeforeDown()
     try await idleRefreshFindsHalfTurn()
     try await stopDuringRefreshDoesNotSend()
     try await failedRefreshDoesNotReuseOldRotation()
-    print("Live preview pointer tests passed (12 cases)")
+    print("Live preview pointer tests passed (23 cases)")
   }
 
   private static func event(
@@ -233,6 +272,102 @@ struct LivePreviewPointerTests {
     await sender.enqueue(event(.move, x: 2, source: .mouse))
     await waitUntil { await backend.events.count == 2 }
     precondition(!clock.isSleeping)
+    await sender.stopAll()
+  }
+
+  private static func preparePreferredBackend(
+    _ sender: LivePreviewPointerInjector, preferred: RecordingBackend, fallback: RecordingBackend
+  ) async {
+    await sender.prepare(deviceID: "test-device")
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    // Preparation is asynchronous; complete taps until the preferred backend accepts one.
+    while await preferred.events.isEmpty {
+      precondition(ContinuousClock.now < deadline, "Preferred backend never became ready")
+      let fallbackCount = await fallback.events.count
+      await sender.enqueue(event(.down))
+      await sender.enqueue(event(.up))
+      await waitUntil {
+        let preferredCount = await preferred.events.count
+        let count = await fallback.events.count
+        return preferredCount == 2 || count == fallbackCount + 2
+      }
+    }
+    await preferred.resetEvents()
+    await fallback.resetEvents()
+  }
+
+  private static func preferredGestureEnds(_ endAction: LivePreviewPointerAction) async {
+    let preferred = RecordingBackend(minimumMoveInterval: .zero)
+    let fallback = RecordingBackend(minimumMoveInterval: .zero)
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in preferred }, fallbackBackend: fallback)
+    await preparePreferredBackend(sender, preferred: preferred, fallback: fallback)
+    let actions: [LivePreviewPointerAction] = [.down, .move, endAction, .down, .up]
+    for action in actions {
+      await sender.enqueue(event(action))
+    }
+    await waitUntil { await preferred.events.count == actions.count }
+    let sent = await preferred.events
+    let fallbackEvents = await fallback.events
+    precondition(sent.map(\.action) == actions && fallbackEvents.isEmpty)
+    await sender.stopAll()
+  }
+
+  private static func preferredFailureWaitsForNextGesture(_ action: LivePreviewPointerAction) async {
+    let preferred = RecordingBackend(minimumMoveInterval: .zero)
+    let fallback = RecordingBackend(minimumMoveInterval: .zero)
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in preferred }, fallbackBackend: fallback)
+    await preparePreferredBackend(sender, preferred: preferred, fallback: fallback)
+    await sender.enqueue(event(.down))
+    await waitUntil { await preferred.events.count == 1 }
+    await preferred.holdNextSend(failing: true)
+    await sender.enqueue(event(action))
+    await waitUntil { await preferred.events.count == 2 }
+    if action == .move {
+      await sender.enqueue(event(.move, x: 1))
+      await sender.enqueue(event(.up))
+    }
+    for nextAction in [LivePreviewPointerAction.down, .move, .up] {
+      await sender.enqueue(event(nextAction))
+    }
+    await preferred.release()
+    await waitUntil { await fallback.events.count == 3 }
+    let preferredEvents = await preferred.events
+    let fallbackEvents = await fallback.events
+    let stopped = await preferred.isStopped
+    precondition(preferredEvents.map(\.action) == [.down, action] && stopped)
+    precondition(fallbackEvents.map(\.action) == [.down, .move, .up])
+    await sender.stopAll()
+  }
+
+  private static func reconnectIgnoresOldSend(_ action: LivePreviewPointerAction, failing: Bool) async {
+    let old = RecordingBackend(minimumMoveInterval: .zero)
+    let replacement = RecordingBackend(minimumMoveInterval: .zero)
+    let fallback = RecordingBackend(minimumMoveInterval: .zero)
+    let backends = BackendSequence([old, replacement])
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in await backends.next() }, fallbackBackend: fallback)
+    await preparePreferredBackend(sender, preferred: old, fallback: fallback)
+    await sender.enqueue(event(.down))
+    await waitUntil { await old.events.count == 1 }
+    await old.holdNextSend(failing: failing)
+    await sender.enqueue(event(action))
+    await waitUntil { await old.events.count == 2 }
+    await sender.enqueue(event(.move, x: 99))
+    await sender.enqueue(event(.up))
+    await sender.stopDevice("test-device")
+    await sender.prepare(deviceID: "test-device")
+    await old.release()
+    await preparePreferredBackend(sender, preferred: replacement, fallback: fallback)
+    for nextAction in [LivePreviewPointerAction.down, .move, .up] {
+      await sender.enqueue(event(nextAction))
+    }
+    await waitUntil { await replacement.events.count == 3 }
+    let oldEvents = await old.events
+    let replacementEvents = await replacement.events
+    let fallbackEvents = await fallback.events
+    let stopped = await replacement.isStopped
+    precondition(oldEvents.map(\.action) == [.down, action])
+    precondition(replacementEvents.map(\.action) == [.down, .move, .up])
+    precondition(fallbackEvents.isEmpty && !stopped)
     await sender.stopAll()
   }
 

@@ -260,10 +260,8 @@ actor LivePreviewPointerInjector {
     switch event.action {
     case .down:
       try await sendTouchDown(event)
-    case .move:
-      try await sendTouchMove(event)
-    case .up, .cancel:
-      try await sendTouchEnd(event)
+    case .move, .up, .cancel:
+      try await sendRoutedTouchEvent(event)
     }
   }
 
@@ -304,32 +302,11 @@ actor LivePreviewPointerInjector {
     }
   }
 
-  private func sendTouchMove(_ event: LivePreviewPointerEvent) async throws {
-    switch touchRoutes[event.deviceID] {
-    case .preferred(let generation, let backend):
-      do {
-        try await backend.send(event)
-      } catch {
-        let isCurrent = deviceStates[event.deviceID]?.generation == generation &&
-          touchRoutes[event.deviceID]?.generation == generation
-        if isCurrent {
-          deviceStates[event.deviceID] = .fallback(generation: generation)
-          touchRoutes[event.deviceID] = .discarded(generation: generation)
-        }
-        await backend.stop()
-        if isCurrent { throw error }
-      }
-    case .fallback:
-      try await fallbackBackend.send(event)
-    case .discarded, nil:
-      break
-    }
-  }
-
-  private func sendTouchEnd(_ event: LivePreviewPointerEvent) async throws {
+  private func sendRoutedTouchEvent(_ event: LivePreviewPointerEvent) async throws {
     guard let route = touchRoutes[event.deviceID] else { return }
+    let endsGesture = event.action == .up || event.action == .cancel
     defer {
-      if touchRoutes[event.deviceID]?.generation == route.generation {
+      if endsGesture, touchRoutes[event.deviceID]?.generation == route.generation {
         touchRoutes.removeValue(forKey: event.deviceID)
       }
     }
@@ -339,9 +316,13 @@ actor LivePreviewPointerInjector {
       do {
         try await backend.send(event)
       } catch {
-        let isCurrent = deviceStates[event.deviceID]?.generation == generation
+        let isCurrent = deviceStates[event.deviceID]?.generation == generation &&
+          touchRoutes[event.deviceID]?.generation == generation
         if isCurrent {
           deviceStates[event.deviceID] = .fallback(generation: generation)
+          if !endsGesture {
+            touchRoutes[event.deviceID] = .discarded(generation: generation)
+          }
         }
         await backend.stop()
         if isCurrent { throw error }
