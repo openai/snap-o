@@ -11,6 +11,7 @@ const records = [request("first"), request("second"), request("third")];
 const copyText = vi.fn().mockResolvedValue(undefined);
 const client = { copyText } as unknown as NetworkClient;
 const onSelect = vi.fn();
+const onAddExclusionFilter = vi.fn();
 const scrollIntoView = vi.fn();
 let container: HTMLDivElement;
 let root: Root;
@@ -19,6 +20,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
   onSelect.mockClear();
+  onAddExclusionFilter.mockClear();
   copyText.mockClear();
   scrollIntoView.mockClear();
   container = document.createElement("div");
@@ -53,6 +55,7 @@ function Harness({ records: visibleRecords, initialId }: { records: RequestRecor
           setSelectedId(id);
         }}
         client={client}
+        onAddExclusionFilter={onAddExclusionFilter}
       />
     </>
   );
@@ -182,14 +185,19 @@ describe("network request keyboard selection", () => {
       expect(menu.style.left).toBe("24px");
       expect(menu.style.top).toBe("88px");
       const items = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
-      expect(items.map((item) => item.textContent)).toEqual(["Copy URL", "Copy as cURL", "Export HAR (sanitized)..."]);
+      expect(items.map((item) => item.textContent)).toEqual([
+        "Copy URL",
+        "Copy as cURL",
+        "Add example.com to exclusion filter",
+        "Export HAR (sanitized)..."
+      ]);
       expect(document.activeElement).toBe(items[0]);
 
       expect(press(items[0], "ArrowDown").defaultPrevented).toBe(true);
       expect(document.activeElement).toBe(items[1]);
       press(items[1], "End");
-      expect(document.activeElement).toBe(items[2]);
-      press(items[2], "Home");
+      expect(document.activeElement).toBe(items[3]);
+      press(items[3], "Home");
       expect(document.activeElement).toBe(items[0]);
       expectSelected(list, "second");
 
@@ -213,6 +221,23 @@ describe("network request keyboard selection", () => {
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(list);
     expect(copyText).not.toHaveBeenCalled();
+  });
+
+  it("adds the active request host through the keyboard context menu", () => {
+    const list = render();
+    list.focus();
+    press(list, "F10", { shiftKey: true });
+    const items = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    press(items[0], "ArrowDown");
+    press(items[1], "ArrowDown");
+    expect(document.activeElement).toBe(items[2]);
+
+    press(items[2], "Enter");
+
+    expect(onAddExclusionFilter).toHaveBeenCalledExactlyOnceWith("-example.com");
+    expect(copyText).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(list);
   });
 
   it("keeps pointer context menus attached to the clicked request", () => {

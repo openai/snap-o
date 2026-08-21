@@ -138,6 +138,8 @@ describe("app inspector restoration UI", () => {
       nativeInspectorStateChanged: vi.fn(),
       onNativeSelectedServer: vi.fn(() => () => {}),
       onNativeSearchText: vi.fn(() => () => {}),
+      listExclusionFilters: vi.fn(async () => []),
+      onNativeExclusionFilters: vi.fn(() => () => {}),
       onNativeSortOrder: vi.fn(() => () => {}),
       onNativeClearCompleted: vi.fn(() => () => {}),
       onNativeCopySelectedUrl: vi.fn(() => () => {}),
