@@ -23,6 +23,6 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   Tests/StartupCapture/LivePreviewSessionTests.swift -o "$TEST_DIR/session-tests"
 "$TEST_DIR/session-tests"
 xcrun swiftc -swift-version 6 -parse-as-library \
-  Snap-O/CaptureWindow/LiveCaptureView.swift \
+  Snap-O/CaptureWindow/LiveCaptureView.swift Snap-O/CaptureWindow/CaptureSurfaceView.swift \
   Tests/StartupCapture/LivePreviewVisibilityTests.swift -o "$TEST_DIR/visibility-tests"
 "$TEST_DIR/visibility-tests"

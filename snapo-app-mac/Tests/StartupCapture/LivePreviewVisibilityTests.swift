@@ -33,12 +33,19 @@ struct LivePreviewRenderer {
   let session: LivePreviewSession
 }
 
-struct LivePreviewRendererView: View {
+struct LivePreviewRendererView: NSViewRepresentable {
   let renderer: LivePreviewRenderer
   let fileStore: FileStore
-  var body: some View {
-    Color.green
+
+  @MainActor static var displayView: NSView?
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    Self.displayView = view
+    return view
   }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 /// Drives the production view lifecycle without a device or an on-screen window.
@@ -115,9 +122,14 @@ struct LivePreviewVisibilityTests {
   static func main() {
     _ = NSApplication.shared
     let host = TestHost()
-    let view = NSHostingView(rootView: LiveCaptureView(host: host, capture: CaptureMedia(), fileStore: FileStore()))
+    func surface(aspectRatio: CGFloat?) -> some View {
+      CaptureSurfaceView(aspectRatio: aspectRatio) {
+        LiveCaptureView(host: host, capture: CaptureMedia(), fileStore: FileStore())
+      }
+    }
+    let view = NSHostingView(rootView: surface(aspectRatio: nil))
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 120, height: 120),
+      contentRect: NSRect(x: 0, y: 0, width: 240, height: 120),
       styleMask: [.borderless],
       backing: .buffered,
       defer: false
@@ -129,6 +141,24 @@ struct LivePreviewVisibilityTests {
     Visibility.shared.isVisible = true
     eventually("Visible preview starts once") { host.starts == 1 && host.active.count == 1 }
     precondition(!NSApplication.shared.isActive, "Test must leave the app inactive")
+    eventually("Renderer must attach") { LivePreviewRendererView.displayView != nil }
+    let displayView = LivePreviewRendererView.displayView
+    let sizingCases: [(CGFloat?, CGSize)] = [
+      (nil, CGSize(width: 240, height: 120)),
+      (0.5, CGSize(width: 60, height: 120)),
+      (nil, CGSize(width: 240, height: 120)),
+      (4, CGSize(width: 240, height: 60)),
+      (0.5, CGSize(width: 60, height: 120)),
+      (nil, CGSize(width: 240, height: 120))
+    ]
+    for (aspectRatio, expectedSize) in sizingCases {
+      view.rootView = surface(aspectRatio: aspectRatio)
+      view.layoutSubtreeIfNeeded()
+      pump()
+      precondition(host.starts == 1 && host.stops.isEmpty, "Inspector toggles must not restart the stream")
+      precondition(LivePreviewRendererView.displayView === displayView, "Inspector toggles must preserve the display view")
+      precondition(displayView?.frame.size == expectedSize, "Preview must fit the device or fill the capture-only pane")
+    }
     host.delayStop = true
     Visibility.shared.isVisible = false
     eventually("Cleanup should be pending") { host.stopContinuation != nil }
