@@ -33,13 +33,9 @@ export function searchDocumentForRecord(record: InspectorRecord): KeywordSearchD
         event.retryMillis == null ? "" : String(event.retryMillis)
       );
     }
-    if (record.streamClosed != null) {
-      parts.push(
-        record.streamClosed.reason,
-        record.streamClosed.message ?? "",
-        record.streamClosed.totalEvents == null ? "" : String(record.streamClosed.totalEvents),
-        record.streamClosed.totalBytes == null ? "" : String(record.streamClosed.totalBytes)
-      );
+    const closed = record.streamClosed;
+    if (closed != null && closed.reason !== "completed") {
+      parts.push(closed.message?.trim() || (closed.reason === "error" ? "Connection error." : closed.reason));
     }
   } else {
     for (const message of record.messages) {
