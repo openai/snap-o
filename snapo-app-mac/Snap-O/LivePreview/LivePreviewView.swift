@@ -46,7 +46,6 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
 
   private var pointerState = PointerState()
   private let hoverThrottleInterval: TimeInterval = 1.0 / 45.0
-  private let dragThrottleInterval: TimeInterval = 1.0 / 60.0
   private var frameDragOrigin: CGPoint?
   private var isDraggingFrame = false
 
@@ -252,12 +251,10 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
       guard let devicePoint else { return }
       pointerState.isPointerDown = true
       pointerState.lastDeviceLocation = devicePoint
-      pointerState.lastDragTimestamp = event.timestamp
       sendPointer(.down, .touchscreen, devicePoint)
 
     case .drag:
-      guard pointerState.isPointerDown, let devicePoint,
-            shouldSendDragEvent(at: event.timestamp) else { return }
+      guard pointerState.isPointerDown, let devicePoint else { return }
       pointerState.lastDeviceLocation = devicePoint
       sendPointer(.move, .touchscreen, devicePoint)
 
@@ -273,12 +270,6 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
   private func shouldSendHoverEvent(at timestamp: TimeInterval) -> Bool {
     guard timestamp - pointerState.lastHoverTimestamp >= hoverThrottleInterval else { return false }
     pointerState.lastHoverTimestamp = timestamp
-    return true
-  }
-
-  private func shouldSendDragEvent(at timestamp: TimeInterval) -> Bool {
-    guard timestamp - pointerState.lastDragTimestamp >= dragThrottleInterval else { return false }
-    pointerState.lastDragTimestamp = timestamp
     return true
   }
 
@@ -312,7 +303,6 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
   private struct PointerState {
     var isPointerDown = false
     var lastHoverTimestamp: TimeInterval = 0
-    var lastDragTimestamp: TimeInterval = 0
     var lastDeviceLocation: CGPoint?
   }
 }

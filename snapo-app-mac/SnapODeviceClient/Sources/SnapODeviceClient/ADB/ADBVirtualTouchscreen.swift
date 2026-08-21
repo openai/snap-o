@@ -14,21 +14,34 @@ public enum ADBVirtualTouchAction: Sendable {
   case cancel
 }
 
+public struct ADBDisplayViewport: Equatable, Sendable {
+  public let rotation: ADBDisplayRotation
+  public let width: Int
+  public let height: Int
+}
+
 /// A virtual direct-touch device backed by a persistent Android `uinput` process.
 public final class ADBVirtualTouchscreen: @unchecked Sendable {
-  public let initialDisplayRotation: ADBDisplayRotation
+  public let initialDisplayViewport: ADBDisplayViewport
+  public let supportsSynchronization: Bool
+  public var initialDisplayRotation: ADBDisplayRotation {
+    initialDisplayViewport.rotation
+  }
 
   private let connection: ADBSocketConnection
   private var activeGeometry: UInputTouchscreenProtocol.Geometry?
   private var nextTrackingID = 1
+  private var synchronizationSequence: UInt64 = 0
   private var isClosed = false
 
   fileprivate init(
     connection: ADBSocketConnection,
-    initialDisplayRotation: ADBDisplayRotation
+    initialDisplayViewport: ADBDisplayViewport,
+    supportsSynchronization: Bool
   ) {
     self.connection = connection
-    self.initialDisplayRotation = initialDisplayRotation
+    self.initialDisplayViewport = initialDisplayViewport
+    self.supportsSynchronization = supportsSynchronization
   }
 
   public func send(
@@ -57,7 +70,7 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
       let point = geometry.rawPoint(x: x, y: y)
       let trackingID = nextTrackingID
       nextTrackingID = trackingID == UInputTouchscreenProtocol.maximumTrackingID ? 1 : trackingID + 1
-      try connection.writeLine(
+      try sendCommand(
         UInputTouchscreenProtocol.injectCommand(
           action: .down,
           point: point,
@@ -69,7 +82,7 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
     case .move:
       guard let activeGeometry else { return }
       let point = activeGeometry.rawPoint(x: x, y: y)
-      try connection.writeLine(
+      try sendCommand(
         UInputTouchscreenProtocol.injectCommand(
           action: .move,
           point: point,
@@ -78,15 +91,30 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
       )
 
     case .up, .cancel:
-      guard activeGeometry != nil else { return }
-      try connection.writeLine(
+      guard let activeGeometry else { return }
+      let finalPoint = action == .up ? activeGeometry.rawPoint(x: x, y: y) : nil
+      try sendCommand(
         UInputTouchscreenProtocol.injectCommand(
           action: action,
-          point: nil,
+          point: finalPoint,
           trackingID: nil
         )
       )
-      activeGeometry = nil
+      self.activeGeometry = nil
+    }
+  }
+
+  private func sendCommand(_ command: String) throws {
+    guard supportsSynchronization else {
+      try connection.writeLine(command)
+      return
+    }
+    synchronizationSequence &+= 1
+    let sync = UInputTouchscreenProtocol.synchronizationCommand(sequence: synchronizationSequence)
+    try connection.writeLine(command + "\n" + sync)
+    // The barrier confirms kernel injection, not handling or drawing by the Android app.
+    try UInputTouchscreenProtocol.waitForSynchronization(sequence: synchronizationSequence) {
+      try connection.readChunk(maxLength: $0, deadline: $1)
     }
   }
 
@@ -110,6 +138,8 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
 public extension ADBClient {
   /// Starts a virtual touchscreen when the device's Android build exposes a usable `uinput` tool.
   func startVirtualTouchscreen(deviceID: String) async throws -> ADBVirtualTouchscreen {
+    let sdk = try await runShellString(deviceID: deviceID, command: "getprop ro.build.version.sdk")
+    let supportsSynchronization = UInputTouchscreenProtocol.supportsSynchronization(sdk: sdk)
     let identifier = UUID().uuidString
     let name = "Snap-O Live Preview \(identifier)"
     let port = "snapo:live-preview:\(identifier)"
@@ -120,10 +150,11 @@ public extension ADBClient {
       try connection.sendTransport(to: deviceID)
       try connection.sendShell("exec /system/bin/uinput -")
       try connection.writeLine(registerCommand)
-      let rotation = try await waitForVirtualTouchscreen(deviceID: deviceID, name: name)
+      let viewport = try await waitForVirtualTouchscreen(deviceID: deviceID, name: name)
       return ADBVirtualTouchscreen(
         connection: connection,
-        initialDisplayRotation: rotation
+        initialDisplayViewport: viewport,
+        supportsSynchronization: supportsSynchronization
       )
     } catch {
       connection.close()
@@ -132,20 +163,24 @@ public extension ADBClient {
   }
 
   func displayRotation(deviceID: String) async throws -> ADBDisplayRotation {
+    try await displayViewport(deviceID: deviceID).rotation
+  }
+
+  func displayViewport(deviceID: String) async throws -> ADBDisplayViewport {
     let output = try await runShellString(
       deviceID: deviceID,
       command: "dumpsys input | grep -m 1 'Viewport INTERNAL: displayId=0'"
     )
-    guard let rotation = UInputTouchscreenProtocol.displayRotation(from: output) else {
-      throw ADBError.parseFailure("Unable to determine display rotation")
+    guard let viewport = UInputTouchscreenProtocol.displayViewport(from: output) else {
+      throw ADBError.parseFailure("Unable to determine display viewport")
     }
-    return rotation
+    return viewport
   }
 
   private func waitForVirtualTouchscreen(
     deviceID: String,
     name: String
-  ) async throws -> ADBDisplayRotation {
+  ) async throws -> ADBDisplayViewport {
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: .seconds(2))
 
@@ -153,8 +188,8 @@ public extension ADBClient {
       try Task.checkCancellation()
       let output = try await runShellString(deviceID: deviceID, command: "dumpsys input")
       if UInputTouchscreenProtocol.isRegisteredTouchscreen(named: name, in: output),
-         let rotation = UInputTouchscreenProtocol.displayRotation(from: output) {
-        return rotation
+         let viewport = UInputTouchscreenProtocol.displayViewport(from: output) {
+        return viewport
       }
       guard clock.now < deadline else { break }
       try await Task.sleep(for: .milliseconds(50))
@@ -167,6 +202,49 @@ public extension ADBClient {
 enum UInputTouchscreenProtocol {
   static let maximumAxisValue = 32767
   static let maximumTrackingID = 65535
+
+  static func supportsSynchronization(sdk: String) -> Bool {
+    // The JSON sync command is available from Android 15. Older tools retain paced writes.
+    (Int(sdk.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) >= 35
+  }
+
+  static func synchronizationCommand(sequence: UInt64) -> String {
+    #"{"id":1,"command":"sync","syncToken":""# + String(sequence) + #""}"#
+  }
+
+  static func waitForSynchronization(
+    sequence: UInt64,
+    readChunk: (Int, ContinuousClock.Instant) throws -> Data?
+  ) throws {
+    struct Response: Decodable {
+      let reason: String
+      let id: Int
+      let syncToken: String
+    }
+
+    let deadline = ContinuousClock.now.advanced(by: .milliseconds(500))
+    let maximumResponseBytes = 1024
+    let decoder = JSONDecoder()
+    var response = Data()
+    while response.count < maximumResponseBytes {
+      try Task.checkCancellation()
+      guard ContinuousClock.now < deadline else {
+        throw ADBError.requestTimedOut("Waiting for uinput acknowledgment")
+      }
+      guard let chunk = try readChunk(maximumResponseBytes - response.count, deadline), !chunk.isEmpty else {
+        throw ADBError.protocolFailure("uinput closed before acknowledging injection")
+      }
+      response.append(chunk)
+      // uinput writes JSON objects without newline delimiters.
+      if let decoded = try? decoder.decode(Response.self, from: response) {
+        guard decoded.reason == "sync", decoded.id == 1, decoded.syncToken == String(sequence) else {
+          throw ADBError.protocolFailure("Unexpected uinput acknowledgment")
+        }
+        return
+      }
+    }
+    throw ADBError.protocolFailure("Invalid or oversized uinput acknowledgment")
+  }
 
   struct Point: Equatable {
     let x: Int
@@ -236,6 +314,13 @@ enum UInputTouchscreenProtocol {
     point: Point?,
     trackingID: Int?
   ) -> String {
+    let liftEvents = [
+      3, 47, 0,
+      3, 57, -1,
+      1, 330, 0,
+      1, 325, 0,
+      0, 0, 0
+    ]
     let events: [Int] = switch action {
     case .down:
       if let point, let trackingID {
@@ -263,13 +348,12 @@ enum UInputTouchscreenProtocol {
         []
       }
     case .up, .cancel:
-      [
-        3, 47, 0,
-        3, 57, -1,
-        1, 330, 0,
-        1, 325, 0,
-        0, 0, 0
-      ]
+      if action == .up, let point {
+        // InputReader must see the final position while the contact is still active.
+        [3, 47, 0, 3, 53, point.x, 3, 54, point.y, 0, 0, 0] + liftEvents
+      } else {
+        liftEvents
+      }
     }
     let values = events.map(String.init).joined(separator: ",")
     return #"{"id":1,"command":"inject","events":["# + values + "]}"
@@ -283,6 +367,18 @@ enum UInputTouchscreenProtocol {
     let suffix = viewport[marker.upperBound...]
     guard let value = suffix.first?.wholeNumberValue else { return nil }
     return ADBDisplayRotation(rawValue: value)
+  }
+
+  static func displayViewport(from output: String) -> ADBDisplayViewport? {
+    guard let line = output.split(separator: "\n").first(where: {
+      $0.contains("Viewport INTERNAL: displayId=0")
+    }),
+      let rotation = displayRotation(from: String(line)),
+      let frame = line.firstMatch(of: /logicalFrame=\[\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/),
+      let left = Int(frame.1), let top = Int(frame.2),
+      let right = Int(frame.3), let bottom = Int(frame.4),
+      right > left, bottom > top else { return nil }
+    return ADBDisplayViewport(rotation: rotation, width: right - left, height: bottom - top)
   }
 
   static func isRegisteredTouchscreen(named name: String, in output: String) -> Bool {

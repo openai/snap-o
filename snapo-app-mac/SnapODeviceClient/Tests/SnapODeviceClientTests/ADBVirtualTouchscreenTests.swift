@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @testable import SnapODeviceClient
 import Testing
@@ -33,6 +34,85 @@ struct ADBVirtualTouchscreenTests {
 
     #expect(command.contains(#""type":100,"data":[1,3]"#))
     #expect(command.contains(#""type":101,"data":[330,325]"#))
+  }
+
+  @Test("only enables acknowledgments on supported Android versions")
+  func synchronizationSupport() {
+    #expect(!UInputTouchscreenProtocol.supportsSynchronization(sdk: "34"))
+    #expect(!UInputTouchscreenProtocol.supportsSynchronization(sdk: "unknown"))
+    #expect(UInputTouchscreenProtocol.supportsSynchronization(sdk: "35\n"))
+    #expect(UInputTouchscreenProtocol.supportsSynchronization(sdk: "37"))
+  }
+
+  @Test("matches a fragmented acknowledgment without a newline")
+  func synchronizationResponse() throws {
+    let command = try JSONSerialization.jsonObject(
+      with: Data(UInputTouchscreenProtocol.synchronizationCommand(sequence: 42).utf8)
+    ) as? [String: Any]
+    #expect(command?["command"] as? String == "sync")
+    #expect(command?["syncToken"] as? String == "42")
+
+    var chunks = [Data(#"{"reason":"syn"#.utf8), Data(#"c","id":1,"syncToken":"42"}"#.utf8)]
+    var deadlines: [ContinuousClock.Instant] = []
+    try UInputTouchscreenProtocol.waitForSynchronization(sequence: 42) { limit, deadline in
+      deadlines.append(deadline)
+      #expect(limit <= 1024)
+      return chunks.removeFirst()
+    }
+    #expect(chunks.isEmpty)
+    #expect(deadlines.count == 2 && deadlines[0] == deadlines[1])
+  }
+
+  @Test("rejects wrong tokens and bounds invalid acknowledgment data")
+  func invalidSynchronizationResponse() {
+    #expect(throws: (any Error).self) {
+      try UInputTouchscreenProtocol.waitForSynchronization(sequence: 42) { _, _ in
+        Data(#"{"reason":"sync","id":1,"syncToken":"41"}"#.utf8)
+      }
+    }
+    var bytesRead = 0
+    #expect(throws: (any Error).self) {
+      try UInputTouchscreenProtocol.waitForSynchronization(sequence: 42) { limit, _ in
+        let count = min(128, limit)
+        bytesRead += count
+        return Data(repeating: UInt8(ascii: "x"), count: count)
+      }
+    }
+    #expect(bytesRead == 1024)
+  }
+
+  @Test("does not accept a closed or timed-out acknowledgment stream")
+  func missingSynchronizationResponse() {
+    #expect(throws: (any Error).self) {
+      try UInputTouchscreenProtocol.waitForSynchronization(sequence: 1) { _, _ in nil }
+    }
+    #expect(throws: (any Error).self) {
+      try UInputTouchscreenProtocol.waitForSynchronization(sequence: 1) { _, _ in
+        throw ADBError.requestTimedOut("Test timeout")
+      }
+    }
+  }
+
+  @Test("socket acknowledgments time out and accept data when readable")
+  func synchronizationSocketDeadline() throws {
+    var descriptors: [Int32] = [-1, -1]
+    try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0)
+    let connection = ADBSocketConnection(connectedSocket: descriptors[0])
+    defer {
+      connection.close()
+      Darwin.close(descriptors[1])
+    }
+    #expect(throws: (any Error).self) {
+      try connection.readChunk(maxLength: 1024, deadline: .now.advanced(by: .milliseconds(5)))
+    }
+    let response = Data(#"{"reason":"sync","id":1,"syncToken":"7"}"#.utf8)
+    let written = response.withUnsafeBytes {
+      Darwin.write(descriptors[1], $0.baseAddress, $0.count)
+    }
+    #expect(written == response.count)
+    try UInputTouchscreenProtocol.waitForSynchronization(sequence: 7) {
+      try connection.readChunk(maxLength: $0, deadline: $1)
+    }
   }
 
   @Test("maps logical coordinates through display rotation")
@@ -150,6 +230,34 @@ struct ADBVirtualTouchscreenTests {
     let viewport = "Viewport INTERNAL: displayId=0, port=0, orientation=3, logicalFrame=[0, 0, 2400, 1080]"
     #expect(UInputTouchscreenProtocol.displayRotation(from: viewport) == .rotation270)
     #expect(UInputTouchscreenProtocol.displayRotation(from: "orientation=unknown") == nil)
+  }
+
+  @Test("sends the final position before lifting but does not move on cancel")
+  func releasePosition() throws {
+    let point = UInputTouchscreenProtocol.Point(x: 321, y: 654)
+    let up = try decodeInject(UInputTouchscreenProtocol.injectCommand(action: .up, point: point, trackingID: nil))
+    let cancel = try decodeInject(UInputTouchscreenProtocol.injectCommand(action: .cancel, point: point, trackingID: nil))
+    #expect(up.events == [
+      3, 47, 0, 3, 53, 321, 3, 54, 654, 0, 0, 0,
+      3, 47, 0, 3, 57, -1, 1, 330, 0, 1, 325, 0, 0, 0, 0
+    ])
+    #expect(cancel.events == Array(up.events.suffix(15)))
+  }
+
+  @Test("parses viewport size and rotation from the same internal display")
+  func displayViewport() throws {
+    let output = """
+    Viewport EXTERNAL: displayId=1, orientation=1, logicalFrame=[0, 0, 900, 600]
+    Viewport INTERNAL: displayId=0, orientation=3, logicalFrame=[10, 20, 2410, 1100]
+    """
+    let viewport = try #require(UInputTouchscreenProtocol.displayViewport(from: output))
+    #expect(viewport.rotation == .rotation270)
+    #expect(viewport.width == 2400)
+    #expect(viewport.height == 1080)
+    #expect(UInputTouchscreenProtocol.displayViewport(from: "Viewport INTERNAL: displayId=0, orientation=0") == nil)
+    #expect(UInputTouchscreenProtocol.displayViewport(
+      from: "Viewport INTERNAL: displayId=0, orientation=0, logicalFrame=[0, 0, 0, 1080]"
+    ) == nil)
   }
 
   private func decodeInject(_ value: String) throws -> InjectCommand {

@@ -81,6 +81,9 @@ jobs:
       - name: Test live preview frame export
         working-directory: snapo-app-mac
         run: sh scripts/test-live-preview-frame-export.sh
+      - name: Test live preview pointer delivery
+        working-directory: snapo-app-mac
+        run: sh scripts/test-live-preview-pointer.sh
       - name: Test capture mode transitions
         working-directory: snapo-app-mac
         run: sh scripts/test-capture-modes.sh
