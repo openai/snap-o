@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// Input source reported by the live-preview surface.
 enum LivePreviewPointerSource: String {
@@ -22,10 +23,15 @@ struct LivePreviewPointerEvent {
 }
 
 protocol LivePreviewPointerBackend: Sendable {
+  var minimumMoveInterval: Duration { get }
   func send(_ event: LivePreviewPointerEvent) async throws
   func stop() async
 }
 
 extension LivePreviewPointerBackend {
+  var minimumMoveInterval: Duration {
+    .nanoseconds(16_666_667)
+  }
+
   func stop() async {}
 }

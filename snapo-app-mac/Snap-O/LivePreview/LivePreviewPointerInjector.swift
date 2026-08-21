@@ -2,7 +2,7 @@ import Foundation
 
 /// Serializes pointer events per source, selects a backend, and keeps each gesture on one backend.
 actor LivePreviewPointerInjector {
-  private typealias PreferredBackendFactory = @Sendable (String) async throws -> any LivePreviewPointerBackend
+  typealias PreferredBackendFactory = @Sendable (String) async throws -> any LivePreviewPointerBackend
 
   private enum DeviceState {
     case preparing(generation: UUID, task: Task<Void, Never>)
@@ -36,6 +36,9 @@ actor LivePreviewPointerInjector {
 
   private let makePreferredBackend: PreferredBackendFactory
   private let fallbackBackend: any LivePreviewPointerBackend
+  private let now: @Sendable () -> ContinuousClock.Instant
+  private let sleepUntil: @Sendable (ContinuousClock.Instant) async throws -> Void
+  private var nextTouchSend: [String: ContinuousClock.Instant] = [:]
   private var deviceStates: [String: DeviceState] = [:]
   private var touchRoutes: [String: TouchRoute] = [:]
   private var pendingTouchEvents: [LivePreviewPointerEvent] = []
@@ -44,13 +47,26 @@ actor LivePreviewPointerInjector {
   private var isFlushingMouseEvents = false
 
   init(adb: ADBService) {
-    makePreferredBackend = { deviceID in
-      try await UInputLivePreviewPointerBackend.start(
-        adb: adb,
-        deviceID: deviceID
-      )
+    self.init(
+      makePreferredBackend: { deviceID in
+        try await UInputLivePreviewPointerBackend.start(adb: adb, deviceID: deviceID)
+      },
+      fallbackBackend: ShellLivePreviewPointerBackend(adb: adb)
+    )
+  }
+
+  init(
+    makePreferredBackend: @escaping PreferredBackendFactory,
+    fallbackBackend: any LivePreviewPointerBackend,
+    now: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
+    sleepUntil: @escaping @Sendable (ContinuousClock.Instant) async throws -> Void = {
+      try await Task.sleep(until: $0, clock: .continuous)
     }
-    fallbackBackend = ShellLivePreviewPointerBackend(adb: adb)
+  ) {
+    self.makePreferredBackend = makePreferredBackend
+    self.fallbackBackend = fallbackBackend
+    self.now = now
+    self.sleepUntil = sleepUntil
   }
 
   func prepare(deviceID: String) {
@@ -121,6 +137,7 @@ actor LivePreviewPointerInjector {
   }
 
   func stopDevice(_ deviceID: String) async {
+    nextTouchSend.removeValue(forKey: deviceID)
     pendingTouchEvents.removeAll { $0.deviceID == deviceID }
     pendingMouseEvents.removeAll { $0.deviceID == deviceID }
     touchRoutes.removeValue(forKey: deviceID)
@@ -129,6 +146,7 @@ actor LivePreviewPointerInjector {
   }
 
   func stopAll() async {
+    nextTouchSend.removeAll()
     pendingTouchEvents.removeAll()
     pendingMouseEvents.removeAll()
     touchRoutes.removeAll()
@@ -151,6 +169,12 @@ actor LivePreviewPointerInjector {
       return
     }
     deviceStates[deviceID] = .ready(generation: generation, backend: backend)
+    SnapOLog.ui.info(
+      """
+      Live Preview drag backend ready: uinput (\(deviceID, privacy: .private)) \
+      moveInterval=\(String(describing: backend.minimumMoveInterval), privacy: .public)
+      """
+    )
   }
 
   private func failPreparation(
@@ -178,10 +202,21 @@ actor LivePreviewPointerInjector {
   }
 
   private func flushTouchQueue() async {
-    while !pendingTouchEvents.isEmpty {
+    while let pending = pendingTouchEvents.first {
+      if pending.action == .move,
+         let deadline = nextTouchSend[pending.deviceID], now() < deadline {
+        do {
+          try await sleepUntil(deadline)
+        } catch {
+          break
+        }
+        // Keep the move replaceable until delivery, including while the timer waits.
+        continue
+      }
       let event = pendingTouchEvents.removeFirst()
+      nextTouchSend[event.deviceID] = now().advanced(by: minimumMoveInterval(for: event.deviceID))
       do {
-        try await send(event)
+        try await sendTouchEvent(event)
       } catch is CancellationError {
         // Teardown can cancel an in-flight backend operation.
       } catch {
@@ -192,10 +227,15 @@ actor LivePreviewPointerInjector {
     }
 
     isFlushingTouchEvents = false
+  }
 
-    if !pendingTouchEvents.isEmpty {
-      isFlushingTouchEvents = true
-      await flushTouchQueue()
+  private func minimumMoveInterval(for deviceID: String) -> Duration {
+    switch touchRoutes[deviceID] {
+    case .preferred(_, let backend): return backend.minimumMoveInterval
+    case .fallback, .discarded: return fallbackBackend.minimumMoveInterval
+    case nil:
+      if case .ready(_, let backend) = deviceStates[deviceID] { return backend.minimumMoveInterval }
+      return fallbackBackend.minimumMoveInterval
     }
   }
 
@@ -214,26 +254,14 @@ actor LivePreviewPointerInjector {
     }
 
     isFlushingMouseEvents = false
-
-    if !pendingMouseEvents.isEmpty {
-      isFlushingMouseEvents = true
-      await flushMouseQueue()
-    }
   }
 
-  private func send(_ event: LivePreviewPointerEvent) async throws {
-    if event.source == .mouse {
-      try await fallbackBackend.send(event)
-      return
-    }
-
+  private func sendTouchEvent(_ event: LivePreviewPointerEvent) async throws {
     switch event.action {
     case .down:
       try await sendTouchDown(event)
-    case .move:
-      try await sendTouchMove(event)
-    case .up, .cancel:
-      try await sendTouchEnd(event)
+    case .move, .up, .cancel:
+      try await sendRoutedTouchEvent(event)
     }
   }
 
@@ -274,32 +302,11 @@ actor LivePreviewPointerInjector {
     }
   }
 
-  private func sendTouchMove(_ event: LivePreviewPointerEvent) async throws {
-    switch touchRoutes[event.deviceID] {
-    case .preferred(let generation, let backend):
-      do {
-        try await backend.send(event)
-      } catch {
-        let isCurrent = deviceStates[event.deviceID]?.generation == generation &&
-          touchRoutes[event.deviceID]?.generation == generation
-        if isCurrent {
-          deviceStates[event.deviceID] = .fallback(generation: generation)
-          touchRoutes[event.deviceID] = .discarded(generation: generation)
-        }
-        await backend.stop()
-        if isCurrent { throw error }
-      }
-    case .fallback:
-      try await fallbackBackend.send(event)
-    case .discarded, nil:
-      break
-    }
-  }
-
-  private func sendTouchEnd(_ event: LivePreviewPointerEvent) async throws {
+  private func sendRoutedTouchEvent(_ event: LivePreviewPointerEvent) async throws {
     guard let route = touchRoutes[event.deviceID] else { return }
+    let endsGesture = event.action == .up || event.action == .cancel
     defer {
-      if touchRoutes[event.deviceID]?.generation == route.generation {
+      if endsGesture, touchRoutes[event.deviceID]?.generation == route.generation {
         touchRoutes.removeValue(forKey: event.deviceID)
       }
     }
@@ -309,9 +316,13 @@ actor LivePreviewPointerInjector {
       do {
         try await backend.send(event)
       } catch {
-        let isCurrent = deviceStates[event.deviceID]?.generation == generation
+        let isCurrent = deviceStates[event.deviceID]?.generation == generation &&
+          touchRoutes[event.deviceID]?.generation == generation
         if isCurrent {
           deviceStates[event.deviceID] = .fallback(generation: generation)
+          if !endsGesture {
+            touchRoutes[event.deviceID] = .discarded(generation: generation)
+          }
         }
         await backend.stop()
         if isCurrent { throw error }

@@ -4,6 +4,10 @@ import SnapODeviceClient
 
 /// Owns one persistent virtual touchscreen for one Android device.
 actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
+  nonisolated var minimumMoveInterval: Duration {
+    touchscreen.supportsSynchronization ? .nanoseconds(8_333_334) : .nanoseconds(16_666_667)
+  }
+
   private let adb: ADBService
   private let deviceID: String
   private let touchscreen: ADBVirtualTouchscreen
@@ -57,7 +61,7 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
     )
   }
 
-  func stop() {
+  func stop() async {
     guard !isStopped else { return }
     isStopped = true
     touchscreen.close()

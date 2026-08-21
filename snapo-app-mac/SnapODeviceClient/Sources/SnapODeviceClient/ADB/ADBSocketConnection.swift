@@ -47,6 +47,10 @@ public final class ADBSocketConnection {
     socketDescriptor = try Self.openSocket()
   }
 
+  init(connectedSocket: Int32) {
+    socketDescriptor = connectedSocket
+  }
+
   deinit {
     close()
   }
@@ -159,6 +163,21 @@ public final class ADBSocketConnection {
     let size = try readOnce(into: &scratch)
     if size == 0 { return nil }
     return Data(scratch.prefix(size))
+  }
+
+  func readChunk(maxLength: Int, deadline: ContinuousClock.Instant) throws -> Data? {
+    while true {
+      try Task.checkCancellation()
+      let remaining = ContinuousClock.now.duration(to: deadline)
+      guard remaining > .zero else { throw ADBError.requestTimedOut("Waiting for uinput acknowledgment") }
+      let parts = remaining.components
+      let milliseconds = parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000 + 1
+      var descriptor = pollfd(fd: socketDescriptor, events: Int16(POLLIN), revents: 0)
+      let result = Darwin.poll(&descriptor, 1, Int32(clamping: milliseconds))
+      if result > 0 { return try readChunk(maxLength: maxLength) }
+      if result == 0 { throw ADBError.requestTimedOut("Waiting for uinput acknowledgment") }
+      if errno != EINTR { throw Self.makeSocketError(errno, context: "poll") }
+    }
   }
 
   public func readLengthPrefixedPayload() throws -> Data? {
