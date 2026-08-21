@@ -26,6 +26,9 @@ export const RequestDetail = memo(function RequestDetail({
   onRetryResponseBody(): void;
 }): JSX.Element {
   const isSseResponse = isLikelyStreamingRequest(record);
+  const hasResponseEvidence = record.hasReceivedResponse === true || record.streamEvents.length > 0;
+  const streamStatus =
+    record.streamClosed != null ? "Closed" : !isConnected ? "Offline" : hasResponseEvidence ? "Streaming" : "Pending";
   const streamClosedWithError =
     isSseResponse && record.streamClosed != null && record.streamClosed.reason !== "completed";
   const requestBodyDisplayText = useRequestBodyDisplayText(record);
@@ -90,7 +93,9 @@ export const RequestDetail = memo(function RequestDetail({
           />
         </Section>
       )}
-      {record.status.kind === "pending" ? <div className="pending-response">Waiting for response...</div> : null}
+      {record.status.kind === "pending" && !hasResponseEvidence ? (
+        <div className="pending-response">Waiting for response...</div>
+      ) : null}
       {record.responseHeaders.length === 0 ? null : (
         <Section title="Response Headers" storageKey={`${prefix}:responseHeaders`} uiState={uiState}>
           <HeadersTable headers={record.responseHeaders} />
@@ -101,9 +106,7 @@ export const RequestDetail = memo(function RequestDetail({
           title={
             <>
               Server-Sent Events
-              <span className="section-status">
-                · {record.streamClosed != null ? "Closed" : isConnected ? "Streaming" : "Offline"}
-              </span>
+              <span className="section-status">· {streamStatus}</span>
             </>
           }
           storageKey={`${prefix}:stream`}

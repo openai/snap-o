@@ -130,12 +130,59 @@ describe("SSE stream status", () => {
     expect(markup).not.toContain("Total bytes");
   });
 
-  it("shows streaming while waiting for the first event", () => {
+  it.each([false, undefined])(
+    "keeps the SSE handshake pending when hasReceivedResponse is %s",
+    (hasReceivedResponse) => {
+      const markup = renderStream({
+        requestHeaders: [{ name: "Accept", value: "text/event-stream" }],
+        responseHeaders: [],
+        hasReceivedResponse,
+        status: { kind: "pending" },
+        streamEvents: [],
+        streamEventCount: 0
+      });
+
+      expect(markup).toContain("· Pending");
+      expect(markup).toContain("Waiting for response...");
+      expect(markup).not.toContain("· Streaming");
+    }
+  );
+
+  it("shows streaming after the response arrives, before the first event", () => {
     const markup = renderStream({ streamEvents: [], streamEventCount: 0 });
 
     expect(markup).toContain("· Streaming");
     expect(markup).toContain("Awaiting events...");
+    expect(markup).not.toContain("Waiting for response...");
     expect(markup).not.toContain("Stream closed");
+  });
+
+  it("treats a received event as response evidence when response metadata is missing", () => {
+    const markup = renderStream({
+      responseHeaders: [],
+      hasReceivedResponse: undefined,
+      status: { kind: "pending" }
+    });
+
+    expect(markup).toContain("· Streaming");
+    expect(markup).not.toContain("Waiting for response...");
+  });
+
+  it("keeps a failed handshake closed even without a response", () => {
+    const markup = renderStream({
+      requestHeaders: [{ name: "Accept", value: "text/event-stream" }],
+      responseHeaders: [],
+      hasReceivedResponse: false,
+      status: { kind: "failure", message: "Connection refused." },
+      streamEvents: [],
+      streamEventCount: 0,
+      streamClosed: { timestamp: 2, reason: "error", message: "Connection refused." }
+    });
+
+    expect(markup).toContain("· Closed");
+    expect(markup).toContain("Stream closed: Connection refused.");
+    expect(markup).not.toContain("· Pending");
+    expect(markup).not.toContain("· Streaming");
   });
 
   it("does not keep waiting after an empty stream closes", () => {
@@ -189,6 +236,7 @@ function renderStream(overrides: Partial<RequestRecord>, isConnected = true): st
       client={{} as NetworkClient}
       record={request({
         endedAt: undefined,
+        hasReceivedResponse: true,
         responseHeaders: [{ name: "Content-Type", value: "text/event-stream" }],
         streamEvents: [{ sequence: 1, timestamp: 1, data: "sample-event", raw: "data: sample-event\n\n" }],
         streamEventCount: 1,
