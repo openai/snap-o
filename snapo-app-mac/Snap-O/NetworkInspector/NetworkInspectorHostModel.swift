@@ -1,9 +1,16 @@
+import Foundation
 import Observation
 import SnapODeviceClient
 
 @Observable
 @MainActor
 final class NetworkInspectorHostModel {
+  private enum Keys {
+    static let exclusionFilters = "networkInspector.exclusionFilters"
+    static let exclusionFiltersDidChange = Notification.Name("networkInspector.exclusionFiltersDidChange")
+    static let hiddenHosts = "networkInspector.hiddenHosts"
+  }
+
   private(set) var servers: [NetworkInspectorServer] = []
   private(set) var selectedServer: NetworkInspectorServer?
   private(set) var inspectorApps: [InspectableApp] = []
@@ -13,6 +20,7 @@ final class NetworkInspectorHostModel {
   private(set) var preferredInspectorKind: AppInspectorKind?
   private(set) var isRestoringInspector = false
   private(set) var searchText = ""
+  private(set) var exclusionFilters = NetworkInspectorHostModel.loadExclusionFilters()
   private(set) var sortNewestFirst = false
   private(set) var hasClearableItems = false
   private(set) var hasResettableTweaks = false
@@ -22,6 +30,7 @@ final class NetworkInspectorHostModel {
 
   @ObservationIgnored let webContainer: NetworkInspectorWebContainer
   @ObservationIgnored private var outputTask: Task<Void, Never>?
+  @ObservationIgnored private var exclusionFiltersObserver: NSObjectProtocol?
 
   init(service: NetworkInspectorService) {
     let bridge = NetworkInspectorWebBridge(service: service)
@@ -36,8 +45,30 @@ final class NetworkInspectorHostModel {
     bridge.tweaksStateChangedHandler = { [weak self] state in
       self?.apply(state)
     }
+    bridge.exclusionFiltersHandler = { [weak self] in
+      self?.exclusionFilters ?? []
+    }
+    bridge.addExclusionFilterHandler = { [weak self] filter in
+      self?.addExclusionFilter(filter)
+    }
+    bridge.removeExclusionFilterHandler = { [weak self] filter in
+      self?.removeExclusionFilter(filter)
+    }
     webContainer.pageReadinessChangedHandler = { [weak self] isReady in
-      self?.isPageReady = isReady
+      guard let self else { return }
+      isPageReady = isReady
+      if isReady {
+        sendPageEvent(name: "network:exclusion-filters", payload: exclusionFilters)
+      }
+    }
+    exclusionFiltersObserver = NotificationCenter.default.addObserver(
+      forName: Keys.exclusionFiltersDidChange,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.reloadExclusionFilters()
+      }
     }
     webContainer.start()
 
@@ -49,6 +80,10 @@ final class NetworkInspectorHostModel {
   func stop() {
     outputTask?.cancel()
     outputTask = nil
+    if let exclusionFiltersObserver {
+      NotificationCenter.default.removeObserver(exclusionFiltersObserver)
+      self.exclusionFiltersObserver = nil
+    }
     webContainer.stop()
   }
 
@@ -67,6 +102,25 @@ final class NetworkInspectorHostModel {
 
   func setSearchText(_ searchText: String) {
     sendPageEvent(name: "network:search-text", payload: searchText)
+  }
+
+  func addExclusionFilter(_ value: String) {
+    guard let filter = Self.normalizedExclusionFilter(value) else { return }
+
+    var filters = Self.loadExclusionFilters()
+    guard !filters.contains(filter) else { return }
+
+    filters.append(filter)
+    filters.sort()
+    saveExclusionFilters(filters)
+  }
+
+  func removeExclusionFilter(_ filter: String) {
+    var filters = Self.loadExclusionFilters()
+    guard let index = filters.firstIndex(of: filter) else { return }
+
+    filters.remove(at: index)
+    saveExclusionFilters(filters)
   }
 
   func setSortNewestFirst(_ sortNewestFirst: Bool) {
@@ -165,5 +219,33 @@ final class NetworkInspectorHostModel {
 
   private func sendPageEvent(name: String, payload: some Encodable) {
     webContainer.sendPageEvent(name: name, payload: payload)
+  }
+
+  private func saveExclusionFilters(_ filters: [String]) {
+    exclusionFilters = filters
+    UserDefaults.standard.set(filters, forKey: Keys.exclusionFilters)
+    sendPageEvent(name: "network:exclusion-filters", payload: filters)
+    NotificationCenter.default.post(name: Keys.exclusionFiltersDidChange, object: nil)
+  }
+
+  private func reloadExclusionFilters() {
+    let filters = Self.loadExclusionFilters()
+    guard exclusionFilters != filters else { return }
+
+    exclusionFilters = filters
+    sendPageEvent(name: "network:exclusion-filters", payload: filters)
+  }
+
+  private static func loadExclusionFilters() -> [String] {
+    let stored = UserDefaults.standard.stringArray(forKey: Keys.exclusionFilters)
+      ?? UserDefaults.standard.stringArray(forKey: Keys.hiddenHosts)
+      ?? []
+    return Array(Set(stored.compactMap(normalizedExclusionFilter))).sorted()
+  }
+
+  private static func normalizedExclusionFilter(_ value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    return trimmed.hasPrefix("-") ? trimmed.lowercased() : "-\(trimmed.lowercased())"
   }
 }

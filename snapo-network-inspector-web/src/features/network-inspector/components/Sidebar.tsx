@@ -11,6 +11,7 @@ import type {
 } from "../../../network/bridge-types";
 import { AppInspectorPicker } from "../../app-inspector/components/AppInspectorPicker";
 import { serverHasProtocolWarning } from "../lib/protocol";
+import { ExclusionFilterControl } from "./ExclusionFilterControl";
 import { RecordList } from "./RecordList";
 import { ServerSelect } from "./ServerPicker";
 
@@ -19,6 +20,8 @@ export const Sidebar = memo(function Sidebar({
   selectedServer,
   replacementServer,
   searchText,
+  exclusionFilters,
+  hiddenRequestCount,
   sortNewestFirst,
   hasClearableItems,
   records,
@@ -36,6 +39,8 @@ export const Sidebar = memo(function Sidebar({
   onInspectorSelect,
   onReplacementServerClick,
   onSearchTextChange,
+  onAddExclusionFilter,
+  onRemoveExclusionFilter,
   onToggleSortOrder,
   onClearCompleted,
   onRecordSelect
@@ -44,6 +49,8 @@ export const Sidebar = memo(function Sidebar({
   selectedServer: SnapOServer | null;
   replacementServer: SnapOServer | null;
   searchText: string;
+  exclusionFilters: string[];
+  hiddenRequestCount: number;
   sortNewestFirst: boolean;
   hasClearableItems: boolean;
   records: InspectorRecord[];
@@ -61,6 +68,8 @@ export const Sidebar = memo(function Sidebar({
   onInspectorSelect?(app: InspectableApp, option?: AppInspectorOption): void;
   onReplacementServerClick(server: SnapOServer): void;
   onSearchTextChange(value: string): void;
+  onAddExclusionFilter(value: string): void;
+  onRemoveExclusionFilter(filter: string): void;
   onToggleSortOrder(): void;
   onClearCompleted(): void;
   onRecordSelect(id: string): void;
@@ -140,12 +149,20 @@ export const Sidebar = memo(function Sidebar({
         </div>
       ) : null}
 
+      <ExclusionFilterControl
+        exclusionFilters={exclusionFilters}
+        hiddenRequestCount={hiddenRequestCount}
+        onAddFilter={onAddExclusionFilter}
+        onRemoveFilter={onRemoveExclusionFilter}
+      />
+
       <RecordList
         records={records}
         allRecords={allRecords}
         placeholder={placeholder}
         selectedRecordId={selectedRecordId}
         onSelect={onRecordSelect}
+        onAddExclusionFilter={onAddExclusionFilter}
         client={client}
         isConnected={selectedServer?.isConnected === true}
       />

@@ -45,6 +45,8 @@ export function NetworkInspectorApp({
         selectedServer={model.selectedServer}
         replacementServer={model.replacementServer}
         searchText={model.searchText}
+        exclusionFilters={model.exclusionFilters}
+        hiddenRequestCount={model.hiddenRequestCount}
         sortNewestFirst={model.sortNewestFirst}
         hasClearableItems={model.hasClearableItems}
         records={model.visibleRecords}
@@ -74,6 +76,8 @@ export function NetworkInspectorApp({
           else model.selectReplacementServer(server);
         }}
         onSearchTextChange={model.setSearchText}
+        onAddExclusionFilter={model.addExclusionFilter}
+        onRemoveExclusionFilter={model.removeExclusionFilter}
         onToggleSortOrder={model.toggleSortOrder}
         onClearCompleted={model.clearCompletedRecords}
         onRecordSelect={model.selectRecord}

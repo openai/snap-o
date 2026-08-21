@@ -16,9 +16,10 @@ export function filterRecords(
   records: InspectorRecord[],
   selectedServer: ServerId | null,
   searchText: string,
-  newestFirst: boolean
+  newestFirst: boolean,
+  exclusionFilters: readonly string[] = []
 ): InspectorRecord[] {
-  const searchQuery = parseNetworkSearchQuery(searchText);
+  const searchQuery = parseNetworkSearchQuery([searchText, ...exclusionFilters].join(" "));
   const filteredRecords = records
     .filter((record) => serverMatches(selectedServer, record.server))
     .filter((record) => matchesNetworkSearch(record, searchQuery))
@@ -29,6 +30,21 @@ export function filterRecords(
 
 export function countRecordsForServer(records: InspectorRecord[], selectedServer: ServerId | null): number {
   return records.reduce((count, record) => count + (serverMatches(selectedServer, record.server) ? 1 : 0), 0);
+}
+
+export function countExcludedRecordsForServer(
+  records: InspectorRecord[],
+  selectedServer: ServerId | null,
+  exclusionFilters: readonly string[]
+): number {
+  if (exclusionFilters.length === 0) return 0;
+
+  const exclusionQuery = parseNetworkSearchQuery(exclusionFilters.join(" "));
+  return records.reduce(
+    (count, record) =>
+      count + (serverMatches(selectedServer, record.server) && !matchesNetworkSearch(record, exclusionQuery) ? 1 : 0),
+    0
+  );
 }
 
 export function clearCompleted(state: InspectorDataState): InspectorDataState {

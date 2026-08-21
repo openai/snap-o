@@ -17,6 +17,9 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   var appInspectorStateChangedHandler: ((AppInspectorState) -> Void)?
   var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
   var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
+  var exclusionFiltersHandler: (() -> [String])?
+  var addExclusionFilterHandler: ((String) -> Void)?
+  var removeExclusionFilterHandler: ((String) -> Void)?
 
   private let service: NetworkInspectorService
   private var activeColorPanelSessionID: String?
@@ -107,6 +110,16 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     case "stopTweakStream":
       let input = try Self.decode(StreamIdentifier.self, from: payload)
       await service.stopTweakStream(input.streamId)
+      return nil
+    case "listExclusionFilters":
+      return try Self.jsonObject(exclusionFiltersHandler?() ?? [])
+    case "addExclusionFilter":
+      let input = try Self.decode(ExclusionFilterInput.self, from: payload)
+      addExclusionFilterHandler?(input.filter)
+      return nil
+    case "removeExclusionFilter":
+      let input = try Self.decode(ExclusionFilterInput.self, from: payload)
+      removeExclusionFilterHandler?(input.filter)
       return nil
     case "loadBodies":
       let input = try Self.decode(NetworkLoadBodiesInput.self, from: payload)
@@ -284,6 +297,10 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   private struct StreamIdentifier: Decodable {
     let streamId: String
+  }
+
+  private struct ExclusionFilterInput: Decodable {
+    let filter: String
   }
 
   private struct ExternalURL: Decodable {

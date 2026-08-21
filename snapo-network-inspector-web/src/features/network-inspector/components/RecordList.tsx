@@ -14,6 +14,7 @@ import { recordId, type InspectorRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { StatusView } from "./Status";
 import { copyCurl, exportAsHar } from "../lib/exportActions";
+import { exclusionFilterForUrl } from "../lib/exclusionFilters";
 import { contextMenuExportSelection, splitUrl } from "../lib/records";
 
 export const RecordList = memo(function RecordList({
@@ -22,6 +23,7 @@ export const RecordList = memo(function RecordList({
   placeholder,
   selectedRecordId,
   onSelect,
+  onAddExclusionFilter,
   client,
   isConnected = true
 }: {
@@ -30,6 +32,7 @@ export const RecordList = memo(function RecordList({
   placeholder: string | null;
   selectedRecordId: string | null;
   onSelect(id: string): void;
+  onAddExclusionFilter(value: string): void;
   client: NetworkClient;
   isConnected?: boolean;
 }): JSX.Element {
@@ -53,10 +56,10 @@ export const RecordList = memo(function RecordList({
         x,
         y,
         keyboard,
-        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client, isConnected)
+        items: sidebarContextMenuItems(record, selectedRecordId, allRecords, client, onAddExclusionFilter, isConnected)
       });
     },
-    [allRecords, client, isConnected, selectRecord, selectedRecordId]
+    [allRecords, client, isConnected, onAddExclusionFilter, selectRecord, selectedRecordId]
   );
   const openActiveContextMenu = () => {
     const record = records[selectedIndex];
@@ -209,18 +212,27 @@ const RecordRow = memo(function RecordRow({
   );
 });
 
-function sidebarContextMenuItems(
+export function sidebarContextMenuItems(
   clicked: InspectorRecord,
   selectedRecordId: string | null,
   allRecords: InspectorRecord[],
   client: NetworkClient,
-  isConnected: boolean
+  onAddExclusionFilter: (filter: string) => void,
+  isConnected = true
 ): ContextMenuItem[] {
   const exportRecords = contextMenuExportSelection(clicked, selectedRecordId, allRecords);
+  const exclusionFilter = exclusionFilterForUrl(clicked.url);
   const items: ContextMenuItem[] = [{ label: "Copy URL", action: () => void client.copyText(clicked.url) }];
   if (clicked.kind === "request") {
     items.push({ label: "Copy as cURL", action: () => void copyCurl(client, clicked, isConnected) });
   }
+  items.push({
+    label: `Add ${exclusionFilter?.slice(1) ?? "host"} to exclusion filter`,
+    action: () => {
+      if (exclusionFilter != null) onAddExclusionFilter(exclusionFilter);
+    },
+    disabled: exclusionFilter == null
+  });
   items.push({
     label: "Export HAR (sanitized)...",
     action: () => void exportAsHar(client, exportRecords, undefined, isConnected)
