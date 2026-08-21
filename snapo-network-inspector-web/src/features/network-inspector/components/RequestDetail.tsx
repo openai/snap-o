@@ -93,7 +93,7 @@ export const RequestDetail = memo(function RequestDetail({
           />
         </Section>
       )}
-      {record.status.kind === "pending" && !hasResponseEvidence ? (
+      {isConnected && record.status.kind === "pending" && !hasResponseEvidence ? (
         <div className="pending-response">Waiting for response...</div>
       ) : null}
       {record.responseHeaders.length === 0 ? null : (

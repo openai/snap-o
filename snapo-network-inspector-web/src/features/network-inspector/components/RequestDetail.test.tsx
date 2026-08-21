@@ -219,15 +219,29 @@ describe("SSE stream status", () => {
     expect(markup).toContain(`Stream closed: ${expected}`);
   });
 
-  it("does not describe a disconnected stream as streaming or closed without evidence", () => {
-    const markup = renderStream({ streamEvents: [], streamEventCount: 0 }, false);
+  it.each([false, true])(
+    "shows a consistent offline state when hasReceivedResponse is %s",
+    (hasReceivedResponse) => {
+      const markup = renderStream(
+        {
+          requestHeaders: [{ name: "Accept", value: "text/event-stream" }],
+          responseHeaders: hasReceivedResponse ? [{ name: "Content-Type", value: "text/event-stream" }] : [],
+          hasReceivedResponse,
+          status: hasReceivedResponse ? { kind: "success", code: 200 } : { kind: "pending" },
+          streamEvents: [],
+          streamEventCount: 0
+        },
+        false
+      );
 
-    expect(markup).toContain("· Offline");
-    expect(markup).toContain("No events received.");
-    expect(markup).not.toContain("· Streaming");
-    expect(markup).not.toContain("· Closed");
-    expect(markup).not.toContain("Awaiting events");
-  });
+      expect(markup).toContain("· Offline");
+      expect(markup).toContain("No events received.");
+      expect(markup).not.toContain("· Streaming");
+      expect(markup).not.toContain("· Closed");
+      expect(markup).not.toContain("Awaiting events");
+      expect(markup).not.toContain("Waiting for response...");
+    }
+  );
 });
 
 function renderStream(overrides: Partial<RequestRecord>, isConnected = true): string {
