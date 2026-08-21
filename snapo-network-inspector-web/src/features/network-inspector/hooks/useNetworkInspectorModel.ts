@@ -59,7 +59,11 @@ export interface NetworkInspectorModel {
   openDocs(): void;
 }
 
-export function useNetworkInspectorModel(): NetworkInspectorModel {
+export function useNetworkInspectorModel(
+  controlledServer?: ServerId | null,
+  isActive = true,
+  allowsConnection = true
+): NetworkInspectorModel {
   const client = useMemo(() => createNetworkClient(), []);
   const [state, setState] = useState<InspectorDataState>(() => createEmptyInspectorState());
   const [preferredServer, setPreferredServer] = useState<ServerId | null>(null);
@@ -88,8 +92,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [bodyLoader]);
 
   const selectedServer = useMemo(
-    () => pickSelectedServer(preferredServer, state.servers),
-    [preferredServer, state.servers]
+    () => (controlledServer === undefined ? pickSelectedServer(preferredServer, state.servers) : controlledServer),
+    [controlledServer, preferredServer, state.servers]
   );
   const selectServer = useCallback((server: ServerId | null) => {
     setPreferredServer(server);
@@ -98,8 +102,8 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
 
   useEffect(() => {
     selectedServerRef.current = selectedServer;
-    if (selectedServer != null) client.selectedDeviceChanged(selectedServer.deviceId);
-  }, [client, selectedServer]);
+    if (isActive && selectedServer != null) client.selectedDeviceChanged(selectedServer.deviceId);
+  }, [client, isActive, selectedServer]);
 
   useEffect(
     () =>
@@ -113,7 +117,9 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   useEffect(() => client.onNativeSelectedServer(selectServer), [client, selectServer]);
   useEffect(() => client.onNativeSearchText(setSearchText), [client]);
   useEffect(() => client.onNativeSortOrder(setSortNewestFirst), [client]);
-  useEffect(() => client.onNativeClearCompleted(clearCompletedRecords), [clearCompletedRecords, client]);
+  useEffect(() => {
+    if (isActive) return client.onNativeClearCompleted(clearCompletedRecords);
+  }, [clearCompletedRecords, client, isActive]);
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -137,6 +143,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [client]);
 
   useEffect(() => {
+    if (!isActive) return;
     let disposed = false;
     const refresh = async () => {
       const activeServers = await client.listServers();
@@ -158,12 +165,19 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [client]);
+  }, [client, isActive]);
 
   const selectedServerKey = serverKey(selectedServer);
   const displayServers = useMemo(
-    () => applyDebugInspectorPreset(state.servers, selectedServer, debugPreset),
-    [debugPreset, selectedServer, state.servers]
+    () =>
+      applyDebugInspectorPreset(state.servers, selectedServer, debugPreset).map((server) =>
+        !allowsConnection &&
+        server.deviceId === selectedServer?.deviceId &&
+        server.socketName === selectedServer.socketName
+          ? { ...server, isConnected: false }
+          : server
+      ),
+    [allowsConnection, debugPreset, selectedServer, state.servers]
   );
   const selectedServerModel = useMemo(
     () => serverModelFor(displayServers, selectedServer),
@@ -179,14 +193,14 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     streamLifecycle?.connectionKey === selectedServerConnectionKey && streamLifecycle.state === "retrying";
 
   useEffect(() => {
-    if (selectedServer == null || !selectedServerIsConnected) return;
+    if (!isActive || selectedServer == null || !selectedServerIsConnected) return;
     const connectionKey = selectedServerConnectionKey;
     const controller = new NetworkStreamController(client, selectedServer, (state) => {
       setStreamLifecycle({ connectionKey, state });
     });
     controller.start();
     return () => controller.dispose();
-  }, [client, selectedServer, selectedServerConnectionKey, selectedServerIsConnected]);
+  }, [client, isActive, selectedServer, selectedServerConnectionKey, selectedServerIsConnected]);
 
   const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
 
@@ -229,15 +243,16 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   }, [bodyCache, bodyLoader, selectedRecord]);
 
   useEffect(() => {
+    if (!isActive) return;
     bodyLoader.forgetRecords(bodyCache.select(selectedRequestKey));
-  }, [bodyCache, bodyLoader, selectedRequestKey]);
+  }, [bodyCache, bodyLoader, isActive, selectedRequestKey]);
 
   useEffect(() => {
     const jobs: BodyLoadJob[] = [];
     const retainedRecordKeys = new Set(state.requests.keys());
     bodyLoader.forgetRecords(bodyCache.retainRecords(retainedRecordKeys));
 
-    if (selectedRecord?.kind === "request") {
+    if (isActive && selectedServerIsConnected && selectedRecord?.kind === "request") {
       const recordKey = requestRecordKey(selectedRecord.server, selectedRecord.requestId);
       const requestAttemptKey = `${recordKey}\u0000request`;
       const responseAttemptKey = `${recordKey}\u0000response`;
@@ -277,7 +292,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
 
     bodyLoader.retainRecords(retainedRecordKeys);
     bodyLoader.schedule(jobs);
-  }, [bodyCache, bodyLoader, selectedRecord, state.requests]);
+  }, [bodyCache, bodyLoader, isActive, selectedRecord, selectedServerIsConnected, state.requests]);
 
   const replacementServer = useMemo(
     () => replacementCandidate(displayServers, selectedServerModel),
@@ -301,26 +316,28 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
   useEffect(
     () =>
       client.onNativeCopySelectedUrl(() => {
-        if (selectedRecord != null) void client.copyText(selectedRecord.url);
+        if (isActive && selectedRecord != null) void client.copyText(selectedRecord.url);
       }),
-    [client, selectedRecord]
+    [client, isActive, selectedRecord]
   );
   useEffect(
     () =>
       client.onNativeCopySelectedCurl(() => {
-        if (selectedRecord?.kind === "request") void copyCurl(client, selectedRecord);
+        if (isActive && selectedRecord?.kind === "request")
+          void copyCurl(client, selectedRecord, selectedServerIsConnected);
       }),
-    [client, selectedRecord]
+    [client, isActive, selectedRecord, selectedServerIsConnected]
   );
   useEffect(
     () =>
       client.onNativeExportVisibleHar(() => {
-        void exportAsHar(client, visibleRecords);
+        if (isActive) void exportAsHar(client, visibleRecords, undefined, selectedServerIsConnected);
       }),
-    [client, visibleRecords]
+    [client, isActive, selectedServerIsConnected, visibleRecords]
   );
 
   useEffect(() => {
+    if (!isActive) return;
     client.nativeInspectorStateChanged({
       servers: displayServers,
       selectedServer:
@@ -335,6 +352,7 @@ export function useNetworkInspectorModel(): NetworkInspectorModel {
     });
   }, [
     client,
+    isActive,
     displayServers,
     hasClearableItems,
     hasVisibleRecords,

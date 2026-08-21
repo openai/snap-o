@@ -8,6 +8,10 @@ final class NetworkInspectorHostModel {
   private(set) var selectedServer: NetworkInspectorServer?
   private(set) var inspectorApps: [InspectableApp] = []
   private(set) var selectedInspector: SelectedAppInspector?
+  private(set) var displayedNetwork: SelectedAppInspector?
+  private(set) var selectedInspectorApp: InspectableApp?
+  private(set) var preferredInspectorKind: AppInspectorKind?
+  private(set) var isRestoringInspector = false
   private(set) var searchText = ""
   private(set) var sortNewestFirst = false
   private(set) var hasClearableItems = false
@@ -26,8 +30,8 @@ final class NetworkInspectorHostModel {
     bridge.inspectorStateChangedHandler = { [weak self] state in
       self?.apply(state)
     }
-    bridge.inspectorAppsChangedHandler = { [weak self] apps in
-      self?.applyInspectorApps(apps)
+    bridge.appInspectorStateChangedHandler = { [weak self] state in
+      self?.apply(state)
     }
     bridge.tweaksStateChangedHandler = { [weak self] state in
       self?.apply(state)
@@ -48,53 +52,17 @@ final class NetworkInspectorHostModel {
     webContainer.stop()
   }
 
-  func selectServer(_ server: NetworkInspectorServer) {
-    sendPageEvent(
-      name: "network:selected-server",
-      payload: NetworkServerReference(deviceId: server.deviceId, socketName: server.socketName)
-    )
-  }
-
   func selectApp(_ app: InspectableApp) {
-    let currentOption = app.inspectors.first {
-      app.id == selectedInspector?.appId
-        && $0.kind == selectedInspector?.kind
-        && $0.server == selectedInspector?.server
-    }
-    let matchingKind = app.inspectors.first { $0.kind == selectedInspector?.kind }
-    guard let option = currentOption ?? matchingKind ?? app.inspectors.first else { return }
-    selectInspector(app, option: option)
+    sendPageEvent(name: "inspector:app-selected", payload: app.id)
   }
 
   func selectInspector(_ app: InspectableApp, option: AppInspectorOption) {
-    let selection = SelectedAppInspector(
-      appId: app.id,
-      kind: option.kind,
-      server: option.server,
-      protocolVersion: option.protocolVersion
+    sendPageEvent(
+      name: "inspector:selected",
+      payload: SelectedAppInspector(
+        appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion
+      )
     )
-    if selectedInspector?.appId != selection.appId
-      || selectedInspector?.kind != selection.kind
-      || selectedInspector?.server != selection.server {
-      webContainer.closeNativeColorPanel()
-    }
-    if selectedInspector?.kind != selection.kind || selectedInspector?.server != selection.server {
-      hasResettableTweaks = false
-    }
-    selectedInspector = selection
-    sendPageEvent(name: "inspector:selected", payload: selection)
-
-    if option.kind == .network,
-       let server = servers.first(where: {
-         $0.deviceId == option.server.deviceId && $0.socketName == option.server.socketName
-       }) {
-      selectServer(server)
-    }
-  }
-
-  var selectedInspectorApp: InspectableApp? {
-    guard let selectedInspector else { return nil }
-    return inspectorApps.first { $0.id == selectedInspector.appId }
   }
 
   func setSearchText(_ searchText: String) {
@@ -127,6 +95,7 @@ final class NetworkInspectorHostModel {
 
   private func apply(_ state: NetworkInspectorNativeState) {
     servers = state.servers
+    guard let displayedNetwork, displayedNetwork.server == state.selectedServer else { return }
     selectedServer = state.selectedServer.flatMap { selection in
       state.servers.first {
         $0.deviceId == selection.deviceId && $0.socketName == selection.socketName
@@ -149,47 +118,23 @@ final class NetworkInspectorHostModel {
     hasResettableTweaks = state.hasResettableTweaks
   }
 
-  private func applyInspectorApps(_ apps: [InspectableApp]) {
-    inspectorApps = apps
-
-    if let selection = selectedInspector,
-       let app = apps.first(where: { app in
-         app.inspectors.contains { $0.kind == selection.kind && $0.server == selection.server }
-       }),
-       let option = app.inspectors.first(where: {
-         $0.kind == selection.kind && $0.server == selection.server
-       }) {
-      if selection.appId != app.id || selection.protocolVersion != option.protocolVersion {
-        selectInspector(app, option: option)
-      }
-      return
-    }
-
-    if let selection = selectedInspector,
-       let app = apps.first(where: { $0.id == selection.appId }),
-       !app.inspectors.isEmpty {
-      selectApp(app)
-      return
-    }
-
-    if let selectedServer,
-       let app = apps.first(where: {
-         $0.deviceId == selectedServer.deviceId && $0.inspectors.contains {
-           $0.kind == .network && $0.server.socketName == selectedServer.socketName
-         }
-       }),
-       let network = app.inspectors.first(where: { $0.kind == .network }) {
-      selectInspector(app, option: network)
-      return
-    }
-
-    guard let app = apps.first, let option = app.inspectors.first else {
+  private func apply(_ state: AppInspectorState) {
+    if selectedInspector?.kind != state.selection?.kind || selectedInspector?.server != state.selection?.server {
       webContainer.closeNativeColorPanel()
-      selectedInspector = nil
       hasResettableTweaks = false
-      return
     }
-    selectInspector(app, option: option)
+    if state.displayedNetwork == nil || displayedNetwork?.server != state.displayedNetwork?.server {
+      selectedServer = nil
+      hasClearableItems = false
+      hasVisibleRecords = false
+      selectedRecordKind = nil
+    }
+    inspectorApps = state.apps
+    selectedInspector = state.selection
+    displayedNetwork = state.displayedNetwork
+    selectedInspectorApp = state.selectedApp
+    preferredInspectorKind = state.preferredKind
+    isRestoringInspector = state.isRestoring
   }
 
   private func dispatch(_ output: NetworkInspectorOutput) {

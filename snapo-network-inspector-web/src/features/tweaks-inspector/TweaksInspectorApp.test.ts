@@ -12,7 +12,6 @@ import {
   applyTweakUpdates,
   canResetTweaks,
   groupTweaks,
-  hasLoadedTweaksForServer,
   nativePanelTweakColor,
   parseTweakColor,
   reconcileStreamedTweaks,
@@ -52,21 +51,6 @@ describe("empty tweaks inspector", () => {
     expect(markup).toContain('class="text-button"');
     expect(markup).toContain("Read the developer guide");
     expect(markup).not.toContain('class="tweaks-columns"');
-  });
-
-  it("does not treat an incomplete request as loaded", () => {
-    expect(hasLoadedTweaksForServer(null, selection.server)).toBe(false);
-  });
-
-  it("recognizes when the selected server has finished loading", () => {
-    expect(hasLoadedTweaksForServer({ ...selection.server }, selection.server)).toBe(true);
-  });
-
-  it("waits again when switching to another app or device", () => {
-    expect(hasLoadedTweaksForServer(selection.server, { ...selection.server, deviceId: "emulator" })).toBe(false);
-    expect(hasLoadedTweaksForServer(selection.server, { ...selection.server, socketName: "snapo_tweaks_20" })).toBe(
-      false
-    );
   });
 });
 

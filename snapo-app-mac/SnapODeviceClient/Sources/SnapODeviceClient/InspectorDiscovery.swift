@@ -1,6 +1,6 @@
 import Foundation
 
-public enum InspectorKind: String, Codable, Sendable {
+public enum InspectorKind: String, Codable, Sendable, CaseIterable {
   case network
   case tweaks
 
@@ -99,7 +99,43 @@ public struct InspectableProcess: Sendable {
   }
 }
 
+public struct DiscoveredInspectorSocket: Sendable, Equatable {
+  public let kind: InspectorKind
+  public let reference: NetworkServerReference
+}
+
 public enum InspectorDiscovery {
+  public static func sockets(inProcNetUnix output: String, deviceID: String) -> [DiscoveredInspectorSocket] {
+    Set(output.split(separator: "\n").compactMap { $0.split(whereSeparator: \.isWhitespace).last })
+      .sorted().compactMap { token in
+        guard token.first == "@" else { return nil }
+        let name = String(token.dropFirst())
+        guard let kind = InspectorKind.allCases.first(where: { $0.pid(inSocketName: name) != nil }) else {
+          return nil
+        }
+        return DiscoveredInspectorSocket(
+          kind: kind,
+          reference: NetworkServerReference(deviceId: deviceID, socketName: name)
+        )
+      }
+  }
+
+  public static func discover(on deviceIDs: [String], using adb: ADBClient) async -> [DiscoveredInspectorSocket] {
+    await withTaskGroup(of: [DiscoveredInspectorSocket].self) { group in
+      for deviceID in deviceIDs {
+        group.addTask {
+          guard let output = try? await adb.listUnixSockets(deviceID: deviceID) else { return [] }
+          return Self.sockets(inProcNetUnix: output, deviceID: deviceID)
+        }
+      }
+      var sockets: [DiscoveredInspectorSocket] = []
+      for await result in group {
+        sockets.append(contentsOf: result)
+      }
+      return sockets.sorted { $0.reference.identifier < $1.reference.identifier }
+    }
+  }
+
   public static func processes(from endpoints: [InspectorEndpoint]) -> [InspectableProcess] {
     Dictionary(grouping: endpoints, by: \.processID).map { id, endpoints in
       let ordered = endpoints.sorted {

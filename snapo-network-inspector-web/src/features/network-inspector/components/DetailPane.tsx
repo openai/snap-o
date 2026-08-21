@@ -48,7 +48,15 @@ export const DetailContent = memo(function DetailContent({
   }
 
   if (record.kind === "websocket") return <WebSocketDetail client={client} record={record} uiState={uiState} />;
-  return <RequestDetail client={client} record={record} uiState={uiState} onRetryResponseBody={onRetryResponseBody} />;
+  return (
+    <RequestDetail
+      client={client}
+      record={record}
+      uiState={uiState}
+      isConnected={selectedServer?.isConnected === true}
+      onRetryResponseBody={onRetryResponseBody}
+    />
+  );
 });
 
 function EmptyState({

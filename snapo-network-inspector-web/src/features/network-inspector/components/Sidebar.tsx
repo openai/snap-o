@@ -3,6 +3,7 @@ import { memo } from "react";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord, ServerId } from "../../../network/cdp";
 import type {
+  AppInspectorKind,
   AppInspectorOption,
   InspectableApp,
   SelectedAppInspector,
@@ -27,6 +28,8 @@ export const Sidebar = memo(function Sidebar({
   client,
   inspectorApps,
   inspectorSelection,
+  selectedApp,
+  preferredKind,
   showsServerPicker,
   showsInlineToolbar,
   onServerChange,
@@ -50,10 +53,12 @@ export const Sidebar = memo(function Sidebar({
   client: NetworkClient;
   inspectorApps?: InspectableApp[];
   inspectorSelection?: SelectedAppInspector | null;
+  selectedApp?: InspectableApp | null;
+  preferredKind?: AppInspectorKind | null;
   showsServerPicker: boolean;
   showsInlineToolbar: boolean;
   onServerChange(server: ServerId | null): void;
-  onInspectorSelect?(app: InspectableApp, option: AppInspectorOption): void;
+  onInspectorSelect?(app: InspectableApp, option?: AppInspectorOption): void;
   onReplacementServerClick(server: SnapOServer): void;
   onSearchTextChange(value: string): void;
   onToggleSortOrder(): void;
@@ -72,6 +77,8 @@ export const Sidebar = memo(function Sidebar({
               <AppInspectorPicker
                 apps={inspectorApps}
                 selection={inspectorSelection ?? null}
+                selectedApp={selectedApp}
+                preferredKind={preferredKind}
                 onSelect={onInspectorSelect}
               />
             ) : (
@@ -140,6 +147,7 @@ export const Sidebar = memo(function Sidebar({
         selectedRecordId={selectedRecordId}
         onSelect={onRecordSelect}
         client={client}
+        isConnected={selectedServer?.isConnected === true}
       />
     </aside>
   );

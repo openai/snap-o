@@ -1,22 +1,31 @@
-import { useEffect, type CSSProperties } from "react";
-import type { AppInspectorOption, InspectableApp, SelectedAppInspector } from "../../network/bridge-types";
+import { type CSSProperties } from "react";
+import type {
+  AppInspectorKind,
+  AppInspectorOption,
+  InspectableApp,
+  SelectedAppInspector
+} from "../../network/bridge-types";
 import { DetailContent } from "./components/DetailPane";
 import { Sidebar } from "./components/Sidebar";
-import { useNetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
+import type { NetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
 import { usePersistentSplitPane } from "./hooks/usePersistentSplitPane";
 import { useSearchHighlights } from "./hooks/useSearchHighlights";
 
 export function NetworkInspectorApp({
+  model,
   inspectorApps = [],
   inspectorSelection = null,
+  selectedApp = null,
+  preferredKind,
   onInspectorSelect
 }: {
+  model: NetworkInspectorModel;
   inspectorApps?: InspectableApp[];
   inspectorSelection?: SelectedAppInspector | null;
-  onInspectorSelect?(app: InspectableApp, option: AppInspectorOption): void;
+  selectedApp?: InspectableApp | null;
+  preferredKind?: AppInspectorKind | null;
+  onInspectorSelect?(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
-  const model = useNetworkInspectorModel();
-  const { selectServer } = model;
   const {
     containerRef,
     sidebarWidth,
@@ -28,11 +37,6 @@ export function NetworkInspectorApp({
     resizeWithKeyboard
   } = usePersistentSplitPane();
   useSearchHighlights(containerRef, model.searchText);
-
-  useEffect(() => {
-    if (inspectorSelection?.kind !== "network") return;
-    selectServer(inspectorSelection.server);
-  }, [inspectorSelection, selectServer]);
 
   return (
     <div className="app-shell" ref={containerRef} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
@@ -53,8 +57,22 @@ export function NetworkInspectorApp({
         onServerChange={model.selectServer}
         inspectorApps={inspectorApps}
         inspectorSelection={inspectorSelection}
+        selectedApp={selectedApp}
+        preferredKind={preferredKind}
         onInspectorSelect={onInspectorSelect}
-        onReplacementServerClick={model.selectReplacementServer}
+        onReplacementServerClick={(server) => {
+          const app = inspectorApps.find((candidate) =>
+            candidate.inspectors.some(
+              (option) =>
+                option.kind === "network" &&
+                option.server.deviceId === server.deviceId &&
+                option.server.socketName === server.socketName
+            )
+          );
+          const option = app?.inspectors.find((candidate) => candidate.kind === "network");
+          if (app && option && onInspectorSelect) onInspectorSelect(app, option);
+          else model.selectReplacementServer(server);
+        }}
         onSearchTextChange={model.setSearchText}
         onToggleSortOrder={model.toggleSortOrder}
         onClearCompleted={model.clearCompletedRecords}

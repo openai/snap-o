@@ -46,6 +46,10 @@ Delivery is bounded at every host hop, including the Swift-to-WebKit bridge. If 
 
 Swift owns ADB and network transport. React owns inspector UI state. Native controls send intents to React; React sends an immutable state projection back for native toolbar rendering.
 
+Network and Tweaks connections use one socket-discovery snapshot per refresh. The React app owns inspector selection and remembers each device/process preference separately from its live socket. The Mac host stores these preferences in UserDefaults; the browser uses local storage. Partial discovery never replaces that preference. During reconnect, the last network request view stays browsable and the toolbar keeps its known inspector types. Selecting a cached type waits for a live endpoint; it never reconnects through a stale socket. A full-pane spinner is used only when there is no previous inspector to show.
+
+The network model outlives the visible inspector. Restoration pauses its connection without discarding captured records or cached bodies. A previously loaded Tweaks view stays visible but disabled until fresh data arrives. Selecting an app waits for its process identity before resolving its saved inspector; selecting an inspector icon overrides that preference explicitly.
+
 ## Testing seams
 
 - Swift Testing covers discovery, wire compatibility, ordered sessions, cancellation, timeouts, and backpressure.

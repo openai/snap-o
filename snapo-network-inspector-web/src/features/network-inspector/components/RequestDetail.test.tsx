@@ -6,6 +6,34 @@ import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { RequestDetail } from "./RequestDetail";
 
 describe("Response Body loading state", () => {
+  it("shows an uncached body as offline instead of loading forever", () => {
+    const markup = renderToStaticMarkup(
+      <RequestDetail
+        client={{} as NetworkClient}
+        record={request({ encodedDataLength: 12 })}
+        uiState={expandedUiState}
+        isConnected={false}
+        onRetryResponseBody={() => {}}
+      />
+    );
+    expect(markup).toContain("Response body isn’t cached on this Mac.");
+    expect(markup).not.toContain("body-loading-spinner");
+    expect(markup).not.toContain(">Retry</button>");
+  });
+
+  it("keeps a cached body readable offline", () => {
+    const markup = renderToStaticMarkup(
+      <RequestDetail
+        client={{} as NetworkClient}
+        record={request({ responseBody: "cached-response" })}
+        uiState={expandedUiState}
+        isConnected={false}
+        onRetryResponseBody={() => {}}
+      />
+    );
+    expect(markup).toContain("cached-response");
+    expect(markup).not.toContain("isn’t cached");
+  });
   it("shows the captured size and an accessible loading indicator before hydration completes", () => {
     const markup = renderToStaticMarkup(
       <RequestDetail

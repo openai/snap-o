@@ -1,4 +1,5 @@
 import type {
+  AppInspectorState,
   DebugInspectorPreset,
   InspectableApp,
   InspectorServerReference,
@@ -31,6 +32,10 @@ export interface NetworkClient {
   readonly usesNativeServerPicker: boolean;
   appVersion(): Promise<string>;
   listInspectorApps(): Promise<InspectableApp[]>;
+  loadInspectorPreferences(): Promise<string | null>;
+  saveInspectorPreferences(value: string): Promise<void>;
+  appInspectorStateChanged(state: AppInspectorState): void;
+  onNativeSelectedApp(callback: (appId: string) => void): () => void;
   listServers(): Promise<SnapOServer[]>;
   listTweaks(server: InspectorServerReference): Promise<TweakList>;
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
@@ -91,6 +96,22 @@ class WebKitNetworkClient implements NetworkClient {
 
   listInspectorApps(): Promise<InspectableApp[]> {
     return this.invoke<InspectableApp[]>("listInspectorApps");
+  }
+
+  loadInspectorPreferences(): Promise<string | null> {
+    return this.invoke<string | null>("loadInspectorPreferences");
+  }
+
+  saveInspectorPreferences(value: string): Promise<void> {
+    return this.invoke<void>("saveInspectorPreferences", { value });
+  }
+
+  appInspectorStateChanged(state: AppInspectorState): void {
+    void this.invoke<void>("appInspectorStateChanged", state);
+  }
+
+  onNativeSelectedApp(callback: (appId: string) => void): () => void {
+    return listenWebKitEvent<string>("inspector:app-selected", callback);
   }
 
   listServers(): Promise<SnapOServer[]> {
@@ -260,6 +281,7 @@ class HttpNetworkClient implements NetworkClient {
         id: inspectorProcessId("network", server),
         name: server.appName || server.displayName,
         packageName: server.packageName ?? server.displayName,
+        processName: server.appName ?? server.packageName,
         deviceId: server.deviceId,
         deviceDisplayTitle: server.deviceDisplayTitle,
         appIconBase64: server.appIconBase64,
@@ -272,6 +294,31 @@ class HttpNetworkClient implements NetworkClient {
         ]
       }));
     }
+  }
+
+  async loadInspectorPreferences(): Promise<string | null> {
+    try {
+      return window.localStorage.getItem("snapo.inspectorPreferences");
+    } catch {
+      return null;
+    }
+  }
+
+  async saveInspectorPreferences(value: string): Promise<void> {
+    try {
+      window.localStorage.setItem("snapo.inspectorPreferences", value);
+    } catch {
+      /* Storage may be disabled. */
+    }
+  }
+
+  appInspectorStateChanged(state: AppInspectorState): void {
+    void state;
+  }
+
+  onNativeSelectedApp(callback: (appId: string) => void): () => void {
+    void callback;
+    return () => {};
   }
 
   async listServers(): Promise<SnapOServer[]> {

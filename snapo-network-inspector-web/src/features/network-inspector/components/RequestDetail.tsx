@@ -16,11 +16,13 @@ export const RequestDetail = memo(function RequestDetail({
   client,
   record,
   uiState,
+  isConnected = true,
   onRetryResponseBody
 }: {
   client: NetworkClient;
   record: RequestRecord;
   uiState: InspectorUiState;
+  isConnected?: boolean;
   onRetryResponseBody(): void;
 }): JSX.Element {
   const isSseResponse = isLikelyStreamingRequest(record);
@@ -41,6 +43,8 @@ export const RequestDetail = memo(function RequestDetail({
       });
   const isResponseBodyLoading = !isSseResponse && shouldRequestResponseBody(record);
   const responseBodyLoadError = !isSseResponse && responseBody == null ? record.responseBodyLoadError : null;
+  const responseBodyIsOffline =
+    !isConnected && responseBody == null && (isResponseBodyLoading || responseBodyLoadError === "failed");
   const prefix = `request:${recordId(record)}`;
   const timingText = useAdaptiveTimingText(record.startedAt, record.endedAt, record.status);
 
@@ -119,7 +123,11 @@ export const RequestDetail = memo(function RequestDetail({
           storageKey={`${prefix}:responseBody`}
           uiState={uiState}
         >
-          {responseBodyLoadError != null ? (
+          {responseBodyIsOffline ? (
+            <div className="body-load-message" role="status">
+              Response body isn’t cached on this Mac.
+            </div>
+          ) : responseBodyLoadError != null ? (
             <div className="body-load-message" role="status">
               <span>
                 {responseBodyLoadError === "unavailable"
