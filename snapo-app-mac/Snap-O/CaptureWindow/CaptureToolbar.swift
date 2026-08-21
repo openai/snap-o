@@ -138,14 +138,19 @@ struct CaptureToolbar: View {
 
         if let networkModel {
           HStack(spacing: 8) {
-            if networkModel.preferredInspectorKind == .tweaks {
-              tweaksInspectorControls(model: networkModel)
-            } else {
-              NetworkInspectorToolbarControls(
-                model: networkModel,
-                isSearchPresented: $isNetworkSearchPresented
-              )
+            Group {
+              if networkModel.preferredInspectorKind == .tweaks {
+                tweaksInspectorControls(model: networkModel)
+              } else {
+                NetworkInspectorToolbarControls(
+                  model: networkModel,
+                  isSearchPresented: $isNetworkSearchPresented
+                )
+              }
             }
+            // Reserve the three-button network group's width without stretching its background.
+            .frame(minWidth: 110, alignment: .leading)
+
             AppInspectorPicker(model: networkModel)
               .padding(.leading, 4)
             AppInspectorViewPicker(model: networkModel)
