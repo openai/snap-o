@@ -4,6 +4,7 @@ import type {
   AppInspectorOption,
   InspectableApp,
   SelectedAppInspector,
+  StreamStarted,
   TweakActionDescriptor,
   TweakDescriptor,
   TweakUpdate,
@@ -98,7 +99,7 @@ export function TweaksInspectorApp({
   useEffect(() => {
     if (!isConnected) return;
     let disposed = false;
-    let streamId: string | undefined;
+    let streamStart: Promise<StreamStarted> | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let retryDelay = 250;
 
@@ -109,17 +110,19 @@ export function TweaksInspectorApp({
     };
 
     const unsubscribe = client.onTweaksChanged((event) => {
-      if (
-        disposed ||
-        event.server.deviceId !== server.deviceId ||
-        event.server.socketName !== server.socketName ||
-        (streamId !== undefined && event.streamId !== streamId)
-      ) {
+      if (disposed || event.server.deviceId !== server.deviceId || event.server.socketName !== server.socketName) {
         return;
       }
 
-      applySnapshot(event.tweaks);
-      setConnectionState({ connection, error: null });
+      // The initial event can arrive before the start reply identifies its stream.
+      void streamStart?.then(
+        ({ streamId }) => {
+          if (disposed || event.streamId !== streamId) return;
+          applySnapshot(event.tweaks);
+          setConnectionState({ connection, error: null });
+        },
+        () => {}
+      );
     });
 
     const connect = async () => {
@@ -130,12 +133,9 @@ export function TweaksInspectorApp({
         setConnectionState(null);
         setSaving(false);
 
-        const started = await client.startTweakStream(server);
-        if (disposed) {
-          void client.stopTweakStream(started.streamId).catch(() => {});
-          return;
-        }
-        streamId = started.streamId;
+        streamStart = client.startTweakStream(server);
+        await streamStart;
+        if (disposed) return;
         setConnectionState({ connection, error: null });
       } catch (cause) {
         if (disposed) return;
@@ -154,7 +154,7 @@ export function TweaksInspectorApp({
       clearTimeout(retryTimer);
       queue.cancel();
       unsubscribe();
-      if (streamId !== undefined) void client.stopTweakStream(streamId).catch(() => {});
+      void streamStart?.then(({ streamId }) => client.stopTweakStream(streamId)).catch(() => {});
     };
   }, [client, connection, isConnected, queue, server]);
 
