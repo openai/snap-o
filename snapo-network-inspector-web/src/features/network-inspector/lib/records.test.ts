@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RequestRecord, WebSocketRecord } from "../../../network/cdp";
 import {
   countExcludedRecordsForServer,
@@ -64,6 +64,14 @@ describe("persistent exclusion filters", () => {
 
     expect(countExcludedRecordsForServer(records, server, exclusionFilters)).toBe(1);
     expect(filterRecords(records, server, searchText, false, exclusionFilters)).toEqual([visible]);
+  });
+
+  it("traverses stream events once when search and exclusions are empty", () => {
+    const visible = request();
+    const iterateEvents = vi.spyOn(visible.streamEvents, Symbol.iterator);
+
+    expect(filterRecords([visible], server, "", false)).toEqual([visible]);
+    expect(iterateEvents).toHaveBeenCalledTimes(1);
   });
 
   it("applies generic exclusion filters to the same searchable metadata as ordinary filters", () => {
