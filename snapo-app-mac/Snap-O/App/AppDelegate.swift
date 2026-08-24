@@ -50,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     terminationTimeoutTask = Task { [weak self] in
       try? await Task.sleep(for: .seconds(Self.terminationCleanupTimeoutSeconds))
       guard !Task.isCancelled else { return }
+      Perf.end(.appShutdown, finalLabel: "cleanup timeout")
       self?.completeTermination(for: sender)
     }
     return .terminateLater

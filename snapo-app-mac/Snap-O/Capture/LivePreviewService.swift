@@ -51,7 +51,7 @@ actor LivePreviewService {
       throw CancellationError()
     }
 
-    let showTouchesOverride = await ShowTouchesOverride.apply(
+    async let applyingShowTouches = ShowTouchesOverride.apply(
       deviceID: deviceID,
       enabled: options.showsTouches,
       using: adb
@@ -60,10 +60,12 @@ actor LivePreviewService {
     do {
       session = try await LivePreviewSession(deviceID: deviceID, adb: adb)
     } catch {
+      let showTouchesOverride = await applyingShowTouches
       await showTouchesOverride.restore(using: adb)
       await coordinator.release(lease)
       throw error
     }
+    let showTouchesOverride = await applyingShowTouches
 
     guard !Task.isCancelled, !isShuttingDown else {
       await session.cancel()

@@ -23,7 +23,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   var body: some View {
     ZStack {
       if let renderer {
-        LivePreviewRendererView(renderer: renderer, fileStore: fileStore)
+        LivePreviewRendererView(renderer: renderer, fileStore: fileStore, isVisible: isWindowVisible)
       } else {
         Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
       }
@@ -32,13 +32,13 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     .background {
       WindowVisibilityReader { isVisible in
         isWindowVisible = isVisible
-        updateStreamVisibility()
+        startStreamIfNeeded()
       }
       .frame(width: 0, height: 0)
     }
     .onAppear {
       isViewVisible = true
-      updateStreamVisibility()
+      startStreamIfNeeded()
     }
     .onDisappear {
       isViewVisible = false
@@ -46,16 +46,8 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     }
   }
 
-  private func updateStreamVisibility() {
-    if isViewVisible, isWindowVisible {
-      startStreamIfNeeded()
-    } else {
-      stopStream()
-    }
-  }
-
   private func startStreamIfNeeded() {
-    guard streamTask == nil else { return }
+    guard isViewVisible, isWindowVisible, streamTask == nil else { return }
 
     let deviceID = capture.device.id
     let lifecycleID = UUID()

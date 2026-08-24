@@ -145,7 +145,7 @@ final class LivePreviewSession {
       let streamError: Error?
       do {
         while !Task.isCancelled {
-          guard let chunk = try session.read(maxLength: 4096), !chunk.isEmpty else { break }
+          guard let chunk = try session.read(maxLength: 64 * 1024), !chunk.isEmpty else { break }
           decoder.append(chunk)
         }
         streamError = nil
@@ -167,7 +167,6 @@ final class LivePreviewSession {
     streamTask?.cancel()
     streamTask = nil
     screenStream.close()
-    decoder?.finish()
     decoder = nil
     sampleBufferHandler = nil
 

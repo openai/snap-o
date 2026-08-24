@@ -20,9 +20,12 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
 "$TEST_DIR/startup-tests"
 xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   "$TEST_DIR/Device.o" Snap-O/Models/Media.swift Snap-O/LivePreview/LivePreviewSession.swift \
+  Snap-O/Capture/ShowTouchesOverride.swift Snap-O/Capture/LivePreviewService.swift \
+  Snap-O/Capture/CaptureCoordinator.swift \
   Tests/StartupCapture/LivePreviewSessionTests.swift -o "$TEST_DIR/session-tests"
 "$TEST_DIR/session-tests"
 xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/CaptureWindow/LiveCaptureView.swift Snap-O/CaptureWindow/CaptureSurfaceView.swift \
+  Snap-O/UI/VideoLoopingView.swift \
   Tests/StartupCapture/LivePreviewVisibilityTests.swift -o "$TEST_DIR/visibility-tests"
 "$TEST_DIR/visibility-tests"

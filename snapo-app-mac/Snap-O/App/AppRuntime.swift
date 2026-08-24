@@ -97,24 +97,31 @@ final class AppRuntime {
     let captureCoordinator = captureCoordinator
     let captureServices = captureServices
     let task = Task {
+      Perf.start(.appShutdown, name: "App Quit → Cleanup")
       await captureCoordinator.beginShutdown()
       await captureServices.startup.discard()
+      Perf.step(.appShutdown, "startup preparation discarded")
       await withTaskGroup(of: Void.self) { group in
         group.addTask {
           await activeStartupTask?.value
           await deviceTracker.stopTracking()
+          Perf.step(.appShutdown, "device tracking stopped")
         }
         group.addTask {
           await captureServices.screenshots.shutdown()
+          Perf.step(.appShutdown, "screenshots stopped")
         }
         group.addTask {
           await captureServices.recording.shutdown()
+          Perf.step(.appShutdown, "recording stopped")
         }
         group.addTask {
           await captureServices.livePreview.shutdown()
+          Perf.step(.appShutdown, "live preview stopped")
         }
       }
       await captureCoordinator.waitUntilIdle()
+      Perf.end(.appShutdown, finalLabel: "cleanup finished")
     }
     shutdownTask = task
     await task.value

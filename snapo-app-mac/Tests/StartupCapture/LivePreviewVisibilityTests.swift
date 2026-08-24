@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Observation
 import OSLog
 import SwiftUI
@@ -36,6 +37,7 @@ struct LivePreviewRenderer {
 struct LivePreviewRendererView: NSViewRepresentable {
   let renderer: LivePreviewRenderer
   let fileStore: FileStore
+  let isVisible: Bool
 
   @MainActor static var displayView: NSView?
 
@@ -45,7 +47,44 @@ struct LivePreviewRendererView: NSViewRepresentable {
     return view
   }
 
-  func updateNSView(_ nsView: NSView, context: Context) {}
+  func updateNSView(_ nsView: NSView, context: Context) {
+    nsView.isHidden = !isVisible
+  }
+}
+
+/// Exercise the production playback view without loading media or running a decoder.
+@MainActor
+final class AVQueuePlayer {
+  static var latest: AVQueuePlayer?
+  var timeControlStatus = AVPlayer.TimeControlStatus.paused
+
+  init() {
+    Self.latest = self
+  }
+
+  func play() {
+    timeControlStatus = .playing
+  }
+
+  func pause() {
+    timeControlStatus = .paused
+  }
+}
+
+struct AVPlayerItem {
+  let url: URL
+}
+
+struct AVPlayerLooper {
+  let player: AVQueuePlayer
+  let templateItem: AVPlayerItem
+}
+
+struct VideoPlayer: View {
+  let player: AVQueuePlayer
+  var body: some View {
+    Color.clear
+  }
 }
 
 /// Drives the production view lifecycle without a device or an on-screen window.
@@ -122,9 +161,11 @@ struct LivePreviewVisibilityTests {
   static func main() {
     _ = NSApplication.shared
     let host = TestHost()
-    func surface(aspectRatio: CGFloat?) -> some View {
+    func surface(aspectRatio: CGFloat?, mountsPreview: Bool = true) -> some View {
       CaptureSurfaceView(aspectRatio: aspectRatio) {
-        LiveCaptureView(host: host, capture: CaptureMedia(), fileStore: FileStore())
+        if mountsPreview {
+          LiveCaptureView(host: host, capture: CaptureMedia(), fileStore: FileStore())
+        }
       }
     }
     let view = NSHostingView(rootView: surface(aspectRatio: nil))
@@ -159,55 +200,21 @@ struct LivePreviewVisibilityTests {
       precondition(LivePreviewRendererView.displayView === displayView, "Inspector toggles must preserve the display view")
       precondition(displayView?.frame.size == expectedSize, "Preview must fit the device or fill the capture-only pane")
     }
-    host.delayStop = true
-    Visibility.shared.isVisible = false
-    eventually("Cleanup should be pending") { host.stopContinuation != nil }
-    Visibility.shared.isVisible = true
-    eventually("Uncover during pending cleanup") { Visibility.shared.reportedVisibility == true }
-    pump()
-    precondition(host.starts == 1, "Replacement must wait for cleanup")
-    Visibility.shared.isVisible = false
-    eventually("Hide while waiting for cleanup") { Visibility.shared.reportedVisibility == false }
-    Visibility.shared.isVisible = true
-    eventually("Uncover again while waiting for cleanup") { Visibility.shared.reportedVisibility == true }
-    pump()
-    precondition(host.starts == 1, "Repeated visibility changes must not bypass cleanup")
-    host.delayStop = false
-    host.stopContinuation?.resume()
-    host.stopContinuation = nil
-    eventually("Restart once after cleanup") { host.starts == 2 && host.active.count == 1 }
-    Visibility.shared.isVisible = false
-    eventually("Hidden preview must stop") { host.active.isEmpty && host.stops.count == 2 }
-    pump()
-    precondition(host.starts == 2, "Hidden preview must not retry")
-    Visibility.shared.isVisible = true
-    eventually("Visible preview restarts") { host.starts == 3 && host.active.count == 1 }
-    Visibility.shared.isVisible = false
-    eventually("Hidden preview must stop again") { host.active.isEmpty && host.stops.count == 3 }
-    host.delayStart = true
-    Visibility.shared.isVisible = true
-    eventually("Startup should be pending") { host.startContinuation != nil }
-    Visibility.shared.isVisible = false
-    eventually("Hide during pending startup") { Visibility.shared.reportedVisibility == false }
-    Visibility.shared.isVisible = true
-    eventually("Uncover during pending startup") { Visibility.shared.reportedVisibility == true }
-    pump()
-    precondition(host.starts == 4, "Replacement must wait for cancelled startup")
-    host.delayStart = false
-    host.delayStop = true
-    host.startContinuation?.resume()
-    host.startContinuation = nil
-    eventually("Late startup cleanup should be pending") { host.stopContinuation != nil }
-    pump()
-    precondition(host.starts == 4, "Replacement must wait for late startup cleanup")
-    host.delayStop = false
-    host.stopContinuation?.resume()
-    host.stopContinuation = nil
-    eventually("Preview should recover after cancelled startup") { host.active.count == 1 }
-    eventually("Restart after late startup cleanup") { host.starts == 5 && host.stops.count == 4 }
+    let originalSession = host.latestSession
+    for _ in 0 ..< 3 {
+      Visibility.shared.isVisible = false
+      eventually("Covered preview hides its presentation") { displayView?.isHidden == true }
+      pump()
+      precondition(host.active.count == 1 && host.stops.isEmpty, "Covered preview must keep running")
+      Visibility.shared.isVisible = true
+      eventually("Uncovered preview restores presentation") { displayView?.isHidden == false }
+      precondition(host.starts == 1 && host.latestSession === originalSession, "Uncover must reuse the same session")
+      precondition(LivePreviewRendererView.displayView === displayView, "Uncover must preserve the renderer")
+    }
     NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApplication.shared)
     pump()
-    precondition(host.active.count == 1 && host.stops.count == 4, "Visible preview must keep running while inactive")
+    precondition(host.active.count == 1 && host.stops.isEmpty, "Visible preview must keep running while inactive")
+
     host.delayStop = true
     host.latestSession?.stop()
     eventually("Spontaneous stop cleanup should be pending") { host.stopContinuation != nil }
@@ -216,15 +223,100 @@ struct LivePreviewVisibilityTests {
     Visibility.shared.isVisible = true
     eventually("Uncover during spontaneous cleanup") { Visibility.shared.reportedVisibility == true }
     pump()
-    precondition(host.starts == 5, "Replacement must wait for spontaneous stop cleanup")
+    precondition(host.starts == 1, "Replacement must wait for spontaneous stop cleanup")
+    Visibility.shared.isVisible = false
+    eventually("Keep recovery hidden") { Visibility.shared.reportedVisibility == false }
     host.delayStop = false
     host.stopContinuation?.resume()
     host.stopContinuation = nil
-    eventually("Restart after spontaneous cleanup") { host.starts == 6 && host.active.count == 1 }
+    eventually("Hidden preview recovers after spontaneous cleanup") { host.starts == 2 && host.active.count == 1 }
+    eventually("Recovered preview stays hidden") { LivePreviewRendererView.displayView?.isHidden == true }
+    Visibility.shared.isVisible = true
+    eventually("Recovered preview becomes visible") { LivePreviewRendererView.displayView?.isHidden == false }
+    precondition(host.starts == 2, "Uncover must not restart a recovered stream")
+
+    host.delayStop = true
+    view.rootView = surface(aspectRatio: nil, mountsPreview: false)
+    eventually("Removing the preview must stop it") { host.stopContinuation != nil }
+    host.delayStop = false
+    host.stopContinuation?.resume()
+    host.stopContinuation = nil
+    eventually("Removed preview releases its operation") { host.active.isEmpty && host.stops.count == 2 }
+
+    host.delayStart = true
+    view.rootView = surface(aspectRatio: nil)
+    eventually("Startup should be pending") { host.startContinuation != nil }
+    Visibility.shared.isVisible = false
+    eventually("Hide during pending startup") { Visibility.shared.reportedVisibility == false }
+    host.delayStart = false
+    host.startContinuation?.resume()
+    host.startContinuation = nil
+    eventually("Pending startup completes while covered") { host.active.count == 1 }
+    eventually("Late renderer stays hidden") { LivePreviewRendererView.displayView?.isHidden == true }
+    precondition(host.starts == 3 && host.stops.count == 2, "Hiding during startup must not cancel it")
+    Visibility.shared.isVisible = true
+    eventually("Late renderer becomes visible") { LivePreviewRendererView.displayView?.isHidden == false }
+    precondition(host.starts == 3, "Uncover must reuse the late renderer")
+    view.rootView = surface(aspectRatio: nil, mountsPreview: false)
+    eventually("Removing the late renderer stops it") { host.active.isEmpty && host.stops.count == 3 }
+
+    host.delayStart = true
+    view.rootView = surface(aspectRatio: nil)
+    eventually("Final startup should be pending") { host.startContinuation != nil }
     window.contentView = nil
-    eventually("Removing the view must stop its renderer") { host.active.isEmpty && host.stops.count == 6 }
+    pump()
+    host.delayStart = false
+    host.startContinuation?.resume()
+    host.startContinuation = nil
+    eventually("Removed view cleans up late startup") { host.active.isEmpty && host.stops.count == 4 }
     precondition(Set(host.stops).count == host.stops.count, "Stop each renderer once")
     precondition(host.busyStarts == 0, "Never restart while the previous operation owns the device")
     print("Live Preview visibility tests passed")
+    testRecordingPlaybackVisibility()
+  }
+
+  static func testRecordingPlaybackVisibility() {
+    Visibility.shared.isVisible = false
+    Visibility.shared.reportedVisibility = nil
+    let view = NSHostingView(rootView: VideoLoopingView(url: URL(fileURLWithPath: "/synthetic-recording.mp4")))
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 240, height: 120),
+      styleMask: [.borderless],
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = view
+    view.layoutSubtreeIfNeeded()
+    eventually("Playback view must attach while hidden") {
+      AVQueuePlayer.latest != nil && Visibility.shared.reportedVisibility == false
+    }
+    guard let player = AVQueuePlayer.latest else { preconditionFailure("Playback player must exist") }
+    precondition(player.timeControlStatus == .paused, "Hidden recording must not autoplay")
+
+    Visibility.shared.isVisible = true
+    eventually("Visible recording autoplays") { player.timeControlStatus == .playing }
+    for _ in 0 ..< 3 {
+      Visibility.shared.isVisible = false
+      eventually("Covered recording pauses") { player.timeControlStatus == .paused }
+      Visibility.shared.isVisible = true
+      eventually("Uncovered recording resumes") { player.timeControlStatus == .playing }
+    }
+
+    player.pause()
+    Visibility.shared.isVisible = false
+    eventually("Cover manually paused recording") { Visibility.shared.reportedVisibility == false }
+    Visibility.shared.isVisible = true
+    eventually("Uncover manually paused recording") { Visibility.shared.reportedVisibility == true }
+    precondition(player.timeControlStatus == .paused, "Uncover must preserve a manual pause")
+
+    player.timeControlStatus = .waitingToPlayAtSpecifiedRate
+    Visibility.shared.isVisible = false
+    eventually("Covered buffering recording pauses") { player.timeControlStatus == .paused }
+    Visibility.shared.isVisible = true
+    eventually("Uncovered buffering recording resumes") { player.timeControlStatus == .playing }
+
+    window.contentView = nil
+    eventually("Removing the playback view pauses it") { player.timeControlStatus == .paused }
+    print("Recording playback visibility tests passed")
   }
 }
