@@ -46,6 +46,26 @@ describe("persistent exclusion filters", () => {
     ]);
   });
 
+  it.each([
+    { syntax: "an unfinished quote", searchText: '-"noise' },
+    { syntax: "a trailing backslash", searchText: "-noise\\" },
+    { syntax: "a completed quote", searchText: '-"noise"' },
+    { syntax: "an escaped backslash", searchText: "-noise\\\\" }
+  ])("applies saved exclusions and search filters with $syntax", ({ searchText }) => {
+    const hidden = request({ requestId: "hidden", url: "https://events.example.com/track" });
+    const searchHidden = request({
+      requestId: "search-hidden",
+      url: "https://api.example.com/messages",
+      requestHeaders: [{ name: "X-Label", value: "noise\\" }]
+    });
+    const visible = request({ requestId: "visible", url: "https://api.example.com/messages" });
+    const records = [hidden, searchHidden, visible];
+    const exclusionFilters = ["-events.example.com"];
+
+    expect(countExcludedRecordsForServer(records, server, exclusionFilters)).toBe(1);
+    expect(filterRecords(records, server, searchText, false, exclusionFilters)).toEqual([visible]);
+  });
+
   it("applies generic exclusion filters to the same searchable metadata as ordinary filters", () => {
     const hidden = request({ requestId: "hidden", method: "POST", url: "https://api.openai.com/messages" });
     const visible = request({ requestId: "visible", method: "GET", url: "https://api.openai.com/messages" });

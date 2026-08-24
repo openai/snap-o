@@ -19,10 +19,11 @@ export function filterRecords(
   newestFirst: boolean,
   exclusionFilters: readonly string[] = []
 ): InspectorRecord[] {
-  const searchQuery = parseNetworkSearchQuery([searchText, ...exclusionFilters].join(" "));
+  const searchQuery = parseNetworkSearchQuery(searchText);
+  const exclusionQuery = parseNetworkSearchQuery(exclusionFilters.join(" "));
   const filteredRecords = records
     .filter((record) => serverMatches(selectedServer, record.server))
-    .filter((record) => matchesNetworkSearch(record, searchQuery))
+    .filter((record) => matchesNetworkSearch(record, searchQuery) && matchesNetworkSearch(record, exclusionQuery))
     .sort((a, b) => a.startedAt - b.startedAt);
   if (newestFirst) filteredRecords.reverse();
   return filteredRecords;
