@@ -2,6 +2,7 @@ import Foundation
 
 public enum PerfKey: String, Hashable {
   case appFirstSnapshot
+  case appShutdown
   case captureRequest
   case recordingStart
   case recordingRender

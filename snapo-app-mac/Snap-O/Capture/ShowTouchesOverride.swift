@@ -18,12 +18,13 @@ struct ShowTouchesOverride {
       return ShowTouchesOverride(deviceID: deviceID, originalValue: nil)
     }
 
-    if originalValue != enabled {
-      do {
-        try await exec.setShowTouches(deviceID: deviceID, enabled: enabled)
-      } catch {
-        logFailure(action: "update", deviceID: deviceID, error: error)
-      }
+    guard originalValue != enabled else {
+      return ShowTouchesOverride(deviceID: deviceID, originalValue: nil)
+    }
+    do {
+      try await exec.setShowTouches(deviceID: deviceID, enabled: enabled)
+    } catch {
+      logFailure(action: "update", deviceID: deviceID, error: error)
     }
     return ShowTouchesOverride(deviceID: deviceID, originalValue: originalValue)
   }

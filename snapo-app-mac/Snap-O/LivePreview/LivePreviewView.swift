@@ -19,6 +19,7 @@ struct LivePreviewRenderer {
 struct LivePreviewRendererView: NSViewRepresentable {
   let renderer: LivePreviewRenderer
   let fileStore: FileStore
+  let isVisible: Bool
 
   func makeNSView(context: Context) -> LivePreviewDisplayView {
     let view = LivePreviewDisplayView(fileStore: fileStore)
@@ -28,7 +29,7 @@ struct LivePreviewRendererView: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: LivePreviewDisplayView, context: Context) {
-    nsView.update(with: renderer)
+    nsView.update(with: renderer, isVisible: isVisible)
   }
 
   static func dismantleNSView(_ nsView: LivePreviewDisplayView, coordinator: Void) {
@@ -69,7 +70,13 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
     true
   }
 
-  func update(with renderer: LivePreviewRenderer?) {
+  func update(with renderer: LivePreviewRenderer?, isVisible: Bool = false) {
+    // Keep decoding and retaining the latest frame without compositing hidden previews.
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    displayLayer.isHidden = !isVisible
+    CATransaction.commit()
+
     let shouldDetach: Bool = switch (self.renderer?.session, renderer?.session) {
     case (let lhs?, let rhs?): lhs !== rhs
     case (nil, nil): false
