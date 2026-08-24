@@ -28,6 +28,7 @@ final class CaptureWindowController {
   @ObservationIgnored private var deviceStreamTask: Task<Void, Never>?
   private var pendingPreferredDeviceID: String?
   @ObservationIgnored private var hasStartedInitialCapture = false
+  @ObservationIgnored private var initialCaptureTask: Task<Void, Never>?
   @ObservationIgnored private var cachedCaptureProgressText: String?
   @ObservationIgnored private var isTornDown = false
 
@@ -200,6 +201,9 @@ final class CaptureWindowController {
   }
 
   func captureScreenshots(useStartupPreparation: Bool = false) async {
+    if !useStartupPreparation {
+      guard await waitForInitialCaptureSetup() else { return }
+    }
     guard canCaptureNow else { return }
     hasStartedInitialCapture = true
     isProcessing = true
@@ -237,7 +241,7 @@ final class CaptureWindowController {
   }
 
   func startRecording() async {
-    guard canStartRecordingNow else { return }
+    guard await waitForInitialCaptureSetup(), canStartRecordingNow else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     await startupPreparation.discard()
@@ -364,6 +368,8 @@ final class CaptureWindowController {
   func tearDown() async {
     guard !isTornDown else { return }
     isTornDown = true
+    initialCaptureTask?.cancel()
+    initialCaptureTask = nil
     deviceStreamTask?.cancel()
     deviceStreamTask = nil
 
@@ -456,13 +462,23 @@ final class CaptureWindowController {
     guard mediaList.isEmpty else { return }
     guard case .idle = mode else { return }
     hasStartedInitialCapture = true
-    Task { [weak self] in
-      guard let self, !isTornDown, case .idle = mode else { return }
+    initialCaptureTask = Task { [weak self] in
+      guard let self, !Task.isCancelled, !isTornDown, case .idle = mode else { return }
+      defer {
+        if !Task.isCancelled { initialCaptureTask = nil }
+      }
       switch AppSettings.shared.startupCaptureMode {
       case .livePreview: await startLivePreview(useStartupPreparation: true)
       case .screenshot: await captureScreenshots(useStartupPreparation: true)
       }
     }
+  }
+
+  private func waitForInitialCaptureSetup() async -> Bool {
+    // A ready preview can stop normally, even if other devices are still loading.
+    let task = isProcessing ? initialCaptureTask : nil
+    await task?.value
+    return task?.isCancelled != true && !Task.isCancelled
   }
 
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {

@@ -11,8 +11,10 @@ enum SnapOLog {
 actor TestGate {
   private var isOpen = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
+  private(set) var waitCount = 0
 
   func wait() async {
+    waitCount += 1
     guard !isOpen else { return }
     await withCheckedContinuation { waiters.append($0) }
   }
@@ -167,5 +169,80 @@ final class LivePreviewRenderer {
     pointerHandler _: @escaping (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
   ) {
     self.operation = operation
+  }
+}
+
+@MainActor
+final class AppSettings {
+  static let shared = AppSettings()
+  var startupCaptureMode = StartupCaptureMode.livePreview
+  var recordAsBugReport = false
+  var showTouchesDuringCapture = false
+}
+
+struct FileStore {}
+
+@MainActor
+protocol LivePreviewHosting: AnyObject {
+  func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer?
+  func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async
+}
+
+actor DeviceTracker {
+  private(set) var latestDevices: [Device]
+  private var continuation: AsyncStream<[Device]>.Continuation?
+
+  init(devices: [Device]) {
+    latestDevices = devices
+  }
+
+  func deviceStream() -> AsyncStream<[Device]> {
+    let (stream, continuation) = AsyncStream<[Device]>.makeStream()
+    self.continuation = continuation
+    continuation.yield(latestDevices)
+    return stream
+  }
+
+  func updateDevices(_ devices: [Device]) {
+    latestDevices = devices
+    continuation?.yield(devices)
+  }
+}
+
+struct RecordingOptions {
+  let recordsBugReport: Bool
+  let showsTouches: Bool
+}
+
+struct RecordingOperationHandle {
+  let completion = TestGate()
+}
+
+struct RecordingOperationResult {
+  let media: [CaptureMedia]
+  let error: Error?
+}
+
+actor RecordingService {
+  private(set) var requests: [[String]] = []
+
+  func start(for devices: [Device], options _: RecordingOptions) throws -> RecordingOperationHandle {
+    requests.append(devices.map(\.id))
+    return RecordingOperationHandle()
+  }
+
+  func waitForCompletion(of handle: RecordingOperationHandle) async -> RecordingOperationResult? {
+    await handle.completion.wait()
+    return nil
+  }
+
+  func updateConnectedDeviceIDs(_: Set<String>, for _: RecordingOperationHandle) {}
+
+  func finish(_ handle: RecordingOperationHandle) async {
+    await handle.completion.open()
+  }
+
+  func cancel(_ handle: RecordingOperationHandle) async {
+    await handle.completion.open()
   }
 }
