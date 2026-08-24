@@ -29,7 +29,9 @@ struct StartupCaptureTests {
     await disconnectDuringQueuedCommand()
     await commandAfterPreparedPreviewReady()
     await cancelledQueuedCommand()
-    print("Startup capture tests passed (20 cases)")
+    await commandDuringAutomaticPreview(recordsVideo: true, previewReadyFirst: true)
+    await commandDuringAutomaticPreview(recordsVideo: false, previewReadyFirst: true)
+    print("Startup capture tests passed (22 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -331,12 +333,13 @@ struct StartupCaptureTests {
     let stopGate = TestGate()
     let screenshots = ScreenshotService()
     let recording = RecordingService()
-    let tracker = DeviceTracker(devices: [first])
+    let tracker: DeviceTracker
     let live: LivePreviewService
     let controller: CaptureWindowController
 
-    init() {
+    init(devices: [Device] = [first], blockedDisplayDevice: Device = first) {
       AppSettings.shared.startupCaptureMode = .livePreview
+      tracker = DeviceTracker(devices: devices)
       live = LivePreviewService(stopGate: stopGate, readyGate: readyGate)
       controller = CaptureWindowController(
         captureServices: CaptureServices(
@@ -347,7 +350,7 @@ struct StartupCaptureTests {
         ),
         deviceTracker: tracker,
         fileStore: FileStore(),
-        adbService: ADBService(displayGates: [first.id: displayGate])
+        adbService: ADBService(displayGates: [blockedDisplayDevice.id: displayGate])
       )
     }
 
@@ -379,23 +382,27 @@ struct StartupCaptureTests {
     }
   }
 
-  static func commandDuringAutomaticPreview(recordsVideo: Bool) async {
-    let fixture = ControllerFixture()
+  static func commandDuringAutomaticPreview(recordsVideo: Bool, previewReadyFirst: Bool = false) async {
+    let fixture = ControllerFixture(devices: [first, second], blockedDisplayDevice: second)
     await fixture.start()
     let command = await fixture.request(recordsVideo: recordsVideo)
     await fixture.assertNoCaptureRequests()
 
-    await fixture.displayGate.open()
+    if previewReadyFirst {
+      await fixture.readyGate.open()
+    } else {
+      await fixture.displayGate.open()
+    }
     await eventually("The explicit command must stop the automatic preview") { await fixture.live.stops.count == 1 }
     await fixture.assertNoCaptureRequests()
     await fixture.stopGate.open()
     await command.value
 
     if recordsVideo {
-      await eventually { await fixture.recording.requests == [[first.id]] }
+      await eventually { await fixture.recording.requests == [[first.id, second.id]] }
       precondition(fixture.controller.isRecording)
     } else {
-      await eventually { await fixture.screenshots.requests == [[first.id]] }
+      await eventually { await fixture.screenshots.requests == [[first.id, second.id]] }
       await eventually { !fixture.controller.isProcessing }
       guard case .image = fixture.controller.currentCapture?.media else {
         fatalError("Expected the explicit screenshot after automatic preview startup")
@@ -403,6 +410,7 @@ struct StartupCaptureTests {
     }
     let active = await fixture.live.active
     precondition(active.isEmpty)
+    await fixture.displayGate.open()
     await fixture.controller.tearDown()
   }
 
@@ -412,8 +420,8 @@ struct StartupCaptureTests {
     let command = await fixture.request(recordsVideo: recordsVideo)
     await fixture.stopGate.open()
     await fixture.controller.tearDown()
+    await waitForCommand(command)
     await fixture.displayGate.open()
-    await command.value
     await fixture.assertNoCaptureRequests()
     precondition(!fixture.controller.isRecording && !fixture.controller.isLivePreviewActive)
   }
@@ -450,10 +458,20 @@ struct StartupCaptureTests {
     await fixture.start()
     let command = await fixture.request(recordsVideo: false)
     command.cancel()
+    await waitForCommand(command)
     await fixture.displayGate.open()
-    await command.value
     await fixture.assertNoCaptureRequests()
     await fixture.stopGate.open()
     await fixture.controller.tearDown()
+  }
+
+  static func waitForCommand(_ command: Task<Void, Never>) async {
+    var finished = false
+    let completion = Task {
+      await command.value
+      finished = true
+    }
+    await eventually("The queued command must finish while display queries remain blocked") { finished }
+    await completion.value
   }
 }
