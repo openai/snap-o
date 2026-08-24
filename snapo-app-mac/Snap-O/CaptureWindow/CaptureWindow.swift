@@ -476,10 +476,8 @@ struct CaptureWindow: View {
   private func handle(_ command: SnapOCommand, controller: CaptureWindowController) async {
     switch command {
     case .record:
-      guard controller.canStartRecordingNow else { return }
       await controller.startRecording()
     case .capture:
-      guard controller.canCaptureNow else { return }
       await controller.captureScreenshots()
     case .livepreview:
       guard controller.canStartLivePreviewNow else { return }

@@ -15,6 +15,10 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Utilities/Perf.swift \
   Snap-O/Capture/PreparedLivePreview.swift Snap-O/Capture/StartupCapturePreparation.swift \
   Snap-O/CaptureWindow/PreparingScreenshotMode.swift Snap-O/CaptureWindow/LivePreviewManager.swift \
+  Snap-O/Capture/CaptureServices.swift Snap-O/CaptureWindow/CaptureWindowController.swift \
+  Snap-O/CaptureWindow/CaptureWindowMode.swift Snap-O/CaptureWindow/RecordingMode.swift \
+  Snap-O/CaptureWindow/LivePreviewMode.swift Snap-O/CaptureWindow/MediaDisplayMode.swift \
+  Snap-O/CaptureWindow/CaptureSnapshotController.swift \
   Tests/CaptureSupport/TestSupport.swift Tests/StartupCapture/StartupCaptureTests.swift \
   -o "$TEST_DIR/startup-tests"
 "$TEST_DIR/startup-tests"

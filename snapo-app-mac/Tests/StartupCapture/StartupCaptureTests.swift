@@ -22,15 +22,24 @@ struct StartupCaptureTests {
     await stopDuringRendererClaim()
     await disconnectWaitsForCleanup()
     await overlappingDeviceUpdates()
-    print("Startup capture tests passed (13 cases)")
+    await commandDuringAutomaticPreview(recordsVideo: true)
+    await commandDuringAutomaticPreview(recordsVideo: false)
+    await tearDownDuringQueuedCommand(recordsVideo: true)
+    await tearDownDuringQueuedCommand(recordsVideo: false)
+    await disconnectDuringQueuedCommand()
+    await commandAfterPreparedPreviewReady()
+    await cancelledQueuedCommand()
+    await commandDuringAutomaticPreview(recordsVideo: true, previewReadyFirst: true)
+    await commandDuringAutomaticPreview(recordsVideo: false, previewReadyFirst: true)
+    print("Startup capture tests passed (22 cases)")
   }
 
-  static func eventually(_ condition: () async -> Bool) async {
+  static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
     for _ in 0 ..< 10000 {
       if await condition() { return }
       await Task.yield()
     }
-    fatalError("Condition did not become true")
+    fatalError(message)
   }
 
   static func prepare(
@@ -315,5 +324,154 @@ struct StartupCaptureTests {
     await start.value
     precondition(displayed == [second.id])
     await manager.stop()
+  }
+
+  @MainActor
+  struct ControllerFixture {
+    let displayGate = TestGate()
+    let readyGate = TestGate()
+    let stopGate = TestGate()
+    let screenshots = ScreenshotService()
+    let recording = RecordingService()
+    let tracker: DeviceTracker
+    let live: LivePreviewService
+    let controller: CaptureWindowController
+
+    init(devices: [Device] = [first], blockedDisplayDevice: Device = first) {
+      AppSettings.shared.startupCaptureMode = .livePreview
+      tracker = DeviceTracker(devices: devices)
+      live = LivePreviewService(stopGate: stopGate, readyGate: readyGate)
+      controller = CaptureWindowController(
+        captureServices: CaptureServices(
+          screenshots: screenshots,
+          recording: recording,
+          livePreview: live,
+          startup: StartupCapturePreparation(screenshots: screenshots, livePreview: live)
+        ),
+        deviceTracker: tracker,
+        fileStore: FileStore(),
+        adbService: ADBService(displayGates: [blockedDisplayDevice.id: displayGate])
+      )
+    }
+
+    func start() async {
+      await controller.start()
+      await eventually { await displayGate.waitCount > 0 }
+      await eventually { await readyGate.waitCount > 0 }
+      precondition(controller.isLivePreviewActive && controller.isProcessing)
+    }
+
+    func request(recordsVideo: Bool) async -> Task<Void, Never> {
+      var didStart = false
+      let task = Task {
+        didStart = true
+        if recordsVideo {
+          await controller.startRecording()
+        } else {
+          await controller.captureScreenshots()
+        }
+      }
+      await eventually { didStart }
+      return task
+    }
+
+    func assertNoCaptureRequests() async {
+      let recordings = await recording.requests
+      let captures = await screenshots.requests
+      precondition(recordings.isEmpty && captures.isEmpty)
+    }
+  }
+
+  static func commandDuringAutomaticPreview(recordsVideo: Bool, previewReadyFirst: Bool = false) async {
+    let fixture = ControllerFixture(devices: [first, second], blockedDisplayDevice: second)
+    await fixture.start()
+    let command = await fixture.request(recordsVideo: recordsVideo)
+    await fixture.assertNoCaptureRequests()
+
+    if previewReadyFirst {
+      await fixture.readyGate.open()
+    } else {
+      await fixture.displayGate.open()
+    }
+    await eventually("The explicit command must stop the automatic preview") { await fixture.live.stops.count == 1 }
+    await fixture.assertNoCaptureRequests()
+    await fixture.stopGate.open()
+    await command.value
+
+    if recordsVideo {
+      await eventually { await fixture.recording.requests == [[first.id, second.id]] }
+      precondition(fixture.controller.isRecording)
+    } else {
+      await eventually { await fixture.screenshots.requests == [[first.id, second.id]] }
+      await eventually { !fixture.controller.isProcessing }
+      guard case .image = fixture.controller.currentCapture?.media else {
+        fatalError("Expected the explicit screenshot after automatic preview startup")
+      }
+    }
+    let active = await fixture.live.active
+    precondition(active.isEmpty)
+    await fixture.displayGate.open()
+    await fixture.controller.tearDown()
+  }
+
+  static func tearDownDuringQueuedCommand(recordsVideo: Bool) async {
+    let fixture = ControllerFixture()
+    await fixture.start()
+    let command = await fixture.request(recordsVideo: recordsVideo)
+    await fixture.stopGate.open()
+    await fixture.controller.tearDown()
+    await waitForCommand(command)
+    await fixture.displayGate.open()
+    await fixture.assertNoCaptureRequests()
+    precondition(!fixture.controller.isRecording && !fixture.controller.isLivePreviewActive)
+  }
+
+  static func disconnectDuringQueuedCommand() async {
+    let fixture = ControllerFixture()
+    await fixture.start()
+    let command = await fixture.request(recordsVideo: true)
+    await fixture.tracker.updateDevices([])
+    await eventually { !fixture.controller.hasDevices }
+    await fixture.stopGate.open()
+    await fixture.displayGate.open()
+    await command.value
+    await fixture.assertNoCaptureRequests()
+    await fixture.controller.tearDown()
+  }
+
+  static func commandAfterPreparedPreviewReady() async {
+    let fixture = ControllerFixture()
+    await fixture.start()
+    await fixture.readyGate.open()
+    await eventually { fixture.controller.canStartRecordingNow }
+    let command = await fixture.request(recordsVideo: true)
+    await fixture.stopGate.open()
+    await eventually { await fixture.recording.requests == [[first.id]] }
+    await command.value
+    precondition(fixture.controller.isRecording)
+    await fixture.displayGate.open()
+    await fixture.controller.tearDown()
+  }
+
+  static func cancelledQueuedCommand() async {
+    let fixture = ControllerFixture()
+    await fixture.start()
+    let command = await fixture.request(recordsVideo: false)
+    command.cancel()
+    await waitForCommand(command)
+    await fixture.displayGate.open()
+    await fixture.assertNoCaptureRequests()
+    await fixture.stopGate.open()
+    await fixture.controller.tearDown()
+  }
+
+  static func waitForCommand(_ command: Task<Void, Never>) async {
+    var finished = false
+    let completion = Task {
+      await command.value
+      finished = true
+    }
+    await eventually("The queued command must finish while display queries remain blocked") { finished }
+    await completion.value
   }
 }
