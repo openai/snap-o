@@ -924,8 +924,25 @@ body.split-pane-resizing {
   text-align: center;
 }
 
+.inspector-loading-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.inspector-open-error {
+  max-width: 480px;
+  margin: 0;
+  padding-inline: 16px;
+  color: var(--error);
+  overflow-wrap: anywhere;
+}
+
 .body-loading-spinner {
+  display: inline-flex;
   flex: 0 0 auto;
+  transform-origin: center;
   animation: spin 1s linear infinite;
 }
 
@@ -1678,12 +1695,24 @@ pre {
   margin-left: auto;
 }
 
-.tweaks-action-button {
+.tweaks-action-button,
+.inspector-open-app {
   all: revert;
   min-height: 27px;
   padding-inline: 10px;
   font: inherit;
   font-size: 11px;
+}
+
+.inspector-open-app {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.inspector-open-progress {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
 }
 
 .tweaks-action-conflict {

@@ -195,7 +195,7 @@ private struct AppInspectorPickerAppRow: View {
     }
     .buttonStyle(.plain)
     .disabled(app.inspectors.isEmpty)
-    .help(app.packageName)
+    .help(app.packageName ?? app.processName ?? app.name)
     .overlay(alignment: .trailing) {
       HStack(spacing: 0) {
         ForEach(app.inspectors) { option in

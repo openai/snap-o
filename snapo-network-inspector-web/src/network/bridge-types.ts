@@ -32,12 +32,19 @@ export interface AppInspectorOption {
 export interface InspectableApp {
   id: string;
   name: string;
-  packageName: string;
+  packageName?: string | null;
   processName?: string | null;
+  androidUserId?: number | null;
   deviceId: string;
   deviceDisplayTitle: string;
   appIconBase64?: string | null;
   inspectors: AppInspectorOption[];
+}
+
+export interface OpenAppInput {
+  deviceId: string;
+  packageName: string;
+  androidUserId: number;
 }
 
 export interface SelectedAppInspector {

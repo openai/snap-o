@@ -63,13 +63,15 @@ struct InspectorDiscoveryTests {
     ))
     let tweaks = endpoint(.tweaks, metadata: InspectorAppMetadata(
       appName: "Demo App",
-      packageName: "com.example.demo"
+      packageName: "com.example.demo",
+      androidUserID: 10
     ))
     let loaded = try #require(InspectorDiscovery.processes(from: [tweaks, network]).first)
 
     #expect(loaded.id == initial.id)
     #expect(loaded.name == "Demo App")
     #expect(loaded.metadata.packageName == "com.example.demo")
+    #expect(loaded.metadata.androidUserID == 10)
     #expect(loaded.metadata.appIconBase64 == "network-icon")
     #expect(loaded.inspectors.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42"])
   }
@@ -90,6 +92,8 @@ struct InspectorDiscoveryTests {
     let network = endpoint(.network, metadata: InspectorAppMetadata(
       processName: " \n", packageNameHint: "com.example.demo:worker", appIconBase64: ""
     ))
+    let legacy = try #require(InspectorDiscovery.processes(from: [network]).first)
+    #expect(legacy.metadata.packageName == nil)
     let tweaks = endpoint(.tweaks, metadata: InspectorAppMetadata(
       appName: " ", packageName: "com.example.demo", appIconBase64: "tweaks-icon"
     ))

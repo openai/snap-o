@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppInspectorOption, InspectableApp } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
 import { InspectorRestoration } from "./restoration";
+import { useAppLaunch } from "./useAppLaunch";
 
 export function useAppInspector(client: NetworkClient) {
   const [owner] = useState(() => new InspectorRestoration());
@@ -9,9 +10,13 @@ export function useAppInspector(client: NetworkClient) {
   const [loading, setLoading] = useState(true);
   const lastSaved = useRef<string | null>(null);
   const saveQueue = useRef(Promise.resolve());
+  const requestRefresh = useRef<(() => void) | null>(null);
+  const refreshNow = useCallback(() => requestRefresh.current?.(), []);
+  const { appLaunch, reconcileSelection, isPolling } = useAppLaunch(client, state.selectedApp, refreshNow);
 
   const publish = useCallback(() => {
     const snapshot = owner.snapshot();
+    reconcileSelection(snapshot.selectedApp);
     setState(snapshot);
     client.appInspectorStateChanged(snapshot);
     const saved = owner.serialize();
@@ -23,7 +28,7 @@ export function useAppInspector(client: NetworkClient) {
           if (lastSaved.current === saved) lastSaved.current = null;
         });
     }
-  }, [client, owner]);
+  }, [client, owner, reconcileSelection]);
 
   const select = useCallback(
     (app: InspectableApp, option?: AppInspectorOption) => {
@@ -54,6 +59,7 @@ export function useAppInspector(client: NetworkClient) {
         refreshing = false;
       }
     };
+    requestRefresh.current = () => void refresh();
 
     const unsubscribeInspector = client.onNativeSelectedInspector((selection) => {
       const state = owner.snapshot();
@@ -81,15 +87,16 @@ export function useAppInspector(client: NetworkClient) {
         void refresh();
       });
     const interval = window.setInterval(() => {
-      if (!document.hidden) void refresh();
+      if (!document.hidden && !isPolling()) void refresh();
     }, 2_500);
     return () => {
       disposed = true;
+      requestRefresh.current = null;
       window.clearInterval(interval);
       unsubscribeInspector();
       unsubscribeApp();
     };
-  }, [client, owner, publish, select]);
+  }, [client, isPolling, owner, publish, select]);
 
-  return { ...state, loading, select };
+  return { ...state, loading, select, appLaunch };
 }

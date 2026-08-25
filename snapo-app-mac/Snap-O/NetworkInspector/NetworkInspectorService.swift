@@ -13,6 +13,7 @@ actor NetworkInspectorService {
     var deviceDisplayTitle: String
     var appInfo: NetworkAppInfo?
     var packageNameHint: String?
+    var androidUserID: Int?
   }
 
   private struct RefreshFlight {
@@ -69,20 +70,18 @@ actor NetworkInspectorService {
   func listInspectorApps() async -> [InspectableApp] {
     await refresh()
     let tweakApps = await tweaksService.currentApps()
-    let networkEndpoints = currentServers().map { server in
+    let networkEndpoints = servers.values.map { state in
       InspectorEndpoint(
         kind: .network,
-        reference: NetworkServerReference(
-          deviceId: server.deviceId,
-          socketName: server.socketName
-        ),
-        deviceDisplayTitle: server.deviceDisplayTitle,
-        protocolVersion: server.protocolVersion,
+        reference: state.reference,
+        deviceDisplayTitle: state.deviceDisplayTitle,
+        protocolVersion: state.appInfo?.protocolVersion,
         metadata: InspectorAppMetadata(
-          processName: server.appName ?? server.packageName,
-          packageName: server.hasAppInfo ? server.packageName : nil,
-          packageNameHint: server.packageName,
-          appIconBase64: server.appIconBase64
+          processName: state.appInfo?.processName ?? state.packageNameHint,
+          packageName: state.appInfo?.packageName,
+          packageNameHint: state.packageNameHint,
+          androidUserID: state.androidUserID,
+          appIconBase64: state.appInfo?.icon?.base64Data
         )
       )
     }
@@ -99,6 +98,7 @@ actor NetworkInspectorService {
           appName: app.name,
           processName: app.processName,
           packageName: app.packageName,
+          androidUserID: app.androidUserID,
           appIconBase64: app.appIconBase64
         )
       )
@@ -107,8 +107,9 @@ actor NetworkInspectorService {
       InspectableApp(
         id: process.id,
         name: process.name,
-        packageName: process.metadata.packageName ?? process.metadata.packageNameHint ?? process.name,
+        packageName: process.metadata.packageName,
         processName: process.metadata.processName ?? process.metadata.packageNameHint,
+        androidUserId: process.metadata.androidUserID,
         deviceId: process.deviceId,
         deviceDisplayTitle: process.deviceDisplayTitle,
         appIconBase64: process.metadata.appIconBase64,
@@ -122,6 +123,11 @@ actor NetworkInspectorService {
       )
     }
     return orderedInspectorApps(apps)
+  }
+
+  func openApp(_ input: OpenAppInput) async throws {
+    let adb = await adbService.exec()
+    try await adb.openApp(deviceID: input.deviceId, packageName: input.packageName, androidUserID: input.androidUserId)
   }
 
   private func orderedInspectorApps(_ apps: [InspectableApp]) -> [InspectableApp] {
@@ -426,6 +432,9 @@ actor NetworkInspectorService {
       if var state = servers[reference.key] {
         state.deviceDisplayTitle = device.displayTitle
         servers[reference.key] = state
+        if state.packageNameHint == nil || state.androidUserID == nil {
+          await populateProcessMetadata(reference: reference, connectionID: state.connectionID, using: adb)
+        }
       } else {
         await connect(device: device, reference: reference, using: adb)
       }
@@ -477,28 +486,23 @@ actor NetworkInspectorService {
         appInfo: nil,
         packageNameHint: nil
       )
-      await populatePackageNameHint(reference: reference, connectionID: connectionID, using: adb)
+      await populateProcessMetadata(reference: reference, connectionID: connectionID, using: adb)
     } catch {
       return
     }
   }
 
-  private func populatePackageNameHint(
+  private func populateProcessMetadata(
     reference: NetworkServerReference,
     connectionID: UUID,
     using adb: ADBClient
   ) async {
-    guard let packageName = await NetworkServerDiscovery.packageNameHint(for: reference, using: adb) else { return }
-    setPackageNameHint(packageName, reference: reference, connectionID: connectionID)
-  }
-
-  private func setPackageNameHint(
-    _ packageName: String,
-    reference: NetworkServerReference,
-    connectionID: UUID
-  ) {
+    async let packageName = NetworkServerDiscovery.packageNameHint(for: reference, using: adb)
+    async let androidUserID = NetworkServerDiscovery.androidUserID(for: reference, using: adb)
+    let metadata = await (packageName: packageName, androidUserID: androidUserID)
     guard var state = servers[reference.key], state.connectionID == connectionID else { return }
-    state.packageNameHint = packageName
+    state.packageNameHint = metadata.packageName ?? state.packageNameHint
+    state.androidUserID = metadata.androidUserID ?? state.androidUserID
     servers[reference.key] = state
   }
 

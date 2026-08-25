@@ -3,6 +3,28 @@ import { createNetworkClient } from "./client";
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("native app launch bridge", () => {
+  it("opens a package on the selected device without an inspector connection", async () => {
+    const postMessage = vi.fn().mockResolvedValue(undefined);
+    stubNativeBridge(postMessage);
+    const client = createNetworkClient();
+    await expect(
+      client.openApp!({ deviceId: "phone-2", packageName: "com.example.demo", androidUserId: 10 })
+    ).resolves.toBeUndefined();
+    expect(postMessage).toHaveBeenCalledWith({
+      command: "openApp",
+      payload: { deviceId: "phone-2", packageName: "com.example.demo", androidUserId: 10 }
+    });
+  });
+
+  it("propagates native launch failures", async () => {
+    stubNativeBridge(vi.fn().mockRejectedValue(new Error("Device is offline.")));
+    await expect(
+      createNetworkClient().openApp!({ deviceId: "phone", packageName: "com.example.demo", androidUserId: 0 })
+    ).rejects.toThrow("Device is offline.");
+  });
+});
+
 describe("native persistent exclusion filter bridge", () => {
   it("explicitly restores conventional exclusion filters instead of relying on an early page event", async () => {
     const postMessage = vi.fn().mockResolvedValue(["-example.com", "-statsig.com"]);

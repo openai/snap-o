@@ -76,6 +76,10 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
       return try await Self.jsonObject(service.listServers())
     case "listInspectorApps":
       return try await Self.jsonObject(service.listInspectorApps())
+    case "openApp":
+      let input = try Self.decode(OpenAppInput.self, from: payload)
+      try await service.openApp(input)
+      return nil
     case "loadInspectorPreferences":
       return UserDefaults.standard.string(forKey: "inspectorPreferences")
     case "saveInspectorPreferences":

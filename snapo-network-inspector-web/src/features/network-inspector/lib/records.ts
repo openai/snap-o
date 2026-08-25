@@ -199,10 +199,10 @@ export function sidebarPlaceholderText(input: {
   selectedServer: SnapOServer | null;
   streamIsRetrying?: boolean;
 }): string | null {
-  if (input.streamIsRetrying === true && input.serverScopedItems === 0) return "Reconnecting to network stream...";
+  if (input.streamIsRetrying === true && input.serverScopedItems === 0) return "Reconnecting to network stream";
   if (input.totalItems === 0) return "No activity yet";
   if (input.serverScopedItems === 0) {
-    if (input.selectedServer == null || !input.selectedServer.hasAppInfo) return "Waiting for connection...";
+    if (input.selectedServer == null || !input.selectedServer.hasAppInfo) return "Waiting for connection";
     return "No activity for this app yet";
   }
   if (input.filteredItems === 0) return "No matches";
@@ -225,7 +225,8 @@ export function resolveDetailEmptyState(input: {
   selectedServer: SnapOServer | null;
   serverScopedItems: number;
   streamIsRetrying?: boolean;
-}): { title: string; body: string; showDocsLink: boolean } {
+  canOpenApp?: boolean;
+}): { title: string; body: string | null; showDocsLink: boolean } {
   if (input.servers.length === 0) {
     return {
       title: "No compatible apps detected",
@@ -235,7 +236,7 @@ export function resolveDetailEmptyState(input: {
   }
   if (input.streamIsRetrying === true && input.serverScopedItems === 0) {
     return {
-      title: "Reconnecting...",
+      title: "Reconnecting",
       body: "Snap-O will resume capturing requests when the network stream is available.",
       showDocsLink: false
     };
@@ -244,8 +245,8 @@ export function resolveDetailEmptyState(input: {
     const waitingForConnection = input.selectedServer == null || !input.selectedServer.hasAppInfo;
     if (waitingForConnection) {
       return {
-        title: "Waiting for connection...",
-        body: "Snap-O is waiting for the app to publish its network server metadata.",
+        title: "Waiting for connection",
+        body: input.canOpenApp ? null : "Open the app on your device to connect.",
         showDocsLink: false
       };
     }

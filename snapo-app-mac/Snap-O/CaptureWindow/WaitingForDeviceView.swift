@@ -16,12 +16,12 @@ struct WaitingForDeviceView: View {
         HStack(spacing: 8) {
           ProgressView()
             .controlSize(.small)
-          Text("Loading devices…")
+          Text("Loading devices")
             .foregroundStyle(.secondary)
         }
         .transition(.opacity)
       } else {
-        Text("Waiting for device…")
+        Text("Waiting for device")
           .foregroundStyle(.gray)
           .transition(.opacity)
       }

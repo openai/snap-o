@@ -234,7 +234,7 @@ struct CaptureToolbar: View {
           .progressViewStyle(.circular)
           .controlSize(.small)
       }
-      .help("Stopping Recording…")
+      .help("Stopping Recording")
       .disabled(true)
     } else {
       Button {

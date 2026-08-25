@@ -29,6 +29,14 @@ public enum NetworkServerDiscovery {
       .first { !$0.isEmpty }
   }
 
+  public static func androidUserID(inProcStatus output: String) -> Int? {
+    guard let line = output.split(whereSeparator: \.isNewline).first(where: { $0.hasPrefix("Uid:") }),
+          let value = line.split(whereSeparator: \.isWhitespace).dropFirst().first,
+          let uid = UInt32(value) else { return nil }
+    // Android assigns each user a range of 100,000 UIDs.
+    return Int(uid / 100_000)
+  }
+
   public static func connectedDeviceIDs(inDevicesList output: String) -> [String] {
     output
       .split(separator: "\n")
@@ -81,5 +89,17 @@ public enum NetworkServerDiscovery {
       return nil
     }
     return packageName(inCmdline: output)
+  }
+
+  public static func androidUserID(
+    for reference: NetworkServerReference,
+    using adb: ADBClient
+  ) async -> Int? {
+    guard let pid = InspectorKind.allCases.compactMap({ $0.pid(inSocketName: reference.socketName) }).first,
+          let output = try? await adb.runShellString(
+            deviceID: reference.deviceId,
+            command: "cat /proc/\(pid)/status 2>/dev/null"
+          ) else { return nil }
+    return androidUserID(inProcStatus: output)
   }
 }
