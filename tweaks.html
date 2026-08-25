@@ -1249,9 +1249,10 @@ fun MotionSection(isExpanded: Boolean) {
 
               <h3 id="app-inspector">Mac App Inspector</h3>
               <p class="prose">
-                Snap-O’s App Inspector discovers the running app with Tweaks
-                enabled and shows the controls registered by its current
-                Compose screen.
+                Snap-O’s App Inspector shows one picker row per running app
+                process, with shortcuts for Network and Tweaks when available.
+                The Tweaks inspector shows controls registered by the app’s
+                current Compose screen.
               </p>
 
               <ol class="verify-list">
@@ -1265,7 +1266,7 @@ fun MotionSection(isExpanded: Boolean) {
                   <span>Choose <strong>Tools → Show App Inspector</strong>, or press <strong>⌘⌥I</strong>.</span>
                 </li>
                 <li>
-                  <span>Select your app and its <strong>Tweaks</strong> entry in the inspector picker.</span>
+                  <span>Find your app process in the picker and click its <strong>Tweaks</strong> icon. Click the row instead to keep your current inspector type when available.</span>
                 </li>
                 <li>
                   <span>Adjust a value or enum option, or invoke an app-owned action, and watch the running Compose UI update.</span>

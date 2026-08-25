@@ -934,13 +934,31 @@ val client = HttpClient(OkHttp) {
             <ol class="verify-list">
               <li><span>Install and launch the debug build on an authorized Android device or emulator.</span></li>
               <li><span>Open Snap-O on macOS and select the connected device.</span></li>
-              <li><span>Open <strong>Tools → Network Inspector</strong>, use the toolbar network icon, or press <strong>⌘⌥I</strong>.</span></li>
-              <li><span>Select the app process if prompted, then trigger a request in the Android app.</span></li>
+              <li><span>Open <strong>Tools → Show App Inspector</strong>, use the toolbar inspector button, or press <strong>⌘⌥I</strong>.</span></li>
+              <li><span>Find the app process in the picker and click its <strong>Network</strong> icon, then trigger a request in the Android app.</span></li>
               <li><span>Open the request to inspect headers, bodies, timing, SSE, or WebSocket messages.</span></li>
             </ol>
             <p class="notice">
-              If the Android app restarts, Snap-O may offer a newer process in
-              the inspector sidebar. Switch to it to continue with live traffic.
+              Each running app process has one picker row, with shortcuts for
+              its available inspectors. Snap-O remembers your inspector
+              selection and keeps captured requests visible while disconnected.
+              If the Android app restarts, select its new process to continue
+              with live traffic.
+            </p>
+            <h3>Filter traffic</h3>
+            <p class="prose">
+              Right-click a request to add its host to the exclusion filter.
+              Exclusion filters are saved across sessions. Use the settings
+              button beside the exclusion summary to add or remove filters.
+              You can also search requests without changing your saved filters.
+            </p>
+            <h3>Inspect responses</h3>
+            <p class="prose">
+              Use the arrow keys to move between requests. Server-Sent Events
+              show whether the stream is pending, streaming, closed, or offline.
+              When a response body is unavailable, Snap-O explains whether it
+              is no longer retained or is not cached on this Mac. If loading
+              fails while connected, click <strong>Retry</strong>.
             </p>
             </div>
           </section>
