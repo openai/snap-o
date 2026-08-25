@@ -200,7 +200,7 @@ actor ADBService {
   private func presentPromptUI() async -> (alert: NSAlert, style: PresentationStyle) {
     let alert = NSAlert()
     alert.alertStyle = .informational
-    alert.messageText = "Waiting for ADB server..."
+    alert.messageText = "Waiting for ADB server"
     alert.informativeText = """
     You may need to start the ADB server with "adb start-server".
     Snap-O can do it automatically if you set your ADB path.

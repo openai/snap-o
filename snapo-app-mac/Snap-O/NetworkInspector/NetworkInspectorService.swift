@@ -124,6 +124,11 @@ actor NetworkInspectorService {
     return orderedInspectorApps(apps)
   }
 
+  func openApp(_ input: OpenAppInput) async throws {
+    let adb = await adbService.exec()
+    try await adb.openApp(deviceID: input.deviceId, packageName: input.packageName)
+  }
+
   private func orderedInspectorApps(_ apps: [InspectableApp]) -> [InspectableApp] {
     let previousOrder = Dictionary(
       uniqueKeysWithValues: inspectorServerOrder.enumerated().map { ($0.element, $0.offset) }

@@ -154,7 +154,9 @@ export const RequestDetail = memo(function RequestDetail({
           ) : responseBody == null ? (
             <div className="payload-card">
               <div className="body-loading" role="status">
-                <LoaderCircle className="body-loading-spinner" size={14} aria-hidden="true" />
+                <span className="body-loading-spinner" aria-hidden="true">
+                  <LoaderCircle size={14} />
+                </span>
                 <span>Loading</span>
               </div>
             </div>

@@ -25,6 +25,11 @@ struct InspectableApp: Codable, Identifiable {
   let inspectors: [AppInspectorOption]
 }
 
+struct OpenAppInput: Codable {
+  let deviceId: String
+  let packageName: String
+}
+
 struct SelectedAppInspector: Codable {
   let appId: String
   let kind: AppInspectorKind

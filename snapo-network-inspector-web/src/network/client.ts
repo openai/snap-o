@@ -32,6 +32,7 @@ export interface NetworkClient {
   readonly usesNativeServerPicker: boolean;
   appVersion(): Promise<string>;
   listInspectorApps(): Promise<InspectableApp[]>;
+  openApp?(app: Pick<InspectableApp, "deviceId" | "packageName">): Promise<void>;
   loadInspectorPreferences(): Promise<string | null>;
   saveInspectorPreferences(value: string): Promise<void>;
   appInspectorStateChanged(state: AppInspectorState): void;
@@ -100,6 +101,10 @@ class WebKitNetworkClient implements NetworkClient {
 
   listInspectorApps(): Promise<InspectableApp[]> {
     return this.invoke<InspectableApp[]>("listInspectorApps");
+  }
+
+  openApp(app: Pick<InspectableApp, "deviceId" | "packageName">): Promise<void> {
+    return this.invoke<void>("openApp", { deviceId: app.deviceId, packageName: app.packageName });
   }
 
   loadInspectorPreferences(): Promise<string | null> {

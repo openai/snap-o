@@ -35,7 +35,7 @@ struct IdleOverlayView: View {
           .tint(.primary)
           .controlSize(.large)
       } else if !hasDevices, isDeviceListInitialized {
-        Text("Waiting for device…")
+        Text("Waiting for device")
           .foregroundStyle(.gray)
       }
 

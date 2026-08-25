@@ -45,6 +45,7 @@ describe("retained Tweaks view", () => {
       loadInspectorPreferences: vi.fn(async () => saved.serialize()),
       saveInspectorPreferences: vi.fn(async () => {}),
       listInspectorApps: vi.fn(async () => discovered),
+      openApp: vi.fn(async () => {}),
       appInspectorStateChanged: vi.fn(),
       onNativeSelectedInspector: vi.fn(() => () => {}),
       onNativeSelectedApp: vi.fn((callback) => {
@@ -100,6 +101,66 @@ describe("retained Tweaks view", () => {
     );
     expect(input.value).toBe("Fresh value");
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
+  });
+
+  it("keeps the launch spinner through the transition into Tweaks and shows data as soon as it loads", async () => {
+    discovered = [
+      {
+        ...app(10),
+        inspectors: [
+          { kind: "network", protocolVersion: 4, server: { deviceId: "phone", socketName: "snapo_network_10" } }
+        ]
+      }
+    ];
+    let finish!: (value: TweakList) => void;
+    vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await act(async () => root.render(<App />));
+    expect(container.querySelector(".inspector-loading-shell")).not.toBeNull();
+    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
+    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
+
+    discovered = [app(20)];
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    expect(container.querySelector(".tweaks-inspector")).not.toBeNull();
+    expect(container.querySelector(".inspector-loading-shell")).toBeNull();
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
+    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for inspector");
+
+    await act(async () =>
+      finish({ tweaks: [{ name: "Demo title", type: "string", value: "Ready", default: "Default" }] })
+    );
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Ready");
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
+  });
+
+  it("restores Open five seconds after the click even when the waiting view changes", async () => {
+    discovered = [
+      {
+        ...app(10),
+        inspectors: [
+          { kind: "network", protocolVersion: 4, server: { deviceId: "phone", socketName: "snapo_network_10" } }
+        ]
+      }
+    ];
+    vi.mocked(mocks.client.listTweaks).mockImplementationOnce(() => new Promise(() => {}));
+    await act(async () => root.render(<App />));
+    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    discovered = [app(20)];
+    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+    expect(container.querySelector(".tweaks-inspector")).not.toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(3_499));
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 
   it("keeps a successfully loaded empty view through disconnect", async () => {

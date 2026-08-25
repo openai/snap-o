@@ -1,7 +1,9 @@
 import { memo } from "react";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord } from "../../../network/cdp";
-import type { SnapOServer } from "../../../network/bridge-types";
+import type { InspectableApp, SnapOServer } from "../../../network/bridge-types";
+import { OpenAppButton } from "../../app-inspector/components/OpenAppButton";
+import type { AppLaunchControl } from "../../app-inspector/useAppLaunch";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { resolveDetailEmptyState } from "../lib/records";
 import { isUnsupportedLegacyProtocolRequestSelection, unsupportedLegacyProtocolMessage } from "../lib/protocol";
@@ -13,6 +15,8 @@ export const DetailContent = memo(function DetailContent({
   record,
   servers,
   selectedServer,
+  selectedApp,
+  appLaunch,
   serverScopedItems,
   streamIsRetrying,
   uiState,
@@ -23,6 +27,8 @@ export const DetailContent = memo(function DetailContent({
   record: InspectorRecord | null;
   servers: SnapOServer[];
   selectedServer: SnapOServer | null;
+  selectedApp?: InspectableApp | null;
+  appLaunch?: AppLaunchControl | null;
   serverScopedItems: number;
   streamIsRetrying: boolean;
   uiState: InspectorUiState;
@@ -30,9 +36,16 @@ export const DetailContent = memo(function DetailContent({
   onRetryResponseBody(): void;
 }): JSX.Element {
   if (record == null) {
-    const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems, streamIsRetrying });
+    const canOpenApp =
+      selectedApp != null &&
+      appLaunch != null &&
+      serverScopedItems === 0 &&
+      (!selectedServer?.isConnected || !selectedServer.hasAppInfo || streamIsRetrying);
+    const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems, streamIsRetrying, canOpenApp });
     return (
-      <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs} />
+      <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs}>
+        {canOpenApp ? <OpenAppButton app={selectedApp} launch={appLaunch} /> : null}
+      </EmptyState>
     );
   }
 
@@ -63,17 +76,20 @@ function EmptyState({
   title,
   body,
   showDocsLink,
-  onOpenDocs
+  onOpenDocs,
+  children
 }: {
   title: string;
-  body: string;
+  body: string | null;
   showDocsLink: boolean;
   onOpenDocs(): void;
+  children?: React.ReactNode;
 }): JSX.Element {
   return (
     <section className="empty-detail">
       <h1>{title}</h1>
-      <p>{emptyStateBody(body)}</p>
+      {body != null ? <p>{emptyStateBody(body)}</p> : null}
+      {children}
       {showDocsLink ? (
         <button className="text-button" type="button" onClick={onOpenDocs}>
           Read the developer guide

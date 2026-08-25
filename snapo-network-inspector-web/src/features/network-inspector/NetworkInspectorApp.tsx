@@ -6,6 +6,7 @@ import type {
   SelectedAppInspector
 } from "../../network/bridge-types";
 import { DetailContent } from "./components/DetailPane";
+import type { AppLaunchControl } from "../app-inspector/useAppLaunch";
 import { Sidebar } from "./components/Sidebar";
 import type { NetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
 import { usePersistentSplitPane } from "./hooks/usePersistentSplitPane";
@@ -16,6 +17,7 @@ export function NetworkInspectorApp({
   inspectorApps = [],
   inspectorSelection = null,
   selectedApp = null,
+  appLaunch,
   preferredKind,
   onInspectorSelect
 }: {
@@ -23,6 +25,7 @@ export function NetworkInspectorApp({
   inspectorApps?: InspectableApp[];
   inspectorSelection?: SelectedAppInspector | null;
   selectedApp?: InspectableApp | null;
+  appLaunch?: AppLaunchControl | null;
   preferredKind?: AppInspectorKind | null;
   onInspectorSelect?(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
@@ -105,6 +108,8 @@ export function NetworkInspectorApp({
           record={model.selectedRecord}
           servers={model.servers}
           selectedServer={model.selectedServer}
+          selectedApp={selectedApp}
+          appLaunch={appLaunch}
           serverScopedItems={model.serverRecordCount}
           streamIsRetrying={model.streamIsRetrying}
           uiState={model.uiState}

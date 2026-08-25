@@ -19,7 +19,8 @@ export function App(): JSX.Element {
     preferredKind,
     isRestoring,
     loading,
-    select
+    select,
+    appLaunch
   } = useAppInspector(client);
   const pending =
     loading ||
@@ -45,7 +46,7 @@ export function App(): JSX.Element {
               onSelect={select}
             />
           ) : null}
-          <InspectorWaitingState />
+          <InspectorWaitingState launch={appLaunch} app={selectedApp} />
         </main>
       ) : displayedTweaks ? (
         <TweaksInspectorApp
@@ -57,6 +58,7 @@ export function App(): JSX.Element {
           selection={displayedTweaks}
           isConnected={selection?.kind === "tweaks" && !pending}
           selectedApp={selectedApp}
+          appLaunch={appLaunch}
           onSelect={select}
         />
       ) : (
@@ -65,6 +67,7 @@ export function App(): JSX.Element {
           inspectorApps={apps}
           inspectorSelection={displayedNetwork}
           selectedApp={selectedApp}
+          appLaunch={appLaunch}
           preferredKind={preferredKind}
           onInspectorSelect={select}
         />

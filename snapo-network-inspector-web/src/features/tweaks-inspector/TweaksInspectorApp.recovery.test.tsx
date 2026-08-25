@@ -32,6 +32,7 @@ describe("Tweaks connection recovery", () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     client = {
       usesNativeServerPicker: true,
+      openApp: vi.fn(async () => {}),
       listTweaks: vi.fn(async () => response),
       startTweakStream: vi.fn(async () => ({ streamId: "stream-1" })),
       stopTweakStream: vi.fn(async () => {}),
@@ -64,7 +65,20 @@ describe("Tweaks connection recovery", () => {
         <TweaksInspectorApp
           client={client}
           apps={[]}
+          selectedApp={{
+            id: selected.appId,
+            name: "Demo",
+            packageName: "com.example.demo",
+            deviceId: selected.server.deviceId,
+            deviceDisplayTitle: "Phone",
+            inspectors: [selected]
+          }}
           selection={selected}
+          appLaunch={{
+            pending: false,
+            error: null,
+            open: () => void client.openApp!({ deviceId: selected.server.deviceId, packageName: "com.example.demo" })
+          }}
           isConnected={isConnected}
           onSelect={() => {}}
         />
@@ -84,7 +98,8 @@ describe("Tweaks connection recovery", () => {
     await render();
     const status = container.querySelector('[role="status"]');
     expect(status?.textContent).toBe("Waiting for inspector");
-    expect(status?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(status?.querySelector("svg")).toBeNull();
+    expect(container.querySelector(".inspector-open-app")).not.toBeNull();
     expect(container.querySelector(".tweaks-inspector-toolbar") != null).toBe(!usesNativeServerPicker);
 
     await act(async () => finish(response));
@@ -97,11 +112,16 @@ describe("Tweaks connection recovery", () => {
     await render();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(connectionError.message);
     expect(client.startTweakStream).not.toHaveBeenCalled();
+    const openButton = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
+    expect(openButton.textContent).toBe("Open Demo");
+    await act(async () => openButton.click());
+    expect(client.openApp).toHaveBeenCalledExactlyOnceWith({ deviceId: "phone", packageName: "com.example.demo" });
 
     await act(async () => vi.advanceTimersByTimeAsync(250));
     expect(client.listTweaks).toHaveBeenCalledTimes(2);
     expect(client.startTweakStream).toHaveBeenCalledExactlyOnceWith(selection.server);
     expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(client.startTweakStream).toHaveBeenCalledTimes(1);

@@ -14,6 +14,7 @@ import type {
 import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
 import { AppInspectorPicker } from "../app-inspector/components/AppInspectorPicker";
 import { InspectorWaitingState } from "../app-inspector/components/InspectorWaitingState";
+import type { AppLaunchControl } from "../app-inspector/useAppLaunch";
 import { TweakUpdateQueue } from "./tweak-update-queue";
 
 interface TweakSection {
@@ -41,6 +42,7 @@ export function TweaksInspectorApp({
   apps,
   selection,
   selectedApp,
+  appLaunch,
   isConnected = true,
   onSelect
 }: {
@@ -48,6 +50,7 @@ export function TweaksInspectorApp({
   apps: InspectableApp[];
   selection: SelectedAppInspector;
   selectedApp?: InspectableApp | null;
+  appLaunch?: AppLaunchControl | null;
   isConnected?: boolean;
   onSelect(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
@@ -326,15 +329,15 @@ export function TweaksInspectorApp({
         </header>
       ) : null}
 
-      {!hasSnapshot && !connectionError ? (
-        <InspectorWaitingState />
+      {!hasSnapshot ? (
+        <InspectorWaitingState launch={appLaunch} app={selectedApp} error={connectionError} />
       ) : hasSnapshot && !error && tweaks.length === 0 ? (
         <TweaksEmptyState onOpenDocs={() => void client.openExternal(docsUrl)} />
       ) : (
         <div className="tweaks-inspector-content">
-          {error || (!hasSnapshot && connectionError) ? (
+          {error ? (
             <p className="tweaks-error" role="alert">
-              {error ?? connectionError}
+              {error}
             </p>
           ) : null}
           <fieldset
