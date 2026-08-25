@@ -19,7 +19,11 @@ export function filterRecords(
   newestFirst: boolean,
   exclusionFilters: readonly string[] = []
 ): InspectorRecord[] {
-  const searchQuery = parseNetworkSearchQuery([searchText, ...exclusionFilters].join(" "));
+  // Parse separately so unfinished search syntax cannot consume saved exclusions.
+  const searchQuery = parseNetworkSearchQuery(searchText);
+  const exclusionQuery = parseNetworkSearchQuery(exclusionFilters.join(" "));
+  searchQuery.includes.push(...exclusionQuery.includes);
+  searchQuery.excludes.push(...exclusionQuery.excludes);
   const filteredRecords = records
     .filter((record) => serverMatches(selectedServer, record.server))
     .filter((record) => matchesNetworkSearch(record, searchQuery))
