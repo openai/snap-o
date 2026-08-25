@@ -9,6 +9,7 @@ import type {
 interface InspectorPreference {
   deviceId: string;
   processName: string;
+  androidUserId?: number | null;
   kind: AppInspectorKind;
 }
 
@@ -23,18 +24,29 @@ function identity(app: InspectableApp): string | null {
 }
 
 function matches(app: InspectableApp, preference: InspectorPreference): boolean {
-  return app.deviceId === preference.deviceId && identity(app) === preference.processName;
+  return (
+    app.deviceId === preference.deviceId &&
+    (app.androidUserId ?? null) === (preference.androidUserId ?? null) &&
+    identity(app) === preference.processName
+  );
 }
 
 function sameApp(a: InspectableApp | null, b: InspectableApp): boolean {
   if (!a || a.deviceId !== b.deviceId) return false;
+  // An unknown user can become known only for the same process ID.
+  if ((a.androidUserId ?? null) !== (b.androidUserId ?? null) && (a.androidUserId != null || a.id !== b.id))
+    return false;
   const first = identity(a);
   const second = identity(b);
   return first && second ? first === second : a.id === b.id;
 }
 
 function samePreference(a: InspectorPreference, b: InspectorPreference): boolean {
-  return a.deviceId === b.deviceId && a.processName === b.processName;
+  return (
+    a.deviceId === b.deviceId &&
+    (a.androidUserId ?? null) === (b.androidUserId ?? null) &&
+    a.processName === b.processName
+  );
 }
 
 function isPreference(value: unknown): value is InspectorPreference {
@@ -44,6 +56,7 @@ function isPreference(value: unknown): value is InspectorPreference {
     typeof p.deviceId === "string" &&
     typeof p.processName === "string" &&
     p.processName.length > 0 &&
+    (p.androidUserId == null || (Number.isInteger(p.androidUserId) && p.androidUserId >= 0)) &&
     (p.kind === "network" || p.kind === "tweaks")
   );
 }
@@ -108,8 +121,7 @@ export class InspectorRestoration {
       return this.snapshot();
     }
     const preference = this.saved.last;
-    const exact =
-      this.target && apps.find((app) => app.id === this.target?.id && (!preference || matches(app, preference)));
+    const exact = this.target && apps.find((app) => app.id === this.target?.id && sameApp(this.target, app));
     const app = exact || (preference && apps.find((candidate) => matches(candidate, preference)));
 
     if (app && this.kind) {
@@ -155,7 +167,7 @@ export class InspectorRestoration {
     this.saved.last = null;
     this.remember(app, kind);
     // Cached toolbar options express intent, never permission to reuse an old socket.
-    const liveApp = this.apps.find((candidate) => candidate.id === app.id && sameApp(candidate, app));
+    const liveApp = this.apps.find((candidate) => candidate.id === app.id && sameApp(app, candidate));
     const option = liveApp?.inspectors.find((candidate) => candidate.kind === kind);
     this.setCurrent(liveApp ?? app, option);
   }
@@ -190,7 +202,7 @@ export class InspectorRestoration {
   private remember(app: InspectableApp, kind: AppInspectorKind): void {
     const processName = identity(app);
     if (!processName) return;
-    const preference = { deviceId: app.deviceId, processName, kind };
+    const preference = { deviceId: app.deviceId, processName, androidUserId: app.androidUserId, kind };
     this.saved.last = preference;
     this.saved.apps = [...this.saved.apps.filter((entry) => !samePreference(entry, preference)), preference];
   }

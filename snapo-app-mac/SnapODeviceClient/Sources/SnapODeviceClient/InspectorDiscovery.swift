@@ -22,6 +22,7 @@ public struct InspectorAppMetadata: Sendable, Equatable {
   public let processName: String?
   public let packageName: String?
   public let packageNameHint: String?
+  public let androidUserID: Int?
   public let appIconBase64: String?
 
   public init(
@@ -29,12 +30,14 @@ public struct InspectorAppMetadata: Sendable, Equatable {
     processName: String? = nil,
     packageName: String? = nil,
     packageNameHint: String? = nil,
+    androidUserID: Int? = nil,
     appIconBase64: String? = nil
   ) {
     self.appName = Self.nonempty(appName)
     self.processName = Self.nonempty(processName)
     self.packageName = Self.nonempty(packageName)
     self.packageNameHint = Self.nonempty(packageNameHint)
+    self.androidUserID = androidUserID
     self.appIconBase64 = Self.nonempty(appIconBase64)
   }
 
@@ -44,6 +47,7 @@ public struct InspectorAppMetadata: Sendable, Equatable {
       processName: processName ?? other.processName,
       packageName: packageName ?? other.packageName,
       packageNameHint: packageNameHint ?? other.packageNameHint,
+      androidUserID: androidUserID ?? other.androidUserID,
       appIconBase64: appIconBase64 ?? other.appIconBase64
     )
   }

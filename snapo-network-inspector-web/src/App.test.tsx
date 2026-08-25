@@ -73,6 +73,7 @@ function app(pid: number, kinds: AppInspectorKind[]): InspectableApp {
     id: `phone:pid:${pid}`,
     name: "Demo",
     packageName: "com.example.demo",
+    androidUserId: 0,
     processName: "com.example.demo",
     deviceId: "phone",
     deviceDisplayTitle: "Phone",
@@ -200,7 +201,8 @@ describe("app inspector restoration UI", () => {
     });
     expect(mocks.client.openApp).toHaveBeenCalledExactlyOnceWith({
       deviceId: "phone",
-      packageName: "com.example.demo"
+      packageName: "com.example.demo",
+      androidUserId: 0
     });
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
@@ -237,6 +239,42 @@ describe("app inspector restoration UI", () => {
     expect(container.querySelector('[role="status"]')).not.toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelector('[role="status"] .body-loading-spinner svg')).not.toBeNull();
+  });
+
+  it.each([
+    { packageName: null, androidUserId: 0 },
+    { packageName: "com.example.demo", androidUserId: null }
+  ])("does not offer app launch without a confirmed package and Android user", async (metadata) => {
+    const waitingApp = { ...app(20, ["tweaks"]), ...metadata, processName: "com.example.demo:worker" };
+    const saved = new InspectorRestoration();
+    saved.reconcile([{ ...waitingApp, inspectors: app(20, ["network"]).inspectors }]);
+    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(saved.serialize());
+    discovered = [waitingApp];
+    await act(async () => root.render(<App />));
+    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selectedApp: expect.objectContaining({ processName: "com.example.demo:worker" }) })
+    );
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
+    expect(mocks.client.openApp).not.toHaveBeenCalled();
+  });
+
+  it("opens a retained secondary process in its own Android user", async () => {
+    const workApp = { ...app(20, ["tweaks"]), androidUserId: 10, processName: "com.example.demo:worker" };
+    const saved = new InspectorRestoration();
+    saved.reconcile([workApp]);
+    saved.selectInspector(workApp, { kind: "network", server: { deviceId: "phone", socketName: "snapo_network_20" } });
+    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(saved.serialize());
+    discovered = [workApp];
+    await act(async () => root.render(<App />));
+    discovered = [{ ...workApp, id: "phone:pid:30", androidUserId: 0 }];
+    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    expect(mocks.client.openApp).toHaveBeenCalledExactlyOnceWith({
+      deviceId: "phone",
+      packageName: "com.example.demo",
+      androidUserId: 10
+    });
   });
 
   it("refreshes immediately after opening and every half second for five seconds", async () => {
@@ -337,8 +375,11 @@ describe("app inspector restoration UI", () => {
     expect(scans).toHaveBeenCalledTimes(scanCount);
   });
 
-  it("does not carry a pending launch or its error into another app selection", async () => {
-    const other = { ...app(30, ["tweaks"]), name: "Other", packageName: "com.example.other", processName: null };
+  it.each([
+    { packageName: "com.example.other", androidUserId: 0 },
+    { packageName: "com.example.demo", androidUserId: 10 }
+  ])("does not carry a pending launch or its error into another app or profile", async (target) => {
+    const other = { ...app(30, ["tweaks"]), ...target, name: "Other", processName: null };
     discovered.push(other);
     let fail!: (error: Error) => void;
     vi.mocked(mocks.client.openApp!).mockImplementationOnce(
@@ -360,7 +401,7 @@ describe("app inspector restoration UI", () => {
     await act(async () => fail(new Error("Old launch failed.")));
     expect(container.querySelector('[role="alert"]')).toBeNull();
     await act(async () => button.click());
-    expect(mocks.client.openApp).toHaveBeenLastCalledWith({ deviceId: "phone", packageName: "com.example.other" });
+    expect(mocks.client.openApp).toHaveBeenLastCalledWith({ deviceId: "phone", ...target });
   });
 
   it("clears a launch error when leaving and returning to the same app", async () => {

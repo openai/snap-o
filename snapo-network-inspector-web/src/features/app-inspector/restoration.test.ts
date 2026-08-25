@@ -6,13 +6,15 @@ function app(
   pid = 10,
   kinds: AppInspectorKind[] = ["network", "tweaks"],
   processName = "com.example.demo",
-  deviceId = "phone"
+  deviceId = "phone",
+  androidUserId = 0
 ): InspectableApp {
   return {
     id: `${deviceId}:pid:${pid}`,
     name: "Demo",
     packageName: processName.split(":")[0],
     processName,
+    androidUserId,
     deviceId,
     deviceDisplayTitle: "Phone",
     inspectors: kinds.map((kind) => ({ kind, server: { deviceId, socketName: `snapo_${kind}_${pid}` } }))
@@ -232,5 +234,51 @@ describe("inspector restoration", () => {
   it("selects an available inspector when there is no saved choice", () => {
     const owner = new InspectorRestoration("invalid JSON");
     expect(owner.reconcile([app(20, ["tweaks"])]).selection?.kind).toBe("tweaks");
+  });
+
+  it("keeps profile selection and inspector preferences across disconnect and a new PID", () => {
+    const personal = app();
+    const work = app(20, ["network", "tweaks"], "com.example.demo", "phone", 10);
+    const owner = new InspectorRestoration();
+    owner.reconcile([personal, work]);
+    owner.selectInspector(work, work.inspectors[1]);
+    expect(owner.reconcile([personal]).selection).toBeNull();
+    expect(owner.snapshot().selectedApp?.androidUserId).toBe(10);
+    const replacement = app(40, ["network", "tweaks"], "com.example.demo", "phone", 10);
+    expect(owner.reconcile([personal, replacement]).selection?.appId).toBe(replacement.id);
+    const restored = new InspectorRestoration(owner.serialize());
+    expect(restored.reconcile([personal, replacement]).selection).toMatchObject({
+      appId: replacement.id,
+      kind: "tweaks"
+    });
+    expect(restored.selectApp(personal)).toMatchObject({
+      selection: { appId: personal.id, kind: "network" },
+      displayedTweaks: null
+    });
+  });
+
+  it("keeps the selected launch target while a scan cannot confirm its Android user", () => {
+    const owner = selected();
+    const saved = owner.serialize();
+    expect(owner.reconcile([{ ...app(), androidUserId: null, packageName: null }]).selection).toBeNull();
+    expect(owner.snapshot().selectedApp).toMatchObject({ packageName: "com.example.demo", androidUserId: 0 });
+    expect(owner.serialize()).toBe(saved);
+  });
+
+  it("learns the Android user for the selected process without restoring another profile", () => {
+    const owner = new InspectorRestoration();
+    owner.reconcile([{ ...app(), androidUserId: null }]);
+    const work = { ...app(), androidUserId: 10 };
+    expect(owner.reconcile([work]).selectedApp?.androidUserId).toBe(10);
+    expect(JSON.parse(owner.serialize()).last.androidUserId).toBe(10);
+    expect(owner.reconcile([app(30)]).selection).toBeNull();
+  });
+
+  it("requires a new selection for saved preferences without an Android user", () => {
+    const legacy = { deviceId: "phone", processName: "com.example.demo", kind: "network" };
+    const owner = new InspectorRestoration(JSON.stringify({ last: legacy, apps: [legacy] }));
+    const work = app(20, ["network"], "com.example.demo", "phone", 10);
+    expect(owner.reconcile([app(), work]).selection).toBeNull();
+    expect(owner.selectApp(work).selection?.appId).toBe(work.id);
   });
 });

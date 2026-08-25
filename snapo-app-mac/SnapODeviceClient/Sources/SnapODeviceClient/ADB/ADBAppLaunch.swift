@@ -1,8 +1,8 @@
 import Foundation
 
 public extension ADBClient {
-  func openApp(deviceID: String, packageName: String) async throws {
-    try await AppLaunchCommand.open(packageName: packageName) { command in
+  func openApp(deviceID: String, packageName: String, androidUserID: Int) async throws {
+    try await AppLaunchCommand.open(packageName: packageName, androidUserID: androidUserID) { command in
       try await runShellString(deviceID: deviceID, command: command)
     }
   }
@@ -11,22 +11,25 @@ public extension ADBClient {
 enum AppLaunchCommand {
   private static let exitMarker = "SNAPO_APP_LAUNCH_EXIT:"
 
-  static func open(packageName: String, runShell: (String) async throws -> String) async throws {
-    let query = try launcherQuery(packageName: packageName)
+  static func open(packageName: String, androidUserID: Int, runShell: (String) async throws -> String) async throws {
+    let query = try launcherQuery(packageName: packageName, androidUserID: androidUserID)
     let output = try await runShell(query)
     let component = try launcherComponent(output: output, packageName: packageName)
-    let command = try command(packageName: packageName, component: component)
+    let command = try command(packageName: packageName, component: component, androidUserID: androidUserID)
     try await validate(output: runShell(command))
   }
 
-  static func launcherQuery(packageName: String) throws -> String {
+  static func launcherQuery(packageName: String, androidUserID: Int) throws -> String {
+    guard androidUserID >= 0 else {
+      throw ADBError.protocolFailure("The app's Android user is unavailable or invalid.")
+    }
     guard isPackageName(packageName) else {
       throw ADBError.protocolFailure("The app's package name is unavailable or invalid.")
     }
 
     // Implicit starts require DEFAULT filters; launcher queries must not.
     return withExitStatus(
-      "cmd package query-activities --components --query-flags 0 --user current "
+      "cmd package query-activities --components --query-flags 0 --user \(androidUserID) "
         + "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p '\(packageName)'"
     )
   }
@@ -42,14 +45,17 @@ enum AppLaunchCommand {
     return component
   }
 
-  static func command(packageName: String, component: String) throws -> String {
+  static func command(packageName: String, component: String, androidUserID: Int) throws -> String {
+    guard androidUserID >= 0 else {
+      throw ADBError.protocolFailure("The app's Android user is unavailable or invalid.")
+    }
     guard isComponent(component, inPackage: packageName) else {
       throw ADBError.protocolFailure("The app's launcher activity is invalid.")
     }
 
     // Match a launcher tap without stopping the app or clearing its task.
     return withExitStatus(
-      "am start --user current -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "
+      "am start --user \(androidUserID) -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "
         + "-n '\(component)' -f 0x10200000"
     )
   }

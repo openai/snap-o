@@ -7,6 +7,7 @@ import type {
   LoadBodiesInput,
   NativeInspectorState,
   NativeTweaksState,
+  OpenAppInput,
   RequestBodies,
   SaveFileInput,
   SaveFileResult,
@@ -32,7 +33,7 @@ export interface NetworkClient {
   readonly usesNativeServerPicker: boolean;
   appVersion(): Promise<string>;
   listInspectorApps(): Promise<InspectableApp[]>;
-  openApp?(app: Pick<InspectableApp, "deviceId" | "packageName">): Promise<void>;
+  openApp?(app: OpenAppInput): Promise<void>;
   loadInspectorPreferences(): Promise<string | null>;
   saveInspectorPreferences(value: string): Promise<void>;
   appInspectorStateChanged(state: AppInspectorState): void;
@@ -103,8 +104,8 @@ class WebKitNetworkClient implements NetworkClient {
     return this.invoke<InspectableApp[]>("listInspectorApps");
   }
 
-  openApp(app: Pick<InspectableApp, "deviceId" | "packageName">): Promise<void> {
-    return this.invoke<void>("openApp", { deviceId: app.deviceId, packageName: app.packageName });
+  openApp(app: OpenAppInput): Promise<void> {
+    return this.invoke<void>("openApp", app);
   }
 
   loadInspectorPreferences(): Promise<string | null> {
@@ -305,7 +306,7 @@ class HttpNetworkClient implements NetworkClient {
       return servers.map((server) => ({
         id: inspectorProcessId("network", server),
         name: server.appName || server.displayName,
-        packageName: server.packageName ?? server.displayName,
+        packageName: server.hasAppInfo ? server.packageName : null,
         processName: server.appName ?? server.packageName,
         deviceId: server.deviceId,
         deviceDisplayTitle: server.deviceDisplayTitle,

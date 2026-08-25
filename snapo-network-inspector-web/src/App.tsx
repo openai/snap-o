@@ -51,7 +51,9 @@ export function App(): JSX.Element {
       ) : displayedTweaks ? (
         <TweaksInspectorApp
           key={
-            selectedApp ? `${selectedApp.deviceId}:${selectedApp.processName ?? selectedApp.id}` : displayedTweaks.appId
+            selectedApp
+              ? `${selectedApp.deviceId}:${selectedApp.androidUserId ?? "unknown"}:${selectedApp.processName ?? selectedApp.id}`
+              : displayedTweaks.appId
           }
           client={client}
           apps={apps}

@@ -156,7 +156,7 @@ export function AppInspectorMenu({
               role="menuitemradio"
               aria-checked={selected}
               aria-label={`${app.name}, ${app.deviceDisplayTitle}`}
-              title={app.packageName}
+              title={app.packageName ?? app.processName ?? app.name}
               disabled={!option}
               onClick={() => {
                 if (option) onSelect(app);

@@ -5,15 +5,19 @@ import Testing
 struct ADBAppLaunchTests {
   @Test("queries launcher activities without requiring a DEFAULT filter")
   func launcherQuery() throws {
-    let query = try AppLaunchCommand.launcherQuery(packageName: "com.example.demo_app")
-    #expect(query.contains("cmd package query-activities --components --query-flags 0 --user current"))
+    let query = try AppLaunchCommand.launcherQuery(packageName: "com.example.demo_app", androidUserID: 0)
+    #expect(query.contains("cmd package query-activities --components --query-flags 0 --user 0"))
     #expect(query.contains("-a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p 'com.example.demo_app'"))
   }
 
   @Test("starts the explicit launcher without stopping or clearing the app")
   func launcherCommand() throws {
-    let command = try AppLaunchCommand.command(packageName: "com.example.demo_app", component: "com.example.demo_app/.Launcher")
-    #expect(command.contains("am start --user current -a android.intent.action.MAIN"))
+    let command = try AppLaunchCommand.command(
+      packageName: "com.example.demo_app",
+      component: "com.example.demo_app/.Launcher",
+      androidUserID: 0
+    )
+    #expect(command.contains("am start --user 0 -a android.intent.action.MAIN"))
     #expect(command.contains("-c android.intent.category.LAUNCHER -n 'com.example.demo_app/.Launcher' -f 0x10200000"))
     #expect(command.contains("2>&1; printf '\\nSNAPO_APP_LAUNCH_EXIT:%s\\n' \"$?\""))
     #expect(!command.contains("force-stop"))
@@ -26,7 +30,7 @@ struct ADBAppLaunchTests {
   ])
   func invalidPackage(packageName: String) {
     #expect(throws: ADBError.self) {
-      try AppLaunchCommand.launcherQuery(packageName: packageName)
+      try AppLaunchCommand.launcherQuery(packageName: packageName, androidUserID: 0)
     }
   }
 
@@ -50,10 +54,10 @@ struct ADBAppLaunchTests {
     }
   }
 
-  @Test("uses a queried launcher alias instead of an implicit package intent")
-  func resolvesBeforeLaunching() async throws {
+  @Test("queries and launches an explicit activity in the inspector's Android user", arguments: [0, 10, 11])
+  func resolvesBeforeLaunching(androidUserID: Int) async throws {
     var commands: [String] = []
-    try await AppLaunchCommand.open(packageName: "com.example.demo") { command in
+    try await AppLaunchCommand.open(packageName: "com.example.demo", androidUserID: androidUserID) { command in
       commands.append(command)
       if commands.count == 1 {
         return "com.example.demo/com.example.ui.LauncherAlias\nSNAPO_APP_LAUNCH_EXIT:0\n"
@@ -64,6 +68,8 @@ struct ADBAppLaunchTests {
     #expect(commands[0].contains("query-activities --components --query-flags 0"))
     #expect(commands[1].contains("-n 'com.example.demo/com.example.ui.LauncherAlias'"))
     #expect(!commands[1].contains(" -p "))
+    #expect(commands.allSatisfy { $0.contains("--user \(androidUserID) ") })
+    #expect(commands.allSatisfy { !$0.contains("--user current") })
   }
 
   @Test("accepts relative, full, and nested activity names", arguments: [
@@ -76,7 +82,7 @@ struct ADBAppLaunchTests {
       packageName: "com.example.demo"
     )
     #expect(selected == component)
-    let command = try AppLaunchCommand.command(packageName: "com.example.demo", component: selected)
+    let command = try AppLaunchCommand.command(packageName: "com.example.demo", component: selected, androidUserID: 0)
     #expect(command.contains("-n '\(component)'"))
   }
 
@@ -95,7 +101,7 @@ struct ADBAppLaunchTests {
   ])
   func invalidComponent(component: String) {
     #expect(throws: ADBError.self) {
-      try AppLaunchCommand.command(packageName: "com.example.demo", component: component)
+      try AppLaunchCommand.command(packageName: "com.example.demo", component: component, androidUserID: 0)
     }
   }
 
@@ -103,7 +109,7 @@ struct ADBAppLaunchTests {
   func missingLauncher() async {
     var commands: [String] = []
     await #expect {
-      try await AppLaunchCommand.open(packageName: "com.example.demo") { command in
+      try await AppLaunchCommand.open(packageName: "com.example.demo", androidUserID: 0) { command in
         commands.append(command)
         return "No activities found\nSNAPO_APP_LAUNCH_EXIT:0\n"
       }
@@ -118,7 +124,7 @@ struct ADBAppLaunchTests {
   func failedQuery() async {
     var count = 0
     await #expect(throws: ADBError.self) {
-      try await AppLaunchCommand.open(packageName: "com.example.demo") { _ in
+      try await AppLaunchCommand.open(packageName: "com.example.demo", androidUserID: 0) { _ in
         count += 1
         throw ADBError.serverUnavailable("Device disconnected")
       }
@@ -154,6 +160,21 @@ struct ADBAppLaunchTests {
   func missingResult(output: String) {
     #expect(throws: ADBError.self) {
       try AppLaunchCommand.validate(output: output)
+    }
+  }
+
+  @Test("rejects Android user selectors that do not identify one user", arguments: [-1, -2])
+  func invalidAndroidUser(androidUserID: Int) async {
+    var commands: [String] = []
+    await #expect(throws: ADBError.self) {
+      try await AppLaunchCommand.open(packageName: "com.example.demo", androidUserID: androidUserID) { command in
+        commands.append(command)
+        return ""
+      }
+    }
+    #expect(commands.isEmpty)
+    #expect(throws: ADBError.self) {
+      try AppLaunchCommand.command(packageName: "com.example.demo", component: "com.example.demo/.Launcher", androidUserID: androidUserID)
     }
   }
 }

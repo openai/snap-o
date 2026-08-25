@@ -77,7 +77,12 @@ describe("Tweaks connection recovery", () => {
           appLaunch={{
             pending: false,
             error: null,
-            open: () => void client.openApp!({ deviceId: selected.server.deviceId, packageName: "com.example.demo" })
+            open: () =>
+              void client.openApp!({
+                deviceId: selected.server.deviceId,
+                packageName: "com.example.demo",
+                androidUserId: 0
+              })
           }}
           isConnected={isConnected}
           onSelect={() => {}}
@@ -115,7 +120,11 @@ describe("Tweaks connection recovery", () => {
     const openButton = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
     expect(openButton.textContent).toBe("Open Demo");
     await act(async () => openButton.click());
-    expect(client.openApp).toHaveBeenCalledExactlyOnceWith({ deviceId: "phone", packageName: "com.example.demo" });
+    expect(client.openApp).toHaveBeenCalledExactlyOnceWith({
+      deviceId: "phone",
+      packageName: "com.example.demo",
+      androidUserId: 0
+    });
 
     await act(async () => vi.advanceTimersByTimeAsync(250));
     expect(client.listTweaks).toHaveBeenCalledTimes(2);

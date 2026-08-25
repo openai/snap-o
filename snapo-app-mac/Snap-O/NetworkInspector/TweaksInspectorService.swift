@@ -9,6 +9,7 @@ actor TweaksInspectorService {
     var name: String?
     var packageName: String?
     var processName: String?
+    var androidUserID: Int?
     var protocolVersion: Int?
     var appIconBase64: String?
   }
@@ -185,7 +186,9 @@ actor TweaksInspectorService {
         throw NetworkInspectorError.invalidBridgeMessage
       }
 
-      let processName = await NetworkServerDiscovery.packageNameHint(for: reference, using: adb)
+      async let processName = NetworkServerDiscovery.packageNameHint(for: reference, using: adb)
+      async let androidUserID = NetworkServerDiscovery.androidUserID(for: reference, using: adb)
+      let metadata = await (processName: processName, androidUserID: androidUserID)
       guard !Task.isCancelled, !isStopped else {
         await adb.removeForward(handle)
         return
@@ -194,7 +197,8 @@ actor TweaksInspectorService {
         deviceID: reference.deviceId,
         deviceDisplayTitle: deviceDisplayTitle,
         socketName: reference.socketName,
-        processName: processName
+        processName: metadata.processName,
+        androidUserID: metadata.androidUserID
       )
       connections[key] = Connection(id: UUID(), app: app, forward: handle, baseURL: baseURL)
       populateMetadata(for: key)
@@ -207,7 +211,8 @@ actor TweaksInspectorService {
 
   private func populateMetadata(for key: String) {
     guard let connection = connections[key],
-          connection.app.protocolVersion == nil || connection.app.processName == nil || !connection.hasLoadedIcon,
+          connection.app.protocolVersion == nil || connection.app.processName == nil
+          || connection.app.androidUserID == nil || !connection.hasLoadedIcon,
           connection.metadataTask == nil else { return }
     connections[key]?.metadataTask = Task { [weak self] in
       await self?.loadMetadata(for: key, connectionID: connection.id)
@@ -222,11 +227,14 @@ actor TweaksInspectorService {
     }
     guard let connection = connections[key], connection.id == connectionID else { return }
 
-    if connection.app.processName == nil {
+    if connection.app.processName == nil || connection.app.androidUserID == nil {
       let adb = await adbService.exec()
-      let processName = await NetworkServerDiscovery.packageNameHint(for: connection.reference, using: adb)
+      async let processName = NetworkServerDiscovery.packageNameHint(for: connection.reference, using: adb)
+      async let androidUserID = NetworkServerDiscovery.androidUserID(for: connection.reference, using: adb)
+      let metadata = await (processName: processName, androidUserID: androidUserID)
       guard !Task.isCancelled, connections[key]?.id == connectionID else { return }
-      connections[key]?.app.processName = processName
+      connections[key]?.app.processName = metadata.processName ?? connection.app.processName
+      connections[key]?.app.androidUserID = metadata.androidUserID ?? connection.app.androidUserID
     }
 
     if connection.app.protocolVersion == nil,

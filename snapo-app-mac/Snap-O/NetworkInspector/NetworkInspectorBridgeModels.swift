@@ -17,8 +17,9 @@ struct AppInspectorOption: Codable, Identifiable {
 struct InspectableApp: Codable, Identifiable {
   let id: String
   let name: String
-  let packageName: String
+  let packageName: String?
   let processName: String?
+  let androidUserId: Int?
   let deviceId: String
   let deviceDisplayTitle: String
   let appIconBase64: String?
@@ -28,6 +29,7 @@ struct InspectableApp: Codable, Identifiable {
 struct OpenAppInput: Codable {
   let deviceId: String
   let packageName: String
+  let androidUserId: Int
 }
 
 struct SelectedAppInspector: Codable {

@@ -40,4 +40,18 @@ struct NetworkServerDiscoveryTests {
         == ["emulator-5554", "usb-phone"]
     )
   }
+
+  @Test("extracts the Android user from the process UID")
+  func parsesAndroidUser() {
+    #expect(NetworkServerDiscovery.androidUserID(inProcStatus: "Name:\tdemo\nUid:\t10234\t10234\t10234\t10234\n") == 0)
+    #expect(NetworkServerDiscovery.androidUserID(inProcStatus: "Uid:\t1010234\t1010234\t1010234\t1010234\n") == 10)
+    #expect(NetworkServerDiscovery.androidUserID(inProcStatus: "Uid: 1110234 1110234 1110234 1110234\r\n") == 11)
+  }
+
+  @Test("does not assume the current Android user when process metadata is unavailable", arguments: [
+    "", "cat: permission denied", "Name:\tdemo\n", "Uid:", "Uid:\t-1", "Uid:\tunknown", "Uid:\t4294967296"
+  ])
+  func missingAndroidUser(output: String) {
+    #expect(NetworkServerDiscovery.androidUserID(inProcStatus: output) == nil)
+  }
 }

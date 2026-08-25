@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { InspectableApp } from "../../network/bridge-types";
+import type { InspectableApp, OpenAppInput } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
 
 export interface AppLaunchControl {
@@ -16,7 +16,16 @@ interface LaunchAttempt {
 }
 
 function appKey(app: InspectableApp | null): string | null {
-  return app ? `${app.deviceId}:${app.packageName}` : null;
+  return app
+    ? `${app.deviceId}:${app.androidUserId ?? "unknown"}:${app.processName ?? app.packageName ?? app.id}`
+    : null;
+}
+
+function launchInput(app: InspectableApp | null): OpenAppInput | null {
+  if (!app?.packageName || app.androidUserId == null || !Number.isInteger(app.androidUserId) || app.androidUserId < 0) {
+    return null;
+  }
+  return { deviceId: app.deviceId, packageName: app.packageName, androidUserId: app.androidUserId };
 }
 
 export function useAppLaunch(client: NetworkClient, selectedApp: InspectableApp | null, refresh: () => void) {
@@ -49,7 +58,8 @@ export function useAppLaunch(client: NetworkClient, selectedApp: InspectableApp 
   const openSelectedApp = useCallback(async () => {
     const app = currentApp.current;
     const key = appKey(app);
-    if (!app || !key || !client.openApp || activeLaunch.current) return;
+    const input = launchInput(app);
+    if (!app || !key || !input || !client.openApp || activeLaunch.current) return;
 
     const attempt: LaunchAttempt = { opening: true, waiting: true };
     activeLaunch.current = attempt;
@@ -65,7 +75,7 @@ export function useAppLaunch(client: NetworkClient, selectedApp: InspectableApp 
     attempt.interval = window.setInterval(refresh, 500);
 
     try {
-      await client.openApp({ deviceId: app.deviceId, packageName: app.packageName });
+      await client.openApp(input);
       if (activeLaunch.current !== attempt) return;
       attempt.opening = false;
       if (!attempt.waiting) activeLaunch.current = null;
@@ -87,7 +97,7 @@ export function useAppLaunch(client: NetworkClient, selectedApp: InspectableApp 
   const isPolling = useCallback(() => activeLaunch.current?.waiting === true, []);
   const currentLaunch = launchState?.key === appKey(selectedApp) ? launchState : null;
   const appLaunch: AppLaunchControl | null =
-    selectedApp && client.openApp
+    launchInput(selectedApp) && client.openApp
       ? {
           pending: currentLaunch?.pending ?? false,
           error: currentLaunch?.error ?? null,

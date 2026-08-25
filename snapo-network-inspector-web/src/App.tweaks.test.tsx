@@ -19,6 +19,7 @@ function app(pid: number): InspectableApp {
     id: `phone:pid:${pid}`,
     name: "Demo",
     packageName: "com.example.demo",
+    androidUserId: 0,
     processName: "com.example.demo",
     deviceId: "phone",
     deviceDisplayTitle: "Phone",
@@ -173,9 +174,12 @@ describe("retained Tweaks view", () => {
     expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
-  it("does not show another app's cached values while loading", async () => {
+  it.each([
+    { packageName: "com.example.other", processName: "com.example.other", androidUserId: 0 },
+    { packageName: "com.example.demo", processName: "com.example.demo", androidUserId: 10 }
+  ])("does not show another app or profile's cached values while loading", async (target) => {
     await act(async () => root.render(<App />));
-    const other = { ...app(20), packageName: "com.example.other", processName: "com.example.other" };
+    const other = { ...app(20), ...target };
     discovered = [app(10), other];
     await act(async () => vi.advanceTimersByTimeAsync(2_500));
     let finish!: (value: TweakList) => void;
