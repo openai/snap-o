@@ -509,6 +509,11 @@ final class CaptureWindowController {
     }
   }
 
+  func livePreviewConnection(for deviceID: String) -> LivePreviewConnection? {
+    guard case .livePreview(let livePreviewMode) = mode else { return nil }
+    return livePreviewMode.connection(for: deviceID)
+  }
+
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
     guard case .livePreview(let livePreviewMode) = mode else { return nil }
     guard !livePreviewMode.isStopping else { return nil }

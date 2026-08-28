@@ -25,7 +25,8 @@ struct CaptureModeTests {
     await stopDuringRendererStart()
     await overlappingDeviceUpdates()
     await modePropagatesCancellation()
-    print("Capture mode tests passed (12 cases)")
+    await modeRetainsPerDeviceFailures()
+    print("Capture mode tests passed (13 cases)")
   }
 
   static func eventually(_ condition: () async -> Bool) async {
@@ -305,5 +306,36 @@ struct CaptureModeTests {
     await stop.value
     let active = await service.active
     precondition(active.isEmpty)
+  }
+
+  static func modeRetainsPerDeviceFailures() async {
+    func makeMode() -> LivePreviewMode {
+      LivePreviewMode(
+        livePreviewService: LivePreviewService(), adbService: ADBService(), options: options,
+        mediaDisplayMode: MediaDisplayMode(), preferredDeviceIDProvider: { first.id }, onMediaApplied: {}
+      )
+    }
+    let mode = makeMode()
+    await mode.start(with: [first, second])
+    let firstConnection = mode.connection(for: first.id)
+    firstConnection.hasFailed = true
+    let secondConnection = mode.connection(for: second.id)
+    precondition(!secondConnection.hasFailed, "Failures must be isolated per device")
+    secondConnection.hasFailed = true
+
+    await mode.updateDevices([second])
+    await mode.updateDevices([first, second])
+    precondition(mode.connection(for: first.id) === firstConnection)
+    precondition(firstConnection.hasFailed, "Device updates must retain failures for this mode")
+    firstConnection.hasFailed = false
+    precondition(mode.connection(for: second.id).hasFailed, "Retry clears only the selected device")
+    await mode.stop()
+
+    let nextMode = makeMode()
+    precondition(nextMode.connection(for: first.id) !== firstConnection)
+    precondition(!nextMode.connection(for: second.id).hasFailed, "A new mode must start without old failures")
+    firstConnection.hasFailed = true
+    precondition(!nextMode.connection(for: first.id).hasFailed, "Old views must not change a new mode's failure state")
+    await nextMode.stop()
   }
 }

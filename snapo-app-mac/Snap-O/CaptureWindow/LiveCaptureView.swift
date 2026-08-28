@@ -4,6 +4,7 @@ import SwiftUI
 
 @MainActor
 protocol LivePreviewHosting: AnyObject {
+  func livePreviewConnection(for deviceID: String) -> LivePreviewConnection?
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer?
   func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async
 }
@@ -12,20 +13,35 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   let host: Host
   let capture: CaptureMedia
   let fileStore: FileStore
+  private let connection: LivePreviewConnection?
 
   @State private var renderer: LivePreviewRenderer?
   @State private var streamTask: Task<Void, Never>?
-  @State private var cleanupTask: Task<Void, Never>?
   @State private var streamLifecycleID: UUID?
   @State private var isViewVisible = false
   @State private var isWindowVisible = false
 
+  init(host: Host, capture: CaptureMedia, fileStore: FileStore) {
+    self.host = host
+    self.capture = capture
+    self.fileStore = fileStore
+    connection = host.livePreviewConnection(for: capture.device.id)
+  }
+
   var body: some View {
     ZStack {
+      Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
       if let renderer {
         LivePreviewRendererView(renderer: renderer, fileStore: fileStore, isVisible: isWindowVisible)
-      } else {
-        Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+      } else if connection?.hasFailed == true {
+        VStack(spacing: 8) {
+          Text("Live preview unavailable")
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+          Button("Connect", action: connect)
+            .disabled(streamTask != nil)
+        }
+        .padding(16)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -47,18 +63,25 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   }
 
   private func startStreamIfNeeded() {
-    guard isViewVisible, isWindowVisible, streamTask == nil else { return }
+    guard isViewVisible, isWindowVisible, streamTask == nil,
+          let connection, !connection.hasFailed else { return }
 
     let deviceID = capture.device.id
     let lifecycleID = UUID()
-    let previousCleanup = cleanupTask
+    let previousCleanup = connection.cleanupTask
     streamLifecycleID = lifecycleID
     streamTask = Task(priority: .userInitiated) { @MainActor in
       await previousCleanup?.value
       guard isLifecycleActive(lifecycleID) else { return }
-      cleanupTask = nil
-      await runRendererLifecycle(deviceID: deviceID, lifecycleID: lifecycleID)
+      connection.cleanupTask = nil
+      await runRendererLifecycle(deviceID: deviceID, lifecycleID: lifecycleID, connection: connection)
     }
+  }
+
+  private func connect() {
+    guard streamTask == nil, let connection else { return }
+    connection.hasFailed = false
+    startStreamIfNeeded()
   }
 
   private func stopStream() {
@@ -68,10 +91,10 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     streamTask = nil
     let rendererToStop = renderer
     renderer = nil
-    guard taskToStop != nil || rendererToStop != nil else { return }
+    guard let connection, taskToStop != nil || rendererToStop != nil else { return }
 
-    let previousCleanup = cleanupTask
-    cleanupTask = Task {
+    let previousCleanup = connection.cleanupTask
+    connection.cleanupTask = Task {
       await previousCleanup?.value
       if let rendererToStop {
         await host.stopLivePreviewStream(rendererToStop)
@@ -82,57 +105,43 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   }
 
   @MainActor
-  private func runRendererLifecycle(deviceID: String, lifecycleID: UUID) async {
-    var retryAttempt = 0
-
-    while isLifecycleActive(lifecycleID) {
-      let newRenderer = await host.startLivePreviewStream(for: deviceID)
-      guard isLifecycleActive(lifecycleID) else {
-        if let newRenderer {
-          await host.stopLivePreviewStream(newRenderer)
-        }
-        return
+  private func runRendererLifecycle(deviceID: String, lifecycleID: UUID, connection: LivePreviewConnection) async {
+    defer {
+      if streamLifecycleID == lifecycleID {
+        streamLifecycleID = nil
+        streamTask = nil
       }
-
-      guard let newRenderer else {
-        guard await waitBeforeRetry(attempt: retryAttempt, lifecycleID: lifecycleID) else { return }
-        retryAttempt += 1
-        continue
+    }
+    let newRenderer = await host.startLivePreviewStream(for: deviceID)
+    guard isLifecycleActive(lifecycleID) else {
+      if let newRenderer {
+        await host.stopLivePreviewStream(newRenderer)
       }
-
-      renderer = newRenderer
-      let stopError = await newRenderer.session.waitUntilStop()
-      guard streamLifecycleID == lifecycleID,
-            renderer?.operation.id == newRenderer.operation.id else { return }
-
-      renderer = nil
-      await host.stopLivePreviewStream(newRenderer)
-      if let stopError {
-        SnapOLog.ui.error(
-          "Live preview stopped: \(stopError.localizedDescription, privacy: .public)"
-        )
-      }
-
-      guard await waitBeforeRetry(attempt: retryAttempt, lifecycleID: lifecycleID) else { return }
-      retryAttempt += 1
+      return
     }
 
-    if streamLifecycleID == lifecycleID {
-      streamLifecycleID = nil
-      streamTask = nil
+    guard let newRenderer else {
+      connection.hasFailed = true
+      return
     }
-  }
 
-  @MainActor
-  private func waitBeforeRetry(attempt: Int, lifecycleID: UUID) async -> Bool {
-    let exponent = min(attempt, 4)
-    let delayMilliseconds = min(200 * (1 << exponent), 2000)
-    do {
-      try await Task.sleep(for: .milliseconds(delayMilliseconds))
-    } catch {
-      return false
+    renderer = newRenderer
+    let stopError = await newRenderer.session.waitUntilStop()
+    guard isLifecycleActive(lifecycleID),
+          renderer?.operation.id == newRenderer.operation.id else { return }
+
+    connection.hasFailed = true
+    renderer = nil
+    // Retain cleanup across selection changes before exposing a manual retry.
+    let cleanup = Task { await host.stopLivePreviewStream(newRenderer) }
+    connection.cleanupTask = cleanup
+    await cleanup.value
+    guard isLifecycleActive(lifecycleID) else { return }
+    if let stopError {
+      SnapOLog.ui.error(
+        "Live preview stopped: \(stopError.localizedDescription, privacy: .public)"
+      )
     }
-    return isLifecycleActive(lifecycleID)
   }
 
   @MainActor

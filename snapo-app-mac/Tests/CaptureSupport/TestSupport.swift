@@ -242,6 +242,7 @@ struct FileStore {}
 
 @MainActor
 protocol LivePreviewHosting: AnyObject {
+  func livePreviewConnection(for deviceID: String) -> LivePreviewConnection?
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer?
   func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async
 }

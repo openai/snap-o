@@ -13,6 +13,7 @@ final class LivePreviewMode {
   private let onMediaApplied: @MainActor () -> Void
   private var preparedLivePreview: PreparedLivePreview?
   private var manager: LivePreviewManager?
+  @ObservationIgnored private var connections: [String: LivePreviewConnection] = [:]
   @ObservationIgnored private var stopTask: Task<Void, Never>?
   private(set) var isStopping: Bool = false
 
@@ -58,6 +59,13 @@ final class LivePreviewMode {
 
   func updateDevices(_ devices: [Device]) async {
     await manager?.updateDevices(devices)
+  }
+
+  func connection(for deviceID: String) -> LivePreviewConnection {
+    if let connection = connections[deviceID] { return connection }
+    let connection = LivePreviewConnection()
+    connections[deviceID] = connection
+    return connection
   }
 
   func makeRenderer(for deviceID: String) async throws -> LivePreviewRenderer {
