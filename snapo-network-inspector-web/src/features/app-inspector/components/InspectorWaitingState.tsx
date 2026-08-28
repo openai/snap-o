@@ -1,4 +1,4 @@
-import { LoaderCircle } from "lucide-react";
+import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import type { InspectableApp } from "../../../network/bridge-types";
 import type { AppLaunchControl } from "../useAppLaunch";
 import { OpenAppButton } from "./OpenAppButton";
@@ -18,11 +18,7 @@ export function InspectorWaitingState({
     <div className="inspector-loading">
       <div className="inspector-loading-status" role="status" aria-label={label}>
         <span>{label}</span>
-        {!canOpenApp ? (
-          <span className="body-loading-spinner" aria-hidden="true">
-            <LoaderCircle size={20} />
-          </span>
-        ) : null}
+        {!canOpenApp ? <LoadingSpinner size={20} /> : null}
       </div>
       {app && launch ? <OpenAppButton app={app} launch={launch} /> : null}
       {error ? (

@@ -942,8 +942,17 @@ body.split-pane-resizing {
 .body-loading-spinner {
   display: inline-flex;
   flex: 0 0 auto;
-  transform-origin: center;
-  animation: spin 1s linear infinite;
+}
+
+.body-loading-spinner circle {
+  /* Move the gap so the circle stays fixed on the pixel grid. */
+  animation: loading-spinner-gap 1s linear infinite;
+}
+
+@keyframes loading-spinner-gap {
+  to {
+    stroke-dashoffset: -100;
+  }
 }
 
 .body-load-message {
