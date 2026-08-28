@@ -18,6 +18,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   Snap-O/Capture/CaptureServices.swift Snap-O/CaptureWindow/CaptureWindowController.swift \
   Snap-O/CaptureWindow/CaptureWindowMode.swift Snap-O/CaptureWindow/RecordingMode.swift \
   Snap-O/CaptureWindow/LivePreviewMode.swift Snap-O/CaptureWindow/MediaDisplayMode.swift \
+  Snap-O/CaptureWindow/LivePreviewConnection.swift \
   Snap-O/CaptureWindow/CaptureSnapshotController.swift \
   Tests/CaptureSupport/TestSupport.swift Tests/StartupCapture/StartupCaptureTests.swift \
   -o "$TEST_DIR/startup-tests"
@@ -30,6 +31,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
 "$TEST_DIR/session-tests"
 xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/CaptureWindow/LiveCaptureView.swift Snap-O/CaptureWindow/CaptureSurfaceView.swift \
+  Snap-O/CaptureWindow/LivePreviewConnection.swift \
   Snap-O/UI/VideoLoopingView.swift \
   Tests/StartupCapture/LivePreviewVisibilityTests.swift -o "$TEST_DIR/visibility-tests"
 "$TEST_DIR/visibility-tests"

@@ -6,7 +6,11 @@ import SwiftUI
 
 struct CaptureMedia {
   struct Device { let id: String }
-  let device = Device(id: "test-device")
+  let device: Device
+
+  init(deviceID: String = "test-device") {
+    device = Device(id: deviceID)
+  }
 }
 
 struct FileStore {}
@@ -113,6 +117,7 @@ struct WindowVisibilityReader: View {
 
 @MainActor
 final class TestHost: LivePreviewHosting {
+  var connections: [String: LivePreviewConnection] = [:]
   var starts = 0
   var requestedDeviceIDs: [String] = []
   var failsToStart = false
@@ -124,6 +129,13 @@ final class TestHost: LivePreviewHosting {
   var delayStop = false
   var stopContinuation: CheckedContinuation<Void, Never>?
   var latestSession: LivePreviewSession?
+  func livePreviewConnection(for deviceID: String) -> LivePreviewConnection? {
+    if let connection = connections[deviceID] { return connection }
+    let connection = LivePreviewConnection()
+    connections[deviceID] = connection
+    return connection
+  }
+
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
     starts += 1
     requestedDeviceIDs.append(deviceID)
@@ -305,6 +317,9 @@ struct LivePreviewVisibilityTests {
     precondition(host.busyStarts == 0, "Never restart while the previous operation owns the device")
     print("Live Preview visibility tests passed")
     testFailedConnection()
+    testFailureSurvivesSelection(failsToStart: true)
+    testFailureSurvivesSelection(failsToStart: false)
+    testSelectionDuringFailureCleanup()
     testRecordingPlaybackVisibility()
   }
 
@@ -352,6 +367,93 @@ struct LivePreviewVisibilityTests {
     window.contentView = nil
     eventually("Removing reconnected preview releases it") { host.active.isEmpty }
     print("Live Preview manual connection tests passed")
+  }
+
+  static func testFailureSurvivesSelection(failsToStart: Bool) {
+    Visibility.shared.isVisible = true
+    let host = TestHost()
+    host.failsToStart = failsToStart
+    func preview(_ deviceID: String) -> some View {
+      LiveCaptureView(host: host, capture: CaptureMedia(deviceID: deviceID), fileStore: FileStore())
+        .id(UUID())
+    }
+    let view = NSHostingView(rootView: preview("first"))
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 360, height: 220),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.contentView = view
+    view.layoutSubtreeIfNeeded()
+    eventually("First device starts once") { host.starts == 1 }
+    if !failsToStart {
+      eventually("First device connects") { host.active.count == 1 }
+      host.latestSession?.stop()
+    }
+    eventually("First device shows failure") { accessibleElement(named: "Connect", in: view) != nil && host.active.isEmpty }
+
+    host.failsToStart = false
+    view.rootView = preview("second")
+    eventually("Another device connects independently") { host.starts == 2 && host.active.count == 1 }
+    host.latestSession?.stop()
+    eventually("Second device shows failure") { accessibleElement(named: "Connect", in: view) != nil && host.active.isEmpty }
+
+    view.rootView = preview("first")
+    pump()
+    precondition(host.starts == 2, "Returning to a failed device must not reconnect automatically")
+    eventually("Remounted preview retains failure") { accessibleElement(named: "Live preview unavailable", in: view) != nil }
+    connect(in: view)
+    eventually("Connect retries the selected device") { host.starts == 3 && host.active.count == 1 }
+    precondition(host.requestedDeviceIDs == ["first", "second", "first"])
+    window.contentView = nil
+    eventually("Retry releases its renderer") { host.active.isEmpty }
+
+    view.rootView = preview("second")
+    window.contentView = view
+    view.layoutSubtreeIfNeeded()
+    pump()
+    precondition(host.starts == 3, "Retrying one device must not reset another device's failure")
+    eventually("Other device still requires Connect") { accessibleElement(named: "Connect", in: view) != nil }
+    window.contentView = nil
+    print("Live Preview selection preserves \(failsToStart ? "startup" : "stream") failures")
+  }
+
+  static func testSelectionDuringFailureCleanup() {
+    Visibility.shared.isVisible = true
+    let host = TestHost()
+    func preview() -> some View {
+      LiveCaptureView(host: host, capture: CaptureMedia(), fileStore: FileStore())
+        .id(UUID())
+    }
+    let view = NSHostingView(rootView: preview())
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 360, height: 220),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.contentView = view
+    view.layoutSubtreeIfNeeded()
+    eventually("Initial stream connects") { host.starts == 1 && host.active.count == 1 }
+    host.delayStop = true
+    host.latestSession?.stop()
+    eventually("Failed stream begins cleanup") { host.stopContinuation != nil }
+    window.contentView = nil
+    pump()
+    view.rootView = preview()
+    window.contentView = view
+    view.layoutSubtreeIfNeeded()
+    eventually("Remount remembers failure during cleanup") { accessibleElement(named: "Connect", in: view) != nil }
+    pump()
+    precondition(host.starts == 1, "Selection must not reconnect during cleanup")
+    connect(in: view)
+    pump()
+    precondition(host.starts == 1, "Connect must await the previous view's cleanup")
+    host.delayStop = false
+    host.stopContinuation?.resume()
+    host.stopContinuation = nil
+    eventually("Manual retry starts after cleanup") { host.starts == 2 && host.active.count == 1 }
+    precondition(host.busyStarts == 0, "Remount must not overlap operations")
+    window.contentView = nil
+    eventually("Remounted preview releases its renderer") { host.active.isEmpty }
+    print("Live Preview selection preserves pending cleanup")
   }
 
   static func testRecordingPlaybackVisibility() {
