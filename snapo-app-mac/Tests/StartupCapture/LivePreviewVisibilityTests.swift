@@ -114,6 +114,8 @@ struct WindowVisibilityReader: View {
 @MainActor
 final class TestHost: LivePreviewHosting {
   var starts = 0
+  var requestedDeviceIDs: [String] = []
+  var failsToStart = false
   var stops: [UUID] = []
   var active: Set<UUID> = []
   var busyStarts = 0
@@ -122,13 +124,15 @@ final class TestHost: LivePreviewHosting {
   var delayStop = false
   var stopContinuation: CheckedContinuation<Void, Never>?
   var latestSession: LivePreviewSession?
-  func startLivePreviewStream(for _: String) async -> LivePreviewRenderer? {
+  func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
     starts += 1
+    requestedDeviceIDs.append(deviceID)
     guard active.isEmpty else {
       busyStarts += 1
       return nil
     }
     if delayStart { await withCheckedContinuation { startContinuation = $0 } }
+    if failsToStart { return nil }
     let renderer = LivePreviewRenderer(session: LivePreviewSession())
     latestSession = renderer.session
     active.insert(renderer.operation.id)
@@ -158,8 +162,30 @@ struct LivePreviewVisibilityTests {
     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
   }
 
+  static func accessibleElement(named name: String, in element: AnyObject) -> AnyObject? {
+    let value: String? = element.accessibilityValue?()
+    if element.accessibilityLabel?() == name || element.accessibilityTitle?() == name
+      || value == name {
+      return element
+    }
+    for child in element.accessibilityChildren?() ?? [] {
+      if let found = accessibleElement(named: name, in: child as AnyObject) {
+        return found
+      }
+    }
+    return nil
+  }
+
+  static func connect(in view: NSView) {
+    guard let button = accessibleElement(named: "Connect", in: view) else {
+      preconditionFailure("Missing Connect button")
+    }
+    precondition(button.accessibilityPerformPress?() == true, "Connect must be accessible")
+  }
+
   static func main() {
-    _ = NSApplication.shared
+    // Enable SwiftUI accessibility nodes without requiring VoiceOver or an external test app.
+    NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
     let host = TestHost()
     func surface(aspectRatio: CGFloat?, mountsPreview: Bool = true) -> some View {
       CaptureSurfaceView(aspectRatio: aspectRatio) {
@@ -229,11 +255,17 @@ struct LivePreviewVisibilityTests {
     host.delayStop = false
     host.stopContinuation?.resume()
     host.stopContinuation = nil
-    eventually("Hidden preview recovers after spontaneous cleanup") { host.starts == 2 && host.active.count == 1 }
-    eventually("Recovered preview stays hidden") { LivePreviewRendererView.displayView?.isHidden == true }
+    eventually("Stopped preview releases its operation") { host.active.isEmpty }
+    pump()
+    precondition(host.starts == 1, "Hidden preview must not reconnect automatically")
     Visibility.shared.isVisible = true
-    eventually("Recovered preview becomes visible") { LivePreviewRendererView.displayView?.isHidden == false }
-    precondition(host.starts == 2, "Uncover must not restart a recovered stream")
+    eventually("Dropped stream shows its error") { accessibleElement(named: "Live preview unavailable", in: view) != nil }
+    pump()
+    precondition(host.starts == 1, "Uncover must not reconnect a failed stream")
+    connect(in: view)
+    eventually("Connect starts a replacement") { host.starts == 2 && host.active.count == 1 }
+    eventually("Replacement becomes visible") { LivePreviewRendererView.displayView?.isHidden == false }
+    eventually("Connected preview hides the failure action") { accessibleElement(named: "Connect", in: view) == nil }
 
     host.delayStop = true
     view.rootView = surface(aspectRatio: nil, mountsPreview: false)
@@ -272,7 +304,54 @@ struct LivePreviewVisibilityTests {
     precondition(Set(host.stops).count == host.stops.count, "Stop each renderer once")
     precondition(host.busyStarts == 0, "Never restart while the previous operation owns the device")
     print("Live Preview visibility tests passed")
+    testFailedConnection()
     testRecordingPlaybackVisibility()
+  }
+
+  static func testFailedConnection() {
+    Visibility.shared.isVisible = true
+    let host = TestHost()
+    host.failsToStart = true
+    let view = NSHostingView(rootView: LiveCaptureView(host: host, capture: CaptureMedia(), fileStore: FileStore()))
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 360, height: 220),
+      styleMask: [.borderless],
+      backing: .buffered,
+      defer: false
+    )
+    window.contentView = view
+    view.layoutSubtreeIfNeeded()
+    eventually("Failed startup shows a concise error") { accessibleElement(named: "Live preview unavailable", in: view) != nil }
+    pump()
+    precondition(host.starts == 1 && host.active.isEmpty, "Failed startup must not retry automatically")
+
+    for _ in 0 ..< 3 {
+      Visibility.shared.isVisible = false
+      pump()
+      Visibility.shared.isVisible = true
+      pump()
+    }
+    precondition(host.starts == 1, "Window visibility must not restart failed startup")
+
+    connect(in: view)
+    eventually("Manual retry can fail again") { host.starts == 2 && accessibleElement(named: "Connect", in: view) != nil }
+    pump()
+    precondition(host.starts == 2, "Failed manual retry must wait for another click")
+
+    host.failsToStart = false
+    host.delayStart = true
+    connect(in: view)
+    eventually("Connect starts one pending attempt") { host.starts == 3 && host.startContinuation != nil }
+    eventually("Pending attempt hides Connect") { accessibleElement(named: "Connect", in: view) == nil }
+    host.delayStart = false
+    host.startContinuation?.resume()
+    host.startContinuation = nil
+    eventually("Manual connection succeeds") { host.active.count == 1 }
+    precondition(host.requestedDeviceIDs == Array(repeating: "test-device", count: 3), "Connect must keep the same device")
+    precondition(host.busyStarts == 0, "Connect must not overlap attempts")
+    window.contentView = nil
+    eventually("Removing reconnected preview releases it") { host.active.isEmpty }
+    print("Live Preview manual connection tests passed")
   }
 
   static func testRecordingPlaybackVisibility() {
