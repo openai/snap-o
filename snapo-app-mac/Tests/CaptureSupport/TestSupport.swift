@@ -59,7 +59,9 @@ final class LivePreviewSession {
   private var hasFormat = false
   private var stopError: Error?
 
-  var isReady: Bool { hasFormat && !isStopped }
+  var isReady: Bool {
+    hasFormat && !isStopped
+  }
 
   init(readyGate: TestGate?) {
     self.readyGate = readyGate
@@ -134,10 +136,14 @@ actor ScreenshotService {
 
 actor ADBService {
   private let displayGates: [String: TestGate]
+  private let pointerPreparationGate: TestGate?
   private(set) var pointerPreparations: [String] = []
   private(set) var pointerEvents: [LivePreviewPointerEvent] = []
-  init(displayGates: [String: TestGate] = [:]) {
+  private(set) var activePointerDeviceIDs: Set<String> = []
+
+  init(displayGates: [String: TestGate] = [:], pointerPreparationGate: TestGate? = nil) {
     self.displayGates = displayGates
+    self.pointerPreparationGate = pointerPreparationGate
   }
 
   func exec() -> ADBService {
@@ -153,8 +159,19 @@ actor ADBService {
     return "1080x2400"
   }
 
-  func recordPointerPreparation(deviceID: String) {
+  func recordPointerPreparation(deviceID: String) async {
+    // Model an actor call queued before registration, even if its task is cancelled.
+    await pointerPreparationGate?.wait()
     pointerPreparations.append(deviceID)
+    activePointerDeviceIDs.insert(deviceID)
+  }
+
+  func recordPointerStop(deviceID: String) {
+    activePointerDeviceIDs.remove(deviceID)
+  }
+
+  func recordPointerStopAll() {
+    activePointerDeviceIDs.removeAll()
   }
 
   func recordPointerEvent(_ event: LivePreviewPointerEvent) {
@@ -183,8 +200,14 @@ actor LivePreviewPointerInjector {
     await adb.recordPointerPreparation(deviceID: deviceID)
   }
 
-  func stopDevice(_: String) {}
-  func stopAll() {}
+  func stopDevice(_ deviceID: String) async {
+    await adb.recordPointerStop(deviceID: deviceID)
+  }
+
+  func stopAll() async {
+    await adb.recordPointerStopAll()
+  }
+
   func enqueue(_ event: LivePreviewPointerEvent) async {
     await adb.recordPointerEvent(event)
   }

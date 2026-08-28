@@ -13,6 +13,8 @@ struct CaptureModeTests {
   static let second = testDevice("second")
 
   static func main() async throws {
+    try await teardownWaitsForPointerPreparation()
+    try await removingDevicePreservesOtherPointer()
     try await pointerWaitsForReadiness()
     try await failedStreamsDoNotPreparePointer()
     try await stoppedPreviewDoesNotPreparePointer()
@@ -23,7 +25,7 @@ struct CaptureModeTests {
     await stopDuringRendererStart()
     await overlappingDeviceUpdates()
     await modePropagatesCancellation()
-    print("Capture mode tests passed (10 cases)")
+    print("Capture mode tests passed (12 cases)")
   }
 
   static func eventually(_ condition: () async -> Bool) async {
@@ -54,6 +56,70 @@ struct CaptureModeTests {
     let events = await adb.pointerEvents
     precondition(preparations.isEmpty, "Unready preview must not prepare a virtual touchscreen")
     precondition(events.isEmpty, "Unready preview must not forward pointer events")
+  }
+
+  enum Teardown: CaseIterable {
+    case renderer, device, manager, rendererAndManager, deviceAndManager
+  }
+
+  static func teardownWaitsForPointerPreparation() async throws {
+    for teardown in Teardown.allCases {
+      let preparationGate = TestGate()
+      let adb = ADBService(pointerPreparationGate: preparationGate)
+      let service = LivePreviewService()
+      let manager = makeManager(service, adb: adb)
+      await manager.start(with: [first])
+      let renderer = try await manager.makeRenderer(for: first.id)
+      await eventually { await preparationGate.waitCount == 1 }
+
+      var stopped = false
+      let stop = Task {
+        switch teardown {
+        case .renderer:
+          await manager.stopRenderer(renderer)
+        case .device:
+          await manager.updateDevices([])
+        case .manager:
+          await manager.stop()
+        case .rendererAndManager, .deviceAndManager:
+          let removing = Task {
+            if teardown == .rendererAndManager {
+              await manager.stopRenderer(renderer)
+            } else {
+              await manager.updateDevices([])
+            }
+          }
+          await eventually { await service.stops.count == 1 }
+          await manager.stop()
+          await removing.value
+        }
+        stopped = true
+      }
+      await eventually { await service.active.isEmpty }
+      await settle()
+      precondition(!stopped, "\(teardown) must wait for queued pointer preparation")
+
+      await preparationGate.open()
+      await stop.value
+      let preparations = await adb.pointerPreparations
+      let activeDevices = await adb.activePointerDeviceIDs
+      precondition(preparations == [first.id])
+      precondition(activeDevices.isEmpty, "\(teardown) must not leave an input device registered")
+      await manager.stop()
+    }
+  }
+
+  static func removingDevicePreservesOtherPointer() async throws {
+    let adb = ADBService()
+    let manager = makeManager(LivePreviewService(), adb: adb)
+    await manager.start(with: [first, second])
+    _ = try await manager.makeRenderer(for: first.id)
+    _ = try await manager.makeRenderer(for: second.id)
+    await eventually { await adb.activePointerDeviceIDs == [first.id, second.id] }
+    await manager.updateDevices([second])
+    let activeDevices = await adb.activePointerDeviceIDs
+    precondition(activeDevices == [second.id])
+    await manager.stop()
   }
 
   static func pointerWaitsForReadiness() async throws {
