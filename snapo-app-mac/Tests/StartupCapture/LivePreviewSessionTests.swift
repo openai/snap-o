@@ -144,6 +144,7 @@ final class H264StreamDecoder: @unchecked Sendable {
 struct LivePreviewSessionTests {
   static func main() async throws {
     let session = try await LivePreviewSession(deviceID: "ready", adb: ADBService())
+    precondition(!session.isReady)
     guard let decoder = H264StreamDecoder.latest else { fatalError("Missing decoder") }
     let first = Task { try await session.waitUntilReady() }
     let second = Task { try await session.waitUntilReady() }
@@ -155,7 +156,10 @@ struct LivePreviewSessionTests {
     let secondMedia = try await second.value
     precondition(firstMedia == secondMedia)
     precondition(firstMedia.size == CGSize(width: 1080, height: 2400))
+    precondition(session.isReady)
     session.cancel()
+    precondition(!session.isReady)
+    await expectCancellation(Task { try await session.waitUntilReady() })
     _ = await session.waitUntilStop()
     await eventually { decoder.finishCount == 1 }
 
@@ -166,6 +170,7 @@ struct LivePreviewSessionTests {
       await Task.yield()
     }
     cancelled.cancel()
+    precondition(!cancelled.isReady)
     await expectCancellation(pendingFirst)
     await expectCancellation(pendingSecond)
     await expectCancellation(Task { try await cancelled.waitUntilReady() })

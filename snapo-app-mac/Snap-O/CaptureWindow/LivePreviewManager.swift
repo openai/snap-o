@@ -22,6 +22,7 @@ final class LivePreviewManager {
   private var captureIDs: [String: UUID] = [:]
   private var lastDisplayInfo: [String: DisplayInfo] = [:]
   private var activeOperations: [UUID: LivePreviewOperationHandle] = [:]
+  private var readinessTasks: [UUID: Task<Void, Never>] = [:]
   private var inFlightRendererRequestIDs: Set<UUID> = []
   private var stoppingRendererIDs: Set<UUID> = []
   private var deviceSyncID = UUID()
@@ -100,14 +101,13 @@ final class LivePreviewManager {
       throw CancellationError()
     }
     activeOperations[operation.id] = operation
-    await pointerInjector.prepare(deviceID: deviceID)
 
     let renderer = LivePreviewRenderer(
       operation: operation
     ) { [weak self] action, source, location, displaySize in
       Task {
         await self?.sendPointerEvent(
-          deviceID: deviceID,
+          operation: operation,
           action: action,
           source: source,
           location: location,
@@ -117,15 +117,18 @@ final class LivePreviewManager {
     }
 
     let session = operation.session
-    Task { [weak self] in
+    readinessTasks[operation.id] = Task { [weak self] in
       do {
         let media = try await session.waitUntilReady()
         guard let self,
               !isStopped,
               activeOperations[operation.id] != nil,
+              session.isReady,
               let device = deviceInfo[deviceID]
         else { return }
         storeMedia(media, for: device)
+        // Failed stream startups must not add and remove Android input devices.
+        await pointerInjector.prepare(deviceID: deviceID)
       } catch {
         if !(error is CancellationError) {
           SnapOLog.ui.error(
@@ -158,10 +161,10 @@ final class LivePreviewManager {
 
   func stopRenderer(_ renderer: LivePreviewRenderer) async {
     let operationID = renderer.operation.id
-    guard activeOperations.removeValue(forKey: operationID) != nil else { return }
+    guard let operation = activeOperations.removeValue(forKey: operationID) else { return }
     stoppingRendererIDs.insert(operationID)
     defer { stoppingRendererIDs.remove(operationID) }
-    _ = await livePreviewService.stop(renderer.operation)
+    await stopOperation(operation)
     if !activeOperations.values.contains(where: { $0.deviceID == renderer.deviceID }) {
       await pointerInjector.stopDevice(renderer.deviceID)
     }
@@ -181,14 +184,21 @@ final class LivePreviewManager {
     lastDisplayInfo.removeAll()
     notifyMediaChanged()
     await prepared?.discard()
-    await pointerInjector.stopAll()
 
     for operation in operations {
-      _ = await livePreviewService.stop(operation)
+      await stopOperation(operation)
     }
     while !inFlightRendererRequestIDs.isEmpty || !stoppingRendererIDs.isEmpty {
       await Task.yield()
     }
+    await pointerInjector.stopAll()
+  }
+
+  private func stopOperation(_ operation: LivePreviewOperationHandle) async {
+    let readinessTask = readinessTasks.removeValue(forKey: operation.id)
+    // Stopping the session releases readiness waiters before we await queued input setup.
+    _ = await livePreviewService.stop(operation)
+    await readinessTask?.value
   }
 
   // MARK: - Device + Media Management
@@ -219,7 +229,7 @@ final class LivePreviewManager {
       stoppingRendererIDs.remove(cleanupID)
     }
     for operation in removedOperations {
-      _ = await livePreviewService.stop(operation)
+      await stopOperation(operation)
       stoppingRendererIDs.remove(operation.id)
     }
     for deviceID in removedDeviceIDs {
@@ -342,14 +352,17 @@ final class LivePreviewManager {
   }
 
   private func sendPointerEvent(
-    deviceID: String,
+    operation: LivePreviewOperationHandle,
     action: LivePreviewPointerAction,
     source: LivePreviewPointerSource,
     location: CGPoint,
     displaySize: CGSize
   ) async {
+    guard !isStopped,
+          activeOperations[operation.id] != nil,
+          operation.session.isReady else { return }
     let event = LivePreviewPointerEvent(
-      deviceID: deviceID,
+      deviceID: operation.deviceID,
       action: action,
       source: source,
       location: location,
