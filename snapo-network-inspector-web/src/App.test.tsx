@@ -169,8 +169,101 @@ describe("app inspector restoration UI", () => {
     vi.useRealTimers();
   });
 
-  it("shows status and an open action without a spinner until the remembered inspector appears", async () => {
+  async function renderWaitingForInspector() {
+    const starter = { ...app(1, ["tweaks"]), processName: "com.example.starter", packageName: "com.example.starter" };
+    vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
     await act(async () => root.render(<App />));
+    // Explicit selection can wait for an inspector after startup chooses a usable app.
+    await act(async () => nativeSelectApp(discovered[0].id));
+  }
+
+  it("waits for initial discovery before restoring the saved app and inspector", async () => {
+    const other = { ...app(30, ["tweaks"]), processName: "com.example.other" };
+    discovered = [other, app(20, ["network", "tweaks"])];
+    let finish!: (apps: InspectableApp[]) => void;
+    vi.mocked(mocks.client.listInspectorApps).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await act(async () => root.render(<App />));
+    expect(mocks.client.startStream).not.toHaveBeenCalled();
+    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
+    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selectedApp: null, selection: null })
+    );
+    await act(async () => finish(discovered));
+    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
+    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
+  });
+
+  it("selects and saves a fallback when the remembered app is unavailable", async () => {
+    const other = { ...app(30, ["network"]), processName: "com.example.other", androidUserId: 10 };
+    discovered = [other];
+    await act(async () => root.render(<App />));
+    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_30");
+    const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
+    expect(JSON.parse(saved!).last).toEqual({
+      deviceId: "phone",
+      processName: "com.example.other",
+      androidUserId: 10,
+      kind: "network"
+    });
+
+    discovered = [app(20, ["network", "tweaks"])];
+    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selection: null,
+        selectedApp: expect.objectContaining({ id: other.id, androidUserId: 10 })
+      })
+    );
+    expect(mocks.client.saveInspectorPreferences).toHaveBeenCalledTimes(1);
+    expect(mocks.client.startStream).not.toHaveBeenCalledWith(discovered[0].inspectors[0].server);
+  });
+
+  it("saves a fallback for legacy preferences without guessing the saved profile", async () => {
+    const legacy = { deviceId: "phone", processName: "com.example.demo", kind: "network" };
+    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(
+      JSON.stringify({ last: legacy, apps: [legacy] })
+    );
+    discovered = [
+      { ...app(30, ["tweaks"]), processName: "com.example.other", androidUserId: 10 },
+      app(20, ["network"])
+    ];
+    await act(async () => root.render(<App />));
+    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
+    const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
+    expect(JSON.parse(saved!).last).toEqual({
+      deviceId: "phone",
+      processName: "com.example.other",
+      androidUserId: 10,
+      kind: "tweaks"
+    });
+  });
+
+  it("keeps trying discovery until a usable fallback appears", async () => {
+    discovered = [];
+    vi.mocked(mocks.client.listInspectorApps).mockRejectedValueOnce(new Error("Discovery unavailable"));
+    await act(async () => root.render(<App />));
+    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
+    discovered = [{ ...app(30, ["network"]), processName: "com.example.other" }];
+    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_30");
+    expect(mocks.client.saveInspectorPreferences).toHaveBeenCalledTimes(1);
+  });
+
+  it("selects an available inspector when the saved inspector is missing at startup", async () => {
+    await act(async () => root.render(<App />));
+    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
+    const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
+    expect(JSON.parse(saved!).last.kind).toBe("tweaks");
+  });
+
+  it("shows status and an open action without a spinner until the remembered inspector appears", async () => {
+    await renderWaitingForInspector();
     expect(container.querySelector('[role="status"] svg')).toBeNull();
     expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for inspector");
     expect(container.querySelector("[data-inspector]")).toBeNull();
@@ -191,7 +284,7 @@ describe("app inspector restoration UI", () => {
           finish = resolve;
         })
     );
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     discovered = [];
     await act(async () => vi.advanceTimersByTimeAsync(2_500));
     const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
@@ -218,7 +311,7 @@ describe("app inspector restoration UI", () => {
 
   it("shows launch errors and allows a retry without stopping discovery", async () => {
     vi.mocked(mocks.client.openApp!).mockRejectedValueOnce(new Error("Device is offline."));
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
     await act(async () => button.click());
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Device is offline.");
@@ -235,7 +328,7 @@ describe("app inspector restoration UI", () => {
 
   it("does not offer app launch when the client does not support it", async () => {
     delete mocks.client.openApp;
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     expect(container.querySelector('[role="status"]')).not.toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelector('[role="status"] .body-loading-spinner svg')).not.toBeNull();
@@ -250,7 +343,7 @@ describe("app inspector restoration UI", () => {
     saved.reconcile([{ ...waitingApp, inspectors: app(20, ["network"]).inspectors }]);
     vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(saved.serialize());
     discovered = [waitingApp];
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
       expect.objectContaining({ selectedApp: expect.objectContaining({ processName: "com.example.demo:worker" }) })
     );
@@ -266,7 +359,7 @@ describe("app inspector restoration UI", () => {
     saved.selectInspector(workApp, { kind: "network", server: { deviceId: "phone", socketName: "snapo_network_20" } });
     vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(saved.serialize());
     discovered = [workApp];
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     discovered = [{ ...workApp, id: "phone:pid:30", androidUserId: 0 }];
     await act(async () => vi.advanceTimersByTimeAsync(2_500));
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
@@ -278,7 +371,7 @@ describe("app inspector restoration UI", () => {
   });
 
   it("refreshes immediately after opening and every half second for five seconds", async () => {
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     const scans = vi.mocked(mocks.client.listInspectorApps);
     const initialScans = scans.mock.calls.length;
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
@@ -300,7 +393,7 @@ describe("app inspector restoration UI", () => {
   });
 
   it("does not overlap slow scans during the launch window", async () => {
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     const scans = vi.mocked(mocks.client.listInspectorApps);
     let finish!: (apps: InspectableApp[]) => void;
     scans.mockImplementationOnce(
@@ -319,7 +412,7 @@ describe("app inspector restoration UI", () => {
   });
 
   it("keeps polling after a failed scan and stops fast polling after a launch error", async () => {
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     const scans = vi.mocked(mocks.client.listInspectorApps);
     let fail!: (error: Error) => void;
     vi.mocked(mocks.client.openApp!).mockImplementationOnce(
@@ -348,7 +441,7 @@ describe("app inspector restoration UI", () => {
           finish = resolve;
         })
     );
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
     await act(async () => vi.advanceTimersByTimeAsync(5_000));
     expect(container.querySelector(".inspector-open-app")).toBeNull();
@@ -365,7 +458,7 @@ describe("app inspector restoration UI", () => {
           finish = resolve;
         })
     );
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
     await act(async () => root.render(null));
     const scans = vi.mocked(mocks.client.listInspectorApps);
@@ -388,7 +481,7 @@ describe("app inspector restoration UI", () => {
           fail = reject;
         })
     );
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
     await act(async () => nativeSelectApp(other.id));
     const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
@@ -408,7 +501,7 @@ describe("app inspector restoration UI", () => {
     const other = { ...app(30, ["tweaks"]), name: "Other", packageName: "com.example.other", processName: null };
     discovered.push(other);
     vi.mocked(mocks.client.openApp!).mockRejectedValueOnce(new Error("Device is offline."));
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Device is offline.");
 
@@ -421,7 +514,7 @@ describe("app inspector restoration UI", () => {
   });
 
   it("honors a native explicit choice while discovery is in flight", async () => {
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     let finish!: (apps: InspectableApp[]) => void;
     vi.mocked(mocks.client.listInspectorApps).mockImplementationOnce(
       () =>
@@ -458,7 +551,7 @@ describe("app inspector restoration UI", () => {
 
   it("keeps a browser picker available during restoration", async () => {
     Object.assign(mocks.client, { usesNativeServerPicker: false });
-    await act(async () => root.render(<App />));
+    await renderWaitingForInspector();
     expect(container.querySelector('button[aria-label="Select an app"]')).not.toBeNull();
     const tweaks = container.querySelector('button[aria-label="Tweaks"]') as HTMLButtonElement;
     await act(async () => tweaks.click());

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { InspectableApp, TweakList } from "./network/bridge-types";
+import type { AppInspectorKind, InspectableApp, TweakList } from "./network/bridge-types";
 import type { NetworkClient } from "./network/client";
 import { InspectorRestoration } from "./features/app-inspector/restoration";
 import { App } from "./App";
@@ -14,7 +14,7 @@ vi.mock("./features/network-inspector/hooks/useNetworkInspectorModel", () => ({
 }));
 vi.mock("./features/network-inspector/NetworkInspectorApp", () => ({ NetworkInspectorApp: () => null }));
 
-function app(pid: number): InspectableApp {
+function app(pid: number, kind: AppInspectorKind = "tweaks"): InspectableApp {
   return {
     id: `phone:pid:${pid}`,
     name: "Demo",
@@ -23,9 +23,7 @@ function app(pid: number): InspectableApp {
     processName: "com.example.demo",
     deviceId: "phone",
     deviceDisplayTitle: "Phone",
-    inspectors: [
-      { kind: "tweaks", protocolVersion: 4, server: { deviceId: "phone", socketName: `snapo_tweaks_${pid}` } }
-    ]
+    inspectors: [{ kind, protocolVersion: 4, server: { deviceId: "phone", socketName: `snapo_${kind}_${pid}` } }]
   };
 }
 
@@ -75,6 +73,18 @@ describe("retained Tweaks view", () => {
     vi.useRealTimers();
   });
 
+  async function renderWaitingForTweaks() {
+    const starter = {
+      ...app(1, "network"),
+      processName: "com.example.starter",
+      packageName: "com.example.starter"
+    };
+    discovered = [app(10, "network")];
+    vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
+    await act(async () => root.render(<App />));
+    await act(async () => selectApp(discovered[0].id));
+  }
+
   it("preserves the real Tweaks view through disconnect and PID replacement", async () => {
     await act(async () => root.render(<App />));
     const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
@@ -105,14 +115,6 @@ describe("retained Tweaks view", () => {
   });
 
   it("keeps the launch spinner through the transition into Tweaks and shows data as soon as it loads", async () => {
-    discovered = [
-      {
-        ...app(10),
-        inspectors: [
-          { kind: "network", protocolVersion: 4, server: { deviceId: "phone", socketName: "snapo_network_10" } }
-        ]
-      }
-    ];
     let finish!: (value: TweakList) => void;
     vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
       () =>
@@ -120,7 +122,7 @@ describe("retained Tweaks view", () => {
           finish = resolve;
         })
     );
-    await act(async () => root.render(<App />));
+    await renderWaitingForTweaks();
     expect(container.querySelector(".inspector-loading-shell")).not.toBeNull();
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
     expect(container.querySelector(".inspector-open-app")).toBeNull();
@@ -143,16 +145,8 @@ describe("retained Tweaks view", () => {
   });
 
   it("restores Open five seconds after the click even when the waiting view changes", async () => {
-    discovered = [
-      {
-        ...app(10),
-        inspectors: [
-          { kind: "network", protocolVersion: 4, server: { deviceId: "phone", socketName: "snapo_network_10" } }
-        ]
-      }
-    ];
     vi.mocked(mocks.client.listTweaks).mockImplementationOnce(() => new Promise(() => {}));
-    await act(async () => root.render(<App />));
+    await renderWaitingForTweaks();
     await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
     discovered = [app(20)];
     await act(async () => vi.advanceTimersByTimeAsync(1_500));
