@@ -52,8 +52,14 @@ struct LivePreviewOperationHandle {
 
 @MainActor
 final class LivePreviewSession {
+  enum StreamError: Error { case failed }
+
   private let readyGate: TestGate?
   private var isStopped = false
+  private var hasFormat = false
+  private var stopError: Error?
+
+  var isReady: Bool { hasFormat && !isStopped }
 
   init(readyGate: TestGate?) {
     self.readyGate = readyGate
@@ -61,13 +67,20 @@ final class LivePreviewSession {
 
   func waitUntilReady() async throws -> Media {
     await readyGate?.wait()
+    if let stopError { throw stopError }
     guard !isStopped else { throw CancellationError() }
+    hasFormat = true
     return .livePreview(capturedAt: Date(), display: testDisplay)
   }
 
   func cancel() async {
     isStopped = true
     await readyGate?.open()
+  }
+
+  func fail() async {
+    stopError = StreamError.failed
+    await cancel()
   }
 }
 
@@ -121,6 +134,8 @@ actor ScreenshotService {
 
 actor ADBService {
   private let displayGates: [String: TestGate]
+  private(set) var pointerPreparations: [String] = []
+  private(set) var pointerEvents: [LivePreviewPointerEvent] = []
   init(displayGates: [String: TestGate] = [:]) {
     self.displayGates = displayGates
   }
@@ -137,10 +152,18 @@ actor ADBService {
     await displayGates[deviceID]?.wait()
     return "1080x2400"
   }
+
+  func recordPointerPreparation(deviceID: String) {
+    pointerPreparations.append(deviceID)
+  }
+
+  func recordPointerEvent(_ event: LivePreviewPointerEvent) {
+    pointerEvents.append(event)
+  }
 }
 
 enum LivePreviewPointerAction { case down }
-enum LivePreviewPointerSource { case mouse }
+enum LivePreviewPointerSource { case mouse, touchscreen }
 struct LivePreviewPointerEvent {
   let deviceID: String
   let action: LivePreviewPointerAction
@@ -150,25 +173,37 @@ struct LivePreviewPointerEvent {
 }
 
 actor LivePreviewPointerInjector {
-  init(adb _: ADBService) {}
-  func prepare(deviceID _: String) {}
+  private let adb: ADBService
+
+  init(adb: ADBService) {
+    self.adb = adb
+  }
+
+  func prepare(deviceID: String) async {
+    await adb.recordPointerPreparation(deviceID: deviceID)
+  }
+
   func stopDevice(_: String) {}
   func stopAll() {}
-  func enqueue(_: LivePreviewPointerEvent) {}
+  func enqueue(_ event: LivePreviewPointerEvent) async {
+    await adb.recordPointerEvent(event)
+  }
 }
 
 @MainActor
 final class LivePreviewRenderer {
   let operation: LivePreviewOperationHandle
+  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
   var deviceID: String {
     operation.deviceID
   }
 
   init(
     operation: LivePreviewOperationHandle,
-    pointerHandler _: @escaping (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
+    pointerHandler: @escaping (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
   ) {
     self.operation = operation
+    sendPointer = pointerHandler
   }
 }
 

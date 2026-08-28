@@ -100,14 +100,13 @@ final class LivePreviewManager {
       throw CancellationError()
     }
     activeOperations[operation.id] = operation
-    await pointerInjector.prepare(deviceID: deviceID)
 
     let renderer = LivePreviewRenderer(
       operation: operation
     ) { [weak self] action, source, location, displaySize in
       Task {
         await self?.sendPointerEvent(
-          deviceID: deviceID,
+          operation: operation,
           action: action,
           source: source,
           location: location,
@@ -123,9 +122,12 @@ final class LivePreviewManager {
         guard let self,
               !isStopped,
               activeOperations[operation.id] != nil,
+              session.isReady,
               let device = deviceInfo[deviceID]
         else { return }
         storeMedia(media, for: device)
+        // Failed stream startups must not add and remove Android input devices.
+        await pointerInjector.prepare(deviceID: deviceID)
       } catch {
         if !(error is CancellationError) {
           SnapOLog.ui.error(
@@ -342,14 +344,17 @@ final class LivePreviewManager {
   }
 
   private func sendPointerEvent(
-    deviceID: String,
+    operation: LivePreviewOperationHandle,
     action: LivePreviewPointerAction,
     source: LivePreviewPointerSource,
     location: CGPoint,
     displaySize: CGSize
   ) async {
+    guard !isStopped,
+          activeOperations[operation.id] != nil,
+          operation.session.isReady else { return }
     let event = LivePreviewPointerEvent(
-      deviceID: deviceID,
+      deviceID: operation.deviceID,
       action: action,
       source: source,
       location: location,

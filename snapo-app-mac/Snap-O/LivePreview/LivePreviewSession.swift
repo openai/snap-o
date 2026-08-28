@@ -10,6 +10,10 @@ final class LivePreviewSession {
 
   let deviceID: String
 
+  var isReady: Bool {
+    readyResult != nil && !hasStopped
+  }
+
   var media: Media?
   var sampleBufferHandler: ((CMSampleBuffer) -> Void)? {
     didSet {
@@ -55,8 +59,8 @@ final class LivePreviewSession {
   }
 
   func waitUntilReady() async throws -> Media {
-    if let readyResult { return readyResult }
     if let stopResult { throw stopResult ?? CancellationError() }
+    if let readyResult { return readyResult }
     return try await withCheckedThrowingContinuation { continuation in
       readyContinuations.append(continuation)
     }
