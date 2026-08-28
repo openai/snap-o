@@ -1,5 +1,5 @@
-import { LoaderCircle } from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
 import { decodeRequestBodyForDisplay, makeBodyPayload } from "../../../network/payload";
@@ -154,9 +154,7 @@ export const RequestDetail = memo(function RequestDetail({
           ) : responseBody == null ? (
             <div className="payload-card">
               <div className="body-loading" role="status">
-                <span className="body-loading-spinner" aria-hidden="true">
-                  <LoaderCircle size={14} />
-                </span>
+                <LoadingSpinner size={14} />
                 <span>Loading</span>
               </div>
             </div>
