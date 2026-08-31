@@ -121,8 +121,10 @@ describe("inspector restoration", () => {
     expect(saved).not.toContain("snapo_");
     expect(saved).not.toContain("pid:");
     const owner = new InspectorRestoration(saved);
-    expect(owner.reconcile([app(30, ["network"])]).isRestoring).toBe(true);
-    expect(owner.reconcile([app(30)]).selection?.kind).toBe("tweaks");
+    expect(owner.reconcile([]).selection).toBeNull();
+    const other = app(20, ["network"], "com.example.other");
+    expect(owner.reconcile([other, app(30)]).selection).toMatchObject({ appId: "phone:pid:30", kind: "tweaks" });
+    expect(owner.serialize()).toBe(saved);
   });
 
   it("does not switch to another process, device, or app while restoring", () => {
@@ -274,11 +276,110 @@ describe("inspector restoration", () => {
     expect(owner.reconcile([app(30)]).selection).toBeNull();
   });
 
-  it("requires a new selection for saved preferences without an Android user", () => {
-    const legacy = { deviceId: "phone", processName: "com.example.demo", kind: "network" };
+  it.each([undefined, null])("falls back for legacy preferences with Android user %s", (androidUserId) => {
+    const legacy = { deviceId: "phone", processName: "com.example.demo", kind: "network", androidUserId };
     const owner = new InspectorRestoration(JSON.stringify({ last: legacy, apps: [legacy] }));
     const work = app(20, ["network"], "com.example.demo", "phone", 10);
-    expect(owner.reconcile([app(), work]).selection).toBeNull();
-    expect(owner.selectApp(work).selection?.appId).toBe(work.id);
+    const unknownProfile = { ...app(40), androidUserId: null };
+    const first = app(30, ["tweaks"], "com.example.other", "phone", 10);
+    expect(owner.reconcile([first, app(), work, unknownProfile]).selection).toMatchObject({
+      appId: first.id,
+      kind: "tweaks"
+    });
+    expect(JSON.parse(owner.serialize()).last).toEqual({
+      deviceId: "phone",
+      processName: "com.example.other",
+      androidUserId: 10,
+      kind: "tweaks"
+    });
+  });
+
+  it.each([
+    ["another app", app(20, ["network"], "com.example.other")],
+    ["another process", app(20, ["network"], "com.example.demo:worker")],
+    ["another device", app(20, ["network"], "com.example.demo", "tablet")],
+    ["another profile", app(20, ["network"], "com.example.demo", "phone", 10)]
+  ])("saves a startup fallback when only %s is available", (_, first) => {
+    const owner = new InspectorRestoration(selected("tweaks").serialize());
+    const later = app(40, ["tweaks"], "com.example.later");
+    expect(owner.reconcile([first, later]).selection).toMatchObject({ appId: first.id, kind: "network" });
+    expect(JSON.parse(owner.serialize()).last).toEqual({
+      deviceId: first.deviceId,
+      processName: first.processName,
+      androidUserId: first.androidUserId,
+      kind: "network"
+    });
+    expect(new InspectorRestoration(owner.serialize()).reconcile([later, first]).selection?.appId).toBe(first.id);
+    expect(owner.reconcile([app(), first, later]).selection?.appId).toBe(first.id);
+  });
+
+  it("uses an available inspector when the saved inspector is missing at startup", () => {
+    const owner = new InspectorRestoration(selected("tweaks").serialize());
+    expect(owner.reconcile([app(20, ["network"])]).selection?.kind).toBe("network");
+    expect(JSON.parse(owner.serialize()).last.kind).toBe("network");
+    expect(owner.reconcile([app(20)]).selection?.kind).toBe("network");
+  });
+
+  it("falls back to the first usable app instead of waiting for another app's saved inspector", () => {
+    const owner = new InspectorRestoration(selected("tweaks").serialize());
+    const first = app(20, ["network"], "com.example.other");
+    expect(owner.reconcile([first, app(30, ["network"])]).selection?.appId).toBe(first.id);
+  });
+
+  it("uses a fallback app's saved inspector only when it is available", () => {
+    const owner = selected("tweaks");
+    const other = app(20, ["network"], "com.example.other");
+    owner.reconcile([app(), other]);
+    owner.selectApp(other);
+    const saved = owner.serialize();
+    expect(new InspectorRestoration(saved).reconcile([app(30)]).selection?.kind).toBe("tweaks");
+    const restarted = new InspectorRestoration(saved);
+    expect(restarted.reconcile([app(30, ["network"])]).selection?.kind).toBe("network");
+    expect(JSON.parse(restarted.serialize()).last.kind).toBe("network");
+  });
+
+  it.each([null, selected("tweaks").serialize()])(
+    "waits for a usable startup app without losing saved preferences",
+    (saved) => {
+      const owner = new InspectorRestoration(saved);
+      const before = owner.serialize();
+      const unidentified = { ...app(), processName: null };
+      const empty = app(20, [], "com.example.empty");
+      expect(owner.reconcile([]).selection).toBeNull();
+      expect(owner.reconcile([unidentified, empty]).selection).toBeNull();
+      expect(owner.serialize()).toBe(before);
+      const ready = app(30, ["network"], "com.example.ready");
+      expect(owner.reconcile([unidentified, empty, ready]).selection?.appId).toBe(ready.id);
+      expect(JSON.parse(owner.serialize()).last.processName).toBe(ready.processName);
+    }
+  );
+
+  it.each(["restored", "fallback", "explicit"])("does not fall back after a %s selection disconnects", (source) => {
+    const owner = new InspectorRestoration(source === "restored" ? selected().serialize() : null);
+    const target = app(20);
+    const other = app(30, ["network"], "com.example.other");
+    owner.reconcile(source === "explicit" ? [other, target] : [target, other]);
+    if (source === "explicit") owner.selectApp(target);
+    const saved = owner.serialize();
+    const displayedNetwork = owner.snapshot().displayedNetwork;
+    expect(owner.reconcile([]).selection).toBeNull();
+    expect(owner.reconcile([other])).toMatchObject({
+      selection: null,
+      selectedApp: { id: target.id },
+      displayedNetwork
+    });
+    expect(owner.reconcile([app(20, ["tweaks"]), other]).selection).toBeNull();
+    expect(owner.serialize()).toBe(saved);
+    expect(owner.reconcile([other, app(40)]).selection).toMatchObject({ appId: "phone:pid:40", kind: "network" });
+  });
+
+  it("does not override an explicit startup choice while its identity is pending", () => {
+    const owner = new InspectorRestoration(selected().serialize());
+    const pending = { ...app(20), processName: null };
+    owner.reconcile([pending]);
+    owner.selectApp(pending);
+    const other = app(30, ["network"], "com.example.other");
+    expect(owner.reconcile([other, pending]).selection).toBeNull();
+    expect(owner.reconcile([other, app(20)]).selection?.appId).toBe(pending.id);
   });
 });

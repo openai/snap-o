@@ -69,6 +69,7 @@ export class InspectorRestoration {
   private retained: Partial<Record<AppInspectorKind, SelectedAppInspector>> = {};
   private apps: InspectableApp[] = [];
   private awaitingAppIdentity = false;
+  private startupSelectionPending = true;
 
   constructor(raw: string | null = null) {
     try {
@@ -122,16 +123,31 @@ export class InspectorRestoration {
     }
     const preference = this.saved.last;
     const exact = this.target && apps.find((app) => app.id === this.target?.id && sameApp(this.target, app));
-    const app = exact || (preference && apps.find((candidate) => matches(candidate, preference)));
+    const app =
+      exact ??
+      (preference?.androidUserId != null ? apps.find((candidate) => matches(candidate, preference)) : undefined);
+
+    // Only startup may replace a missing saved app or inspector.
+    if (this.startupSelectionPending) {
+      const startupApp = app?.inspectors.some((option) => option.kind === this.kind)
+        ? app
+        : apps.find((candidate) => identity(candidate) && candidate.inspectors.length > 0);
+      if (startupApp) {
+        const preferredKind =
+          startupApp === app
+            ? this.kind
+            : (this.saved.apps.find((candidate) => matches(startupApp, candidate))?.kind ?? this.kind);
+        const option =
+          startupApp.inspectors.find((candidate) => candidate.kind === preferredKind) ?? startupApp.inspectors[0];
+        return this.selectInspector(startupApp, option);
+      }
+    }
 
     if (app && this.kind) {
       this.updateTarget(app);
       this.remember(app, this.kind);
       const option = app.inspectors.find((candidate) => candidate.kind === this.kind);
       this.setCurrent(app, option);
-    } else if (this.kind == null) {
-      const first = apps.find((candidate) => identity(candidate) && candidate.inspectors.length > 0);
-      if (first) this.selectApp(first);
     } else {
       this.current = null;
     }
@@ -139,6 +155,7 @@ export class InspectorRestoration {
   }
 
   selectApp(app: InspectableApp): AppInspectorState {
+    this.startupSelectionPending = false;
     if (!identity(app)) {
       this.updateTarget(app);
       this.current = null;
@@ -159,6 +176,7 @@ export class InspectorRestoration {
   }
 
   private selectKind(app: InspectableApp, kind: AppInspectorKind): void {
+    this.startupSelectionPending = false;
     if (!sameApp(this.target, app)) this.retained = {};
     this.awaitingAppIdentity = false;
     this.updateTarget(app);
