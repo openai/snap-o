@@ -940,10 +940,14 @@ val client = HttpClient(OkHttp) {
             </ol>
             <p class="notice">
               Each running app process has one picker row, with shortcuts for
-              its available inspectors. Snap-O remembers your inspector
-              selection and keeps captured requests visible while disconnected.
-              If the Android app restarts, select its new process to continue
-              with live traffic.
+              its available inspectors. At startup, Snap-O restores your last
+              app and inspector when available, or selects another available app.
+              During a session, it keeps captured requests visible through
+              disconnects and reconnects when the selected app returns.
+            </p>
+            <p class="prose">
+              If the selected Android app stops, click <strong>Open app</strong>
+              on the waiting screen when available, or launch it on your device.
             </p>
             <h3>Filter traffic</h3>
             <p class="prose">
