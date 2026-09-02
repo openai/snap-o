@@ -142,6 +142,7 @@ It uses the host computer's configured `adb` command, requires Python 3, and doe
 snapo network list --json
 snapo network requests -s <serial> -n <socket> --no-stream --json
 snapo network show -s <serial> -n <socket> -r <request-id> --json
+snapo network intercept ./prototype.py -s <serial> -n <socket>
 snapo tweaks apps --json
 snapo tweaks list -s <serial> -n <socket> --json
 snapo tweaks set 'Typography/Font size' 42 -s <serial> -n <socket>
@@ -149,6 +150,44 @@ snapo tweaks set 'Motion/Marker shape' RoundedSquare -s <serial> -n <socket>
 snapo tweaks reset 'Typography/Font size' -s <serial> -n <socket>
 snapo tweaks action 'Motion/Toggle animation' -s <serial> -n <socket>
 ```
+
+### Python API overrides
+
+Use `@route` handlers to prototype API changes in an Android app. This requires an app built with the updated Snap-O OkHttp integration. Older apps report that interception is unsupported.
+
+```python
+from snapo import route
+
+@route("GET", "api/profile")
+async def profile(call):
+    response = await call.upstream()
+    response.json["display_name"] = "Space Captain"
+    return response
+
+@route("GET", "api/tasks")
+async def tasks(call):
+    return call.json({"tasks": [{"id": "1", "title": "Example task"}]})
+```
+
+Save this as `prototype.py`, then run:
+
+```bash
+snapo network intercept prototype.py -s <serial> -n <socket>
+```
+
+The runner loads the file and registers its decorated functions. No scenario object or Python package installation is needed. `--check` loads and lists the routes without ADB or a device. `--no-watch` disables file watching. `--timeout 30` sets the handler deadline in seconds, including time spent waiting for the upstream response.
+
+Routes match an exact method and URL path on any host; a leading slash is optional. Query parameters do not affect matching. Inspect `call.request.url` to distinguish hosts or queries. Unmatched requests keep their normal behavior. Handlers run concurrently, so use `await asyncio.sleep(...)` or `asyncio.Event` to explore timing dependencies. Blocking code such as `time.sleep(...)` blocks every Python handler.
+
+`await call.upstream()` sends the original request on Android, using the app's authentication and transport. Repeated calls reuse that response. Edit `response.json`, `response.status`, or `response.headers`, then return it. `response.body` accepts bytes. `call.json(value, status=201)` creates a synthetic response without contacting the server. `call.request.json` reads a JSON request body. Changes to the request object do not rewrite the original request.
+
+Module variables provide shared state. A successful file reload resets that state for new calls. In-flight calls finish with their original handlers and state. Invalid edits leave the previous handlers active. Only the entry file is watched; restart the runner after changing imported helpers.
+
+Stopping the runner removes its routes and fails paused calls. Handler errors and deadlines fail the affected request; they never cause the runner to send it upstream as a fallback. The app's own retry policy still applies. Only one interception runner can own a process, while ordinary inspectors may remain connected.
+
+The initial implementation supports bounded HTTP bodies up to 1 MiB. Request bodies must be repeatable and declare their size. Requests accepting SSE bypass interception, and unexpected SSE responses fail without buffering the stream. WebSocket and HttpURLConnection traffic remain inspection-only. For larger uploads or streaming protocols, use the normal network path. The inspector shows the response delivered to the app; it does not yet show a before/after diff.
+
+See [examples/routes.py](examples/routes.py) for response edits, shared state, and delays, and the [interception protocol](contracts/network/interception.md) for transport details.
 
 ## Why a web UI for the App Inspector?
 
@@ -223,6 +262,13 @@ chmod +x ~/.local/bin/snapo
 
 This is the same CLI shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
 
+Python API overrides also need the bundled `python/snapo` directory. For interception on Linux, use a complete checkout and point your command at its script:
+
+```bash
+git clone https://github.com/openai/snap-o.git
+./snap-o/scripts/snapo network intercept ./prototype.py -s <serial>
+```
+
 The script supports `snapo network list`, `requests`, and `show`, as well as `snapo tweaks apps`, `list`, `get`, `set`, `action`, `reset`, and `watch`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
 
 Verify that ADB can see your Android device, then inspect its available Snap-O servers:
@@ -234,6 +280,8 @@ snapo tweaks apps --json
 ```
 
 With the default ADB configuration, the CLI opens a localhost forward for the selected `snapo_network_<pid>` or `snapo_tweaks_<pid>` socket and removes it when the command exits. Wrappers selecting a remote ADB server must tunnel that forward back to localhost; otherwise, specify `--adb-host` and `--adb-port`. With an explicit ADB endpoint, the CLI connects through the ADB server directly and does not create a forward. Treat captured bodies, URL query values, and editable tweaks as sensitive.
+
+For slow remote wrappers, `--adb-timeout 90` increases the per-command ADB deadline from its 30-second default. Values must be greater than zero and at most 90 seconds. This deadline is separate from the Python handler's `--timeout`. Repeated shutdown signals leave forward cleanup running until it finishes or reaches the ADB deadline.
 
 ## Community
 

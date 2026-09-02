@@ -8,6 +8,7 @@ import http.client
 import json
 import math
 import os
+import pathlib
 import re
 import shutil
 import signal
@@ -819,6 +820,45 @@ def run_requests(adb, options):
                 emit_event(message, options.json)
 
 
+def run_intercept(adb, options):
+    import asyncio
+
+    # The same package runs from a signed app bundle. Keep imports read-only.
+    sys.dont_write_bytecode = True
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for package_root in (root / "python", root / "Resources" / "snapo-python"):
+        if package_root.is_dir():
+            sys.path.insert(0, str(package_root))
+            break
+    try:
+        from snapo.intercept import load_routes, run_socket
+    except ImportError as error:
+        raise SnapOError("Interception requires the complete Snap-O checkout or app bundle, including its Python package.") from error
+
+    path = pathlib.Path(options.file).resolve()
+    try:
+        routes, digest = load_routes(path)
+        if not 0.1 <= options.timeout <= 120:
+            raise ValueError("--timeout must be between 0.1 and 120 seconds")
+        if options.check:
+            for method, route_path in routes:
+                print(f"{method} {route_path}")
+            return 0
+        server = choose_server(discover(adb, options), options.socket)
+        with ServerConnection(adb, server) as connection:
+            transport = connection.open_socket()
+            try:
+                asyncio.run(run_socket(transport.socket, path, routes, digest, options.timeout, not options.no_watch))
+            finally:
+                transport.socket.close()
+    except Exception as error:
+        detail = str(error)
+        if "Unsupported method: SnapO.intercept.enable" in detail:
+            detail = "This app does not support routes. Rebuild it with a Snap-O library that supports interception."
+        raise SnapOError(detail) from error
+    return 0
+
+
 @dataclass
 class RequestState:
     request_id: str
@@ -1320,6 +1360,7 @@ def add_common_options(parser, socket_option=False, json_option=True):
     parser.add_argument("--adb", help="path to the configured adb executable or shim")
     parser.add_argument("--adb-host", help="explicit ADB server host (requires --adb-port)")
     parser.add_argument("--adb-port", type=valid_port, help="explicit ADB server port (requires --adb-host)")
+    parser.add_argument("--adb-timeout", type=float, default=ADB_COMMAND_TIMEOUT, help="ADB command deadline in seconds, up to 90 (default: 30)")
     if json_option:
         parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
 
@@ -1348,6 +1389,8 @@ class SnapOArgumentParser(argparse.ArgumentParser):
         options = super().parse_args(arguments, namespace)
         if hasattr(options, "adb_host") and (options.adb_host is None) != (options.adb_port is None):
             self.error("--adb-host and --adb-port must be used together")
+        if hasattr(options, "adb_timeout") and not 0 < options.adb_timeout <= 90:
+            self.error("--adb-timeout must be greater than 0 and at most 90 seconds")
         if getattr(options, "root_command", None) == "tweaks":
             command = getattr(options, "tweaks_command", None)
             if command == "reset" and (options.name is None) == (not options.all):
@@ -1376,6 +1419,14 @@ def parser():
     add_common_options(show, socket_option=True)
     show.add_argument("-r", "--request-id", required=True)
     show.set_defaults(handler=run_show)
+
+    intercept = network_commands.add_parser("intercept", help="override API responses with Python @route handlers")
+    add_common_options(intercept, socket_option=True, json_option=False)
+    intercept.add_argument("file", help="Python file containing @route handlers")
+    intercept.add_argument("--timeout", type=float, default=30, help="maximum paused request duration in seconds (default: 30)")
+    intercept.add_argument("--no-watch", action="store_true", help="disable automatic file reload")
+    intercept.add_argument("--check", action="store_true", help="load and list routes without connecting to a device")
+    intercept.set_defaults(handler=run_intercept)
 
     tweaks = root_commands.add_parser("tweaks", help="inspect and update Snap-O live tweaks")
     tweaks_commands = tweaks.add_subparsers(dest="tweaks_command")
@@ -1420,6 +1471,9 @@ def parser():
 
 
 def interrupted(signum, frame):
+    # The parent CLI can send SIGTERM after the terminal has already sent SIGINT.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     raise KeyboardInterrupt
 
 
@@ -1433,7 +1487,7 @@ def main(arguments=None):
         cli.parse_args([options.root_command, "--help"])
         return 0
     try:
-        adb = ADB(resolve_adb(options.adb), host=options.adb_host, port=options.adb_port)
+        adb = None if getattr(options, "check", False) else ADB(resolve_adb(options.adb), host=options.adb_host, port=options.adb_port, timeout=options.adb_timeout)
         return options.handler(adb, options)
     except KeyboardInterrupt:
         return 130
@@ -1449,5 +1503,6 @@ def main(arguments=None):
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, interrupted)
     signal.signal(signal.SIGTERM, interrupted)
     sys.exit(main())

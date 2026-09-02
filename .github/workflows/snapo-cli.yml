@@ -8,6 +8,8 @@ on:
       - '.codex-plugin/plugin.json'
       - 'VERSION'
       - 'scripts/snapo'
+      - 'python/**'
+      - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
       - 'tests/snapo_cli/**'
@@ -21,6 +23,8 @@ on:
       - '.codex-plugin/plugin.json'
       - 'VERSION'
       - 'scripts/snapo'
+      - 'python/**'
+      - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
       - 'tests/snapo_cli/**'
@@ -55,6 +59,8 @@ jobs:
           "$SNAPO_CLI" network list --help
           "$SNAPO_CLI" network requests --help
           "$SNAPO_CLI" network show --help
+          "$SNAPO_CLI" network intercept --help
+          "$SNAPO_CLI" network intercept examples/routes.py --check
           "$SNAPO_CLI" tweaks apps --help
           "$SNAPO_CLI" tweaks list --help
           "$SNAPO_CLI" tweaks get --help

@@ -30,6 +30,7 @@ class NetworkInspectorServer internal constructor(
     private val app: Application,
     private val config: NetworkInspectorConfig = NetworkInspectorConfig(),
 ) {
+    val interception = NetworkInterception()
     private val bufferLock = Mutex()
     private val publishLock = Mutex()
     private val eventBuffer = EventBuffer(config)
@@ -38,6 +39,7 @@ class NetworkInspectorServer internal constructor(
         config = config,
         snapshotProvider = ::snapshotMessages,
         commandHandler = ::handleCommand,
+        interception = interception,
     )
 
     fun start(): Boolean {

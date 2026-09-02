@@ -199,14 +199,18 @@
 			);
 			inputPaths = (
 				"$(PROJECT_DIR)/../scripts/snapo",
+				"$(PROJECT_DIR)/../python/snapo/__init__.py",
+				"$(PROJECT_DIR)/../python/snapo/intercept.py",
 			);
 			name = "Embed Snap-O CLI";
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/snapo",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/snapo-python/snapo/__init__.py",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/snapo-python/snapo/intercept.py",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../scripts/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n\nif [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\nfi\n";
+			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../scripts/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n\nPYTHON_DEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/snapo-python/snapo\"\n/bin/mkdir -p \"${PYTHON_DEST}\"\n/bin/cp \"${PROJECT_DIR}/../python/snapo/__init__.py\" \"${PYTHON_DEST}/__init__.py\"\n/bin/cp \"${PROJECT_DIR}/../python/snapo/intercept.py\" \"${PYTHON_DEST}/intercept.py\"\n\nif [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
