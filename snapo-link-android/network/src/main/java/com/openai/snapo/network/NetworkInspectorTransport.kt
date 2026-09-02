@@ -36,6 +36,7 @@ internal class NetworkInspectorTransport(
     private val config: NetworkInspectorConfig,
     private val snapshotProvider: suspend () -> NetworkReplaySnapshot,
     private val commandHandler: suspend (CdpMessage) -> CdpMessage?,
+    private val interception: NetworkInterception,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val appIconProvider: AppIconProvider = AppIconProvider(app),
     private val serverStartWallMs: Long = System.currentTimeMillis(),
@@ -108,6 +109,7 @@ internal class NetworkInspectorTransport(
             appInfoProvider = ::buildAppInfoMessage,
             snapshotProvider = snapshotProvider,
             commandHandler = commandHandler,
+            interception = interception,
             scope = scope,
         )
         registerSession(session)
@@ -168,6 +170,7 @@ private class NetworkInspectorSession(
     private val appInfoProvider: () -> CdpMessage,
     private val snapshotProvider: suspend () -> NetworkReplaySnapshot,
     private val commandHandler: suspend (CdpMessage) -> CdpMessage?,
+    private val interception: NetworkInterception,
     private val scope: CoroutineScope,
 ) {
     private val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8))
@@ -207,12 +210,15 @@ private class NetworkInspectorSession(
     fun close() {
         if (isClosed) return
         isClosed = true
+        interception.disconnect(this)
         writerJob?.cancel()
         writerJob = null
         processorJob?.cancel()
         processorJob = null
         outgoing.close()
         operations.close()
+        // Closing the socket first releases a reader blocked in readLine.
+        runCatching { socket.close() }
         runCatching { writer.close() }
         runCatching { reader.close() }
     }
@@ -283,9 +289,15 @@ private class NetworkInspectorSession(
         when (message.method) {
             SnapOMethod.StartStream -> queueControl(SessionOperation.StartStream)
             SnapOMethod.StopStream -> queueControl(SessionOperation.StopStream)
-            else -> commandHandler(message)?.let { sendWithBackpressure(it) }
+            else -> {
+                val result = interception.command(this, ::sendControl, message) ?: commandHandler(message)
+                result?.let { sendWithBackpressure(it) }
+            }
         }
     }
+
+    private fun sendControl(message: CdpMessage): Boolean =
+        !isClosed && outgoing.trySend(message).isSuccess
 
     private suspend fun replaySnapshot(): Long {
         val snapshot = snapshotProvider()

@@ -10,6 +10,9 @@ import pathlib
 import select
 import socket
 import socketserver
+import signal
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -744,6 +747,39 @@ class TweakValueTests(unittest.TestCase):
 
 
 class ADBTests(unittest.TestCase):
+    def test_repeated_shutdown_signals_allow_forward_cleanup(self):
+        script = f'''
+import runpy, signal, time
+snapo = runpy.run_path({str(SCRIPT)!r})
+signal.signal(signal.SIGINT, snapo["interrupted"])
+signal.signal(signal.SIGTERM, snapo["interrupted"])
+class Adb:
+    def command(self, *args, **kwargs):
+        if args[1] == "--remove":
+            print("removing", flush=True)
+            time.sleep(0.2)
+            print("removed", flush=True)
+        return "27185"
+try:
+    with snapo["Forward"](Adb(), snapo["Server"]("emulator-5554", "snapo_network_42")):
+        print("ready", flush=True)
+        signal.pause()
+except KeyboardInterrupt:
+    pass
+'''
+        process = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(process.stdout.readline().strip(), "ready")
+            process.send_signal(signal.SIGINT)
+            self.assertEqual(process.stdout.readline().strip(), "removing")
+            process.send_signal(signal.SIGTERM)
+            output, _ = process.communicate(timeout=5)
+            self.assertIn("removed", output)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
     def test_parser_leaves_default_adb_endpoint_to_configured_adb(self):
         options = snapo.parser().parse_args(["network", "list"])
         self.assertIsNone(options.adb_host)

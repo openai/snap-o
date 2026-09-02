@@ -56,7 +56,8 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
 
     @Suppress("TooGenericExceptionCaught")
     override fun intercept(chain: Interceptor.Chain): Response {
-        if (NetworkInspector.getOrNull() == null) {
+        val server = NetworkInspector.getOrNull()
+        if (server == null) {
             return chain.proceed(chain.request())
         }
 
@@ -99,7 +100,7 @@ class SnapOOkHttpInterceptor @JvmOverloads constructor(
         )
 
         return try {
-            val response = chain.proceed(interceptedRequest)
+            val response = interceptWithRoutes(chain, interceptedRequest, server.interception)
             handleResponse(context, response, after = requestCapture.completion())
         } catch (error: IOException) {
             rethrowAfterRequestFailure(context, requestCapture.completion(), error)
