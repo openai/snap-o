@@ -179,13 +179,15 @@ The runner loads the file and registers its decorated functions. No scenario obj
 
 Routes match an exact method and URL path on any host; a leading slash is optional. Query parameters do not affect matching. Inspect `call.request.url` to distinguish hosts or queries. Unmatched requests keep their normal behavior. Handlers run concurrently, so use `await asyncio.sleep(...)` or `asyncio.Event` to explore timing dependencies. Blocking code such as `time.sleep(...)` blocks every Python handler.
 
-`await call.upstream()` sends the original request on Android, using the app's authentication and transport. Repeated calls reuse that response. Edit `response.json`, `response.status`, or `response.headers`, then return it. `response.body` accepts bytes. `call.json(value, status=201)` creates a synthetic response without contacting the server. `call.request.json` reads a JSON request body. Changes to the request object do not rewrite the original request.
+`await call.upstream()` sends the original request on Android, using the app's authentication and transport. Repeated calls reuse that response. Edit `response.json`, `response.status`, or `response.headers`, then return it. Reading `response.json` alone preserves the original body bytes and content headers; nested edits are detected when returning the response. `response.body` accepts bytes. `call.json(value, status=201)` creates a synthetic response without contacting the server. `call.request.json` reads a JSON request body. Changes to the request object do not rewrite the original request.
 
 Module variables provide shared state. A successful file reload resets that state for new calls. In-flight calls finish with their original handlers and state. Invalid edits leave the previous handlers active. Only the entry file is watched; restart the runner after changing imported helpers.
 
-Stopping the runner removes its routes and fails paused calls. Handler errors and deadlines fail the affected request; they never cause the runner to send it upstream as a fallback. The app's own retry policy still applies. Only one interception runner can own a process, while ordinary inspectors may remain connected.
+Stopping the runner removes its routes and fails paused calls. Handler errors and deadlines fail the affected request; they never cause the runner to send it upstream as a fallback. The app's own retry policy still applies. Each connection manages its own routes. Reloading, disabling, or disconnecting one runner leaves other runners active. If routes overlap, one matching handler runs; selection order is unspecified. Ordinary inspectors may remain connected.
 
 The initial implementation supports bounded HTTP bodies up to 1 MiB. Request bodies must be repeatable and declare their size. Requests accepting SSE bypass interception, and unexpected SSE responses fail without buffering the stream. WebSocket and HttpURLConnection traffic remain inspection-only. For larger uploads or streaming protocols, use the normal network path. The inspector shows the response delivered to the app; it does not yet show a before/after diff.
+
+The API follows the fetch-and-replace pattern used by [Playwright routes](https://playwright.dev/python/docs/api/class-route): `call.upstream()` fetches the original response, and returning a response completes the override. [mitmproxy addons](https://docs.mitmproxy.org/stable/addons/overview/) similarly use Python handlers and reload scripts. These tools have different APIs rather than a shared interception standard. Snap-O keeps exact method/path decorators and a returned response because requests run through the Android app's existing transport; it does not emulate a browser or require a proxy certificate.
 
 See [examples/routes.py](examples/routes.py) for response edits, shared state, and delays, and the [interception protocol](contracts/network/interception.md) for transport details.
 
@@ -262,12 +264,7 @@ chmod +x ~/.local/bin/snapo
 
 This is the same CLI shipped as part of the macOS app at `Snap-O.app/Contents/MacOS/snapo`.
 
-Python API overrides also need the bundled `python/snapo` directory. For interception on Linux, use a complete checkout and point your command at its script:
-
-```bash
-git clone https://github.com/openai/snap-o.git
-./snap-o/scripts/snapo network intercept ./prototype.py -s <serial>
-```
+Python API overrides are included in the same standalone script. No checkout or extra Python package is required.
 
 The script supports `snapo network list`, `requests`, and `show`, as well as `snapo tweaks apps`, `list`, `get`, `set`, `action`, `reset`, and `watch`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
 

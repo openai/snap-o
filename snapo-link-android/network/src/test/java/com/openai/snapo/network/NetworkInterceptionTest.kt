@@ -51,7 +51,7 @@ class NetworkInterceptionTest {
         exchange.use {
             exchange.request(request)
             val other = Any()
-            assertNotNull(command("SnapO.intercept.enable", config(), other).error)
+            assertNull(command("SnapO.intercept.enable", config(path = "/other"), other).error)
             assertNotNull(
                 command(
                     "SnapO.intercept.resolve",
@@ -59,12 +59,35 @@ class NetworkInterceptionTest {
                     other
                 ).error
             )
-            interception.disconnect(other)
             interception.disconnect(owner)
             assertEquals("fail", exchange.awaitDecision { false }.action)
             assertNull(interception.open("GET", "/api/profile"))
+            requireNotNull(interception.open("GET", "/other")).close()
         }
         assertNull(command("SnapO.intercept.enable", config(), Any()).error)
+    }
+
+    @Test
+    fun `connections replace and disable only their own routes and pending exchanges`() {
+        enable()
+        val other = Any()
+        assertNull(command("SnapO.intercept.enable", config(path = "/other"), other).error)
+        val first = requireNotNull(interception.open("GET", "/api/profile"))
+        val second = requireNotNull(interception.open("GET", "/other"))
+        first.use {
+            second.use {
+                first.request(request)
+                second.request(request.copy(url = "https://example.test/other"))
+                assertNull(command("SnapO.intercept.enable", config(path = "/replacement"), other).error)
+                assertNull(interception.open("GET", "/other"))
+                requireNotNull(interception.open("GET", "/api/profile")).close()
+                assertNull(command("SnapO.intercept.disable", "{}", other).error)
+                assertNull(interception.open("GET", "/replacement"))
+                assertEquals("fail", second.awaitDecision { false }.action)
+                assertNull(resolve(first, "upstream").error)
+                assertEquals("upstream", first.awaitDecision { false }.action)
+            }
+        }
     }
 
     @Test
@@ -100,8 +123,8 @@ class NetworkInterceptionTest {
 
     private fun enable() { assertNull(command("SnapO.intercept.enable", config()).error) }
 
-    private fun config(id: String = "old", timeout: Long = 30_000) =
-        """{"routes":[{"id":"$id","method":"GET","path":"/api/profile"}],"timeoutMs":$timeout}"""
+    private fun config(id: String = "old", timeout: Long = 30_000, path: String = "/api/profile") =
+        """{"routes":[{"id":"$id","method":"GET","path":"$path"}],"timeoutMs":$timeout}"""
 
     private fun resolve(exchange: NetworkInterception.Exchange, action: String) =
         command("SnapO.intercept.resolve", """{"exchangeId":"${exchange.id}","action":"$action"}""")

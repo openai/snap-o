@@ -3,12 +3,45 @@ import base64
 import contextlib
 import json
 import pathlib
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "python"))
-from snapo.intercept import Runner, load_routes
+from test_snapo import snapo
+
+Runner = snapo.Runner
+load_routes = snapo.load_routes
+Response = snapo.Response
+
+class ResponseTest(unittest.TestCase):
+    def test_reading_json_preserves_original_bytes_and_content_headers(self):
+        body = b'{ "items": [1, 2], "value": 1.00 }\n'
+        wire = {"status": 200, "body": base64.b64encode(body).decode(), "headerEntries": [
+            {"name": "Content-Type", "value": "application/problem+json"},
+            {"name": "Content-Length", "value": str(len(body))},
+            {"name": "ETag", "value": '"original"'},
+        ]}
+        response = Response._from_wire(wire)
+        self.assertEqual([1, 2], response.json["items"])
+        self.assertEqual(wire, response._wire("GET"))
+        response.json["items"].append(3)
+        edited = response._wire("GET")
+        self.assertEqual([1, 2, 3], json.loads(base64.b64decode(edited["body"]))["items"])
+        response.json["items"].pop()
+        self.assertEqual(wire, response._wire("GET"))
+
+    def test_copied_cli_loads_routes_without_a_checkout_or_python_package(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            script = pathlib.Path(directory) / "snapo"
+            shutil.copyfile(root / "scripts/snapo", script)
+            routes = pathlib.Path(directory) / "routes.py"
+            routes.write_text('from snapo import route\n@route("GET", "/api/tasks")\nasync def tasks(call):\n    return call.json([])\n')
+            result = subprocess.run([sys.executable, "-I", str(script), "network", "intercept", str(routes), "--check"], cwd=directory, capture_output=True, text=True, timeout=10)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("GET /api/tasks", result.stdout)
 
 
 class InterceptionTest(unittest.IsolatedAsyncioTestCase):

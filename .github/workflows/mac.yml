@@ -10,7 +10,6 @@ on:
       - 'snapo-network-inspector-web/**'
       - 'contracts/network/**'
       - 'scripts/snapo'
-      - 'python/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
@@ -19,7 +18,6 @@ on:
       - 'snapo-network-inspector-web/**'
       - 'contracts/network/**'
       - 'scripts/snapo'
-      - 'python/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
 

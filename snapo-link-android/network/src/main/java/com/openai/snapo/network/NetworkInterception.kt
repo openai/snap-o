@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 /** Connection-owned routes. Inspection clients never receive or control paused requests. */
 class NetworkInterception {
     private val lock = Any()
-    private var lease: Lease? = null
+    private val leases = mutableListOf<Lease>()
     private val pending = mutableMapOf<String, Exchange>()
 
     internal fun command(
@@ -46,7 +46,6 @@ class NetworkInterception {
     }
 
     private fun enable(owner: Any, send: (CdpMessage) -> Boolean, params: JsonElement?) {
-        require(lease == null || lease?.owner === owner) { "Another interception runner is connected" }
         val config = ProtocolJson.decodeFromJsonElement(InterceptionConfig.serializer(), requireNotNull(params))
         require(config.routes.size in 1..128) { "Register between 1 and 128 routes" }
         require(config.timeoutMs in 100..120_000) { "timeoutMs must be between 100 and 120000" }
@@ -59,11 +58,12 @@ class NetworkInterception {
             }
         }
         // In-flight requests keep the handler generation they started with.
-        lease = Lease(owner, send, config)
+        leases.removeAll { it.owner === owner }
+        leases.add(Lease(owner, send, config))
     }
 
     private fun resolve(owner: Any, params: JsonElement?) {
-        require(lease?.owner === owner) { "This connection does not own interception" }
+        require(leases.any { it.owner === owner }) { "This connection does not own interception" }
         val decision = ProtocolJson.decodeFromJsonElement(InterceptionDecision.serializer(), requireNotNull(params))
         require(decision.action in setOf("upstream", "fulfill", "fail")) { "Unknown interception action" }
         if (decision.action == "fulfill") {
@@ -76,14 +76,17 @@ class NetworkInterception {
     }
 
     internal fun disconnect(owner: Any) = synchronized(lock) {
-        if (lease?.owner === owner) lease = null
+        leases.removeAll { it.owner === owner }
         pending.values.filter { it.owner === owner }.forEach { it.abort("Interception runner disconnected") }
     }
 
     /** Returns null without reading the body when no route matches. */
     fun open(method: String, path: String): Exchange? = synchronized(lock) {
-        val current = lease ?: return null
-        val route = current.config.routes.firstOrNull { it.method == method && it.path == path } ?: return null
+        // A request belongs to one matching connection; overrides are not chained.
+        val (current, route) = leases.firstNotNullOfOrNull { candidate ->
+            candidate.config.routes.firstOrNull { it.method == method && it.path == path }
+                ?.let { candidate to it }
+        } ?: return null
         if (pending.size >= 64) throw IOException("Too many paused Snap-O requests")
         val id = UUID.randomUUID().toString()
         Exchange(id, route.id, current.owner, current.send, current.config.timeoutMs).also { pending[id] = it }

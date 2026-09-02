@@ -12,7 +12,7 @@ Send `SnapO.intercept.enable` with `routes` and `timeoutMs`:
 
 Paths match the encoded URL path exactly, excluding the query. Methods are uppercase. Between 1 and 128 unique method/path pairs are accepted. The deadline must be between 100 and 120000 milliseconds. At most 64 exchanges may be paused at once.
 
-One connection owns interception. Another connection cannot replace its routes or resolve its requests. Re-registering replaces routes for new calls. Existing exchanges retain their original route ids. Disconnecting, or sending `SnapO.intercept.disable`, removes the routes and fails outstanding exchanges. A later connection can become the owner.
+Each connection owns a separate route list. Another connection cannot replace its routes or resolve its requests. Re-registering replaces only that connection’s routes for new calls. Existing exchanges retain their original route ids and owner. Disconnecting, or sending `SnapO.intercept.disable`, removes only the sender’s routes and fails only its outstanding exchanges. Other connections keep their routes and pending requests. When multiple connections match a request, one matching handler is selected; ordering is unspecified and overrides are not chained.
 
 ## Handle an exchange
 
