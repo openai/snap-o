@@ -18,6 +18,7 @@ import math
 import os
 import pathlib
 import re
+import runpy
 import shutil
 import signal
 import socket
@@ -977,16 +978,16 @@ sys.modules["snapo"] = _route_api
 def load_routes(path):
     path = pathlib.Path(path).resolve()
     source = path.read_bytes()
-    module = types.ModuleType(f"snapo_routes_{uuid.uuid4().hex}")
-    module.__file__ = str(path)
-    sys.modules[module.__name__] = module
+    original_path = sys.path.copy()
     # Resolve helpers next to the user's file, as Python does for an ordinary script.
     sys.path.insert(0, str(path.parent))
     try:
-        exec(compile(source, str(path), "exec"), module.__dict__)
+        namespace = runpy.run_path(str(path), run_name=f"snapo_routes_{uuid.uuid4().hex}")
+        if path.read_bytes() != source:
+            raise ValueError("Route file changed while loading; save it again")
         routes = {}
         seen = set()
-        for handler in module.__dict__.values():
+        for handler in namespace.values():
             if id(handler) in seen:
                 continue
             seen.add(id(handler))
@@ -1000,8 +1001,7 @@ def load_routes(path):
             raise ValueError("Register at most 128 routes")
         return routes, hashlib.sha256(source).digest()
     finally:
-        sys.path.pop(0)
-        sys.modules.pop(module.__name__, None)
+        sys.path[:] = original_path
 
 
 class Call:

@@ -1,8 +1,11 @@
 import asyncio
 import base64
 import contextlib
+import hashlib
 import json
+import os
 import pathlib
+import py_compile
 import shutil
 import subprocess
 import sys
@@ -37,11 +40,65 @@ class ResponseTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             script = pathlib.Path(directory) / "snapo"
             shutil.copyfile(root / "scripts/snapo", script)
+            script.chmod(0o755)
             routes = pathlib.Path(directory) / "routes.py"
             routes.write_text('from snapo import route\n@route("GET", "/api/tasks")\nasync def tasks(call):\n    return call.json([])\n')
-            result = subprocess.run([sys.executable, "-I", str(script), "network", "intercept", str(routes), "--check"], cwd=directory, capture_output=True, text=True, timeout=10)
-            self.assertEqual(0, result.returncode, result.stderr)
-            self.assertIn("GET /api/tasks", result.stdout)
+            for command in ([sys.executable, "-I", str(script)], [str(script)]):
+                with self.subTest(command=command):
+                    result = subprocess.run([*command, "network", "intercept", str(routes), "--check"], cwd=directory, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    self.assertIn("GET /api/tasks", result.stdout)
+
+
+class RouteLoaderTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reload_ignores_cached_bytecode_for_same_size_and_timestamp(self):
+        source = '''from snapo import route
+version = "old"
+@route("GET", "/api/profile")
+async def profile(call):
+    return version
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "routes.py"
+            path.write_text(source)
+            stamp = path.stat()
+            cache = pathlib.Path(py_compile.compile(
+                str(path), doraise=True, invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
+            ))
+            cached_bytes = cache.read_bytes()
+            old_routes, old_digest = load_routes(path)
+            updated = source.replace('"old"', '"new"')
+            path.write_text(updated)
+            os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+            new_routes, new_digest = load_routes(path)
+
+            self.assertEqual("old", await old_routes["GET", "/api/profile"](None))
+            self.assertEqual("new", await new_routes["GET", "/api/profile"](None))
+            self.assertEqual(hashlib.sha256(source.encode()).digest(), old_digest)
+            self.assertEqual(hashlib.sha256(updated.encode()).digest(), new_digest)
+            self.assertEqual(cached_bytes, cache.read_bytes())
+
+    async def test_route_file_can_import_sibling_helpers_and_define_dataclasses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            helper = "snapo_test_route_helper"
+            (root / f"{helper}.py").write_text('VERSION = "example"\n')
+            self.addCleanup(sys.modules.pop, helper, None)
+            path = root / "routes"
+            path.write_text('''from __future__ import annotations
+from dataclasses import dataclass
+from snapo import route
+from snapo_test_route_helper import VERSION
+@dataclass
+class State:
+    version: str
+@route("GET", "/api/profile")
+async def profile(call):
+    return State(VERSION)
+''')
+            routes, _ = load_routes(path)
+            state = await routes["GET", "/api/profile"](None)
+            self.assertEqual("example", state.version)
 
 
 class InterceptionTest(unittest.IsolatedAsyncioTestCase):
