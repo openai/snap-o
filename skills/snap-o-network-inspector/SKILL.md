@@ -1,11 +1,11 @@
 ---
 name: snap-o-network-inspector
-description: Fetch and inspect Android network captures for a selected device/socket using the Snap-O CLI. Use when you need raw CDP request/response data, headers, bodies, status, or websocket events.
+description: Inspect Android network captures and intercept HTTP calls with the Snap-O CLI for a selected device/socket. Use for request/response details, websocket events, API response overrides, mock responses, or delays with Python route handlers.
 ---
 
 # Snap-O Network Inspector
 
-Use this skill to pull raw network evidence from Snap-O.
+Use this skill to inspect network traffic or override API responses in an Android app.
 
 ## CLI Path
 
@@ -24,6 +24,7 @@ The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Us
 - `snapo network list`: lists available Snap-O Network Inspector servers.
 - `snapo network requests`: emits CDP network events for a server.
 - `snapo network show`: shows full details for a request id, including headers and bodies.
+- `snapo network intercept <file.py>`: runs [Python route handlers](references/interception.md) to edit or mock HTTP responses; requires Snap-O OkHttp interception support in the app.
 
 Useful global selectors:
 
@@ -33,7 +34,7 @@ Useful global selectors:
 - `--adb`: use a specific ADB executable or wrapper.
 - `--adb-host`, `--adb-port`: connect directly to an explicit remote ADB server; otherwise the configured ADB command selects its endpoint.
 
-## Core Flow
+## Inspection Flow
 
 1. List available servers.
 
@@ -41,7 +42,7 @@ Useful global selectors:
 "$SNAPO_BIN" network list --json
 ```
 
-For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, or `show`; the script uses the ADB server directly. Otherwise, its localhost forward is removed automatically when the command exits.
+For a remote ADB endpoint, append `--adb-host <host> --adb-port <port>` to `list`, `requests`, `show`, or `intercept`; the script uses the ADB server directly. Otherwise, its localhost forward is removed automatically when the command exits.
 
 Use `--no-app-info` to skip package and app metadata lookup.
 
@@ -73,6 +74,7 @@ This output can contain URL query values and request or response bodies.
 "$SNAPO_BIN" network list --help
 "$SNAPO_BIN" network requests --help
 "$SNAPO_BIN" network show --help
+"$SNAPO_BIN" network intercept --help
 ```
 
 ## Output Notes
@@ -80,4 +82,5 @@ This output can contain URL query values and request or response bodies.
 - `--json` emits NDJSON, so process it line by line.
 - `network requests` emits Chrome DevTools Protocol-style records with top-level `method` and `params` fields.
 - Use `--no-stream` for a one-shot buffered snapshot.
-- The Android transport admits clients with `HelloSnapO`, returns `SnapO.appInfo`, and gates delivery with `SnapO.startStream` and `SnapO.stopStream`.
+- `network intercept` writes runner logs to stderr and does not accept `--json`, `--filter`, or `--no-stream`.
+- The Android transport admits clients with `HelloSnapO` and returns `SnapO.appInfo`. `SnapO.startStream` and `SnapO.stopStream` gate inspection events; interception runs independently.
