@@ -11,7 +11,6 @@ android {
 }
 
 dependencies {
-    api(platform(libs.okhttp3.bom))
     api(libs.okhttp3.okhttp)
     api(libs.kotlinx.coroutines.core)
 }
