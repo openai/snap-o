@@ -44,7 +44,15 @@ jobs:
         run: chmod +x gradlew
       - name: Build Android libraries
         working-directory: snapo-link-android
-        run: ./gradlew --no-daemon build
+        run: ./gradlew --no-daemon --profile build -x detekt
+      - name: Upload build profile
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-build-profile
+          path: snapo-link-android/build/reports/profile/
+          if-no-files-found: ignore
+          retention-days: 7
 
   detekt:
     runs-on: ubuntu-latest
