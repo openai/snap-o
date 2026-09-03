@@ -194,6 +194,9 @@ if git -C "$SNAPO_DIR" cat-file -e "$MAC_BASE^{commit}" 2>/dev/null && \
   mac_release_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- \
     .github/workflows/mac.yml \
     snapo-app-mac/Snap-O.xcodeproj/project.pbxproj \
+    snapo-app-mac/Config \
+    snapo-app-mac/Snap-O/SnapO.entitlements \
+    snapo-app-mac/Snap-O/Info.plist \
     snapo-app-mac/scripts \
     snapo-network-inspector-web/package.json \
     snapo-network-inspector-web/package-lock.json)"

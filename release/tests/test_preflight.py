@@ -133,6 +133,19 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("macOS source files changed since 5.1.0: 1\n", report)
         self.assertIn("Recommendation: run the macOS source build/tests", report)
 
+    def test_signing_and_packaging_changes_recommend_rehearsal(self):
+        for path in ("snapo-app-mac/Config/Base.xcconfig",
+                     "snapo-app-mac/Snap-O/SnapO.entitlements",
+                     "snapo-app-mac/Snap-O/Info.plist"):
+            with self.subTest(path=path):
+                base = self.git("rev-parse", "HEAD").strip()
+                self.write(path, "Release configuration\n")
+                self.commit()
+                report = self.report(base=base)
+                self.assertIn(f"macOS release-sensitive source files changed since {base}: 1\n", report)
+                self.assertIn(f"  {path}\n", report)
+                self.assertIn("rehearse the macOS release flow before bumping VERSION", report)
+
     def test_malformed_committed_build_number_is_rejected(self):
         for build in ("", "20260903", "20260903.0", "20260903.000", "2026093.00", "20260903.xx"):
             with self.subTest(build=build):
