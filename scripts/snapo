@@ -9,7 +9,6 @@ import itertools
 import types
 import uuid
 from collections.abc import MutableMapping
-from urllib.parse import urlsplit
 import base64
 import gzip
 import http.client
@@ -18,6 +17,7 @@ import math
 import os
 import pathlib
 import re
+import runpy
 import shutil
 import signal
 import socket
@@ -887,10 +887,10 @@ class Headers(MutableMapping):
 
 
 class Request:
-    def __init__(self, wire):
+    def __init__(self, wire, path):
         self.method = wire["method"]
         self.url = wire["url"]
-        self.path = urlsplit(self.url).path
+        self.path = path
         self.headers = Headers(wire.get("headerEntries", []))
         self.body = base64.b64decode(wire.get("body", ""), validate=True)
 
@@ -977,16 +977,16 @@ sys.modules["snapo"] = _route_api
 def load_routes(path):
     path = pathlib.Path(path).resolve()
     source = path.read_bytes()
-    module = types.ModuleType(f"snapo_routes_{uuid.uuid4().hex}")
-    module.__file__ = str(path)
-    sys.modules[module.__name__] = module
+    original_path = sys.path.copy()
     # Resolve helpers next to the user's file, as Python does for an ordinary script.
     sys.path.insert(0, str(path.parent))
     try:
-        exec(compile(source, str(path), "exec"), module.__dict__)
+        namespace = runpy.run_path(str(path), run_name=f"snapo_routes_{uuid.uuid4().hex}")
+        if path.read_bytes() != source:
+            raise ValueError("Route file changed while loading; save it again")
         routes = {}
         seen = set()
-        for handler in module.__dict__.values():
+        for handler in namespace.values():
             if id(handler) in seen:
                 continue
             seen.add(id(handler))
@@ -1000,13 +1000,12 @@ def load_routes(path):
             raise ValueError("Register at most 128 routes")
         return routes, hashlib.sha256(source).digest()
     finally:
-        sys.path.pop(0)
-        sys.modules.pop(module.__name__, None)
+        sys.path[:] = original_path
 
 
 class Call:
-    def __init__(self, runner, event):
-        self.request = Request(event["request"])
+    def __init__(self, runner, event, path):
+        self.request = Request(event["request"], path)
         self._runner = runner
         self._id = event["exchangeId"]
         self._upstream_task = None
@@ -1078,7 +1077,7 @@ class Runner:
         wire = []
         for index, ((method, path), handler) in enumerate(routes.items()):
             identifier = f"{generation}:{index}"
-            self._handlers[identifier] = handler
+            self._handlers[identifier] = (handler, path)
             wire.append({"id": identifier, "method": method, "path": path})
         await self.command("SnapO.intercept.enable", {"routes": wire, "timeoutMs": int(self.timeout * 1000)})
         # Android may have matched an old route but still be reading its request body.
@@ -1141,8 +1140,8 @@ class Runner:
                 method = message.get("method")
                 if method == "SnapO.intercept.request":
                     identifier = event["exchangeId"]
-                    handler = self._handlers.get(event["routeId"])
-                    self._tasks[identifier] = asyncio.create_task(self._handle(event, handler))
+                    handler, path = self._handlers.get(event["routeId"], (None, None))
+                    self._tasks[identifier] = asyncio.create_task(self._handle(event, handler, path))
                 elif method == "SnapO.intercept.response":
                     call = self._calls.get(event["exchangeId"])
                     if call is not None and not call._response.done():
@@ -1162,9 +1161,9 @@ class Runner:
                     future.set_exception(error)
             raise
 
-    async def _handle(self, event, handler):
+    async def _handle(self, event, handler, path):
         identifier = event["exchangeId"]
-        call = Call(self, event)
+        call = Call(self, event, path)
         self._calls[identifier] = call
         try:
             if handler is None:
