@@ -20,6 +20,10 @@ android {
     }
 }
 
+val useNoop = providers.gradleProperty("snapo.samples.noop")
+    .map(String::toBooleanStrict)
+    .getOrElse(false)
+
 dependencies {
 
     implementation(libs.androidx.core.ktx)
@@ -44,6 +48,6 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(project(":samples:demo-shared"))
 
-    debugImplementation(project(":network-okhttp3"))
+    debugImplementation(project(if (useNoop) ":network-okhttp3-noop" else ":network-okhttp3"))
     releaseImplementation(project(":network-okhttp3-noop"))
 }

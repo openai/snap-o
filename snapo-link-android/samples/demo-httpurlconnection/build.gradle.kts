@@ -20,6 +20,10 @@ android {
     }
 }
 
+val useNoop = providers.gradleProperty("snapo.samples.noop")
+    .map(String::toBooleanStrict)
+    .getOrElse(false)
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -33,6 +37,6 @@ dependencies {
     implementation(project(":samples:demo-shared"))
     implementation(libs.serialization.json)
 
-    debugImplementation(project(":network-httpurlconnection"))
+    debugImplementation(project(if (useNoop) ":network-httpurlconnection-noop" else ":network-httpurlconnection"))
     releaseImplementation(project(":network-httpurlconnection-noop"))
 }

@@ -18,6 +18,10 @@ android {
     }
 }
 
+val useNoop = providers.gradleProperty("snapo.samples.noop")
+    .map(String::toBooleanStrict)
+    .getOrElse(false)
+
 dependencies {
     implementation(libs.androidx.activity.compose)
 
@@ -27,8 +31,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
 
-    debugImplementation(project(":tweaks"))
-    debugImplementation(project(":tweaks-overlay"))
+    debugImplementation(project(if (useNoop) ":tweaks-noop" else ":tweaks"))
+    debugImplementation(project(if (useNoop) ":tweaks-overlay-noop" else ":tweaks-overlay"))
     releaseImplementation(project(":tweaks-noop"))
     releaseImplementation(project(":tweaks-overlay-noop"))
 }
