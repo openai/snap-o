@@ -31,6 +31,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(project(":samples:demo-shared"))
+    implementation(libs.serialization.json)
 
     debugImplementation(project(":network-httpurlconnection"))
     releaseImplementation(project(":network-httpurlconnection-noop"))

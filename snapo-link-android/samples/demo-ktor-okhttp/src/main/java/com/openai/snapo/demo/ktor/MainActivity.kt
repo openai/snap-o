@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -20,11 +22,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.openai.snapo.demo.shared.DemoMockServer
+import com.openai.snapo.demo.shared.tasks.PreviewTasksApi
+import com.openai.snapo.demo.shared.tasks.TasksApi
+import com.openai.snapo.demo.shared.tasks.TasksSection
 import com.openai.snapo.demo.shared.toWebSocketUrl
 import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 import com.openai.snapo.network.okhttp3.withSnapOInterceptor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.forms.formData
@@ -35,6 +41,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
@@ -42,6 +49,7 @@ import io.ktor.websocket.send
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 
 class MainActivity : ComponentActivity() {
@@ -59,6 +67,15 @@ class MainActivity : ComponentActivity() {
                 webSocketFactory = okHttpClient.withSnapOInterceptor()
             }
             install(WebSockets)
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+    }
+
+    private val tasksApi by lazy {
+        KtorTasksApi(httpClient) {
+            withContext(Dispatchers.IO) { mockServer.httpUrl("/api/tasks") }
         }
     }
 
@@ -73,6 +90,7 @@ class MainActivity : ComponentActivity() {
             DemoScreen(
                 httpClient = httpClient,
                 mockServer = mockServer,
+                tasksApi = tasksApi,
             )
         }
     }
@@ -86,7 +104,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun DemoScreen(httpClient: HttpClient, mockServer: DemoMockServer) {
+private fun DemoScreen(httpClient: HttpClient, mockServer: DemoMockServer, tasksApi: TasksApi) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -103,6 +121,7 @@ private fun DemoScreen(httpClient: HttpClient, mockServer: DemoMockServer) {
                 onWebSocketDemoClick = {
                     scope.launch { performWebSocketDemo(httpClient, mockServer) }
                 },
+                tasksApi = tasksApi,
                 modifier = Modifier.padding(innerPadding),
             )
         }
@@ -178,11 +197,12 @@ private fun DemoContent(
     onPostRequestClick: () -> Unit,
     onFormRequestClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
+    tasksApi: TasksApi,
     modifier: Modifier = Modifier,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.padding(16.dp),
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
         Button(onClick = onNetworkRequestClick) {
             Text("Network Request")
@@ -196,6 +216,7 @@ private fun DemoContent(
         Button(onClick = onWebSocketDemoClick) {
             Text("WebSocket Echo")
         }
+        TasksSection(tasksApi)
     }
 }
 
@@ -204,6 +225,7 @@ private fun DemoContent(
 private fun DemoPreview() {
     MaterialTheme {
         DemoContent(
+            tasksApi = PreviewTasksApi,
             onNetworkRequestClick = {},
             onPostRequestClick = {},
             onFormRequestClick = {},

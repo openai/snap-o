@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit
 class DemoMockServer {
     private var server: MockWebServer? = null
 
+    @Synchronized
     fun ensureStarted() {
         if (server != null) return
         server = createServer().also { started ->
@@ -24,12 +25,14 @@ class DemoMockServer {
         }
     }
 
+    @Synchronized
     fun httpUrl(path: String): String {
         ensureStarted()
         val port = checkNotNull(server).port
         return "http://$MockHost:$port$path"
     }
 
+    @Synchronized
     fun close() {
         server?.close()
         server = null

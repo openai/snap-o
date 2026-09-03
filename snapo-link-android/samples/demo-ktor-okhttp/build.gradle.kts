@@ -39,6 +39,9 @@ dependencies {
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.websockets)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.serialization.json)
     implementation(project(":samples:demo-shared"))
 
     debugImplementation(project(":network-okhttp3"))
