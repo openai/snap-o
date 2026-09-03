@@ -1,6 +1,5 @@
 package com.openai.snapo.demo
 
-import android.util.Log
 import com.openai.snapo.demo.shared.DemoAction
 import com.openai.snapo.demo.shared.DemoClient
 import com.openai.snapo.demo.shared.DemoMockServer
@@ -31,7 +30,7 @@ internal class OkHttpDemoClient : DemoClient {
     private val webSocketFactory = SnapOInterceptorWebSocketFactory(client)
     private var activeWebSocket: WebSocket? = null
     override val tasksApi: TasksApi = OkHttpTasksApi(client) {
-        withContext(Dispatchers.IO) { mockServer.httpUrl("/api/tasks") }
+        mockServer.resolveUrl("/api/tasks")
     }
 
     override fun handlerFor(action: DemoAction): (suspend () -> Unit)? = when (action) {
@@ -55,12 +54,11 @@ internal class OkHttpDemoClient : DemoClient {
         client.dispatcher.executorService.shutdown()
         webSocketFactory.close()
         interceptor.close()
-        runCatching { mockServer.close() }
-            .onFailure { error -> Log.e("SnapODemo", "Failed to stop MockWebServer", error) }
+        mockServer.close()
     }
 
     private suspend fun sendGet() {
-        val url = resolveMockHttpUrl("/helloworld.txt") ?: return
+        val url = mockServer.resolveUrl("/helloworld.txt")
         val request = Request.Builder()
             .header("Duplicated", "11111111")
             .addHeader("Duplicated", "2222222")
@@ -70,7 +68,7 @@ internal class OkHttpDemoClient : DemoClient {
     }
 
     private suspend fun sendPost() {
-        val url = resolveMockHttpUrl("/post") ?: return
+        val url = mockServer.resolveUrl("/post")
         val mediaType = "application/json; charset=utf-8".toMediaType()
         val body = """
             {
@@ -87,7 +85,7 @@ internal class OkHttpDemoClient : DemoClient {
     }
 
     private suspend fun sendUnknownLengthGzipPost() {
-        val url = resolveMockHttpUrl("/post-gzip-unknown-length") ?: return
+        val url = mockServer.resolveUrl("/post-gzip-unknown-length")
         val payload = """
             {
               "message": "Hello from Snap-O unknown length gzip!",
@@ -104,7 +102,7 @@ internal class OkHttpDemoClient : DemoClient {
     }
 
     private suspend fun sendNoContentTypeText() {
-        val url = resolveMockHttpUrl("/no-content-type-text") ?: return
+        val url = mockServer.resolveUrl("/no-content-type-text")
         val request = Request.Builder()
             .url(url)
             .header("X-SnapO-Demo", "okhttp-response-no-content-type-text")
@@ -113,7 +111,7 @@ internal class OkHttpDemoClient : DemoClient {
     }
 
     private suspend fun sendImage() {
-        val url = resolveMockHttpUrl("/image.png") ?: return
+        val url = mockServer.resolveUrl("/image.png")
         val request = Request.Builder()
             .url(url)
             .header("X-SnapO-Demo", "okhttp-image-response")
@@ -122,7 +120,7 @@ internal class OkHttpDemoClient : DemoClient {
     }
 
     private suspend fun sendSlowResponse() {
-        val url = resolveMockHttpUrl("/slow-response") ?: return
+        val url = mockServer.resolveUrl("/slow-response")
         val request = Request.Builder()
             .url(url)
             .header("X-SnapO-Demo", "okhttp-slow-body")
@@ -131,7 +129,7 @@ internal class OkHttpDemoClient : DemoClient {
     }
 
     private suspend fun sendSse() {
-        val url = resolveMockHttpUrl("/sse") ?: return
+        val url = mockServer.resolveUrl("/sse")
         val request = Request.Builder()
             .url(url)
             .header("Accept", "text/event-stream")
@@ -142,7 +140,7 @@ internal class OkHttpDemoClient : DemoClient {
 
     private suspend fun sendLargeResponse(complete: Boolean) {
         val path = if (complete) "/large-response-complete" else "/large-response-truncated"
-        val url = resolveMockHttpUrl(path) ?: return
+        val url = mockServer.resolveUrl(path)
         val request = Request.Builder()
             .url(url)
             .header("X-SnapO-Demo", "okhttp-large-response")
@@ -163,7 +161,7 @@ internal class OkHttpDemoClient : DemoClient {
     }
 
     private suspend fun openWebSocket() {
-        val httpUrl = resolveMockHttpUrl("/ws-echo") ?: return
+        val httpUrl = mockServer.resolveUrl("/ws-echo")
         val request = Request.Builder()
             .url(httpUrl.toWebSocketUrl())
             .build()
@@ -185,14 +183,6 @@ internal class OkHttpDemoClient : DemoClient {
                 }
             }
         )
-    }
-
-    private suspend fun resolveMockHttpUrl(path: String): String? {
-        return withContext(Dispatchers.IO) {
-            runCatching { mockServer.httpUrl(path) }
-                .onFailure { error -> Log.e("SnapODemo", "Failed to resolve MockWebServer URL", error) }
-                .getOrNull()
-        }
     }
 }
 

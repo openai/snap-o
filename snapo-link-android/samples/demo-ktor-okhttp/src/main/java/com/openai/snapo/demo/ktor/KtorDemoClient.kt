@@ -1,6 +1,5 @@
 package com.openai.snapo.demo.ktor
 
-import android.util.Log
 import com.openai.snapo.demo.shared.DemoAction
 import com.openai.snapo.demo.shared.DemoClient
 import com.openai.snapo.demo.shared.DemoMockServer
@@ -26,8 +25,6 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.send
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 
@@ -47,7 +44,7 @@ internal class KtorDemoClient : DemoClient {
         }
     }
     override val tasksApi: TasksApi = KtorTasksApi(httpClient) {
-        withContext(Dispatchers.IO) { mockServer.httpUrl("/api/tasks") }
+        mockServer.resolveUrl("/api/tasks")
     }
 
     override fun handlerFor(action: DemoAction): (suspend () -> Unit)? = when (action) {
@@ -71,12 +68,11 @@ internal class KtorDemoClient : DemoClient {
         okHttpClient.dispatcher.executorService.shutdown()
         webSockets.close()
         interceptor.close()
-        runCatching { mockServer.close() }
-            .onFailure { error -> Log.e(DemoLogTag, "Failed to stop MockWebServer", error) }
+        mockServer.close()
     }
 
     private suspend fun sendGet() {
-        val url = resolveMockHttpUrl("/helloworld.txt") ?: return
+        val url = mockServer.resolveUrl("/helloworld.txt")
         httpClient.get(url) {
             headers {
                 append("Duplicated", "1111111")
@@ -86,7 +82,7 @@ internal class KtorDemoClient : DemoClient {
     }
 
     private suspend fun sendPost() {
-        val url = resolveMockHttpUrl("/post") ?: return
+        val url = mockServer.resolveUrl("/post")
         httpClient.post(url) {
             contentType(ContentType.Application.Json)
             headers { append("X-SnapO-Demo", "ktor-post") }
@@ -102,7 +98,7 @@ internal class KtorDemoClient : DemoClient {
     }
 
     private suspend fun sendForm() {
-        val url = resolveMockHttpUrl("/form-post") ?: return
+        val url = mockServer.resolveUrl("/form-post")
         httpClient.submitFormWithBinaryData(
             url = url,
             formData = formData {
@@ -113,7 +109,7 @@ internal class KtorDemoClient : DemoClient {
     }
 
     private suspend fun openWebSocket() {
-        val websocketUrl = resolveMockHttpUrl("/ws-echo")?.toWebSocketUrl() ?: return
+        val websocketUrl = mockServer.resolveUrl("/ws-echo").toWebSocketUrl()
         httpClient.webSocket(urlString = websocketUrl) {
             send("Hello from Snap-O!")
             for (frame in incoming) {
@@ -129,14 +125,4 @@ internal class KtorDemoClient : DemoClient {
             }
         }
     }
-
-    private suspend fun resolveMockHttpUrl(path: String): String? {
-        return withContext(Dispatchers.IO) {
-            runCatching { mockServer.httpUrl(path) }
-                .onFailure { error -> Log.e(DemoLogTag, "Failed to resolve MockWebServer URL", error) }
-                .getOrNull()
-        }
-    }
 }
-
-private const val DemoLogTag = "SnapODemo"

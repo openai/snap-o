@@ -1,6 +1,5 @@
 package com.openai.snapo.demo.httpurlconnection
 
-import android.util.Log
 import com.openai.snapo.demo.shared.DemoAction
 import com.openai.snapo.demo.shared.DemoClient
 import com.openai.snapo.demo.shared.DemoMockServer
@@ -14,7 +13,7 @@ internal class HttpUrlConnectionDemoClient : DemoClient {
     private val mockServer = DemoMockServer()
     private val interceptor = SnapOHttpUrlInterceptor()
     override val tasksApi: TasksApi = HttpUrlConnectionTasksApi(interceptor::open) {
-        withContext(Dispatchers.IO) { mockServer.httpUrl("/api/tasks") }
+        mockServer.resolveUrl("/api/tasks")
     }
 
     override fun handlerFor(action: DemoAction): (suspend () -> Unit)? = when (action) {
@@ -33,12 +32,11 @@ internal class HttpUrlConnectionDemoClient : DemoClient {
 
     override fun close() {
         interceptor.close()
-        runCatching { mockServer.close() }
-            .onFailure { error -> Log.e(DemoLogTag, "Failed to stop MockWebServer", error) }
+        mockServer.close()
     }
 
     private suspend fun sendGet() {
-        val url = resolveMockHttpUrl("/helloworld.txt") ?: return
+        val url = mockServer.resolveUrl("/helloworld.txt")
         withContext(Dispatchers.IO) {
             val connection = interceptor.open(
                 URL(url)
@@ -58,7 +56,7 @@ internal class HttpUrlConnectionDemoClient : DemoClient {
     }
 
     private suspend fun sendPost() {
-        val url = resolveMockHttpUrl("/post") ?: return
+        val url = mockServer.resolveUrl("/post")
         withContext(Dispatchers.IO) {
             val connection = interceptor.open(
                 URL(url)
@@ -93,14 +91,4 @@ internal class HttpUrlConnectionDemoClient : DemoClient {
             }
         }
     }
-
-    private suspend fun resolveMockHttpUrl(path: String): String? {
-        return withContext(Dispatchers.IO) {
-            runCatching { mockServer.httpUrl(path) }
-                .onFailure { error -> Log.e(DemoLogTag, "Failed to resolve MockWebServer URL", error) }
-                .getOrNull()
-        }
-    }
 }
-
-private const val DemoLogTag = "SnapODemo"

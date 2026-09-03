@@ -3,6 +3,7 @@ package com.openai.snapo.demo.shared.tasks
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -14,11 +15,16 @@ data class TasksState(
     val error: String? = null,
 )
 
-class TasksModel(private val api: TasksApi, private val scope: CoroutineScope) {
-    var state by mutableStateOf(TasksState())
+class TasksModel(
+    private val api: TasksApi,
+    private val scope: CoroutineScope,
+    private val savedStateHandle: SavedStateHandle,
+) {
+    var state by mutableStateOf(TasksState(title = savedStateHandle[TaskTitleKey] ?: ""))
         private set
 
     fun updateTitle(title: String) {
+        savedStateHandle[TaskTitleKey] = title
         state = state.copy(title = title)
     }
 
@@ -31,7 +37,8 @@ class TasksModel(private val api: TasksApi, private val scope: CoroutineScope) {
         if (title.isEmpty()) return
         runRequest {
             val task = api.create(title)
-            state = state.copy(title = "", tasks = state.tasks + task, hasLoaded = true)
+            updateTitle("")
+            state = state.copy(tasks = state.tasks + task, hasLoaded = true)
             loadTasks()
         }
     }
@@ -54,3 +61,5 @@ class TasksModel(private val api: TasksApi, private val scope: CoroutineScope) {
         }
     }
 }
+
+private const val TaskTitleKey = "taskTitle"

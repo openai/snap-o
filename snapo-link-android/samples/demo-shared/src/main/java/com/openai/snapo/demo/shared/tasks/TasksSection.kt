@@ -33,8 +33,12 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun TasksSection(model: TasksModel) {
-    val state = model.state
+fun TasksSection(
+    state: TasksState,
+    onTitleChange: (String) -> Unit,
+    onAdd: () -> Unit,
+    onRefresh: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
         Row(
@@ -43,7 +47,7 @@ fun TasksSection(model: TasksModel) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Tasks", style = MaterialTheme.typography.titleLarge)
-            RefreshButton(isLoading = state.isLoading, onClick = model::refresh)
+            RefreshButton(isLoading = state.isLoading, onClick = onRefresh)
         }
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -51,7 +55,7 @@ fun TasksSection(model: TasksModel) {
         ) {
             OutlinedTextField(
                 value = state.title,
-                onValueChange = model::updateTitle,
+                onValueChange = onTitleChange,
                 placeholder = { Text("New task") },
                 singleLine = true,
                 enabled = !state.isLoading,
@@ -59,7 +63,7 @@ fun TasksSection(model: TasksModel) {
                 modifier = Modifier.weight(1f).semantics { contentDescription = "New task" },
             )
             Button(
-                onClick = model::add,
+                onClick = onAdd,
                 enabled = !state.isLoading && state.title.isNotBlank(),
                 shape = MaterialTheme.shapes.extraSmall,
                 modifier = Modifier.height(56.dp).widthIn(min = 80.dp),
