@@ -79,10 +79,15 @@ resolved_snapo_dir="$(git -C "$SNAPO_DIR" rev-parse --show-toplevel 2>/dev/null 
 SNAPO_DIR="$resolved_snapo_dir"
 
 origin_url="$(git -C "$SNAPO_DIR" remote get-url origin 2>/dev/null || true)"
-[[ "$origin_url" == *openai/snap-o* ]] || {
-  printf 'Expected openai/snap-o origin, got: %s\n' "${origin_url:-<none>}" >&2
-  exit 1
-}
+case "$origin_url" in
+  https://github.com/openai/snap-o|https://github.com/openai/snap-o.git|\
+  git@github.com:openai/snap-o|git@github.com:openai/snap-o.git|\
+  ssh://git@github.com/openai/snap-o|ssh://git@github.com/openai/snap-o.git) ;;
+  *)
+    printf 'Expected openai/snap-o origin on github.com, got: %s\n' "${origin_url:-<none>}" >&2
+    exit 1
+    ;;
+esac
 
 read_value() {
   local key="$1"
@@ -198,6 +203,9 @@ if git -C "$SNAPO_DIR" cat-file -e "$MAC_BASE^{commit}" 2>/dev/null && \
     snapo-app-mac/Snap-O/SnapO.entitlements \
     snapo-app-mac/Snap-O/Info.plist \
     snapo-app-mac/scripts \
+    snapo-network-inspector-web/vite.config.ts \
+    snapo-network-inspector-web/tsconfig.json \
+    snapo-network-inspector-web/index.html \
     snapo-network-inspector-web/package.json \
     snapo-network-inspector-web/package-lock.json)"
   shared_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- .github contracts VERSION)"

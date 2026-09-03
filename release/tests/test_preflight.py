@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -68,7 +69,7 @@ class ProtocolReportTests(unittest.TestCase):
         self.git("config", "user.name", "Preflight Test")
         self.git("config", "user.email", "preflight@example.invalid")
         self.git("config", "commit.gpgSign", "false")
-        self.git("remote", "add", "origin", str(self.repo))
+        self.git("remote", "add", "origin", "https://github.com/openai/snap-o.git")
         self.write("VERSION", "VERSION = 6.0.0\nBUILD_NUMBER = 20260903.00\n")
         self.baseline = {}
         for _, path, declaration in DECLARATIONS:
@@ -78,7 +79,20 @@ class ProtocolReportTests(unittest.TestCase):
         self.commit()
         self.git("tag", "5.1.0")
 
-        # Only GitHub responses are stubbed; the full preflight reads real Git refs/files.
+        # Redirect remote tag reads to the fixture; other Git commands run unchanged.
+        git = bin_dir / "git"
+        git.write_text(f"#!{sys.executable}\n" + textwrap.dedent(f'''\
+            import os
+            import sys
+
+            args = sys.argv[1:]
+            if args[:2] == ["ls-remote", "--tags"]:
+                args[2] = {str(self.repo)!r}
+            os.execv({shutil.which("git")!r}, ["git", *args])
+            '''))
+        git.chmod(0o755)
+
+        # GitHub responses are stubbed; the full preflight reads real Git refs/files.
         gh = bin_dir / "gh"
         gh.write_text(f"#!{sys.executable}\n" + textwrap.dedent('''\
             import sys
@@ -126,6 +140,28 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
 
+    def test_supported_github_origins_are_accepted(self):
+        for url in ("https://github.com/openai/snap-o", "git@github.com:openai/snap-o",
+                    "ssh://git@github.com/openai/snap-o"):
+            for suffix in ("", ".git"):
+                with self.subTest(origin=url + suffix):
+                    self.git("remote", "set-url", "origin", url + suffix)
+                    self.assertIn("Preflight complete.", self.report())
+
+    def test_wrong_or_missing_origin_is_rejected(self):
+        for origin in ("https://github.com/example/snap-o.git",
+                       "https://github.com/openai/snap-o-fork.git",
+                       "https://example.invalid/openai/snap-o.git", str(self.repo), None):
+            with self.subTest(origin=origin):
+                if origin is None:
+                    self.git("remote", "remove", "origin")
+                else:
+                    self.git("remote", "set-url", "origin", origin)
+                result = self.run_preflight()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Expected openai/snap-o origin on github.com", result.stderr)
+                self.assertNotIn("Preflight complete.", result.stdout)
+
     def test_cli_change_counts_as_macos_source(self):
         self.write("scripts/snapo", self.baseline["scripts/snapo"] + "# CLI change\n")
         self.commit()
@@ -136,7 +172,10 @@ class ProtocolReportTests(unittest.TestCase):
     def test_signing_and_packaging_changes_recommend_rehearsal(self):
         for path in ("snapo-app-mac/Config/Base.xcconfig",
                      "snapo-app-mac/Snap-O/SnapO.entitlements",
-                     "snapo-app-mac/Snap-O/Info.plist"):
+                     "snapo-app-mac/Snap-O/Info.plist",
+                     "snapo-network-inspector-web/vite.config.ts",
+                     "snapo-network-inspector-web/tsconfig.json",
+                     "snapo-network-inspector-web/index.html"):
             with self.subTest(path=path):
                 base = self.git("rev-parse", "HEAD").strip()
                 self.write(path, "Release configuration\n")
