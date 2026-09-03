@@ -19,13 +19,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -38,72 +31,20 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-
-private data class TasksState(
-    val tasks: List<DemoTask> = emptyList(),
-    val isLoading: Boolean = false,
-    val hasLoaded: Boolean = false,
-    val error: String? = null,
-)
 
 @Composable
-fun TasksSection(api: TasksApi) {
-    val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf(TasksState()) }
-    var title by rememberSaveable { mutableStateOf("") }
-
-    suspend fun refresh() {
-        state = state.copy(isLoading = true, error = null)
-        try {
-            state = state.copy(tasks = api.list(), hasLoaded = true)
-        } catch (error: TasksApiException) {
-            state = state.copy(error = error.message)
-        } finally {
-            state = state.copy(isLoading = false)
-        }
-    }
-
-    LaunchedEffect(api) { refresh() }
-
-    TasksContent(
-        state = state,
-        title = title,
-        onTitleChange = { title = it },
-        onRefresh = { scope.launch { if (!state.isLoading) refresh() } },
-        onAdd = {
-            scope.launch {
-                if (state.isLoading || title.isBlank()) return@launch
-                state = state.copy(isLoading = true, error = null)
-                try {
-                    val task = api.create(title.trim())
-                    title = ""
-                    state = state.copy(tasks = state.tasks + task, hasLoaded = true)
-                    refresh()
-                } catch (error: TasksApiException) {
-                    state = state.copy(error = error.message)
-                } finally {
-                    state = state.copy(isLoading = false)
-                }
-            }
-        },
-    )
-}
-
-@Composable
-private fun TasksContent(
+fun TasksSection(
     state: TasksState,
-    title: String,
     onTitleChange: (String) -> Unit,
-    onRefresh: () -> Unit,
     onAdd: () -> Unit,
+    onRefresh: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
         Row(
-            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Tasks", style = MaterialTheme.typography.titleLarge)
             RefreshButton(isLoading = state.isLoading, onClick = onRefresh)
@@ -113,7 +54,7 @@ private fun TasksContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedTextField(
-                value = title,
+                value = state.title,
                 onValueChange = onTitleChange,
                 placeholder = { Text("New task") },
                 singleLine = true,
@@ -123,7 +64,7 @@ private fun TasksContent(
             )
             Button(
                 onClick = onAdd,
-                enabled = !state.isLoading && title.isNotBlank(),
+                enabled = !state.isLoading && state.title.isNotBlank(),
                 shape = MaterialTheme.shapes.extraSmall,
                 modifier = Modifier.height(56.dp).widthIn(min = 80.dp),
             ) { Text("Add", style = MaterialTheme.typography.bodyLarge) }
@@ -154,8 +95,8 @@ private fun RefreshButton(isLoading: Boolean, onClick: () -> Unit) {
             Text("Refresh", modifier = Modifier.alpha(if (isLoading) 0f else 1f))
             if (isLoading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
                     strokeWidth = 2.dp,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
@@ -166,6 +107,8 @@ private fun RefreshButton(isLoading: Boolean, onClick: () -> Unit) {
 private fun TaskRow(task: DemoTask) {
     val isCompleted = task.status == "completed"
     Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
@@ -174,8 +117,6 @@ private fun TaskRow(task: DemoTask) {
                 toggleableState = ToggleableState(isCompleted)
                 disabled()
             },
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(
             checked = isCompleted,

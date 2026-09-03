@@ -1,6 +1,8 @@
 package com.openai.snapo.demo.shared
 
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -16,8 +18,9 @@ import java.util.concurrent.TimeUnit
 class DemoMockServer {
     private var server: MockWebServer? = null
 
-    @Synchronized
-    fun ensureStarted() {
+    suspend fun resolveUrl(path: String): String = withContext(Dispatchers.IO) { httpUrl(path) }
+
+    private fun ensureStarted() {
         if (server != null) return
         server = createServer().also { started ->
             started.start(InetAddress.getByName(MockHost), 0)
@@ -26,7 +29,7 @@ class DemoMockServer {
     }
 
     @Synchronized
-    fun httpUrl(path: String): String {
+    private fun httpUrl(path: String): String {
         ensureStarted()
         val port = checkNotNull(server).port
         return "http://$MockHost:$port$path"
@@ -34,8 +37,10 @@ class DemoMockServer {
 
     @Synchronized
     fun close() {
-        server?.close()
-        server = null
+        runCatching {
+            server?.close()
+            server = null
+        }.onFailure { error -> Log.e(DemoLogTag, "Failed to stop MockWebServer", error) }
     }
 }
 
