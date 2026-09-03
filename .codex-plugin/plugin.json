@@ -1,7 +1,7 @@
 {
   "name": "snap-o",
   "version": "5.1.0",
-  "description": "Inspect Android network traffic and adjust live UI tweaks with Snap-O.",
+  "description": "Inspect Android network traffic, override API responses, and adjust live UI tweaks with Snap-O.",
   "author": {
     "name": "OpenAI",
     "url": "https://openai.com"
@@ -12,6 +12,8 @@
   "keywords": [
     "android",
     "network",
+    "interception",
+    "overrides",
     "tweaks",
     "ui",
     "adb",
@@ -20,8 +22,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Snap-O",
-    "shortDescription": "Inspect Android network traffic and live UI tweaks",
-    "longDescription": "Inspect live and captured Android network requests, or inspect and adjust live Android UI tweaks on macOS and Linux.",
+    "shortDescription": "Inspect Android traffic, override responses, and adjust UI tweaks",
+    "longDescription": "Inspect live and captured Android network requests, override HTTP responses with Python route handlers, or adjust live Android UI tweaks on macOS and Linux.",
     "developerName": "OpenAI",
     "category": "Productivity",
     "capabilities": [
@@ -33,6 +35,7 @@
       "Inspect the latest Android network requests with Snap-O.",
       "Show failed requests from the attached Android device.",
       "Show the request and response bodies for an API call.",
+      "Override an Android API response with a Python route handler.",
       "Show the active UI tweaks in the attached Android app.",
       "Adjust a live Android UI tweak and reset it to its default."
     ]
