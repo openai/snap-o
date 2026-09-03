@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Network Interception · Snap-O</title>
+    <meta
+      name="description"
+      content="Edit Android API responses and return mock data with Snap-O Python route handlers."
+    />
+    <link rel="icon" type="image/png" href="assets/icon-64.png" />
+    <style>
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
+      }
+
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --ink: #0b0c0b;
+        --muted: #565a55;
+        --line: #d8dbd4;
+        --navy: #071321;
+        --lime: #23b515;
+        --green: #18820f;
+        --maxw: 1200px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--bg);
+        font: 16px/1.6 "OpenAI Sans", Arial, sans-serif;
+        font-feature-settings: "liga" on, "calt" on;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      ::selection {
+        background: rgba(111, 214, 138, 0.24);
+      }
+
+      a {
+        color: inherit;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
+      }
+
+      a:hover {
+        color: var(--green);
+      }
+
+      a:focus-visible,
+      button:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 4px;
+      }
+
+      .wrap {
+        width: min(100%, var(--maxw));
+        margin-inline: auto;
+        padding-inline: clamp(20px, 4vw, 48px);
+      }
+
+      .guide-hero {
+        padding-block: clamp(42px, 6vw, 72px) clamp(54px, 7vw, 82px);
+      }
+
+      .hero-copy {
+        max-width: 760px;
+      }
+
+      .back-link {
+        display: inline-flex;
+        margin-bottom: clamp(46px, 7vw, 78px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        text-decoration: none;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 2.25rem;
+        line-height: 1.17;
+        letter-spacing: -0.025em;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .lead {
+        max-width: 58ch;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: clamp(1.04rem, 1.5vw, 1.16rem);
+        line-height: 1.55;
+        text-wrap: pretty;
+      }
+
+      .hero-copy > .prose {
+        margin-top: 18px;
+      }
+
+      .guide-layout {
+        padding-bottom: 48px;
+      }
+
+      article {
+        max-width: 860px;
+      }
+
+      .guide-layout > *,
+      article {
+        min-width: 0;
+      }
+
+      .guide-section {
+        scroll-margin-top: 96px;
+        padding-block: 28px 64px;
+        border-top: 1px solid var(--line);
+      }
+
+      .guide-section + .guide-section {
+        padding-top: 34px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+        letter-spacing: 0;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+      .step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+      .section-heading {
+        position: relative;
+        margin-bottom: 10px;
+        padding-left: 44px;
+      }
+
+      .section-heading h2 {
+        min-height: 27px;
+        display: flex;
+        align-items: center;
+      }
+
+      .section-heading .step {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .quick-jump {
+        display: none;
+      }
+
+      @media (min-width: 1280px) {
+        .quick-jump {
+          position: fixed;
+          z-index: 10;
+          top: 96px;
+          right: clamp(32px, 4vw, 56px);
+          display: block;
+          width: 200px;
+          max-height: calc(100vh - 120px);
+          overflow-y: auto;
+        }
+
+        .quick-jump-list {
+          position: relative;
+          margin: 0;
+          padding: 0 0 0 14px;
+          list-style: none;
+          border-left: 2px solid #eceee9;
+        }
+
+        .quick-jump-list li + li {
+          margin-top: 12px;
+        }
+
+        .quick-jump-link {
+          position: relative;
+          display: block;
+          color: #777c76;
+          font-size: 0.875rem;
+          line-height: 1.4;
+          text-decoration: none;
+          transition: color 140ms ease;
+        }
+
+        .quick-jump-link::before {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: -16px;
+          width: 2px;
+          content: "";
+          background: transparent;
+        }
+
+        .quick-jump-link:hover {
+          color: var(--ink);
+        }
+
+        .quick-jump-link[aria-current="location"] {
+          color: var(--ink);
+          font-weight: 500;
+        }
+
+        .quick-jump-link[aria-current="location"]::before {
+          background: var(--ink);
+        }
+      }
+
+      .section-body {
+        min-width: 0;
+        padding-left: 44px;
+      }
+
+      h3 {
+        margin: 36px 0 10px;
+        font-size: 1.15rem;
+        line-height: 1.35;
+        letter-spacing: -0.015em;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      p + p {
+        margin-top: 14px;
+      }
+
+      .prose {
+        color: var(--muted);
+        text-wrap: pretty;
+      }
+
+      .notice {
+        margin: 26px 0;
+        padding: 2px 0 2px 18px;
+        border-left: 3px solid var(--lime);
+        color: var(--muted);
+      }
+
+      .notice strong {
+        color: var(--ink);
+      }
+
+      .code-block {
+        max-width: 100%;
+        margin: 22px 0 0;
+        overflow: hidden;
+        color: #eef3ed;
+        background: var(--navy);
+        border-radius: 6px;
+      }
+
+      .code-head {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding-inline: 16px 10px;
+        color: #aeb9c2;
+        border-bottom: 1px solid #263342;
+        font: 500 0.72rem/1 "SF Mono", Consolas, "Liberation Mono",
+          ui-monospace, monospace;
+      }
+
+      .syntax-code .token.keyword,
+      .syntax-code .token.boolean,
+      .syntax-code .token.builtin {
+        color: #d2a8ff;
+      }
+
+      .syntax-code .token.function,
+      .syntax-code .token.attr-name {
+        color: #9dd8ff;
+      }
+
+      .syntax-code .token.class-name,
+      .syntax-code .token.constant,
+      .syntax-code .token.tag {
+        color: #f2cc60;
+      }
+
+      .syntax-code .token.string,
+      .syntax-code .token.attr-value {
+        color: var(--lime);
+      }
+
+      .syntax-code .token.number {
+        color: #ffb86b;
+      }
+
+      .syntax-code .token.operator,
+      .syntax-code .token.annotation,
+      .syntax-code .token.symbol {
+        color: #ff9b8f;
+      }
+
+      .syntax-code .token.punctuation {
+        color: #aeb9c2;
+      }
+
+      .syntax-code .token.comment {
+        color: #8b98a5;
+        font-style: italic;
+      }
+
+      .copy-button {
+        min-height: 30px;
+        padding: 0 8px;
+        color: #d8dfd6;
+        background: transparent;
+        border: 1px solid #42505d;
+        border-radius: 3px;
+        font: inherit;
+      }
+
+      .copy-button:hover {
+        color: var(--navy);
+        background: var(--lime);
+        border-color: var(--lime);
+      }
+
+      pre {
+        margin: 0;
+        padding: 20px;
+        overflow-x: auto;
+        font: 0.84rem/1.7 "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+        tab-size: 2;
+      }
+
+      code {
+        font-family: "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+      }
+
+      :not(pre) > code {
+        padding: 0.12em 0.35em;
+        color: var(--green);
+        background: rgba(35, 181, 21, 0.08);
+        border-radius: 3px;
+        font-size: 0.88em;
+      }
+
+      details {
+        border-top: 1px solid var(--line);
+      }
+
+      details:last-of-type {
+        border-bottom: 1px solid var(--line);
+      }
+
+      summary {
+        padding-block: 17px;
+        font-weight: 600;
+      }
+
+      .details-body {
+        padding: 0 0 26px;
+      }
+
+      .details-body .code-block {
+        margin-bottom: 4px;
+      }
+
+      .table-scroll {
+        max-width: 100%;
+        margin-top: 20px;
+        overflow-x: auto;
+      }
+
+      .config-table {
+        width: 100%;
+        min-width: 680px;
+        border-collapse: collapse;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: left;
+      }
+
+      .config-table th,
+      .config-table td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      .config-table th {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .config-table th:first-child,
+      .config-table td:first-child {
+        padding-left: 0;
+      }
+
+      .config-table th:last-child,
+      .config-table td:last-child {
+        padding-right: 0;
+      }
+
+      .verify-list,
+      .check-list {
+        margin: 24px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .verify-list {
+        counter-reset: verify;
+      }
+
+      .verify-list li {
+        counter-increment: verify;
+        display: grid;
+        grid-template-columns: 27px minmax(0, 1fr);
+        gap: 14px;
+        padding-block: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .verify-list li::before {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        content: counter(verify);
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        box-sizing: border-box;
+      }
+
+      .check-list li {
+        position: relative;
+        padding: 10px 0 10px 24px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .check-list li::before {
+        content: "";
+        position: absolute;
+        top: 1.25rem;
+        left: 2px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--lime);
+      }
+
+      footer {
+        padding-bottom: 30px;
+      }
+
+      .footer-row {
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        font-size: 0.8rem;
+      }
+
+      @media (max-width: 520px) {
+        .guide-hero {
+          padding-block: 34px 50px;
+        }
+
+        h1 {
+          font-size: 1.875rem;
+          line-height: 1.2;
+        }
+
+        .guide-section {
+          padding-bottom: 52px;
+        }
+
+        .guide-section + .guide-section {
+          padding-top: 46px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <section class="guide-hero">
+        <div class="wrap">
+          <div class="hero-copy">
+            <a class="back-link" href="network-inspector.html">← Network Inspector</a>
+            <h1>Network Interception</h1>
+            <p class="lead">
+              Edit real API responses or return mock data with Python handlers.
+              Test new app states, errors, and delays through your Android app's
+              existing OkHttp integration.
+            </p>
+            <p class="prose">
+              Run handlers with <code>snapo network intercept</code> and inspect
+              the results in Network Inspector.
+            </p>
+          </div>
+        </div>
+      </section>
+      <div class="wrap guide-layout">
+        <article>
+          <section class="guide-section" id="requirements">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">1</span>
+              <h2>Check requirements</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Start with the <a href="network-inspector.html">Network Inspector setup</a>.
+              Your debug app must use <code>SnapOOkHttpInterceptor</code> as an
+              OkHttp application interceptor, including when using Ktor's
+              OkHttp engine. Keep the no-op artifact in release builds.
+            </p>
+            <p class="prose">
+              Run the CLI on macOS or Linux with Python 3 and Android Platform
+              Tools. No Python package installation is needed. The Snap-O
+              desktop app can stay open for inspection, but the CLI does not
+              require it to be running.
+            </p>
+            <p class="prose">
+              The examples assume <code>snapo</code> is on your <code>PATH</code>.
+              On macOS, you can use
+              <code>/Applications/Snap-O.app/Contents/MacOS/snapo</code> instead.
+              On Linux, follow the
+              <a href="https://github.com/openai/snap-o#linux-support">CLI installation steps</a>.
+            </p>
+            <p class="prose">
+              Connect an authorized device or emulator and launch your debug app.
+              List the available app processes:
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>Terminal</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="bash">snapo network list --json</code></pre>
+            </div>
+            <p class="prose" style="margin-top: 18px">
+              Use the target app's <code>deviceId</code> and
+              <code>socketName</code> as <code>SERIAL</code> and
+              <code>SOCKET</code> below. A network socket looks like
+              <code>snapo_network_12345</code>.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="first-request">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">2</span>
+              <h2>Intercept your first request</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Save this as <code>prototype.py</code>. Replace
+              <code>/api/tasks</code> with a JSON endpoint your app calls.
+              This handler returns mock data without contacting the server.
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>prototype.py</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="python">from snapo import route
+
+
+@route(&quot;GET&quot;, &quot;/api/tasks&quot;)
+async def tasks(call):
+    return call.json({
+        &quot;tasks&quot;: [{&quot;id&quot;: &quot;1&quot;, &quot;title&quot;: &quot;Example task&quot;}]
+    })</code></pre>
+            </div>
+            <p class="prose" style="margin-top: 18px">
+              Check that the file loads, then connect to your app:
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>Terminal</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="bash">snapo network intercept prototype.py --check
+snapo network intercept prototype.py -s SERIAL -n SOCKET</code></pre>
+            </div>
+            <p class="prose" style="margin-top: 18px">
+              <code>--check</code> loads and lists routes without ADB or a device;
+              it does not run the handlers. The CLI provides the
+              <code>snapo</code> Python module when it loads your file.
+            </p>
+            <ol class="verify-list">
+              <li><span>Wait for <strong>Loaded 1 route(s)</strong> in the terminal.</span></li>
+              <li><span>Trigger the matching request in your Android app.</span></li>
+              <li><span>Check the app's result and the terminal's method, path, and response status.</span></li>
+              <li><span>Open Network Inspector to inspect the response delivered to the app.</span></li>
+            </ol>
+            <p class="prose" style="margin-top: 18px">
+              Keep the runner open while testing. Press <strong>Ctrl+C</strong>
+              to stop it and remove its routes. Requests already paused by that
+              runner fail; later requests follow the normal network path unless
+              another runner matches them.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="responses">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">3</span>
+              <h2>Edit responses and mock state</h2>
+            </div>
+            <div class="section-body">
+            <h3 style="margin-top: 0">Change a real response</h3>
+            <p class="prose">
+              <code>await call.upstream()</code> sends the original request on
+              Android through the app's existing OkHttp chain, authentication,
+              and TLS configuration. Edit the returned response and return it
+              to the app. Repeated calls to <code>upstream()</code> reuse the
+              same response.
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>prototype.py · add a route</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="python">@route(&quot;GET&quot;, &quot;/api/profile&quot;)
+async def profile(call):
+    response = await call.upstream()
+    response.json[&quot;display_name&quot;] = &quot;Space Captain&quot;
+    response.headers[&quot;X-Demo&quot;] = &quot;profile-preview&quot;
+    return response</code></pre>
+            </div>
+            <p class="prose" style="margin-top: 18px">
+              You can edit <code>response.json</code>, <code>response.status</code>,
+              and <code>response.headers</code>. Nested JSON edits are detected
+              when you return the response. Reading JSON without changing it
+              preserves the original body bytes and content headers.
+              For other formats, assign bytes to <code>response.body</code> and
+              set the appropriate content type and encoding headers.
+            </p>
+            <h3>Share state between requests</h3>
+            <p class="prose">
+              Module variables let handlers share mock state. Replace your
+              file with this example to create and list tasks, with a short
+              delay before each list response.
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>prototype.py</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="python">import asyncio
+
+from snapo import route
+
+saved_tasks = []
+
+
+@route(&quot;POST&quot;, &quot;/api/tasks&quot;)
+async def create_task(call):
+    task = {
+        &quot;id&quot;: str(len(saved_tasks) + 1),
+        &quot;title&quot;: call.request.json[&quot;title&quot;],
+    }
+    saved_tasks.append(task)
+    return call.json(task, status=201)
+
+
+@route(&quot;GET&quot;, &quot;/api/tasks&quot;)
+async def list_tasks(call):
+    await asyncio.sleep(0.5)
+    return call.json({&quot;tasks&quot;: saved_tasks})</code></pre>
+            </div>
+            <p class="prose" style="margin-top: 18px">
+              Handlers run concurrently. Use <code>await asyncio.sleep(...)</code>
+              for delays; <code>time.sleep(...)</code> blocks every Python
+              handler. To simulate an HTTP error response, return
+              <code>call.json({"error": "Try again"}, status=503)</code>.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="matching">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">4</span>
+              <h2>Match the intended requests</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Routes match an exact HTTP method and encoded URL path on any
+              host. A leading slash is optional. Query parameters do not affect
+              matching, and paths do not support wildcards or parameters.
+              Unmatched requests continue normally.
+            </p>
+            <p class="prose">
+              Read <code>call.request.method</code>, <code>url</code>,
+              <code>path</code>, <code>headers</code>, <code>body</code> (bytes),
+              or <code>json</code> inside a handler. Changing this request object
+              does not rewrite the request sent upstream. To limit an override
+              to one host or query value, check the full URL in your handler:
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>prototype.py · replace the tasks route</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="python">from urllib.parse import parse_qs, urlsplit
+
+from snapo import route
+
+
+@route(&quot;GET&quot;, &quot;/api/tasks&quot;)
+async def tasks(call):
+    url = urlsplit(call.request.url)
+    query = parse_qs(url.query)
+    if url.hostname != &quot;api.example.com&quot; or query.get(&quot;preview&quot;) != [&quot;1&quot;]:
+        return await call.upstream()
+    return call.json({&quot;tasks&quot;: []})</code></pre>
+            </div>
+            <p class="prose" style="margin-top: 18px">
+              Each file must contain unique method/path pairs and each handler
+              must use <code>async def</code>. Multiple runners can coexist,
+              but overlapping routes select one handler in an unspecified
+              order. Handlers are not chained.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="reload">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">5</span>
+              <h2>Reload and stop handlers</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              The runner watches your entry file by default. Save an edit to
+              load new handlers for future requests. A successful reload resets
+              module state; in-flight calls keep their original handlers and
+              state. If an edit fails to load, the previous routes stay active.
+              Imported helper files are not watched; restart after changing them.
+            </p>
+            <div class="table-scroll">
+              <table class="config-table">
+                <thead><tr><th scope="col">Option</th><th scope="col">Behavior</th></tr></thead>
+                <tbody>
+                  <tr><td><code>--check</code></td><td>Load and list routes, then exit without connecting to a device.</td></tr>
+                  <tr><td><code>--no-watch</code></td><td>Keep the initially loaded handlers until the runner stops.</td></tr>
+                  <tr><td><code>--timeout 30</code></td><td>Set the deadline in seconds, including upstream time. Default: 30; range: 0.1–120.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="notice">
+              Handler errors, deadlines, and runner disconnects fail affected
+              requests. They do not send the request upstream as a fallback.
+              Your app's own retry policy still applies.
+            </p>
+            <p class="prose">
+              Each runner owns its routes and paused requests. Reloading or
+              stopping one runner leaves others active. Ordinary network
+              inspectors may remain connected throughout testing.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="limits">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">6</span>
+              <h2>Supported traffic and limits</h2>
+            </div>
+            <div class="section-body">
+            <ul class="check-list">
+              <li>Interception supports OkHttp HTTP requests, including Ktor's OkHttp engine. HttpURLConnection and WebSocket traffic remain inspection-only; WebSocket upgrades bypass routes.</li>
+              <li>Matching requests must have repeatable bodies with a known size of at most 1 MiB. One-shot, duplex, unknown-length, or larger request bodies fail when a route matches.</li>
+              <li>Upstream and replacement response bodies are limited to 1 MiB. Replacement status codes must be between 200 and 599.</li>
+              <li>Requests with an <code>Accept</code> header containing <code>text/event-stream</code> bypass interception. An unexpected SSE response to an intercepted upstream call fails without buffering the stream.</li>
+              <li>Each runner can register up to 128 routes. An app process can have at most 64 paused exchanges across runners.</li>
+              <li>Network Inspector shows the response delivered to the app. It does not show a before/after comparison.</li>
+            </ul>
+            <p class="prose" style="margin-top: 18px">
+              Keep streaming and large-body endpoints outside your route set.
+              Interception limits are separate from the inspector's capture limits.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="troubleshooting">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">7</span>
+              <h2>Troubleshooting</h2>
+            </div>
+            <div class="section-body">
+            <details>
+              <summary>The app does not support routes</summary>
+              <div class="details-body"><p class="prose">
+                Update the Snap-O Android dependency, then rebuild and reinstall
+                the app. Updating only the CLI or desktop app
+                does not add interception to an older Android library.
+              </p></div>
+            </details>
+            <details>
+              <summary>No servers appear, or the wrong app is selected</summary>
+              <div class="details-body"><p class="prose">
+                Check <code>adb devices</code>, launch the debug build, and run
+                <code>network list --json</code> again. Select its device and
+                socket explicitly. After an app process restarts, reconnect the
+                runner to the new socket.
+              </p></div>
+            </details>
+            <details>
+              <summary>The request does not reach my handler</summary>
+              <div class="details-body"><p class="prose">
+                Check the method and exact encoded path, including trailing
+                slashes. Confirm the request uses your configured OkHttp client.
+                SSE requests and WebSocket upgrades bypass interception. Avoid
+                overlapping routes in other runners.
+              </p></div>
+            </details>
+            <details>
+              <summary>A request fails or an edit has no effect</summary>
+              <div class="details-body"><p class="prose">
+                Read the runner's error output. Check body sizes, JSON shape,
+                and the deadline. Return <code>call.json(...)</code> or a
+                response from <code>await call.upstream()</code> from every
+                handler. Look for a reload error if old behavior persists.
+                <code>--check</code> validates loading, not handler execution.
+              </p></div>
+            </details>
+            <p class="prose" style="margin-top: 26px">
+              Try shared state and delays with the
+              <a href="https://github.com/openai/snap-o/blob/6.0.0/examples/routes.py">route examples</a>
+              and the
+              <a href="https://github.com/openai/snap-o/blob/6.0.0/snapo-link-android/samples/README.md">OkHttp and Ktor Tasks demos</a>.
+              See the
+              <a href="https://github.com/openai/snap-o/blob/6.0.0/skills/snap-o-network-inspector/references/interception.md">handler API reference</a>
+              and <a href="https://github.com/openai/snap-o/blob/6.0.0/contracts/network/interception.md">interception protocol</a>
+              for more details.
+            </p>
+            </div>
+          </section>
+
+        </article>
+        <aside class="quick-jump" aria-label="On this page">
+          <nav>
+            <ol class="quick-jump-list">
+              <li><a class="quick-jump-link" href="#requirements">Check requirements</a></li>
+              <li><a class="quick-jump-link" href="#first-request">Intercept your first request</a></li>
+              <li><a class="quick-jump-link" href="#responses">Edit responses and mock state</a></li>
+              <li><a class="quick-jump-link" href="#matching">Match the intended requests</a></li>
+              <li><a class="quick-jump-link" href="#reload">Reload and stop handlers</a></li>
+              <li><a class="quick-jump-link" href="#limits">Supported traffic and limits</a></li>
+              <li><a class="quick-jump-link" href="#troubleshooting">Troubleshooting</a></li>
+            </ol>
+          </nav>
+        </aside>
+      </div>
+    </main>
+    <footer>
+      <div class="wrap footer-row">
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+      </div>
+    </footer>
+
+    <script>
+      window.Prism = { manual: true };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-bash.min.js"></script>
+    <script>
+      const escapeHtml = (value) =>
+        value.replace(
+          /[&<>"']/g,
+          (character) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#039;",
+            })[character],
+        );
+
+      for (const code of document.querySelectorAll(".syntax-code")) {
+        const source = code.textContent;
+        const language = code.dataset.language;
+        const grammar = window.Prism?.languages[language];
+        const highlightedCode = grammar
+          ? Prism.highlight(source, grammar, language)
+          : escapeHtml(source);
+
+        code.dataset.copyText = source;
+        code.innerHTML = highlightedCode;
+      }
+
+      for (const button of document.querySelectorAll(".copy-button")) {
+        button.addEventListener("click", async () => {
+          const code = button.closest(".code-block").querySelector("code");
+          await navigator.clipboard.writeText(code.dataset.copyText || code.innerText);
+          button.textContent = "Copied";
+          window.setTimeout(() => {
+            button.textContent = "Copy";
+          }, 1400);
+        });
+      }
+
+      const sections = [...document.querySelectorAll(".guide-section")];
+      const jumpLinks = [...document.querySelectorAll(".quick-jump-link")];
+
+      if ("IntersectionObserver" in window && jumpLinks.length > 0) {
+        const setCurrentSection = (id) => {
+          for (const link of jumpLinks) {
+            if (link.hash === `#${id}`) {
+              link.setAttribute("aria-current", "location");
+            } else {
+              link.removeAttribute("aria-current");
+            }
+          }
+        };
+
+        const sectionObserver = new IntersectionObserver(
+          (entries) => {
+            const visibleSection = entries
+              .filter((entry) => entry.isIntersecting)
+              .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+
+            if (visibleSection) {
+              setCurrentSection(visibleSection.target.id);
+            }
+          },
+          { rootMargin: "-18% 0px -68%", threshold: 0 },
+        );
+
+        for (const section of sections) {
+          sectionObserver.observe(section);
+        }
+
+        setCurrentSection(sections[0].id);
+      }
+
+      document.getElementById("year").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>
