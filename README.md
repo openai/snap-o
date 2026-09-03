@@ -191,6 +191,8 @@ The API follows the fetch-and-replace pattern used by [Playwright routes](https:
 
 See [examples/routes.py](examples/routes.py) for response edits, shared state, and delays, and the [interception protocol](contracts/network/interception.md) for transport details.
 
+The [network samples](snapo-link-android/samples/README.md) share a Tasks section whose API is deliberately unimplemented. Use the Python task handlers with the OkHttp or Ktor demo to test loading, creation, reloads, and errors.
+
 ## Why a web UI for the App Inspector?
 
 The Network and Tweaks inspectors share a React UI hosted in the macOS app's system WebKit runtime. Native Swift code handles ADB and transport through the host computer's existing ADB server, so the distribution does not include Chromium, Node.js, or another ADB executable. The same UI can also run in a browser through its HTTP transport.

@@ -22,6 +22,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.openai.snapo.demo.shared.DemoMockServer
+import com.openai.snapo.demo.shared.tasks.PreviewTasksApi
+import com.openai.snapo.demo.shared.tasks.TasksApi
+import com.openai.snapo.demo.shared.tasks.TasksSection
 import com.openai.snapo.demo.shared.toWebSocketUrl
 import com.openai.snapo.network.okhttp3.SnapOOkHttpInterceptor
 import com.openai.snapo.network.okhttp3.withSnapOInterceptor
@@ -55,6 +58,9 @@ class MainActivity : ComponentActivity() {
 
     private var activeWebSocket: WebSocket? = null
     private val mockServer = DemoMockServer()
+    private val tasksApi = OkHttpTasksApi(client) {
+        withContext(Dispatchers.IO) { mockServer.httpUrl("/api/tasks") }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +84,8 @@ class MainActivity : ComponentActivity() {
                         onSseResponseClick = { runSseResponseRequest(scope) },
                         onSlowResponseClick = { runSlowResponseRequest(scope) },
                         onWebSocketDemoClick = { startWebSocketDemo(scope) },
-                        modifier = Modifier.padding(innerPadding)
+                        tasksApi = tasksApi,
+                        modifier = Modifier.padding(innerPadding),
                     )
                 }
             }
@@ -290,6 +297,7 @@ fun Greeting(
     onSseResponseClick: () -> Unit,
     onSlowResponseClick: () -> Unit,
     onWebSocketDemoClick: () -> Unit,
+    tasksApi: TasksApi,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -328,6 +336,7 @@ fun Greeting(
         Button(onClick = onWebSocketDemoClick) {
             Text("WebSocket Echo")
         }
+        TasksSection(tasksApi)
     }
 }
 
@@ -336,6 +345,7 @@ fun Greeting(
 private fun GreetingPreview() {
     MaterialTheme {
         Greeting(
+            tasksApi = PreviewTasksApi,
             onNetworkRequestClick = {},
             onPostRequestClick = {},
             onUnknownLengthGzipPostRequestClick = {},

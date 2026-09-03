@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -20,6 +22,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.openai.snapo.demo.shared.DemoMockServer
+import com.openai.snapo.demo.shared.tasks.PreviewTasksApi
+import com.openai.snapo.demo.shared.tasks.TasksApi
+import com.openai.snapo.demo.shared.tasks.TasksSection
 import com.openai.snapo.network.httpurlconnection.SnapOHttpUrlInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,6 +35,9 @@ class MainActivity : ComponentActivity() {
 
     private val interceptor = SnapOHttpUrlInterceptor()
     private val mockServer = DemoMockServer()
+    private val tasksApi = HttpUrlConnectionTasksApi(interceptor::open) {
+        withContext(Dispatchers.IO) { mockServer.httpUrl("/api/tasks") }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +50,7 @@ class MainActivity : ComponentActivity() {
             DemoScreen(
                 interceptor = interceptor,
                 mockServer = mockServer,
+                tasksApi = tasksApi,
             )
         }
     }
@@ -55,7 +64,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun DemoScreen(interceptor: SnapOHttpUrlInterceptor, mockServer: DemoMockServer) {
+private fun DemoScreen(interceptor: SnapOHttpUrlInterceptor, mockServer: DemoMockServer, tasksApi: TasksApi) {
     MaterialTheme {
         val scope = rememberCoroutineScope()
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -66,6 +75,7 @@ private fun DemoScreen(interceptor: SnapOHttpUrlInterceptor, mockServer: DemoMoc
                 onPostRequestClick = {
                     scope.launch { performPostRequest(interceptor, mockServer) }
                 },
+                tasksApi = tasksApi,
                 modifier = Modifier.padding(innerPadding),
             )
         }
@@ -147,11 +157,12 @@ private suspend fun resolveMockHttpUrl(mockServer: DemoMockServer, path: String)
 private fun DemoContent(
     onNetworkRequestClick: () -> Unit,
     onPostRequestClick: () -> Unit,
+    tasksApi: TasksApi,
     modifier: Modifier = Modifier,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.padding(16.dp),
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp),
     ) {
         Button(onClick = onNetworkRequestClick) {
             Text("Network Request")
@@ -159,6 +170,7 @@ private fun DemoContent(
         Button(onClick = onPostRequestClick) {
             Text("POST Request")
         }
+        TasksSection(tasksApi)
     }
 }
 
@@ -167,6 +179,7 @@ private fun DemoContent(
 private fun DemoPreview() {
     MaterialTheme {
         DemoContent(
+            tasksApi = PreviewTasksApi,
             onNetworkRequestClick = {},
             onPostRequestClick = {},
         )
