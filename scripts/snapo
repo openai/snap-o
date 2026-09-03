@@ -9,7 +9,6 @@ import itertools
 import types
 import uuid
 from collections.abc import MutableMapping
-from urllib.parse import urlsplit
 import base64
 import gzip
 import http.client
@@ -888,10 +887,10 @@ class Headers(MutableMapping):
 
 
 class Request:
-    def __init__(self, wire):
+    def __init__(self, wire, path):
         self.method = wire["method"]
         self.url = wire["url"]
-        self.path = urlsplit(self.url).path
+        self.path = path
         self.headers = Headers(wire.get("headerEntries", []))
         self.body = base64.b64decode(wire.get("body", ""), validate=True)
 
@@ -1005,8 +1004,8 @@ def load_routes(path):
 
 
 class Call:
-    def __init__(self, runner, event):
-        self.request = Request(event["request"])
+    def __init__(self, runner, event, path):
+        self.request = Request(event["request"], path)
         self._runner = runner
         self._id = event["exchangeId"]
         self._upstream_task = None
@@ -1078,7 +1077,7 @@ class Runner:
         wire = []
         for index, ((method, path), handler) in enumerate(routes.items()):
             identifier = f"{generation}:{index}"
-            self._handlers[identifier] = handler
+            self._handlers[identifier] = (handler, path)
             wire.append({"id": identifier, "method": method, "path": path})
         await self.command("SnapO.intercept.enable", {"routes": wire, "timeoutMs": int(self.timeout * 1000)})
         # Android may have matched an old route but still be reading its request body.
@@ -1141,8 +1140,8 @@ class Runner:
                 method = message.get("method")
                 if method == "SnapO.intercept.request":
                     identifier = event["exchangeId"]
-                    handler = self._handlers.get(event["routeId"])
-                    self._tasks[identifier] = asyncio.create_task(self._handle(event, handler))
+                    handler, path = self._handlers.get(event["routeId"], (None, None))
+                    self._tasks[identifier] = asyncio.create_task(self._handle(event, handler, path))
                 elif method == "SnapO.intercept.response":
                     call = self._calls.get(event["exchangeId"])
                     if call is not None and not call._response.done():
@@ -1162,9 +1161,9 @@ class Runner:
                     future.set_exception(error)
             raise
 
-    async def _handle(self, event, handler):
+    async def _handle(self, event, handler, path):
         identifier = event["exchangeId"]
-        call = Call(self, event)
+        call = Call(self, event, path)
         self._calls[identifier] = call
         try:
             if handler is None:

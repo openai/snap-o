@@ -182,12 +182,14 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         routes = await self.start('''from snapo import route
 @route("GET", "api/profile")
 async def profile(call):
+    assert call.request.path == "/api/profile"
+    assert call.request.url.endswith("?source=test")
     response = await call.upstream()
     assert response is await call.upstream()
     response.json["name"] = "Space Captain"
     return response
 ''')
-        await self.request("one", routes["/api/profile"])
+        await self.request("one", routes["/api/profile"], "/api/profile?source=test")
         upstream = await self.next_command("SnapO.intercept.resolve")
         self.assertEqual("upstream", upstream["action"])
         await self.response("one", {"name": "Ada", "role": "engineer"})
