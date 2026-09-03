@@ -79,15 +79,10 @@ resolved_snapo_dir="$(git -C "$SNAPO_DIR" rev-parse --show-toplevel 2>/dev/null 
 SNAPO_DIR="$resolved_snapo_dir"
 
 origin_url="$(git -C "$SNAPO_DIR" remote get-url origin 2>/dev/null || true)"
-case "$origin_url" in
-  https://github.com/openai/snap-o|https://github.com/openai/snap-o.git|\
-  git@github.com:openai/snap-o|git@github.com:openai/snap-o.git|\
-  ssh://git@github.com/openai/snap-o|ssh://git@github.com/openai/snap-o.git) ;;
-  *)
-    printf 'Expected openai/snap-o origin on github.com, got: %s\n' "${origin_url:-<none>}" >&2
-    exit 1
-    ;;
-esac
+[[ "$origin_url" == *openai/snap-o* ]] || {
+  printf 'Expected openai/snap-o origin, got: %s\n' "${origin_url:-<none>}" >&2
+  exit 1
+}
 
 read_value() {
   local key="$1"
