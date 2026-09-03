@@ -220,6 +220,8 @@ The macOS app requires Xcode 26 or later and Node.js 22.12 or later.
 
 ### Notarizing or shipping builds
 
+For release preparation and acceptance checks, see [Release requirements](release/README.md).
+
 If you need to notarize the app yourself:
 
 1. Copy `snapo-app-mac/Config/Signing.xcconfig.sample` → `snapo-app-mac/Config/Signing.xcconfig`.
