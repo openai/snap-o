@@ -77,10 +77,6 @@ resolved_snapo_dir="$(git -C "$SNAPO_DIR" rev-parse --show-toplevel 2>/dev/null 
   exit 1
 }
 SNAPO_DIR="$resolved_snapo_dir"
-[[ -f "$SNAPO_DIR/VERSION" ]] || {
-  printf 'Snap-O VERSION file not found: %s/VERSION\n' "$SNAPO_DIR" >&2
-  exit 1
-}
 
 origin_url="$(git -C "$SNAPO_DIR" remote get-url origin 2>/dev/null || true)"
 [[ "$origin_url" == *openai/snap-o* ]] || {
@@ -100,15 +96,22 @@ read_value() {
   ' <<< "$content"
 }
 
-local_version_file="$(<"$SNAPO_DIR/VERSION")"
+local_version_file=""
+if [[ -f "$SNAPO_DIR/VERSION" ]]; then
+  local_version_file="$(<"$SNAPO_DIR/VERSION")"
+fi
 local_version="$(read_value VERSION "$local_version_file")"
 local_build="$(read_value BUILD_NUMBER "$local_version_file")"
 source_sha="$(git -C "$SNAPO_DIR" rev-parse --verify --end-of-options "$SOURCE_REF^{commit}")"
 source_version_file="$(git -C "$SNAPO_DIR" show "$source_sha:VERSION")"
 source_version="$(read_value VERSION "$source_version_file")"
 source_build="$(read_value BUILD_NUMBER "$source_version_file")"
-[[ "$source_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && -n "$source_build" ]] || {
-  printf 'Could not parse VERSION and BUILD_NUMBER at %s.\n' "$source_sha" >&2
+[[ "$source_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  printf 'VERSION at %s must use MAJOR.MINOR.PATCH.\n' "$source_sha" >&2
+  exit 1
+}
+[[ "$source_build" =~ ^[0-9]{8}\.[0-9]{2}$ ]] || {
+  printf 'BUILD_NUMBER at %s must use YYYYMMDD.NN.\n' "$source_sha" >&2
   exit 1
 }
 
@@ -187,7 +190,7 @@ if git -C "$SNAPO_DIR" cat-file -e "$MAC_BASE^{commit}" 2>/dev/null && \
   git -C "$SNAPO_DIR" log --no-merges --format='  %h %s' "$MAC_BASE..$source_sha" | sed -n '1,120p'
 
   source_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha")"
-  mac_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- snapo-app-mac snapo-network-inspector-web)"
+  mac_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- snapo-app-mac snapo-network-inspector-web scripts/snapo)"
   mac_release_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- \
     .github/workflows/mac.yml \
     snapo-app-mac/Snap-O.xcodeproj/project.pbxproj \

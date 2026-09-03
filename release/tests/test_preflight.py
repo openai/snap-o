@@ -114,14 +114,54 @@ class ProtocolReportTests(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-qm", "Fixture")
 
-    def report(self, base="5.1.0", ref="HEAD"):
-        result = subprocess.run(
+    def run_preflight(self, base="5.1.0", ref="HEAD"):
+        return subprocess.run(
             ["bash", str(PREFLIGHT), "--snapo-dir", str(self.repo),
              "--ref", ref, "--candidate", "6.0.0", "--mac-base", base, "--android-base", base],
             env=self.env, capture_output=True, text=True,
         )
+
+    def report(self, base="5.1.0", ref="HEAD"):
+        result = self.run_preflight(base, ref)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
+
+    def test_cli_change_counts_as_macos_source(self):
+        self.write("scripts/snapo", self.baseline["scripts/snapo"] + "# CLI change\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("macOS source files changed since 5.1.0: 1\n", report)
+        self.assertIn("Recommendation: run the macOS source build/tests", report)
+
+    def test_malformed_committed_build_number_is_rejected(self):
+        for build in ("", "20260903", "20260903.0", "20260903.000", "2026093.00", "20260903.xx"):
+            with self.subTest(build=build):
+                self.write("VERSION", f"VERSION = 6.0.0\nBUILD_NUMBER = {build}\n")
+                self.commit()
+                result = self.run_preflight()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("must use YYYYMMDD.NN", result.stderr)
+                self.assertNotIn("Preflight complete", result.stdout)
+
+    def test_local_version_edits_do_not_affect_source_validation(self):
+        for content in ("VERSION = invalid\nBUILD_NUMBER = invalid\n", None):
+            with self.subTest(content=content):
+                if content is None:
+                    (self.repo / "VERSION").unlink()
+                else:
+                    self.write("VERSION", content)
+                report = self.report()
+                self.assertIn("Source VERSION/build: 6.0.0 / 20260903.00", report)
+                local_values = "<missing> / <missing>" if content is None else "invalid / invalid"
+                self.assertIn(f"Local VERSION/build:  {local_values}", report)
+
+    def test_missing_committed_version_is_rejected(self):
+        (self.repo / "VERSION").unlink()
+        self.commit()
+        self.write("VERSION", "VERSION = 6.0.0\nBUILD_NUMBER = 20260903.00\n")
+        result = self.run_preflight()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Preflight complete", result.stdout)
 
     def test_reports_all_versions_and_feature_thresholds_at_both_refs(self):
         report = self.report()
