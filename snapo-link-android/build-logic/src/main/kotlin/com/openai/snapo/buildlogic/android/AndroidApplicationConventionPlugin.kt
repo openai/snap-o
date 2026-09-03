@@ -22,7 +22,9 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
 
             buildTypes {
                 maybeCreate("release").apply {
-                    isMinifyEnabled = true
+                    isMinifyEnabled = target.providers.gradleProperty("snapo.samples.minifyRelease")
+                        .map(String::toBooleanStrict)
+                        .getOrElse(true)
                     isShrinkResources = false
                     proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
                 }
