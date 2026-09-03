@@ -114,40 +114,38 @@ class ProtocolReportTests(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-qm", "Fixture")
 
-    def run_preflight(self, base="5.1.0", ref="HEAD"):
+    def run_preflight(self, base="5.1.0", ref="HEAD", android_base=None):
         return subprocess.run(
             ["bash", str(PREFLIGHT), "--snapo-dir", str(self.repo),
-             "--ref", ref, "--candidate", "6.0.0", "--mac-base", base, "--android-base", base],
+             "--ref", ref, "--candidate", "6.0.0", "--mac-base", base,
+             "--android-base", base if android_base is None else android_base],
             env=self.env, capture_output=True, text=True,
         )
 
-    def report(self, base="5.1.0", ref="HEAD"):
-        result = self.run_preflight(base, ref)
+    def report(self, base="5.1.0", ref="HEAD", android_base=None):
+        result = self.run_preflight(base, ref, android_base)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
 
-    def test_cli_change_counts_as_macos_source(self):
-        self.write("scripts/snapo", self.baseline["scripts/snapo"] + "# CLI change\n")
+    def test_reports_all_changed_files_from_each_public_base(self):
+        self.write("docs/release-note.md", "Release note\n")
         self.commit()
-        report = self.report()
-        self.assertIn("macOS source files changed since 5.1.0: 1\n", report)
-        self.assertIn("Recommendation: run the macOS source build/tests", report)
+        self.git("tag", "5.2.0")
+        scheme = "snapo-app-mac/Snap-O.xcodeproj/xcshareddata/xcschemes/Snap-O.xcscheme"
+        self.write(scheme, "Archive configuration\n")
+        self.write("custom-build/input.txt", "Build input\n")
+        self.commit()
+        self.write("uncommitted.txt", "Local edit\n")
 
-    def test_signing_and_packaging_changes_recommend_rehearsal(self):
-        for path in ("snapo-app-mac/Config/Base.xcconfig",
-                     "snapo-app-mac/Snap-O/SnapO.entitlements",
-                     "snapo-app-mac/Snap-O/Info.plist",
-                     "snapo-network-inspector-web/vite.config.ts",
-                     "snapo-network-inspector-web/tsconfig.json",
-                     "snapo-network-inspector-web/index.html"):
-            with self.subTest(path=path):
-                base = self.git("rev-parse", "HEAD").strip()
-                self.write(path, "Release configuration\n")
-                self.commit()
-                report = self.report(base=base)
-                self.assertIn(f"macOS release-sensitive source files changed since {base}: 1\n", report)
-                self.assertIn(f"  {path}\n", report)
-                self.assertIn("rehearse the macOS release flow before bumping VERSION", report)
+        report = self.report(android_base="5.2.0")
+        mac_files = report.split("Changed files since macOS base 5.1.0:\n", 1)[1].split("\n\n", 1)[0]
+        android_files = report.split("Changed files since Android base 5.2.0:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(mac_files, "  A\tcustom-build/input.txt\n"
+                         "  A\tdocs/release-note.md\n"
+                         f"  A\t{scheme}")
+        self.assertEqual(android_files, "  A\tcustom-build/input.txt\n"
+                         f"  A\t{scheme}")
+        self.assertNotIn("Recommendation:", report)
 
     def test_malformed_committed_build_number_is_rejected(self):
         for build in ("", "20260903", "20260903.0", "20260903.000", "2026093.00", "20260903.xx"):

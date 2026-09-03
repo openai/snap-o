@@ -183,76 +183,27 @@ printf '%s\n' 'Latest macOS release assets:'
 gh api repos/openai/snap-o/releases/latest \
   --jq '.assets[] | "  \(.name)  \(.size) bytes  \(.browser_download_url)"'
 
-if git -C "$SNAPO_DIR" cat-file -e "$MAC_BASE^{commit}" 2>/dev/null && \
-  git -C "$SNAPO_DIR" cat-file -e "$source_sha^{commit}" 2>/dev/null; then
-  printf '%s\n' ''
-  printf 'Merged commits since macOS base %s:\n' "$MAC_BASE"
-  git -C "$SNAPO_DIR" log --no-merges --format='  %h %s' "$MAC_BASE..$source_sha" | sed -n '1,120p'
+print_source_changes() {
+  local label="$1"
+  local base="$2"
+  local changed_files
 
-  source_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha")"
-  mac_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- snapo-app-mac snapo-network-inspector-web scripts/snapo)"
-  mac_release_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- \
-    .github/workflows/mac.yml \
-    snapo-app-mac/Snap-O.xcodeproj/project.pbxproj \
-    snapo-app-mac/Config \
-    snapo-app-mac/Snap-O/SnapO.entitlements \
-    snapo-app-mac/Snap-O/Info.plist \
-    snapo-app-mac/scripts \
-    snapo-network-inspector-web/vite.config.ts \
-    snapo-network-inspector-web/tsconfig.json \
-    snapo-network-inspector-web/index.html \
-    snapo-network-inspector-web/package.json \
-    snapo-network-inspector-web/package-lock.json)"
-  shared_files="$(git -C "$SNAPO_DIR" diff --name-only "$MAC_BASE..$source_sha" -- .github contracts VERSION)"
-  printf '%s\n' ''
-  printf 'Changed source areas since macOS base %s:\n' "$MAC_BASE"
-  if [[ -n "$source_files" ]]; then
-    awk -F/ '{count[$1]++} END {for (area in count) printf "  %s  %s files\n", area, count[area]}' <<< "$source_files" | sort
+  [[ -n "$base" ]] || return 0
+  printf '\nChanged files since %s base %s:\n' "$label" "$base"
+  if ! git -C "$SNAPO_DIR" cat-file -e "$base^{commit}" 2>/dev/null; then
+    printf '%s\n' '  Base is not available locally; fetch the missing ref first.'
+    return
+  fi
+  changed_files="$(git -C "$SNAPO_DIR" diff --name-status "$base" "$source_sha")"
+  if [[ -n "$changed_files" ]]; then
+    sed 's/^/  /' <<< "$changed_files"
   else
     printf '%s\n' '  none'
   fi
-  if [[ -n "$mac_files" ]]; then
-    mac_count="$(awk 'END {print NR}' <<< "$mac_files")"
-    printf 'macOS source files changed since %s: %s\n' "$MAC_BASE" "$mac_count"
-    printf '%s\n' 'Recommendation: run the macOS source build/tests before bumping VERSION.'
-  else
-    printf 'macOS source files changed since %s: none\n' "$MAC_BASE"
-  fi
-  if [[ -n "$mac_release_files" ]]; then
-    mac_release_count="$(awk 'END {print NR}' <<< "$mac_release_files")"
-    printf 'macOS release-sensitive source files changed since %s: %s\n' "$MAC_BASE" "$mac_release_count"
-    sed 's/^/  /' <<< "$mac_release_files" | sed -n '1,160p'
-    printf '%s\n' 'Recommendation: compare the macOS release workflow with these source build changes and rehearse the macOS release flow before bumping VERSION.'
-  fi
-  if [[ -n "$shared_files" ]]; then
-    shared_count="$(awk 'END {print NR}' <<< "$shared_files")"
-    printf 'Shared/build files changed since %s: %s\n' "$MAC_BASE" "$shared_count"
-    sed 's/^/  /' <<< "$shared_files" | sed -n '1,160p'
-    printf '%s\n' 'Recommendation: inspect shared/build changes before deciding which checks and rehearsals are needed.'
-  fi
-else
-  printf '%s\n' ''
-  printf 'Cannot inspect commits from macOS base %s locally; fetch the missing refs first.\n' "$MAC_BASE"
-fi
+}
 
-if [[ -n "$ANDROID_BASE" ]] && \
-  git -C "$SNAPO_DIR" cat-file -e "$ANDROID_BASE^{commit}" 2>/dev/null && \
-  git -C "$SNAPO_DIR" cat-file -e "$source_sha^{commit}" 2>/dev/null; then
-  android_files="$(git -C "$SNAPO_DIR" diff --name-only "$ANDROID_BASE..$source_sha" -- snapo-link-android)"
-  printf '%s\n' ''
-  if [[ -n "$android_files" ]]; then
-    android_count="$(awk 'END {print NR}' <<< "$android_files")"
-    printf 'Android files changed since %s: %s\n' "$ANDROID_BASE" "$android_count"
-    sed 's/^/  /' <<< "$android_files" | sed -n '1,160p'
-    printf '%s\n' 'Recommendation: include the Maven Central release unless these changes are intentionally excluded.'
-  else
-    printf 'Android files changed since %s: none\n' "$ANDROID_BASE"
-    printf '%s\n' 'Recommendation: mac-only is appropriate unless an Android republish is explicitly required.'
-  fi
-elif [[ -n "$ANDROID_BASE" ]]; then
-  printf '%s\n' ''
-  printf 'Cannot inspect Android changes from %s locally; fetch the missing refs first.\n' "$ANDROID_BASE"
-fi
+print_source_changes 'macOS' "$MAC_BASE"
+print_source_changes 'Android' "$ANDROID_BASE"
 
 printf '%s\n' ''
 printf '%s\n' 'Protocol review evidence (source: selected commit, not working-tree edits):'

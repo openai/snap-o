@@ -22,7 +22,7 @@ bash release/preflight.sh \
   --android-base <public-android-tag>
 ```
 
-The script reads committed files at `--ref` (default: `HEAD`) and public GitHub release, appcast, and CI data. It does not build or publish. The macOS base defaults to the latest public release; supply the Android base after checking Maven. Repeat the comparison if libraries have different public versions. Resolve missing refs, bases, and protocol definitions before continuing. Local edits are shown but are not included in the comparison.
+The script reports changed files and protocol definitions at `--ref` (default: `HEAD`), plus public GitHub release, appcast, and CI data. Use this report with the criteria below to choose release scope and required tests. The macOS base defaults to the latest public release; supply the Android base after checking Maven. Repeat the comparison if libraries have different public versions. Resolve missing refs, bases, and protocol definitions before continuing. Local edits are shown but are not included in the comparison.
 
 ## Check protocol changes
 
