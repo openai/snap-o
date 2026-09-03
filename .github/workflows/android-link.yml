@@ -44,7 +44,7 @@ jobs:
         run: chmod +x gradlew
       - name: Build Android libraries
         working-directory: snapo-link-android
-        run: ./gradlew --no-daemon --profile build -x detekt
+        run: ./gradlew --no-daemon --profile -Psnapo.samples.minifyRelease=false build -x detekt
       - name: Upload build profile
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
