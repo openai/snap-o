@@ -685,8 +685,8 @@
                         <button class="copy-button" type="button">Copy</button>
                       </div>
                       <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
-    debugImplementation("com.openai.snapo:network-okhttp3:4.1.0")
-    releaseImplementation("com.openai.snapo:network-okhttp3-noop:4.1.0")
+    debugImplementation("com.openai.snapo:network-okhttp3:6.0.0")
+    releaseImplementation("com.openai.snapo:network-okhttp3-noop:6.0.0")
 }</code></pre>
                     </div>
                   </div>
@@ -697,7 +697,7 @@
                         <button class="copy-button" type="button">Copy</button>
                       </div>
                       <pre><code class="syntax-code" data-language="toml" data-emphasis-lines="2,5,6">[versions]
-snapo = "4.1.0"
+snapo = "6.0.0"
 
 [libraries]
 snapo-network-okhttp3 = { module = "com.openai.snapo:network-okhttp3", version.ref = "snapo" }
@@ -735,8 +735,8 @@ snapo-network-okhttp3-noop = { module = "com.openai.snapo:network-okhttp3-noop",
                         <button class="copy-button" type="button">Copy</button>
                       </div>
                       <pre><code class="syntax-code" data-language="kotlin" data-emphasis-lines="2,3">dependencies {
-    debugImplementation("com.openai.snapo:network-httpurlconnection:4.1.0")
-    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:4.1.0")
+    debugImplementation("com.openai.snapo:network-httpurlconnection:6.0.0")
+    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:6.0.0")
 }</code></pre>
                     </div>
                   </div>
@@ -747,7 +747,7 @@ snapo-network-okhttp3-noop = { module = "com.openai.snapo:network-okhttp3-noop",
                         <button class="copy-button" type="button">Copy</button>
                       </div>
                       <pre><code class="syntax-code" data-language="toml" data-emphasis-lines="2,5,6">[versions]
-snapo = "4.1.0"
+snapo = "6.0.0"
 
 [libraries]
 snapo-network-httpurlconnection = { module = "com.openai.snapo:network-httpurlconnection", version.ref = "snapo" }
@@ -967,9 +967,94 @@ val client = HttpClient(OkHttp) {
             </div>
           </section>
 
-          <section class="guide-section" id="troubleshoot">
+          <section class="guide-section" id="python-overrides">
             <div class="section-heading">
               <span class="step" aria-hidden="true">5</span>
+              <h2>Override API responses with Python</h2>
+            </div>
+            <div class="section-body">
+            <p class="prose">
+              Use the Snap-O 6.0.0 CLI with an app built using the 6.0.0
+              OkHttp integration, including Ktor's OkHttp engine. Older Android
+              integrations do not support overrides. Python 3 is required;
+              no extra Python package is needed.
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>prototype.py</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="python">from snapo import route
+
+@route("GET", "/api/profile")
+async def profile(call):
+    response = await call.upstream()
+    response.json["display_name"] = "Space Captain"
+    return response
+
+@route("GET", "/api/tasks")
+async def tasks(call):
+    return call.json({"tasks": [{"id": "1", "title": "Example task"}]})</code></pre>
+            </div>
+            <p class="prose">
+              Save the file, list the available servers, and select the device
+              serial and socket for your app. <code>--check</code> loads and
+              lists the routes without a device.
+            </p>
+            <div class="code-block">
+              <div class="code-head">
+                <span>Terminal</span>
+                <button class="copy-button" type="button">Copy</button>
+              </div>
+              <pre><code class="syntax-code" data-language="shell">SNAPO_BIN="/Applications/Snap-O.app/Contents/MacOS/snapo"
+"$SNAPO_BIN" network intercept prototype.py --check
+"$SNAPO_BIN" network list --json
+"$SNAPO_BIN" network intercept prototype.py -s &lt;serial&gt; -n &lt;socket&gt;</code></pre>
+            </div>
+            <p class="prose">
+              Routes match an exact method and URL path on any host. Query
+              parameters do not affect matching. Inspect
+              <code>call.request.url</code> to distinguish hosts or queries.
+              <code>call.upstream()</code> uses the app's existing authentication
+              and transport. Return <code>call.json(...)</code> to supply a
+              response without contacting the server.
+            </p>
+            <p class="prose">
+              Saving the entry file reloads its handlers and resets module
+              state for new calls. Invalid edits leave the previous handlers
+              active. In-flight calls keep their original handlers. Restart
+              after editing imported helpers, or use <code>--no-watch</code>
+              to disable watching. Handlers run concurrently; use
+              <code>await asyncio.sleep(...)</code> for delays.
+            </p>
+            <p class="prose">
+              <code>--timeout 30</code> sets a 30-second handler deadline,
+              including the upstream response. Handler errors, deadlines, and
+              stopping the runner fail paused requests without sending them
+              upstream as a fallback. The app's retry policy still applies.
+            </p>
+            <p class="prose">
+              Overrides support bounded HTTP bodies up to 1 MiB. Request bodies
+              must be repeatable and declare their size. Requests accepting SSE
+              bypass overrides; unexpected SSE responses fail. WebSocket and
+              HttpURLConnection traffic remain inspection-only. The inspector
+              shows the response delivered to the app.
+            </p>
+            <p class="prose">
+              Try shared state and delays with the
+              <a href="https://github.com/openai/snap-o/blob/6.0.0/examples/routes.py">example routes</a>
+              and the
+              <a href="https://github.com/openai/snap-o/blob/6.0.0/snapo-link-android/samples/README.md">OkHttp and Ktor Tasks demos</a>.
+              See the
+              <a href="https://github.com/openai/snap-o/blob/6.0.0/skills/snap-o-network-inspector/references/interception.md">interception guide</a>
+              for the complete handler API.
+            </p>
+            </div>
+          </section>
+
+          <section class="guide-section" id="troubleshoot">
+            <div class="section-heading">
+              <span class="step" aria-hidden="true">6</span>
               <h2>Troubleshooting</h2>
             </div>
             <div class="section-body">
@@ -987,7 +1072,7 @@ val client = HttpClient(OkHttp) {
 
           <section class="guide-section" id="advanced">
             <div class="section-heading">
-              <span class="step" aria-hidden="true">6</span>
+              <span class="step" aria-hidden="true">7</span>
               <h2>Advanced setup</h2>
             </div>
             <div class="section-body">
@@ -1141,6 +1226,7 @@ NetworkInspector.initialize(
               <li><a class="quick-jump-link" href="#install">Add the Android dependency</a></li>
               <li><a class="quick-jump-link" href="#connect">Add request interceptors</a></li>
               <li><a class="quick-jump-link" href="#verify">Verify the connection</a></li>
+              <li><a class="quick-jump-link" href="#python-overrides">Override API responses with Python</a></li>
               <li><a class="quick-jump-link" href="#troubleshoot">Troubleshooting</a></li>
               <li><a class="quick-jump-link" href="#advanced">Advanced setup</a></li>
             </ol>
