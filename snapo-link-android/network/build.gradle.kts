@@ -12,8 +12,10 @@ android {
 }
 
 dependencies {
+    api(libs.kotlinx.coroutines.core)
+    api(libs.serialization.core)
+
     implementation(libs.androidx.core.ktx)
-    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.serialization.json)
     testImplementation(libs.junit4)
 }
