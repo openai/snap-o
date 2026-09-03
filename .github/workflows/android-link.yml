@@ -18,6 +18,11 @@ on:
       - '.github/workflows/android-link.yml'
       - 'VERSION'
 
+# Only PR runs share a group; push runs finish to populate Gradle caches.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
