@@ -24,6 +24,19 @@ Replace `demo-okhttp` in the build command and select the matching demo and pack
 
 Scroll below the network buttons to **Tasks**. The first request returns HTTP 404. Refreshing or adding a task also fails until interception supplies those responses. Release builds use the no-op integration and do not support interception.
 
+## Check implementation and no-op libraries
+
+Debug samples use the implementation libraries by default. Add `-Psnapo.samples.noop=true` to build them against the no-op libraries instead. No-op samples do not support inspection or interception.
+
+From `snapo-link-android`, run both modes without building release variants:
+
+```bash
+./gradlew assembleDebug lintDebug testDebugUnitTest
+./gradlew -Psnapo.samples.noop=true assembleDebug lintDebug testDebugUnitTest
+```
+
+These commands also build, lint, and test the debug variants of all library modules.
+
 ## Supply task responses
 
 From the repository root, list the sample's network socket and start the existing route example:

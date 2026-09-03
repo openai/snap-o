@@ -47,9 +47,12 @@ jobs:
       - name: Grant execute permission for Gradle wrapper
         working-directory: snapo-link-android
         run: chmod +x gradlew
-      - name: Assemble Android libraries and samples
+      - name: Assemble debug libraries and samples with implementations
         working-directory: snapo-link-android
-        run: ./gradlew --no-daemon --profile -Psnapo.samples.minifyRelease=false assemble
+        run: ./gradlew --no-daemon --profile assembleDebug
+      - name: Assemble debug samples with no-ops
+        working-directory: snapo-link-android
+        run: ./gradlew --no-daemon --profile -Psnapo.samples.noop=true assembleDebug
       - name: Upload assembly profile
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -82,9 +85,12 @@ jobs:
       - name: Grant execute permission for Gradle wrapper
         working-directory: snapo-link-android
         run: chmod +x gradlew
-      - name: Run Android lint and unit tests
+      - name: Lint and test debug libraries and samples with implementations
         working-directory: snapo-link-android
-        run: ./gradlew --no-daemon --profile -Psnapo.samples.minifyRelease=false check -x detekt
+        run: ./gradlew --no-daemon --profile lintDebug testDebugUnitTest
+      - name: Lint and test debug samples with no-ops
+        working-directory: snapo-link-android
+        run: ./gradlew --no-daemon --profile -Psnapo.samples.noop=true lintDebug testDebugUnitTest
       - name: Upload verification profile
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
