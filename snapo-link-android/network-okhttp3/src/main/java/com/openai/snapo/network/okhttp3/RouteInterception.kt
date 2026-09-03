@@ -27,6 +27,9 @@ internal fun interceptWithRoutes(
     request: Request,
     interception: NetworkInterception,
 ): Response {
+    if (request.header("Upgrade").equals("websocket", ignoreCase = true)) {
+        return chain.proceed(request)
+    }
     if (request.header("Accept")?.contains("text/event-stream", ignoreCase = true) == true) {
         return chain.proceed(request)
     }
