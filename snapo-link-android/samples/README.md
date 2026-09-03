@@ -46,7 +46,3 @@ Try these flows:
 - **Stop:** stop the runner with Ctrl-C, then refresh. The app reports that the API is unavailable again.
 
 The existing network buttons remain available while the task routes are active. Inspect task requests with Snap-O's network inspector or `network requests` and `network show`. The full route API is documented in the repository's [Python API overrides guide](../../README.md#python-api-overrides).
-
-## Shared Tasks code
-
-`demo-shared` contains the Tasks UI, state, serializable models, `TasksApi` interface, and common errors. Each demo supplies its own `list()` and `create(title)` implementation. The UI handles loading and displays errors without depending on a specific HTTP client.
