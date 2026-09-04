@@ -20,6 +20,7 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 - Follow the existing Swift style and code conventions.
 - Write clear, concise commit messages.
 - Include documentation updates when adding or changing functionality.
+- Follow [the release requirements](release/README.md) when changing protocols, published APIs, versioning, or packaging.
 
 ### macOS Swift Tooling
 

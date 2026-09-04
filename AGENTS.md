@@ -12,6 +12,10 @@ Snap-O is a public, open-source Android inspection tool.
 
 Use synthetic data in tests and examples. Never publish credentials, captured private traffic, confidential implementation details, or private issue-tracker links, identifiers, or content. Review the full diff, commit message, and PR text for sensitive information before publishing.
 
+## Release readiness
+
+Follow [release/README.md](release/README.md) when changing protocols, published APIs, version metadata, or packaging. Update `release/` checks and tests when protocol definitions or source paths change.
+
 ## Writing
 
 Use plain technical English in all prose, including READMEs, docs, code comments, UI text, commit messages, and PR descriptions. Prefer common words, active voice, and sentences of about 15 words, with one main idea each. Keep necessary technical terms, explain unfamiliar jargon for the intended reader, and preserve exact meaning. Remove repetition, but do not make the prose choppy or omit useful detail.

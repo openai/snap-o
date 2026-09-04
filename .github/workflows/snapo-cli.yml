@@ -8,6 +8,7 @@ on:
       - '.codex-plugin/plugin.json'
       - 'VERSION'
       - 'scripts/snapo'
+      - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
@@ -22,6 +23,7 @@ on:
       - '.codex-plugin/plugin.json'
       - 'VERSION'
       - 'scripts/snapo'
+      - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
@@ -50,6 +52,10 @@ jobs:
         run: python3 -m py_compile "$SNAPO_CLI" tests/snapo_cli/test_snapo.py
       - name: Test Python CLI
         run: python3 -m unittest discover -s tests/snapo_cli -p 'test_*.py' -v
+      - name: Test release scripts
+        run: |
+          bash -n release/preflight.sh
+          python3 -m unittest discover -s release/tests -p 'test_*.py' -v
       - name: Smoke test command surface
         run: |
           test -x "$SNAPO_CLI"
