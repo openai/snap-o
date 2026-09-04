@@ -89,7 +89,7 @@ read_value() {
   local content="$2"
   awk -F '=' -v key="$key" '
     $1 ~ "^[[:space:]]*" key "[[:space:]]*$" {
-      gsub(/[[:space:]]/, "", $2)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
       print $2
       exit
     }
@@ -289,12 +289,6 @@ print_protocol_evidence 'Mac/web/CLI clients' "$MAC_BASE" \
   contracts snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
   snapo-network-inspector-web scripts
 printf '%s\n' 'Protocol review must be recorded for this source SHA before the version bump; this report does not approve compatibility.'
-
-printf '%s\n' ''
-printf '%s\n' 'Recent source CI runs (confirm results cover the selected commit):'
-gh run list --repo openai/snap-o --branch main --limit 12 \
-  --json createdAt,workflowName,displayTitle,status,conclusion,headSha,url \
-  --jq '.[] | "  \(.workflowName)  \(.status)/\(.conclusion)  \(.headSha[0:12])  \(.displayTitle)"'
 
 printf '%s\n' ''
 if [[ "$latest_mac_tag" != "$appcast_version" ]]; then

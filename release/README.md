@@ -22,7 +22,7 @@ bash release/preflight.sh \
   --android-base <public-android-tag>
 ```
 
-The script reports changed files and protocol definitions at `--ref` (default: `HEAD`), plus public GitHub release, appcast, and CI data. Use this report with the criteria below to choose release scope and required tests. The macOS base defaults to the latest public release; supply the Android base after checking Maven. Repeat the comparison if libraries have different public versions. Resolve missing refs, bases, and protocol definitions before continuing. Local edits are shown but are not included in the comparison.
+The script reports changed files and protocol definitions at `--ref` (default: `HEAD`), plus public GitHub release and appcast data. Use this report with the criteria below to choose release scope and required tests. The macOS base defaults to the latest public release; supply the Android base after checking Maven. Repeat the comparison if libraries have different public versions. Resolve missing refs, bases, and protocol definitions before continuing. Local edits are shown but are not included in the comparison.
 
 ## Check protocol changes
 
@@ -50,7 +50,7 @@ Before the version update, run the macOS build for `mac` or `both`, and Android 
   ./gradlew --no-daemon validateMavenCentralRelease)
 ```
 
-Use `snapo-link-android/build/reports/maven-central/publications.tsv` for the complete Android library and file list. Do not use a fixed module count or an old README list.
+Use `snapo-link-android/build/reports/maven-central/publications.tsv` for the Android library coordinates.
 
 Test the release workflow before updating the version when build, signing, packaging, or publishing code changes. Check changes to the Xcode project, macOS build scripts, source CI, and web build files against the release workflow's setup. Source-only changes still need normal tests, but do not require an extra release workflow run when that workflow is unchanged.
 
@@ -87,7 +87,7 @@ Open a temporary copy of the final app and confirm the changed flows work. Revie
 
 ## Publish Android libraries
 
-Check every library and file in the tag's generated `publications.tsv`. Compare the staged files and signatures with that list before publishing.
+For each library in the tag's generated `publications.tsv`, check the staged POM, Gradle metadata, AAR, sources, javadocs, and signatures before publishing.
 
 After Maven Central finishes publishing, fetch each library's POM, Gradle metadata, AAR, sources, and javadocs directly from Maven Central. Also resolve all modules from a clean Android Gradle project using the Android plugin, `google()`, and `mavenCentral()`. Direct Central-only checks must skip transitive dependencies because AndroidX and Compose may require Google's repository.
 

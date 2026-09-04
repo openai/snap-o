@@ -85,9 +85,7 @@ class ProtocolReportTests(unittest.TestCase):
 
             args = sys.argv[1:]
             request = " ".join(args)
-            if args[:2] == ["run", "list"] and args[args.index("--repo") + 1] != "openai/snap-o":
-                raise SystemExit("Source checks must only query the source repository")
-            if args[:2] in (["auth", "status"], ["run", "list"]):
+            if args[:2] == ["auth", "status"]:
                 pass
             elif "releases/latest" in request:
                 if ".assets[]" not in request:
@@ -156,6 +154,23 @@ class ProtocolReportTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("must use YYYYMMDD.NN", result.stderr)
                 self.assertNotIn("Preflight complete", result.stdout)
+
+    def test_version_values_trim_only_surrounding_whitespace(self):
+        for version, build, error in (
+            ("6.0.0", "20260903.00", None),
+            ("6.0 .0", "20260903.00", "must use MAJOR.MINOR.PATCH"),
+            ("6.0.0", "20260903. 00", "must use YYYYMMDD.NN"),
+        ):
+            with self.subTest(version=version, build=build):
+                self.write("VERSION", f"VERSION = \t{version}\t \nBUILD_NUMBER = \t{build}\t \n")
+                self.commit()
+                result = self.run_preflight()
+                if error:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(error, result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("Source VERSION/build: 6.0.0 / 20260903.00", result.stdout)
 
     def test_local_version_edits_do_not_affect_source_validation(self):
         for content in ("VERSION = invalid\nBUILD_NUMBER = invalid\n", None):
