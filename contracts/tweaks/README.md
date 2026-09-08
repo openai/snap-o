@@ -2,7 +2,7 @@
 
 Status: phase one. The network inspector protocol is unchanged.
 
-Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless actions from the currently composed Android UI through an app-local socket, enabled by default only in debug builds. Agents and desktop tools can use HTTP to inspect those values, change them, and invoke app-owned callbacks while the app runs.
+Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless actions from registered Android application owners through an app-local socket, enabled by default only in debug builds. Agents and desktop tools can use HTTP to inspect those values, change them, and invoke app-owned callbacks while the app runs.
 
 ## Transport
 
@@ -144,7 +144,7 @@ Return a flat list of currently registered tweaks:
 }
 ```
 
-A tweak name represents one shared value, not one composable. Multiple active composables may register the same name; the tweak appears only once, and an update changes the value observed by every usage. A tweak remains registered until its last usage leaves composition. Registry-owned tweaks restore their most recently edited value if the same complete declaration returns. App-owned sources remain authoritative and control their own persistence; historical snapshots are never replayed into a returning source. Inactive tweaks do not appear in default responses or event snapshots.
+A tweak name represents one shared value, not one composable. Multiple active composables may register the same name; the tweak appears only once, and an update changes the value observed by every usage. A tweak remains registered until its last owner is released. Compose releases its owner when it leaves composition; non-Compose callers close their `TweakScope`. Registry-owned tweaks restore their most recently edited value if the same complete declaration returns. App-owned sources remain authoritative and control their own persistence; historical snapshots are never replayed into a returning source. Inactive tweaks do not appear in default responses or event snapshots.
 
 Registry-owned usages with the same name must agree on the tweak type, default, constraints, and ordered enum options. App-owned sources with the same name must use the same setting and value type.
 

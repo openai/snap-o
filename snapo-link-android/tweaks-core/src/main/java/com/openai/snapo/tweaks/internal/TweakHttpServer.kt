@@ -8,7 +8,6 @@ import android.os.Process
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
-import com.openai.snapo.tweaks.SnapOTweakValue
 import com.openai.snapo.tweaks.TweakColorValue
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -606,7 +605,7 @@ internal class TweakHttpServer(
                 writer.name("default")
                 writeJsonValue(writer, tweak.descriptor.default)
             }
-            if ((tweak.value as? SnapOTweakValue.Action)?.conflicted == true) {
+            if ((tweak.value as? TweakActionValue)?.conflicted == true) {
                 writer.name("conflicted").value(true)
             }
         }

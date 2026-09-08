@@ -14,6 +14,7 @@ import com.openai.snapo.tweaks.internal.ExternalTweakBacking
 import com.openai.snapo.tweaks.internal.SelectedTweakState
 import com.openai.snapo.tweaks.internal.TweakDescriptor
 import com.openai.snapo.tweaks.internal.TweakRegistry
+import com.openai.snapo.tweaks.internal.TweakState
 import com.openai.snapo.tweaks.internal.TweakType
 import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 import kotlinx.coroutines.flow.collect
@@ -230,18 +231,25 @@ internal class TweakRegistration<T : Any> private constructor(
         externalBinding,
     )
 
-    private val state: State<Any> = externalBinding
+    private val state: TweakState<Any> = externalBinding
         ?: TweakRegistry.stateFor(requireNotNull(descriptor))
-    private val externalState = externalBinding?.let { mutableStateOf<State<Any>>(it) }
+    private val externalState = externalBinding?.let { mutableStateOf<TweakState<Any>>(it) }
     private var observedSource: TweakSource<T>? = null
     private var registered = false
 
+    private val observedValue = ComposeTweakRegistry.state {
+        decode((externalState?.value ?: state).value)
+    }
+
     override val value: T
-        get() = decode((externalState?.value ?: state).value)
+        get() = observedValue.value
 
     val isSelected: Boolean
-        get() = (externalState?.value as? SelectedTweakState)
-            ?.isSelected(requireNotNull(externalBinding)) == true
+        get() {
+            ComposeTweakRegistry.readRevision()
+            return (externalState?.value as? SelectedTweakState)
+                ?.isSelected(requireNotNull(externalBinding)) == true
+        }
 
     fun notifyChanged() {
         val binding = externalBinding ?: return

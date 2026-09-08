@@ -101,7 +101,7 @@ internal class TweakChangePublisher(
         }
     }
 
-    internal class Subscription(
+    class Subscription(
         val initial: List<TweakSnapshot>,
         val events: LinkedBlockingDeque<List<TweakSnapshot>>,
         private val onClose: () -> Unit,

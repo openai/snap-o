@@ -4,7 +4,7 @@ plugins {
     id("snapo.detekt")
 }
 
-description = "Compose-free live tweaks for Snap-O."
+description = "No-op Compose-free tweaks for release builds."
 
 android { namespace = "com.openai.snapo.tweaks.core" }
 

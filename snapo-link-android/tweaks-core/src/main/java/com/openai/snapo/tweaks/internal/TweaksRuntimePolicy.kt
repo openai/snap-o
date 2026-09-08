@@ -1,6 +1,9 @@
 package com.openai.snapo.tweaks.internal
 
-internal object TweaksRuntimePolicy {
+import androidx.annotation.RestrictTo
+
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+object TweaksRuntimePolicy {
 
     @Volatile
     var isAllowed: Boolean = false

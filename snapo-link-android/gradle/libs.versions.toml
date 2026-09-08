@@ -20,6 +20,9 @@ detekt = "1.23.8"
 junit4 = "4.13.2"
 
 [libraries]
+androidx-annotation = { module = "androidx.annotation:annotation", version = "1.9.1" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 detekt-gradle-plugin = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detektGradlePlugin" }
 gradle = { module = "com.android.tools.build:gradle", version.ref = "gradle" }

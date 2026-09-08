@@ -2,6 +2,7 @@ package com.openai.snapo.tweaks.internal
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -166,5 +167,93 @@ class TweakBatchUpdateTest {
 
         assertTrue(result.tweaks.isEmpty())
         assertTrue(result.errors.isEmpty())
+    }
+
+    @Test
+    fun `failed source writes and resets do not block later batch entries`() {
+        val first = TweakDescriptor("Settings/First", TweakType.BOOLEAN, false)
+        val failing = TweakDescriptor("Settings/Unavailable", TweakType.BOOLEAN, false)
+        val last = TweakDescriptor("Settings/Last", TweakType.BOOLEAN, false)
+        val firstOwner = MutableTweakState(false)
+        val failingOwner = MutableTweakState(false)
+        val lastOwner = MutableTweakState(false)
+        register(first, firstOwner) { firstOwner.value = it as Boolean }
+        register(failing, failingOwner) { error("Application owner details") }
+        register(last, lastOwner) { lastOwner.value = it as Boolean }
+        var notifications = 0
+        val observer = TweakRegistry.observeChanges { notifications += 1 }
+
+        val updated = applyTweakBatch(
+            linkedMapOf(first.name to true, failing.name to true, last.name to true),
+        )
+
+        assertEquals(listOf(first.name, last.name), updated.tweaks.map { it.descriptor.name })
+        assertEquals(
+            listOf(TweakBatchError(failing.name, "The tweak could not be updated.")),
+            updated.errors,
+        )
+        assertEquals(true, firstOwner.value)
+        assertEquals(false, failingOwner.value)
+        assertEquals(true, lastOwner.value)
+        assertEquals(2, notifications)
+
+        val reset = applyTweakBatch(
+            linkedMapOf(first.name to null, failing.name to null, last.name to null),
+        )
+
+        assertEquals(listOf(first.name, last.name), reset.tweaks.map { it.descriptor.name })
+        assertEquals(updated.errors, reset.errors)
+        assertEquals(false, firstOwner.value)
+        assertEquals(false, lastOwner.value)
+        assertEquals(4, notifications)
+        observer.close()
+        TweakRegistry.unregister(first.name)
+        TweakRegistry.unregister(failing.name)
+        TweakRegistry.unregister(last.name)
+        val history = TweakRegistry.snapshot(includeAdjusted = true)
+
+        assertEquals(listOf(first.name, last.name), history.map { it.descriptor.name })
+        assertTrue(history.none(TweakSnapshot::modified))
+    }
+
+    @Test
+    fun `response and history share final values after a later callback changes an earlier entry`() {
+        val unchanged = TweakDescriptor("Preview/Unchanged", TweakType.INT, 0)
+        val first = TweakDescriptor("Preview/Size", TweakType.INT, 0)
+        val last = TweakDescriptor("Preview/Enabled", TweakType.BOOLEAN, false)
+        TweakRegistry.register(unchanged)
+        TweakRegistry.register(first)
+        val owner = MutableTweakState(false)
+        register(last, owner) {
+            owner.value = it as Boolean
+            TweakRegistry.update(mapOf(first.name to 99))
+        }
+
+        val response = TweakRegistry.update(linkedMapOf(unchanged.name to 0, first.name to 1, last.name to true))
+        val finalSize = response.single { it.descriptor == first }
+        assertEquals(listOf(0, 99, true), response.map(TweakSnapshot::value))
+
+        TweakRegistry.unregister(unchanged.name)
+        TweakRegistry.unregister(first.name)
+        TweakRegistry.unregister(last.name)
+        val history = TweakRegistry.snapshot(includeAdjusted = true)
+        assertEquals(listOf(first.name, last.name), history.map { it.descriptor.name })
+        assertSame(finalSize, history.single { it.descriptor == first })
+    }
+
+    private fun register(
+        descriptor: TweakDescriptor,
+        state: TweakState<Any>,
+        onValueChange: (Any) -> Unit,
+    ): TweakState<Any> {
+        val updateOwner = onValueChange
+        return TweakRegistry.register(object : ExternalTweakBacking {
+            override val name: String = descriptor.name
+            override val descriptor: TweakDescriptor = descriptor
+            override val value: Any get() = state.value
+            override fun onValueChange(value: Any) = updateOwner(value)
+            override fun onReset() = updateOwner(descriptor.default)
+            override fun isModified(): Boolean = state.value != descriptor.default
+        })
     }
 }
