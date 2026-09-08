@@ -181,15 +181,12 @@ Its value and default are objects with four named numeric coordinates:
   "type": "bezier",
   "default": {"x1": 0.25, "y1": 0.1, "x2": 0.25, "y2": 1.0},
   "value": {"x1": 0.4, "y1": 0.0, "x2": 0.2, "y2": 1.0},
-  "modified": true,
-  "yMin": 0.0,
-  "yMax": 1.0
+  "modified": true
 }
 ```
 
-All coordinates must be finite numbers between 0 and 1, inclusive.
-Optional `yMin` and `yMax` fields can narrow the Y range within these limits.
-These bounds must be increasing and apply to both Y coordinates.
+All coordinates must be finite Float values. X coordinates must be between 0 and 1, inclusive.
+Y coordinates can extend outside that range, allowing anticipation and overshoot.
 Curves do not use numeric `min`, `max`, or `step` fields.
 
 Coordinates are JSON numbers. The numeric precision and scale limits above still apply.
@@ -207,13 +204,12 @@ New clients still support earlier servers. The Network Inspector protocol is unc
 val curve by tweak(
     BezierCurve(0.25f, 0.1f, 0.25f, 1f),
     "Halo/Curve",
-    yRange = 0f..1f,
 )
 ```
 
 The same overload is available on `TweakScope`, returning `StateFlow<BezierCurve>`.
-Generic app-owned sources also accept `BezierCurve`. Sources use the type's default bounds:
-all coordinates in `[0, 1]`. Their setters may reject additional app-specific constraints.
+Generic app-owned sources also accept `BezierCurve`, with X in `[0, 1]` and finite Y coordinates.
+Their setters may reject additional app-specific constraints.
 No-op artifacts expose the same value class and overloads.
 
 ### GET /tweaks?include=adjusted

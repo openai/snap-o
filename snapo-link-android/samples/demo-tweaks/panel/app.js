@@ -465,7 +465,10 @@ function updateTweakRow(tweak) {
 
   if (fields.curvePath) {
     const { x1, y1, x2, y2 } = tweak.value;
-    fields.curvePath.setAttribute("d", `M2 24 C${2 + x1 * 22} ${24 - y1 * 22} ${2 + x2 * 22} ${24 - y2 * 22} 24 2`);
+    const bottom = Math.min(-0.5, y1, y2);
+    const top = Math.max(1.5, y1, y2);
+    const y = (value) => 2 + (top - value) / (top - bottom) * 22;
+    fields.curvePath.setAttribute("d", `M2 ${y(0)} C${2 + x1 * 22} ${y(y1)} ${2 + x2 * 22} ${y(y2)} 24 ${y(1)}`);
     for (const key of curveKeys) {
       if (fields[key] !== document.activeElement) {
         fields[key].value = numberText(tweak.value[key]);
@@ -770,12 +773,14 @@ function makeBezierTweak(tweak) {
     const input = node("input", "number-input");
     input.type = "number";
     input.step = "any";
-    input.min = String(key.startsWith("y") ? (tweak.yMin ?? 0) : 0);
-    input.max = String(key.startsWith("y") ? (tweak.yMax ?? 1) : 1);
+    if (key.startsWith("x")) {
+      input.min = "0";
+      input.max = "1";
+    }
     input.setAttribute("aria-label", `${tweak.name} ${key.toUpperCase()}`);
     input.addEventListener("input", () => {
       const value = Number(input.value);
-      const valid = input.value !== "" && input.validity.valid && Number.isFinite(value);
+      const valid = input.value !== "" && input.validity.valid && Number.isFinite(Math.fround(value));
       input.setAttribute("aria-invalid", String(!valid));
       if (valid) updateValue(tweak, { ...tweak.value, [key]: value });
     });
@@ -924,8 +929,6 @@ function sameTweakShape(current, incoming) {
       tweak.name === next.name &&
       tweak.type === next.type &&
       (tweak.type === "bezier" ? sameCurve(tweak.default, next.default) : tweak.default === next.default) &&
-      tweak.yMin === next.yMin &&
-      tweak.yMax === next.yMax &&
       tweak.min === next.min &&
       tweak.max === next.max &&
       tweak.step === next.step &&

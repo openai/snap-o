@@ -22,8 +22,8 @@ class BezierTweakTest {
         mapOf("x1" to x1, "y1" to y1, "x2" to x2, "y2" to y2)
 
     @Test
-    fun `coordinate objects preserve normalized values`() {
-        val curve = BezierCurve(0.2f, 0.1f, 0.8f, 0.9f)
+    fun `coordinate objects preserve overshoot values`() {
+        val curve = BezierCurve(0.2f, -0.5f, 0.8f, 1.5f)
         assertEquals(curve, parseBezierCurve(curve.coordinates()))
     }
 
@@ -32,8 +32,6 @@ class BezierTweakTest {
         listOf(
             linear.coordinates() + ("x1" to -0.1f),
             linear.coordinates() + ("x2" to 1.1f),
-            linear.coordinates() + ("y1" to -0.1f),
-            linear.coordinates() + ("y2" to 1.1f),
             linear.coordinates() + ("y1" to Float.NaN),
             linear.coordinates() + ("y2" to 1e99),
             linear.coordinates() + ("x1" to true),
@@ -42,14 +40,14 @@ class BezierTweakTest {
             linear.coordinates() + ("extra" to 0f),
         ).forEach { assertNull(it.toString(), parseBezierCurve(it)) }
         assertThrows(IllegalArgumentException::class.java) { BezierCurve(0f, Float.NaN, 1f, 1f) }
-        assertThrows(IllegalArgumentException::class.java) { BezierCurve(0f, -0.1f, 1f, 1f) }
-        assertThrows(IllegalArgumentException::class.java) { BezierCurve(0f, 0f, 1f, 1.1f) }
+        assertThrows(IllegalArgumentException::class.java) { BezierCurve(0f, Float.NEGATIVE_INFINITY, 1f, 1f) }
+        assertThrows(IllegalArgumentException::class.java) { BezierCurve(0f, 0f, 1f, Float.POSITIVE_INFINITY) }
     }
 
     @Test
     fun `a whole curve updates resets and restores across owners`() {
         TweaksRuntimePolicy.configure(isDebuggable = true, allowRelease = false)
-        val edited = BezierCurve(0.25f, 0.1f, 0.75f, 0.9f)
+        val edited = BezierCurve(0.25f, -0.5f, 0.75f, 1.5f)
         TweakScope().use { scope ->
             val state = scope.tweak(linear, "Motion/Curve")
             TweakRegistry.update(mapOf("Motion/Curve" to edited.coordinates()))
@@ -69,22 +67,9 @@ class BezierTweakTest {
     }
 
     @Test
-    fun `Y bounds constrain defaults and updates`() {
-        val default = BezierCurve(0f, 0.2f, 1f, 0.8f)
-        val descriptor = TweakDescriptor("Curve", TweakType.BEZIER, default, yMin = 0.2f, yMax = 0.8f)
-        val state = TweakRegistry.register(descriptor)
-        assertThrows(TweakUpdateException::class.java) {
-            TweakRegistry.update(mapOf("Curve" to linear.coordinates()))
-        }
-        assertEquals(default, state.value)
-        assertThrows(IllegalArgumentException::class.java) {
-            TweakRegistry.register(descriptor.copy(name = "Invalid", yMin = Float.NaN))
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            TweakRegistry.register(descriptor.copy(name = "Overshoot", yMin = -1f, yMax = 2f))
-        }
-        assertThrows(TweakUpdateException::class.java) {
-            TweakRegistry.register(descriptor.copy(name = "Outside", default = linear))
-        }
+    fun `finite Float extremes are valid Y coordinates`() {
+        val curve = BezierCurve(0f, -Float.MAX_VALUE, 1f, Float.MAX_VALUE)
+        assertEquals(curve, parseBezierCurve(curve.coordinates()))
+        assertEquals(curve, TweakRegistry.register(TweakDescriptor("Curve", TweakType.BEZIER, curve)).value)
     }
 }

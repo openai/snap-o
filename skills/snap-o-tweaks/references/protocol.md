@@ -194,8 +194,8 @@ The socket is app-local and normally enabled only when the Android app is debugg
 ## Bézier curves
 
 A `bezier` descriptor carries objects with numeric `x1`, `y1`, `x2`, and `y2` fields in `default` and `value`.
-All coordinates must be finite and in `[0, 1]`.
-Optional `yMin` and `yMax` fields narrow the range for both Y coordinates. Read those bounds before editing.
+All coordinates must be finite Float values. X coordinates must be in `[0, 1]`.
+Y coordinates may extend outside that range for anticipation and overshoot.
 Send all four coordinates as one value; reset the entire curve with `null`.
 Curve inspection requires a client that supports protocol 5 structured values.
 

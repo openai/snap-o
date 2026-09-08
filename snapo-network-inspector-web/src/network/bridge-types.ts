@@ -83,8 +83,6 @@ export interface TweakValueDescriptor {
   max?: number;
   step?: number;
   options?: string[];
-  yMin?: number;
-  yMax?: number;
 }
 
 export interface TweakActionDescriptor {

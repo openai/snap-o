@@ -105,8 +105,6 @@ struct TweakDescriptor: Codable {
   let max: TweakValue?
   let step: TweakValue?
   let options: [String]?
-  let yMin: Double?
-  let yMax: Double?
   let conflicted: Bool?
 }
 

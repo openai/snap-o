@@ -9,7 +9,7 @@ export function readBezier(value: unknown): BezierCoordinates | null {
   if (Object.keys(object).length !== 4 || points.some((v) => typeof v !== "number" || !Number.isFinite(Math.fround(v))))
     return null;
   const coordinates = points as unknown as BezierCoordinates;
-  if (coordinates.some((v) => v < 0 || v > 1)) return null;
+  if ([coordinates[0], coordinates[2]].some((v) => v < 0 || v > 1)) return null;
   return coordinates;
 }
 
@@ -17,17 +17,11 @@ export function bezierValue([x1, y1, x2, y2]: BezierCoordinates): BezierValue {
   return { x1, y1, x2, y2 };
 }
 
-export function moveBezier(
-  value: BezierCoordinates,
-  index: number,
-  x: number,
-  y: number,
-  yMin?: number,
-  yMax?: number
-): BezierCoordinates {
+export function moveBezier(value: BezierCoordinates, index: number, x: number, y: number): BezierCoordinates {
+  if (!Number.isFinite(Math.fround(x)) || !Number.isFinite(Math.fround(y))) return value;
   const next = [...value];
   next[index * 2] = Math.max(0, Math.min(1, Number(x.toFixed(6))));
-  next[index * 2 + 1] = Math.max(yMin ?? 0, Math.min(yMax ?? 1, Number(y.toFixed(6))));
+  next[index * 2 + 1] = Number(y.toFixed(6));
   return next as unknown as BezierCoordinates;
 }
 
@@ -38,3 +32,20 @@ export const bezierPresets: Record<string, BezierCoordinates> = {
   "Ease out": [0, 0, 0.58, 1],
   "Ease in out": [0.42, 0, 0.58, 1]
 };
+
+export interface BezierViewport {
+  bottom: number;
+  top: number;
+}
+
+export function bezierViewport(value: BezierCoordinates): BezierViewport {
+  return { bottom: Math.min(-0.5, value[1], value[3]), top: Math.max(1.5, value[1], value[3]) };
+}
+
+export function bezierGraphY(y: number, viewport: BezierViewport): number {
+  return (viewport.top - y) / (viewport.top - viewport.bottom);
+}
+
+export function bezierCoordinateY(position: number, viewport: BezierViewport): number {
+  return viewport.top - position * (viewport.top - viewport.bottom);
+}

@@ -68,15 +68,15 @@ describe("Bezier editor", () => {
     expect(input.value).toBe("");
     expect(changed).not.toHaveBeenCalled();
     await act(async () => {
-      setValue.call(input, "1.5");
+      setValue.call(input, "1e99");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(changed).not.toHaveBeenCalled();
     await act(async () => {
-      setValue.call(input, "0.5");
+      setValue.call(input, "1.5");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    expect(changed).toHaveBeenLastCalledWith({ ...initial, y2: 0.5 });
+    expect(changed).toHaveBeenLastCalledWith({ ...initial, y2: 1.5 });
   });
 
   it("keeps the inspector and graph mounted across live changes", async () => {
@@ -102,9 +102,54 @@ describe("Bezier editor", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("clamps keyboard edits to the normalized range", async () => {
+  it("fits overshoot curves without bounding Y inputs", async () => {
+    const input = document.querySelector<HTMLInputElement>('[aria-label="Motion/Curve Y2"]')!;
+    expect(input.min).toBe("");
+    expect(input.max).toBe("");
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setValue.call(input, "2");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const handles = document.querySelectorAll(".bezier-handle");
+    expect(Number(handles[1].getAttribute("cy"))).toBe(20);
+    expect(changed).toHaveBeenLastCalledWith({ ...initial, y2: 2 });
+  });
+
+  it("keeps the viewport fixed during an overshoot drag and fits it on release", async () => {
+    const graph = document.querySelector<SVGSVGElement>(".bezier-graph")!;
+    const handles = document.querySelectorAll<SVGCircleElement>(".bezier-handle");
+    Object.defineProperty(graph, "getScreenCTM", { value: () => ({ inverse: () => ({}) }) });
+    Object.defineProperty(graph, "setPointerCapture", { value: vi.fn() });
+    vi.stubGlobal(
+      "DOMPoint",
+      class {
+        constructor(
+          public x: number,
+          public y: number
+        ) {}
+        matrixTransform() {
+          return this;
+        }
+      }
+    );
+    const pointer = (type: string, y: number) =>
+      Object.assign(new MouseEvent(type, { bubbles: true, button: 0, clientX: 68, clientY: y }), { pointerId: 1 });
+    const initialFirstY = handles[0].getAttribute("cy");
+    await act(async () => handles[1].dispatchEvent(pointer("pointerdown", 80)));
+    await act(async () => graph.dispatchEvent(pointer("pointermove", -40)));
+    expect(changed).toHaveBeenLastCalledWith({ ...initial, y2: 2 });
+    await act(async () => graph.dispatchEvent(pointer("pointermove", -70)));
+    expect(changed).toHaveBeenLastCalledWith({ ...initial, y2: 2.25 });
+    expect(handles[0].getAttribute("cy")).toBe(initialFirstY);
+    await act(async () => graph.dispatchEvent(pointer("pointerup", -70)));
+    expect(Number(handles[1].getAttribute("cy"))).toBe(20);
+    expect(handles[0].getAttribute("cy")).not.toBe(initialFirstY);
+  });
+
+  it("allows keyboard edits below zero on Y", async () => {
     const handle = document.querySelector('[role="button"]')!;
     await act(async () => handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    expect(changed).toHaveBeenLastCalledWith(initial);
+    expect(changed).toHaveBeenLastCalledWith({ ...initial, y1: -0.01 });
   });
 });

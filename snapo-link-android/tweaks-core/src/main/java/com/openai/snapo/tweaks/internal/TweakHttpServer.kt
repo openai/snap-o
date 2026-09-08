@@ -645,8 +645,6 @@ internal class TweakHttpServer(
     }
 
     private fun writeConstraints(writer: JsonWriter, descriptor: TweakDescriptor) {
-        descriptor.yMin?.let { writer.name("yMin").value(it) }
-        descriptor.yMax?.let { writer.name("yMax").value(it) }
         descriptor.min?.let { minimum -> writer.name("min").value(minimum) }
         descriptor.max?.let { maximum -> writer.name("max").value(maximum) }
         descriptor.step?.let { increment -> writer.name("step").value(increment) }

@@ -2,7 +2,17 @@ import { createPortal } from "react-dom";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
 import type { BezierValue, TweakValueDescriptor } from "../../network/bridge-types";
-import { bezierPresets, bezierValue, moveBezier, readBezier, type BezierCoordinates } from "./bezier";
+import {
+  bezierPresets,
+  bezierValue,
+  moveBezier,
+  readBezier,
+  bezierViewport,
+  bezierGraphY,
+  bezierCoordinateY,
+  type BezierCoordinates,
+  type BezierViewport
+} from "./bezier";
 import "./bezier.css";
 
 const graphInset = 20;
@@ -16,12 +26,13 @@ const arrowDirections: Record<string, readonly [number, number]> = {
   ArrowDown: [0, -1]
 };
 
-function graphPoint(x: number, y: number): readonly [number, number] {
-  return [graphInset + x * graphExtent, graphInset + (1 - y) * graphExtent];
+function graphPoint(x: number, y: number, viewport: BezierViewport): readonly [number, number] {
+  return [graphInset + x * graphExtent, graphInset + bezierGraphY(y, viewport) * graphExtent];
 }
 
-function curvePath([x1, y1, x2, y2]: BezierCoordinates): string {
-  return `M${graphPoint(0, 0)} C${graphPoint(x1, y1)} ${graphPoint(x2, y2)} ${graphPoint(1, 1)}`;
+function curvePath(value: BezierCoordinates, viewport = bezierViewport(value)): string {
+  const [x1, y1, x2, y2] = value;
+  return `M${graphPoint(0, 0, viewport)} C${graphPoint(x1, y1, viewport)} ${graphPoint(x2, y2, viewport)} ${graphPoint(1, 1, viewport)}`;
 }
 
 export function BezierEditor({
@@ -37,6 +48,8 @@ export function BezierEditor({
   const trigger = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const [open, setOpen] = useState(false);
+  const drag = useRef<{ index: number; pointerId: number; viewport: BezierViewport } | null>(null);
+  const [dragViewport, setDragViewport] = useState<BezierViewport | null>(null);
   const close = () => {
     setOpen(false);
     trigger.current?.focus();
@@ -72,6 +85,8 @@ export function BezierEditor({
     window.addEventListener("pointerdown", dismiss);
     window.addEventListener("keydown", escape);
     return () => {
+      drag.current = null;
+      setDragViewport(null);
       window.removeEventListener("resize", position);
       window.removeEventListener("scroll", position, true);
       window.removeEventListener("pointerdown", dismiss);
@@ -79,15 +94,17 @@ export function BezierEditor({
     };
   }, [open]);
   const value = readBezier(tweak.value);
-  const drag = useRef<{ index: number; pointerId: number } | null>(null);
   if (!value) return <span>Invalid curve</span>;
-  const start = graphPoint(0, 0),
-    end = graphPoint(1, 1),
-    p1 = graphPoint(value[0], value[1]),
-    p2 = graphPoint(value[2], value[3]);
+  const viewport = dragViewport ?? bezierViewport(value);
+  const point = (x: number, y: number) => graphPoint(x, y, viewport);
+  const start = point(0, 0),
+    end = point(1, 1),
+    p1 = point(value[0], value[1]),
+    p2 = point(value[2], value[3]);
   const emit = (next: BezierCoordinates) => onChange(bezierValue(next));
   const finish = () => {
     drag.current = null;
+    setDragViewport(null);
   };
   return (
     <span>
@@ -156,9 +173,7 @@ export function BezierEditor({
                       value,
                       active.index,
                       (p.x - graphInset) / graphExtent,
-                      1 - (p.y - graphInset) / graphExtent,
-                      tweak.yMin,
-                      tweak.yMax
+                      bezierCoordinateY((p.y - graphInset) / graphExtent, active.viewport)
                     )
                   );
                 }}
@@ -168,10 +183,10 @@ export function BezierEditor({
               >
                 <path
                   className="bezier-grid"
-                  d={`M${graphPoint(0, 1)} L${start} L${graphPoint(1, 0)} M${graphPoint(0, 0.5)} L${graphPoint(1, 0.5)} M${graphPoint(0.5, 1)} L${graphPoint(0.5, 0)}`}
+                  d={`M${point(0, 1)} L${start} L${point(1, 0)} M${point(0, 0.5)} L${point(1, 0.5)} M${point(0.5, 1)} L${point(0.5, 0)}`}
                 />
                 <path className="bezier-arm" d={`M${start} L${p1} M${end} L${p2}`} />
-                <path className="bezier-line" d={curvePath(value)} />
+                <path className="bezier-line" d={curvePath(value, viewport)} />
                 {[p1, p2].map((p, index) => (
                   <circle
                     key={index}
@@ -186,7 +201,9 @@ export function BezierEditor({
                       if (event.button !== 0) return;
                       event.preventDefault();
                       event.currentTarget.focus();
-                      drag.current = { index, pointerId: event.pointerId };
+                      // Keep the graph scale stable until this drag ends.
+                      drag.current = { index, pointerId: event.pointerId, viewport };
+                      setDragViewport(viewport);
                       event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
                     }}
                     onKeyDown={(event) => {
@@ -199,9 +216,7 @@ export function BezierEditor({
                           value,
                           index,
                           value[index * 2] + direction[0] * step,
-                          value[index * 2 + 1] + direction[1] * step,
-                          tweak.yMin,
-                          tweak.yMax
+                          value[index * 2 + 1] + direction[1] * step
                         )
                       );
                     }}
@@ -217,7 +232,6 @@ export function BezierEditor({
                     title={name}
                     aria-label={name}
                     aria-pressed={preset.every((coordinate, index) => Math.abs(coordinate - value[index]) < 0.00001)}
-                    disabled={[preset[1], preset[3]].some((y) => y < (tweak.yMin ?? 0) || y > (tweak.yMax ?? 1))}
                     onClick={() => emit(preset)}
                   >
                     <svg viewBox={graphViewBox} aria-hidden="true">
@@ -232,8 +246,8 @@ export function BezierEditor({
                     {label}
                     <BezierCoordinate
                       label={`${tweak.name} ${label}`}
-                      min={i % 2 === 0 ? 0 : (tweak.yMin ?? 0)}
-                      max={i % 2 === 0 ? 1 : (tweak.yMax ?? 1)}
+                      min={i % 2 === 0 ? 0 : undefined}
+                      max={i % 2 === 0 ? 1 : undefined}
                       value={value[i]}
                       onChange={(coordinate) => {
                         const next = [...value] as [number, number, number, number];

@@ -60,14 +60,13 @@ fun <T : Any> tweak(
     return registration
 }
 
-/** Exposes a cubic curve as one editable value. Optional bounds constrain both Y coordinates. */
+/** Exposes a cubic curve as one editable value. */
 @Composable
 fun tweak(
     default: BezierCurve,
     name: String,
-    yRange: ClosedFloatingPointRange<Float>? = null,
 ): State<BezierCurve> = rememberTweakState(
-    TweakDescriptor(name, TweakType.BEZIER, default, yMin = yRange?.start, yMax = yRange?.endInclusive),
+    TweakDescriptor(name, TweakType.BEZIER, default),
     default,
 ) { it as BezierCurve }
 
