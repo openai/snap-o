@@ -1,6 +1,7 @@
 package com.openai.snapo.tweaks.internal
 
 import androidx.annotation.RestrictTo
+import com.openai.snapo.tweaks.BezierCurve
 import com.openai.snapo.tweaks.TweakColorValue
 import com.openai.snapo.tweaks.toTweakColorValue
 import java.io.Closeable
@@ -14,6 +15,7 @@ enum class TweakType(val wireName: String) {
     FLOAT("float"),
     BOOLEAN("boolean"),
     COLOR("color"),
+    BEZIER("bezier"),
     STRING("string"),
     ENUM("enum"),
     ACTION("action"),
@@ -28,6 +30,8 @@ data class TweakDescriptor(
     val max: Number? = null,
     val step: Number? = null,
     val options: List<String> = emptyList(),
+    val yMin: Float? = null,
+    val yMax: Float? = null,
 )
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -391,6 +395,7 @@ object TweakRegistry {
     }
 
     private fun validateDescriptor(descriptor: TweakDescriptor) {
+        validateBezierMetadata(descriptor)
         require(descriptor.name.isNotBlank()) { "Tweak names must not be blank." }
 
         when (descriptor.type) {
@@ -410,6 +415,7 @@ object TweakRegistry {
                 "String tweaks must have a string default: ${descriptor.name}"
             }
 
+            TweakType.BEZIER -> validateBezierDescriptor(descriptor)
             TweakType.ENUM -> validateEnumDescriptor(descriptor)
             TweakType.ACTION -> require(descriptor.default === Unit) {
                 "Actions must not declare a default value: ${descriptor.name}"
@@ -429,6 +435,40 @@ object TweakRegistry {
                 "Only numeric tweaks can define numeric constraints: ${descriptor.name}"
             }
         }
+    }
+
+    private fun validateBezierMetadata(descriptor: TweakDescriptor) {
+        if (descriptor.type != TweakType.BEZIER) {
+            require(descriptor.yMin == null && descriptor.yMax == null) {
+                "Only Bezier tweaks can define Y bounds: ${descriptor.name}"
+            }
+        }
+    }
+
+    private fun validateBezierDescriptor(descriptor: TweakDescriptor) {
+        require(descriptor.default is BezierCurve) { "Bezier tweaks require a curve default." }
+        require((descriptor.yMin == null) == (descriptor.yMax == null)) { "Supply both Y bounds." }
+        descriptor.yMin?.let { minimum ->
+            val maximum = requireNotNull(descriptor.yMax)
+            require(minimum in 0f..1f && maximum in 0f..1f && minimum < maximum) {
+                "Bezier Y bounds must be increasing within 0 and 1."
+            }
+        }
+        validateBezierValue(descriptor, descriptor.default)
+    }
+
+    private fun validateBezierValue(descriptor: TweakDescriptor, value: Any?): BezierCurve {
+        val curve = when (value) {
+            is BezierCurve -> value
+            is Map<*, *> -> parseBezierCurve(value)
+            else -> null
+        } ?: invalidValue(descriptor, "Expected a Bezier object with numeric x1, y1, x2, and y2 coordinates.")
+        val minimum = descriptor.yMin ?: return curve
+        val maximum = requireNotNull(descriptor.yMax)
+        if (curve.y1 !in minimum..maximum || curve.y2 !in minimum..maximum) {
+            invalidValue(descriptor, "Bezier Y coordinates must be between $minimum and $maximum.")
+        }
+        return curve
     }
 
     private fun validateEnumDescriptor(descriptor: TweakDescriptor) {
@@ -531,6 +571,7 @@ object TweakRegistry {
 
             TweakType.STRING, TweakType.ENUM -> validateStringValue(descriptor, value)
             TweakType.COLOR -> validateColorValue(descriptor, value)
+            TweakType.BEZIER -> validateBezierValue(descriptor, value)
 
             TweakType.ACTION -> invalidValue(
                 descriptor,

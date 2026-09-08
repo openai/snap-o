@@ -59,7 +59,8 @@ export class TweakUpdateQueue {
         }
 
         if (generation !== this.generation) return;
-        this.callbacks.onUpdate(result.tweaks, this.pending);
+        // React may apply the reply after the next batch clears the pending map.
+        this.callbacks.onUpdate(result.tweaks, new Map(this.pending));
         if (result.errors?.length) {
           errors.push(...result.errors);
           this.callbacks.onRejected?.(result.errors, this.pending, this.inFlight, () => generation === this.generation);

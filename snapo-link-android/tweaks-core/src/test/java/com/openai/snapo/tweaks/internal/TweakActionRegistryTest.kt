@@ -15,8 +15,8 @@ class TweakActionRegistryTest {
     }
 
     @Test
-    fun `protocol version distinguishes reset and modification aware clients`() {
-        assertEquals(4, TweaksProtocolVersion)
+    fun `protocol version includes Bezier curves`() {
+        assertEquals(5, TweaksProtocolVersion)
     }
 
     @Test

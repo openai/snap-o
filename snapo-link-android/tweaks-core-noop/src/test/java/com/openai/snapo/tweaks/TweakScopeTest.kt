@@ -33,6 +33,17 @@ class TweakScopeTest {
     }
 
     @Test
+    fun `curve defaults retain their type without an inspector`() {
+        val curve = BezierCurve(0.2f, 0.1f, 0.8f, 0.9f)
+        val scope = TweakScope()
+        val state = scope.tweak(curve, "Curve")
+        assertEquals(curve, state.value)
+        scope.close()
+        assertEquals(curve, state.value)
+        assertThrows(IllegalStateException::class.java) { scope.tweak(curve, "Closed") }
+    }
+
+    @Test
     fun `closing is idempotent and rejects new declarations`() {
         val scope = TweakScope()
         val value = scope.tweak(3, "Count")

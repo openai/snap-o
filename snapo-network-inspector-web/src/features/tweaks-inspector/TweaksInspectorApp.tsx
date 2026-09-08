@@ -1,3 +1,4 @@
+import { BezierEditor } from "./BezierEditor";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
@@ -86,7 +87,11 @@ export function TweaksInspectorApp({
             .listTweaks(server)
             .then((response) => {
               if (!isCurrent()) return;
-              setTweaks((current) => reconcileStreamedTweaks(current, response.tweaks, pending, inFlight));
+              const pendingAtReply = new Map(pending);
+              const inFlightAtReply = new Set(inFlight);
+              setTweaks((current) =>
+                reconcileStreamedTweaks(current, response.tweaks, pendingAtReply, inFlightAtReply)
+              );
               setError(null);
             })
             .catch((cause: unknown) => {
@@ -108,7 +113,10 @@ export function TweaksInspectorApp({
     let retryDelay = 250;
 
     const applySnapshot = (incoming: TweakDescriptor[]) => {
-      setTweaks((current) => reconcileStreamedTweaks(current, incoming, queue.pending, queue.inFlight));
+      // Preserve the queue state at receipt, before React defers this update.
+      const pending = new Map(queue.pending);
+      const inFlight = new Set(queue.inFlight);
+      setTweaks((current) => reconcileStreamedTweaks(current, incoming, pending, inFlight));
       setHasSnapshot(true);
       setError(null);
     };
@@ -541,7 +549,12 @@ function TweakControl({
           </button>
         ) : null}
         <span className="tweaks-control-field">
-          <TweakField tweak={tweak} onChange={onChange} onOpenColorPanel={onOpenColorPanel} />
+          <TweakField
+            tweak={tweak}
+            onChange={onChange}
+            onOpenColorPanel={onOpenColorPanel}
+            onReset={() => onReset(tweak)}
+          />
         </span>
       </div>
 
@@ -608,11 +621,13 @@ export function TweakActionControl({
 export function TweakField({
   tweak,
   onChange,
-  onOpenColorPanel
+  onOpenColorPanel,
+  onReset
 }: {
   tweak: TweakValueDescriptor;
   onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
   onOpenColorPanel?(tweak: TweakValueDescriptor): void;
+  onReset?(): void;
 }): JSX.Element | null {
   if (tweak.type === "boolean") {
     return (
@@ -628,6 +643,10 @@ export function TweakField({
 
   if (tweak.type === "color") {
     return <TweakColorField tweak={tweak} onChange={onChange} onOpenColorPanel={onOpenColorPanel} />;
+  }
+
+  if (tweak.type === "bezier") {
+    return <BezierEditor tweak={tweak} onChange={(value) => onChange(tweak, value)} onReset={onReset} />;
   }
 
   if (tweak.type === "enum") {

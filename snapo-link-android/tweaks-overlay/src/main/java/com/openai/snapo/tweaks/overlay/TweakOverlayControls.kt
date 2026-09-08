@@ -69,6 +69,7 @@ private const val MaximumDiscreteSliderIntervals = 1_000
 internal fun TweakOverlayControl(
     tweak: SnapOTweakEntry,
     onSelectColor: () -> Unit,
+    onSelectCurve: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -103,6 +104,9 @@ internal fun TweakOverlayControl(
             }
             is SnapOTweakValue.Selection -> TweakOverlayLabelRow(tweak) {
                 TweakSelectionField(tweak)
+            }
+            is SnapOTweakValue.Curve -> TweakOverlayLabelRow(tweak) {
+                TweakBezierField(tweak, onSelectCurve)
             }
             is SnapOTweakValue.ColorValue -> TweakOverlayLabelRow(tweak) {
                 TweakColorField(tweak, onSelectColor)

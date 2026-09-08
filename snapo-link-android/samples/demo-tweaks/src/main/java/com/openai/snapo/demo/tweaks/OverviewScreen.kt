@@ -1,7 +1,7 @@
 package com.openai.snapo.demo.tweaks
 
 import android.content.Context
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openai.snapo.tweaks.BezierCurve
 import com.openai.snapo.tweaks.TweakAction
 import com.openai.snapo.tweaks.tweak
 import kotlin.math.roundToInt
@@ -186,9 +187,10 @@ private fun MotionPreview() {
     } else {
         val durationMillis by tweak(400, "Motion/Duration", 100..1500, step = 50)
 
+        val curve by tweak(BezierCurve(0.4f, 0f, 0.2f, 1f), "Motion/Curve")
         tween(
             durationMillis = durationMillis,
-            easing = FastOutSlowInEasing,
+            easing = CubicBezierEasing(curve.x1, curve.y1, curve.x2, curve.y2),
         )
     }
     val progress = animateFloatAsState(

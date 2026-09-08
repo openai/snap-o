@@ -32,7 +32,7 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 | Request | Result |
 | --- | --- |
-| `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":4}`. |
+| `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":5}`. |
 | `GET /app/icon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
 | `GET /tweaks?include=adjusted` | Active descriptors plus previously adjusted ordinary or app-owned value snapshots retained outside composition. |
@@ -42,7 +42,7 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
 
-`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Use the reported version to select compatible update, status, and reset behavior.
+`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds `bezier` curves. Use the reported version to select compatible update, status, and reset behavior.
 
 ### Read metadata and active values
 
@@ -187,6 +187,18 @@ These relative URLs assume your host serves both the page and the proxy. The And
 
 ## Errors and security
 
-Request-level errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints, `405` for unsupported methods, `409` for conflicting action registrations, `413` for oversized bodies, and `422` for invalid numeric literals or nonprimitive values. Versions 1 and 2 also return `404` for inactive tweaks and `422` for invalid values. Versions 3 and later report unknown or invalid tweaks as named per-item errors in an HTTP 200 response.
+Request-level errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints, `405` for unsupported methods, `409` for conflicting action registrations, `413` for oversized bodies, and `422` for invalid numeric literals or unsupported structured values. Versions 1 and 2 also return `404` for inactive tweaks and `422` for invalid values. Versions 3 and later report unknown or invalid tweaks as named per-item errors in an HTTP 200 response.
 
 The socket is app-local and normally enabled only when the Android app is debuggable. Release activation requires an explicit `snapo.tweaks.allow_release` manifest opt-in; release no-op artifacts are preferred. There is no HTTP bearer-token layer: access is controlled by the local socket and the connected ADB boundary. Do not expose a forwarded port or proxy publicly, and treat tweak names and values as potentially sensitive.
+
+## Bézier curves
+
+A `bezier` descriptor carries objects with numeric `x1`, `y1`, `x2`, and `y2` fields in `default` and `value`.
+All coordinates must be finite and in `[0, 1]`.
+Optional `yMin` and `yMax` fields narrow the range for both Y coordinates. Read those bounds before editing.
+Send all four coordinates as one value; reset the entire curve with `null`.
+Curve inspection requires a client that supports protocol 5 structured values.
+
+```bash
+snapo tweaks set 'Motion/Curve' '{"x1":0.4,"y1":0,"x2":0.2,"y2":1}' -s "$serial" -n "$socket"
+```

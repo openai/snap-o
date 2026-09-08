@@ -58,6 +58,14 @@ class TweakScope : Closeable {
         TweakDescriptor(name, TweakType.INT, default, range?.first, range?.last, step),
     ) { it as Int }
 
+    fun tweak(
+        default: BezierCurve,
+        name: String,
+        yRange: ClosedFloatingPointRange<Float>? = null,
+    ): StateFlow<BezierCurve> = register(
+        TweakDescriptor(name, TweakType.BEZIER, default, yMin = yRange?.start, yMax = yRange?.endInclusive),
+    ) { it as BezierCurve }
+
     fun tweak(default: Boolean, name: String): StateFlow<Boolean> = register(
         TweakDescriptor(name, TweakType.BOOLEAN, default),
     ) { it as Boolean }
@@ -80,7 +88,7 @@ class TweakScope : Closeable {
         TweakDescriptor(name, TweakType.COLOR, default.toTweakColorValue()),
     ) { (it as TweakColorValue).toArgb() }
 
-    /** Exposes a Boolean, Int, Float, or String using the source's own reset and override status. */
+    /** Exposes a Boolean, Int, Float, String, or BezierCurve using the source's own reset and override status. */
     @MainThread
     fun <T : Any> tweak(source: TweakSource<T>, name: String): StateFlow<T> =
         registerSource(source, name, color = false)
@@ -204,6 +212,7 @@ private class ScopeSourceBinding<T : Any>(
             initial is Int -> TweakType.INT
             initial is Float -> TweakType.FLOAT
             initial is String -> TweakType.STRING
+            initial is BezierCurve -> TweakType.BEZIER
             else -> error("Unsupported tweak value type: ${initial.javaClass.name}")
         }
         TweakDescriptor(name, type, encode(initial))

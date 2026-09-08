@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.openai.snapo.tweaks
 
 import androidx.compose.runtime.Composable
@@ -21,7 +23,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Exposes an application-owned Boolean, Int, Float, String, or Color tweak.
+ * Exposes an application-owned Boolean, Int, Float, String, Color, or BezierCurve tweak.
  *
  * The first observed value is the inspector default; edits, resets, and status remain app-owned.
  * Sources with the same name must use the same setting and value type.
@@ -57,6 +59,17 @@ fun <T : Any> tweak(
 
     return registration
 }
+
+/** Exposes a cubic curve as one editable value. Optional bounds constrain both Y coordinates. */
+@Composable
+fun tweak(
+    default: BezierCurve,
+    name: String,
+    yRange: ClosedFloatingPointRange<Float>? = null,
+): State<BezierCurve> = rememberTweakState(
+    TweakDescriptor(name, TweakType.BEZIER, default, yMin = yRange?.start, yMax = yRange?.endInclusive),
+    default,
+) { it as BezierCurve }
 
 /** Exposes a floating-point tweak as observable state. */
 @Composable
@@ -303,9 +316,10 @@ internal class ExternalTweakBinding<T : Any>(
                 is Float -> TweakType.FLOAT
                 is String -> TweakType.STRING
                 is Color -> TweakType.COLOR
+                is BezierCurve -> TweakType.BEZIER
                 else -> throw IllegalArgumentException(
                     "Unsupported tweak value type: ${initial.javaClass.name}. " +
-                        "Supported types are Boolean, Int, Float, String, and Color.",
+                        "Supported types are Boolean, Int, Float, String, Color, and BezierCurve.",
                 )
             },
             default = encode(initial),

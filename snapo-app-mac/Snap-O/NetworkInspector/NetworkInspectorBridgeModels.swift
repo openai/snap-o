@@ -49,11 +49,19 @@ struct AppInspectorState: Codable {
   let isRestoring: Bool
 }
 
+struct BezierCurve: Codable {
+  let x1: Double
+  let y1: Double
+  let x2: Double
+  let y2: Double
+}
+
 enum TweakValue: Codable {
   case bool(Bool)
   case int(Int)
   case double(Double)
   case string(String)
+  case bezier(BezierCurve)
 
   init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
@@ -63,6 +71,8 @@ enum TweakValue: Codable {
       self = .int(value)
     } else if let value = try? container.decode(Double.self) {
       self = .double(value)
+    } else if let value = try? container.decode(BezierCurve.self) {
+      self = .bezier(value)
     } else {
       self = try .string(container.decode(String.self))
     }
@@ -79,6 +89,8 @@ enum TweakValue: Codable {
       try container.encode(value)
     case .string(let value):
       try container.encode(value)
+    case .bezier(let value):
+      try container.encode(value)
     }
   }
 }
@@ -93,6 +105,8 @@ struct TweakDescriptor: Codable {
   let max: TweakValue?
   let step: TweakValue?
   let options: [String]?
+  let yMin: Double?
+  let yMax: Double?
   let conflicted: Bool?
 }
 

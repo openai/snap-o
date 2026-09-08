@@ -125,6 +125,19 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
 
+    def test_reports_structured_curve_protocol_transition(self):
+        old_path = DECLARATIONS[1][1]
+        (self.repo / old_path).unlink()
+        core_path = old_path.replace("/tweaks/", "/tweaks-core/", 1)
+        self.write(core_path, "internal const val TweaksProtocolVersion: Int = 5\n")
+        self.write("contracts/tweaks/README.md", "Curve values have numeric x1, y1, x2, y2 fields.\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("TweaksProtocolVersion: Int = 4", report)
+        self.assertIn("TweaksProtocolVersion: Int = 5", report)
+        self.assertIn(core_path, report)
+        self.assertIn("REVIEW REQUIRED", report)
+
     def test_reports_all_changed_files_from_each_public_base(self):
         self.write("docs/release-note.md", "Release note\n")
         self.commit()

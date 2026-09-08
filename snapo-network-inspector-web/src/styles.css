@@ -1820,7 +1820,8 @@ pre {
   gap: 7px;
 }
 
-.tweaks-color {
+.tweaks-color,
+.bezier-open {
   width: 26px;
   height: 26px;
   border: 1px solid var(--outline-variant);
@@ -1828,7 +1829,8 @@ pre {
   padding: 2px;
 }
 
-.tweaks-color-button {
+.tweaks-color-button,
+.bezier-open {
   background: var(--surface-bright);
 }
 

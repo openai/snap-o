@@ -1520,6 +1520,23 @@ def parse_tweak_value(descriptor, raw):
         if not math.isfinite(value):
             raise SnapOError(f"Tweak '{descriptor.get('name', '')}' requires a finite numeric value")
         return value
+    if kind == "bezier":
+        try:
+            value = json.loads(raw)
+        except ValueError as error:
+            raise SnapOError("Expected a JSON object with x1, y1, x2, and y2 coordinates") from error
+        keys = {"x1", "y1", "x2", "y2"}
+        if not isinstance(value, dict) or set(value) != keys:
+            raise SnapOError("Expected a JSON object with x1, y1, x2, and y2 coordinates")
+        if any(type(point) not in (int, float) or abs(point) > 3.4028234663852886e38 or
+               not math.isfinite(point) for point in value.values()):
+            raise SnapOError("Bezier coordinates must be finite float values")
+        if any(value[key] < 0 or value[key] > 1 for key in keys):
+            raise SnapOError("Bezier coordinates must be between 0 and 1")
+        if any(value[key] < descriptor.get("yMin", -math.inf) or
+               value[key] > descriptor.get("yMax", math.inf) for key in ("y1", "y2")):
+            raise SnapOError("Bezier Y coordinates exceed the declared bounds")
+        return value
     if kind == "color":
         if not re.fullmatch(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?", raw):
             raise SnapOError(f"Tweak '{descriptor.get('name', '')}' requires a #RRGGBB or #RRGGBBAA color")
