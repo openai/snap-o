@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block main %}
+<main>
+  <section class="guide-hero">
+    <div class="wrap">
+      <div class="hero-copy">
+        {% if page.meta.breadcrumbs|length == 1 %}
+        <a class="back-link" href="{{ page.meta.breadcrumbs[0].href|url }}">{{ page.meta.breadcrumbs[0].label }}</a>
+        {% else %}
+        <nav class="back-link" aria-label="Breadcrumb">
+          {% for crumb in page.meta.breadcrumbs %}
+          {% if not loop.first %}<span aria-hidden="true">-</span>{% endif %}
+          <a href="{{ crumb.href|url }}">{{ crumb.label }}</a>
+          {% endfor %}
+        </nav>
+        {% endif %}
+        {{ title|safe }}
+        {{ introduction|safe }}
+      </div>
+    </div>
+  </section>
+  <div class="wrap guide-layout">
+    <article>
+      {% for section in sections %}
+      <section class="guide-section" id="{{ section.id }}">
+        <div class="section-heading">
+          {% if section.step %}<span class="step" aria-hidden="true">{{ section.step }}</span>{% endif %}
+          {{ section.heading|safe }}
+        </div>
+        <div class="section-body">{{ section.body|safe }}</div>
+      </section>
+      {% endfor %}
+    </article>
+    <aside class="quick-jump" aria-label="On this page">
+      <nav>
+        <ol class="quick-jump-list">
+          {% for section in sections %}
+          <li><a class="quick-jump-link" href="#{{ section.id }}">{{ section.nav }}</a></li>
+          {% endfor %}
+        </ol>
+      </nav>
+    </aside>
+  </div>
+</main>
+{% endblock %}

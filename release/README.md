@@ -99,14 +99,9 @@ Publish the GitHub Release with the version alone as its title and the final DMG
 
 Use the generated Sparkle item without changing or regenerating its signature. Check its app version, build number, minimum macOS version, byte length, URL, and signature. Add it to the latest `gh-pages` appcast after the channel description. Preserve prior entries.
 
-Update affected `gh-pages` documentation from public versions. Use the exact release tag for macOS and the latest public Maven version of each Android library. Do not document dependencies or features that users cannot download. Keep unrelated page design and assets unchanged.
+Update the Markdown sources in `docs/` for the released functionality. Use the exact release tag for macOS and the latest public Maven version of each Android library. Do not publish dependencies or features that users cannot download. Keep unrelated page design and assets unchanged.
 
-| Page | Sources |
-| --- | --- |
-| `index.html` | Released features and root `README.md` |
-| `network-inspector.html` | Released APIs, setup, and `skills/snap-o-network-inspector/SKILL.md` |
-| `tweaks.html` | Released APIs, setup, CLI examples, `skills/snap-o-tweaks/SKILL.md`, and its interaction-surfaces reference |
-| `tweaks-protocol.html` | `contracts/tweaks/README.md` and `skills/snap-o-tweaks/references/protocol.md` |
+Build and preview the docs using [Documentation sources](../docs/README.md#build-and-preview). Check examples against the released APIs, CLI, and protocol definitions in `contracts/`.
 
 Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle finds and installs the new version.
 

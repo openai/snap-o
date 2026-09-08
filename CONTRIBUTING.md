@@ -36,6 +36,20 @@ mise run lint
 
 To update the pinned tools intentionally, bump the versions in `snapo-app-mac/mise.toml` and rerun `mise install` plus `mise run lint`.
 
+## Documentation
+
+Edit public guides in `docs/`. See [Documentation sources](docs/README.md) for setup, preview, and validation commands. The HTML on `gh-pages` is generated from these files.
+
+## Notarizing or shipping builds
+
+For release preparation and acceptance checks, see [Release requirements](release/README.md).
+
+If you need to notarize the app yourself:
+
+1. Copy `snapo-app-mac/Config/Signing.xcconfig.sample` → `snapo-app-mac/Config/Signing.xcconfig`.
+2. Edit the new file with your Apple Developer Team ID and signing certificate name.
+3. Use Xcode's Product → Archive flow, then distribute or upload as usual. The file is ignored by Git, so your credentials remain private.
+
 ## Pull Requests
 
 1. Push your changes to your fork:

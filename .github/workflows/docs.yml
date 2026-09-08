@@ -1,0 +1,33 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/**'
+      - 'docs-theme/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'docs-theme/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install documentation dependencies
+        run: |
+          python3 -m venv docs/.venv
+          docs/.venv/bin/python -m pip install -r docs/requirements.txt
+      - name: Test documentation
+        run: docs/.venv/bin/python -m unittest discover -s docs/tests -v
+      - name: Build and check documentation
+        run: docs/.venv/bin/mkdocs build --strict
