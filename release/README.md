@@ -120,7 +120,9 @@ Review the generated `site/` against the public versions before publishing. Buil
 | `cli.html` | `docs/cli.md` |
 | `usage.html` | `docs/usage.md` |
 
-Check source examples against the released APIs, CLI, and protocol definitions in `contracts/`. Copy the generated `site/` contents into the latest `gh-pages` checkout without deleting existing files. Preserve `appcast.xml` and existing release assets; the documentation build does not generate or update the feed. Do not use `mkdocs gh-deploy`, which replaces the branch contents and would remove the feed. Do not edit generated HTML directly. CI validates the documentation without deploying it.
+Check source examples against the released APIs, CLI, and protocol definitions in `contracts/`. Run **Actions → Publish documentation** with the reviewed source revision. See [publishing instructions](../docs/README.md#publish-an-update) for setup and recovery steps.
+
+The workflow builds the docs, updates `gh-pages`, and requests a GitHub Pages build. It preserves `appcast.xml` and existing release assets; it does not generate or update the feed. Appcast updates remain a separate release step. Do not use `mkdocs gh-deploy`, which replaces the branch contents and would remove the feed. Do not edit generated HTML directly. Regular CI validates documentation without publishing it.
 
 Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle finds and installs the new version.
 

@@ -101,7 +101,29 @@ The root `mkdocs.yml` configures the build, navigation, validation, and `.html` 
 `docs/hooks.py` adapts rendered Markdown to the existing numbered sections, code captions, and dependency tabs.
 MkDocs handles Markdown rendering, page discovery, links, asset copying, and live preview.
 
-CI runs the strict MkDocs build and theme tests without deploying them.
-Follow the [release instructions](../release/README.md#release-notes-and-website) to publish documentation for released features.
-Copy the generated `site/` contents into the `gh-pages` checkout without deleting its existing files.
-Preserve `appcast.xml` and existing release assets. Do not use `mkdocs gh-deploy`: it replaces the branch contents and would remove the Sparkle update feed.
+Pull requests and pushes run the strict build and documentation tests without publishing.
+Follow the [release instructions](../release/README.md#release-notes-and-website) when choosing documentation for released features.
+
+### Publish an update
+
+Once the workflow is on the default branch:
+
+1. Open **Actions → Publish documentation → Run workflow** on GitHub.
+2. Leave the workflow branch on `main`. Enter the tag, branch, or full commit SHA to build in `source_ref`.
+3. Choose a revision that contains the MkDocs sources and documents only released functionality.
+4. Run the workflow and check its summary for the source SHA, `gh-pages` commit, and site URL.
+
+The workflow builds and tests the selected revision with read-only repository permissions.
+A separate job copies the generated files into the latest `gh-pages` checkout, commits, and pushes.
+It preserves `appcast.xml`, release files, and old pages absent from the new build.
+It explicitly requests a GitHub Pages build and waits for the published commit.
+
+Keep **Settings → Pages → Source** set to **Deploy from a branch**, with `gh-pages` and `/ (root)`.
+The workflow uses `GITHUB_TOKEN` with `contents: write` and `pages: write`; no extra token is needed.
+Repository rules must allow the workflow to push to `gh-pages`.
+
+If a release updates `gh-pages` during publication, the push fails without overwriting it. Rerun the workflow with a fresh checkout.
+If the push succeeds but the Pages build fails, rerun the same source revision to retry publication.
+The workflow never edits the update feed; appcast updates remain part of the release process.
+Renamed or removed pages stay on `gh-pages` until deliberately removed or replaced with redirects.
+Do not use `mkdocs gh-deploy`: it replaces the branch contents and would remove the Sparkle update feed.

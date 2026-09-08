@@ -7,12 +7,16 @@ on:
       - 'docs/**'
       - 'docs-theme/**'
       - 'mkdocs.yml'
+      - 'scripts/publish-docs.sh'
+      - '.github/workflows/publish-docs.yml'
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - 'docs/**'
       - 'docs-theme/**'
       - 'mkdocs.yml'
+      - 'scripts/publish-docs.sh'
+      - '.github/workflows/publish-docs.yml'
       - '.github/workflows/docs.yml'
 
 permissions:

@@ -1,0 +1,110 @@
+name: Publish documentation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Tag, branch, or commit containing the documentation to publish'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-gh-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Record source revision
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Build and test documentation
+        run: |
+          python3 -m venv docs/.venv
+          docs/.venv/bin/python -m pip install -r docs/requirements.txt
+          docs/.venv/bin/python -m unittest discover -s docs/tests -v
+          docs/.venv/bin/mkdocs build --strict
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: documentation
+          path: site/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check publishing source
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pages" > "$RUNNER_TEMP/pages.json"
+          jq -e '.build_type == "legacy" and .source.branch == "gh-pages" and .source.path == "/"' "$RUNNER_TEMP/pages.json"
+      - name: Check out publishing tools
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: automation
+          persist-credentials: false
+      - name: Check out the latest published files
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: gh-pages
+          path: publication
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: documentation
+          path: built-docs
+      - name: Update gh-pages
+        id: publish
+        env:
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+        run: |
+          bash automation/scripts/publish-docs.sh built-docs publication "$SOURCE_SHA"
+          echo "sha=$(git -C publication rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Build GitHub Pages and wait for publication
+        env:
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+          PUBLISHED_SHA: ${{ steps.publish.outputs.sha }}
+        run: |
+          # A GITHUB_TOKEN push does not trigger a Pages build on its own.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
+          for attempt in {1..60}; do
+            gh api "repos/$GITHUB_REPOSITORY/pages/builds/latest" > "$RUNNER_TEMP/pages-build.json"
+            commit=$(jq -r '.commit' "$RUNNER_TEMP/pages-build.json")
+            status=$(jq -r '.status' "$RUNNER_TEMP/pages-build.json")
+            if [[ "$commit" == "$PUBLISHED_SHA" ]]; then
+              case "$status" in
+                built)
+                  {
+                    echo "Published documentation from $SOURCE_SHA."
+                    echo "gh-pages commit: $PUBLISHED_SHA"
+                    jq -r '.html_url' "$RUNNER_TEMP/pages.json"
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+                  ;;
+                errored)
+                  jq -r '.error.message' "$RUNNER_TEMP/pages-build.json"
+                  exit 1
+                  ;;
+              esac
+            fi
+            sleep 10
+          done
+          echo 'Timed out waiting for the expected gh-pages commit to publish.' >&2
+          exit 1
