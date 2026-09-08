@@ -41,7 +41,7 @@ Return the app's user-facing Android label, package name, and Tweaks protocol ve
 }
 ```
 
-Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors and optional Y bounds. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
+Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
 
 ### GET /app/icon
 
