@@ -300,7 +300,6 @@ Declare one inside a composable:
 val curve by tweak(
     BezierCurve(0.25f, 0.1f, 0.25f, 1f),
     "Motion/Curve",
-    yRange = 0f..1f,
 )
 ```
 
@@ -313,12 +312,11 @@ Outside Compose, use the same overload on an existing `TweakScope`:
 val curve = tweaks.tweak(
     BezierCurve(0.25f, 0.1f, 0.25f, 1f),
     "Motion/Curve",
-    yRange = 0f..1f,
 )
 ```
 
 This returns `StateFlow<BezierCurve>`; read `curve.value` or collect changes. Close the scope when its owner is disposed.
-All coordinates must be finite numbers between 0 and 1. Optional `yRange` narrows the bounds for both Y coordinates.
+All coordinates must be finite Float values. X coordinates must be between 0 and 1. Y coordinates may extend outside that range for anticipation and overshoot.
 App-owned `TweakSource<BezierCurve>` values are also supported. The matching no-op artifacts expose the same API.
 
 Open a curve control in App Inspector or the on-device panel to drag its control points, enter coordinates, or select a preset.

@@ -89,7 +89,7 @@ snapo tweaks set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s <seri
 snapo tweaks reset 'Motion/Curve' -s <serial> -n <socket>
 ```
 
-All coordinates must be finite numbers between 0 and 1. The Y coordinates must also respect any `yMin` and `yMax` bounds in the descriptor.
+All coordinates must be finite Float values. X coordinates must be between 0 and 1. Y coordinates may extend outside that range for anticipation and overshoot.
 Updates and resets apply to the complete curve. See [Bézier setup](tweaks.md#bezier-curves).
 
 ## Previously adjusted Tweaks

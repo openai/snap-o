@@ -85,7 +85,7 @@ Host: 127.0.0.1
 | `2` | Adds action descriptors and `POST /tweaks/action`. Batch updates and resets retain version-1 behavior. |
 | `3` | Applies valid batch items independently and reports rejected items in `errors`. Resets still send the reported default. |
 | `4` | Adds explicit `null` resets and authoritative, sparse `modified: true` status. |
-| `5` | Adds `bezier` curve objects and optional `yMin` and `yMax` bounds. |
+| `5` | Adds `bezier` curve objects. X coordinates stay within `[0, 1]`; Y coordinates allow anticipation and overshoot. |
 
 Protocol 5 is available on `main`; Android 7.0.0 reports protocol 4. Older clients that accept only primitive values cannot decode lists containing curves. Updated clients still support older servers.
 
@@ -182,13 +182,11 @@ Its `default` and `value` contain four named coordinates:
   "type": "bezier",
   "default": {"x1": 0.25, "y1": 0.1, "x2": 0.25, "y2": 1.0},
   "value": {"x1": 0.4, "y1": 0.0, "x2": 0.2, "y2": 1.0},
-  "modified": true,
-  "yMin": 0.0,
-  "yMax": 1.0
+  "modified": true
 }
 ```
 
-All coordinates must be finite numbers between 0 and 1. Optional `yMin` and `yMax` narrow the bounds for both Y coordinates.
+All coordinates must be finite Float values. X coordinates must be between 0 and 1. Y coordinates may extend outside that range for anticipation and overshoot.
 Curves do not use numeric `min`, `max`, or `step` fields. Validate and replace all four coordinates together.
 
 Send the complete object in a `PATCH /tweaks` request:
@@ -202,7 +200,7 @@ Send the complete object in a `PATCH /tweaks` request:
 ```
 
 Reset with `{"values":{"Motion/Curve":null}}`. This restores the complete default or invokes the app-owned reset.
-Missing or unknown coordinate names and out-of-bounds coordinates produce per-item errors.
+Missing or unknown coordinate names and X coordinates outside `[0, 1]` produce per-item errors.
 Duplicate coordinate names are malformed requests. Arrays, nested objects, nonnumeric coordinates, and objects with more than four fields are rejected at the request level.
 Numeric precision limits still apply. See the [protocol contract](https://github.com/openai/snap-o/blob/main/contracts/tweaks/README.md#bézier-curves) for details.
 
