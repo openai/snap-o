@@ -99,14 +99,28 @@ Publish the GitHub Release with the version alone as its title and the final DMG
 
 Use the generated Sparkle item without changing or regenerating its signature. Check its app version, build number, minimum macOS version, byte length, URL, and signature. Add it to the latest `gh-pages` appcast after the channel description. Preserve prior entries.
 
-Update affected `gh-pages` documentation from public versions. Use the exact release tag for macOS and the latest public Maven version of each Android library. Do not document dependencies or features that users cannot download. Keep unrelated page design and assets unchanged.
+Update the Markdown sources in `docs/` for the released functionality. Use the exact release tag for macOS and the latest public Maven version of each Android library. Do not publish dependencies or features that users cannot download. Keep unrelated page design and assets unchanged.
 
-| Page | Sources |
+Follow [Documentation sources](../docs/README.md) to install the build dependencies, then run:
+
+```bash
+docs/.venv/bin/python -m unittest discover -s docs/tests -v
+docs/.venv/bin/mkdocs build --strict
+```
+
+Review the generated `site/` against the public versions before publishing. Build from the release checkout or a documentation update containing only released behavior; do not publish unrelated unreleased changes from `main`.
+
+| Page | Markdown source |
 | --- | --- |
-| `index.html` | Released features and root `README.md` |
-| `network-inspector.html` | Released APIs, setup, and `skills/snap-o-network-inspector/SKILL.md` |
-| `tweaks.html` | Released APIs, setup, CLI examples, `skills/snap-o-tweaks/SKILL.md`, and its interaction-surfaces reference |
-| `tweaks-protocol.html` | `contracts/tweaks/README.md` and `skills/snap-o-tweaks/references/protocol.md` |
+| `index.html` | `docs/index.md` |
+| `network-inspector.html` | `docs/network-inspector.md` |
+| `network-intercept.html` | `docs/network-intercept.md` |
+| `tweaks.html` | `docs/tweaks.md` |
+| `tweaks-protocol.html` | `docs/tweaks-protocol.md` |
+| `cli.html` | `docs/cli.md` |
+| `usage.html` | `docs/usage.md` |
+
+Check source examples against the released APIs, CLI, and protocol definitions in `contracts/`. Copy the generated `site/` contents into the latest `gh-pages` checkout without deleting existing files. Preserve `appcast.xml` and existing release assets; the documentation build does not generate or update the feed. Do not use `mkdocs gh-deploy`, which replaces the branch contents and would remove the feed. Do not edit generated HTML directly. CI validates the documentation without deploying it.
 
 Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle finds and installs the new version.
 

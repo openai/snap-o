@@ -40,3 +40,6 @@ Sessionx.vim
 .netrwhist
 [._]*.un~
 tags
+
+# Generated documentation
+/site/

@@ -1,0 +1,46 @@
+site_name: Snap-O
+site_url: https://openai.github.io/snap-o/
+repo_url: https://github.com/openai/snap-o
+edit_uri: edit/main/docs/
+use_directory_urls: false
+strict: true
+
+theme:
+  name: null
+  custom_dir: docs-theme
+
+watch:
+  - docs-theme
+
+nav:
+  - Snap-O: index.md
+  - Network Inspector: network-inspector.md
+  - Network Interception: network-intercept.md
+  - Tweaks: tweaks.md
+  - Tweaks Protocol: tweaks-protocol.md
+  - Command-line inspection: cli.md
+  - Using the macOS app: usage.md
+
+exclude_docs: |
+  /README.md
+  /requirements.txt
+  /hooks.py
+  /tests/
+  !/.nojekyll
+
+markdown_extensions:
+  - extra
+  - toc:
+      permalink: false
+
+hooks:
+  - docs/hooks.py
+
+plugins: []
+
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    anchors: warn
+    unrecognized_links: warn

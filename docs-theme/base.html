@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page.title }}</title>
+    <meta name="description" content="{{ page.meta.description }}">
+    {% for property, content in page.meta.get('social', {}).items() %}
+    <meta property="{{ property }}" content="{{ content }}">
+    {% endfor %}
+    {% if page.meta.layout == 'home' %}<meta name="twitter:card" content="summary_large_image">{% endif %}
+    <link rel="icon" type="image/png" href="{{ 'assets/icon-64.png'|url }}">
+    {% for stylesheet in page.meta.styles %}<link rel="stylesheet" href="{{ ('assets/' ~ stylesheet)|url }}">{% endfor %}
+  </head>
+  <body>
+    {% block main %}{% endblock %}
+    <footer>
+      <div class="wrap footer-row">
+        {% if page.meta.layout == 'home' %}
+        <p class="footer-copy">© <span id="year"></span> OpenAI</p>
+        <p class="footer-copy">Apache 2.0</p>
+        {% else %}
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+        {% endif %}
+      </div>
+    </footer>
+    <script>window.Prism = { manual: true };</script>
+    {% if page.meta.layout == 'guide' %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+    {% for language in page.meta.get('languages', []) %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-{{ language }}.min.js"></script>
+    {% endfor %}
+    {% endif %}
+    <script src="{{ 'assets/guide.js'|url }}"></script>
+  </body>
+</html>

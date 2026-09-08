@@ -1,0 +1,391 @@
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
+      }
+
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
+      }
+
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
+      }
+
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
+      }
+
+:root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --ink: #0b0c0b;
+        --muted: #565a55;
+        --line: #d8dbd4;
+        --navy: #071321;
+        --lime: #23b515;
+        --green: #18820f;
+        --maxw: 1200px;
+      }
+
+* {
+        box-sizing: border-box;
+      }
+
+html {
+        scroll-behavior: smooth;
+      }
+
+body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--bg);
+        font: 16px/1.6 "OpenAI Sans", Arial, sans-serif;
+        font-feature-settings: "liga" on, "calt" on;
+        -webkit-font-smoothing: antialiased;
+      }
+
+::selection {
+        background: rgba(111, 214, 138, 0.24);
+      }
+
+a {
+        color: inherit;
+        text-underline-offset: 4px;
+        text-decoration-thickness: 1px;
+      }
+
+a:hover {
+        color: var(--green);
+      }
+
+.wrap {
+        width: min(100%, var(--maxw));
+        margin-inline: auto;
+        padding-inline: clamp(20px, 4vw, 48px);
+      }
+
+.guide-hero {
+        padding-block: clamp(42px, 6vw, 72px) clamp(54px, 7vw, 82px);
+      }
+
+.hero-copy {
+        max-width: 760px;
+      }
+
+h1 {
+        margin: 0;
+        font-size: 2.25rem;
+        line-height: 1.17;
+        letter-spacing: -0.025em;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+.lead {
+        max-width: 58ch;
+        margin: 22px 0 0;
+        color: var(--muted);
+        font-size: clamp(1.04rem, 1.5vw, 1.16rem);
+        line-height: 1.55;
+        text-wrap: pretty;
+      }
+
+.guide-layout {
+        padding-bottom: 48px;
+      }
+
+article {
+        max-width: 860px;
+      }
+
+.guide-layout > *,
+      article {
+        min-width: 0;
+      }
+
+.guide-section {
+        scroll-margin-top: 96px;
+        padding-block: 28px 64px;
+        border-top: 1px solid var(--line);
+      }
+
+.guide-section + .guide-section {
+        padding-top: 34px;
+      }
+
+.section-heading {
+        position: relative;
+        margin-bottom: 10px;
+        padding-left: 44px;
+      }
+
+.section-heading h2 {
+        min-height: 27px;
+        display: flex;
+        align-items: center;
+      }
+
+.section-heading .step {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+.quick-jump {
+        display: none;
+      }
+
+@media (min-width: 1280px) {
+        .quick-jump {
+          position: fixed;
+          z-index: 10;
+          top: 96px;
+          right: clamp(32px, 4vw, 56px);
+          display: block;
+          width: 200px;
+          max-height: calc(100vh - 120px);
+          overflow-y: auto;
+        }
+
+        .quick-jump-list {
+          position: relative;
+          margin: 0;
+          padding: 0 0 0 14px;
+          list-style: none;
+          border-left: 2px solid #eceee9;
+        }
+
+        .quick-jump-list li + li {
+          margin-top: 12px;
+        }
+
+        .quick-jump-link {
+          position: relative;
+          display: block;
+          color: #777c76;
+          font-size: 0.875rem;
+          line-height: 1.4;
+          text-decoration: none;
+          transition: color 140ms ease;
+        }
+
+        .quick-jump-link::before {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: -16px;
+          width: 2px;
+          content: "";
+          background: transparent;
+        }
+
+        .quick-jump-link:hover {
+          color: var(--ink);
+        }
+
+        .quick-jump-link[aria-current="location"] {
+          color: var(--ink);
+          font-weight: 500;
+        }
+
+        .quick-jump-link[aria-current="location"]::before {
+          background: var(--ink);
+        }
+      }
+
+.section-body {
+        min-width: 0;
+        padding-left: 44px;
+      }
+
+.section-body img {
+        max-width: 100%;
+        height: auto;
+      }
+
+h3 {
+        margin: 36px 0 10px;
+        font-size: 1.15rem;
+        line-height: 1.35;
+        letter-spacing: -0.015em;
+      }
+
+p {
+        margin: 0;
+      }
+
+p + p {
+        margin-top: 14px;
+      }
+
+.prose {
+        color: var(--muted);
+        text-wrap: pretty;
+      }
+
+.notice {
+        margin: 26px 0;
+        padding: 2px 0 2px 18px;
+        border-left: 3px solid var(--lime);
+        color: var(--muted);
+      }
+
+.notice strong {
+        color: var(--ink);
+      }
+
+.code-block {
+        max-width: 100%;
+        margin: 22px 0 0;
+        overflow: hidden;
+        color: #eef3ed;
+        background: var(--navy);
+        border-radius: 6px;
+      }
+
+.code-head {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding-inline: 16px 10px;
+        color: #aeb9c2;
+        border-bottom: 1px solid #263342;
+        font: 500 0.72rem/1 "SF Mono", Consolas, "Liberation Mono",
+          ui-monospace, monospace;
+      }
+
+.syntax-code .token.keyword,
+      .syntax-code .token.boolean,
+      .syntax-code .token.builtin {
+        color: #d2a8ff;
+      }
+
+.syntax-code .token.class-name,
+      .syntax-code .token.constant,
+      .syntax-code .token.tag {
+        color: #f2cc60;
+      }
+
+.syntax-code .token.number {
+        color: #ffb86b;
+      }
+
+.syntax-code .token.operator,
+      .syntax-code .token.annotation,
+      .syntax-code .token.symbol {
+        color: #ff9b8f;
+      }
+
+.syntax-code .token.punctuation {
+        color: #aeb9c2;
+      }
+
+.copy-button {
+        min-height: 30px;
+        padding: 0 8px;
+        color: #d8dfd6;
+        background: transparent;
+        border: 1px solid #42505d;
+        border-radius: 3px;
+        font: inherit;
+      }
+
+.copy-button:hover {
+        color: var(--navy);
+        background: var(--lime);
+        border-color: var(--lime);
+      }
+
+pre {
+        margin: 0;
+        padding: 20px;
+        overflow-x: auto;
+        font: 0.84rem/1.7 "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+        tab-size: 2;
+      }
+
+code {
+        font-family: "SF Mono", Consolas, "Liberation Mono", ui-monospace,
+          monospace;
+      }
+
+.table-scroll {
+        max-width: 100%;
+        margin-top: 20px;
+        overflow-x: auto;
+      }
+
+.config-table th,
+      .config-table td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+.config-table th {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+.config-table th:first-child,
+      .config-table td:first-child {
+        padding-left: 0;
+      }
+
+.config-table th:last-child,
+      .config-table td:last-child {
+        padding-right: 0;
+      }
+
+footer {
+        padding-bottom: 30px;
+      }
+
+.footer-row {
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        font-size: 0.8rem;
+      }
+
+@media (max-width: 520px) {
+        .guide-hero {
+          padding-block: 34px 50px;
+        }
+
+        h1 {
+          font-size: 1.875rem;
+          line-height: 1.2;
+        }
+
+        .guide-section {
+          padding-bottom: 52px;
+        }
+
+        .guide-section + .guide-section {
+          padding-top: 46px;
+        }
+      }

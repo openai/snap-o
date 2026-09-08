@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block main %}
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        {{ title|safe }}
+        <p class="subtitle">{{ page.meta.subtitle }}</p>
+        {{ introduction|safe }}
+        <div class="cta">
+          {% for action in page.meta.actions %}
+          <a class="{{ action.class }}" href="{{ action.href }}">{{ action.label }}</a>
+          {% endfor %}
+        </div>
+        {{ note|safe }}
+      </div>
+      <figure class="demo">
+        <img {% for name, value in page.meta.image.items() %}{{ name }}="{{ value }}" {% endfor %}>
+      </figure>
+    </div>
+  </section>
+  <div class="section section-features">
+    <div class="wrap">
+      {% for section in sections %}
+      <section class="product-section">
+        {{ section.heading|safe }}
+        {{ section.body|safe }}
+      </section>
+      {% endfor %}
+    </div>
+  </div>
+</main>
+{% endblock %}
