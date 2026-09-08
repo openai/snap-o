@@ -1,387 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Snap-O</title>
-    <meta
-      name="description"
-      content="Snap-O is a fast, tidy macOS app for Android inspection: capture screenshots and recordings, and inspect network traffic."
-    />
-    <meta
-      property="og:title"
-      content="Snap-O"
-    />
-    <meta
-      property="og:description"
-      content="Capture screenshots and recordings, and inspect Android app network traffic on macOS."
-    />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="assets/banner.webp" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="icon" type="image/png" href="assets/icon-64.png" />
-    <style>
-      @font-face {
-        font-family: "OpenAI Sans";
-        font-style: normal;
-        font-weight: 400;
-        font-display: swap;
-        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
-      }
-      @font-face {
-        font-family: "OpenAI Sans";
-        font-style: normal;
-        font-weight: 500;
-        font-display: swap;
-        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
-      }
-      @font-face {
-        font-family: "OpenAI Sans";
-        font-style: normal;
-        font-weight: 600;
-        font-display: swap;
-        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
-      }
-      @font-face {
-        font-family: "OpenAI Sans";
-        font-style: normal;
-        font-weight: 700;
-        font-display: swap;
-        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
-      }
+    <meta name="description" content="Snap-O is a fast, tidy macOS app for Android inspection: capture screenshots and recordings, and inspect network traffic.">
 
-      :root {
-        color-scheme: light;
-        --bg: #ffffff;
-        --ink: #0a0a0a;
-        --muted: #545454;
-        --line: #d4d4d4;
-        --accent: #23b515;
-        --accent-hover: #23b515;
-        --accent-strong: #18820f;
-        --maxw: 1200px;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      ::selection {
-        background: rgba(111, 214, 138, 0.24);
-      }
-      body {
-        margin: 0;
-        font: 16px/1.55 "OpenAI Sans", Arial, sans-serif;
-        font-feature-settings: "liga" on, "calt" on;
-        color: var(--ink);
-        background: var(--bg);
-        -webkit-font-smoothing: antialiased;
-      }
-      a {
-        color: inherit;
-      }
-      a:focus-visible {
-        outline: 2px solid var(--accent-strong);
-        outline-offset: 4px;
-      }
+    <meta property="og:title" content="Snap-O">
 
-      .wrap {
-        max-width: var(--maxw);
-        margin-inline: auto;
-        padding-inline: clamp(20px, 3.2vw, 40px);
-      }
+    <meta property="og:description" content="Capture screenshots and recordings, and inspect Android app network traffic on macOS.">
 
-      .hero {
-        padding-block: clamp(44px, 6vw, 76px) clamp(48px, 6vw, 72px);
-      }
-      .hero-grid {
-        display: grid;
-        gap: clamp(36px, 5vw, 72px);
-        grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
-        align-items: center;
-      }
+    <meta property="og:type" content="website">
 
-      h1 {
-        margin: 0;
-        font-size: clamp(2.5rem, 5vw, 4rem);
-        line-height: 0.95;
-        letter-spacing: -0.045em;
-        font-weight: 600;
-        text-wrap: balance;
-      }
-      .subtitle {
-        margin: 0.7rem 0 0;
-        color: var(--ink);
-        font-size: 1rem;
-        font-weight: 400;
-      }
-      .lead {
-        margin: 1rem 0 0;
-        color: var(--muted);
-        max-width: 48ch;
-        font-size: clamp(1.04rem, 1.5vw, 1.16rem);
-        text-wrap: pretty;
-      }
+    <meta property="og:image" content="assets/banner.webp">
 
-      .cta {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 14px 20px;
-        margin-top: 26px;
-      }
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 46px;
-        padding: 0 18px;
-        border: 1px solid var(--ink);
-        border-radius: 3px;
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 0.9rem;
-        transition: color 140ms ease, background-color 140ms ease,
-          border-color 140ms ease;
-      }
-      .btn.primary {
-        color: #ffffff;
-        background: var(--ink);
-        border-color: var(--ink);
-      }
-      .btn.primary:hover,
-      .btn.primary:focus-visible {
-        color: var(--ink);
-        background: var(--accent-hover);
-        border-color: var(--accent-hover);
-      }
-      .secondary-link {
-        display: inline-flex;
-        align-items: center;
-        min-height: 44px;
-        font-weight: 500;
-        text-underline-offset: 4px;
-        text-decoration-thickness: 1px;
-      }
-      .secondary-link:hover {
-        color: var(--accent-strong);
-      }
-
-      .note {
-        margin: 16px 0 0;
-        color: var(--muted);
-        font-size: 0.8rem;
-      }
-      .note code {
-        font-family: "SF Mono", Consolas, "Liberation Mono", ui-monospace,
-          monospace;
-        font-size: 0.95em;
-      }
-
-      .demo {
-        margin: 0;
-        border: 1px solid var(--line);
-        overflow: hidden;
-        background: #050b12;
-      }
-      .demo img {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-
-      .section {
-        padding-block: clamp(28px, 4vw, 48px);
-      }
-      .section-features {
-        padding-top: 0;
-      }
-      .section-features .wrap {
-        border-top: 1px solid var(--line);
-      }
-      .product-section {
-        display: grid;
-        grid-template-columns: minmax(200px, 0.58fr) minmax(0, 1.42fr);
-        align-items: start;
-        gap: clamp(24px, 5vw, 72px);
-        padding: 28px 0 34px;
-        border-bottom: 1px solid var(--line);
-      }
-      .product-section:last-child {
-        border-bottom: 0;
-      }
-      .product-title {
-        margin: 0;
-        font-size: 1.25rem;
-        letter-spacing: 0;
-        line-height: 1.5;
-        font-weight: 600;
-        text-wrap: balance;
-      }
-      .product-copy {
-        margin: 0;
-        color: var(--muted);
-        max-width: 68ch;
-        text-wrap: pretty;
-      }
-      .section-link {
-        display: inline-flex;
-        margin-top: 14px;
-        color: var(--accent-strong);
-        font-weight: 600;
-        text-underline-offset: 4px;
-        text-decoration-thickness: 1px;
-      }
-      .section-link:hover,
-      .section-link:focus-visible {
-        color: var(--ink);
-      }
-      footer {
-        margin-top: 4px;
-      }
-      .footer-row {
-        min-height: 72px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px 16px;
-        flex-wrap: wrap;
-        border-top: 1px solid var(--line);
-      }
-      .footer-copy {
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.78rem;
-      }
-
-      @media (max-width: 860px) {
-        .hero-grid {
-          grid-template-columns: 1fr;
-        }
-        .demo {
-          max-width: 720px;
-        }
-      }
-
-      @media (max-width: 680px) {
-        .hero {
-          padding-block: 40px 48px;
-        }
-        .product-section {
-          grid-template-columns: 1fr;
-          gap: 16px;
-        }
-      }
-
-      @media (max-width: 440px) {
-        .cta {
-          align-items: stretch;
-          flex-direction: column;
-          gap: 4px;
-        }
-        .btn {
-          width: 100%;
-        }
-        .secondary-link {
-          justify-content: center;
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .btn {
-          transition: none;
-        }
-      }
-    </style>
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/png" href="assets/icon-64.png">
+    <link rel="stylesheet" href="assets/index.css">
   </head>
   <body>
-    <main>
-      <section class="hero">
-        <div class="wrap hero-grid">
-          <div>
-            <h1>Snap-O</h1>
-            <p class="subtitle">Android Inspection System</p>
-            <p class="lead">
-              A fast, tidy macOS app for Android developers: capture
-              screenshots and recordings, and inspect network traffic from
-              Android devices and emulators.
-            </p>
-            <div class="cta">
-              <a class="btn primary" href="https://github.com/openai/snap-o/releases/latest">
-                Download for macOS
-              </a>
-              <a class="secondary-link" href="https://github.com/openai/snap-o">
-                View on GitHub
-              </a>
-            </div>
-            <p class="note">
-              Requires macOS 15+ and Android Platform Tools (<code>adb</code>).
-            </p>
-          </div>
 
-          <figure class="demo">
-            <img
-              src="assets/banner.webp"
-              width="1280"
-              height="721"
-              fetchpriority="high"
-              alt="Snap-O interface with a green robot above Earth and the words Fast, Focused, Effortless"
-            />
-          </figure>
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <h1 id="snap-o">Snap-O</h1>
+        <p class="subtitle">Android Inspection System</p>
+
+<p class="lead">A fast, tidy macOS app for Android developers: capture screenshots and recordings, and inspect network traffic from Android devices and emulators.</p>
+
+
+        <div class="cta">
+
+          <a class="btn primary" href="https://github.com/openai/snap-o/releases/latest">Download for macOS</a>
+
+          <a class="secondary-link" href="https://github.com/openai/snap-o">View on GitHub</a>
+
         </div>
+        <p class="note">Requires macOS 15+ and Android Platform Tools (<code>adb</code>).</p>
+      </div>
+      <figure class="demo">
+        <img src="assets/banner.webp" width="1280" height="721" fetchpriority="high" alt="Snap-O interface with a green robot above Earth and the words Fast, Focused, Effortless" >
+      </figure>
+    </div>
+  </section>
+  <div class="section section-features">
+    <div class="wrap">
+
+      <section class="product-section">
+        <h2 class="product-title">Network Inspector</h2>
+        <div><p class="product-copy">Inspect HTTP and HTTPS requests, responses, JSON payloads, Server-Sent Events, and WebSocket messages from Android apps. Use Python handlers to edit or mock HTTP responses through the app's OkHttp connection.</p><a class="section-link" href="network-inspector.html">Set up Network Inspector</a></div>
       </section>
 
-      <div class="section section-features">
-        <div class="wrap">
-          <section class="product-section">
-            <h2 class="product-title">Network Inspector</h2>
-            <div>
-              <p class="product-copy">
-                Inspect HTTP and HTTPS requests, responses, JSON payloads,
-                Server-Sent Events, and WebSocket messages from Android apps.
-                Use Python handlers to edit or mock HTTP responses through the
-                app's OkHttp connection.
-              </p>
-              <a class="section-link" href="network-inspector.html">
-                Set up Network Inspector
-              </a>
-            </div>
-          </section>
+      <section class="product-section">
+        <h2 class="product-title">Screen capture</h2>
+        <p class="product-copy">Start in Live Preview and Option-drag the current frame to share a screenshot. Recordings open for immediate playback and frame-by-frame inspection. Drag screenshots or clips into pull requests, chats, or docs without saving them first.</p>
+      </section>
 
-          <section class="product-section">
-            <h2 class="product-title">Screen capture</h2>
-            <p class="product-copy">
-              Start in Live Preview and Option-drag the current frame to share
-              a screenshot. Recordings open for immediate playback and
-              frame-by-frame inspection. Drag screenshots or clips into pull
-              requests, chats, or docs without saving them first.
-            </p>
-          </section>
+      <section class="product-section">
+        <h2 class="product-title">Tweaks (Alpha)</h2>
+        <div><p class="product-copy">Adjust values from Compose, Views, and other Kotlin code. Change app-owned settings and run actions through App Inspector, an optional on-device panel, the REST API, or an agent.</p><a class="section-link" href="tweaks.html">Set up Tweaks (Alpha)</a></div>
+      </section>
 
-          <section class="product-section">
-            <h2 class="product-title">Tweaks (Alpha)</h2>
-            <div>
-              <p class="product-copy">
-                Adjust values from Compose, Views, and other Kotlin code.
-                Change app-owned settings and run actions through App Inspector,
-                an optional on-device panel, the REST API, or an agent.
-              </p>
-              <a class="section-link" href="tweaks.html">
-                Set up Tweaks (Alpha)
-              </a>
-            </div>
-          </section>
-        </div>
-      </div>
-    </main>
+    </div>
+  </div>
+</main>
 
     <footer>
       <div class="wrap footer-row">
+
         <p class="footer-copy">© <span id="year"></span> OpenAI</p>
         <p class="footer-copy">Apache 2.0</p>
+
       </div>
     </footer>
+    <script>window.Prism = { manual: true };</script>
 
-    <script>
-      document.getElementById("year").textContent = new Date().getFullYear();
-    </script>
+    <script src="assets/guide.js"></script>
   </body>
 </html>

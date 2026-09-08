@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Command-line inspection</title>
+    <meta name="description" content="Install the Snap-O CLI on macOS or Linux, inspect Android network requests, and use live Tweaks.">
+
+
+    <link rel="icon" type="image/png" href="assets/icon-64.png">
+    <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/network-inspector.css">
+  </head>
+  <body>
+
+<main>
+  <section class="guide-hero">
+    <div class="wrap">
+      <div class="hero-copy">
+
+        <a class="back-link" href="index.html">Snap-O</a>
+
+        <h1 id="command-line-inspection">Command-line inspection</h1>
+
+<p class="prose">The <code>snapo</code> Python client inspects network traffic and reads or changes Tweaks on macOS and Linux.
+It requires Python 3, Android Platform Tools, and an Android app with the matching Snap-O integration.
+The macOS app does not need to be running.</p>
+
+      </div>
+    </div>
+  </section>
+  <div class="wrap guide-layout">
+    <article>
+
+      <section class="guide-section" id="install">
+        <div class="section-heading">
+
+          <h2>Install</h2>
+        </div>
+        <div class="section-body">
+<h3 id="macos">macOS</h3>
+<p class="prose">The app bundles the client at <code>/Applications/Snap-O.app/Contents/MacOS/snapo</code>.
+Use that full path in place of <code>snapo</code> below, or add <code>/Applications/Snap-O.app/Contents/MacOS</code> to your <code>PATH</code>.</p>
+<h3 id="linux-and-standalone-macos">Linux and standalone macOS</h3>
+<p class="prose">Download the standalone script from the <code>main</code> branch:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/scripts/snapo -o ~/.local/bin/snapo
+chmod +x ~/.local/bin/snapo</code></pre></div>
+<p class="prose">Add <code>~/.local/bin</code> to your <code>PATH</code> if it is not already there:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">export PATH="$HOME/.local/bin:$PATH"</code></pre></div>
+<p class="prose">Add the same line to your shell configuration to keep it across sessions.</p>
+<p class="prose">Python API overrides are included in the same standalone script. No checkout or extra Python package is required.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="adb-configuration">
+        <div class="section-heading">
+
+          <h2>ADB configuration</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">The script supports <code>snapo network list</code>, <code>requests</code>, and <code>show</code>, as well as <code>snapo tweaks apps</code>, <code>list</code>, <code>get</code>, <code>set</code>, <code>action</code>, <code>reset</code>, and <code>watch</code>. It resolves <code>adb</code> from <code>PATH</code>, <code>ANDROID_SDK_ROOT</code>, or <code>ANDROID_HOME</code>; use <code>--adb &lt;path&gt;</code> or <code>SNAPO_ADB</code> to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to <code>127.0.0.1:5037</code>. Pass <code>--adb-host &lt;host&gt; --adb-port &lt;port&gt;</code> to use an explicit remote ADB server.</p>
+<p class="prose">Verify that ADB can see your Android device, then inspect its available Snap-O servers:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">adb devices -l
+snapo network list --json
+snapo tweaks apps --json</code></pre></div>
+<p class="prose">With the default ADB configuration, the CLI opens a localhost forward for the selected <code>snapo_network_&lt;pid&gt;</code> or <code>snapo_tweaks_&lt;pid&gt;</code> socket and removes it when the command exits. Wrappers selecting a remote ADB server must tunnel that forward back to localhost; otherwise, specify <code>--adb-host</code> and <code>--adb-port</code>. With an explicit ADB endpoint, the CLI connects through the ADB server directly and does not create a forward. Treat captured bodies, URL query values, and editable tweaks as sensitive.</p>
+<p class="prose">For slow remote wrappers, <code>--adb-timeout 90</code> increases the per-command ADB deadline from its 30-second default. Values must be greater than zero and at most 90 seconds. This deadline is separate from the Python handler's <code>--timeout</code>. Repeated shutdown signals leave forward cleanup running until it finishes or reaches the ADB deadline.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="inspect-an-app">
+        <div class="section-heading">
+
+          <h2>Inspect an app</h2>
+        </div>
+        <div class="section-body">
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">snapo network list --json
+snapo network requests -s &lt;serial&gt; -n &lt;socket&gt; --no-stream --json
+snapo network show -s &lt;serial&gt; -n &lt;socket&gt; -r &lt;request-id&gt; --json
+snapo network intercept ./prototype.py -s &lt;serial&gt; -n &lt;socket&gt;
+snapo tweaks apps --json
+snapo tweaks list -s &lt;serial&gt; -n &lt;socket&gt; --json
+snapo tweaks set 'Typography/Font size' 42 -s &lt;serial&gt; -n &lt;socket&gt;
+snapo tweaks set 'Motion/Marker shape' RoundedSquare -s &lt;serial&gt; -n &lt;socket&gt;
+snapo tweaks reset 'Typography/Font size' -s &lt;serial&gt; -n &lt;socket&gt;
+snapo tweaks action 'Motion/Toggle animation' -s &lt;serial&gt; -n &lt;socket&gt;</code></pre></div>
+<p class="prose">Use the serial and socket returned by <code>network list</code> or <code>tweaks apps</code> in subsequent commands. For response editing, see <a href="network-intercept.html">Network Interception</a>.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="bezier-curves">
+        <div class="section-heading">
+
+          <h2>Bézier curves</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Use the CLI bundled with Snap-O 8.0.0 or the script from <code>main</code> with an app using the Android 8.0.0 Tweaks libraries.
+Pass all four coordinates as one quoted JSON object:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">snapo tweaks set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s &lt;serial&gt; -n &lt;socket&gt;
+snapo tweaks reset 'Motion/Curve' -s &lt;serial&gt; -n &lt;socket&gt;</code></pre></div>
+<p class="prose">All four coordinates must be finite Float values between 0 and 1, inclusive.
+Updates and resets apply to the complete curve. See <a href="tweaks.html#bezier-curves">Bézier setup</a>.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="previously-adjusted-tweaks">
+        <div class="section-heading">
+
+          <h2>Previously adjusted Tweaks</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Include previously adjusted ordinary or app-owned values even after their owners leave composition or close their <code>TweakScope</code>:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">snapo tweaks list --all -s &lt;serial&gt; -n &lt;socket&gt; --json
+snapo tweaks get 'Motion/Duration' --all -s &lt;serial&gt; -n &lt;socket&gt; --json</code></pre></div>
+<p class="prose">The equivalent API is <code>GET /tweaks?include=adjusted</code>. Inactive tweaks remain read-only; app-owned history retains a value snapshot, not its source. See the <a href="https://github.com/openai/snap-o/blob/main/contracts/tweaks/README.md">Tweaks protocol guide</a> for descriptors and updates.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="codex-plugin">
+        <div class="section-heading">
+
+          <h2>Codex plugin</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Snap-O includes a Codex plugin for macOS and Linux. It bundles skills for network inspection and live Tweaks, along with their shared Python CLI, and requires Python 3 and Android Platform Tools.</p>
+<p class="prose">Add the Snap-O marketplace and install the plugin:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">codex plugin marketplace add openai/snap-o --ref main
+codex plugin add snap-o@snap-o</code></pre></div>
+<p class="prose">If you previously installed this marketplace with sparse paths, migrate once:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">codex plugin marketplace remove snap-o
+codex plugin marketplace add openai/snap-o --ref main
+codex plugin add snap-o@snap-o</code></pre></div>
+<p class="prose">Refresh the marketplace and reinstall the plugin to pick up updates:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">codex plugin marketplace upgrade snap-o
+codex plugin add snap-o@snap-o</code></pre></div>
+<p class="prose">Start a new Codex session after installing or updating the plugin.</p></div>
+      </section>
+
+    </article>
+    <aside class="quick-jump" aria-label="On this page">
+      <nav>
+        <ol class="quick-jump-list">
+
+          <li><a class="quick-jump-link" href="#install">Install</a></li>
+
+          <li><a class="quick-jump-link" href="#adb-configuration">ADB configuration</a></li>
+
+          <li><a class="quick-jump-link" href="#inspect-an-app">Inspect an app</a></li>
+
+          <li><a class="quick-jump-link" href="#bezier-curves">Bézier curves</a></li>
+
+          <li><a class="quick-jump-link" href="#previously-adjusted-tweaks">Previously adjusted Tweaks</a></li>
+
+          <li><a class="quick-jump-link" href="#codex-plugin">Codex plugin</a></li>
+
+        </ol>
+      </nav>
+    </aside>
+  </div>
+</main>
+
+    <footer>
+      <div class="wrap footer-row">
+
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+
+      </div>
+    </footer>
+    <script>window.Prism = { manual: true };</script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-bash.min.js"></script>
+
+
+    <script src="assets/guide.js"></script>
+  </body>
+</html>

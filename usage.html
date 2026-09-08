@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Using the macOS app</title>
+    <meta name="description" content="Capture and share Android screenshots and recordings with Snap-O.">
+
+
+    <link rel="icon" type="image/png" href="assets/icon-64.png">
+    <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/network-inspector.css"><link rel="stylesheet" href="assets/usage.css">
+  </head>
+  <body>
+
+<main>
+  <section class="guide-hero">
+    <div class="wrap">
+      <div class="hero-copy">
+
+        <a class="back-link" href="index.html">Snap-O</a>
+
+        <h1 id="using-the-macos-app">Using the macOS app</h1>
+
+<p class="prose">Connect an Android device with USB debugging enabled, or start an emulator, then open Snap-O.
+The app starts in Live Preview by default. You can change this in the Capture menu under Start With.
+Press <code>⌘R</code> for a screenshot or <code>⇧⌘R</code> to record.</p>
+
+      </div>
+    </div>
+  </section>
+  <div class="wrap guide-layout">
+    <article>
+
+      <section class="guide-section" id="screen-capture">
+        <div class="section-heading">
+
+          <h2>Screen capture</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Option-drag Live Preview to share the current frame as a screenshot. Recordings open for playback and frame-by-frame inspection.
+You can use multiple devices and keep captures open in separate windows. Snap-O cleans up temporary capture files automatically.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="drag-and-drop">
+        <div class="section-heading">
+
+          <h2>Drag and drop</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">After you capture a screenshot or screen recording, you can drag and drop it without saving first. Drop the capture straight into a GitHub pull request, a Slack message, or any app that accepts images and video.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="keyboard-shortcuts">
+        <div class="section-heading">
+
+          <h2>Keyboard shortcuts</h2>
+        </div>
+        <div class="section-body">
+<div class="table-scroll"><table class="config-table">
+<thead>
+<tr>
+<th>Action</th>
+<th>Shortcut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>New screenshot</td>
+<td><code>⌘R</code></td>
+</tr>
+<tr>
+<td>Start recording</td>
+<td><code>⇧⌘R</code></td>
+</tr>
+<tr>
+<td>Start live preview</td>
+<td><code>⇧⌘L</code></td>
+</tr>
+<tr>
+<td>Stop recording / preview</td>
+<td><code>⎋</code></td>
+</tr>
+<tr>
+<td>Save as</td>
+<td><code>⌘S</code></td>
+</tr>
+<tr>
+<td>Copy image to clipboard</td>
+<td><code>⌘C</code></td>
+</tr>
+<tr>
+<td>Previous device</td>
+<td><code>⌘[</code></td>
+</tr>
+<tr>
+<td>Next device</td>
+<td><code>⌘]</code></td>
+</tr>
+<tr>
+<td>Show / hide App Inspector</td>
+<td><code>⌥⌘I</code></td>
+</tr>
+<tr>
+<td>Show / hide Capture</td>
+<td><code>⌥⌘C</code></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+      </section>
+
+      <section class="guide-section" id="app-inspector">
+        <div class="section-heading">
+
+          <h2>App Inspector</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">The app picker shows one row per running app process. Click the row to keep your current inspector type when available, or click a Network or Tweaks icon on the right to open that inspector directly. You can also switch inspectors beside the selected app in the toolbar.</p>
+<p class="prose">
+<img alt="App picker with a leading selection checkmark and Network and Tweaks shortcuts" src="assets/app-inspector-demo.png" width="360"/>
+<br/><em>Native picker rendered with synthetic demo data.</em>
+</p>
+<p class="prose">Add the Android integration using the <a href="https://openai.github.io/snap-o/network-inspector.html">Network Inspector guide</a> or <a href="https://openai.github.io/snap-o/tweaks.html">Tweaks guide</a>.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="adb-setup">
+        <div class="section-heading">
+
+          <h2>ADB setup</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Snap-O communicates directly with the ADB server. If the server is not running, Snap-O asks you to select an <code>adb</code> binary to start it. Choose the binary from Android Platform Tools.</p>
+<p class="prose">For more live-preview and device-control features, see <a href="https://github.com/Genymobile/scrcpy">scrcpy</a>.</p></div>
+      </section>
+
+    </article>
+    <aside class="quick-jump" aria-label="On this page">
+      <nav>
+        <ol class="quick-jump-list">
+
+          <li><a class="quick-jump-link" href="#screen-capture">Screen capture</a></li>
+
+          <li><a class="quick-jump-link" href="#drag-and-drop">Drag and drop</a></li>
+
+          <li><a class="quick-jump-link" href="#keyboard-shortcuts">Keyboard shortcuts</a></li>
+
+          <li><a class="quick-jump-link" href="#app-inspector">App Inspector</a></li>
+
+          <li><a class="quick-jump-link" href="#adb-setup">ADB setup</a></li>
+
+        </ol>
+      </nav>
+    </aside>
+  </div>
+</main>
+
+    <footer>
+      <div class="wrap footer-row">
+
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+
+      </div>
+    </footer>
+    <script>window.Prism = { manual: true };</script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-bash.min.js"></script>
+
+
+    <script src="assets/guide.js"></script>
+  </body>
+</html>

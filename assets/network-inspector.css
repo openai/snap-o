@@ -1,0 +1,209 @@
+a:focus-visible,
+      button:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 4px;
+      }
+
+.back-link {
+        display: inline-flex;
+        margin-bottom: clamp(46px, 7vw, 78px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        text-decoration: none;
+      }
+
+h2 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+        letter-spacing: 0;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+.step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+.syntax-code .code-line {
+        display: block;
+      }
+
+.syntax-code .code-line:empty::before {
+        content: " ";
+      }
+
+.syntax-code .code-line-muted {
+        opacity: 0.48;
+      }
+
+.syntax-code .code-line-emphasis {
+        font-weight: 500;
+      }
+
+.syntax-code .token.function,
+      .syntax-code .token.attr-name {
+        color: #9dd8ff;
+      }
+
+.syntax-code .token.string,
+      .syntax-code .token.attr-value {
+        color: var(--lime);
+      }
+
+.syntax-code .token.comment {
+        color: #8b98a5;
+        font-style: italic;
+      }
+
+:not(pre) > code {
+        padding: 0.12em 0.35em;
+        color: var(--green);
+        background: rgba(35, 181, 21, 0.08);
+        border-radius: 3px;
+        font-size: 0.88em;
+      }
+
+details {
+        border-top: 1px solid var(--line);
+      }
+
+details:last-of-type {
+        border-bottom: 1px solid var(--line);
+      }
+
+.dependency-options {
+        margin-top: 24px;
+      }
+
+.dependency-format-tabs {
+        display: flex;
+        gap: 22px;
+        margin-top: 22px;
+        border-bottom: 1px solid var(--line);
+      }
+
+.dependency-format-tab {
+        margin: 0 0 -1px;
+        padding: 0 0 9px;
+        color: var(--muted);
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        font: 500 0.86rem/1.4 "OpenAI Sans", Arial, sans-serif;
+      }
+
+.dependency-format-tab:hover {
+        color: var(--ink);
+      }
+
+.dependency-format-tab[aria-selected="true"] {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
+
+.dependency-format-panel[hidden] {
+        display: none;
+      }
+
+.dependency-format-panel .code-block {
+        margin-top: 18px;
+      }
+
+summary {
+        padding-block: 17px;
+        font-weight: 600;
+      }
+
+.details-body {
+        padding: 0 0 26px;
+      }
+
+.details-body .code-block {
+        margin-bottom: 4px;
+      }
+
+.config-table {
+        width: 100%;
+        min-width: 680px;
+        border-collapse: collapse;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: left;
+      }
+
+.verify-list,
+      .check-list {
+        margin: 24px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+.verify-list {
+        counter-reset: verify;
+      }
+
+.verify-list li {
+        counter-increment: verify;
+        display: grid;
+        grid-template-columns: 27px minmax(0, 1fr);
+        gap: 14px;
+        padding-block: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+
+.verify-list li::before {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        content: counter(verify);
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        box-sizing: border-box;
+      }
+
+.check-list li {
+        position: relative;
+        padding: 10px 0 10px 24px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+
+.check-list li::before {
+        content: "";
+        position: absolute;
+        top: 1.25rem;
+        left: 2px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--lime);
+      }
+
+@media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }

@@ -1,0 +1,85 @@
+a:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 4px;
+      }
+
+.back-link {
+        display: inline-flex;
+        gap: 8px;
+        margin-bottom: clamp(46px, 7vw, 78px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        text-decoration: none;
+      }
+
+.back-link a {
+        text-decoration: none;
+      }
+
+h2 {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.5;
+        font-weight: 600;
+        text-wrap: balance;
+      }
+
+.step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 27px;
+        height: 27px;
+        padding-inline: 6px;
+        color: #555a55;
+        background: #f0f1ee;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+
+.syntax-code .token.function,
+      .syntax-code .token.attr-name,
+      .syntax-code .token.property {
+        color: #9dd8ff;
+      }
+
+.syntax-code .token.string,
+      .syntax-code .token.attr-value {
+        color: var(--lime);
+      }
+
+.syntax-code .token.comment {
+        color: #8b98a5;
+        font-style: italic;
+      }
+
+:not(pre) > code {
+        padding: 0.12em 0.35em;
+        color: var(--green);
+        background: rgba(35, 181, 21, 0.08);
+        border-radius: 3px;
+        font-size: 0.88em;
+      }
+
+.config-table {
+        width: 100%;
+        min-width: 620px;
+        border-collapse: collapse;
+        color: var(--muted);
+        font-size: 0.9rem;
+        text-align: left;
+      }
+
+@media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+
+        .quick-jump-link {
+          transition: none;
+        }
+      }
