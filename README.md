@@ -54,6 +54,8 @@ fun MotionPreview() {
 
 `TweakAction` returns `Unit` and exposes its callback only while its owner is in composition; declaring the action does not run the callback.
 
+For Views, ViewModels, services, and other code without Compose, use `tweaks-core`. Its `TweakScope` returns read-only `StateFlow` values and shares the registry with the Compose API. See [Tweaks without Compose](snapo-link-android/tweaks-core/README.md) for setup and ownership examples.
+
 Follow the [Tweaks developer guide](https://openai.github.io/snap-o/tweaks.html) for setup steps.
 
 ## Why build an Android inspection system?

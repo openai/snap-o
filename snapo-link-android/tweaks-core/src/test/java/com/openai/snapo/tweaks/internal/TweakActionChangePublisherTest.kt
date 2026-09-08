@@ -1,6 +1,5 @@
 package com.openai.snapo.tweaks.internal
 
-import com.openai.snapo.tweaks.SnapOTweakValue
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -29,7 +28,7 @@ class TweakActionChangePublisherTest {
             assertEquals(TweakType.INT, subscription.initial[0].descriptor.type)
             assertEquals(400, subscription.initial[0].value)
             assertEquals(TweakType.ACTION, subscription.initial[1].descriptor.type)
-            assertEquals(SnapOTweakValue.Action(), subscription.initial[1].value)
+            assertEquals(TweakActionValue(), subscription.initial[1].value)
             assertNull(subscription.events.poll())
         }
 
@@ -45,7 +44,7 @@ class TweakActionChangePublisherTest {
         val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
 
         publisher.subscribe().use { subscription ->
-            assertEquals(SnapOTweakValue.Action(), subscription.initial.single().value)
+            assertEquals(TweakActionValue(), subscription.initial.single().value)
 
             val duplicate = TweakRegistry.registerAction("Playback/Restart") {}
 
@@ -55,7 +54,7 @@ class TweakActionChangePublisherTest {
             val conflicted = subscription.events.poll()?.single()
             assertEquals("Playback/Restart", conflicted?.descriptor?.name)
             assertEquals(TweakType.ACTION, conflicted?.descriptor?.type)
-            assertEquals(SnapOTweakValue.Action(conflicted = true), conflicted?.value)
+            assertEquals(TweakActionValue(conflicted = true), conflicted?.value)
             assertNull(subscription.events.poll())
 
             duplicate.close()
@@ -65,7 +64,7 @@ class TweakActionChangePublisherTest {
 
             val recovered = subscription.events.poll()?.single()
             assertEquals("Playback/Restart", recovered?.descriptor?.name)
-            assertEquals(SnapOTweakValue.Action(), recovered?.value)
+            assertEquals(TweakActionValue(), recovered?.value)
             assertNull(subscription.events.poll())
         }
 

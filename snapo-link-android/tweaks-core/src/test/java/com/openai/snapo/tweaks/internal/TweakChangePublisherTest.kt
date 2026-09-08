@@ -1,8 +1,5 @@
 package com.openai.snapo.tweaks.internal
 
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -34,7 +31,7 @@ class TweakChangePublisherTest {
     @Test
     fun `cold cached subscriptions fail without retaining a subscriber or reading owners`() {
         var reads = 0
-        val owner = object : State<Any> {
+        val owner = object : TweakState<Any> {
             override val value: Any
                 get() = false.also { reads += 1 }
         }
@@ -67,7 +64,7 @@ class TweakChangePublisherTest {
             reads += 1
             false
         }
-        val state = object : State<Any> {
+        val state = object : TweakState<Any> {
             override val value: Any
                 get() = initialValue.value
         }
@@ -103,7 +100,7 @@ class TweakChangePublisherTest {
     }
 
     @Test
-    fun `composition changes are published together after the scheduled turn`() {
+    fun `registration changes are published together after the scheduled turn`() {
         val scheduled = mutableListOf<Runnable>()
         val publisher = TweakChangePublisher { runnable -> scheduled.add(runnable) }
         val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
@@ -301,7 +298,7 @@ class TweakChangePublisherTest {
         var current = false
         var modified = false
         var reads = 0
-        val owner = object : State<Any> {
+        val owner = object : TweakState<Any> {
             override val value: Any
                 get() = current.also { reads += 1 }
         }
@@ -349,7 +346,7 @@ class TweakChangePublisherTest {
     @Test
     fun `queued publications do not read owners after the last subscriber leaves`() {
         var reads = 0
-        val owner = object : State<Any> {
+        val owner = object : TweakState<Any> {
             override val value: Any
                 get() = false.also { reads += 1 }
         }
@@ -366,30 +363,6 @@ class TweakChangePublisherTest {
         assertTrue(scheduled.isEmpty())
     }
 
-    @Test
-    fun `unrelated compose state changes do not publish tweak snapshots`() {
-        TweakRegistry.register(descriptor("Motion/Duration", 400))
-        val scheduled = mutableListOf<Runnable>()
-        val publisher = TweakChangePublisher { runnable -> scheduled.add(runnable) }
-        val observer = TweakRegistry.observeChanges(publisher::notifyChanged)
-        val unrelatedState = mutableStateOf(0)
-
-        publisher.subscribe().use { subscription ->
-            Snapshot.withMutableSnapshot {
-                unrelatedState.value = 1
-            }
-
-            assertTrue(scheduled.isEmpty())
-
-            TweakRegistry.update(mapOf("Motion/Duration" to 550))
-            scheduled.single().run()
-
-            assertEquals(550, subscription.events.poll()?.single()?.value)
-        }
-
-        observer.close()
-    }
-
     private fun descriptor(name: String, default: Int) = TweakDescriptor(
         name = name,
         type = TweakType.INT,
@@ -398,7 +371,7 @@ class TweakChangePublisherTest {
 
     private fun booleanBacking(
         name: String,
-        owner: State<Any>,
+        owner: TweakState<Any>,
         modified: () -> Boolean = { false },
         descriptorFactory: () -> TweakDescriptor = {
             TweakDescriptor(name, TweakType.BOOLEAN, false)

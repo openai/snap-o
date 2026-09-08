@@ -199,6 +199,19 @@ class ProtocolReportTests(unittest.TestCase):
             self.assertEqual(report.count(f"    {label}:\n"), 2)
             self.assertEqual(report.count(declaration), 2)
 
+    def test_reports_tweaks_version_before_and_after_core_extraction(self):
+        _, old_path, declaration = DECLARATIONS[1]
+        new_path = old_path.replace("/tweaks/", "/tweaks-core/", 1)
+        self.write(new_path, self.baseline[old_path])
+        (self.repo / old_path).unlink()
+        self.commit()
+
+        report = self.report()
+        self.assertNotIn("UNRESOLVED", report)
+        self.assertEqual(report.count(declaration), 2)
+        self.assertIn(f"{old_path}:1:{declaration}", report)
+        self.assertIn(f"{new_path}:1:{declaration}", report)
+
     def test_each_missing_declaration_is_unresolved_despite_other_matches(self):
         debug = "snapo-network-inspector-web/src/features/network-inspector/lib/debug.ts"
         for label, missing_path, declaration in DECLARATIONS:

@@ -4,30 +4,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.toArgb
 
-/**
- * Keeps the exact Compose color separate from the lossy sRGB value shown over the wire.
- *
- * The wire value remains compatible with existing hosts, while [color] participates in
- * descriptor equality and retained-state identity.
- */
-internal data class TweakColorValue(
-    val color: Color,
-    val wireValue: String,
-)
+internal val TweakColorValue.color: Color
+    get() = original as? Color ?: Color(toArgb())
 
 internal fun Color.toTweakColorValue(): TweakColorValue =
     TweakColorValue(
-        color = this,
+        original = if (isSpecified && this == Color(toArgbSafely())) toArgbSafely() else this,
         wireValue = toTweakColor(),
     )
-
-internal fun String.toTweakColorValue(): TweakColorValue {
-    val normalized = uppercase()
-    return TweakColorValue(
-        color = normalized.toTweakColor(),
-        wireValue = normalized,
-    )
-}
 
 internal fun Color.toTweakColor(): String {
     val argb = if (isSpecified) {

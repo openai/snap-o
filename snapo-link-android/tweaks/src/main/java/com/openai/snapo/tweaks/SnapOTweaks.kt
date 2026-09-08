@@ -5,21 +5,47 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.graphics.Color
+import com.openai.snapo.tweaks.internal.CoreTweakEntry
+import com.openai.snapo.tweaks.internal.TweakActionValue
 import com.openai.snapo.tweaks.internal.TweakDescriptor
 import com.openai.snapo.tweaks.internal.TweakRegistry
 import com.openai.snapo.tweaks.internal.TweakSnapshot
 import com.openai.snapo.tweaks.internal.TweakType
 import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 
-/** Observes and updates the tweaks currently registered by composition. */
+/** Observes and updates tweaks from all active owners. */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 object SnapOTweaks {
 
-    /** Returns observable active tweaks in the order in which they entered composition. */
-    fun activeTweakEntries(): State<List<SnapOTweakEntry>> = TweakRegistry.activeEntries
+    private var coreEntries: List<CoreTweakEntry> = emptyList()
+    private var adapters: Map<CoreTweakEntry, SnapOTweakEntry> = emptyMap()
+    private val entryState = mutableStateOf<List<SnapOTweakEntry>>(emptyList())
 
-    /** Returns active tweaks in the order in which they entered composition. */
+    init {
+        TweakRegistry.observeChanges { refreshEntries() }
+        refreshEntries()
+    }
+
+    @Synchronized
+    private fun refreshEntries() {
+        val current = TweakRegistry.activeEntries.value
+        if (current === coreEntries) return
+        val next = current.associateWith { entry ->
+            adapters[entry] ?: entry.toComposeEntry()
+        }
+        adapters = next
+        coreEntries = current
+        Snapshot.withMutableSnapshot { entryState.value = next.values.toList() }
+    }
+
+    /** Returns observable active tweaks in registration order. */
+    fun activeTweakEntries(): State<List<SnapOTweakEntry>> = entryState
+
+    /** Returns active tweaks in registration order. */
     internal fun activeTweaks(): List<SnapOTweak> = TweakRegistry.snapshot().map { snapshot ->
         snapshot.toSnapOTweak()
     }
@@ -46,6 +72,16 @@ object SnapOTweaks {
     }
 }
 
+private fun CoreTweakEntry.toComposeEntry() = SnapOTweakEntry(
+    name = name,
+    value = ComposeTweakRegistry.state { descriptor.toSnapOTweakValue(state.value) },
+    defaultValue = { descriptor.toSnapOTweakValue(descriptor.default) },
+    isModified = {
+        ComposeTweakRegistry.readRevision()
+        isModified()
+    },
+)
+
 /** A stable active tweak whose current value can be observed independently. */
 @Stable
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -56,7 +92,7 @@ class SnapOTweakEntry internal constructor(
     isModified: () -> Boolean,
 ) {
     val defaultValue: SnapOTweakValue by lazy(LazyThreadSafetyMode.NONE, defaultValue)
-    val modified: State<Boolean> = derivedStateOf(isModified)
+    val modified: State<Boolean> = derivedStateOf(structuralEqualityPolicy(), isModified)
 }
 
 /** A tweak currently available in the composed application. */
@@ -139,7 +175,7 @@ internal fun TweakDescriptor.toSnapOTweakValue(value: Any): SnapOTweakValue = wh
     TweakType.COLOR -> SnapOTweakValue.ColorValue((value as TweakColorValue).color)
     TweakType.STRING -> SnapOTweakValue.Text(value as String)
     TweakType.ENUM -> SnapOTweakValue.Selection(value as String, options)
-    TweakType.ACTION -> value as? SnapOTweakValue.Action ?: SnapOTweakValue.Action()
+    TweakType.ACTION -> SnapOTweakValue.Action((value as? TweakActionValue)?.conflicted == true)
 }
 
 private fun SnapOTweakValue.toRegistryValue(): Any = when (this) {

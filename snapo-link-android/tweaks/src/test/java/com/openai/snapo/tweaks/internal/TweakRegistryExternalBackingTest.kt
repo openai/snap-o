@@ -4,6 +4,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import com.openai.snapo.tweaks.SnapOTweakValue
+import com.openai.snapo.tweaks.SnapOTweaks
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -39,7 +40,7 @@ class TweakRegistryExternalBackingTest {
         assertEquals(true, TweakRegistry.snapshot().single().value)
         assertEquals(
             SnapOTweakValue.Toggle(true),
-            TweakRegistry.activeEntries.value.single().value.value,
+            SnapOTweaks.activeTweakEntries().value.single().value.value,
         )
 
         TweakRegistry.update(mapOf(descriptor.name to descriptor.default))
@@ -115,53 +116,6 @@ class TweakRegistryExternalBackingTest {
         TweakRegistry.unregister(updatedDescriptor.name)
 
         assertTrue(TweakRegistry.snapshot(includeAdjusted = true).isEmpty())
-    }
-
-    @Test
-    fun `failed source writes and resets do not block later batch entries`() {
-        val first = descriptor("Settings/First")
-        val failing = descriptor("Settings/Unavailable")
-        val last = descriptor("Settings/Last")
-        val firstOwner = mutableStateOf(false)
-        val failingOwner = mutableStateOf(false)
-        val lastOwner = mutableStateOf(false)
-        register(first, firstOwner) { firstOwner.value = it as Boolean }
-        register(failing, failingOwner) { error("Application owner details") }
-        register(last, lastOwner) { lastOwner.value = it as Boolean }
-        var notifications = 0
-        val observer = TweakRegistry.observeChanges { notifications += 1 }
-
-        val updated = applyTweakBatch(
-            linkedMapOf(first.name to true, failing.name to true, last.name to true),
-        )
-
-        assertEquals(listOf(first.name, last.name), updated.tweaks.map { it.descriptor.name })
-        assertEquals(
-            listOf(TweakBatchError(failing.name, "The tweak could not be updated.")),
-            updated.errors,
-        )
-        assertEquals(true, firstOwner.value)
-        assertEquals(false, failingOwner.value)
-        assertEquals(true, lastOwner.value)
-        assertEquals(2, notifications)
-
-        val reset = applyTweakBatch(
-            linkedMapOf(first.name to null, failing.name to null, last.name to null),
-        )
-
-        assertEquals(listOf(first.name, last.name), reset.tweaks.map { it.descriptor.name })
-        assertEquals(updated.errors, reset.errors)
-        assertEquals(false, firstOwner.value)
-        assertEquals(false, lastOwner.value)
-        assertEquals(4, notifications)
-        observer.close()
-        TweakRegistry.unregister(first.name)
-        TweakRegistry.unregister(failing.name)
-        TweakRegistry.unregister(last.name)
-        val history = TweakRegistry.snapshot(includeAdjusted = true)
-
-        assertEquals(listOf(first.name, last.name), history.map { it.descriptor.name })
-        assertTrue(history.none(TweakSnapshot::modified))
     }
 
     @Test
@@ -270,7 +224,7 @@ class TweakRegistryExternalBackingTest {
                 isModified = { override.value != null },
             ),
         )
-        val entry = TweakRegistry.activeEntries.value.single()
+        val entry = SnapOTweaks.activeTweakEntries().value.single()
         var notifications = 0
         val observer = TweakRegistry.observeChanges { notifications += 1 }
 
@@ -347,14 +301,14 @@ class TweakRegistryExternalBackingTest {
         val shared = register(name, backing)
 
         assertSame(first, shared)
-        val entries = TweakRegistry.activeEntries.value
+        val entries = SnapOTweaks.activeTweakEntries().value
         assertEquals(listOf(name), entries.map { it.name })
         assertSame(entries.single().modified, entries.single().modified)
         assertEquals(0, backing.reads)
 
         TweakRegistry.unregister(name)
         TweakRegistry.unregister(name)
-        assertTrue(TweakRegistry.activeEntries.value.isEmpty())
+        assertTrue(SnapOTweaks.activeTweakEntries().value.isEmpty())
         assertEquals(0, backing.reads)
         assertTrue(TweakRegistry.snapshot(includeAdjusted = true).isEmpty())
         assertEquals(0, backing.reads)
@@ -510,7 +464,7 @@ class TweakRegistryExternalBackingTest {
             secondWrites += 1
             secondOwner.value = it as Boolean
         }
-        val entry = TweakRegistry.activeEntries.value.single()
+        val entry = SnapOTweaks.activeTweakEntries().value.single()
 
         assertSame(first, shared)
         assertEquals(false, shared.value)
@@ -692,7 +646,7 @@ class TweakRegistryExternalBackingTest {
         action.close()
     }
 
-    private fun register(name: String, backing: CountingBacking): State<Any> {
+    private fun register(name: String, backing: CountingBacking): TweakState<Any> {
         backing.name = name
         return TweakRegistry.register(backing)
     }
@@ -701,7 +655,7 @@ class TweakRegistryExternalBackingTest {
         descriptor: TweakDescriptor,
         state: State<Any>,
         onValueChange: (Any) -> Unit,
-    ): State<Any> {
+    ): TweakState<Any> {
         val backing = backing(
             name = descriptor.name,
             state = state,

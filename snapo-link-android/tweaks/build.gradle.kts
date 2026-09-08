@@ -18,7 +18,7 @@ android {
 dependencies {
     api(libs.androidx.compose.runtime)
     api(libs.androidx.compose.ui.graphics)
-    api(libs.kotlinx.coroutines.core)
+    api(project(":tweaks-core"))
 
     testImplementation(libs.junit4)
 }

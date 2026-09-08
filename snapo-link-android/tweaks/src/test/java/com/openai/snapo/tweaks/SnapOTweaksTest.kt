@@ -10,6 +10,7 @@ import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -243,6 +244,23 @@ class SnapOTweaksTest {
         assertSame(entry, entries.value.single())
         assertSame(value, entry.value)
         assertEquals(SnapOTweakValue.Integer(20, 12, 32), value.value)
+    }
+
+    @Test
+    fun `returning names use the new registration after removal without an intervening read`() {
+        val entries = SnapOTweaks.activeTweakEntries()
+        val name = "Preview/Setting"
+        TweakRegistry.register(TweakDescriptor(name, TweakType.INT, 16))
+        val original = entries.value.single()
+        assertEquals(SnapOTweakValue.Integer(16), original.value.value)
+
+        TweakRegistry.unregister(name)
+        TweakRegistry.register(TweakDescriptor(name, TweakType.BOOLEAN, true))
+
+        val replacement = entries.value.single()
+        assertNotSame(original, replacement)
+        assertEquals(SnapOTweakValue.Toggle(true), replacement.value.value)
+        assertEquals(SnapOTweakValue.Toggle(true), replacement.defaultValue)
     }
 
     @Test

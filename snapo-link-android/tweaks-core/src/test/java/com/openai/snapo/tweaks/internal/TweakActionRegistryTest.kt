@@ -1,6 +1,5 @@
 package com.openai.snapo.tweaks.internal
 
-import com.openai.snapo.tweaks.SnapOTweakValue
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -36,13 +35,13 @@ class TweakActionRegistryTest {
             snapshots.map { it.descriptor.name },
         )
         assertEquals(TweakType.ACTION, snapshots[1].descriptor.type)
-        assertEquals(SnapOTweakValue.Action(), snapshots[1].value)
+        assertEquals(TweakActionValue(), snapshots[1].value)
         assertEquals(false, snapshots[1].modified)
         assertEquals(
-            SnapOTweakValue.Action(),
-            TweakRegistry.activeEntries.value[1].value.value,
+            TweakActionValue(),
+            TweakRegistry.activeEntries.value[1].state.value,
         )
-        assertEquals(false, TweakRegistry.activeEntries.value[1].modified.value)
+        assertEquals(false, TweakRegistry.activeEntries.value[1].isModified())
     }
 
     @Test
@@ -73,12 +72,12 @@ class TweakActionRegistryTest {
         assertTrue(error.message.orEmpty().contains("Playback/Restart"))
         assertEquals(0, invocations)
         assertEquals(
-            SnapOTweakValue.Action(conflicted = true),
+            TweakActionValue(conflicted = true),
             TweakRegistry.snapshot().single().value,
         )
         assertEquals(
-            SnapOTweakValue.Action(conflicted = true),
-            TweakRegistry.activeEntries.value.single().value.value,
+            TweakActionValue(conflicted = true),
+            TweakRegistry.activeEntries.value.single().state.value,
         )
     }
 
@@ -95,10 +94,10 @@ class TweakActionRegistryTest {
 
         duplicateRegistration.close()
 
-        assertEquals(SnapOTweakValue.Action(), TweakRegistry.snapshot().single().value)
+        assertEquals(TweakActionValue(), TweakRegistry.snapshot().single().value)
         assertEquals(
-            SnapOTweakValue.Action(),
-            TweakRegistry.activeEntries.value.single().value.value,
+            TweakActionValue(),
+            TweakRegistry.activeEntries.value.single().state.value,
         )
 
         TweakRegistry.invokeAction("Playback/Restart")
@@ -112,7 +111,7 @@ class TweakActionRegistryTest {
         val conflicts = mutableListOf<Boolean>()
         val observer = TweakRegistry.observeChanges {
             TweakRegistry.snapshot().singleOrNull()?.let { snapshot ->
-                conflicts += (snapshot.value as SnapOTweakValue.Action).conflicted
+                conflicts += (snapshot.value as TweakActionValue).conflicted
             }
         }
         TweakRegistry.registerAction("Playback/Restart") {}
@@ -220,7 +219,7 @@ class TweakActionRegistryTest {
         TweakRegistry.invokeAction("Playback/Restart")
 
         assertEquals(1, invocations)
-        assertEquals(SnapOTweakValue.Action(), TweakRegistry.snapshot().single().value)
+        assertEquals(TweakActionValue(), TweakRegistry.snapshot().single().value)
         replacement.close()
     }
 

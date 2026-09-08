@@ -1,20 +1,15 @@
 package com.openai.snapo.tweaks.internal
 
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.snapshots.Snapshot
-import com.openai.snapo.tweaks.SnapOTweakEntry
-import com.openai.snapo.tweaks.SnapOTweakValue
+import androidx.annotation.RestrictTo
 import com.openai.snapo.tweaks.TweakColorValue
-import com.openai.snapo.tweaks.toSnapOTweakValue
 import com.openai.snapo.tweaks.toTweakColorValue
 import java.io.Closeable
 import java.math.BigDecimal
 import java.math.BigInteger
+import java.util.concurrent.CopyOnWriteArrayList
 
-internal enum class TweakType(val wireName: String) {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+enum class TweakType(val wireName: String) {
     INT("int"),
     FLOAT("float"),
     BOOLEAN("boolean"),
@@ -24,7 +19,8 @@ internal enum class TweakType(val wireName: String) {
     ACTION("action"),
 }
 
-internal data class TweakDescriptor(
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+data class TweakDescriptor(
     val name: String,
     val type: TweakType,
     val default: Any,
@@ -34,15 +30,18 @@ internal data class TweakDescriptor(
     val options: List<String> = emptyList(),
 )
 
-internal data class TweakSnapshot(
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+data class TweakSnapshot(
     val descriptor: TweakDescriptor,
     val value: Any,
     val modified: Boolean,
 )
 
-internal class UninitializedTweakSnapshotException : IllegalStateException()
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+class UninitializedTweakSnapshotException : IllegalStateException()
 
-internal interface ExternalTweakBacking : State<Any> {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+interface ExternalTweakBacking : TweakState<Any> {
     val name: String
     val descriptor: TweakDescriptor
 
@@ -53,56 +52,62 @@ internal interface ExternalTweakBacking : State<Any> {
     fun isModified(): Boolean
 }
 
-internal interface SelectedTweakState : State<Any> {
-    fun isSelected(owner: State<Any>): Boolean
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+interface SelectedTweakState : TweakState<Any> {
+    fun isSelected(owner: TweakState<Any>): Boolean
 
-    fun notifyChanged(owner: State<Any>)
+    fun notifyChanged(owner: TweakState<Any>)
 }
 
-internal open class TweakUpdateException(
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+open class TweakUpdateException(
     val statusCode: Int,
     message: String,
 ) : IllegalArgumentException(message)
 
-internal class UnknownTweakException(name: String) :
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+class UnknownTweakException(name: String) :
     TweakUpdateException(404, "Unknown tweak: $name")
 
-internal class InvalidTweakValueException(name: String, reason: String) :
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+class InvalidTweakValueException(name: String, reason: String) :
     TweakUpdateException(422, "Invalid value for $name: $reason")
 
-internal class UnknownTweakActionException(name: String) :
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+class UnknownTweakActionException(name: String) :
     TweakUpdateException(404, "Unknown action: $name")
 
-internal class ConflictingTweakActionException(name: String) :
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+class ConflictingTweakActionException(name: String) :
     TweakUpdateException(
         409,
         "Conflicting registrations for action: $name. Register the action once at its owner.",
     )
 
-internal object TweakRegistry {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+object TweakRegistry {
     private val lock = Any()
     private val tweaks = LinkedHashMap<String, RegisteredTweak>()
     private val observedTweakOrder = HashMap<String, Long>()
     private val adjustedTweaks = LinkedHashMap<TweakDescriptor, TweakSnapshot>()
-    private val tweakStates = HashMap<TweakDescriptor, MutableState<Any>>()
-    private val mutableActiveEntries = mutableStateOf<List<SnapOTweakEntry>>(emptyList())
-    val activeEntries: State<List<SnapOTweakEntry>>
+    private val tweakStates = HashMap<TweakDescriptor, MutableTweakState<Any>>()
+    private val mutableActiveEntries = MutableTweakState<List<CoreTweakEntry>>(emptyList())
+    val activeEntries: TweakState<List<CoreTweakEntry>>
         get() = mutableActiveEntries
-    private val observers = LinkedHashMap<Long, () -> Unit>()
-    private var nextObserverId = 0L
+    private val observers = CopyOnWriteArrayList<() -> Unit>()
     private var nextTweakOrder = 0L
     private val colorPattern = Regex("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
 
-    fun stateFor(descriptor: TweakDescriptor): State<Any> = synchronized(lock) {
-        tweakStates.getOrPut(descriptor) { mutableStateOf(descriptor.default) }
+    fun stateFor(descriptor: TweakDescriptor): TweakState<Any> = synchronized(lock) {
+        tweakStates.getOrPut(descriptor) { MutableTweakState(descriptor.default) }
     }
 
-    fun register(descriptor: TweakDescriptor): State<Any> = registerBacking(
+    fun register(descriptor: TweakDescriptor): TweakState<Any> = registerBacking(
         name = descriptor.name,
         descriptorFactory = { descriptor },
     )
 
-    fun register(backing: ExternalTweakBacking): State<Any> = registerBacking(
+    fun register(backing: ExternalTweakBacking): TweakState<Any> = registerBacking(
         name = backing.name,
         descriptorFactory = { backing.descriptor },
         externalBacking = backing,
@@ -112,14 +117,14 @@ internal object TweakRegistry {
         name: String,
         descriptorFactory: () -> TweakDescriptor,
         externalBacking: ExternalTweakBacking? = null,
-    ): State<Any> {
+    ): TweakState<Any> {
         var changed = false
         val state = synchronized(lock) {
             require(name.isNotBlank()) { "Tweak names must not be blank." }
             val ownedDescriptor = if (externalBacking == null) {
                 descriptorFactory().also { descriptor ->
                     require(descriptor.type != TweakType.ACTION) {
-                        "Actions must be registered with their composition owner: $name"
+                        "Actions must be registered with their owner: $name"
                     }
                     validateDescriptor(descriptor)
                 }
@@ -159,7 +164,9 @@ internal object TweakRegistry {
         return state
     }
 
-    fun unregister(name: String, state: State<Any>? = null) {
+    @Suppress("TooGenericExceptionCaught")
+    fun unregister(name: String, state: TweakState<Any>? = null) {
+        var historyFailure: Exception? = null
         val changed = synchronized(lock) {
             val tweak = tweaks[name] ?: return@synchronized false
             val previousBacking = tweak.externalBacking
@@ -170,12 +177,16 @@ internal object TweakRegistry {
             tweak.references -= 1
             if (tweak.references == 0) {
                 if (previousBacking != null && tweak.wasAdjusted) {
-                    val value = previousBacking.value
-                    adjustedTweaks[tweak.descriptor] = TweakSnapshot(
-                        descriptor = tweak.descriptor,
-                        value = value,
-                        modified = previousBacking.isModified(),
-                    )
+                    try {
+                        adjustedTweaks[tweak.descriptor] = TweakSnapshot(
+                            descriptor = tweak.descriptor,
+                            value = previousBacking.value,
+                            modified = previousBacking.isModified(),
+                        )
+                    } catch (error: Exception) {
+                        // A failed final read must not retain the disposed source.
+                        historyFailure = error
+                    }
                 }
                 tweaks.remove(name)
                 publishActiveEntries()
@@ -185,6 +196,7 @@ internal object TweakRegistry {
             }
         }
         if (changed) notifyObservers()
+        historyFailure?.let { throw it }
     }
 
     fun registerAction(
@@ -285,27 +297,27 @@ internal object TweakRegistry {
                 tweak to value?.let { validateValue(descriptor, it) }
             }
 
-            val changedTweaks = ArrayList<RegisteredTweak>()
-            Snapshot.withMutableSnapshot {
-                changes.forEach { (tweak, value) ->
-                    val previous = tweak.snapshot(cachedOnly = false)
-                    if (tweak.externalBacking != null ||
-                        previous.value != (value ?: tweak.descriptor.default)
-                    ) {
-                        tweak.update(value)
-                        if (tweak.snapshot(cachedOnly = false) != previous) {
-                            changedTweaks.add(tweak)
-                            changed = true
-                        }
+            val changedTweaks = BooleanArray(changes.size)
+            changes.forEachIndexed { index, (tweak, value) ->
+                val previous = tweak.snapshot(cachedOnly = false)
+                if (tweak.externalBacking != null ||
+                    previous.value != (value ?: tweak.descriptor.default)
+                ) {
+                    tweak.update(value)
+                    if (tweak.snapshot(cachedOnly = false) != previous) {
+                        changedTweaks[index] = true
+                        changed = true
                     }
                 }
             }
             val updatedSnapshots = changes.map { (tweak, _) ->
                 tweak.snapshot(cachedOnly = false)
             }
-            changedTweaks.forEach { tweak ->
-                adjustedTweaks[tweak.descriptor] = tweak.snapshot(cachedOnly = false)
-                tweak.wasAdjusted = true
+            changes.forEachIndexed { index, (tweak, _) ->
+                if (changedTweaks[index]) {
+                    adjustedTweaks[tweak.descriptor] = updatedSnapshots[index]
+                    tweak.wasAdjusted = true
+                }
             }
             updatedSnapshots
         }
@@ -314,12 +326,10 @@ internal object TweakRegistry {
     }
 
     fun observeChanges(observer: () -> Unit): Closeable {
-        val id = synchronized(lock) {
-            val nextId = nextObserverId++
-            observers[nextId] = observer
-            nextId
-        }
-        return Closeable { synchronized(lock) { observers.remove(id) } }
+        // Repeated subscriptions of the same callback must close independently.
+        val subscription = { observer() }
+        observers.add(subscription)
+        return Closeable { observers.remove(subscription) }
     }
 
     fun clear() {
@@ -341,8 +351,7 @@ internal object TweakRegistry {
     }
 
     private fun notifyObservers() {
-        val current = synchronized(lock) { observers.values.toList() }
-        current.forEach { it() }
+        observers.forEach { it() }
     }
 
     private fun publishActiveEntries() {
@@ -364,12 +373,10 @@ internal object TweakRegistry {
 
     private fun updateActionConflict(action: RegisteredTweak) {
         val conflicted = requireNotNull(action.actionCallbacks).size > 1
-        val current = action.state.value as SnapOTweakValue.Action
+        val current = action.state.value as TweakActionValue
         if (current.conflicted != conflicted) {
-            Snapshot.withMutableSnapshot {
-                @Suppress("UNCHECKED_CAST")
-                (action.state as MutableState<Any>).value = SnapOTweakValue.Action(conflicted)
-            }
+            @Suppress("UNCHECKED_CAST")
+            (action.state as MutableTweakState<Any>).value = TweakActionValue(conflicted)
         }
     }
 
@@ -536,12 +543,10 @@ internal object TweakRegistry {
 
         return when (value) {
             is TweakColorValue -> {
-                val color = try {
-                    value.color.toTweakColorValue()
-                } catch (_: IllegalArgumentException) {
+                if (!colorPattern.matches(value.wireValue)) {
                     invalidValue(descriptor, "Expected a supported color.")
                 }
-                if (color.color == defaultColor.color) defaultColor else color
+                if (value.original == defaultColor.original) defaultColor else value
             }
 
             is String -> {
@@ -645,9 +650,9 @@ internal object TweakRegistry {
         val actionCallbacks: LinkedHashMap<Any, () -> Unit>? = null,
     ) {
         private val externalBackings = initialExternalBacking?.let { arrayListOf(it) }
-        private val selectedExternalBacking = initialExternalBacking?.let { mutableStateOf(it) }
+        private val selectedExternalBacking = initialExternalBacking?.let { MutableTweakState(it) }
         private val externalSnapshot = initialExternalBacking?.let {
-            mutableStateOf<TweakSnapshot?>(null)
+            MutableTweakState<TweakSnapshot?>(null)
         }
 
         val externalBacking: ExternalTweakBacking?
@@ -661,15 +666,15 @@ internal object TweakRegistry {
                 if (externalBacking != null) validateDescriptor(descriptor)
             }
         }
-        val state: State<Any> = when {
+        val state: TweakState<Any> = when {
             selectedExternalBacking != null -> object : SelectedTweakState {
                 override val value: Any
                     get() = snapshot(cachedOnly = false).value
 
-                override fun isSelected(owner: State<Any>): Boolean =
+                override fun isSelected(owner: TweakState<Any>): Boolean =
                     selectedExternalBacking.value === owner
 
-                override fun notifyChanged(owner: State<Any>) {
+                override fun notifyChanged(owner: TweakState<Any>) {
                     val selected = synchronized(lock) {
                         val active = tweaks[name] === this@RegisteredTweak && isSelected(owner)
                         if (active && requireNotNull(externalSnapshot).value != null) {
@@ -680,18 +685,18 @@ internal object TweakRegistry {
                     if (selected) notifyObservers()
                 }
             }
-            actionCallbacks != null -> mutableStateOf(SnapOTweakValue.Action())
+            actionCallbacks != null -> MutableTweakState(TweakActionValue())
             else -> stateFor(descriptor)
         }
         var references = if (actionCallbacks == null) 1 else 0
         var wasAdjusted = false
-        val entry = SnapOTweakEntry(
+        val entry = CoreTweakEntry(
             name = name,
-            value = derivedStateOf { descriptor.toSnapOTweakValue(state.value) },
-            defaultValue = { descriptor.toSnapOTweakValue(descriptor.default) },
+            state = state,
+            descriptor = { descriptor },
             isModified = when {
                 actionCallbacks != null -> { { false } }
-                selectedExternalBacking != null -> { { snapshot(cachedOnly = false).modified } }
+                initialExternalBacking != null -> { { snapshot(cachedOnly = false).modified } }
                 else -> { { state.value != descriptor.default } }
             },
         )
@@ -718,7 +723,7 @@ internal object TweakRegistry {
             requireNotNull(externalBackings).add(backing)
         }
 
-        fun removeExternalBacking(state: State<Any>?): Boolean {
+        fun removeExternalBacking(state: TweakState<Any>?): Boolean {
             val backings = externalBackings ?: return false
             val index = if (state == null) {
                 0
@@ -741,7 +746,7 @@ internal object TweakRegistry {
             val backing = externalBacking
             if (backing == null) {
                 @Suppress("UNCHECKED_CAST")
-                (state as MutableState<Any>).value = value ?: descriptor.default
+                (state as MutableTweakState<Any>).value = value ?: descriptor.default
             } else if (value == null) {
                 backing.onReset()
                 refreshExternalSnapshot()
