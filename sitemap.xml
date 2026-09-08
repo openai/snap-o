@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://openai.github.io/snap-o/index.html</loc>
+         <lastmod>2026-09-08</lastmod>
+    </url>
+    <url>
+         <loc>https://openai.github.io/snap-o/cli.html</loc>
+         <lastmod>2026-09-08</lastmod>
+    </url>
+    <url>
+         <loc>https://openai.github.io/snap-o/network-inspector.html</loc>
+         <lastmod>2026-09-08</lastmod>
+    </url>
+    <url>
+         <loc>https://openai.github.io/snap-o/network-intercept.html</loc>
+         <lastmod>2026-09-08</lastmod>
+    </url>
+    <url>
+         <loc>https://openai.github.io/snap-o/tweaks-protocol.html</loc>
+         <lastmod>2026-09-08</lastmod>
+    </url>
+    <url>
+         <loc>https://openai.github.io/snap-o/tweaks.html</loc>
+         <lastmod>2026-09-08</lastmod>
+    </url>
+    <url>
+         <loc>https://openai.github.io/snap-o/usage.html</loc>
+         <lastmod>2026-09-08</lastmod>
+    </url>
+</urlset>
