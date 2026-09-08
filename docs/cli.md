@@ -81,7 +81,7 @@ Use the serial and socket returned by `network list` or `tweaks apps` in subsequ
 
 ## Bézier curves
 
-Use the CLI from `main` with an Android app built from source for Bézier support. Android 7.0.0 does not include this type.
+Use the CLI bundled with Snap-O 8.0.0 or the script from `main` with an app using the Android 8.0.0 Tweaks libraries.
 Pass all four coordinates as one quoted JSON object:
 
 ```bash
