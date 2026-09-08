@@ -35,7 +35,6 @@ fun <T : Any> tweak(
 fun tweak(
     default: BezierCurve,
     name: String,
-    yRange: ClosedFloatingPointRange<Float>? = null,
 ): State<BezierCurve> = rememberUpdatedState(default)
 
 /** Returns observable release-build state for the current floating-point default. */

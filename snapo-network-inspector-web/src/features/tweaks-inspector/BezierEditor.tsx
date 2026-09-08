@@ -156,9 +156,7 @@ export function BezierEditor({
                       value,
                       active.index,
                       (p.x - graphInset) / graphExtent,
-                      1 - (p.y - graphInset) / graphExtent,
-                      tweak.yMin,
-                      tweak.yMax
+                      1 - (p.y - graphInset) / graphExtent
                     )
                   );
                 }}
@@ -199,9 +197,7 @@ export function BezierEditor({
                           value,
                           index,
                           value[index * 2] + direction[0] * step,
-                          value[index * 2 + 1] + direction[1] * step,
-                          tweak.yMin,
-                          tweak.yMax
+                          value[index * 2 + 1] + direction[1] * step
                         )
                       );
                     }}
@@ -217,7 +213,6 @@ export function BezierEditor({
                     title={name}
                     aria-label={name}
                     aria-pressed={preset.every((coordinate, index) => Math.abs(coordinate - value[index]) < 0.00001)}
-                    disabled={[preset[1], preset[3]].some((y) => y < (tweak.yMin ?? 0) || y > (tweak.yMax ?? 1))}
                     onClick={() => emit(preset)}
                   >
                     <svg viewBox={graphViewBox} aria-hidden="true">
@@ -232,8 +227,8 @@ export function BezierEditor({
                     {label}
                     <BezierCoordinate
                       label={`${tweak.name} ${label}`}
-                      min={i % 2 === 0 ? 0 : (tweak.yMin ?? 0)}
-                      max={i % 2 === 0 ? 1 : (tweak.yMax ?? 1)}
+                      min={0}
+                      max={1}
                       value={value[i]}
                       onChange={(coordinate) => {
                         const next = [...value] as [number, number, number, number];

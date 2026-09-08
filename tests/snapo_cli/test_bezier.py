@@ -20,7 +20,6 @@ class BezierTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(snapo.SnapOError):
                 snapo.parse_tweak_value({"type": "bezier"}, json.dumps(value))
 
-    def test_y_bounds(self):
-        with self.assertRaises(snapo.SnapOError):
-            snapo.parse_tweak_value({"type": "bezier", "yMin": 0.2, "yMax": 0.8},
-                                   '{"x1":0.2,"y1":0,"x2":0.8,"y2":1}')
+    def test_y_endpoints(self):
+        value = {"x1": 0.2, "y1": 1, "x2": 0.8, "y2": 0}
+        self.assertEqual(value, snapo.parse_tweak_value({"type": "bezier"}, json.dumps(value)))

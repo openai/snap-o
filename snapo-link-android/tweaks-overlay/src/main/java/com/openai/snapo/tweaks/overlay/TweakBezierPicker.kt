@@ -87,7 +87,7 @@ internal fun moveBezierHandle(
 ): SnapOTweakValue.Curve {
     if (!x.isFinite() || !y.isFinite()) return value
     val boundedX = x.coerceIn(0f, 1f)
-    val boundedY = y.coerceIn(value.yMin ?: 0f, value.yMax ?: 1f)
+    val boundedY = y.coerceIn(0f, 1f)
     return value.copy(
         value = if (handle == 0) {
             value.value.copy(x1 = boundedX, y1 = boundedY)
@@ -134,8 +134,8 @@ internal fun TweakBezierChooser(tweak: SnapOTweakEntry, modifier: Modifier = Mod
                 CurveCoordinate(
                     "Y${selectedHandle + 1}",
                     y,
-                    value.yMin ?: 0f,
-                    value.yMax ?: 1f,
+                    0f,
+                    1f,
                     Modifier.weight(1f),
                 ) {
                     update(moveBezierHandle(value, selectedHandle, x, it))
@@ -165,9 +165,6 @@ private fun CurvePresetButtons(
     ) {
         CurvePresets.forEach { (name, curve) ->
             val isSelected = name == currentPreset
-            val allowed = listOf(curve.y1, curve.y2).all {
-                it >= (value.yMin ?: 0f) && it <= (value.yMax ?: 1f)
-            }
             TooltipBox(
                 positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
                 tooltip = { PlainTooltip { Text(name) } },
@@ -177,7 +174,7 @@ private fun CurvePresetButtons(
                     modifier = Modifier.size(32.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(if (isSelected) CurveAccent.copy(alpha = 0.15f) else Color.Transparent)
-                        .clickable(enabled = allowed, role = Role.Button) { onChange(value.copy(value = curve)) }
+                        .clickable(role = Role.Button) { onChange(value.copy(value = curve)) }
                         .semantics {
                             contentDescription = "Apply $name curve"
                             selected = isSelected

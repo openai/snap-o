@@ -49,12 +49,11 @@ Closing a scope unregisters its declarations, releases its callbacks, and stops 
 val falloff = tweaks.tweak(
     BezierCurve(0.25f, 0.1f, 0.25f, 1f),
     "Halo/Curve",
-    yRange = 0f..1f,
 )
 ```
 
 Read `falloff.value` and apply its four coordinates to your renderer.
-All coordinates stay between 0 and 1. Optional `yRange` can narrow the Y range.
+All four coordinates stay between 0 and 1. Overshoot curves are not supported.
 Snap-O edits and resets each curve as one value. The overlay opens a dedicated curve editor.
 
 ## ViewModels

@@ -1533,9 +1533,6 @@ def parse_tweak_value(descriptor, raw):
             raise SnapOError("Bezier coordinates must be finite float values")
         if any(value[key] < 0 or value[key] > 1 for key in keys):
             raise SnapOError("Bezier coordinates must be between 0 and 1")
-        if any(value[key] < descriptor.get("yMin", -math.inf) or
-               value[key] > descriptor.get("yMax", math.inf) for key in ("y1", "y2")):
-            raise SnapOError("Bezier Y coordinates exceed the declared bounds")
         return value
     if kind == "color":
         if not re.fullmatch(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?", raw):

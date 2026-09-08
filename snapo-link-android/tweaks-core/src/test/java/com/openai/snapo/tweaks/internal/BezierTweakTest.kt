@@ -69,22 +69,12 @@ class BezierTweakTest {
     }
 
     @Test
-    fun `Y bounds constrain defaults and updates`() {
-        val default = BezierCurve(0f, 0.2f, 1f, 0.8f)
-        val descriptor = TweakDescriptor("Curve", TweakType.BEZIER, default, yMin = 0.2f, yMax = 0.8f)
-        val state = TweakRegistry.register(descriptor)
-        assertThrows(TweakUpdateException::class.java) {
-            TweakRegistry.update(mapOf("Curve" to linear.coordinates()))
-        }
-        assertEquals(default, state.value)
-        assertThrows(IllegalArgumentException::class.java) {
-            TweakRegistry.register(descriptor.copy(name = "Invalid", yMin = Float.NaN))
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            TweakRegistry.register(descriptor.copy(name = "Overshoot", yMin = -1f, yMax = 2f))
-        }
-        assertThrows(TweakUpdateException::class.java) {
-            TweakRegistry.register(descriptor.copy(name = "Outside", default = linear))
-        }
+    fun `both Y endpoints are accepted without optional constraints`() {
+        val curve = BezierCurve(0.25f, 0f, 0.75f, 1f)
+        val state = TweakRegistry.register(TweakDescriptor("Curve", TweakType.BEZIER, curve))
+        assertEquals(curve, state.value)
+        val edited = curve.copy(y1 = 1f, y2 = 0f)
+        TweakRegistry.update(mapOf("Curve" to edited.coordinates()))
+        assertEquals(edited, state.value)
     }
 }

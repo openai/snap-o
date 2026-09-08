@@ -61,9 +61,8 @@ class TweakScope : Closeable {
     fun tweak(
         default: BezierCurve,
         name: String,
-        yRange: ClosedFloatingPointRange<Float>? = null,
     ): StateFlow<BezierCurve> = register(
-        TweakDescriptor(name, TweakType.BEZIER, default, yMin = yRange?.start, yMax = yRange?.endInclusive),
+        TweakDescriptor(name, TweakType.BEZIER, default),
     ) { it as BezierCurve }
 
     fun tweak(default: Boolean, name: String): StateFlow<Boolean> = register(

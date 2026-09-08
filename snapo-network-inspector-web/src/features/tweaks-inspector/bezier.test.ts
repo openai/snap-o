@@ -18,8 +18,8 @@ describe("Bezier values", () => {
   ])("rejects malformed coordinate objects", (value) => {
     expect(readBezier(value)).toBeNull();
   });
-  it("moves one handle, preserving the other and respecting Y bounds", () => {
-    expect(moveBezier([0.2, 0.3, 0.8, 0.9], 0, -1, 2, 0, 1)).toEqual([0, 1, 0.8, 0.9]);
+  it("moves one handle, preserving the other and clamping coordinates to zero through one", () => {
+    expect(moveBezier([0.2, 0.3, 0.8, 0.9], 0, -1, 2)).toEqual([0, 1, 0.8, 0.9]);
     expect(moveBezier([0.2, 0.3, 0.8, 0.9], 1, 0.7, 2)).toEqual([0.2, 0.3, 0.7, 1]);
   });
 });

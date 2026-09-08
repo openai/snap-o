@@ -41,7 +41,7 @@ Return the app's user-facing Android label, package name, and Tweaks protocol ve
 }
 ```
 
-Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors and optional Y bounds. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
+Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
 
 ### GET /app/icon
 
@@ -181,15 +181,12 @@ Its value and default are objects with four named numeric coordinates:
   "type": "bezier",
   "default": {"x1": 0.25, "y1": 0.1, "x2": 0.25, "y2": 1.0},
   "value": {"x1": 0.4, "y1": 0.0, "x2": 0.2, "y2": 1.0},
-  "modified": true,
-  "yMin": 0.0,
-  "yMax": 1.0
+  "modified": true
 }
 ```
 
-All coordinates must be finite numbers between 0 and 1, inclusive.
-Optional `yMin` and `yMax` fields can narrow the Y range within these limits.
-These bounds must be increasing and apply to both Y coordinates.
+All four coordinates must be finite numbers between 0 and 1, inclusive.
+Overshoot curves are not supported.
 Curves do not use numeric `min`, `max`, or `step` fields.
 
 Coordinates are JSON numbers. The numeric precision and scale limits above still apply.
@@ -207,13 +204,12 @@ New clients still support earlier servers. The Network Inspector protocol is unc
 val curve by tweak(
     BezierCurve(0.25f, 0.1f, 0.25f, 1f),
     "Halo/Curve",
-    yRange = 0f..1f,
 )
 ```
 
 The same overload is available on `TweakScope`, returning `StateFlow<BezierCurve>`.
-Generic app-owned sources also accept `BezierCurve`. Sources use the type's default bounds:
-all coordinates in `[0, 1]`. Their setters may reject additional app-specific constraints.
+Generic app-owned sources also accept `BezierCurve`, with all four coordinates in `[0, 1]`.
+Their setters may reject additional app-specific constraints.
 No-op artifacts expose the same value class and overloads.
 
 ### GET /tweaks?include=adjusted

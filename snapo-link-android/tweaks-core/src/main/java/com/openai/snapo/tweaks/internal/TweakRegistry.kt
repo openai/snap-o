@@ -30,8 +30,6 @@ data class TweakDescriptor(
     val max: Number? = null,
     val step: Number? = null,
     val options: List<String> = emptyList(),
-    val yMin: Float? = null,
-    val yMax: Float? = null,
 )
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
@@ -395,7 +393,6 @@ object TweakRegistry {
     }
 
     private fun validateDescriptor(descriptor: TweakDescriptor) {
-        validateBezierMetadata(descriptor)
         require(descriptor.name.isNotBlank()) { "Tweak names must not be blank." }
 
         when (descriptor.type) {
@@ -437,39 +434,15 @@ object TweakRegistry {
         }
     }
 
-    private fun validateBezierMetadata(descriptor: TweakDescriptor) {
-        if (descriptor.type != TweakType.BEZIER) {
-            require(descriptor.yMin == null && descriptor.yMax == null) {
-                "Only Bezier tweaks can define Y bounds: ${descriptor.name}"
-            }
-        }
-    }
-
     private fun validateBezierDescriptor(descriptor: TweakDescriptor) {
         require(descriptor.default is BezierCurve) { "Bezier tweaks require a curve default." }
-        require((descriptor.yMin == null) == (descriptor.yMax == null)) { "Supply both Y bounds." }
-        descriptor.yMin?.let { minimum ->
-            val maximum = requireNotNull(descriptor.yMax)
-            require(minimum in 0f..1f && maximum in 0f..1f && minimum < maximum) {
-                "Bezier Y bounds must be increasing within 0 and 1."
-            }
-        }
-        validateBezierValue(descriptor, descriptor.default)
     }
 
-    private fun validateBezierValue(descriptor: TweakDescriptor, value: Any?): BezierCurve {
-        val curve = when (value) {
-            is BezierCurve -> value
-            is Map<*, *> -> parseBezierCurve(value)
-            else -> null
-        } ?: invalidValue(descriptor, "Expected a Bezier object with numeric x1, y1, x2, and y2 coordinates.")
-        val minimum = descriptor.yMin ?: return curve
-        val maximum = requireNotNull(descriptor.yMax)
-        if (curve.y1 !in minimum..maximum || curve.y2 !in minimum..maximum) {
-            invalidValue(descriptor, "Bezier Y coordinates must be between $minimum and $maximum.")
-        }
-        return curve
-    }
+    private fun validateBezierValue(descriptor: TweakDescriptor, value: Any?): BezierCurve = when (value) {
+        is BezierCurve -> value
+        is Map<*, *> -> parseBezierCurve(value)
+        else -> null
+    } ?: invalidValue(descriptor, "Expected a Bezier object with numeric x1, y1, x2, and y2 coordinates.")
 
     private fun validateEnumDescriptor(descriptor: TweakDescriptor) {
         require(descriptor.default is String) {

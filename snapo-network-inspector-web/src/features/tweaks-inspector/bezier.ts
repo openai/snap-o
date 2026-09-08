@@ -17,17 +17,11 @@ export function bezierValue([x1, y1, x2, y2]: BezierCoordinates): BezierValue {
   return { x1, y1, x2, y2 };
 }
 
-export function moveBezier(
-  value: BezierCoordinates,
-  index: number,
-  x: number,
-  y: number,
-  yMin?: number,
-  yMax?: number
-): BezierCoordinates {
+export function moveBezier(value: BezierCoordinates, index: number, x: number, y: number): BezierCoordinates {
+  if (!Number.isFinite(Math.fround(x)) || !Number.isFinite(Math.fround(y))) return value;
   const next = [...value];
   next[index * 2] = Math.max(0, Math.min(1, Number(x.toFixed(6))));
-  next[index * 2 + 1] = Math.max(yMin ?? 0, Math.min(yMax ?? 1, Number(y.toFixed(6))));
+  next[index * 2 + 1] = Math.max(0, Math.min(1, Number(y.toFixed(6))));
   return next as unknown as BezierCoordinates;
 }
 

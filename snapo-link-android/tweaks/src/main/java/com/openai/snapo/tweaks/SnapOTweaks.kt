@@ -137,8 +137,6 @@ sealed interface SnapOTweakValue {
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     data class Curve(
         val value: BezierCurve,
-        val yMin: Float? = null,
-        val yMax: Float? = null,
     ) : SnapOTweakValue
 
     @Immutable
@@ -179,7 +177,7 @@ internal fun TweakDescriptor.toSnapOTweakValue(value: Any): SnapOTweakValue = wh
         step = step as Float?,
     )
 
-    TweakType.BEZIER -> SnapOTweakValue.Curve(value as BezierCurve, yMin, yMax)
+    TweakType.BEZIER -> SnapOTweakValue.Curve(value as BezierCurve)
     TweakType.BOOLEAN -> SnapOTweakValue.Toggle(value as Boolean)
     TweakType.COLOR -> SnapOTweakValue.ColorValue((value as TweakColorValue).color)
     TweakType.STRING -> SnapOTweakValue.Text(value as String)
