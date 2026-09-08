@@ -316,7 +316,7 @@ val curve = tweaks.tweak(
 ```
 
 This returns `StateFlow<BezierCurve>`; read `curve.value` or collect changes. Close the scope when its owner is disposed.
-All coordinates must be finite Float values. X coordinates must be between 0 and 1. Y coordinates may extend outside that range for anticipation and overshoot.
+All four coordinates must be finite Float values between 0 and 1, inclusive.
 App-owned `TweakSource<BezierCurve>` values are also supported. The matching no-op artifacts expose the same API.
 
 Open a curve control in App Inspector or the on-device panel to drag its control points, enter coordinates, or select a preset.
