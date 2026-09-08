@@ -98,3 +98,14 @@ Register app-owned sources and close scopes containing them on main. Source meth
 ## No-op builds
 
 `tweaks-core-noop` exposes the same public API without a registry, initialization provider, or inspector server. Ordinary values stay at their defaults, and actions never run. App-owned sources still follow their application's changes, without Snap-O writing, resetting, or inspecting their override status. Close the scope to stop that observation.
+
+## Local sample
+
+The `samples:demo-tweaks-views` app uses a ViewModel and custom Canvas drawing without the Compose runtime or UI. AndroidX Activity includes standalone Compose annotations. From `snapo-link-android`:
+
+```sh
+./gradlew :samples:demo-tweaks-views:assembleDebug
+./gradlew -Psnapo.samples.noop=true :samples:demo-tweaks-views:assembleDebug
+```
+
+The package is `com.openai.snapo.demo.tweaks.views`. Use Snap-O to edit its shape radius, blur, and color. Rotate the device to recreate the Activity while retaining the ViewModel's tweaks.

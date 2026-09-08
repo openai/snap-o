@@ -59,3 +59,9 @@ Try these flows:
 - **Stop:** stop the runner with Ctrl-C, then refresh. The app reports that the API is unavailable again.
 
 The existing network buttons remain available while the task routes are active. Inspect task requests with Snap-O's network inspector or `network requests` and `network show`. The full route API is documented in the repository's [Python API overrides guide](../../README.md#python-api-overrides).
+
+## Tweaks samples
+
+`demo-tweaks` exercises the Compose API. `demo-tweaks-views` uses a ViewModel and custom Canvas drawing without Compose. Its package is `com.openai.snapo.demo.tweaks.views`; adjust the shape's radius, blur, and color in Snap-O. Both support the `snapo.samples.noop` build property.
+
+See [Tweaks without Compose](../tweaks-core/README.md) for API and lifecycle details.
