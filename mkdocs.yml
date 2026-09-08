@@ -25,6 +25,7 @@ exclude_docs: |
   /README.md
   /requirements.txt
   /hooks.py
+  /__pycache__/
   /tests/
   !/.nojekyll
 
