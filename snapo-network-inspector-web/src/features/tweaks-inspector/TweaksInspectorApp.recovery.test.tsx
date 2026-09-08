@@ -91,6 +91,52 @@ describe("Tweaks connection recovery", () => {
     );
   }
 
+  it("collapses one named section and keeps it collapsed after a stream update", async () => {
+    const tweaks: TweakList = {
+      tweaks: [
+        { name: "Halo/Opacity", type: "float", value: 0.5, default: 0.5, min: 0, max: 1 },
+        { name: "Motion/Speed", type: "float", value: 1, default: 1, min: 0, max: 2 }
+      ]
+    };
+    vi.mocked(client.listTweaks).mockResolvedValue(tweaks);
+    await render();
+
+    const buttons = container.querySelectorAll<HTMLButtonElement>(".tweaks-section-toggle");
+    const halo = Array.from(buttons).find((button) => button.textContent?.includes("Halo"))!;
+    const motion = Array.from(buttons).find((button) => button.textContent?.includes("Motion"))!;
+    const haloList = document.getElementById(halo.getAttribute("aria-controls")!)!;
+    const motionList = document.getElementById(motion.getAttribute("aria-controls")!)!;
+    expect(halo.getAttribute("aria-expanded")).toBe("true");
+    expect(haloList.hidden).toBe(false);
+
+    await act(async () => halo.click());
+    expect(halo.getAttribute("aria-expanded")).toBe("false");
+    expect(haloList.hidden).toBe(true);
+    expect(motion.getAttribute("aria-expanded")).toBe("true");
+    expect(motionList.hidden).toBe(false);
+
+    await act(async () => receive({ streamId: "stream-1", server: selection.server, tweaks: tweaks.tweaks }));
+    expect(haloList.hidden).toBe(true);
+    await act(async () => halo.click());
+    expect(haloList.hidden).toBe(false);
+  });
+
+  it("places each bounded numeric slider beside its value", async () => {
+    vi.mocked(client.listTweaks).mockResolvedValue({
+      tweaks: [
+        { name: "Halo/Opacity", type: "float", value: 0.5, default: 0.5, min: 0, max: 1 },
+        { name: "Halo/Iterations", type: "int", value: 3, default: 3 }
+      ]
+    });
+    await render();
+
+    const range = container.querySelector<HTMLInputElement>('.tweaks-control-line-range input[type="range"]')!;
+    const number = range.parentElement!.querySelector<HTMLInputElement>('input[type="number"]')!;
+    expect(number.value).toBe("0.5");
+    expect(range.parentElement?.querySelector(".tweaks-control-label")?.textContent).toBe("Opacity");
+    expect(container.querySelectorAll('.tweaks-control-line input[type="range"]')).toHaveLength(1);
+  });
+
   it.each([true, false])("shows status text while loading with native picker %s", async (usesNativeServerPicker) => {
     Object.assign(client, { usesNativeServerPicker });
     let finish!: (value: TweakList) => void;

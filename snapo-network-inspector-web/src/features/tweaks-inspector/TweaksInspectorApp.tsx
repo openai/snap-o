@@ -66,7 +66,9 @@ export function TweaksInspectorApp({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [invokingActions, setInvokingActions] = useState(() => new Set<string>());
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set<string>());
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
+  const sectionListId = useId();
   const activeColorPanel = useRef<ActiveColorPanelSession | null>(null);
   const currentConnection = connectionState?.connection === connection ? connectionState : null;
   const canEdit = isConnected && currentConnection?.error === null;
@@ -358,25 +360,53 @@ export function TweaksInspectorApp({
             <div className="tweaks-columns">
               {sections.map((column, index) => (
                 <div className="tweaks-column" key={index}>
-                  {column.map((section) => (
-                    <section className="tweaks-section" key={section.name}>
-                      {section.name ? <h2>{section.name}</h2> : null}
-                      <div className="tweaks-section-list">
-                        {section.tweaks.map((tweak) => (
-                          <TweakControl
-                            key={tweak.name}
-                            tweak={tweak}
-                            protocolVersion={protocolVersion}
-                            onChange={updateTweak}
-                            onInvoke={invokeAction}
-                            invoking={invokingActions.has(tweak.name)}
-                            onReset={resetTweak}
-                            onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
+                  {column.map((section) => {
+                    const sectionKey = `${selection.appId}\0${section.name}`;
+                    const collapsed = section.name !== "" && collapsedSections.has(sectionKey);
+                    return (
+                      <section className={`tweaks-section${collapsed ? " collapsed" : ""}`} key={section.name}>
+                        {section.name ? (
+                          <h2>
+                            <button
+                              className="tweaks-section-toggle"
+                              type="button"
+                              aria-expanded={!collapsed}
+                              aria-controls={`${sectionListId}-${section.order}`}
+                              onClick={() =>
+                                setCollapsedSections((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(sectionKey)) next.delete(sectionKey);
+                                  else next.add(sectionKey);
+                                  return next;
+                                })
+                              }
+                            >
+                              <ChevronDown className="tweaks-section-chevron" size={14} aria-hidden="true" />
+                              <span>{section.name}</span>
+                            </button>
+                          </h2>
+                        ) : null}
+                        <div
+                          className="tweaks-section-list"
+                          id={section.name ? `${sectionListId}-${section.order}` : undefined}
+                          hidden={collapsed}
+                        >
+                          {section.tweaks.map((tweak) => (
+                            <TweakControl
+                              key={tweak.name}
+                              tweak={tweak}
+                              protocolVersion={protocolVersion}
+                              onChange={updateTweak}
+                              onInvoke={invokeAction}
+                              invoking={invokingActions.has(tweak.name)}
+                              onReset={resetTweak}
+                              onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -532,10 +562,12 @@ function TweakControl({
 
   const label = tweakLabel(tweak.name);
   const changed = isModified(tweak, protocolVersion);
+  const hasRange =
+    (tweak.type === "int" || tweak.type === "float") && tweak.min !== undefined && tweak.max !== undefined;
 
   return (
     <div className="tweaks-control">
-      <div className="tweaks-control-line">
+      <div className={`tweaks-control-line${hasRange ? " tweaks-control-line-range" : ""}`}>
         <span className="tweaks-control-label">{label}</span>
         {changed ? (
           <button
@@ -548,6 +580,18 @@ function TweakControl({
             <RotateCcw size={13} aria-hidden="true" />
           </button>
         ) : null}
+        {hasRange ? (
+          <input
+            className="tweaks-range"
+            type="range"
+            aria-label={tweak.name}
+            min={tweak.min}
+            max={tweak.max}
+            step={tweak.step ?? (tweak.type === "int" ? 1 : 0.01)}
+            value={Number(tweak.value)}
+            onChange={(event) => onChange(tweak, Number(event.currentTarget.value))}
+          />
+        ) : null}
         <span className="tweaks-control-field">
           <TweakField
             tweak={tweak}
@@ -557,19 +601,6 @@ function TweakControl({
           />
         </span>
       </div>
-
-      {(tweak.type === "int" || tweak.type === "float") && tweak.min !== undefined && tweak.max !== undefined ? (
-        <input
-          className="tweaks-range"
-          type="range"
-          aria-label={tweak.name}
-          min={tweak.min}
-          max={tweak.max}
-          step={tweak.step ?? (tweak.type === "int" ? 1 : 0.01)}
-          value={Number(tweak.value)}
-          onChange={(event) => onChange(tweak, Number(event.currentTarget.value))}
-        />
-      ) : null}
 
       {tweak.type === "string" ? (
         <input
