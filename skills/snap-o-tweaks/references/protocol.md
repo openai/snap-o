@@ -93,7 +93,7 @@ The tweak response has this shape:
 
 In protocol version 4, only modified value tweaks include `"modified": true`. A missing `modified` field always means false, even when `value` differs from `default`; never infer version-4 status by comparing those fields. Registry-owned tweaks compare their current value with their default, while app-owned tweaks report whether their owner has an override. In versions 1, 2, and 3, `modified` is absent; compare `value` with `default` instead. Actions never include `modified`.
 
-The available value types are `int`, `float`, `boolean`, `color`, `string`, and `enum`. Preserve actual JSON types: booleans are not strings, integer values cannot be fractional, and floats accept whole or fractional finite numbers. Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may include `min`, `max`, and `step`; step alignment starts at `min`, or at `default` if there is no minimum. Actions use `"type":"action"` and have no `value`, `default`, or `options`.
+The available value types are `int`, `float`, `boolean`, `color`, `string`, `enum`, and `bezier`. Preserve actual JSON types: booleans are not strings, integer values cannot be fractional, and floats accept whole or fractional finite numbers. Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may include `min`, `max`, and `step`; step alignment starts at `min`, or at `default` if there is no minimum. Actions use `"type":"action"` and have no `value`, `default`, or `options`.
 
 Enum descriptors include a nonempty, ordered `options` array containing unique, nonblank enum name strings. The `default` and current `value` are names from that list. Send an exact option name in `PATCH /tweaks`.
 

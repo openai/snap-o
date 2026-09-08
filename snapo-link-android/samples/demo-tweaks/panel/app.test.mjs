@@ -1772,3 +1772,84 @@ test("streams batched composition changes without polling tweak values", async (
     }
   }
 });
+
+test("Bezier rows edit whole curves, enforce bounds, reset, and survive streamed object defaults", async () => {
+  const document = makeDocument();
+  const initial = { x1: 0.4, y1: 0.2, x2: 0.2, y2: 0.8 };
+  const tweaks = [{ name: "Motion/Curve", type: "bezier", default: initial, value: initial, yMin: 0.2, yMax: 0.8 }];
+  const patches = [];
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const originalEventSource = globalThis.EventSource;
+  let stream;
+  globalThis.document = document;
+  globalThis.EventSource = class {
+    constructor() { stream = this; this.listeners = new Map(); }
+    addEventListener(name, listener) { this.listeners.set(name, listener); }
+    close() {}
+    emit(tweaks) { this.listeners.get("tweaks")({ data: JSON.stringify({ tweaks }) }); }
+  };
+  globalThis.fetch = async (pathname, options) => {
+    const app = { ...demoApp, protocolVersion: 5 };
+    if (pathname === "/apps") return jsonResponse({ apps: [app], selectedAppId: app.id });
+    if (pathname === "/app") return jsonResponse(app);
+    if (pathname === "/tweaks" && options?.method === "PATCH") {
+      const { values } = JSON.parse(options.body);
+      patches.push(values);
+      return jsonResponse({ tweaks: applyTweakUpdates(tweaks, values) });
+    }
+    return jsonResponse({ tweaks });
+  };
+  try {
+    await import(`./app.js?bezier-test=${Date.now()}`);
+    await delay(0);
+    const list = findTweakList(document, "Motion");
+    const x1 = findInput(list, "Motion/Curve X1");
+    const y1 = findInput(list, "Motion/Curve Y1");
+    const preview = findInput(list, "Motion/Curve preview");
+    const originalPath = preview.children[0].getAttribute("d");
+    assert.equal(x1.value, "0.4");
+    assert.equal(x1.min, "0");
+    assert.equal(x1.max, "1");
+    assert.equal(y1.min, "0.2");
+    assert.equal(y1.max, "0.8");
+
+    for (const invalid of ["", "-0.1", "1.1"]) {
+      x1.value = invalid;
+      await x1.emit("input");
+      assert.equal(x1.getAttribute("aria-invalid"), "true");
+    }
+    y1.value = "0.1";
+    await y1.emit("input");
+    await delay(90);
+    assert.equal(patches.length, 0);
+    await y1.emit("blur");
+    assert.equal(y1.value, "0.2");
+
+    document.activeElement = x1;
+    x1.value = "0.65";
+    await x1.emit("input");
+    await delay(90);
+    assert.deepEqual(patches, [{ "Motion/Curve": { ...initial, x1: 0.65 } }]);
+    assert.notEqual(preview.children[0].getAttribute("d"), originalPath);
+    stream.emit(tweaks);
+    assert.equal(findInput(findTweakList(document, "Motion"), "Motion/Curve X1"), x1);
+    assert.equal(document.activeElement, x1);
+
+    document.activeElement = undefined;
+    stream.emit([{ ...tweaks[0], value: { ...initial, x1: 0.75 } }]);
+    assert.equal(x1.value, "0.75");
+    await findInput(list, "Reset Motion/Curve").emit("click");
+    await delay(0);
+    assert.deepEqual(patches.at(-1), { "Motion/Curve": null });
+    assert.equal(x1.value, "0.4");
+    assert.equal(preview.children[0].getAttribute("d"), originalPath);
+
+    stream.emit([{ ...tweaks[0], yMin: 0.1 }]);
+    assert.equal(findInput(findTweakList(document, "Motion"), "Motion/Curve Y1").min, "0.1");
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+    globalThis.EventSource = originalEventSource;
+  }
+});
