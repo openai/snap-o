@@ -1,8 +1,9 @@
 ---
 layout: guide
 title: Tweaks Guide (Alpha) · Snap-O
-description: Expose Compose values, app-owned settings, and actions to Snap-O and
-  adjust them with App Inspector, an on-device panel, the REST API, or an agent.
+description: Expose values from Compose, Views, and Kotlin code, app-owned settings,
+  and actions to Snap-O and adjust them with App Inspector, an on-device panel, the
+  REST API, or an agent.
 styles:
 - guide.css
 - tweaks.css
@@ -16,7 +17,7 @@ breadcrumbs:
 
 # Tweaks Guide (Alpha)
 
-Expose UI values, app-owned settings, and actions directly from Compose. Interact with them through Snap-O’s Mac App Inspector, an optional on-device panel, the REST API, or an agent.
+Expose values, app-owned settings, and actions from Compose, Views, ViewModels, and other Kotlin code. Interact with them through Snap-O’s Mac App Inspector, an optional on-device panel, the REST API, or an agent.
 {.lead}
 
 ## Use Maven Central {#maven-central data-step="1"}
@@ -44,7 +45,7 @@ The overlay dependencies are optional. Add both only if you want an on-device fl
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6,8,9,10" }
 [versions]
-snapo = "6.0.0"
+snapo = "7.0.0"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -72,12 +73,12 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3,5,6,7" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks:6.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:6.0.0")
+    debugImplementation("com.openai.snapo:tweaks:7.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:7.0.0")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:6.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:6.0.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:7.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:7.0.0")
 }
 ```
 
@@ -109,9 +110,61 @@ This setting applies only to Tweaks. `snapo.network.allow_release` controls Netw
 
 </details>
 
+## Use tweaks without Compose {#without-compose}
+
+Use `tweaks-core` in Views, ViewModels, services, and ordinary Kotlin classes. It has no Compose dependency and shares the registry with the Compose API. Use matching versions for all Snap-O artifacts. Existing Compose apps keep using `tweaks` and `tweaks-noop`; these bring in `tweaks-core` and `tweaks-core-noop` transitively. Add the core dependencies directly only when using tweaks without Compose.
+
+``` { .kotlin title="build.gradle.kts" }
+dependencies {
+    debugImplementation("com.openai.snapo:tweaks-core:7.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:7.0.0")
+    // Optional View bindings work with both core variants.
+    implementation("com.openai.snapo:tweaks-views:7.0.0")
+}
+```
+
+A `TweakScope` registers values immediately and returns read-only `StateFlow` values. Read `.value` directly or collect changes. Close the scope when its owner is disposed. A ViewModel can own the scope across Activity recreation:
+
+``` { .kotlin title="ViewModel" }
+import androidx.lifecycle.ViewModel
+import com.openai.snapo.tweaks.TweakScope
+
+class PreviewViewModel : ViewModel() {
+    private val tweaks = TweakScope()
+    val radius = tweaks.tweak(64f, "Shape/Radius", 16f..128f)
+
+    init {
+        addCloseable(tweaks)
+    }
+}
+```
+
+Defaults can be Boolean, Int, Float, String, or enum values. Source builds also support [Bézier curves](#bezier-curves). Numbers accept optional ranges and steps. Use `tweakColor(defaultArgb, name)` for ARGB colors, `action(name) { ... }` for callbacks, and `tweak(source, name)` for app-owned settings. Declaring an action never runs it; inspector callbacks run on main.
+
+### Bind values to a View
+
+Install a binding once on main, after the View is initialized. The callback applies the current value on each attachment and collects changes until detachment. For custom drawing, update fields and call `invalidate()` in the setter.
+
+``` { .kotlin title="View binding" }
+import com.openai.snapo.tweaks.views.bindTweak
+
+val binding = preview.bindTweak(viewModel.radius) { radius ->
+    preview.setRadius(radius)
+}
+
+// Remove the binding permanently when its controller is disposed.
+binding.close()
+```
+
+Closing a binding does not close its tweak scope. Attachment does not imply visibility: a GONE View can remain attached. Closing a scope unregisters its declarations and stops observing app-owned sources. Returned flows retain their last value; callers still own their collecting coroutines.
+
+Register app-owned sources and close scopes containing them on main. Ordinary declarations and reads can use other threads. Matching live declarations share one value; names, types, defaults, constraints, and enum options must agree.
+
+`tweaks-core-noop` has no registry or inspector server. Ordinary values stay at their defaults and actions never run. App-owned sources still follow application changes without Snap-O writing or resetting them; close the scope to stop observation. Do not combine a live core with its no-op replacement in one variant.
+
 ## Expose values from Compose {#expose-values data-step="3"}
 
-Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `State<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums.
+Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `State<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. Source builds also support [Bézier curves](#bezier-curves).
 
 ``` { .kotlin title="Kotlin · typography" }
 import androidx.compose.material3.Text
@@ -235,9 +288,47 @@ fun MotionTrack(modifier: Modifier = Modifier) {
 }
 ```
 
+### Bézier curves {#bezier-curves}
+
+Bézier curve support is available on `main` and is not included in Android 7.0.0 or macOS 6.0.0.
+Build the Android libraries and inspector from source to use it. Curve inspection requires Tweaks protocol 5 support.
+
+A `BezierCurve` has fixed endpoints `(0, 0)` and `(1, 1)`, plus two editable control points.
+Declare one inside a composable:
+
+``` { .kotlin title="Kotlin · inside a composable" }
+val curve by tweak(
+    BezierCurve(0.25f, 0.1f, 0.25f, 1f),
+    "Motion/Curve",
+    yRange = 0f..1f,
+)
+```
+
+Import `BezierCurve` and `tweak` from `com.openai.snapo.tweaks`, and `getValue` from `androidx.compose.runtime`.
+Read `curve.x1`, `curve.y1`, `curve.x2`, and `curve.y2` where your animation or renderer consumes them.
+
+Outside Compose, use the same overload on an existing `TweakScope`:
+
+``` { .kotlin title="Kotlin · TweakScope" }
+val curve = tweaks.tweak(
+    BezierCurve(0.25f, 0.1f, 0.25f, 1f),
+    "Motion/Curve",
+    yRange = 0f..1f,
+)
+```
+
+This returns `StateFlow<BezierCurve>`; read `curve.value` or collect changes. Close the scope when its owner is disposed.
+All coordinates must be finite numbers between 0 and 1. Optional `yRange` narrows the bounds for both Y coordinates.
+App-owned `TweakSource<BezierCurve>` values are also supported. The matching no-op artifacts expose the same API.
+
+Open a curve control in App Inspector or the on-device panel to drag its control points, enter coordinates, or select a preset.
+In App Inspector, focused handles support arrow keys; hold Shift for larger steps.
+Each edit replaces the complete curve. Reset restores the whole default curve or calls the app-owned source's reset.
+See [CLI commands](cli.md#bezier-curves) and the [protocol reference](tweaks-protocol.md#bezier-curves) for JSON updates.
+
 ## Delegate to app-owned settings {#app-owned-settings data-step="4"}
 
-Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement `TweakSource<T>` and call `tweak(source, name)` from composition. The source can own a boolean, integer, floating-point number, string, or color; enum values are supported only by ordinary tweaks.
+Snap-O normally owns a tweak’s value. To expose a value already owned by your app instead, implement `TweakSource<T>` and call `tweak(source, name)` from composition. The source can own a boolean, integer, floating-point number, string, color, or Bézier curve; enum values are supported only by ordinary tweaks.
 
 ``` { .kotlin title="com.openai.snapo.tweaks · source contract" }
 interface TweakSource<T : Any> {
@@ -314,12 +405,12 @@ Use it from composition with `preferences.tweak("motion_show", true, "Motion/Sho
 
 ### Source updates and lifecycle {#source-lifecycle}
 
-Source values are read lazily when your app reads the returned state or an inspector first requests the tweak. Snap-O reads and writes the source, checks its modification status, resets it, and collects `observe()` on the Android main thread. After the initial read, inspectors use a cached snapshot instead of polling the source.
+Compose source values are read lazily when your app reads the returned state or an inspector first requests the tweak. Snap-O reads and writes the source, checks its modification status, resets it, and collects `observe()` on the Android main thread. After the initial read, inspectors use a cached snapshot instead of polling the source.
 
 **Notify on value and status changes.** `observe(): Flow<Unit>` must emit when either `value` or `isModified` may have changed. A preference can become modified even when its effective value remains the same, so value-only notifications are not sufficient.
 {.notice}
 
-If several active composables expose the same source-backed tweak name, the first active source owns its value, edits, reset behavior, modification status, and observation. Only that source’s flow is collected. When it leaves composition, ownership transfers to the next active source. Sources that share a name must represent the same underlying setting and value type; conflicting sources are not checked and can produce incorrect values or runtime errors.
+If several active owners expose the same source-backed tweak name, the first active source owns its value, edits, reset behavior, modification status, and observation. Only that source’s flow is collected. When its owner is released, ownership transfers to the next active source. Sources that share a name must represent the same underlying setting and value type; conflicting sources are not checked and can produce incorrect values or runtime errors.
 
 ### Actions {#app-owned-actions}
 
@@ -346,7 +437,7 @@ fun MotionPreview() {
 }
 ```
 
-Actions are parameterless, run on the Android main thread, and remain available only while their owning composable is active. Register each action name once at its owner; multiple active owners create a visible conflict and prevent invocation. See [Invoke an app-owned action](tweaks-protocol.md#tweak-actions) for the corresponding REST endpoint.
+Actions are parameterless, run on the Android main thread, and remain available only while their owner is active. A composable stays in composition or its `TweakScope` stays open. Register each action name once at its owner; multiple active owners create a visible conflict and prevent invocation. See [Invoke an app-owned action](tweaks-protocol.md#tweak-actions) for the corresponding REST endpoint.
 
 ## Group tweaks by section (optional) {#groups-and-lifecycle data-step="5"}
 
@@ -396,7 +487,7 @@ fun MotionSection(isExpanded: Boolean) {
 }
 ```
 
-**One name, one tweak.** Reusing the exact same name in multiple composed consumers shares one control and current value. Ordinary tweaks must use matching types, defaults, numeric constraints, and enum options. App-owned sources must represent the same underlying setting and value type.
+**One name, one tweak.** Reusing the exact same name in multiple active owners shares one control and current value. Ordinary tweaks must use matching types, defaults, numeric constraints, and enum options. App-owned sources must represent the same underlying setting and value type.
 {.notice}
 
 Controls appear only while their composables are in composition. In the example, turning off `Motion/Show` removes the motion controls; changing `Motion/Use spring` swaps the spring settings for the duration control. When the same UI returns during the app process, ordinary controls register again with their last edited values and original ordering. App-owned controls use the current value from their source instead.
@@ -407,27 +498,27 @@ Once the enabled app exposes a tweak, choose the interaction that fits your work
 
 ### Mac App Inspector {#app-inspector}
 
-Snap-O’s App Inspector shows one picker row per running app process, with shortcuts for Network and Tweaks when available. The Tweaks inspector shows controls registered by the app’s current Compose screen.
+Snap-O’s App Inspector shows one picker row per running app process, with shortcuts for Network and Tweaks when available. The Tweaks inspector shows controls registered by the app’s active owners, including Compose and `TweakScope`.
 
 1. Install and launch the debug build, or an explicitly enabled release build, on a connected, authorized Android device or emulator.
 2. Open Snap-O on macOS and select the device.
 3. Choose **Tools → Show App Inspector**, or press **⌘⌥I**.
 4. Find your app process in the picker and click its **Tweaks** icon. Click the row instead to keep your current inspector type when available.
-5. Adjust a value or enum option, or invoke an app-owned action, and watch the running Compose UI update.
+5. Adjust a value or enum option, or invoke an app-owned action, and watch the running app update.
 6. Reset an individual control or use **Reset all tweaks**; app-owned settings use their source’s reset behavior.
 
 At startup, Snap-O restores your last app and inspector when available, or selects another available app. During a session, disconnects do not switch apps. If the selected Android app stops, click **Open app** on the waiting screen when available, or launch it on your device.
 
-Navigate through your Android app to change which controls are visible. Only tweaks belonging to the currently composed UI appear in the inspector.
+Navigate through your Android app to change which controls are visible. Only tweaks with active owners appear in the inspector.
 {.notice}
 
 ### On-device panel {#on-device-panel}
 
-For a developer-facing UI on the Android device, the optional `SnapOTweakOverlay` starts as a movable floating control and expands into an editable panel. Install it at the app root and expose Snap-O’s built-in overlay setting from your developer settings. The panel automatically observes the same currently composed tweaks as the Mac inspector. See [Add an on-device floating panel](#floating-overlay) for the module and root layout.
+For a developer-facing UI on the Android device, the optional `SnapOTweakOverlay` starts as a movable floating control and expands into an editable panel. Install it at the app root and expose Snap-O’s built-in overlay setting from your developer settings. The panel automatically observes the same registered tweaks as the Mac inspector. See [Add an on-device floating panel](#floating-overlay) for the module and root layout.
 
 ### REST API {#rest-api}
 
-The Tweaks server exposes a small HTTP API for reading currently composed controls, updating their values, invoking app-owned actions, and streaming changes. Use it to build your own inspection tools, integrations, and custom panels.
+The Tweaks server exposes a small HTTP API for reading registered controls, updating their values, invoking app-owned actions, and streaming changes. Use it to build your own inspection tools, integrations, and custom panels.
 
 See the [Tweaks protocol reference](tweaks-protocol.md) for every endpoint, example requests and responses, live events, resets, and error handling.
 
@@ -484,11 +575,11 @@ Once you are happy with the adjustments you made in your app, ask an AI agent, s
 
 The agent can read the latest tweaked values from your running app and update the corresponding values in your source code so your adjustments become part of the app.
 
-Adjustment history also includes ordinary and app-owned values from screens that have since left composition. An agent can request `GET /tweaks?include=adjusted` to recover those read-only snapshots while the app process remains alive. Inactive values cannot be edited or reset until their controls return; app-owned snapshots do not retain or restore their original source. See [Include previously adjusted tweaks](tweaks-protocol.md#adjusted-tweaks) for the response format.
+Adjustment history also includes ordinary and app-owned values from owners that have since been released. An agent can request `GET /tweaks?include=adjusted` to recover those read-only snapshots while the app process remains alive. Inactive values cannot be edited or reset until their controls return; app-owned snapshots do not retain or restore their original source. See [Include previously adjusted tweaks](tweaks-protocol.md#adjusted-tweaks) for the response format.
 
 ## Optional: add an on-device floating panel {#floating-overlay data-step="8" data-nav="Optional floating panel"}
 
-The optional overlay provides `SnapOTweakOverlay` for apps that also want to edit live tweaks on the device. Place it after your app content in a fullscreen `Box`. Snap-O owns and persists the developer setting, and the overlay automatically discovers tweaks from the current composition. Its matching no-op artifact draws nothing in release, so this code belongs in your shared source set.
+The optional overlay provides `SnapOTweakOverlay` for apps that also want to edit live tweaks on the device. Place it after your app content in a fullscreen `Box`. Snap-O owns and persists the developer setting, and the overlay automatically discovers tweaks from active owners. Its matching no-op artifact draws nothing in release, so this code belongs in your shared source set.
 
 **Upgrading from 4.0.0?** The overlay no longer wraps app content. Replace `SnapOTweakOverlay { ... }` with a fullscreen `Box` containing your content followed by `SnapOTweakOverlay()`.
 {.notice}
@@ -537,20 +628,20 @@ fun ProfileScreen() {
 }
 ```
 
-The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, or enum values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac inspector through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.
+The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac inspector through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.
 
-**Visibility follows the current Compose screen.** The button appears only when the real overlay is installed, the Tweaks runtime is enabled, `SnapOTweakOverlaySettings.isEnabled` is `true` and at least one tweak is in composition. The setting defaults to off and survives app restarts. As screens and sections appear or disappear, the panel updates automatically. The no-op overlay never appears, and its setting remains disabled. No manually supplied values, update callback, or build-specific root layout is required.
+**Visibility follows registered tweaks.** The button appears only when the real overlay is installed, the Tweaks runtime is enabled, `SnapOTweakOverlaySettings.isEnabled` is `true` and at least one tweak has an active owner. The setting defaults to off and survives app restarts. As screens and sections appear or disappear, the panel updates automatically. The no-op overlay never appears, and its setting remains disabled. No manually supplied values, update callback, or build-specific root layout is required.
 {.notice}
 
 ## Troubleshooting {#troubleshoot data-step="9"}
 
-- Confirm the installed app contains the live `:tweaks` artifact, not `:tweaks-noop`.
+- Confirm the installed app contains the live `tweaks` or `tweaks-core` artifact for its API.
 - For a nondebuggable app, set `snapo.tweaks.allow_release` to `true` in its `<application>` metadata.
 - If no Tweaks server appears, check device authorization, app startup, the live dependency, and whether the current build allows the runtime.
-- If the server appears but its tweak list is empty, open a screen that calls `tweak(...)`; controls exist only while their composables are in composition.
+- If the server appears but its tweak list is empty, register a value with `tweak(...)` in composition or an open `TweakScope`.
 - Use the same type, default, numeric constraints, and enum options wherever an ordinary tweak name is shared.
 - For an app-owned setting, emit from `observe()` whenever its value or modification status changes.
 - Ensure sources sharing a name represent the same setting and value type, and register each action name only once.
 - Choose your app’s **Tweaks** entry inside **App Inspector**.
 - After the Android app restarts, select its current running app or process if prompted.
-- For the optional overlay, confirm its developer setting is enabled and the current Compose screen contains at least one tweak.
+- For the optional overlay, confirm its developer setting is enabled and at least one tweak has an active owner.

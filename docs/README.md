@@ -3,10 +3,6 @@
 The Markdown files in this directory generate the public [Snap-O documentation](https://openai.github.io/snap-o/).
 Edit these sources instead of editing HTML on `gh-pages`.
 
-The initial conversion uses `gh-pages` commit `15c0bb59d8e4ddeabda655ebdfa5392541f23cb8`.
-Its guide text, code examples, dependency versions, page URLs, and existing section anchors are preserved.
-The CLI and macOS usage guides were added during the README cleanup.
-
 ## Build and preview
 
 Use Python 3.10 or later. From the repository root:
@@ -22,23 +18,11 @@ Open [localhost:8000/snap-o/](http://localhost:8000/snap-o/). MkDocs reloads the
 `mkdocs build --strict` writes the site to `site/` and fails on broken Markdown links or anchors.
 Building and previewing do not publish anything.
 
-Run the theme integration tests with:
+Run the documentation tests with:
 
 ```bash
 docs/.venv/bin/python -m unittest discover -s docs/tests -v
 ```
-
-## Pages
-
-| Source | Site path |
-| --- | --- |
-| [index.md](index.md) | `/snap-o/` |
-| [network-inspector.md](network-inspector.md) | `/snap-o/network-inspector.html` |
-| [network-intercept.md](network-intercept.md) | `/snap-o/network-intercept.html` |
-| [tweaks.md](tweaks.md) | `/snap-o/tweaks.html` |
-| [tweaks-protocol.md](tweaks-protocol.md) | `/snap-o/tweaks-protocol.html` |
-| [cli.md](cli.md) | `/snap-o/cli.html` |
-| [usage.md](usage.md) | `/snap-o/usage.html` |
 
 ## Writing pages
 
@@ -94,36 +78,7 @@ Markdown content for the second tab.
 The first tab is selected initially. Keep panel IDs unique and stable.
 The build generates the tab buttons, accessibility attributes, and keyboard navigation targets.
 
-## Theme and publishing
+## Theme
 
-The root `mkdocs.yml` configures the build, navigation, validation, and `.html` URLs.
-`docs-theme/` owns the Jinja templates; `docs/assets/` contains the styles, scripts, and images.
-`docs/hooks.py` adapts rendered Markdown to the existing numbered sections, code captions, and dependency tabs.
-MkDocs handles Markdown rendering, page discovery, links, asset copying, and live preview.
-
-Pull requests and pushes run the strict build and documentation tests without publishing.
-Follow the [release instructions](../release/README.md#release-notes-and-website) when choosing documentation for released features.
-
-### Publish an update
-
-Once the workflow is on the default branch:
-
-1. Open **Actions → Publish documentation → Run workflow** on GitHub.
-2. Leave the workflow branch on `main`. Enter the tag, branch, or full commit SHA to build in `source_ref`.
-3. Choose a revision that contains the MkDocs sources and documents only released functionality.
-4. Run the workflow and check its summary for the source SHA, `gh-pages` commit, and site URL.
-
-The workflow builds and tests the selected revision with read-only repository permissions.
-A separate job copies the generated files into the latest `gh-pages` checkout, commits, and pushes.
-It preserves `appcast.xml`, release files, and old pages absent from the new build.
-It explicitly requests a GitHub Pages build and waits for the published commit.
-
-Keep **Settings → Pages → Source** set to **Deploy from a branch**, with `gh-pages` and `/ (root)`.
-The workflow uses `GITHUB_TOKEN` with `contents: write` and `pages: write`; no extra token is needed.
-Repository rules must allow the workflow to push to `gh-pages`.
-
-If a release updates `gh-pages` during publication, the push fails without overwriting it. Rerun the workflow with a fresh checkout.
-If the push succeeds but the Pages build fails, rerun the same source revision to retry publication.
-The workflow never edits the update feed; appcast updates remain part of the release process.
-Renamed or removed pages stay on `gh-pages` until deliberately removed or replaced with redirects.
-Do not use `mkdocs gh-deploy`: it replaces the branch contents and would remove the Sparkle update feed.
+`mkdocs.yml` configures the build. Templates live in `docs-theme/`; styles, scripts, and images live in `docs/assets/`.
+`docs/hooks.py` handles numbered sections, code captions, and dependency tabs.

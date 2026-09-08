@@ -79,9 +79,22 @@ snapo tweaks action 'Motion/Toggle animation' -s <serial> -n <socket>
 
 Use the serial and socket returned by `network list` or `tweaks apps` in subsequent commands. For response editing, see [Network Interception](network-intercept.md).
 
+## Bézier curves
+
+Use the CLI from `main` with an Android app built from source for Bézier support. Android 7.0.0 does not include this type.
+Pass all four coordinates as one quoted JSON object:
+
+```bash
+snapo tweaks set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s <serial> -n <socket>
+snapo tweaks reset 'Motion/Curve' -s <serial> -n <socket>
+```
+
+All coordinates must be finite numbers between 0 and 1. The Y coordinates must also respect any `yMin` and `yMax` bounds in the descriptor.
+Updates and resets apply to the complete curve. See [Bézier setup](tweaks.md#bezier-curves).
+
 ## Previously adjusted Tweaks
 
-Include previously adjusted ordinary or app-owned values even after their declarations leave composition:
+Include previously adjusted ordinary or app-owned values even after their owners leave composition or close their `TweakScope`:
 
 ```bash
 snapo tweaks list --all -s <serial> -n <socket> --json

@@ -36,7 +36,7 @@ The Android libraries support OkHttp, Ktor's OkHttp engine, and HttpURLConnectio
 
 ## Tweaks (Alpha)
 
-Change values in Compose, Views, and other Kotlin code without rebuilding or restarting your app. Adjust numbers, colors, booleans, strings, and enums, or run actions registered by the app.
+Change values in Compose, Views, and other Kotlin code without rebuilding or restarting your app. Adjust numbers, colors, booleans, strings, enums, and Bézier curves, or run actions registered by the app.
 
 Use `tweaks-core` and `TweakScope` outside Compose. See [Tweaks without Compose](snapo-link-android/tweaks-core/README.md) for setup and ownership examples.
 

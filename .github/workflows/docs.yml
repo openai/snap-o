@@ -7,16 +7,12 @@ on:
       - 'docs/**'
       - 'docs-theme/**'
       - 'mkdocs.yml'
-      - 'scripts/publish-docs.sh'
-      - '.github/workflows/publish-docs.yml'
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - 'docs/**'
       - 'docs-theme/**'
       - 'mkdocs.yml'
-      - 'scripts/publish-docs.sh'
-      - '.github/workflows/publish-docs.yml'
       - '.github/workflows/docs.yml'
 
 permissions:
@@ -31,7 +27,7 @@ jobs:
         run: |
           python3 -m venv docs/.venv
           docs/.venv/bin/python -m pip install -r docs/requirements.txt
-      - name: Test the documentation theme
+      - name: Test documentation
         run: docs/.venv/bin/python -m unittest discover -s docs/tests -v
       - name: Build and check documentation
         run: docs/.venv/bin/mkdocs build --strict

@@ -50,7 +50,7 @@ Start in Live Preview and Option-drag the current frame to share a screenshot. R
 
 ## Tweaks (Alpha) {.product-title}
 
-Adjust Compose UI values and app-owned settings or run app-defined actions through App Inspector, an optional on-device panel, the REST API, or an agent.
+Adjust values from Compose, Views, and other Kotlin code. Change app-owned settings and run actions through App Inspector, an optional on-device panel, the REST API, or an agent.
 {.product-copy}
 
 [Set up Tweaks (Alpha)](tweaks.md){.section-link}

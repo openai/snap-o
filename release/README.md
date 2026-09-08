@@ -101,28 +101,7 @@ Use the generated Sparkle item without changing or regenerating its signature. C
 
 Update the Markdown sources in `docs/` for the released functionality. Use the exact release tag for macOS and the latest public Maven version of each Android library. Do not publish dependencies or features that users cannot download. Keep unrelated page design and assets unchanged.
 
-Follow [Documentation sources](../docs/README.md) to install the build dependencies, then run:
-
-```bash
-docs/.venv/bin/python -m unittest discover -s docs/tests -v
-docs/.venv/bin/mkdocs build --strict
-```
-
-Review the generated `site/` against the public versions before publishing. Build from the release checkout or a documentation update containing only released behavior; do not publish unrelated unreleased changes from `main`.
-
-| Page | Markdown source |
-| --- | --- |
-| `index.html` | `docs/index.md` |
-| `network-inspector.html` | `docs/network-inspector.md` |
-| `network-intercept.html` | `docs/network-intercept.md` |
-| `tweaks.html` | `docs/tweaks.md` |
-| `tweaks-protocol.html` | `docs/tweaks-protocol.md` |
-| `cli.html` | `docs/cli.md` |
-| `usage.html` | `docs/usage.md` |
-
-Check source examples against the released APIs, CLI, and protocol definitions in `contracts/`. Run **Actions → Publish documentation** with the reviewed source revision. See [publishing instructions](../docs/README.md#publish-an-update) for setup and recovery steps.
-
-The workflow builds the docs, updates `gh-pages`, and requests a GitHub Pages build. It preserves `appcast.xml` and existing release assets; it does not generate or update the feed. Appcast updates remain a separate release step. Do not use `mkdocs gh-deploy`, which replaces the branch contents and would remove the feed. Do not edit generated HTML directly. Regular CI validates documentation without publishing it.
+Build and preview the docs using [Documentation sources](../docs/README.md#build-and-preview). Check examples against the released APIs, CLI, and protocol definitions in `contracts/`.
 
 Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle finds and installs the new version.
 
