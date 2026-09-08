@@ -185,8 +185,8 @@ Its value and default are objects with four named numeric coordinates:
 }
 ```
 
-All coordinates must be finite Float values. X coordinates must be between 0 and 1, inclusive.
-Y coordinates can extend outside that range, allowing anticipation and overshoot.
+All four coordinates must be finite numbers between 0 and 1, inclusive.
+Overshoot curves are not supported.
 Curves do not use numeric `min`, `max`, or `step` fields.
 
 Coordinates are JSON numbers. The numeric precision and scale limits above still apply.
@@ -208,7 +208,7 @@ val curve by tweak(
 ```
 
 The same overload is available on `TweakScope`, returning `StateFlow<BezierCurve>`.
-Generic app-owned sources also accept `BezierCurve`, with X in `[0, 1]` and finite Y coordinates.
+Generic app-owned sources also accept `BezierCurve`, with all four coordinates in `[0, 1]`.
 Their setters may reject additional app-specific constraints.
 No-op artifacts expose the same value class and overloads.
 

@@ -2,17 +2,7 @@ import { createPortal } from "react-dom";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
 import type { BezierValue, TweakValueDescriptor } from "../../network/bridge-types";
-import {
-  bezierPresets,
-  bezierValue,
-  moveBezier,
-  readBezier,
-  bezierViewport,
-  bezierGraphY,
-  bezierCoordinateY,
-  type BezierCoordinates,
-  type BezierViewport
-} from "./bezier";
+import { bezierPresets, bezierValue, moveBezier, readBezier, type BezierCoordinates } from "./bezier";
 import "./bezier.css";
 
 const graphInset = 20;
@@ -26,13 +16,12 @@ const arrowDirections: Record<string, readonly [number, number]> = {
   ArrowDown: [0, -1]
 };
 
-function graphPoint(x: number, y: number, viewport: BezierViewport): readonly [number, number] {
-  return [graphInset + x * graphExtent, graphInset + bezierGraphY(y, viewport) * graphExtent];
+function graphPoint(x: number, y: number): readonly [number, number] {
+  return [graphInset + x * graphExtent, graphInset + (1 - y) * graphExtent];
 }
 
-function curvePath(value: BezierCoordinates, viewport = bezierViewport(value)): string {
-  const [x1, y1, x2, y2] = value;
-  return `M${graphPoint(0, 0, viewport)} C${graphPoint(x1, y1, viewport)} ${graphPoint(x2, y2, viewport)} ${graphPoint(1, 1, viewport)}`;
+function curvePath([x1, y1, x2, y2]: BezierCoordinates): string {
+  return `M${graphPoint(0, 0)} C${graphPoint(x1, y1)} ${graphPoint(x2, y2)} ${graphPoint(1, 1)}`;
 }
 
 export function BezierEditor({
@@ -48,8 +37,6 @@ export function BezierEditor({
   const trigger = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const [open, setOpen] = useState(false);
-  const drag = useRef<{ index: number; pointerId: number; viewport: BezierViewport } | null>(null);
-  const [dragViewport, setDragViewport] = useState<BezierViewport | null>(null);
   const close = () => {
     setOpen(false);
     trigger.current?.focus();
@@ -85,8 +72,6 @@ export function BezierEditor({
     window.addEventListener("pointerdown", dismiss);
     window.addEventListener("keydown", escape);
     return () => {
-      drag.current = null;
-      setDragViewport(null);
       window.removeEventListener("resize", position);
       window.removeEventListener("scroll", position, true);
       window.removeEventListener("pointerdown", dismiss);
@@ -94,17 +79,15 @@ export function BezierEditor({
     };
   }, [open]);
   const value = readBezier(tweak.value);
+  const drag = useRef<{ index: number; pointerId: number } | null>(null);
   if (!value) return <span>Invalid curve</span>;
-  const viewport = dragViewport ?? bezierViewport(value);
-  const point = (x: number, y: number) => graphPoint(x, y, viewport);
-  const start = point(0, 0),
-    end = point(1, 1),
-    p1 = point(value[0], value[1]),
-    p2 = point(value[2], value[3]);
+  const start = graphPoint(0, 0),
+    end = graphPoint(1, 1),
+    p1 = graphPoint(value[0], value[1]),
+    p2 = graphPoint(value[2], value[3]);
   const emit = (next: BezierCoordinates) => onChange(bezierValue(next));
   const finish = () => {
     drag.current = null;
-    setDragViewport(null);
   };
   return (
     <span>
@@ -173,7 +156,7 @@ export function BezierEditor({
                       value,
                       active.index,
                       (p.x - graphInset) / graphExtent,
-                      bezierCoordinateY((p.y - graphInset) / graphExtent, active.viewport)
+                      1 - (p.y - graphInset) / graphExtent
                     )
                   );
                 }}
@@ -183,10 +166,10 @@ export function BezierEditor({
               >
                 <path
                   className="bezier-grid"
-                  d={`M${point(0, 1)} L${start} L${point(1, 0)} M${point(0, 0.5)} L${point(1, 0.5)} M${point(0.5, 1)} L${point(0.5, 0)}`}
+                  d={`M${graphPoint(0, 1)} L${start} L${graphPoint(1, 0)} M${graphPoint(0, 0.5)} L${graphPoint(1, 0.5)} M${graphPoint(0.5, 1)} L${graphPoint(0.5, 0)}`}
                 />
                 <path className="bezier-arm" d={`M${start} L${p1} M${end} L${p2}`} />
-                <path className="bezier-line" d={curvePath(value, viewport)} />
+                <path className="bezier-line" d={curvePath(value)} />
                 {[p1, p2].map((p, index) => (
                   <circle
                     key={index}
@@ -201,9 +184,7 @@ export function BezierEditor({
                       if (event.button !== 0) return;
                       event.preventDefault();
                       event.currentTarget.focus();
-                      // Keep the graph scale stable until this drag ends.
-                      drag.current = { index, pointerId: event.pointerId, viewport };
-                      setDragViewport(viewport);
+                      drag.current = { index, pointerId: event.pointerId };
                       event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
                     }}
                     onKeyDown={(event) => {
@@ -246,8 +227,8 @@ export function BezierEditor({
                     {label}
                     <BezierCoordinate
                       label={`${tweak.name} ${label}`}
-                      min={i % 2 === 0 ? 0 : undefined}
-                      max={i % 2 === 0 ? 1 : undefined}
+                      min={0}
+                      max={1}
                       value={value[i]}
                       onChange={(coordinate) => {
                         const next = [...value] as [number, number, number, number];

@@ -34,7 +34,7 @@ class TweakScopeTest {
 
     @Test
     fun `curve defaults retain their type without an inspector`() {
-        val curve = BezierCurve(0.2f, -0.5f, 0.8f, 1.5f)
+        val curve = BezierCurve(0.2f, 0.1f, 0.8f, 0.9f)
         val scope = TweakScope()
         val state = scope.tweak(curve, "Curve")
         assertEquals(curve, state.value)

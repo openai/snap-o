@@ -465,10 +465,7 @@ function updateTweakRow(tweak) {
 
   if (fields.curvePath) {
     const { x1, y1, x2, y2 } = tweak.value;
-    const bottom = Math.min(-0.5, y1, y2);
-    const top = Math.max(1.5, y1, y2);
-    const y = (value) => 2 + (top - value) / (top - bottom) * 22;
-    fields.curvePath.setAttribute("d", `M2 ${y(0)} C${2 + x1 * 22} ${y(y1)} ${2 + x2 * 22} ${y(y2)} 24 ${y(1)}`);
+    fields.curvePath.setAttribute("d", `M2 24 C${2 + x1 * 22} ${24 - y1 * 22} ${2 + x2 * 22} ${24 - y2 * 22} 24 2`);
     for (const key of curveKeys) {
       if (fields[key] !== document.activeElement) {
         fields[key].value = numberText(tweak.value[key]);
@@ -773,10 +770,8 @@ function makeBezierTweak(tweak) {
     const input = node("input", "number-input");
     input.type = "number";
     input.step = "any";
-    if (key.startsWith("x")) {
-      input.min = "0";
-      input.max = "1";
-    }
+    input.min = "0";
+    input.max = "1";
     input.setAttribute("aria-label", `${tweak.name} ${key.toUpperCase()}`);
     input.addEventListener("input", () => {
       const value = Number(input.value);

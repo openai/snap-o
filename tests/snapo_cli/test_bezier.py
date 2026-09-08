@@ -4,14 +4,14 @@ from test_snapo import snapo
 
 
 class BezierTests(unittest.TestCase):
-    def test_parse_overshoot_curve(self):
-        value = {"x1": 0.2, "y1": -0.5, "x2": 0.8, "y2": 1.5}
+    def test_parse_normalized_curve(self):
+        value = {"x1": 0.2, "y1": 0.1, "x2": 0.8, "y2": 0.9}
         self.assertEqual(value, snapo.parse_tweak_value({"type": "bezier"}, json.dumps(value)))
 
     def test_invalid_curves(self):
         for value in [{"x1": 2, "y1": 0, "x2": 1, "y2": 1},
-                      {"x1": 0, "y1": -float("inf"), "x2": 1, "y2": 1},
-                      {"x1": 0, "y1": 0, "x2": 1, "y2": float("inf")},
+                      {"x1": 0, "y1": -0.1, "x2": 1, "y2": 1},
+                      {"x1": 0, "y1": 0, "x2": 1, "y2": 1.1},
                       {"x1": 0, "y1": float("nan"), "x2": 1, "y2": 1},
                       {"x1": 0, "y1": 1e99, "x2": 1, "y2": 1},
                       {"x1": 0, "y1": 10**400, "x2": 1, "y2": 1},
@@ -20,6 +20,6 @@ class BezierTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(snapo.SnapOError):
                 snapo.parse_tweak_value({"type": "bezier"}, json.dumps(value))
 
-    def test_finite_float_extremes(self):
-        value = {"x1": 0, "y1": -3.4028234663852886e38, "x2": 1, "y2": 3.4028234663852886e38}
+    def test_y_endpoints(self):
+        value = {"x1": 0.2, "y1": 1, "x2": 0.8, "y2": 0}
         self.assertEqual(value, snapo.parse_tweak_value({"type": "bezier"}, json.dumps(value)))

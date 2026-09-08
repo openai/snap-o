@@ -53,7 +53,7 @@ val falloff = tweaks.tweak(
 ```
 
 Read `falloff.value` and apply its four coordinates to your renderer.
-X coordinates stay between 0 and 1. Y coordinates can be any finite Float, allowing anticipation and overshoot.
+All four coordinates stay between 0 and 1. Overshoot curves are not supported.
 Snap-O edits and resets each curve as one value. The overlay opens a dedicated curve editor.
 
 ## ViewModels

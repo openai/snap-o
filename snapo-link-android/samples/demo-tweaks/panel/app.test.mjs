@@ -1773,7 +1773,7 @@ test("streams batched composition changes without polling tweak values", async (
   }
 });
 
-test("Bezier rows edit whole curves, allow overshoot, reset, and survive streamed object defaults", async () => {
+test("Bezier rows edit whole curves, reject overshoot, reset, and survive streamed object defaults", async () => {
   const document = makeDocument();
   const initial = { x1: 0.4, y1: 0.2, x2: 0.2, y2: 0.8 };
   const tweaks = [{ name: "Motion/Curve", type: "bezier", default: initial, value: initial }];
@@ -1811,8 +1811,8 @@ test("Bezier rows edit whole curves, allow overshoot, reset, and survive streame
     assert.equal(x1.value, "0.4");
     assert.equal(x1.min, "0");
     assert.equal(x1.max, "1");
-    assert.equal(y1.min, undefined);
-    assert.equal(y1.max, undefined);
+    assert.equal(y1.min, "0");
+    assert.equal(y1.max, "1");
 
     for (const invalid of ["", "-0.1", "1.1"]) {
       x1.value = invalid;
@@ -1845,14 +1845,19 @@ test("Bezier rows edit whole curves, allow overshoot, reset, and survive streame
     assert.equal(x1.value, "0.4");
     assert.equal(preview.children[0].getAttribute("d"), originalPath);
 
-    y1.value = "-0.5";
+    const previousCount = patches.length;
+    for (const value of ["-0.5", "1.5"]) {
+      y1.value = value;
+      await y1.emit("input");
+      assert.equal(y1.getAttribute("aria-invalid"), "true");
+    }
+    await delay(90);
+    assert.equal(patches.length, previousCount);
+    y1.value = "1";
     await y1.emit("input");
     await delay(90);
-    assert.deepEqual(patches.at(-1), { "Motion/Curve": { ...initial, y1: -0.5 } });
+    assert.deepEqual(patches.at(-1), { "Motion/Curve": { ...initial, y1: 1 } });
     assert.equal(findInput(findTweakList(document, "Motion"), "Motion/Curve Y1"), y1);
-    const path = preview.children[0].getAttribute("d");
-    assert.notEqual(path, originalPath);
-    assert.ok(!path.includes("NaN") && !path.includes("Infinity"));
   } finally {
     globalThis.document = originalDocument;
     globalThis.fetch = originalFetch;

@@ -70,19 +70,13 @@ private val CurvePresets = linkedMapOf(
     "Ease in out" to BezierCurve(0.42f, 0f, 0.58f, 1f),
 )
 
-internal class BezierViewport(curve: BezierCurve) {
-    // Double arithmetic keeps the viewport finite even across both Float extremes.
-    private val bottom = minOf(-0.5, curve.y1.toDouble(), curve.y2.toDouble())
-    private val top = maxOf(1.5, curve.y1.toDouble(), curve.y2.toDouble())
-
-    fun point(x: Float, y: Float, width: Float, height: Float, padding: Float = 0f): Offset = Offset(
-        padding + (width - 2f * padding) * x,
-        (padding + (height - 2f * padding) * (top - y) / (top - bottom)).toFloat(),
-    )
+internal object BezierViewport {
+    fun point(x: Float, y: Float, width: Float, height: Float, padding: Float = 0f): Offset =
+        Offset(padding + (width - 2f * padding) * x, padding + (height - 2f * padding) * (1f - y))
 
     fun value(position: Offset, width: Float, height: Float, padding: Float = 0f): Pair<Float, Float> =
         ((position.x - padding) / (width - 2f * padding)).coerceIn(0f, 1f) to
-            (top - (position.y - padding) / (height - 2f * padding) * (top - bottom)).toFloat()
+            (1f - (position.y - padding) / (height - 2f * padding)).coerceIn(0f, 1f)
 }
 
 internal fun moveBezierHandle(
@@ -93,11 +87,12 @@ internal fun moveBezierHandle(
 ): SnapOTweakValue.Curve {
     if (!x.isFinite() || !y.isFinite()) return value
     val boundedX = x.coerceIn(0f, 1f)
+    val boundedY = y.coerceIn(0f, 1f)
     return value.copy(
         value = if (handle == 0) {
-            value.value.copy(x1 = boundedX, y1 = y)
+            value.value.copy(x1 = boundedX, y1 = boundedY)
         } else {
-            value.value.copy(x2 = boundedX, y2 = y)
+            value.value.copy(x2 = boundedX, y2 = boundedY)
         }
     )
 }
@@ -139,8 +134,8 @@ internal fun TweakBezierChooser(tweak: SnapOTweakEntry, modifier: Modifier = Mod
                 CurveCoordinate(
                     "Y${selectedHandle + 1}",
                     y,
-                    -Float.MAX_VALUE,
-                    Float.MAX_VALUE,
+                    0f,
+                    1f,
                     Modifier.weight(1f),
                 ) {
                     update(moveBezierHandle(value, selectedHandle, x, it))
@@ -235,8 +230,6 @@ private fun BezierGraph(
     modifier: Modifier,
 ) {
     val shape = RoundedCornerShape(6.dp)
-    var dragViewport by remember { mutableStateOf<BezierViewport?>(null) }
-    val viewport = dragViewport ?: BezierViewport(value.value)
     Canvas(
         modifier.fillMaxWidth().aspectRatio(1f)
             .background(TweakOverlayColors.field, shape)
@@ -255,18 +248,12 @@ private fun BezierGraph(
                     },
                 )
             }
-            .bezierGestures(value, selected, onSelect, onChange) { dragViewport = it },
+            .bezierGestures(value, selected, onSelect, onChange),
     ) {
         inset(GraphInset.toPx()) {
-            for (y in listOf(0f, 0.5f, 1f)) {
-                drawLine(
-                    TweakOverlayColors.outline,
-                    viewport.point(0f, y, size.width, size.height),
-                    viewport.point(1f, y, size.width, size.height),
-                )
-            }
+            drawLine(TweakOverlayColors.outline, Offset(0f, size.height / 2), Offset(size.width, size.height / 2))
             drawLine(TweakOverlayColors.outline, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height))
-            drawBezier(value.value, handles = true, selected = selected, viewport = viewport)
+            drawBezier(value.value, handles = true, selected = selected)
         }
     }
 }
@@ -277,17 +264,15 @@ private fun Modifier.bezierGestures(
     selected: Int,
     onSelect: (Int) -> Unit,
     onChange: (SnapOTweakValue.Curve) -> Unit,
-    onViewportChange: (BezierViewport?) -> Unit,
 ): Modifier {
     val latest by rememberUpdatedState(value)
     val latestSelected by rememberUpdatedState(selected)
     val select by rememberUpdatedState(onSelect)
     val update by rememberUpdatedState(onChange)
-    val setViewport by rememberUpdatedState(onViewportChange)
     return pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown()
-            val frame = BezierViewport(latest.value)
+            val frame = BezierViewport
             val width = size.width.toFloat()
             val height = size.height.toFloat()
             val padding = GraphInset.toPx()
@@ -298,15 +283,10 @@ private fun Modifier.bezierGestures(
             val grabOffset = (if (handle == 0) first else second) - down.position
             select(handle)
             down.consume()
-            setViewport(frame)
-            try {
-                drag(down.id) { change ->
-                    change.consume()
-                    val (x, y) = frame.value(change.position + grabOffset, width, height, padding)
-                    update(moveBezierHandle(latest, handle, x, y))
-                }
-            } finally {
-                setViewport(null)
+            drag(down.id) { change ->
+                change.consume()
+                val (x, y) = frame.value(change.position + grabOffset, width, height, padding)
+                update(moveBezierHandle(latest, handle, x, y))
             }
         }
     }
@@ -347,12 +327,8 @@ private fun BezierPreview(curve: BezierCurve, modifier: Modifier = Modifier) {
     ) { drawBezier(curve, handles = false) }
 }
 
-private fun DrawScope.drawBezier(
-    curve: BezierCurve,
-    handles: Boolean,
-    selected: Int = 0,
-    viewport: BezierViewport = BezierViewport(curve),
-) {
+private fun DrawScope.drawBezier(curve: BezierCurve, handles: Boolean, selected: Int = 0) {
+    val viewport = BezierViewport
     val start = viewport.point(0f, 0f, size.width, size.height)
     val end = viewport.point(1f, 1f, size.width, size.height)
     val first = viewport.point(curve.x1, curve.y1, size.width, size.height)
