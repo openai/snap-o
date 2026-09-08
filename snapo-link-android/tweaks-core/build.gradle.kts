@@ -5,10 +5,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-description = "Live Compose tweaks for inspecting and adjusting a running app with Snap-O."
+description = "Shared implementation for Snap-O tweaks."
 
 android {
-    namespace = "com.openai.snapo.tweaks"
+    namespace = "com.openai.snapo.tweaks.core"
 
     buildFeatures {
         compose = true
@@ -18,7 +18,7 @@ android {
 dependencies {
     api(libs.androidx.compose.runtime)
     api(libs.androidx.compose.ui.graphics)
-    api(project(":tweaks-core"))
+    api(libs.kotlinx.coroutines.core)
 
     testImplementation(libs.junit4)
 }

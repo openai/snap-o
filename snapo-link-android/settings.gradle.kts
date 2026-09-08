@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "snapo-link-android"
+include(":tweaks-core")
 include(":tweaks")
 include(":tweaks-noop")
 include(":tweaks-overlay")

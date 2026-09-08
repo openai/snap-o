@@ -213,14 +213,14 @@ print_protocol_declaration() {
   local ref="$1"
   local label="$2"
   local pattern="$3"
-  local path="$4"
+  shift 3
   local declarations
 
   printf '    %s:\n' "$label"
-  if declarations="$(git -C "$SNAPO_DIR" grep -n -E "$pattern" "$ref" -- "$path")"; then
+  if declarations="$(git -C "$SNAPO_DIR" grep -n -E "$pattern" "$ref" -- "$@")"; then
     sed 's/^/      /' <<< "$declarations"
   else
-    printf '      UNRESOLVED: %s not found in %s; locate the missing or changed definition.\n' "$label" "$path"
+    printf '      UNRESOLVED: %s not found in %s; locate the missing or changed definition.\n' "$label" "$*"
   fi
 }
 
@@ -230,7 +230,8 @@ print_android_protocol_declarations() {
     'snapo-link-android/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt'
   print_protocol_declaration "$1" 'Android Tweaks protocol version' \
     'const val TweaksProtocolVersion[[:space:]:=]' \
-    'snapo-link-android/tweaks/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt'
+    'snapo-link-android/tweaks/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
+    'snapo-link-android/tweaks-core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt'
 }
 
 print_client_protocol_declarations() {
