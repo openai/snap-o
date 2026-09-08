@@ -1618,7 +1618,7 @@ pre {
   min-height: 0;
   overflow-y: auto;
   margin-inline: auto;
-  padding: 20px clamp(18px, 4vw, 36px) 48px;
+  padding: 20px clamp(28px, 4vw, 36px) 48px;
 }
 
 .tweaks-inspector > .empty-detail,
@@ -1667,9 +1667,41 @@ pre {
   line-height: 16px;
 }
 
+.tweaks-section.collapsed h2 {
+  margin-bottom: 0;
+}
+
+.tweaks-section-toggle {
+  position: relative;
+  display: flex;
+  width: calc(100% + 22px);
+  align-items: center;
+  margin-left: -22px;
+  border: 0;
+  background: transparent;
+  padding: 0 0 0 22px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tweaks-section-chevron {
+  position: absolute;
+  left: 3px;
+}
+
+.tweaks-section-toggle[aria-expanded="false"] .tweaks-section-chevron {
+  transform: rotate(-90deg);
+}
+
 .tweaks-section-list {
   display: grid;
   gap: 14px;
+}
+
+.tweaks-section-list[hidden] {
+  display: none;
 }
 
 .tweaks-control {
@@ -1694,6 +1726,10 @@ pre {
 .tweaks-control-label {
   min-width: 0;
   font-size: 12px;
+}
+
+.tweaks-control-line-range .tweaks-control-label {
+  flex: 1;
 }
 
 .tweaks-control-field {
@@ -1801,7 +1837,7 @@ pre {
 }
 
 .tweaks-range {
-  width: 100%;
+  width: clamp(90px, 35%, 170px);
   height: 17px;
   margin: 0;
   accent-color: var(--on-surface);
