@@ -162,7 +162,7 @@ internal fun TweakColorField(
         )
         TweakColorSwatch(
             color = color,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(28.dp),
         )
     }
 }
@@ -300,7 +300,7 @@ private fun TweakColorPreview(
         TweakColorSwatch(
             color = color,
             modifier = Modifier
-                .size(34.dp)
+                .size(28.dp)
                 .semantics { contentDescription = "Current color: $label" },
         )
         Column {

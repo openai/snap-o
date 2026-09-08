@@ -37,11 +37,25 @@ fun dispose() {
 
 Each declaration returns a read-only `StateFlow<T>`. Registration is immediate and does not depend on collectors. Read `.value` without launching a coroutine, or collect changes using your owner's coroutine scope. Changes are conflated: a slow collector gets the latest value and may skip intermediate slider positions.
 
-Supported defaults are `Boolean`, `Int`, `Float`, `String`, and enums. Numbers accept optional `range` and `step`. Use `tweakColor(defaultArgb, name)` for Android ARGB colors; an ordinary integer declaration remains a numeric control. Use `action(name) { ... }` for parameterless actions. Declaring an action never invokes it.
+Supported defaults are `Boolean`, `Int`, `Float`, `String`, `BezierCurve`, and enums. Numbers accept optional `range` and `step`. Use `tweakColor(defaultArgb, name)` for Android ARGB colors; an ordinary integer declaration remains a numeric control. Use `action(name) { ... }` for parameterless actions. Declaring an action never invokes it.
 
 Matching live declarations share one value. Their name, type, default, constraints, and enum options must agree. Conflicting declarations are rejected. Duplicate action names remain visible but cannot be invoked until only one owner remains.
 
 Closing a scope unregisters its declarations, releases its callbacks, and stops observing its app-owned sources. Repeated closes are harmless. New declarations after close fail. Previously returned flows retain their last value; they do not complete or cancel callers' collecting coroutines. A later matching ordinary declaration restores the last edited value within the same process.
+
+## Bézier curves
+
+```kotlin
+val falloff = tweaks.tweak(
+    BezierCurve(0.25f, 0.1f, 0.25f, 1f),
+    "Halo/Curve",
+    yRange = 0f..1f,
+)
+```
+
+Read `falloff.value` and apply its four coordinates to your renderer.
+All coordinates stay between 0 and 1. Optional `yRange` can narrow the Y range.
+Snap-O edits and resets each curve as one value. The overlay opens a dedicated curve editor.
 
 ## ViewModels
 
@@ -89,7 +103,7 @@ A View that owns its own tweaks must also manage that scope. Use a fresh scope f
 val setting = tweaks.tweak(source = mySettingSource, name = "Settings/Show hints")
 ```
 
-`TweakSource<T>` supplies the current value, a setter, `reset()`, `isModified`, and `observe(): Flow<Unit>`. Emit when either the effective value or override status changes. Generic sources support Boolean, Int, Float, and String; `tweakColor(source, name)` supports an ARGB Int source.
+`TweakSource<T>` supplies the current value, a setter, `reset()`, `isModified`, and `observe(): Flow<Unit>`. Emit when either the effective value or override status changes. Generic sources support Boolean, Int, Float, String, and BezierCurve; `tweakColor(source, name)` supports an ARGB Int source.
 
 Sources sharing a name must represent the same setting and type. The first active source supplies the authoritative value and handles edits, resets, status, and observation. The next source takes over when that owner closes. Their consistency remains the caller's responsibility. A returning source supplies its current value; Snap-O never replays historical values into it.
 

@@ -8,6 +8,7 @@ import android.os.Process
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
+import com.openai.snapo.tweaks.BezierCurve
 import com.openai.snapo.tweaks.TweakColorValue
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -27,7 +28,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
 
-internal const val TweaksProtocolVersion: Int = 4
+internal const val TweaksProtocolVersion: Int = 5
 
 internal data class TweakBatchError(
     val name: String,
@@ -481,6 +482,7 @@ internal class TweakHttpServer(
     }
 
     private fun readJsonValue(reader: JsonReader): Any? = when (reader.peek()) {
+        JsonToken.BEGIN_OBJECT -> readCoordinateObject(reader)
         JsonToken.STRING -> reader.nextString()
         JsonToken.NUMBER -> TweakNumbers.parse(reader.nextString())
         JsonToken.BOOLEAN -> reader.nextBoolean()
@@ -489,7 +491,23 @@ internal class TweakHttpServer(
             null
         }
 
-        else -> throw HttpFailure(422, "Tweak values must be primitive JSON values.")
+        else -> throw HttpFailure(422, "Tweak values must be primitives or coordinate objects.")
+    }
+
+    private fun readCoordinateObject(reader: JsonReader): Map<String, Any?> {
+        val coordinates = linkedMapOf<String, Any?>()
+        reader.beginObject()
+        while (reader.hasNext()) {
+            val key = reader.nextName()
+            if (coordinates.containsKey(key)) invalidRequest("Duplicate coordinate: $key")
+            if (coordinates.size >= 4) throw HttpFailure(422, "A curve must contain exactly four coordinates.")
+            if (reader.peek() == JsonToken.BEGIN_OBJECT || reader.peek() == JsonToken.BEGIN_ARRAY) {
+                throw HttpFailure(422, "Curve coordinates must be numbers.")
+            }
+            coordinates[key] = readJsonValue(reader)
+        }
+        reader.endObject()
+        return coordinates
     }
 
     private fun updateOnMainThread(values: Map<String, Any?>): TweakBatchResult =
@@ -627,6 +645,8 @@ internal class TweakHttpServer(
     }
 
     private fun writeConstraints(writer: JsonWriter, descriptor: TweakDescriptor) {
+        descriptor.yMin?.let { writer.name("yMin").value(it) }
+        descriptor.yMax?.let { writer.name("yMax").value(it) }
         descriptor.min?.let { minimum -> writer.name("min").value(minimum) }
         descriptor.max?.let { maximum -> writer.name("max").value(maximum) }
         descriptor.step?.let { increment -> writer.name("step").value(increment) }
@@ -648,6 +668,14 @@ internal class TweakHttpServer(
             is Number -> writer.value(value)
             is String -> writer.value(value)
             is TweakColorValue -> writer.value(value.wireValue)
+            is BezierCurve -> {
+                writer.beginObject()
+                writer.name("x1").value(value.x1)
+                writer.name("y1").value(value.y1)
+                writer.name("x2").value(value.x2)
+                writer.name("y2").value(value.y2)
+                writer.endObject()
+            }
             else -> throw HttpFailure(500, "Unsupported tweak value.")
         }
     }

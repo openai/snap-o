@@ -685,6 +685,34 @@ button {
   padding: 2px;
 }
 
+.curve-preview {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px;
+  fill: none;
+  stroke: var(--control-accent);
+  stroke-width: 1.5px;
+}
+
+.curve-coordinates {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.curve-coordinates label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.curve-coordinates .number-input {
+  width: 100%;
+}
+
 .boolean-input {
   width: 16px;
   height: 16px;

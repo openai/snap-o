@@ -64,11 +64,18 @@ export interface AppInspectorState {
   isRestoring: boolean;
 }
 
-export type TweakValue = boolean | number | string;
+export interface BezierValue {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+export type TweakValue = boolean | number | string | BezierValue;
 
 export interface TweakValueDescriptor {
   name: string;
-  type: "int" | "float" | "boolean" | "color" | "string" | "enum";
+  type: "int" | "float" | "boolean" | "color" | "string" | "enum" | "bezier";
   default: TweakValue;
   value: TweakValue;
   modified?: boolean;
@@ -76,6 +83,8 @@ export interface TweakValueDescriptor {
   max?: number;
   step?: number;
   options?: string[];
+  yMin?: number;
+  yMax?: number;
 }
 
 export interface TweakActionDescriptor {

@@ -61,13 +61,15 @@ class TweakScopeTest {
             scope.tweak("Hello", "Text"),
             scope.tweak(Mode.FIRST, "Mode"),
             scope.tweakColor(0xFF112233.toInt(), "Color"),
+            scope.tweak(BezierCurve(0f, 0f, 1f, 1f), "Curve"),
         )
         TweakRegistry.update(
             mapOf("Count" to 6, "Enabled" to true, "Text" to "World", "Mode" to "SECOND", "Color" to "#44556680"),
         )
-        assertEquals(listOf(6, true, "World", Mode.SECOND, 0x80445566.toInt()), values.map { it.value })
+        val expected = listOf(6, true, "World", Mode.SECOND, 0x80445566.toInt(), BezierCurve(0f, 0f, 1f, 1f))
+        assertEquals(expected, values.map { it.value })
         assertThrows(IllegalArgumentException::class.java) { scope.tweak(7, "Invalid", 0..5) }
-        assertEquals(5, TweakRegistry.snapshot().size)
+        assertEquals(6, TweakRegistry.snapshot().size)
     }
 
     @Test

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TweakUpdates } from "../../network/bridge-types";
+import type { TweakDescriptor, TweakUpdates } from "../../network/bridge-types";
 import { TweakUpdateQueue } from "./tweak-update-queue";
+import { applyTweakUpdates } from "./TweaksInspectorApp";
 
 describe("app-scoped tweak updates", () => {
   it("never sends a second app's pending edits to the first app", async () => {
@@ -72,6 +73,43 @@ describe("app-scoped tweak updates", () => {
 
     secondRequest.resolve({ tweaks: [{ name: "Motion/Duration", value: 500, modified: true }] });
     await flush;
+  });
+
+  it("preserves the latest drag position when React applies a reply after the next request starts", async () => {
+    const firstRequest = deferred<TweakUpdates>();
+    const secondRequest = deferred<TweakUpdates>();
+    const client = {
+      updateTweaks: vi.fn().mockReturnValueOnce(firstRequest.promise).mockReturnValueOnce(secondRequest.promise)
+    };
+    const name = "Motion/Curve";
+    const first = { x1: 0.4, y1: 0, x2: 0.2, y2: 1 };
+    const latest = { ...first, x1: 0.7 };
+    const renders: Array<(current: TweakDescriptor[]) => TweakDescriptor[]> = [];
+    const queue = new TweakUpdateQueue(
+      client,
+      { deviceId: "pixel", socketName: "snapo_tweaks_demo" },
+      {
+        ...callbacks(),
+        onUpdate(updates, pending) {
+          // React can defer this state updater until the queue has sent its next batch.
+          renders.push((current) => applyTweakUpdates(current, updates, pending));
+        }
+      }
+    );
+    queue.enqueue(name, first);
+    const flush = queue.flush();
+    queue.enqueue(name, latest);
+    firstRequest.resolve({ tweaks: [{ name, value: first, modified: true }] });
+    await vi.waitFor(() => expect(client.updateTweaks).toHaveBeenCalledTimes(2));
+
+    const current: TweakDescriptor[] = [{ name, type: "bezier", value: latest, default: first, modified: true }];
+    expect(queue.pending.size).toBe(0);
+    expect(queue.inFlight.has(name)).toBe(true);
+    expect(renders[0](current)).toEqual(current);
+
+    secondRequest.resolve({ tweaks: [{ name, value: latest, modified: true }] });
+    await flush;
+    expect(renders[1](current)).toEqual(current);
   });
 
   it("sends a null value to reset a tweak", async () => {

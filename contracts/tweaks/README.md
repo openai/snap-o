@@ -37,11 +37,11 @@ Return the app's user-facing Android label, package name, and Tweaks protocol ve
 {
   "name": "Snap-O Tweaks Demo",
   "packageName": "com.openai.snapo.demo.tweaks",
-  "protocolVersion": 4
+  "protocolVersion": 5
 }
 ```
 
-Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
+Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors and optional Y bounds. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
 
 ### GET /app/icon
 
@@ -150,7 +150,7 @@ Registry-owned usages with the same name must agree on the tweak type, default, 
 
 In protocol version 4, only modified value tweaks include `"modified": true`; otherwise the field is absent. A missing field always means false, even when `value` differs from `default`. Standard tweaks compare value and default. App-owned tweaks report whether their own override exists. Versions 1, 2, and 3 omit this field; determine their modification status by comparing `value` with `default`. Action descriptors never include `modified`.
 
-Supported value types are `int`, `float`, `boolean`, `color`, `string`, and `enum`. The `action` type describes an explicitly registered parameterless app-owned callback. Actions do not have `value`, `default`, options, or numeric constraints; clients must not attempt to patch or reset them. Integer tweaks accept only whole numbers; float tweaks accept whole or fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include constraints actually supplied by the app. A `step` is relative to `min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
+Supported value types are `int`, `float`, `boolean`, `color`, `string`, `enum`, and `bezier`. The `action` type describes an explicitly registered parameterless app-owned callback. Actions do not have `value`, `default`, options, or numeric constraints; clients must not attempt to patch or reset them. Integer tweaks accept only whole numbers; float tweaks accept whole or fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include constraints actually supplied by the app. A `step` is relative to `min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
 
 Enum tweaks include an ordered, nonempty `options` array containing the unique enum constant names. The descriptor's `default`, current `value`, picker text, and `PATCH` values all use those exact names. Preserve declaration order when rendering pickers; reject any value not present in `options`.
 
@@ -169,6 +169,52 @@ Conflicting actions remain discoverable but cannot be invoked until exactly one 
 Compose color defaults keep their exact in-process identity, including color space, component precision, and `Color.Unspecified`. The HTTP protocol still presents colors as sRGB hex; non-sRGB defaults are projected, and `Color.Unspecified` appears as `#00000000`. An explicit reset restores the original in-process color, even when its wire representation is projected.
 
 Numeric JSON values may contain at most 128 characters and 64 significant digits, with a decimal scale between -64 and 64. Reject values outside those limits with `422` before changing any tweaks.
+
+### Bézier curves
+
+A `bezier` tweak is one cubic curve with fixed endpoints `(0, 0)` and `(1, 1)`.
+Its value and default are objects with four named numeric coordinates:
+
+```json
+{
+  "name": "Halo/Curve",
+  "type": "bezier",
+  "default": {"x1": 0.25, "y1": 0.1, "x2": 0.25, "y2": 1.0},
+  "value": {"x1": 0.4, "y1": 0.0, "x2": 0.2, "y2": 1.0},
+  "modified": true,
+  "yMin": 0.0,
+  "yMax": 1.0
+}
+```
+
+All coordinates must be finite numbers between 0 and 1, inclusive.
+Optional `yMin` and `yMax` fields can narrow the Y range within these limits.
+These bounds must be increasing and apply to both Y coordinates.
+Curves do not use numeric `min`, `max`, or `step` fields.
+
+Coordinates are JSON numbers. The numeric precision and scale limits above still apply.
+Missing or unknown coordinate names, nonnumeric values, and out-of-bounds coordinates
+produce per-item errors. Duplicate names are malformed requests. Arrays, nested objects,
+and objects with more than four fields are rejected at the request level.
+Validate and replace the complete curve together; never apply individual coordinates separately.
+Reset uses `null` and restores the complete default or invokes the app-owned reset.
+
+Curve inspection requires clients that support protocol 5 structured values.
+Earlier clients that accept only primitives cannot decode lists containing curves.
+New clients still support earlier servers. The Network Inspector protocol is unchanged.
+
+```kotlin
+val curve by tweak(
+    BezierCurve(0.25f, 0.1f, 0.25f, 1f),
+    "Halo/Curve",
+    yRange = 0f..1f,
+)
+```
+
+The same overload is available on `TweakScope`, returning `StateFlow<BezierCurve>`.
+Generic app-owned sources also accept `BezierCurve`. Sources use the type's default bounds:
+all coordinates in `[0, 1]`. Their setters may reject additional app-specific constraints.
+No-op artifacts expose the same value class and overloads.
 
 ### GET /tweaks?include=adjusted
 
@@ -274,7 +320,7 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 
 For protocol version 4, use `null` to reset a tweak; a request can mix changes and resets. App-owned tweaks call their source's `reset()` method and return the current effective value. Reset all only active, non-action tweaks marked `"modified": true`. For versions 1, 2, and 3, reset each changed tweak by sending its `default` value instead.
 
-Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or nonprimitive values. In protocol versions 1 and 2, an unknown tweak returns `404`, an invalid value returns `422`, and the entire batch is rejected. In versions 3 and later, unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
+Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or unsupported structured values. In protocol versions 1 and 2, an unknown tweak returns `404`, an invalid value returns `422`, and the entire batch is rejected. In versions 3 and later, unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
 
 ```json
 {
@@ -391,11 +437,11 @@ Box(
 
 Each remembered usage registers with composition and removes the tweak from the active list only after its final usage leaves. Returning registry-owned declarations restore their previously edited values; app-owned sources control their own persistence. Request `GET /tweaks?include=adjusted` to inspect prior ordinary or app-owned adjustments from screens no longer in composition.
 
-Provide overloaded `tweak(default, name)` functions for `Int`, `Float`, `Color`, `Boolean`, `String`, and enum defaults; each returns its corresponding `State<T>`. For strings, name the second argument to distinguish the label from the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept an optional range and `step` of the same type. Enum tweaks infer their options from declaration order and use each constant's name everywhere. Convert delegated integer values into Compose units at the call site, such as `fontSize.sp`. The real and no-op artifacts expose the same package and public Compose API.
+Provide overloaded `tweak(default, name)` functions for `Int`, `Float`, `Color`, `Boolean`, `String`, `BezierCurve`, and enum defaults; each returns its corresponding `State<T>`. For strings, name the second argument to distinguish the label from the default, as in `tweak("Hello", name = "Greeting")`. Numeric tweaks accept an optional range and `step` of the same type. Enum tweaks infer their options from declaration order and use each constant's name everywhere. Convert delegated integer values into Compose units at the call site, such as `fontSize.sp`. The real and no-op artifacts expose the same package and public Compose API.
 
 Declare a parameterless action with the `TweakAction(name) { ... }` composable. It returns `Unit` and does not execute its callback during composition or return a callable function. The action is available only while its owning composable is in composition, always uses its most recent callback, and is exposed with its explicit name rather than an inferred or generated identifier. Register each action exactly once at the composable that owns the state or operation; multiple owners using the same name produce a visible conflict and all invocation attempts fail closed. The release/no-op implementation accepts the same API without retaining or invoking the callback.
 
-App-owned tweaks implement `TweakSource<T>`, supporting `Boolean`, `Int`, `Float`, `String`, and `Color`. The source owns its current value, reset behavior, modification status, and change notifications:
+App-owned tweaks implement `TweakSource<T>`, supporting `Boolean`, `Int`, `Float`, `String`, `Color`, and `BezierCurve`. The source owns its current value, reset behavior, modification status, and change notifications:
 
 ```kotlin
 private class SharedPreferencesBooleanSource(
@@ -482,6 +528,9 @@ fun App() {
     }
 }
 ```
+
+Set the host activity’s `android:windowSoftInputMode` to `adjustResize`.
+The overlay handles keyboard insets; pan mode can shift it a second time.
 
 The overlay is disabled by default. Expose its app-wide setting from a developer-settings screen:
 

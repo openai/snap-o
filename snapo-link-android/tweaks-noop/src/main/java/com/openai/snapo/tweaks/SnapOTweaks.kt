@@ -83,6 +83,14 @@ sealed interface SnapOTweakValue {
 
     @Immutable
     @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    data class Curve(
+        val value: BezierCurve,
+        val yMin: Float? = null,
+        val yMax: Float? = null,
+    ) : SnapOTweakValue
+
+    @Immutable
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
     data class Text(val value: String) : SnapOTweakValue
 
     @Immutable

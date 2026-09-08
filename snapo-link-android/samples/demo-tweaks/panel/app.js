@@ -449,6 +449,12 @@ function updateAppIdentity(app) {
   document.title = `${app.name} · Snap-O Tweaks`;
 }
 
+const curveKeys = ["x1", "y1", "x2", "y2"];
+
+function sameCurve(left, right) {
+  return curveKeys.every((key) => left[key] === right[key]);
+}
+
 function updateTweakRow(tweak) {
   const fields = state.rows.get(tweak.name);
   if (!fields) return;
@@ -457,6 +463,16 @@ function updateTweakRow(tweak) {
   fields.row.dataset.changed = String(changed);
   fields.reset.hidden = !changed;
 
+  if (fields.curvePath) {
+    const { x1, y1, x2, y2 } = tweak.value;
+    fields.curvePath.setAttribute("d", `M2 24 C${2 + x1 * 22} ${24 - y1 * 22} ${2 + x2 * 22} ${24 - y2 * 22} 24 2`);
+    for (const key of curveKeys) {
+      if (fields[key] !== document.activeElement) {
+        fields[key].value = numberText(tweak.value[key]);
+        fields[key].setAttribute("aria-invalid", "false");
+      }
+    }
+  }
   if (fields.number) fields.number.value = numberText(tweak.value);
   if (fields.slider) fields.slider.value = numberText(tweak.value);
   if (fields.color) fields.color.value = tweak.value.slice(0, 7);
@@ -734,6 +750,47 @@ function makeEnumTweak(tweak) {
   });
 }
 
+function makeBezierTweak(tweak) {
+  const row = node("div", "tweak-row");
+  const { line, actions, reset } = makeTweakLine(tweak);
+  const namespace = "http://www.w3.org/2000/svg";
+  const preview = document.createElementNS(namespace, "svg");
+  const curvePath = document.createElementNS(namespace, "path");
+  preview.setAttribute("class", "curve-preview");
+  preview.setAttribute("viewBox", "0 0 26 26");
+  preview.setAttribute("role", "img");
+  preview.setAttribute("aria-label", `${tweak.name} preview`);
+  preview.append(curvePath);
+  actions.append(preview);
+
+  const coordinates = node("div", "curve-coordinates");
+  const inputs = {};
+  for (const key of curveKeys) {
+    const label = node("label", undefined, key.toUpperCase());
+    const input = node("input", "number-input");
+    input.type = "number";
+    input.step = "any";
+    input.min = String(key.startsWith("y") ? (tweak.yMin ?? 0) : 0);
+    input.max = String(key.startsWith("y") ? (tweak.yMax ?? 1) : 1);
+    input.setAttribute("aria-label", `${tweak.name} ${key.toUpperCase()}`);
+    input.addEventListener("input", () => {
+      const value = Number(input.value);
+      const valid = input.value !== "" && input.validity.valid && Number.isFinite(value);
+      input.setAttribute("aria-invalid", String(!valid));
+      if (valid) updateValue(tweak, { ...tweak.value, [key]: value });
+    });
+    input.addEventListener("blur", () => {
+      input.value = numberText(tweak.value[key]);
+      input.setAttribute("aria-invalid", "false");
+    });
+    inputs[key] = input;
+    label.append(input);
+    coordinates.append(label);
+  }
+  row.append(line, coordinates);
+  return registerTweakRow(tweak, row, { reset, curvePath, ...inputs });
+}
+
 function makeTweak(tweak) {
   switch (tweak.type) {
     case "int":
@@ -747,6 +804,8 @@ function makeTweak(tweak) {
       return makeStringTweak(tweak);
     case "enum":
       return makeEnumTweak(tweak);
+    case "bezier":
+      return makeBezierTweak(tweak);
     default:
       return null;
   }
@@ -864,7 +923,9 @@ function sameTweakShape(current, incoming) {
     return (
       tweak.name === next.name &&
       tweak.type === next.type &&
-      tweak.default === next.default &&
+      (tweak.type === "bezier" ? sameCurve(tweak.default, next.default) : tweak.default === next.default) &&
+      tweak.yMin === next.yMin &&
+      tweak.yMax === next.yMax &&
       tweak.min === next.min &&
       tweak.max === next.max &&
       tweak.step === next.step &&

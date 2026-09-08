@@ -37,6 +37,12 @@ class TweakScope : Closeable {
         step: Int? = null,
     ): StateFlow<Int> = state(default)
 
+    fun tweak(
+        default: BezierCurve,
+        name: String,
+        yRange: ClosedFloatingPointRange<Float>? = null,
+    ): StateFlow<BezierCurve> = state(default)
+
     fun tweak(default: Boolean, name: String): StateFlow<Boolean> = state(default)
     fun tweak(default: String, name: String): StateFlow<String> = state(default)
     fun <E : Enum<E>> tweak(default: E, name: String): StateFlow<E> = state(default)

@@ -151,14 +151,15 @@ private fun TweakOverlayLayer(
 }
 
 @Composable
-private fun resolveSelectedColorTweak(
+private fun resolveSelectedEditorTweak(
     name: String?,
     tweaks: List<SnapOTweakEntry>,
     onMissing: () -> Unit,
 ): SnapOTweakEntry? {
     val selected = name?.let { selectedName ->
         tweaks.firstOrNull { tweak ->
-            tweak.name == selectedName && tweak.defaultValue is SnapOTweakValue.ColorValue
+            tweak.name == selectedName &&
+                (tweak.defaultValue is SnapOTweakValue.ColorValue || tweak.defaultValue is SnapOTweakValue.Curve)
         }
     }
 
@@ -200,12 +201,12 @@ private fun ExpandedTweakOverlay(
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedColorTweakName by rememberSaveable { mutableStateOf<String?>(null) }
-    val selectedColorTweak = resolveSelectedColorTweak(
-        name = selectedColorTweakName,
+    var selectedEditorTweakName by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedEditorTweak = resolveSelectedEditorTweak(
+        name = selectedEditorTweakName,
         tweaks = tweaks,
     ) {
-        selectedColorTweakName = null
+        selectedEditorTweakName = null
     }
 
     Surface(
@@ -217,7 +218,7 @@ private fun ExpandedTweakOverlay(
         shadowElevation = 5.dp,
     ) {
         Column {
-            if (selectedColorTweak == null) {
+            if (selectedEditorTweak == null) {
                 TweakOverlayActions(
                     tweaks = tweaks,
                     onMinimize = onMinimize,
@@ -243,21 +244,19 @@ private fun ExpandedTweakOverlay(
 
                         TweakOverlayControl(
                             tweak = tweak,
-                            onSelectColor = { selectedColorTweakName = tweak.name },
+                            onSelectColor = { selectedEditorTweakName = tweak.name },
+                            onSelectCurve = { selectedEditorTweakName = tweak.name },
                         )
                     }
                 }
             } else {
-                TweakColorOverlayActions(
-                    tweak = selectedColorTweak,
-                    onClose = { selectedColorTweakName = null },
-                    onDrag = onDrag,
-                )
+                TweakEditorOverlayActions(selectedEditorTweak, { selectedEditorTweakName = null }, onDrag)
                 HorizontalDivider(color = TweakOverlayColors.outline)
-                TweakColorChooser(
-                    tweak = selectedColorTweak,
-                    modifier = Modifier.weight(1f),
-                )
+                if (selectedEditorTweak.defaultValue is SnapOTweakValue.Curve) {
+                    TweakBezierChooser(selectedEditorTweak, Modifier.weight(1f))
+                } else {
+                    TweakColorChooser(selectedEditorTweak, Modifier.weight(1f))
+                }
             }
         }
     }
@@ -292,7 +291,7 @@ private fun TweakOverlayActions(
 }
 
 @Composable
-private fun TweakColorOverlayActions(
+private fun TweakEditorOverlayActions(
     tweak: SnapOTweakEntry,
     onClose: () -> Unit,
     onDrag: (Float) -> Unit,

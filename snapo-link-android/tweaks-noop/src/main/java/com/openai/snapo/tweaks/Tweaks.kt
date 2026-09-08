@@ -30,6 +30,14 @@ fun <T : Any> tweak(
     }
 }
 
+/** Returns the current curve default without registering an inspector. */
+@Composable
+fun tweak(
+    default: BezierCurve,
+    name: String,
+    yRange: ClosedFloatingPointRange<Float>? = null,
+): State<BezierCurve> = rememberUpdatedState(default)
+
 /** Returns observable release-build state for the current floating-point default. */
 @Composable
 fun tweak(
