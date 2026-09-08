@@ -87,7 +87,7 @@ Host: 127.0.0.1
 | `4` | Adds explicit `null` resets and authoritative, sparse `modified: true` status. |
 | `5` | Adds `bezier` curve objects with all four coordinates within `[0, 1]`. |
 
-Protocol 5 is available on `main`; Android 7.0.0 reports protocol 4. Older clients that accept only primitive values cannot decode lists containing curves. Updated clients still support older servers.
+Android 8.0.0 reports protocol 5; Android 7.0.0 reports protocol 4. Older clients that accept only primitive values cannot decode lists containing curves. Updated clients still support older servers.
 
 The Tweaks protocol version is independent of the Network Inspector protocol version.
 

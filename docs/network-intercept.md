@@ -202,5 +202,5 @@ Read the runner's error output. Check body sizes, JSON shape, and the deadline. 
 
 </details>
 
-Try shared state and delays with the [route examples](https://github.com/openai/snap-o/blob/6.0.0/examples/routes.py) and the [OkHttp and Ktor Tasks demos](https://github.com/openai/snap-o/blob/6.0.0/snapo-link-android/samples/README.md). See the [handler API reference](https://github.com/openai/snap-o/blob/6.0.0/skills/snap-o-network-inspector/references/interception.md) and [interception protocol](https://github.com/openai/snap-o/blob/6.0.0/contracts/network/interception.md) for more details.
+Try shared state and delays with the [route examples](https://github.com/openai/snap-o/blob/8.0.0/examples/routes.py) and the [OkHttp and Ktor Tasks demos](https://github.com/openai/snap-o/blob/8.0.0/snapo-link-android/samples/README.md). See the [handler API reference](https://github.com/openai/snap-o/blob/8.0.0/skills/snap-o-network-inspector/references/interception.md) and [interception protocol](https://github.com/openai/snap-o/blob/8.0.0/contracts/network/interception.md) for more details.
 {style="margin-top: 26px"}

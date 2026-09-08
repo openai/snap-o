@@ -45,7 +45,7 @@ The overlay dependencies are optional. Add both only if you want an on-device fl
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6,8,9,10" }
 [versions]
-snapo = "7.0.0"
+snapo = "8.0.0"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -73,12 +73,12 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3,5,6,7" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks:7.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:7.0.0")
+    debugImplementation("com.openai.snapo:tweaks:8.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:8.0.0")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:7.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:7.0.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:8.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:8.0.0")
 }
 ```
 
@@ -116,10 +116,10 @@ Use `tweaks-core` in Views, ViewModels, services, and ordinary Kotlin classes. I
 
 ``` { .kotlin title="build.gradle.kts" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:7.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:7.0.0")
+    debugImplementation("com.openai.snapo:tweaks-core:8.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:8.0.0")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:7.0.0")
+    implementation("com.openai.snapo:tweaks-views:8.0.0")
 }
 ```
 
@@ -139,7 +139,7 @@ class PreviewViewModel : ViewModel() {
 }
 ```
 
-Defaults can be Boolean, Int, Float, String, or enum values. Source builds also support [Bézier curves](#bezier-curves). Numbers accept optional ranges and steps. Use `tweakColor(defaultArgb, name)` for ARGB colors, `action(name) { ... }` for callbacks, and `tweak(source, name)` for app-owned settings. Declaring an action never runs it; inspector callbacks run on main.
+Defaults can be Boolean, Int, Float, String, or enum values. The 8.0.0 libraries also support [Bézier curves](#bezier-curves). Numbers accept optional ranges and steps. Use `tweakColor(defaultArgb, name)` for ARGB colors, `action(name) { ... }` for callbacks, and `tweak(source, name)` for app-owned settings. Declaring an action never runs it; inspector callbacks run on main.
 
 ### Bind values to a View
 
@@ -164,7 +164,7 @@ Register app-owned sources and close scopes containing them on main. Ordinary de
 
 ## Expose values from Compose {#expose-values data-step="3"}
 
-Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `State<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. Source builds also support [Bézier curves](#bezier-curves).
+Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `State<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The 8.0.0 libraries also support [Bézier curves](#bezier-curves).
 
 ``` { .kotlin title="Kotlin · typography" }
 import androidx.compose.material3.Text
@@ -290,8 +290,7 @@ fun MotionTrack(modifier: Modifier = Modifier) {
 
 ### Bézier curves {#bezier-curves}
 
-Bézier curve support is available on `main` and is not included in Android 7.0.0 or macOS 6.0.0.
-Build the Android libraries and inspector from source to use it. Curve inspection requires Tweaks protocol 5 support.
+Bézier curves are available in Android 8.0.0 and the Snap-O 8.0.0 Mac app. Curve inspection requires Tweaks protocol 5 support; update older Mac clients before connecting to an app that exposes curves.
 
 A `BezierCurve` has fixed endpoints `(0, 0)` and `(1, 1)`, plus two editable control points.
 Declare one inside a composable:
