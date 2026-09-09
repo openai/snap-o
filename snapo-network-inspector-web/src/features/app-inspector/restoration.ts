@@ -104,6 +104,7 @@ export class InspectorRestoration {
       displayedNetwork: this.kind === "network" ? (this.retained.network ?? null) : null,
       displayedTweaks: this.kind === "tweaks" ? (this.retained.tweaks ?? null) : null,
       selectedApp: this.target,
+      replacementApp: this.replacementApp(),
       preferredKind: this.kind,
       isRestoring:
         this.awaitingAppIdentity ||
@@ -143,7 +144,10 @@ export class InspectorRestoration {
       }
     }
 
-    if (app && this.kind) {
+    if (app && this.kind && this.target && app.id !== this.target.id && Object.keys(this.retained).length > 0) {
+      // Keep the previous process visible until the user chooses to reconnect.
+      this.current = null;
+    } else if (app && this.kind) {
       this.updateTarget(app);
       this.remember(app, this.kind);
       const option = app.inspectors.find((candidate) => candidate.kind === this.kind);
@@ -173,6 +177,18 @@ export class InspectorRestoration {
   selectInspector(app: InspectableApp, option: AppInspectorOption): AppInspectorState {
     this.selectKind(app, option.kind);
     return this.snapshot();
+  }
+
+  private replacementApp(): InspectableApp | null {
+    if (this.current || !this.target || !identity(this.target) || !this.kind) return null;
+    return (
+      this.apps.find(
+        (app) =>
+          app.id !== this.target?.id &&
+          sameApp(this.target, app) &&
+          app.inspectors.some((option) => option.kind === this.kind)
+      ) ?? null
+    );
   }
 
   private selectKind(app: InspectableApp, kind: AppInspectorKind): void {

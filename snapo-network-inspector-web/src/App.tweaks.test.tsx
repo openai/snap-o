@@ -2,7 +2,7 @@
 import { act } from "preact/test-utils";
 import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppInspectorKind, InspectableApp, TweakList } from "./network/bridge-types";
+import type { AppInspectorKind, InspectableApp, SelectedAppInspector, TweakList } from "./network/bridge-types";
 import type { NetworkClient } from "./network/client";
 import { InspectorRestoration } from "./features/app-inspector/restoration";
 import { App } from "./App";
@@ -31,6 +31,7 @@ describe("retained Tweaks view", () => {
   let container: HTMLDivElement;
   let discovered: InspectableApp[];
   let selectApp: (id: string) => void;
+  let nativeSelect: (selection: SelectedAppInspector) => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -43,7 +44,10 @@ describe("retained Tweaks view", () => {
       listInspectorApps: vi.fn(async () => discovered),
       openApp: vi.fn(async () => {}),
       appInspectorStateChanged: vi.fn(),
-      onNativeSelectedInspector: vi.fn(() => () => {}),
+      onNativeSelectedInspector: vi.fn((callback) => {
+        nativeSelect = callback;
+        return () => {};
+      }),
       onNativeSelectedApp: vi.fn((callback) => {
         selectApp = callback;
         return () => {};
@@ -120,6 +124,12 @@ describe("retained Tweaks view", () => {
     expect(container.querySelector('input[type="text"]')).toBe(input);
     expect(input.value).toBe("Cached value");
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
+    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selection: null, replacementApp: discovered[0] })
+    );
+    expect(container.querySelector(".replacement-banner")).toBeNull();
+    await act(async () => nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] }));
     await act(async () =>
       finish({ tweaks: [{ name: "Demo title", type: "string", value: "Fresh value", default: "Default" }] })
     );

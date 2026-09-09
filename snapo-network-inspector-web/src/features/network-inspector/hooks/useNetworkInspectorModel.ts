@@ -26,7 +26,6 @@ import {
   isCompletedRecord,
   mergeServersWithRetainedSelection,
   pickSelectedServer,
-  replacementCandidate,
   serverModelFor,
   shouldRequestRequestBody,
   shouldRequestResponseBody,
@@ -42,7 +41,6 @@ export interface NetworkInspectorModel {
   selectedServer: SnapOServer | null;
   selectedRecord: InspectorRecord | null;
   selectedRecordId: string | null;
-  replacementServer: SnapOServer | null;
   visibleRecords: InspectorRecord[];
   allRecords: InspectorRecord[];
   sidebarPlaceholder: string | null;
@@ -53,7 +51,6 @@ export interface NetworkInspectorModel {
   serverRecordCount: number;
   hasClearableItems: boolean;
   streamIsRetrying: boolean;
-  selectReplacementServer(server: SnapOServer): void;
   selectRecord(id: string): void;
   addExclusionFilter(value: string): void;
   removeExclusionFilter(filter: string): void;
@@ -364,10 +361,6 @@ export function useNetworkInspectorModel(
     bodyLoader.schedule(jobs);
   }, [bodyCache, bodyLoader, isActive, selectedRecord, selectedServerIsConnected, state.requests]);
 
-  const replacementServer = useMemo(
-    () => replacementCandidate(displayServers, selectedServerModel),
-    [displayServers, selectedServerModel]
-  );
   const sidebarPlaceholder = useMemo(
     () =>
       sidebarPlaceholderText({
@@ -432,10 +425,6 @@ export function useNetworkInspectorModel(
     sortNewestFirst
   ]);
 
-  const selectReplacementServer = useCallback(
-    (server: SnapOServer) => selectServer({ deviceId: server.deviceId, socketName: server.socketName }),
-    [selectServer]
-  );
   const selectRecord = useCallback((id: string) => setPreferredRecordId(id), []);
   const openDocs = useCallback(() => void client.openExternal(docsUrl), [client]);
 
@@ -446,7 +435,6 @@ export function useNetworkInspectorModel(
     selectedServer: selectedServerModel,
     selectedRecord,
     selectedRecordId,
-    replacementServer,
     visibleRecords,
     allRecords,
     sidebarPlaceholder,
@@ -457,7 +445,6 @@ export function useNetworkInspectorModel(
     serverRecordCount,
     hasClearableItems,
     streamIsRetrying,
-    selectReplacementServer,
     selectRecord,
     addExclusionFilter,
     removeExclusionFilter,

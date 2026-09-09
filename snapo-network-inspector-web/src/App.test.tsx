@@ -764,7 +764,7 @@ describe("app inspector restoration UI", () => {
     expect(mocks.client.startStream).toHaveBeenCalledTimes(starts);
   });
 
-  it("retains old-process traffic when a new PID has nothing to replay", async () => {
+  it("keeps old-process traffic visible until the native reconnect action", async () => {
     await captureTraffic();
     discovered = [];
     await act(async () => {
@@ -774,11 +774,39 @@ describe("app inspector restoration UI", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
+    expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_20");
+    expect(mocks.model?.visibleRecords).toHaveLength(1);
+    expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
+    expect(mocks.client.startStream).not.toHaveBeenCalledWith(discovered[0].inspectors[0].server);
+    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selection: null, replacementApp: discovered[0] })
+    );
+    await act(async () => nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] }));
     expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_30");
     expect(mocks.model?.visibleRecords).toHaveLength(0);
     expect(mocks.model?.allRecords).toMatchObject([
       { server: { socketName: "snapo_network_20" }, responseBody: "cached response" }
     ]);
+  });
+
+  it("ignores a native reconnect click after the replacement process disappears", async () => {
+    await captureTraffic();
+    discovered = [app(30, ["network", "tweaks"])];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    const replacement = discovered[0];
+    discovered = [];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    await act(async () => nativeSelect({ appId: replacement.id, ...replacement.inspectors[0] }));
+    expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_20");
+    expect(mocks.model?.visibleRecords).toHaveLength(1);
+    expect(mocks.client.startStream).not.toHaveBeenCalledWith(replacement.inspectors[0].server);
+    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selection: null, replacementApp: null })
+    );
   });
 
   it("allows browsing another captured request without loading bodies offline", async () => {

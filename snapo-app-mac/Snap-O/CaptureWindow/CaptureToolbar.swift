@@ -153,6 +153,7 @@ struct CaptureToolbar: View {
 
             AppInspectorPicker(model: networkModel)
               .padding(.leading, 4)
+            AppInspectorReconnectButton(model: networkModel)
             AppInspectorViewPicker(model: networkModel)
           }
         }

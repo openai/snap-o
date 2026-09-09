@@ -17,6 +17,7 @@ final class NetworkInspectorHostModel {
   private(set) var selectedInspector: SelectedAppInspector?
   private(set) var displayedNetwork: SelectedAppInspector?
   private(set) var selectedInspectorApp: InspectableApp?
+  private(set) var replacementApp: InspectableApp?
   private(set) var preferredInspectorKind: AppInspectorKind?
   private(set) var isRestoringInspector = false
   private(set) var searchText = ""
@@ -98,6 +99,13 @@ final class NetworkInspectorHostModel {
         appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion
       )
     )
+  }
+
+  func reconnectToNewProcess() {
+    guard let app = replacementApp,
+          let option = app.inspectors.first(where: { $0.kind == preferredInspectorKind })
+    else { return }
+    selectInspector(app, option: option)
   }
 
   func setSearchText(_ searchText: String) {
@@ -187,6 +195,7 @@ final class NetworkInspectorHostModel {
     selectedInspector = state.selection
     displayedNetwork = state.displayedNetwork
     selectedInspectorApp = state.selectedApp
+    replacementApp = state.replacementApp
     preferredInspectorKind = state.preferredKind
     isRestoringInspector = state.isRestoring
   }
