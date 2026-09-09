@@ -1,14 +1,5 @@
 import type { JSX } from "preact";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type MouseEvent
-} from "preact/compat";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type InspectorRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
@@ -17,7 +8,7 @@ import { copyCurl, exportAsHar } from "../lib/exportActions";
 import { exclusionFilterForUrl } from "../lib/exclusionFilters";
 import { contextMenuExportSelection, splitUrl } from "../lib/records";
 
-export const RecordList = memo(function RecordList({
+export function RecordList({
   records,
   allRecords,
   placeholder,
@@ -74,7 +65,7 @@ export const RecordList = memo(function RecordList({
     setMenu(null);
     listRef.current?.focus({ preventScroll: true });
   };
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
       if (openActiveContextMenu()) {
@@ -110,7 +101,7 @@ export const RecordList = memo(function RecordList({
     listRef.current?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
   };
   const handleContextMenu = useCallback(
-    (record: InspectorRecord, event: MouseEvent<HTMLButtonElement>) => {
+    (record: InspectorRecord, event: JSX.TargetedMouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
       event.stopPropagation();
       openContextMenu(record, event.clientX, event.clientY, false);
@@ -168,7 +159,7 @@ export const RecordList = memo(function RecordList({
       {menu == null ? null : <ContextMenu menu={menu} autoFocus={menu.keyboard} onClose={closeContextMenu} />}
     </div>
   );
-});
+}
 
 function handleRecordListScroll(
   event: JSX.TargetedEvent<HTMLDivElement>,
@@ -177,7 +168,7 @@ function handleRecordListScroll(
   setShowTopFade(event.currentTarget.scrollTop > 0);
 }
 
-const RecordRow = memo(function RecordRow({
+function RecordRow({
   id,
   optionId,
   record,
@@ -190,29 +181,31 @@ const RecordRow = memo(function RecordRow({
   record: InspectorRecord;
   selected: boolean;
   onSelect(id: string): void;
-  onContextMenu(record: InspectorRecord, event: MouseEvent<HTMLButtonElement>): void;
+  onContextMenu(record: InspectorRecord, event: JSX.TargetedMouseEvent<HTMLButtonElement>): void;
 }): JSX.Element {
-  const path = splitUrl(record.url);
-  return (
-    <button
-      id={optionId}
-      type="button"
-      role="option"
-      aria-selected={selected}
-      tabIndex={-1}
-      className={`record-row ${selected ? "selected" : ""}`}
-      onClick={() => onSelect(id)}
-      onContextMenu={(event) => onContextMenu(record, event)}
-    >
-      <span className="record-main">
-        <span className="record-primary">{path.primary}</span>
-        <span className="record-secondary">{path.secondary}</span>
-      </span>
-      <span className="record-method">{record.method}</span>
-      <StatusView record={record} />
-    </button>
-  );
-});
+  return useMemo(() => {
+    const path = splitUrl(record.url);
+    return (
+      <button
+        id={optionId}
+        type="button"
+        role="option"
+        aria-selected={selected}
+        tabIndex={-1}
+        className={`record-row ${selected ? "selected" : ""}`}
+        onClick={() => onSelect(id)}
+        onContextMenu={(event) => onContextMenu(record, event)}
+      >
+        <span className="record-main">
+          <span className="record-primary">{path.primary}</span>
+          <span className="record-secondary">{path.secondary}</span>
+        </span>
+        <span className="record-method">{record.method}</span>
+        <StatusView record={record} />
+      </button>
+    );
+  }, [id, optionId, record, selected, onSelect, onContextMenu]);
+}
 
 export function sidebarContextMenuItems(
   clicked: InspectorRecord,

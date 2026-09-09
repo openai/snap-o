@@ -1,5 +1,5 @@
 import { render, type JSX } from "preact";
-import { useState } from "preact/compat";
+import { useState } from "preact/hooks";
 import { RequestDetail } from "../features/network-inspector/components/RequestDetail";
 import { useInspectorUiState } from "../features/network-inspector/hooks/useInspectorUiState";
 import { createNetworkClient } from "../network/client";

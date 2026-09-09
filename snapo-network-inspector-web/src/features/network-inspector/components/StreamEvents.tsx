@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { memo } from "preact/compat";
+import { useMemo } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
 import type { RequestRecord } from "../../../network/cdp";
 import { makeBodyPayload } from "../../../network/payload";
@@ -18,14 +18,14 @@ const emptyStreamMessages = {
 
 export type SseStatus = keyof typeof emptyStreamMessages;
 
-export const SseCopyAllButton = memo(function SseCopyAllButton({
+export function SseCopyAllButton({
   client,
   events
 }: {
   client: NetworkClient;
   events: RequestRecord["streamEvents"];
 }): JSX.Element {
-  const text = streamEventsRaw(events);
+  const text = useMemo(() => streamEventsRaw(events), [events]);
   const copyFeedback = useCopyFeedback(client, text);
   return (
     <button
@@ -37,9 +37,9 @@ export const SseCopyAllButton = memo(function SseCopyAllButton({
       {copyFeedback.copied ? "Copied" : "Copy All"}
     </button>
   );
-});
+}
 
-export const SseEventList = memo(function SseEventList({
+export function SseEventList({
   client,
   events,
   closed,
@@ -54,27 +54,29 @@ export const SseEventList = memo(function SseEventList({
   storageKey: string;
   uiState: InspectorUiState;
 }): JSX.Element {
-  return (
-    <div className="event-list">
-      {events.length === 0 ? (
-        <div className="messages-empty">{emptyStreamMessages[status]}</div>
-      ) : (
-        events.map((event) => (
-          <SseEventCard
-            key={event.sequence}
-            client={client}
-            event={event}
-            storageKey={`${storageKey}:event:${event.sequence}`}
-            uiState={uiState}
-          />
-        ))
-      )}
-      {closed == null ? null : <StreamCloseMessage closed={closed} />}
-    </div>
-  );
-});
+  return useMemo(() => {
+    return (
+      <div className="event-list">
+        {events.length === 0 ? (
+          <div className="messages-empty">{emptyStreamMessages[status]}</div>
+        ) : (
+          events.map((event) => (
+            <SseEventCard
+              key={event.sequence}
+              client={client}
+              event={event}
+              storageKey={`${storageKey}:event:${event.sequence}`}
+              uiState={uiState}
+            />
+          ))
+        )}
+        {closed == null ? null : <StreamCloseMessage closed={closed} />}
+      </div>
+    );
+  }, [client, events, closed, status, storageKey, uiState]);
+}
 
-const SseEventCard = memo(function SseEventCard({
+function SseEventCard({
   client,
   event,
   storageKey,
@@ -86,48 +88,51 @@ const SseEventCard = memo(function SseEventCard({
   uiState: InspectorUiState;
 }): JSX.Element {
   const rawText = event.data ?? event.raw;
-  const payload = makeBodyPayload({ body: rawText, headers: [] });
+  const payload = useMemo(() => makeBodyPayload({ body: rawText, headers: [] }), [rawText]);
   const prettyText = payload?.prettyText ?? null;
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
   const displayText = pretty && prettyText != null ? prettyText : rawText;
   const copyFeedback = useCopyFeedback(client, displayText);
 
-  return (
-    <div className="event-row">
-      <div className="event-meta">
-        <div className="event-info">
-          <span>#{event.sequence}</span>
-          <span>{formatTime(event.timestamp)}</span>
-          {event.eventName ? <span className="event-name">{event.eventName}</span> : null}
+  return useMemo(
+    () => (
+      <div className="event-row">
+        <div className="event-meta">
+          <div className="event-info">
+            <span>#{event.sequence}</span>
+            <span>{formatTime(event.timestamp)}</span>
+            {event.eventName ? <span className="event-name">{event.eventName}</span> : null}
+          </div>
+          <span className="event-actions">
+            {prettyText == null ? null : (
+              <InlineTextToggle
+                label={pretty ? "PRETTY" : "RAW"}
+                onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
+              />
+            )}
+            <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} iconOnly />
+          </span>
         </div>
-        <span className="event-actions">
-          {prettyText == null ? null : (
-            <InlineTextToggle
-              label={pretty ? "PRETTY" : "RAW"}
-              onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
-            />
-          )}
-          <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} iconOnly />
-        </span>
+        {payload == null ? (
+          <pre>{event.raw || "<empty>"}</pre>
+        ) : (
+          <PayloadView
+            client={client}
+            payload={payload}
+            storageKey={storageKey}
+            uiState={uiState}
+            showsToggle={false}
+            showsCopyButton={false}
+            prettyInitiallyExpanded={false}
+            embedded
+          />
+        )}
+        <SseEventMetadata event={event} />
       </div>
-      {payload == null ? (
-        <pre>{event.raw || "<empty>"}</pre>
-      ) : (
-        <PayloadView
-          client={client}
-          payload={payload}
-          storageKey={storageKey}
-          uiState={uiState}
-          showsToggle={false}
-          showsCopyButton={false}
-          prettyInitiallyExpanded={false}
-          embedded
-        />
-      )}
-      <SseEventMetadata event={event} />
-    </div>
+    ),
+    [client, event, storageKey, uiState, payload, prettyText, pretty, copyFeedback]
   );
-});
+}
 
 function SseEventMetadata({ event }: { event: RequestRecord["streamEvents"][number] }): JSX.Element | null {
   if (event.comment == null && event.lastEventId == null && event.retryMillis == null) return null;

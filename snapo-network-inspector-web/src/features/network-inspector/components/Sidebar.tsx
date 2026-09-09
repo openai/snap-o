@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { RefreshCw, SortAsc, SortDesc, Trash2 } from "lucide-preact";
-import { memo } from "preact/compat";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord, ServerId } from "../../../network/cdp";
 import type {
@@ -16,7 +15,7 @@ import { ExclusionFilterControl } from "./ExclusionFilterControl";
 import { RecordList } from "./RecordList";
 import { ServerSelect } from "./ServerPicker";
 
-export const Sidebar = memo(function Sidebar({
+export function Sidebar({
   servers,
   selectedServer,
   replacementServer,
@@ -120,7 +119,7 @@ export const Sidebar = memo(function Sidebar({
           <div className="search-row">
             <input
               value={searchText}
-              onChange={(event) => onSearchTextChange(event.currentTarget.value)}
+              onInput={(event) => onSearchTextChange(event.currentTarget.value)}
               placeholder="Filter by keyword"
               aria-label="Filter by keyword"
             />
@@ -169,7 +168,7 @@ export const Sidebar = memo(function Sidebar({
       />
     </aside>
   );
-});
+}
 
 function ProtocolWarning({ server }: { server: SnapOServer }): JSX.Element {
   return (

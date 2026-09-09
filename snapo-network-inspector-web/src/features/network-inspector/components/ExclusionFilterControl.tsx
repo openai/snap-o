@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { Plus, Settings2, X } from "lucide-preact";
-import { type FormEvent, useEffect, useId, useRef, useState } from "preact/compat";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { normalizeExclusionFilter } from "../lib/exclusionFilters";
 
 export function ExclusionFilterControl({
@@ -88,7 +88,7 @@ export function ExclusionFilterPopover({
     inputRef.current?.focus();
   }, []);
 
-  const addFilter = (event: FormEvent<HTMLFormElement>) => {
+  const addFilter = (event: JSX.TargetedSubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canAddFilter || normalizedFilter == null) return;
 
@@ -111,7 +111,7 @@ export function ExclusionFilterPopover({
         <input
           ref={inputRef}
           value={filterText}
-          onChange={(event) => setFilterText(event.currentTarget.value)}
+          onInput={(event) => setFilterText(event.currentTarget.value)}
           placeholder="Text to exclude"
           aria-label="Text to exclude"
           spellcheck={false}

@@ -1,5 +1,5 @@
 import type { ComponentChildren, JSX } from "preact";
-import { memo, type ReactNode } from "preact/compat";
+import { useMemo } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord } from "../../../network/cdp";
 import type { InspectableApp, SnapOServer } from "../../../network/bridge-types";
@@ -11,7 +11,7 @@ import { isUnsupportedLegacyProtocolRequestSelection, unsupportedLegacyProtocolM
 import { RequestDetail } from "./RequestDetail";
 import { WebSocketDetail } from "./WebSocketDetail";
 
-export const DetailContent = memo(function DetailContent({
+export function DetailContent({
   client,
   record,
   servers,
@@ -36,42 +36,62 @@ export const DetailContent = memo(function DetailContent({
   onOpenDocs(): void;
   onRetryResponseBody(): void;
 }): JSX.Element {
-  if (record == null) {
-    const canOpenApp =
-      selectedApp != null &&
-      appLaunch != null &&
-      serverScopedItems === 0 &&
-      (!selectedServer?.isConnected || !selectedServer.hasAppInfo || streamIsRetrying);
-    const empty = resolveDetailEmptyState({ servers, selectedServer, serverScopedItems, streamIsRetrying, canOpenApp });
-    return (
-      <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs}>
-        {canOpenApp ? <OpenAppButton app={selectedApp} launch={appLaunch} /> : null}
-      </EmptyState>
-    );
-  }
+  return useMemo(() => {
+    if (record == null) {
+      const canOpenApp =
+        selectedApp != null &&
+        appLaunch != null &&
+        serverScopedItems === 0 &&
+        (!selectedServer?.isConnected || !selectedServer.hasAppInfo || streamIsRetrying);
+      const empty = resolveDetailEmptyState({
+        servers,
+        selectedServer,
+        serverScopedItems,
+        streamIsRetrying,
+        canOpenApp
+      });
+      return (
+        <EmptyState title={empty.title} body={empty.body} showDocsLink={empty.showDocsLink} onOpenDocs={onOpenDocs}>
+          {canOpenApp ? <OpenAppButton app={selectedApp} launch={appLaunch} /> : null}
+        </EmptyState>
+      );
+    }
 
-  if (isUnsupportedLegacyProtocolRequestSelection(record, selectedServer)) {
+    if (isUnsupportedLegacyProtocolRequestSelection(record, selectedServer)) {
+      return (
+        <EmptyState
+          title="This app server uses an unsupported protocol"
+          body={unsupportedLegacyProtocolMessage(selectedServer)}
+          showDocsLink={false}
+          onOpenDocs={onOpenDocs}
+        />
+      );
+    }
+
+    if (record.kind === "websocket") return <WebSocketDetail client={client} record={record} uiState={uiState} />;
     return (
-      <EmptyState
-        title="This app server uses an unsupported protocol"
-        body={unsupportedLegacyProtocolMessage(selectedServer)}
-        showDocsLink={false}
-        onOpenDocs={onOpenDocs}
+      <RequestDetail
+        client={client}
+        record={record}
+        uiState={uiState}
+        isConnected={selectedServer?.isConnected === true}
+        onRetryResponseBody={onRetryResponseBody}
       />
     );
-  }
-
-  if (record.kind === "websocket") return <WebSocketDetail client={client} record={record} uiState={uiState} />;
-  return (
-    <RequestDetail
-      client={client}
-      record={record}
-      uiState={uiState}
-      isConnected={selectedServer?.isConnected === true}
-      onRetryResponseBody={onRetryResponseBody}
-    />
-  );
-});
+  }, [
+    client,
+    record,
+    servers,
+    selectedServer,
+    selectedApp,
+    appLaunch,
+    serverScopedItems,
+    streamIsRetrying,
+    uiState,
+    onOpenDocs,
+    onRetryResponseBody
+  ]);
+}
 
 function EmptyState({
   title,
@@ -100,7 +120,7 @@ function EmptyState({
   );
 }
 
-function emptyStateBody(body: string): ReactNode {
+function emptyStateBody(body: string): ComponentChildren {
   const marker = "`com.openai.snapo`";
   if (!body.includes(marker)) return body;
   const [before, after] = body.split(marker, 2);

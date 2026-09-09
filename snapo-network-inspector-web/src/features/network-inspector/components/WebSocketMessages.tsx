@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { Inbox, Send } from "lucide-preact";
-import { memo } from "preact/compat";
+import { useMemo } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
 import type { WebSocketMessageRecord } from "../../../network/cdp";
 import { formatBytes, makeBodyPayload } from "../../../network/payload";
@@ -9,7 +9,7 @@ import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { formatTime } from "../lib/format";
 import { InlineCopyButton, InlineTextToggle, PayloadView } from "./PayloadView";
 
-export const WebSocketMessageCard = memo(function WebSocketMessageCard({
+export function WebSocketMessageCard({
   client,
   message,
   storageKey,
@@ -21,52 +21,55 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
   uiState: InspectorUiState;
 }): JSX.Element {
   const preview = message.preview ?? "";
-  const payload = makeBodyPayload({ body: preview, headers: [] });
+  const payload = useMemo(() => makeBodyPayload({ body: preview, headers: [] }), [preview]);
   const prettyText = payload?.prettyText ?? null;
   const pretty = uiState.prettyEnabled(storageKey, prettyText != null);
   const displayText = pretty && prettyText != null ? prettyText : preview;
   const copyFeedback = useCopyFeedback(client, displayText);
 
-  return (
-    <div className="message-card">
-      <div className="message-meta">
-        {message.direction === "outgoing" ? (
-          <Send size={10} class="message-direction outgoing" />
-        ) : (
-          <Inbox size={10} class="message-direction incoming" />
-        )}
-        {message.payloadSize == null ? null : (
-          <span className="message-payload-size">{formatBytes(message.payloadSize)}</span>
-        )}
-        {message.enqueued == null ? null : (
-          <span className="message-enqueue-state">{message.enqueued ? "enqueued" : "immediate"}</span>
-        )}
-        <span>{formatTime(message.timestamp)}</span>
-        <span className="message-opcode">{message.opcode}</span>
-        <span className="message-actions">
-          {prettyText == null ? null : (
-            <InlineTextToggle
-              label={pretty ? "PRETTY" : "RAW"}
-              onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
-            />
+  return useMemo(
+    () => (
+      <div className="message-card">
+        <div className="message-meta">
+          {message.direction === "outgoing" ? (
+            <Send size={10} class="message-direction outgoing" />
+          ) : (
+            <Inbox size={10} class="message-direction incoming" />
           )}
-          {displayText.length === 0 ? null : (
-            <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} iconOnly />
+          {message.payloadSize == null ? null : (
+            <span className="message-payload-size">{formatBytes(message.payloadSize)}</span>
           )}
-        </span>
+          {message.enqueued == null ? null : (
+            <span className="message-enqueue-state">{message.enqueued ? "enqueued" : "immediate"}</span>
+          )}
+          <span>{formatTime(message.timestamp)}</span>
+          <span className="message-opcode">{message.opcode}</span>
+          <span className="message-actions">
+            {prettyText == null ? null : (
+              <InlineTextToggle
+                label={pretty ? "PRETTY" : "RAW"}
+                onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
+              />
+            )}
+            {displayText.length === 0 ? null : (
+              <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} iconOnly />
+            )}
+          </span>
+        </div>
+        {payload == null ? null : (
+          <PayloadView
+            client={client}
+            payload={payload}
+            storageKey={storageKey}
+            uiState={uiState}
+            showsToggle={false}
+            showsCopyButton={false}
+            prettyInitiallyExpanded={false}
+            embedded
+          />
+        )}
       </div>
-      {payload == null ? null : (
-        <PayloadView
-          client={client}
-          payload={payload}
-          storageKey={storageKey}
-          uiState={uiState}
-          showsToggle={false}
-          showsCopyButton={false}
-          prettyInitiallyExpanded={false}
-          embedded
-        />
-      )}
-    </div>
+    ),
+    [client, message, storageKey, uiState, payload, prettyText, pretty, displayText, copyFeedback]
   );
-});
+}

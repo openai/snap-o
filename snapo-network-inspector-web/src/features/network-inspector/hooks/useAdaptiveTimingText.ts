@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/compat";
+import { useEffect, useState } from "preact/hooks";
 import type { RequestStatus } from "../../../network/cdp";
 import { formatTiming } from "../lib/format";
 

@@ -1,5 +1,4 @@
-import type { JSX } from "preact";
-import type { ClipboardEvent, ReactNode } from "preact/compat";
+import type { JSX, ComponentChildren } from "preact";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 
 export function Section({
@@ -11,13 +10,13 @@ export function Section({
   trailing,
   children
 }: {
-  title: ReactNode;
+  title: ComponentChildren;
   meta?: string | null;
   storageKey: string;
   uiState: InspectorUiState;
   initiallyExpanded?: boolean;
-  trailing?: ReactNode;
-  children: ReactNode;
+  trailing?: ComponentChildren;
+  children: ComponentChildren;
 }): JSX.Element {
   const expanded = uiState.sectionExpanded(storageKey, initiallyExpanded);
   return (
@@ -60,7 +59,7 @@ export function HeadersTable({ headers }: { headers: HeaderRow[] }): JSX.Element
   );
 }
 
-function copyHeaders(event: ClipboardEvent<HTMLDivElement>, headers: HeaderRow[]): void {
+function copyHeaders(event: JSX.TargetedClipboardEvent<HTMLDivElement>, headers: HeaderRow[]): void {
   if (event.clipboardData == null) return;
   const selectedHeaders = selectedHeaderRows(event.currentTarget, headers);
   const copiedHeaders = selectedHeaders.length > 0 ? selectedHeaders : headers;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "preact/test-utils";
-import { createRoot } from "preact/compat/client";
+import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AppInspectorKind,
@@ -86,7 +86,6 @@ function app(pid: number, kinds: AppInspectorKind[]): InspectableApp {
 }
 
 describe("app inspector restoration UI", () => {
-  let root: ReturnType<typeof createRoot>;
   let container: HTMLDivElement;
   let discovered: InspectableApp[];
   let nativeSelect: (selection: SelectedAppInspector) => void;
@@ -159,12 +158,11 @@ describe("app inspector restoration UI", () => {
     } as unknown as NetworkClient;
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
   });
 
   afterEach(async () => {
     await act(async () => {
-      await root.unmount();
+      await render(null, container);
     });
     container.remove();
     vi.useRealTimers();
@@ -173,7 +171,7 @@ describe("app inspector restoration UI", () => {
   async function renderWaitingForInspector() {
     const starter = { ...app(1, ["tweaks"]), processName: "com.example.starter", packageName: "com.example.starter" };
     vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -193,7 +191,7 @@ describe("app inspector restoration UI", () => {
           finish = resolve;
         })
     );
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -212,7 +210,7 @@ describe("app inspector restoration UI", () => {
   it("selects and saves a fallback when the remembered app is unavailable", async () => {
     const other = { ...app(30, ["network"]), processName: "com.example.other", androidUserId: 10 };
     discovered = [other];
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -248,7 +246,7 @@ describe("app inspector restoration UI", () => {
       { ...app(30, ["tweaks"]), processName: "com.example.other", androidUserId: 10 },
       app(20, ["network"])
     ];
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -265,7 +263,7 @@ describe("app inspector restoration UI", () => {
   it("keeps trying discovery until a usable fallback appears", async () => {
     discovered = [];
     vi.mocked(mocks.client.listInspectorApps).mockRejectedValueOnce(new Error("Discovery unavailable"));
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -282,7 +280,7 @@ describe("app inspector restoration UI", () => {
   });
 
   it("selects an available inspector when the saved inspector is missing at startup", async () => {
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -546,7 +544,7 @@ describe("app inspector restoration UI", () => {
       await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
     });
     await act(async () => {
-      await root.render(null);
+      await render(null, container);
     });
     const scans = vi.mocked(mocks.client.listInspectorApps);
     const scanCount = scans.mock.calls.length;
@@ -641,7 +639,7 @@ describe("app inspector restoration UI", () => {
   it("waits without selecting a placeholder, then opens its identified replacement", async () => {
     vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(null);
     discovered = [{ ...app(10, ["network"]), processName: null, name: "snapo_network_10" }];
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -678,7 +676,7 @@ describe("app inspector restoration UI", () => {
 
   async function captureTraffic() {
     discovered = [app(20, ["network", "tweaks"])];
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });

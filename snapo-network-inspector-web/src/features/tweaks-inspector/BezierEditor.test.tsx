@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "preact/test-utils";
-import { useState } from "preact/compat";
-import { createRoot } from "preact/compat/client";
+import { useState } from "preact/hooks";
+import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BezierEditor } from "./BezierEditor";
 import type { BezierValue } from "../../network/bridge-types";
@@ -10,13 +10,11 @@ const initial = { x1: 0.4, y1: 0, x2: 0.2, y2: 1 };
 
 describe("Bezier editor", () => {
   let container: HTMLDivElement;
-  let root: ReturnType<typeof createRoot>;
   const changed = vi.fn();
   const reset = vi.fn();
   beforeEach(async () => {
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
     changed.mockClear();
     reset.mockClear();
     function Harness() {
@@ -36,7 +34,7 @@ describe("Bezier editor", () => {
       );
     }
     await act(async () => {
-      await root.render(<Harness />);
+      await render(<Harness />, container);
     });
     await act(async () => {
       await container.querySelector("button")!.click();
@@ -44,7 +42,7 @@ describe("Bezier editor", () => {
   });
   afterEach(async () => {
     await act(async () => {
-      await root.unmount();
+      await render(null, container);
     });
     container.remove();
     vi.unstubAllGlobals();

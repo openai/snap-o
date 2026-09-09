@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { act } from "preact/test-utils";
-import { useState } from "preact/compat";
-import { createRoot } from "preact/compat/client";
+import { useState } from "preact/hooks";
+import { render as renderPreact } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type RequestRecord } from "../../../network/cdp";
@@ -15,7 +15,6 @@ const onSelect = vi.fn();
 const onAddExclusionFilter = vi.fn();
 const scrollIntoView = vi.fn();
 let container: HTMLDivElement;
-let root: ReturnType<typeof createRoot>;
 
 beforeEach(() => {
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
@@ -25,18 +24,17 @@ beforeEach(() => {
   scrollIntoView.mockClear();
   container = document.createElement("div");
   document.body.append(container);
-  root = createRoot(container);
 });
 
 afterEach(() => {
-  act(() => root.unmount());
+  act(() => renderPreact(null, container));
   container.remove();
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   vi.unstubAllGlobals();
 });
 
 function render(visibleRecords = records, initialId: string | null = recordId(records[0])) {
-  act(() => root.render(<Harness records={visibleRecords} initialId={initialId} />));
+  act(() => renderPreact(<Harness records={visibleRecords} initialId={initialId} />, container));
   return container.querySelector<HTMLDivElement>('[role="listbox"]')!;
 }
 

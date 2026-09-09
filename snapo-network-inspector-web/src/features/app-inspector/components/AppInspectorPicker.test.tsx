@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-import { isValidElement } from "preact";
-import { Children, type ReactNode } from "preact/compat";
+import { isValidElement, toChildArray, type ComponentChildren } from "preact";
 import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
 import type { InspectableApp, SelectedAppInspector } from "../../../network/bridge-types";
@@ -175,17 +174,17 @@ describe("app-first inspector menu", () => {
   });
 });
 
-function menuButtons(tree: ReactNode): Map<string, () => void> {
+function menuButtons(tree: ComponentChildren): Map<string, () => void> {
   const buttons = new Map<string, () => void>();
-  const visit = (node: ReactNode) => {
-    Children.forEach(node, (child) => {
+  const visit = (node: ComponentChildren) => {
+    toChildArray(node).forEach((child) => {
       if (!isValidElement(child)) return;
       const {
         children,
         "aria-label": label,
         onClick
       } = child.props as {
-        children?: ReactNode;
+        children?: ComponentChildren;
         "aria-label"?: string;
         onClick?: () => void;
       };

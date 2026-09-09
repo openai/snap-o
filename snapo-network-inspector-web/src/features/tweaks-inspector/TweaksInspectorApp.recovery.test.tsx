@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "preact/test-utils";
-import { createRoot } from "preact/compat/client";
+import { render as renderPreact } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SelectedAppInspector, TweakList, TweakStreamEvent } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
@@ -21,7 +21,6 @@ const modifiedResponse: TweakList = {
 const connectionError = new Error("Could not connect to the server.");
 
 describe("Tweaks connection recovery", () => {
-  let root: ReturnType<typeof createRoot>;
   let container: HTMLDivElement;
   let client: NetworkClient;
   let receive: (event: TweakStreamEvent) => void;
@@ -49,18 +48,17 @@ describe("Tweaks connection recovery", () => {
     } as unknown as NetworkClient;
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
   });
 
   afterEach(async () => {
-    await act(async () => root.unmount());
+    await act(async () => renderPreact(null, container));
     container.remove();
     vi.useRealTimers();
   });
 
   async function render(selected = selection, isConnected = true) {
     await act(async () =>
-      root.render(
+      renderPreact(
         <TweaksInspectorApp
           client={client}
           apps={[]}
@@ -85,7 +83,8 @@ describe("Tweaks connection recovery", () => {
           }}
           isConnected={isConnected}
           onSelect={() => {}}
-        />
+        />,
+        container
       )
     );
     await act(async () => {
@@ -137,6 +136,28 @@ describe("Tweaks connection recovery", () => {
     expect(number.value).toBe("0.5");
     expect(range.parentElement?.querySelector(".tweaks-control-label")?.textContent).toBe("Opacity");
     expect(container.querySelectorAll('.tweaks-control-line input[type="range"]')).toHaveLength(1);
+  });
+
+  it("keeps enum options open for internal focus and closes them when focus leaves", async () => {
+    vi.mocked(client.listTweaks).mockResolvedValue({
+      tweaks: [{ name: "Theme", type: "enum", value: "Light", default: "Light", options: ["Light", "Dark"] }]
+    });
+    await render();
+    const trigger = container.querySelector<HTMLButtonElement>('[aria-haspopup="listbox"]')!;
+    await act(() => {
+      trigger.focus();
+      trigger.click();
+    });
+    const option = container.querySelector<HTMLButtonElement>('[role="option"]')!;
+    await act(() => option.focus());
+    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+
+    const outside = document.createElement("button");
+    container.append(outside);
+    await act(() => outside.focus());
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(client.updateTweaks).not.toHaveBeenCalled();
   });
 
   it.each([true, false])("shows status text while loading with native picker %s", async (usesNativeServerPicker) => {
@@ -363,7 +384,7 @@ describe("Tweaks connection recovery", () => {
       });
       expect(client.listTweaks).toHaveBeenCalledTimes(count + 1);
     }
-    await act(async () => root.render(null));
+    await act(async () => renderPreact(null, container));
     const count = vi.mocked(client.listTweaks).mock.calls.length;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20_000);
@@ -479,7 +500,7 @@ describe("Tweaks connection recovery", () => {
     await act(async () =>
       receive({ streamId: "new-stream", server: selection.server, tweaks: modifiedResponse.tweaks })
     );
-    await act(async () => root.render(null));
+    await act(async () => renderPreact(null, container));
     await act(async () => finish({ streamId: "new-stream" }));
     expect(client.stopTweakStream).toHaveBeenCalledExactlyOnceWith("new-stream");
     expect(container.textContent).toBe("");

@@ -1,6 +1,5 @@
-import type { JSX } from "preact";
-import { createPortal } from "preact/compat";
-import { useId, useLayoutEffect, useRef, useState } from "preact/compat";
+import { render, type ComponentChildren, type JSX } from "preact";
+import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { RotateCcw, X } from "lucide-preact";
 import type { BezierValue, TweakValueDescriptor } from "../../network/bridge-types";
 import { bezierPresets, bezierValue, moveBezier, readBezier, type BezierCoordinates } from "./bezier";
@@ -107,9 +106,8 @@ export function BezierEditor({
           <path d={curvePath(value)} vectorEffect="non-scaling-stroke" />
         </svg>
       </button>
-      {open &&
-        typeof document !== "undefined" &&
-        createPortal(
+      {open && typeof document !== "undefined" && (
+        <BezierPanelPortal>
           <div
             ref={panel}
             id={panelId}
@@ -241,11 +239,24 @@ export function BezierEditor({
                 ))}
               </div>
             </div>
-          </div>,
-          document.body
-        )}
+          </div>
+        </BezierPanelPortal>
+      )}
     </span>
   );
+}
+
+function BezierPanelPortal({ children }: { children: ComponentChildren }): null {
+  const [container] = useState(() => document.createElement("div"));
+  useLayoutEffect(() => {
+    document.body.append(container);
+    return () => {
+      render(null, container);
+      container.remove();
+    };
+  }, [container]);
+  useLayoutEffect(() => render(children, container), [children, container]);
+  return null;
 }
 
 function BezierCoordinate({
@@ -272,7 +283,7 @@ function BezierCoordinate({
       min={min}
       max={max}
       value={text}
-      onChange={(event) => {
+      onInput={(event) => {
         const next = event.currentTarget.valueAsNumber;
         const valid = event.currentTarget.validity.valid && Number.isFinite(Math.fround(next));
         setDraft({ committed: valid ? next : value, text: event.currentTarget.value });
