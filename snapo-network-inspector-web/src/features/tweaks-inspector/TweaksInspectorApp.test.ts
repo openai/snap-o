@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { createElement, type JSX, type VNode } from "preact";
+import { createElement, render, type JSX, type VNode } from "preact";
+import { act } from "preact/test-utils";
 import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -143,6 +144,30 @@ describe("editable tweak colors", () => {
 
     expect(markup).toContain('type="color"');
     expect(markup).not.toContain("tweaks-color-button");
+  });
+
+  it("updates browser color edits before commit while preserving alpha", () => {
+    const container = document.createElement("div");
+    const tweak = colorTweak();
+    const onChange = vi.fn();
+    document.body.append(container);
+    try {
+      act(() => render(createElement(TweakColorField, { tweak, onChange }), container));
+      const input = container.querySelector<HTMLInputElement>('input[type="color"]')!;
+      for (const color of ["#112233", "#445566"]) {
+        act(() => {
+          input.value = color;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      }
+      expect(onChange.mock.calls).toEqual([
+        [tweak, "#11223380"],
+        [tweak, "#44556680"]
+      ]);
+    } finally {
+      act(() => render(null, container));
+      container.remove();
+    }
   });
 
   it("renders an accessible native-panel swatch instead of the HTML color input", () => {

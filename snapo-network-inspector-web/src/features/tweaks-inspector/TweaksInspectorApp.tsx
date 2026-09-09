@@ -887,7 +887,7 @@ export function TweakColorField({
           type="color"
           aria-label={`${tweak.name} color`}
           value={committed.slice(0, 7)}
-          onChange={(event) => {
+          onInput={(event) => {
             onChange(tweak, tweakColorWithPreservedAlpha(committed, event.currentTarget.value));
           }}
         />
