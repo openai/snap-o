@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useMemo } from "preact/hooks";
-import type { NetworkClient } from "../../../network/client";
+import type { InspectorContentClient } from "../../../network/client";
 import { recordId, type WebSocketRecord } from "../../../network/cdp";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { useAdaptiveTimingText } from "../hooks/useAdaptiveTimingText";
@@ -13,7 +13,7 @@ export function WebSocketDetail({
   record,
   uiState
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   record: WebSocketRecord;
   uiState: InspectorUiState;
 }): JSX.Element {

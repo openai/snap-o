@@ -1,8 +1,5 @@
 import { parseKeywordSearchQuery } from "../../../network/keyword-search";
 
-const exclusionFiltersStorageKey = "snapo.networkInspector.exclusionFilters";
-const legacyHiddenHostsStorageKey = "snapo.networkInspector.hiddenHosts";
-
 export class ExclusionFiltersRevision {
   private value = 0;
 
@@ -44,43 +41,6 @@ export function exclusionFilterForUrl(value: string): string | null {
   } catch {
     return null;
   }
-}
-
-export function loadExclusionFilters(): string[] {
-  try {
-    const raw = window.localStorage.getItem(exclusionFiltersStorageKey);
-    if (raw == null) return loadLegacyHiddenHosts();
-
-    return parseStoredFilters(raw);
-  } catch {
-    return [];
-  }
-}
-
-export function saveExclusionFilters(filters: readonly string[]): void {
-  try {
-    window.localStorage.setItem(exclusionFiltersStorageKey, JSON.stringify(normalizeExclusionFilters(filters)));
-  } catch {
-    // Keep network inspection usable when persistent storage is unavailable.
-  }
-}
-
-function loadLegacyHiddenHosts(): string[] {
-  try {
-    const raw = window.localStorage.getItem(legacyHiddenHostsStorageKey);
-    if (raw == null) return [];
-
-    return parseStoredFilters(raw);
-  } catch {
-    return [];
-  }
-}
-
-function parseStoredFilters(raw: string): string[] {
-  const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) return [];
-
-  return normalizeExclusionFilters(parsed.filter((value): value is string => typeof value === "string"));
 }
 
 function exclusionExpression(value: string): string {

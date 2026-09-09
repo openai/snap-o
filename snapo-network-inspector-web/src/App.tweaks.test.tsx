@@ -38,7 +38,6 @@ describe("retained Tweaks view", () => {
     const saved = new InspectorRestoration();
     saved.reconcile(discovered);
     mocks.client = {
-      usesNativeServerPicker: true,
       loadInspectorPreferences: vi.fn(async () => saved.serialize()),
       saveInspectorPreferences: vi.fn(async () => {}),
       listInspectorApps: vi.fn(async () => discovered),

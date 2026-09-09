@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useMemo } from "preact/hooks";
-import type { NetworkClient } from "../../../network/client";
+import type { InspectorContentClient } from "../../../network/client";
 import type { RequestRecord } from "../../../network/cdp";
 import { makeBodyPayload } from "../../../network/payload";
 import { streamEventsRaw } from "../../../network/exporters";
@@ -22,7 +22,7 @@ export function SseCopyAllButton({
   client,
   events
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   events: RequestRecord["streamEvents"];
 }): JSX.Element {
   const text = useMemo(() => streamEventsRaw(events), [events]);
@@ -47,7 +47,7 @@ export function SseEventList({
   storageKey,
   uiState
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   events: RequestRecord["streamEvents"];
   closed?: RequestRecord["streamClosed"];
   status: SseStatus;
@@ -82,7 +82,7 @@ function SseEventCard({
   storageKey,
   uiState
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   event: RequestRecord["streamEvents"][number];
   storageKey: string;
   uiState: InspectorUiState;

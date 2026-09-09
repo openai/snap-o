@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
-import type { NetworkClient } from "../../../network/client";
+import type { InspectorContentClient } from "../../../network/client";
 
 export function useCopyFeedback(
-  client: NetworkClient,
+  client: InspectorContentClient,
   text: string
 ): { copied: boolean; copy: () => void; copyWithoutClipboard: () => void } {
   const [token, setToken] = useState(0);

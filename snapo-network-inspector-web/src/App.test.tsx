@@ -53,15 +53,9 @@ const replayMessages: CdpMessage[] = [
 ];
 vi.mock("./network/client", () => ({ createNetworkClient: () => mocks.client }));
 vi.mock("./features/network-inspector/NetworkInspectorApp", () => ({
-  NetworkInspectorApp: ({
-    model,
-    inspectorSelection
-  }: {
-    model: NetworkInspectorModel;
-    inspectorSelection: SelectedAppInspector | null;
-  }) => {
+  NetworkInspectorApp: ({ model }: { model: NetworkInspectorModel }) => {
     mocks.model = model;
-    return <div data-inspector="network" data-socket={inspectorSelection?.server.socketName} />;
+    return <div data-inspector="network" data-socket={model.selectedServer?.socketName} />;
   }
 }));
 vi.mock("./features/tweaks-inspector/TweaksInspectorApp", () => ({
@@ -90,6 +84,7 @@ describe("app inspector restoration UI", () => {
   let discovered: InspectableApp[];
   let nativeSelect: (selection: SelectedAppInspector) => void;
   let nativeSelectApp: (id: string) => void;
+  let nativeSearch: (text: string) => void;
   let events: Set<(event: StreamEvent) => void>;
 
   beforeEach(() => {
@@ -100,7 +95,6 @@ describe("app inspector restoration UI", () => {
     const saved = new InspectorRestoration();
     saved.reconcile([app(10, ["network", "tweaks"])]);
     mocks.client = {
-      usesNativeServerPicker: true,
       loadInspectorPreferences: vi.fn(async () => saved.serialize()),
       saveInspectorPreferences: vi.fn(async () => {}),
       listInspectorApps: vi.fn(async () => discovered),
@@ -138,7 +132,10 @@ describe("app inspector restoration UI", () => {
       onPreferredDevice: vi.fn(() => () => {}),
       nativeInspectorStateChanged: vi.fn(),
       onNativeSelectedServer: vi.fn(() => () => {}),
-      onNativeSearchText: vi.fn(() => () => {}),
+      onNativeSearchText: vi.fn((callback) => {
+        nativeSearch = callback;
+        return () => {};
+      }),
       listExclusionFilters: vi.fn(async () => []),
       onNativeExclusionFilters: vi.fn(() => () => {}),
       onNativeSortOrder: vi.fn(() => () => {}),
@@ -203,7 +200,11 @@ describe("app inspector restoration UI", () => {
     await act(async () => {
       await finish(discovered);
     });
-    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
+        "snapo_network_20"
+      );
+    });
     expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
   });
 
@@ -214,7 +215,11 @@ describe("app inspector restoration UI", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_30");
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
+        "snapo_network_30"
+      );
+    });
     const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
     expect(JSON.parse(saved!).last).toEqual({
       deviceId: "phone",
@@ -275,7 +280,11 @@ describe("app inspector restoration UI", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
-    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_30");
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
+        "snapo_network_30"
+      );
+    });
     expect(mocks.client.saveInspectorPreferences).toHaveBeenCalledTimes(1);
   });
 
@@ -300,7 +309,11 @@ describe("app inspector restoration UI", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
-    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
+        "snapo_network_20"
+      );
+    });
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
   });
@@ -657,21 +670,14 @@ describe("app inspector restoration UI", () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
     expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
+        "snapo_network_20"
+      );
+    });
     await vi.waitFor(() => {
       expect(mocks.client.startStream).toHaveBeenCalledWith({ deviceId: "phone", socketName: "snapo_network_20" });
     });
-  });
-
-  it("keeps a browser picker available during restoration", async () => {
-    Object.assign(mocks.client, { usesNativeServerPicker: false });
-    await renderWaitingForInspector();
-    expect(container.querySelector('button[aria-label="Select an app"]')).not.toBeNull();
-    const tweaks = container.querySelector('button[aria-label="Tweaks"]') as HTMLButtonElement;
-    await act(async () => {
-      await tweaks.click();
-    });
-    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
   });
 
   async function captureTraffic() {
@@ -720,13 +726,9 @@ describe("app inspector restoration UI", () => {
     expect(mocks.client.startStream).toHaveBeenCalledTimes(starts);
     expect(mocks.client.loadBodies).toHaveBeenCalledTimes(bodyLoads);
 
-    await act(async () => {
-      await mocks.model?.setSearchText("no-match");
-    });
+    await act(async () => nativeSearch("no-match"));
     expect(mocks.model?.visibleRecords).toHaveLength(0);
-    await act(async () => {
-      await mocks.model?.setSearchText("");
-    });
+    await act(async () => nativeSearch(""));
     expect(mocks.model?.visibleRecords).toHaveLength(1);
 
     discovered = [app(20, ["network", "tweaks"])];

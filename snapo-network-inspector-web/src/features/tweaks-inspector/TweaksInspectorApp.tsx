@@ -3,7 +3,6 @@ import { BezierEditor } from "./BezierEditor";
 import { ChevronDown, RotateCcw } from "lucide-preact";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import type {
-  AppInspectorOption,
   InspectableApp,
   SelectedAppInspector,
   StreamStarted,
@@ -14,7 +13,6 @@ import type {
   TweakValueDescriptor
 } from "../../network/bridge-types";
 import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
-import { AppInspectorPicker } from "../app-inspector/components/AppInspectorPicker";
 import { InspectorWaitingState } from "../app-inspector/components/InspectorWaitingState";
 import type { AppLaunchControl } from "../app-inspector/useAppLaunch";
 import { TweakUpdateQueue } from "./tweak-update-queue";
@@ -41,20 +39,16 @@ const modifiedTweakProtocolVersion = 4;
 
 export function TweaksInspectorApp({
   client,
-  apps,
   selection,
   selectedApp,
   appLaunch,
-  isConnected = true,
-  onSelect
+  isConnected = true
 }: {
   client: NetworkClient;
-  apps: InspectableApp[];
   selection: SelectedAppInspector;
   selectedApp?: InspectableApp | null;
   appLaunch?: AppLaunchControl | null;
   isConnected?: boolean;
-  onSelect(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
   const server = selection.server;
   const connection = useMemo(() => ({ server, isConnected }), [isConnected, server]);
@@ -76,9 +70,7 @@ export function TweaksInspectorApp({
   const connectionError = currentConnection?.error ?? null;
   const protocolVersion = selection.protocolVersion ?? 1;
   const hasNativeColorPanel =
-    client.usesNativeServerPicker &&
-    typeof client.openNativeColorPanel === "function" &&
-    typeof client.onNativeColorPanelChange === "function";
+    typeof client.openNativeColorPanel === "function" && typeof client.onNativeColorPanelChange === "function";
   const queue = useMemo(
     () =>
       new TweakUpdateQueue(client, server, {
@@ -322,24 +314,6 @@ export function TweaksInspectorApp({
 
   return (
     <main className="tweaks-inspector">
-      {!client.usesNativeServerPicker ? (
-        <header className="tweaks-inspector-toolbar">
-          <div className="tweaks-inspector-actions">
-            <button
-              className="tweaks-action"
-              type="button"
-              title="Reset all tweaks"
-              aria-label="Reset all tweaks"
-              disabled={!canEdit || !hasChanges || saving}
-              onClick={resetAll}
-            >
-              <RotateCcw size={16} aria-hidden="true" />
-            </button>
-          </div>
-          <AppInspectorPicker apps={apps} selection={selection} selectedApp={selectedApp} onSelect={onSelect} />
-        </header>
-      ) : null}
-
       {!hasSnapshot ? (
         <InspectorWaitingState launch={appLaunch} app={selectedApp} error={connectionError} />
       ) : hasSnapshot && !error && tweaks.length === 0 ? (
