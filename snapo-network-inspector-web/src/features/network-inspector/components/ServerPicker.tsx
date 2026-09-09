@@ -1,5 +1,6 @@
-import { ChevronDown } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import type { JSX } from "preact";
+import { ChevronDown } from "lucide-preact";
+import { useEffect, useId, useRef, useState } from "preact/compat";
 import type { SnapOServer } from "../../../network/bridge-types";
 import type { ServerId } from "../../../network/cdp";
 
@@ -53,7 +54,7 @@ export function ServerSelect({
             <span className="server-device">{selectedServer.deviceDisplayTitle}</span>
           )}
         </span>
-        <ChevronDown size={18} className={expanded ? "server-chevron expanded" : "server-chevron"} />
+        <ChevronDown size={18} class={expanded ? "server-chevron expanded" : "server-chevron"} />
       </button>
 
       {expanded ? (

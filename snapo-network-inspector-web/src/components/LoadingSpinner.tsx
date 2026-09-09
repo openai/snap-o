@@ -1,3 +1,4 @@
+import type { JSX } from "preact";
 export function LoadingSpinner({ size }: { size: number }): JSX.Element {
   return (
     <span className="body-loading-spinner" aria-hidden="true">

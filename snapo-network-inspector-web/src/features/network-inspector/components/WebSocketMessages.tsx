@@ -1,5 +1,6 @@
-import { Inbox, Send } from "lucide-react";
-import { memo } from "react";
+import type { JSX } from "preact";
+import { Inbox, Send } from "lucide-preact";
+import { memo } from "preact/compat";
 import type { NetworkClient } from "../../../network/client";
 import type { WebSocketMessageRecord } from "../../../network/cdp";
 import { formatBytes, makeBodyPayload } from "../../../network/payload";
@@ -30,9 +31,9 @@ export const WebSocketMessageCard = memo(function WebSocketMessageCard({
     <div className="message-card">
       <div className="message-meta">
         {message.direction === "outgoing" ? (
-          <Send size={10} className="message-direction outgoing" />
+          <Send size={10} class="message-direction outgoing" />
         ) : (
-          <Inbox size={10} className="message-direction incoming" />
+          <Inbox size={10} class="message-direction incoming" />
         )}
         {message.payloadSize == null ? null : (
           <span className="message-payload-size">{formatBytes(message.payloadSize)}</span>

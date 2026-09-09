@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import type { JSX } from "preact";
+import { useMemo } from "preact/compat";
 import { createNetworkClient } from "./network/client";
 import { NetworkInspectorApp } from "./features/network-inspector/NetworkInspectorApp";
 import { useNetworkInspectorModel } from "./features/network-inspector/hooks/useNetworkInspectorModel";

@@ -1,5 +1,6 @@
-import { createElement, type MouseEvent, type PointerEvent, type ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+// @vitest-environment jsdom
+import { createElement, type MouseEvent, type PointerEvent, type ReactElement } from "preact/compat";
+import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
 import type {
   SelectedAppInspector,
@@ -370,7 +371,7 @@ describe("registered tweak actions", () => {
       })
     );
 
-    expect(markup).toContain('disabled=""');
+    expect(document.createRange().createContextualFragment(markup).querySelector("button:disabled")).not.toBeNull();
     expect(markup).toContain('aria-label="Conflict Motion/Toggle animation"');
     expect(markup).toContain(">Conflict</button>");
     expect(markup).toContain('role="alert"');
@@ -386,7 +387,7 @@ describe("registered tweak actions", () => {
       })
     );
 
-    expect(markup).toContain('disabled=""');
+    expect(document.createRange().createContextualFragment(markup).querySelector("button:disabled")).not.toBeNull();
   });
 
   it("invokes actions through the native desktop bridge", async () => {

@@ -3,7 +3,7 @@ Snap-O is a public, open-source Android inspection tool.
 ## Repository Layout
 
 - `snapo-app-mac/`: macOS app and shared Swift device client.
-- `snapo-network-inspector-web/`: React UI embedded in the macOS app.
+- `snapo-network-inspector-web/`: Preact UI embedded in the macOS app.
 - `snapo-link-android/`: Android libraries and sample apps.
 - `contracts/`: shared protocol definitions and fixtures.
 - `docs/`: Markdown sources for GitHub Pages. See `docs/README.md` for the build and authoring conventions.
@@ -12,9 +12,9 @@ Snap-O is a public, open-source Android inspection tool.
 ## Working Across Components
 
 - Read the component's `AGENTS.md` before changing it.
-- Keep macOS ADB and device transport in `SnapODeviceClient`. Keep UI code in the app and React inspector.
+- Keep macOS ADB and device transport in `SnapODeviceClient`. Keep UI code in the app and web inspector.
 - The Python CLI implements its own transport; it does not use the Swift client.
-- When changing shared behavior, check the Android libraries, macOS client, React inspector, and Python CLI. Use `contracts/` and its fixtures to keep them compatible.
+- When changing shared behavior, check the Android libraries, macOS client, web inspector, and Python CLI. Use `contracts/` and its fixtures to keep them compatible.
 
 ## Public Repository
 

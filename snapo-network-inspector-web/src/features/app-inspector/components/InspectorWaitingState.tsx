@@ -1,3 +1,4 @@
+import type { JSX } from "preact";
 import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import type { InspectableApp } from "../../../network/bridge-types";
 import type { AppLaunchControl } from "../useAppLaunch";

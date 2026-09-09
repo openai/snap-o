@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "preact/test-utils";
+import { createRoot } from "preact/compat/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppInspectorKind, InspectableApp, TweakList } from "./network/bridge-types";
 import type { NetworkClient } from "./network/client";
@@ -28,14 +28,13 @@ function app(pid: number, kind: AppInspectorKind = "tweaks"): InspectableApp {
 }
 
 describe("retained Tweaks view", () => {
-  let root: Root;
+  let root: ReturnType<typeof createRoot>;
   let container: HTMLDivElement;
   let discovered: InspectableApp[];
   let selectApp: (id: string) => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     discovered = [app(10)];
     const saved = new InspectorRestoration();
     saved.reconcile(discovered);
@@ -68,7 +67,9 @@ describe("retained Tweaks view", () => {
   });
 
   afterEach(async () => {
-    await act(async () => root.unmount());
+    await act(async () => {
+      await root.unmount();
+    });
     container.remove();
     vi.useRealTimers();
   });
@@ -81,16 +82,29 @@ describe("retained Tweaks view", () => {
     };
     discovered = [app(10, "network")];
     vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
-    await act(async () => root.render(<App />));
-    await act(async () => selectApp(discovered[0].id));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await selectApp(discovered[0].id);
+    });
   }
 
   it("preserves the real Tweaks view through disconnect and PID replacement", async () => {
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await vi.waitFor(() => {
+      expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Cached value");
+    });
     const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
     expect(input.value).toBe("Cached value");
     discovered = [];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(container.querySelector('input[type="text"]')).toBe(input);
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
     expect(container.querySelector('[role="status"]')).toBeNull();
@@ -103,7 +117,9 @@ describe("retained Tweaks view", () => {
         })
     );
     discovered = [app(20)];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(container.querySelector('input[type="text"]')).toBe(input);
     expect(input.value).toBe("Cached value");
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
@@ -111,7 +127,7 @@ describe("retained Tweaks view", () => {
       finish({ tweaks: [{ name: "Demo title", type: "string", value: "Fresh value", default: "Default" }] })
     );
     expect(input.value).toBe("Fresh value");
-    expect(container.querySelector("fieldset")?.disabled).toBe(false);
+    await vi.waitFor(() => expect(container.querySelector("fieldset")?.disabled).toBe(false));
   });
 
   it("keeps the launch spinner through the transition into Tweaks and shows data as soon as it loads", async () => {
@@ -124,12 +140,16 @@ describe("retained Tweaks view", () => {
     );
     await renderWaitingForTweaks();
     expect(container.querySelector(".inspector-loading-shell")).not.toBeNull();
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
 
     discovered = [app(20)];
-    await act(async () => vi.advanceTimersByTimeAsync(500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
     expect(container.querySelector(".tweaks-inspector")).not.toBeNull();
     expect(container.querySelector(".inspector-loading-shell")).toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
@@ -147,24 +167,37 @@ describe("retained Tweaks view", () => {
   it("restores Open five seconds after the click even when the waiting view changes", async () => {
     vi.mocked(mocks.client.listTweaks).mockImplementationOnce(() => new Promise(() => {}));
     await renderWaitingForTweaks();
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
     discovered = [app(20)];
-    await act(async () => vi.advanceTimersByTimeAsync(1_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
     expect(container.querySelector(".tweaks-inspector")).not.toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(3_499));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_499);
+    });
     expect(container.querySelector(".inspector-open-app")).toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 
   it("keeps a successfully loaded empty view through disconnect", async () => {
     vi.mocked(mocks.client.listTweaks).mockResolvedValue({ tweaks: [] });
-    await act(async () => root.render(<App />));
-    expect(container.textContent).toContain("No tweaks on screen");
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await vi.waitFor(() => expect(container.textContent).toContain("No tweaks on screen"));
     discovered = [];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
-    expect(container.textContent).toContain("No tweaks on screen");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    await vi.waitFor(() => expect(container.textContent).toContain("No tweaks on screen"));
     expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
@@ -172,10 +205,15 @@ describe("retained Tweaks view", () => {
     { packageName: "com.example.other", processName: "com.example.other", androidUserId: 0 },
     { packageName: "com.example.demo", processName: "com.example.demo", androidUserId: 10 }
   ])("does not show another app or profile's cached values while loading", async (target) => {
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     const other = { ...app(20), ...target };
     discovered = [app(10), other];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     let finish!: (value: TweakList) => void;
     vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
       () =>
@@ -183,10 +221,14 @@ describe("retained Tweaks view", () => {
           finish = resolve;
         })
     );
-    await act(async () => selectApp(other.id));
+    await act(async () => {
+      await selectApp(other.id);
+    });
     expect(container.querySelector('input[type="text"]')).toBeNull();
     expect(container.querySelector('[role="status"]')).not.toBeNull();
-    await act(async () => finish({ tweaks: [] }));
-    expect(container.textContent).toContain("No tweaks on screen");
+    await act(async () => {
+      await finish({ tweaks: [] });
+    });
+    await vi.waitFor(() => expect(container.textContent).toContain("No tweaks on screen"));
   });
 });

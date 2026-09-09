@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   type RefObject
-} from "react";
+} from "preact/compat";
 
 const sidebarWidthStorageKey = "snapo.networkInspector.sidebarWidth.v1";
 const defaultSidebarWidthRatio = 0.28;

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { act, useState } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "preact/test-utils";
+import { useState } from "preact/compat";
+import { createRoot } from "preact/compat/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BezierEditor } from "./BezierEditor";
 import type { BezierValue } from "../../network/bridge-types";
@@ -9,11 +10,10 @@ const initial = { x1: 0.4, y1: 0, x2: 0.2, y2: 1 };
 
 describe("Bezier editor", () => {
   let container: HTMLDivElement;
-  let root: Root;
+  let root: ReturnType<typeof createRoot>;
   const changed = vi.fn();
   const reset = vi.fn();
   beforeEach(async () => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -35,26 +35,38 @@ describe("Bezier editor", () => {
         />
       );
     }
-    await act(async () => root.render(<Harness />));
-    await act(async () => container.querySelector("button")!.click());
+    await act(async () => {
+      await root.render(<Harness />);
+    });
+    await act(async () => {
+      await container.querySelector("button")!.click();
+    });
   });
   afterEach(async () => {
-    await act(async () => root.unmount());
+    await act(async () => {
+      await root.unmount();
+    });
     container.remove();
     vi.unstubAllGlobals();
   });
   it("opens a dialog and emits one complete object for a keyboard adjustment", async () => {
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
     const handle = document.querySelector('[role="button"]')!;
-    await act(async () => handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    await act(async () => {
+      await handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
     expect(changed).toHaveBeenLastCalledWith({ x1: 0.41, y1: 0, x2: 0.2, y2: 1 });
   });
   it("applies a whole preset and invokes the source reset", async () => {
     const preset = document.querySelector<HTMLButtonElement>('[aria-label="Ease out"]')!;
-    await act(async () => preset.click());
+    await act(async () => {
+      await preset.click();
+    });
     expect(preset.getAttribute("aria-pressed")).toBe("true");
     expect(changed).toHaveBeenLastCalledWith({ x1: 0, y1: 0, x2: 0.58, y2: 1 });
-    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Reset curve"]')!.click());
+    await act(async () => {
+      await document.querySelector<HTMLButtonElement>('[aria-label="Reset curve"]')!.click();
+    });
     expect(reset).toHaveBeenCalledOnce();
     expect(document.querySelector<HTMLInputElement>('[aria-label="Motion/Curve X1"]')!.value).toBe("0.4");
   });
@@ -83,28 +95,38 @@ describe("Bezier editor", () => {
     const panel = document.querySelector('[role="dialog"]')!;
     const graph = document.querySelector(".bezier-graph")!;
     const handle = document.querySelector('[role="button"]')!;
-    await act(async () => handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    await act(async () => {
+      await handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
     expect(document.querySelector('[role="dialog"]')).toBe(panel);
     expect(document.querySelector(".bezier-graph")).toBe(graph);
     expect(document.querySelector('[role="button"]')).toBe(handle);
   });
 
   it("closes on Escape and returns focus to the swatch", async () => {
-    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    await act(async () => {
+      await window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(container.querySelector("button"));
   });
 
   it("dismisses on an outside click but keeps editing on inside clicks", async () => {
-    await act(async () => document.querySelector("input")!.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => {
+      await document.querySelector("input")!.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    });
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
-    await act(async () => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    await act(async () => {
+      await document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("clamps keyboard edits to the normalized range", async () => {
     const handle = document.querySelector('[role="button"]')!;
-    await act(async () => handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    await act(async () => {
+      await handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
     expect(changed).toHaveBeenLastCalledWith(initial);
   });
 });

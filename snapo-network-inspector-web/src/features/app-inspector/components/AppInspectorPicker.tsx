@@ -1,5 +1,6 @@
-import { Check, ChevronDown, Network, SlidersHorizontal } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import type { JSX } from "preact";
+import { Check, ChevronDown, Network, SlidersHorizontal } from "lucide-preact";
+import { useEffect, useId, useRef, useState } from "preact/compat";
 import type {
   AppInspectorKind,
   AppInspectorOption,
@@ -162,7 +163,7 @@ export function AppInspectorMenu({
                 if (option) onSelect(app);
               }}
             >
-              <Check className="inspector-app-option-check" size={15} aria-hidden="true" />
+              <Check class="inspector-app-option-check" size={15} aria-hidden="true" />
               <AppIcon app={app} size={28} />
               <span className="inspector-app-picker-text">
                 <span className="inspector-app-picker-name">{app.name}</span>

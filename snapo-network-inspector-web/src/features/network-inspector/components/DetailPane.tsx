@@ -1,4 +1,5 @@
-import { memo } from "react";
+import type { ComponentChildren, JSX } from "preact";
+import { memo, type ReactNode } from "preact/compat";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord } from "../../../network/cdp";
 import type { InspectableApp, SnapOServer } from "../../../network/bridge-types";
@@ -83,7 +84,7 @@ function EmptyState({
   body: string | null;
   showDocsLink: boolean;
   onOpenDocs(): void;
-  children?: React.ReactNode;
+  children?: ComponentChildren;
 }): JSX.Element {
   return (
     <section className="empty-detail">
@@ -99,7 +100,7 @@ function EmptyState({
   );
 }
 
-function emptyStateBody(body: string): React.ReactNode {
+function emptyStateBody(body: string): ReactNode {
   const marker = "`com.openai.snapo`";
   if (!body.includes(marker)) return body;
   const [before, after] = body.split(marker, 2);

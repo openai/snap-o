@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "preact/test-utils";
+import { createRoot } from "preact/compat/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AppInspectorKind,
@@ -86,7 +86,7 @@ function app(pid: number, kinds: AppInspectorKind[]): InspectableApp {
 }
 
 describe("app inspector restoration UI", () => {
-  let root: Root;
+  let root: ReturnType<typeof createRoot>;
   let container: HTMLDivElement;
   let discovered: InspectableApp[];
   let nativeSelect: (selection: SelectedAppInspector) => void;
@@ -95,7 +95,6 @@ describe("app inspector restoration UI", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     discovered = [app(20, ["tweaks"])];
     events = new Set();
     mocks.model = null;
@@ -164,7 +163,9 @@ describe("app inspector restoration UI", () => {
   });
 
   afterEach(async () => {
-    await act(async () => root.unmount());
+    await act(async () => {
+      await root.unmount();
+    });
     container.remove();
     vi.useRealTimers();
   });
@@ -172,9 +173,14 @@ describe("app inspector restoration UI", () => {
   async function renderWaitingForInspector() {
     const starter = { ...app(1, ["tweaks"]), processName: "com.example.starter", packageName: "com.example.starter" };
     vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     // Explicit selection can wait for an inspector after startup chooses a usable app.
-    await act(async () => nativeSelectApp(discovered[0].id));
+    await act(async () => {
+      await nativeSelectApp(discovered[0].id);
+    });
   }
 
   it("waits for initial discovery before restoring the saved app and inspector", async () => {
@@ -187,13 +193,18 @@ describe("app inspector restoration UI", () => {
           finish = resolve;
         })
     );
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(mocks.client.startStream).not.toHaveBeenCalled();
     expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
     expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
       expect.objectContaining({ selectedApp: null, selection: null })
     );
-    await act(async () => finish(discovered));
+    await act(async () => {
+      await finish(discovered);
+    });
     expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
     expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
   });
@@ -201,7 +212,10 @@ describe("app inspector restoration UI", () => {
   it("selects and saves a fallback when the remembered app is unavailable", async () => {
     const other = { ...app(30, ["network"]), processName: "com.example.other", androidUserId: 10 };
     discovered = [other];
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_30");
     const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
     expect(JSON.parse(saved!).last).toEqual({
@@ -212,7 +226,9 @@ describe("app inspector restoration UI", () => {
     });
 
     discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
       expect.objectContaining({
         selection: null,
@@ -232,7 +248,10 @@ describe("app inspector restoration UI", () => {
       { ...app(30, ["tweaks"]), processName: "com.example.other", androidUserId: 10 },
       app(20, ["network"])
     ];
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
     const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
     expect(JSON.parse(saved!).last).toEqual({
@@ -246,17 +265,27 @@ describe("app inspector restoration UI", () => {
   it("keeps trying discovery until a usable fallback appears", async () => {
     discovered = [];
     vi.mocked(mocks.client.listInspectorApps).mockRejectedValueOnce(new Error("Discovery unavailable"));
-    await act(async () => root.render(<App />));
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
     discovered = [{ ...app(30, ["network"]), processName: "com.example.other" }];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_30");
     expect(mocks.client.saveInspectorPreferences).toHaveBeenCalledTimes(1);
   });
 
   it("selects an available inspector when the saved inspector is missing at startup", async () => {
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
     const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
     expect(JSON.parse(saved!).last.kind).toBe("tweaks");
@@ -270,7 +299,9 @@ describe("app inspector restoration UI", () => {
     expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
 
     discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
@@ -286,7 +317,9 @@ describe("app inspector restoration UI", () => {
     );
     await renderWaitingForInspector();
     discovered = [];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
     await act(async () => {
       button.click();
@@ -300,10 +333,14 @@ describe("app inspector restoration UI", () => {
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
     expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for inspector");
-    await act(async () => finish());
+    await act(async () => {
+      await finish();
+    });
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
     expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(container.querySelector('[role="status"]')).not.toBeNull();
@@ -313,15 +350,21 @@ describe("app inspector restoration UI", () => {
     vi.mocked(mocks.client.openApp!).mockRejectedValueOnce(new Error("Device is offline."));
     await renderWaitingForInspector();
     const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
-    await act(async () => button.click());
+    await act(async () => {
+      await button.click();
+    });
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Device is offline.");
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(mocks.client.openApp).toHaveBeenCalledTimes(2);
 
     discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => vi.advanceTimersByTimeAsync(500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
     expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
   });
@@ -361,8 +404,12 @@ describe("app inspector restoration UI", () => {
     discovered = [workApp];
     await renderWaitingForInspector();
     discovered = [{ ...workApp, id: "phone:pid:30", androidUserId: 0 }];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
     expect(mocks.client.openApp).toHaveBeenCalledExactlyOnceWith({
       deviceId: "phone",
       packageName: "com.example.demo",
@@ -374,21 +421,35 @@ describe("app inspector restoration UI", () => {
     await renderWaitingForInspector();
     const scans = vi.mocked(mocks.client.listInspectorApps);
     const initialScans = scans.mock.calls.length;
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
     expect(scans).toHaveBeenCalledTimes(initialScans + 1);
-    await act(async () => vi.advanceTimersByTimeAsync(499));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
     expect(scans).toHaveBeenCalledTimes(initialScans + 1);
-    await act(async () => vi.advanceTimersByTimeAsync(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(scans).toHaveBeenCalledTimes(initialScans + 2);
-    await act(async () => vi.advanceTimersByTimeAsync(4_499));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_499);
+    });
     expect(scans).toHaveBeenCalledTimes(initialScans + 10);
     expect(container.querySelector(".inspector-open-app")).toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(scans).toHaveBeenCalledTimes(initialScans + 11);
     expect(container.querySelector(".inspector-open-app")).not.toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(2_499));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_499);
+    });
     expect(scans).toHaveBeenCalledTimes(initialScans + 11);
-    await act(async () => vi.advanceTimersByTimeAsync(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(scans).toHaveBeenCalledTimes(initialScans + 12);
   });
 
@@ -402,12 +463,20 @@ describe("app inspector restoration UI", () => {
           finish = resolve;
         })
     );
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
     const scanCount = scans.mock.calls.length;
-    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
     expect(scans).toHaveBeenCalledTimes(scanCount);
-    await act(async () => finish(discovered));
-    await act(async () => vi.advanceTimersByTimeAsync(500));
+    await act(async () => {
+      await finish(discovered);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
     expect(scans).toHaveBeenCalledTimes(scanCount + 1);
   });
 
@@ -423,13 +492,21 @@ describe("app inspector restoration UI", () => {
     );
     scans.mockRejectedValueOnce(new Error("Discovery unavailable"));
     const scanCount = scans.mock.calls.length;
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
     expect(scans).toHaveBeenCalledTimes(scanCount + 2);
     expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => fail(new Error("Device disconnected")));
+    await act(async () => {
+      await fail(new Error("Device disconnected"));
+    });
     expect(container.querySelector(".inspector-open-app")).not.toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
     expect(scans).toHaveBeenCalledTimes(scanCount + 2);
   });
 
@@ -442,11 +519,17 @@ describe("app inspector restoration UI", () => {
         })
     );
     await renderWaitingForInspector();
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => finish());
+    await act(async () => {
+      await finish();
+    });
     expect(container.querySelector(".inspector-open-app")).not.toBeNull();
   });
 
@@ -459,12 +542,20 @@ describe("app inspector restoration UI", () => {
         })
     );
     await renderWaitingForInspector();
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
-    await act(async () => root.render(null));
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
+    await act(async () => {
+      await root.render(null);
+    });
     const scans = vi.mocked(mocks.client.listInspectorApps);
     const scanCount = scans.mock.calls.length;
-    await act(async () => finish());
-    await act(async () => vi.advanceTimersByTimeAsync(7_500));
+    await act(async () => {
+      await finish();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7_500);
+    });
     expect(scans).toHaveBeenCalledTimes(scanCount);
   });
 
@@ -482,18 +573,28 @@ describe("app inspector restoration UI", () => {
         })
     );
     await renderWaitingForInspector();
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
-    await act(async () => nativeSelectApp(other.id));
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
+    await act(async () => {
+      await nativeSelectApp(other.id);
+    });
     const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
     expect(button.textContent).toBe("Open Other");
     expect(button.disabled).toBe(false);
     const scans = vi.mocked(mocks.client.listInspectorApps);
     const scanCount = scans.mock.calls.length;
-    await act(async () => vi.advanceTimersByTimeAsync(500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
     expect(scans).toHaveBeenCalledTimes(scanCount);
-    await act(async () => fail(new Error("Old launch failed.")));
+    await act(async () => {
+      await fail(new Error("Old launch failed."));
+    });
     expect(container.querySelector('[role="alert"]')).toBeNull();
-    await act(async () => button.click());
+    await act(async () => {
+      await button.click();
+    });
     expect(mocks.client.openApp).toHaveBeenLastCalledWith({ deviceId: "phone", ...target });
   });
 
@@ -502,7 +603,9 @@ describe("app inspector restoration UI", () => {
     discovered.push(other);
     vi.mocked(mocks.client.openApp!).mockRejectedValueOnce(new Error("Device is offline."));
     await renderWaitingForInspector();
-    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    await act(async () => {
+      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
+    });
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Device is offline.");
 
     await act(async () => {
@@ -522,17 +625,26 @@ describe("app inspector restoration UI", () => {
           finish = resolve;
         })
     );
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
-    await act(async () => nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    await act(async () => {
+      await nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] });
+    });
     expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
-    await act(async () => finish([app(20, ["network", "tweaks"])]));
+    await act(async () => {
+      await finish([app(20, ["network", "tweaks"])]);
+    });
     expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
   });
 
   it("waits without selecting a placeholder, then opens its identified replacement", async () => {
     vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(null);
     discovered = [{ ...app(10, ["network"]), processName: null, name: "snapo_network_10" }];
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector('[role="status"]')).not.toBeNull();
     expect(container.querySelector("[data-inspector]")).toBeNull();
     expect(mocks.client.startStream).not.toHaveBeenCalled();
@@ -543,10 +655,14 @@ describe("app inspector restoration UI", () => {
     );
 
     discovered = [app(20, ["network"])];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe("snapo_network_20");
-    expect(mocks.client.startStream).toHaveBeenCalledWith({ deviceId: "phone", socketName: "snapo_network_20" });
+    await vi.waitFor(() => {
+      expect(mocks.client.startStream).toHaveBeenCalledWith({ deviceId: "phone", socketName: "snapo_network_20" });
+    });
   });
 
   it("keeps a browser picker available during restoration", async () => {
@@ -554,13 +670,18 @@ describe("app inspector restoration UI", () => {
     await renderWaitingForInspector();
     expect(container.querySelector('button[aria-label="Select an app"]')).not.toBeNull();
     const tweaks = container.querySelector('button[aria-label="Tweaks"]') as HTMLButtonElement;
-    await act(async () => tweaks.click());
+    await act(async () => {
+      await tweaks.click();
+    });
     expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
   });
 
   async function captureTraffic() {
     discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => root.render(<App />));
+    await act(() => root.render(<App />));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     const server = discovered[0].inspectors[0].server;
     await act(async () => {
       for (const message of replayMessages) {
@@ -569,7 +690,9 @@ describe("app inspector restoration UI", () => {
       }
     });
     expect(mocks.model?.allRecords).toHaveLength(1);
-    expect(mocks.model?.selectedRecord).toMatchObject({ requestId: "request-1", responseBody: "cached response" });
+    await vi.waitFor(() => {
+      expect(mocks.model?.selectedRecord).toMatchObject({ requestId: "request-1", responseBody: "cached response" });
+    });
   }
 
   it("retains actual records, bodies, and selection while reconnecting", async () => {
@@ -577,7 +700,9 @@ describe("app inspector restoration UI", () => {
     const selectedRecordId = mocks.model?.selectedRecordId;
     const bodyLoads = vi.mocked(mocks.client.loadBodies).mock.calls.length;
     discovered = [];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(container.querySelector(".inspector-loading-shell")).toBeNull();
     expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
     expect(mocks.model?.selectedServer?.isConnected).toBe(false);
@@ -591,17 +716,25 @@ describe("app inspector restoration UI", () => {
     );
     expect(mocks.client.stopStream).toHaveBeenCalled();
     const starts = vi.mocked(mocks.client.startStream).mock.calls.length;
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
     expect(mocks.client.startStream).toHaveBeenCalledTimes(starts);
     expect(mocks.client.loadBodies).toHaveBeenCalledTimes(bodyLoads);
 
-    await act(async () => mocks.model?.setSearchText("no-match"));
+    await act(async () => {
+      await mocks.model?.setSearchText("no-match");
+    });
     expect(mocks.model?.visibleRecords).toHaveLength(0);
-    await act(async () => mocks.model?.setSearchText(""));
+    await act(async () => {
+      await mocks.model?.setSearchText("");
+    });
     expect(mocks.model?.visibleRecords).toHaveLength(1);
 
     discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(mocks.model?.allRecords).toHaveLength(1);
     expect(mocks.model?.selectedRecordId).toBe(selectedRecordId);
     expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
@@ -612,14 +745,20 @@ describe("app inspector restoration UI", () => {
     await captureTraffic();
     const initial = discovered[0];
     discovered = [];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     const starts = vi.mocked(mocks.client.startStream).mock.calls.length;
-    await act(async () => nativeSelect({ appId: initial.id, ...initial.inspectors[1] }));
+    await act(async () => {
+      await nativeSelect({ appId: initial.id, ...initial.inspectors[1] });
+    });
     expect(container.querySelector(".inspector-loading-shell")).not.toBeNull();
     expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
       expect.objectContaining({ selection: null, preferredKind: "tweaks", isRestoring: true })
     );
-    await act(async () => nativeSelect({ appId: initial.id, ...initial.inspectors[0] }));
+    await act(async () => {
+      await nativeSelect({ appId: initial.id, ...initial.inspectors[0] });
+    });
     expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
     expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
     expect(mocks.client.startStream).toHaveBeenCalledTimes(starts);
@@ -628,9 +767,13 @@ describe("app inspector restoration UI", () => {
   it("retains old-process traffic when a new PID has nothing to replay", async () => {
     await captureTraffic();
     discovered = [];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     discovered = [app(30, ["network", "tweaks"])];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
     expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_30");
     expect(mocks.model?.visibleRecords).toHaveLength(0);
     expect(mocks.model?.allRecords).toMatchObject([
@@ -658,20 +801,32 @@ describe("app inspector restoration UI", () => {
     )!;
     const bodyLoads = vi.mocked(mocks.client.loadBodies).mock.calls.length;
     discovered = [];
-    await act(async () => vi.advanceTimersByTimeAsync(2_500));
-    await act(async () => mocks.model!.selectRecord(recordId(second)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    await act(async () => {
+      await mocks.model!.selectRecord(recordId(second));
+    });
     expect(mocks.model?.selectedRecord).toMatchObject({ requestId: "request-2" });
     expect(mocks.client.loadBodies).toHaveBeenCalledTimes(bodyLoads);
-    await act(async () => mocks.model!.selectRecord(firstId));
-    expect(mocks.model?.selectedRecord).toMatchObject({ requestId: "request-1", responseBody: "cached response" });
+    await act(async () => {
+      await mocks.model!.selectRecord(firstId);
+    });
+    await vi.waitFor(() => {
+      expect(mocks.model?.selectedRecord).toMatchObject({ requestId: "request-1", responseBody: "cached response" });
+    });
   });
 
   it("retains network traffic while viewing Tweaks", async () => {
     await captureTraffic();
-    await act(async () => nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[1] }));
+    await act(async () => {
+      await nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[1] });
+    });
     expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
     expect(mocks.client.stopStream).toHaveBeenCalled();
-    await act(async () => nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] }));
+    await act(async () => {
+      await nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] });
+    });
     expect(mocks.model?.allRecords).toHaveLength(1);
     expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
   });

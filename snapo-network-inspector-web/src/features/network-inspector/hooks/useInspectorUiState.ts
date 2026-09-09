@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "preact/compat";
 
 interface InspectorUiPreferences {
   sections: Record<string, boolean>;

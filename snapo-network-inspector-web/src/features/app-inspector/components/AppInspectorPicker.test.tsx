@@ -1,5 +1,7 @@
-import { Children, isValidElement, type ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+// @vitest-environment jsdom
+import { isValidElement } from "preact";
+import { Children, type ReactNode } from "preact/compat";
+import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
 import type { InspectableApp, SelectedAppInspector } from "../../../network/bridge-types";
 import { AppInspectorMenu, AppInspectorPicker, AppInspectorViewPicker } from "./AppInspectorPicker";
@@ -139,7 +141,7 @@ describe("app-first inspector menu", () => {
       <AppInspectorMenu apps={[{ ...apps[0], inspectors: [] }]} selection={null} onSelect={vi.fn()} />
     );
 
-    expect(markup).toContain('disabled=""');
+    expect(document.createRange().createContextualFragment(markup).querySelector("button:disabled")).not.toBeNull();
   });
 
   it("shows only the app name in the picker button", () => {
@@ -177,8 +179,16 @@ function menuButtons(tree: ReactNode): Map<string, () => void> {
   const buttons = new Map<string, () => void>();
   const visit = (node: ReactNode) => {
     Children.forEach(node, (child) => {
-      if (!isValidElement<{ children?: ReactNode; "aria-label"?: string; onClick?: () => void }>(child)) return;
-      const { children, "aria-label": label, onClick } = child.props;
+      if (!isValidElement(child)) return;
+      const {
+        children,
+        "aria-label": label,
+        onClick
+      } = child.props as {
+        children?: ReactNode;
+        "aria-label"?: string;
+        onClick?: () => void;
+      };
       if (child.type === "button" && label && onClick) buttons.set(label, onClick);
       visit(children);
     });

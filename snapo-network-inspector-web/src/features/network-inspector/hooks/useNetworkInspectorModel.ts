@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "preact/compat";
 import { createNetworkClient, type NetworkClient } from "../../../network/client";
 import { bodyLoadPriority, RequestBodyLoader, type BodyLoadJob } from "../../../network/body-loader";
 import { hydratedBodyRetentionLimitBytes, RequestBodyCache } from "../../../network/body-retention";

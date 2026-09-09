@@ -1,3 +1,4 @@
+import type { JSX } from "preact";
 import {
   memo,
   useCallback,
@@ -6,9 +7,8 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type MouseEvent,
-  type UIEvent
-} from "react";
+  type MouseEvent
+} from "preact/compat";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type InspectorRecord } from "../../../network/cdp";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
@@ -75,8 +75,7 @@ export const RecordList = memo(function RecordList({
     listRef.current?.focus({ preventScroll: true });
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.defaultPrevented || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey)
-      return;
+    if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
       if (openActiveContextMenu()) {
         event.preventDefault();
@@ -111,7 +110,7 @@ export const RecordList = memo(function RecordList({
     listRef.current?.children.item(nextIndex)?.scrollIntoView({ block: "nearest" });
   };
   const handleContextMenu = useCallback(
-    (record: InspectorRecord, event: MouseEvent) => {
+    (record: InspectorRecord, event: MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
       event.stopPropagation();
       openContextMenu(record, event.clientX, event.clientY, false);
@@ -171,7 +170,10 @@ export const RecordList = memo(function RecordList({
   );
 });
 
-function handleRecordListScroll(event: UIEvent<HTMLDivElement>, setShowTopFade: (value: boolean) => void): void {
+function handleRecordListScroll(
+  event: JSX.TargetedEvent<HTMLDivElement>,
+  setShowTopFade: (value: boolean) => void
+): void {
   setShowTopFade(event.currentTarget.scrollTop > 0);
 }
 
@@ -188,7 +190,7 @@ const RecordRow = memo(function RecordRow({
   record: InspectorRecord;
   selected: boolean;
   onSelect(id: string): void;
-  onContextMenu(record: InspectorRecord, event: MouseEvent): void;
+  onContextMenu(record: InspectorRecord, event: MouseEvent<HTMLButtonElement>): void;
 }): JSX.Element {
   const path = splitUrl(record.url);
   return (

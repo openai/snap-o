@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "preact/test-utils";
+import { createRoot } from "preact/compat/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SelectedAppInspector, TweakList, TweakStreamEvent } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
@@ -21,7 +21,7 @@ const modifiedResponse: TweakList = {
 const connectionError = new Error("Could not connect to the server.");
 
 describe("Tweaks connection recovery", () => {
-  let root: Root;
+  let root: ReturnType<typeof createRoot>;
   let container: HTMLDivElement;
   let client: NetworkClient;
   let receive: (event: TweakStreamEvent) => void;
@@ -29,7 +29,6 @@ describe("Tweaks connection recovery", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     client = {
       usesNativeServerPicker: true,
       openApp: vi.fn(async () => {}),
@@ -89,6 +88,9 @@ describe("Tweaks connection recovery", () => {
         />
       )
     );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
   }
 
   it("collapses one named section and keeps it collapsed after a stream update", async () => {
@@ -158,6 +160,38 @@ describe("Tweaks connection recovery", () => {
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
   });
 
+  it("sends text input before blur and preserves focus during live updates", async () => {
+    vi.mocked(client.updateTweaks).mockResolvedValue({
+      tweaks: [{ name: "Demo title", value: "Edited", modified: true }]
+    });
+    await render();
+    const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    input.focus();
+    await act(() => {
+      input.value = "Edited";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(client.updateTweaks).toHaveBeenCalledExactlyOnceWith({
+      server: selection.server,
+      values: { "Demo title": "Edited" }
+    });
+    expect(document.activeElement).toBe(input);
+
+    await act(async () =>
+      receive({
+        streamId: "stream-1",
+        server: selection.server,
+        tweaks: [{ name: "Demo title", type: "string", value: "Streamed", default: "Default" }]
+      })
+    );
+    expect(container.querySelector('input[type="text"]')).toBe(input);
+    expect(input.value).toBe("Streamed");
+    expect(document.activeElement).toBe(input);
+  });
+
   it("retries a failed initial request without changing the selected inspector", async () => {
     vi.mocked(client.listTweaks).mockRejectedValueOnce(connectionError);
     await render();
@@ -172,13 +206,17 @@ describe("Tweaks connection recovery", () => {
       androidUserId: 0
     });
 
-    await act(async () => vi.advanceTimersByTimeAsync(250));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
     expect(client.listTweaks).toHaveBeenCalledTimes(2);
     expect(client.startTweakStream).toHaveBeenCalledExactlyOnceWith(selection.server);
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
     expect(client.startTweakStream).toHaveBeenCalledTimes(1);
   });
 
@@ -188,7 +226,9 @@ describe("Tweaks connection recovery", () => {
     expect(container.textContent).toContain("Demo title");
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
-    await act(async () => vi.advanceTimersByTimeAsync(250));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
     expect(client.startTweakStream).toHaveBeenCalledTimes(2);
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
@@ -200,7 +240,10 @@ describe("Tweaks connection recovery", () => {
     vi.mocked(client.listTweaks).mockResolvedValue(modifiedResponse);
     vi.mocked(client.updateTweaks).mockRejectedValueOnce(new Error("Update failed"));
     await render();
-    await act(async () => reset());
+    await act(() => reset());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Update failed");
     await act(async () => receive({ streamId: "other-stream", server: selection.server, tweaks: [] }));
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Update failed");
@@ -213,7 +256,10 @@ describe("Tweaks connection recovery", () => {
     vi.mocked(client.listTweaks).mockResolvedValue({ tweaks: [{ name: "Refresh preview", type: "action" }] });
     vi.mocked(client.invokeTweakAction).mockRejectedValueOnce(new Error("Action failed"));
     await render();
-    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Run Refresh preview"]')!.click());
+    await act(() => container.querySelector<HTMLButtonElement>('[aria-label="Run Refresh preview"]')!.click());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Action failed");
     await render(selection, false);
     vi.mocked(client.listTweaks).mockResolvedValue({ tweaks: [] });
@@ -236,7 +282,10 @@ describe("Tweaks connection recovery", () => {
           finish = resolve;
         })
     );
-    await act(async () => reset());
+    await act(() => reset());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Demo title: Rejected");
     await act(async () => finish({ tweaks: [] }));
     expect(container.querySelector('[role="alert"]')).toBeNull();
@@ -253,14 +302,19 @@ describe("Tweaks connection recovery", () => {
     expect(container.querySelector("fieldset")?.hasAttribute("inert")).toBe(true);
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(client.stopTweakStream).toHaveBeenCalledWith("stream-1");
-    await act(async () => reset());
+    await act(() => reset());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(client.updateTweaks).not.toHaveBeenCalled();
     expect(client.nativeTweaksStateChanged).toHaveBeenLastCalledWith({
       server: selection.server,
       hasResettableTweaks: false
     });
     const loads = vi.mocked(client.listTweaks).mock.calls.length;
-    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
     expect(client.listTweaks).toHaveBeenCalledTimes(loads);
     await render();
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
@@ -288,6 +342,9 @@ describe("Tweaks connection recovery", () => {
     await act(async () =>
       finish({ tweaks: [{ ...response.tweaks[0], value: "New process" } as TweakList["tweaks"][number]] })
     );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("New process");
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
   });
@@ -297,14 +354,20 @@ describe("Tweaks connection recovery", () => {
     await render();
     for (const delay of [250, 500, 1_000, 2_000, 4_000, 4_000]) {
       const count = vi.mocked(client.listTweaks).mock.calls.length;
-      await act(async () => vi.advanceTimersByTimeAsync(delay - 1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay - 1);
+      });
       expect(client.listTweaks).toHaveBeenCalledTimes(count);
-      await act(async () => vi.advanceTimersByTimeAsync(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
       expect(client.listTweaks).toHaveBeenCalledTimes(count + 1);
     }
     await act(async () => root.render(null));
     const count = vi.mocked(client.listTweaks).mock.calls.length;
-    await act(async () => vi.advanceTimersByTimeAsync(20_000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
     expect(client.listTweaks).toHaveBeenCalledTimes(count);
   });
 
@@ -396,7 +459,9 @@ describe("Tweaks connection recovery", () => {
     await act(async () => reject(connectionError));
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-    await act(async () => vi.advanceTimersByTimeAsync(250));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
     expect(client.startTweakStream).toHaveBeenCalledTimes(2);
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
