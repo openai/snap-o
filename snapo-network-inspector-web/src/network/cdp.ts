@@ -29,7 +29,7 @@ export type RequestStatus =
 
 export interface RequestRecord {
   kind: "request";
-  server: ServerId;
+  processId: string;
   requestId: string;
   method: string;
   url: string;
@@ -59,7 +59,7 @@ export interface RequestRecord {
 
 export interface WebSocketRecord {
   kind: "websocket";
-  server: ServerId;
+  processId: string;
   socketId: string;
   method: string;
   url: string;
@@ -142,13 +142,7 @@ export interface WebSocketFailedRecord {
 export interface InspectorDataState {
   requests: Map<string, RequestRecord>;
   webSockets: Map<string, WebSocketRecord>;
-  latestSequenceByServer: Map<string, number>;
-}
-
-export interface ServerId {
-  deviceId: string;
-  socketName: string;
-  instanceId?: string | null;
+  latestSequenceByProcess: Map<string, number>;
 }
 
 export type InspectorRecord = RequestRecord | WebSocketRecord;
@@ -163,49 +157,54 @@ export function createEmptyInspectorState(): InspectorDataState {
   return {
     requests: new Map(),
     webSockets: new Map(),
-    latestSequenceByServer: new Map()
+    latestSequenceByProcess: new Map()
   };
 }
 
 export function reduceCdpMessage(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   message: CdpMessage,
   receivedAt = Date.now()
 ): InspectorDataState {
   if (message.method == null || message.params == null) return state;
-  const sequencedState = acceptSequence(state, server, message.snapoSequence);
+  const sequencedState = acceptSequence(state, processId, message.snapoSequence);
   if (sequencedState == null) return state;
 
   let reduced: InspectorDataState;
   switch (message.method) {
     case "Network.requestWillBeSent":
-      reduced = reduceRequestWillBeSent(sequencedState, server, message.params as RequestWillBeSentEvent, receivedAt);
+      reduced = reduceRequestWillBeSent(
+        sequencedState,
+        processId,
+        message.params as RequestWillBeSentEvent,
+        receivedAt
+      );
       break;
     case "Network.responseReceived":
-      reduced = reduceResponseReceived(sequencedState, server, message.params as ResponseReceivedEvent, receivedAt);
+      reduced = reduceResponseReceived(sequencedState, processId, message.params as ResponseReceivedEvent, receivedAt);
       break;
     case "Network.loadingFinished":
-      reduced = reduceLoadingFinished(sequencedState, server, message.params as LoadingFinishedEvent, receivedAt);
+      reduced = reduceLoadingFinished(sequencedState, processId, message.params as LoadingFinishedEvent, receivedAt);
       break;
     case "Network.loadingFailed":
-      reduced = reduceLoadingFailed(sequencedState, server, message.params as LoadingFailedEvent, receivedAt);
+      reduced = reduceLoadingFailed(sequencedState, processId, message.params as LoadingFailedEvent, receivedAt);
       break;
     case "Network.eventSourceMessageReceived":
       reduced = reduceEventSourceMessage(
         sequencedState,
-        server,
+        processId,
         message.params as EventSourceMessageReceivedEvent,
         receivedAt
       );
       break;
     case "Network.webSocketCreated":
-      reduced = reduceWebSocketCreated(sequencedState, server, message.params as WebSocketCreatedEvent, receivedAt);
+      reduced = reduceWebSocketCreated(sequencedState, processId, message.params as WebSocketCreatedEvent, receivedAt);
       break;
     case "Network.webSocketHandshakeResponseReceived":
       reduced = reduceWebSocketHandshakeResponse(
         sequencedState,
-        server,
+        processId,
         message.params as WebSocketHandshakeResponseReceivedEvent,
         receivedAt
       );
@@ -213,7 +212,7 @@ export function reduceCdpMessage(
     case "Network.webSocketFrameSent":
       reduced = appendWebSocketMessage(
         sequencedState,
-        server,
+        processId,
         message.params as WebSocketFrameEvent,
         "outgoing",
         receivedAt
@@ -222,19 +221,19 @@ export function reduceCdpMessage(
     case "Network.webSocketFrameReceived":
       reduced = appendWebSocketMessage(
         sequencedState,
-        server,
+        processId,
         message.params as WebSocketFrameEvent,
         "incoming",
         receivedAt
       );
       break;
     case "Network.webSocketClosed":
-      reduced = reduceWebSocketClosed(sequencedState, server, message.params as WebSocketClosedEvent, receivedAt);
+      reduced = reduceWebSocketClosed(sequencedState, processId, message.params as WebSocketClosedEvent, receivedAt);
       break;
     case "Network.webSocketFrameError":
       reduced = reduceWebSocketFrameError(
         sequencedState,
-        server,
+        processId,
         message.params as WebSocketFrameErrorEvent,
         receivedAt
       );
@@ -248,17 +247,17 @@ export function reduceCdpMessage(
 
 function reduceRequestWillBeSent(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: RequestWillBeSentEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => {
+  return updateRequest(state, processId, requestId(params), (existing) => {
     const hasPostData = booleanAt(params, "request.hasPostData") ?? false;
     const postDataLength = numberAt(params, "request.postDataLength");
     const startedAt = wallTimeMs(params) ?? existing?.startedAt ?? receivedAt;
     const startedAtMonotonic = monotonicTime(params) ?? existing?.startedAtMonotonic;
     return {
-      ...requestDefaults(existing, server, requestId(params), receivedAt),
+      ...requestDefaults(existing, processId, requestId(params), receivedAt),
       method: params.request?.method ?? existing?.method ?? "?",
       url: params.request?.url ?? existing?.url ?? `Request ${requestId(params)}`,
       requestHeaders: headersFrom(recordFromProtocolHeaders(params.request?.headers)),
@@ -274,12 +273,12 @@ function reduceRequestWillBeSent(
 
 function reduceResponseReceived(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: ResponseReceivedEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => {
-    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+  return updateRequest(state, processId, requestId(params), (existing) => {
+    const base = requestDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     const status = params.response?.status;
     return {
@@ -297,12 +296,12 @@ function reduceResponseReceived(
 
 function reduceLoadingFinished(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: LoadingFinishedEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => {
-    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+  return updateRequest(state, processId, requestId(params), (existing) => {
+    const base = requestDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     const encodedDataLength = params.encodedDataLength ?? existing?.encodedDataLength;
     const responseBodyTruncatedBytes = numberAt(params, "bodyTruncatedBytes") ?? existing?.responseBodyTruncatedBytes;
@@ -328,12 +327,12 @@ function reduceLoadingFinished(
 
 function reduceLoadingFailed(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: LoadingFailedEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => {
-    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+  return updateRequest(state, processId, requestId(params), (existing) => {
+    const base = requestDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     const message = params.errorText ?? stringAt(params, "type");
     const isStreamFailure = isLikelyStreamingRequest(base) || stringAt(params, "type")?.toLowerCase() === "eventsource";
@@ -360,12 +359,12 @@ function reduceLoadingFailed(
 
 function reduceEventSourceMessage(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: EventSourceMessageReceivedEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateRequest(state, server, requestId(params), (existing) => {
-    const base = requestDefaults(existing, server, requestId(params), receivedAt);
+  return updateRequest(state, processId, requestId(params), (existing) => {
+    const base = requestDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     const raw = stringAt(params, "data") ?? "";
     const parsed = parseSseRaw(raw);
@@ -394,14 +393,14 @@ function reduceEventSourceMessage(
 
 function reduceWebSocketCreated(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: WebSocketCreatedEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => {
+  return updateWebSocket(state, processId, requestId(params), (existing) => {
     const startedAt = wallTimeMs(params) ?? existing?.startedAt ?? receivedAt;
     return {
-      ...webSocketDefaults(existing, server, requestId(params), receivedAt),
+      ...webSocketDefaults(existing, processId, requestId(params), receivedAt),
       method: webSocketMethod(params.url ?? null),
       url: params.url ?? existing?.url ?? `websocket://${requestId(params)}`,
       requestHeaders: headersFrom(recordFromProtocolHeaders(plainObjectAt(params, "headers"))),
@@ -414,12 +413,12 @@ function reduceWebSocketCreated(
 
 function reduceWebSocketHandshakeResponse(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: WebSocketHandshakeResponseReceivedEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => {
-    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+  return updateWebSocket(state, processId, requestId(params), (existing) => {
+    const base = webSocketDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     const status = params.response?.status;
     return {
@@ -434,14 +433,14 @@ function reduceWebSocketHandshakeResponse(
 
 function reduceWebSocketClosed(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: WebSocketClosedEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => {
+  return updateWebSocket(state, processId, requestId(params), (existing) => {
     const code = numberAt(params, "code");
     const reason = stringAt(params, "reason");
-    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const base = webSocketDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     if (reason?.toLowerCase() === "cancelled" && code == null) {
       return {
@@ -465,12 +464,12 @@ function reduceWebSocketClosed(
 
 function reduceWebSocketFrameError(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: WebSocketFrameErrorEvent,
   receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => {
-    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+  return updateWebSocket(state, processId, requestId(params), (existing) => {
+    const base = webSocketDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     return {
       ...base,
@@ -495,36 +494,32 @@ export function applyRequestBodies(record: RequestRecord, bodies: RequestBodies)
 }
 
 export function recordId(record: InspectorRecord): string {
-  if (record.kind === "request") return requestRecordKey(record.server, record.requestId);
-  return webSocketRecordKey(record.server, record.socketId);
+  if (record.kind === "request") return requestRecordKey(record.processId, record.requestId);
+  return webSocketRecordKey(record.processId, record.socketId);
 }
 
-export function requestRecordKey(server: ServerId, requestId: string): string {
-  return `${serverDataKey(server)}\u0000request\u0000${requestId}`;
+export function requestRecordKey(processId: string, requestId: string): string {
+  return `${processId}\u0000request\u0000${requestId}`;
 }
 
-export function webSocketRecordKey(server: ServerId, socketId: string): string {
-  return `${serverDataKey(server)}\u0000websocket\u0000${socketId}`;
-}
-
-export function serverMatches(a: ServerId | null, b: ServerId): boolean {
-  return a == null || (a.deviceId === b.deviceId && a.socketName === b.socketName);
+export function webSocketRecordKey(processId: string, socketId: string): string {
+  return `${processId}\u0000websocket\u0000${socketId}`;
 }
 
 function acceptSequence(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   sequence: number | undefined
 ): InspectorDataState | null {
   if (sequence == null || !Number.isSafeInteger(sequence)) return state;
 
-  const key = serverSequenceKey(server);
-  const latest = state.latestSequenceByServer.get(key);
+  const key = processId;
+  const latest = state.latestSequenceByProcess.get(key);
   if (latest != null && sequence <= latest) return null;
 
-  const latestSequenceByServer = new Map(state.latestSequenceByServer);
-  latestSequenceByServer.set(key, sequence);
-  return { ...state, latestSequenceByServer };
+  const latestSequenceByProcess = new Map(state.latestSequenceByProcess);
+  latestSequenceByProcess.set(key, sequence);
+  return { ...state, latestSequenceByProcess };
 }
 
 export function enforceInspectorRetention(
@@ -567,50 +562,42 @@ export function enforceInspectorRetention(
   return { ...state, requests, webSockets };
 }
 
-function serverSequenceKey(server: ServerId): string {
-  return serverDataKey(server);
-}
-
-function serverDataKey(server: ServerId): string {
-  return `${server.deviceId}\u0000${server.socketName}\u0000${server.instanceId ?? ""}`;
-}
-
 function updateRequest(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   requestIdValue: string,
   transform: (existing: RequestRecord | undefined) => RequestRecord
 ): InspectorDataState {
-  const existing = state.requests.get(requestRecordKey(server, requestIdValue));
+  const existing = state.requests.get(requestRecordKey(processId, requestIdValue));
   const updated = transform(existing);
   const requests = new Map(state.requests);
-  requests.set(requestRecordKey(updated.server, updated.requestId), updated);
+  requests.set(requestRecordKey(updated.processId, updated.requestId), updated);
   return { ...state, requests };
 }
 
 function updateWebSocket(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   socketId: string,
   transform: (existing: WebSocketRecord | undefined) => WebSocketRecord
 ): InspectorDataState {
-  const existing = state.webSockets.get(webSocketRecordKey(server, socketId));
+  const existing = state.webSockets.get(webSocketRecordKey(processId, socketId));
   const updated = transform(existing);
   const webSockets = new Map(state.webSockets);
-  webSockets.set(webSocketRecordKey(updated.server, updated.socketId), updated);
+  webSockets.set(webSocketRecordKey(updated.processId, updated.socketId), updated);
   return { ...state, webSockets };
 }
 
 function requestDefaults(
   existing: RequestRecord | undefined,
-  server: ServerId,
+  processId: string,
   requestIdValue: string,
   now: number
 ): RequestRecord {
   return (
     existing ?? {
       kind: "request",
-      server,
+      processId,
       requestId: requestIdValue,
       method: "?",
       url: `Request ${requestIdValue}`,
@@ -639,14 +626,14 @@ function eventTimeMs(
 
 function webSocketDefaults(
   existing: WebSocketRecord | undefined,
-  server: ServerId,
+  processId: string,
   socketId: string,
   now: number
 ): WebSocketRecord {
   return (
     existing ?? {
       kind: "websocket",
-      server,
+      processId,
       socketId,
       method: "WS",
       url: `websocket://${socketId}`,
@@ -663,7 +650,7 @@ function webSocketDefaults(
 
 function appendWebSocketMessage(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: Record<string, unknown>,
   direction: "outgoing" | "incoming",
   receivedAt: number
@@ -672,12 +659,12 @@ function appendWebSocketMessage(
   const closeCode = numberAt(params, "response.closeCode");
   if (opcode === 8 && closeCode != null) {
     return direction === "outgoing"
-      ? reduceWebSocketCloseRequested(state, server, params, receivedAt)
-      : reduceWebSocketClosing(state, server, params, receivedAt);
+      ? reduceWebSocketCloseRequested(state, processId, params, receivedAt)
+      : reduceWebSocketClosing(state, processId, params, receivedAt);
   }
 
-  return updateWebSocket(state, server, requestId(params), (existing) => {
-    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+  return updateWebSocket(state, processId, requestId(params), (existing) => {
+    const base = webSocketDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     const message: WebSocketMessageRecord = {
       id: `${base.socketId}:${base.messageCount + 1}`,
@@ -702,12 +689,12 @@ function appendWebSocketMessage(
 
 function reduceWebSocketCloseRequested(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: Record<string, unknown>,
   receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => {
-    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+  return updateWebSocket(state, processId, requestId(params), (existing) => {
+    const base = webSocketDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     return {
       ...base,
@@ -725,14 +712,14 @@ function reduceWebSocketCloseRequested(
 
 function reduceWebSocketClosing(
   state: InspectorDataState,
-  server: ServerId,
+  processId: string,
   params: Record<string, unknown>,
   receivedAt: number
 ): InspectorDataState {
-  return updateWebSocket(state, server, requestId(params), (existing) => {
+  return updateWebSocket(state, processId, requestId(params), (existing) => {
     const code = numberAt(params, "response.closeCode") ?? 1000;
     const reason = stringAt(params, "response.closeReason");
-    const base = webSocketDefaults(existing, server, requestId(params), receivedAt);
+    const base = webSocketDefaults(existing, processId, requestId(params), receivedAt);
     const eventAt = eventTimeMs(params, base, receivedAt);
     return {
       ...base,

@@ -262,7 +262,7 @@ describe("network request keyboard selection", () => {
 function request(id: string): RequestRecord {
   return {
     kind: "request",
-    server: { deviceId: "device", socketName: "socket", instanceId: "instance" },
+    processId: "process-1",
     requestId: id,
     method: "GET",
     url: `https://example.com/${id}`,

@@ -73,14 +73,18 @@ internal data class InspectorHttpRequest(
         private fun validateOrigin(headers: Map<String, String>) {
             val host = requireNotNull(headers["host"]) { "Missing Host header" }
             val authority = runCatching { URI("http://$host") }.getOrNull()
-            require(authority?.host != null && authority.rawAuthority == host && authority.rawUserInfo == null) {
+            // Origin can be absent on same-origin GETs. Check Host to prevent DNS rebinding.
+            require(
+                authority?.host?.lowercase() in BrowserHosts && authority?.rawAuthority == host &&
+                    authority.rawUserInfo == null
+            ) {
                 "Invalid Host header"
             }
             headers["origin"]?.let { value ->
                 val origin = runCatching { URI(value) }.getOrNull()
                 require(
                     origin?.scheme in listOf("http", "https") &&
-                        (origin?.rawAuthority == host || origin?.host in BrowserHosts) &&
+                        origin?.host?.lowercase() in BrowserHosts &&
                         origin?.rawUserInfo == null && origin?.rawQuery == null && origin?.rawFragment == null &&
                         origin?.rawPath.isNullOrEmpty()
                 ) { "Cross-origin requests are not allowed" }

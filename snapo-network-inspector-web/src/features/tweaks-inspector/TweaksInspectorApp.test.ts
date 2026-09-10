@@ -2,13 +2,8 @@
 import { createElement, render, type JSX, type VNode } from "preact";
 import { act } from "preact/test-utils";
 import { renderToStaticMarkup } from "preact-render-to-string";
-import { describe, expect, it, vi } from "vitest";
-import type {
-  SelectedAppInspector,
-  TweakActionDescriptor,
-  TweakDescriptor,
-  TweakValueDescriptor
-} from "../../network/bridge-types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TweakActionDescriptor, TweakDescriptor, TweakValueDescriptor } from "../../network/bridge-types";
 import { host } from "../../host";
 import { createTweaksClient, type TweaksClient } from "./client";
 import {
@@ -30,14 +25,10 @@ import {
 
 describe("empty tweaks inspector", () => {
   const client = { openExternal: async () => {} } as unknown as TweaksClient;
-  const selection: SelectedAppInspector = {
-    appId: "pixel:com.example.settings",
-    kind: "tweaks",
-    server: { deviceId: "pixel", socketName: "snapo_tweaks_10" }
-  };
+  const metadata = { name: "Demo", packageName: "com.example.demo", protocolVersion: 4 };
 
   it("waits for the initial tweak request before showing an empty state", () => {
-    const markup = renderToStaticMarkup(createElement(TweaksInspectorApp, { client, selection, isConnected: true }));
+    const markup = renderToStaticMarkup(createElement(TweaksInspectorApp, { client, metadata, isConnected: true }));
 
     expect(markup).not.toContain('class="empty-detail"');
     expect(markup).not.toContain("No tweaks on screen");
@@ -332,8 +323,6 @@ describe("native reset toolbar state", () => {
 });
 
 describe("registered tweak actions", () => {
-  const server = { deviceId: "pixel", socketName: "snapo_tweaks_10" };
-
   it("renders an action label with an accessible Run button on the right", () => {
     const markup = renderToStaticMarkup(
       createElement(TweakActionControl, { action: action("Motion/Toggle animation"), onInvoke() {} })
@@ -396,7 +385,7 @@ describe("registered tweak actions", () => {
     vi.stubGlobal("fetch", fetchRequest);
     const client = createTweaksClient();
     try {
-      await client.invokeTweakAction({ server, name: "Motion/Toggle animation" });
+      await client.invokeTweakAction({ name: "Motion/Toggle animation" });
       expect(fetchRequest).toHaveBeenCalledWith(
         new URL("http://127.0.0.1:1234/tweaks/action"),
         expect.objectContaining({
@@ -526,10 +515,9 @@ describe("streamed tweak snapshots", () => {
 
 describe("stable tweak section columns", () => {
   it("assigns sections alternately as they first appear", () => {
-    const ordering = new Map();
+    const ordering = { sections: new Map<string, number>(), tweaks: new Map<string, number>() };
     const columns = groupTweaks(
       [tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")],
-      "pixel:settings",
       ordering
     );
 
@@ -540,26 +528,23 @@ describe("stable tweak section columns", () => {
   });
 
   it("keeps sections in their original columns when another section disappears", () => {
-    const ordering = new Map();
-    const app = "pixel:settings";
+    const ordering = { sections: new Map<string, number>(), tweaks: new Map<string, number>() };
 
-    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")], app, ordering);
+    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")], ordering);
 
-    const columns = groupTweaks([tweak("Typography/Font size"), tweak("Colors/Text")], app, ordering);
+    const columns = groupTweaks([tweak("Typography/Font size"), tweak("Colors/Text")], ordering);
 
     expect(columns.map((column) => column.map((section) => section.name))).toEqual([["Colors", "Typography"], []]);
   });
 
   it("restores a returning section to its original column", () => {
-    const ordering = new Map();
-    const app = "pixel:settings";
+    const ordering = { sections: new Map<string, number>(), tweaks: new Map<string, number>() };
 
-    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")], app, ordering);
-    groupTweaks([tweak("Colors/Text"), tweak("Typography/Font size")], app, ordering);
+    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration"), tweak("Typography/Font size")], ordering);
+    groupTweaks([tweak("Colors/Text"), tweak("Typography/Font size")], ordering);
 
     const columns = groupTweaks(
       [tweak("Motion/Duration"), tweak("Typography/Font size"), tweak("Colors/Text")],
-      app,
       ordering
     );
 
@@ -569,18 +554,24 @@ describe("stable tweak section columns", () => {
     ]);
   });
 
-  it("remembers section order independently for each app", () => {
-    const ordering = new Map();
+  it("keeps section order independent between inspector pages", () => {
+    const ordering = { sections: new Map<string, number>(), tweaks: new Map<string, number>() };
 
-    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration")], "pixel:settings", ordering);
+    groupTweaks([tweak("Colors/Text"), tweak("Motion/Duration")], ordering);
 
-    const columns = groupTweaks([tweak("Motion/Duration"), tweak("Colors/Text")], "pixel:demo", ordering);
+    const columns = groupTweaks([tweak("Motion/Duration"), tweak("Colors/Text")], {
+      sections: new Map(),
+      tweaks: new Map()
+    });
 
     expect(columns.map((column) => column.map((section) => section.name))).toEqual([["Motion"], ["Colors"]]);
   });
 
   it("keeps registered actions in the same named sections as value tweaks", () => {
-    const columns = groupTweaks([tweak("Motion/Duration"), action("Motion/Toggle animation")], "pixel:demo", new Map());
+    const columns = groupTweaks([tweak("Motion/Duration"), action("Motion/Toggle animation")], {
+      sections: new Map(),
+      tweaks: new Map()
+    });
 
     expect(columns[0][0].tweaks.map((descriptor) => descriptor.name)).toEqual([
       "Motion/Duration",
@@ -645,3 +636,90 @@ function action(name: string, conflicted = false): TweakActionDescriptor {
     ...(conflicted ? { conflicted: true } : {})
   };
 }
+
+describe("Tweaks event stream transport", () => {
+  let client: TweaksClient;
+  let streams: FakeEventSource[];
+  class FakeEventSource extends EventTarget {
+    close = vi.fn();
+    constructor(readonly url: URL) {
+      super();
+      streams.push(this);
+    }
+  }
+
+  beforeEach(() => {
+    streams = [];
+    vi.useFakeTimers();
+    vi.spyOn(host, "connected", "get").mockReturnValue(true);
+    vi.spyOn(host, "baseURL", "get").mockReturnValue("http://127.0.0.1:1234/");
+    vi.stubGlobal("EventSource", FakeEventSource);
+    client = createTweaksClient();
+  });
+
+  afterEach(() => {
+    client.dispose();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("waits for open before resolving and delivers snapshots until stopped", async () => {
+    const changed = vi.fn();
+    client.onTweaksChanged(changed);
+    const started = client.startTweakStream();
+    const ready = vi.fn();
+    void started.then(ready);
+    await Promise.resolve();
+    expect(ready).not.toHaveBeenCalled();
+    expect(streams[0].url.href).toBe("http://127.0.0.1:1234/tweaks/events");
+    streams[0].dispatchEvent(new Event("open"));
+    const { streamId } = await started;
+    streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
+    expect(changed).toHaveBeenCalledExactlyOnceWith({ streamId, tweaks: [] });
+    await client.stopTweakStream(streamId);
+    streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
+    expect(changed).toHaveBeenCalledOnce();
+    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects an initial error instead of letting EventSource retry indefinitely", async () => {
+    const failed = vi.fn();
+    const started = client.startTweakStream(failed);
+    const rejected = expect(started).rejects.toThrow("Tweaks event stream disconnected.");
+    streams[0].dispatchEvent(new Event("error"));
+    streams[0].dispatchEvent(new Event("open"));
+    await rejected;
+    expect(failed).not.toHaveBeenCalled();
+    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["timeout", "dispose", "host change"])("settles pending startup after %s", async (reason) => {
+    const started = client.startTweakStream();
+    const rejected = expect(started).rejects.toThrow(reason === "timeout" ? "timed out" : "disconnected");
+    if (reason === "timeout") await vi.advanceTimersByTimeAsync(5_000);
+    else if (reason === "dispose") client.dispose();
+    else host.dispatchEvent(new Event("connection"));
+    await rejected;
+    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reports a live stream failure once and drops subsequent snapshots", async () => {
+    const failed = vi.fn();
+    const changed = vi.fn();
+    client.onTweaksChanged(changed);
+    const started = client.startTweakStream(failed);
+    streams[0].dispatchEvent(new Event("open"));
+    const { streamId } = await started;
+    streams[0].dispatchEvent(new Event("error"));
+    streams[0].dispatchEvent(new Event("error"));
+    streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
+    await client.stopTweakStream(streamId);
+    expect(failed).toHaveBeenCalledExactlyOnceWith(expect.any(Error));
+    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(changed).not.toHaveBeenCalled();
+  });
+});

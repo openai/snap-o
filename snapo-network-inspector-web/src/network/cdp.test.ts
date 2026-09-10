@@ -8,14 +8,12 @@ import {
   inspectorRetentionLimits,
   reduceCdpMessage,
   requestRecordKey,
-  serverMatches,
   webSocketRecordKey,
-  type InspectorDataState,
-  type ServerId
+  type InspectorDataState
 } from "./cdp";
 import type { CdpMessage } from "./bridge-types";
 
-const server: ServerId = { deviceId: "device-a", socketName: "snapo_network_1" };
+const processId = "process-1";
 
 describe("reduceCdpMessage", () => {
   it("uses monotonic protocol time from the shared replay contract", () => {
@@ -24,7 +22,7 @@ describe("reduceCdpMessage", () => {
       state = reduce(state, message, 9_000_000_000_000);
     }
 
-    const request = state.requests.get(requestRecordKey(server, "request-1"));
+    const request = state.requests.get(requestRecordKey(processId, "request-1"));
     expect(request?.startedAt).toBe(1_710_000_000_000);
     expect(request?.endedAt).toBe(1_710_000_000_250);
     expect(request?.updatedAt).toBe(1_710_000_000_250);
@@ -53,12 +51,12 @@ describe("reduceCdpMessage", () => {
       }
     });
 
-    const request = state.requests.get(requestRecordKey(server, "large-response"));
+    const request = state.requests.get(requestRecordKey(processId, "large-response"));
     expect(request?.encodedDataLength).toBe(9_437_184);
     expect(request?.responseBodyTruncatedBytes).toBe(4_194_304);
   });
 
-  it("ignores duplicate and stale sequences independently for each server", () => {
+  it("ignores duplicate and stale sequences independently for each process", () => {
     let state = createEmptyInspectorState();
     state = reduce(state, webSocketCreated(1));
     state = reduce(state, webSocketFrame(2, "first"));
@@ -66,20 +64,20 @@ describe("reduceCdpMessage", () => {
     const afterFirstFrame = state;
     state = reduce(state, webSocketFrame(2, "duplicate"));
     expect(state).toBe(afterFirstFrame);
-    expect(state.webSockets.get(webSocketRecordKey(server, "socket-1"))?.messages).toHaveLength(1);
-    expect(state.webSockets.get(webSocketRecordKey(server, "socket-1"))?.messages[0]?.timestamp).toBe(1_500);
+    expect(state.webSockets.get(webSocketRecordKey(processId, "socket-1"))?.messages).toHaveLength(1);
+    expect(state.webSockets.get(webSocketRecordKey(processId, "socket-1"))?.messages[0]?.timestamp).toBe(1_500);
 
     state = reduce(state, webSocketFrame(1, "stale"));
     expect(state).toBe(afterFirstFrame);
 
-    const otherServer = { deviceId: "device-b", socketName: "snapo_network_2" };
-    state = reduceCdpMessage(state, otherServer, webSocketFrame(2, "other server"), 1_000);
-    expect(state.webSockets.get(webSocketRecordKey(otherServer, "socket-1"))?.messages).toHaveLength(1);
+    const otherProcess = "process-2";
+    state = reduceCdpMessage(state, otherProcess, webSocketFrame(2, "other processId"), 1_000);
+    expect(state.webSockets.get(webSocketRecordKey(otherProcess, "socket-1"))?.messages).toHaveLength(1);
   });
 
-  it("allows sequence reset without record collisions for a new server instance", () => {
-    const firstInstance = { ...server, instanceId: "1710000000000:100000000000" };
-    const restartedInstance = { ...server, instanceId: "1710000001000:101000000000" };
+  it("allows sequence reset without record collisions for a new app process", () => {
+    const firstInstance = "1710000000000:100000000000";
+    const restartedInstance = "1710000001000:101000000000";
     const firstMessage = requestStarted("shared-request", 1);
 
     let state = reduceCdpMessage(createEmptyInspectorState(), firstInstance, firstMessage, 5_000);
@@ -91,7 +89,6 @@ describe("reduceCdpMessage", () => {
     expect(state.requests.size).toBe(2);
     expect(state.requests.has(requestRecordKey(firstInstance, "shared-request"))).toBe(true);
     expect(state.requests.has(requestRecordKey(restartedInstance, "shared-request"))).toBe(true);
-    expect(serverMatches(firstInstance, restartedInstance)).toBe(true);
   });
 
   it("keeps child event collections and top-level records bounded", () => {
@@ -109,7 +106,7 @@ describe("reduceCdpMessage", () => {
       });
     }
 
-    const stream = state.requests.get(requestRecordKey(server, "stream"));
+    const stream = state.requests.get(requestRecordKey(processId, "stream"));
     expect(stream?.streamEvents).toHaveLength(inspectorRetentionLimits.streamEventsPerRequest);
     expect(stream?.streamEventCount).toBe(inspectorRetentionLimits.streamEventsPerRequest + 2);
     expect(stream?.streamEvents[0]?.sequence).toBe(3);
@@ -117,12 +114,12 @@ describe("reduceCdpMessage", () => {
     state = reduce(state, requestStarted("newer", 2_000));
     const retained = enforceInspectorRetention(state, 1);
     expect(retained.requests.size + retained.webSockets.size).toBe(1);
-    expect(retained.requests.has(requestRecordKey(server, "newer"))).toBe(true);
+    expect(retained.requests.has(requestRecordKey(processId, "newer"))).toBe(true);
   });
 });
 
 function reduce(state: InspectorDataState, message: CdpMessage, receivedAt = 5_000): InspectorDataState {
-  return reduceCdpMessage(state, server, message, receivedAt);
+  return reduceCdpMessage(state, processId, message, receivedAt);
 }
 
 function readReplayFixture(): CdpMessage[] {

@@ -1,9 +1,10 @@
-import type { StartStreamInput, StreamStarted, StreamStatus } from "./bridge-types";
+import type { InspectorMetadata } from "../features/app-inspector/useInspectorMetadata";
+import type { StreamStarted, StreamStatus } from "./bridge-types";
 
 export type StreamLifecycleState = "starting" | "streaming" | "retrying";
 
 interface StreamLifecycleClient {
-  startStream(input: StartStreamInput): Promise<StreamStarted>;
+  startStream(input: InspectorMetadata): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
   onStatus(callback: (status: StreamStatus) => void): () => void;
 }
@@ -34,7 +35,7 @@ export class NetworkStreamController {
 
   constructor(
     private readonly client: StreamLifecycleClient,
-    private readonly input: StartStreamInput,
+    private readonly input: InspectorMetadata,
     private readonly didChangeState: (state: StreamLifecycleState) => void,
     options: StreamControllerOptions = {}
   ) {

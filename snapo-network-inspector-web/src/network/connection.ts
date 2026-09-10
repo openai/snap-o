@@ -1,11 +1,6 @@
-import type {
-  CdpMessage,
-  LoadBodiesInput,
-  RequestBodies,
-  StartStreamInput,
-  StreamEvent,
-  StreamStatus
-} from "./bridge-types";
+import type { InspectorMetadata } from "../features/app-inspector/useInspectorMetadata";
+import { readText } from "../host/http";
+import type { CdpMessage, LoadBodiesInput, RequestBodies, StreamEvent, StreamStatus } from "./bridge-types";
 import { supportedProtocolVersion } from "../features/network-inspector/lib/protocol";
 
 const maximumRecordBytes = 16 * 1024 * 1024;
@@ -20,7 +15,7 @@ export class NetworkConnection {
   readonly id = crypto.randomUUID();
   private readonly abort = new AbortController();
   private stream: EventSource | undefined;
-  private instanceId: string | undefined;
+  private readonly processId: string;
   private closed = false;
   private rejectOpening: ((error: Error) => void) | undefined;
   private replaying = true;
@@ -30,22 +25,22 @@ export class NetworkConnection {
 
   constructor(
     private baseURL: string,
-    private server: StartStreamInput,
+    private metadata: InspectorMetadata,
     private onEvent: (event: StreamEvent) => void,
     private onStatus: (status: StreamStatus) => void,
     private transport: ConnectionTransport = {
       fetch: (...args) => fetch(...args),
       eventSource: (url) => new EventSource(url)
     }
-  ) {}
+  ) {
+    this.processId = `${metadata.serverStartWallMs}:${metadata.serverStartMonoNs}`;
+  }
 
   async start(): Promise<void> {
     try {
-      const metadata = await this.json(".snap-o/info", 1024 * 1024);
-      if (metadata?.protocolVersion !== supportedProtocolVersion) {
+      if (this.metadata.protocolVersion !== supportedProtocolVersion) {
         throw new Error("This app uses an unsupported Network Inspector protocol.");
       }
-      this.instanceId = `${metadata.serverStartWallMs}:${metadata.serverStartMonoNs}`;
       await this.openEvents();
       await this.history();
       this.checkOpen();
@@ -73,7 +68,7 @@ export class NetworkConnection {
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
     this.checkOpen();
-    if (!this.instanceId || (input.serverInstanceId && input.serverInstanceId !== this.instanceId)) {
+    if (input.processId !== this.processId) {
       throw new Error("The request belongs to an earlier app process.");
     }
     const result: RequestBodies = { requestId: input.requestId };
@@ -226,7 +221,7 @@ export class NetworkConnection {
 
   private publish(message: CdpMessage): void {
     this.checkOpen();
-    this.onEvent({ streamId: this.id, server: this.server, serverInstanceId: this.instanceId, message });
+    this.onEvent({ streamId: this.id, processId: this.processId, message });
   }
 }
 
@@ -248,24 +243,4 @@ function parseRecord(text: string, bytes: number): CdpMessage {
   )
     throw new Error("Invalid inspector record.");
   return message;
-}
-
-async function readText(response: Response, limit: number): Promise<string> {
-  if (!response.body) throw new Error("Empty inspector response.");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  let result = "";
-  let bytes = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) return result + decoder.decode();
-      bytes += value.length;
-      if (bytes > limit) throw new Error("Inspector response is too large.");
-      result += decoder.decode(value, { stream: true });
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
 }

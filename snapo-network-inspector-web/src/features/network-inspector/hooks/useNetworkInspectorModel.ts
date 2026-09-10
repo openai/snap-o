@@ -10,34 +10,29 @@ import {
   reduceCdpMessage,
   requestRecordKey,
   type InspectorDataState,
-  type InspectorRecord,
-  type ServerId
+  type InspectorRecord
 } from "../../../network/cdp";
-import type { DebugInspectorPreset, SnapOServer } from "../../../network/bridge-types";
+import type { InspectorMetadata } from "../../app-inspector/useInspectorMetadata";
+import { supportedProtocolVersion } from "../lib/protocol";
 import { NetworkStreamController, type StreamLifecycleState } from "../../../network/stream-controller";
 import { useInspectorUiState } from "./useInspectorUiState";
-import { applyDebugInspectorPreset } from "../lib/debug";
 import { exportAsHar } from "../lib/exportActions";
 import { ExclusionFiltersRevision, normalizeExclusionFilter, normalizeExclusionFilters } from "../lib/exclusionFilters";
 import {
   clearCompleted,
-  countExcludedRecordsForServer,
-  countRecordsForServer,
+  countExcludedRecords,
   filterRecords,
   isCompletedRecord,
-  serverModelFor,
   shouldRequestRequestBody,
   shouldRequestResponseBody,
   sidebarPlaceholderText
 } from "../lib/records";
 
-const docsUrl = "https://openai.github.io/snap-o/network-inspector.html";
-
 export interface NetworkInspectorModel {
   client: NetworkClient;
   uiState: ReturnType<typeof useInspectorUiState>;
-  servers: SnapOServer[];
-  selectedServer: SnapOServer | null;
+  metadata: InspectorMetadata | null;
+  isConnected: boolean;
   selectedRecord: InspectorRecord | null;
   selectedRecordId: string | null;
   visibleRecords: InspectorRecord[];
@@ -47,20 +42,19 @@ export interface NetworkInspectorModel {
   exclusionFilters: string[];
   hiddenRequestCount: number;
   sortNewestFirst: boolean;
-  serverRecordCount: number;
+  totalItems: number;
   hasClearableItems: boolean;
   streamIsRetrying: boolean;
   selectRecord(id: string): void;
   addExclusionFilter(value: string): void;
   removeExclusionFilter(filter: string): void;
   retryResponseBody(): void;
-  openDocs(): void;
 }
 
 export function useNetworkInspectorModel(
   client: NetworkClient,
-  hostServer: SnapOServer | null,
-  isActive: boolean,
+  metadata: InspectorMetadata | null,
+  isConnected: boolean,
   connectionRevision = 0
 ): NetworkInspectorModel {
   const [state, setState] = useState<InspectorDataState>(() => createEmptyInspectorState());
@@ -69,10 +63,9 @@ export function useNetworkInspectorModel(
   const [exclusionFilters, setExclusionFilters] = useState<string[]>([]);
   const [exclusionFiltersRevision] = useState(() => new ExclusionFiltersRevision());
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
-  const [debugPreset, setDebugPreset] = useState<DebugInspectorPreset>("live");
   const [, setBodyCacheRevision] = useState(0);
   const [streamLifecycle, setStreamLifecycle] = useState<{
-    connectionKey: string;
+    revision: number;
     state: StreamLifecycleState;
   } | null>(null);
   const uiState = useInspectorUiState();
@@ -123,13 +116,6 @@ export function useNetworkInspectorModel(
     return () => bodyLoader.dispose();
   }, [bodyLoader]);
 
-  const deviceId = hostServer?.deviceId;
-  const socketName = hostServer?.socketName;
-  const selectedServer = useMemo(
-    () => (deviceId == null || socketName == null ? null : { deviceId, socketName }),
-    [deviceId, socketName]
-  );
-
   useEffect(() => {
     let disposed = false;
     const reload = () => {
@@ -158,69 +144,35 @@ export function useNetworkInspectorModel(
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
-      setState((current) =>
-        reduceCdpMessage(current, { ...event.server, instanceId: event.serverInstanceId }, event.message)
-      );
+      setState((current) => reduceCdpMessage(current, event.processId, event.message));
     });
     return unsubscribeEvent;
   }, [client]);
 
-  useEffect(() => {
-    let disposed = false;
-    void client.debugInspectorPreset().then((preset) => {
-      if (!disposed) setDebugPreset(preset);
-    });
-    const unsubscribe = client.onDebugInspectorPreset(setDebugPreset);
-    return () => {
-      disposed = true;
-      unsubscribe();
-    };
-  }, [client]);
-
-  const selectedServerKey = serverKey(selectedServer);
-  const displayServers = useMemo(
-    () => applyDebugInspectorPreset(hostServer == null ? [] : [hostServer], selectedServer, debugPreset),
-    [debugPreset, hostServer, selectedServer]
-  );
-  const selectedServerModel = useMemo(
-    () => serverModelFor(displayServers, selectedServer),
-    [displayServers, selectedServer]
-  );
-
-  const selectedServerIsConnected = selectedServerModel?.isConnected === true;
-  const selectedServerConnectionKey =
-    selectedServerModel == null
-      ? selectedServerKey
-      : `${selectedServerKey}\u0000${selectedServerModel.instanceId ?? ""}\u0000${selectedServerModel.isConnected}\u0000${selectedServerModel.hasAppInfo}`;
-  const streamIsRetrying =
-    streamLifecycle?.connectionKey === selectedServerConnectionKey && streamLifecycle.state === "retrying";
+  const streamIsRetrying = streamLifecycle?.revision === connectionRevision && streamLifecycle.state === "retrying";
 
   useEffect(() => {
-    if (!isActive || selectedServer == null || !selectedServerIsConnected) return;
-    const connectionKey = selectedServerConnectionKey;
-    const controller = new NetworkStreamController(client, selectedServer, (state) => {
-      setStreamLifecycle({ connectionKey, state });
+    if (!isConnected || !metadata || metadata.protocolVersion !== supportedProtocolVersion) return;
+    const controller = new NetworkStreamController(client, metadata, (state) => {
+      setStreamLifecycle({ revision: connectionRevision, state });
     });
     controller.start();
     return () => controller.dispose();
-  }, [client, isActive, connectionRevision, selectedServer, selectedServerConnectionKey, selectedServerIsConnected]);
+  }, [client, metadata, isConnected, connectionRevision]);
 
   const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
 
   const visibleRecords = useMemo(
-    () => filterRecords(allRecords, selectedServer, searchText, sortNewestFirst, exclusionFilters),
-    [allRecords, exclusionFilters, searchText, selectedServer, sortNewestFirst]
+    () => filterRecords(allRecords, searchText, sortNewestFirst, exclusionFilters),
+    [allRecords, exclusionFilters, searchText, sortNewestFirst]
   );
 
   const hiddenRequestCount = useMemo(
-    () => countExcludedRecordsForServer(allRecords, selectedServer, exclusionFilters),
-    [allRecords, exclusionFilters, selectedServer]
+    () => countExcludedRecords(allRecords, exclusionFilters),
+    [allRecords, exclusionFilters]
   );
 
-  const serverRecordCount = useMemo(
-    () => countRecordsForServer(allRecords, selectedServer),
-    [allRecords, selectedServer]
-  );
+  const totalItems = allRecords.length;
 
   const selectedRecordId = useMemo(() => {
     if (visibleRecords.length === 0) return null;
@@ -238,7 +190,7 @@ export function useNetworkInspectorModel(
 
   const retryResponseBody = useCallback(() => {
     if (selectedRecord?.kind !== "request" || selectedRecord.responseBodyLoadError !== "failed") return;
-    const recordKey = requestRecordKey(selectedRecord.server, selectedRecord.requestId);
+    const recordKey = requestRecordKey(selectedRecord.processId, selectedRecord.requestId);
     bodyLoader.forgetJob(`${recordKey}\u0000response`);
     bodyLoader.forgetRecords(
       bodyCache.put(recordKey, {
@@ -251,17 +203,17 @@ export function useNetworkInspectorModel(
   }, [bodyCache, bodyLoader, selectedRecord]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isConnected) return;
     bodyLoader.forgetRecords(bodyCache.select(selectedRequestKey));
-  }, [bodyCache, bodyLoader, isActive, selectedRequestKey]);
+  }, [bodyCache, bodyLoader, isConnected, selectedRequestKey]);
 
   useEffect(() => {
     const jobs: BodyLoadJob[] = [];
     const retainedRecordKeys = new Set(state.requests.keys());
     bodyLoader.forgetRecords(bodyCache.retainRecords(retainedRecordKeys));
 
-    if (isActive && selectedServerIsConnected && selectedRecord?.kind === "request") {
-      const recordKey = requestRecordKey(selectedRecord.server, selectedRecord.requestId);
+    if (isConnected && selectedRecord?.kind === "request") {
+      const recordKey = requestRecordKey(selectedRecord.processId, selectedRecord.requestId);
       const requestAttemptKey = `${recordKey}\u0000request`;
       const responseAttemptKey = `${recordKey}\u0000response`;
 
@@ -271,9 +223,7 @@ export function useNetworkInspectorModel(
           recordKey,
           priority: bodyLoadPriority.selected,
           input: {
-            deviceId: selectedRecord.server.deviceId,
-            socketName: selectedRecord.server.socketName,
-            serverInstanceId: selectedRecord.server.instanceId,
+            processId: selectedRecord.processId,
             requestId: selectedRecord.requestId,
             includeRequestBody: true,
             includeResponseBody: false
@@ -287,9 +237,7 @@ export function useNetworkInspectorModel(
           recordKey,
           priority: bodyLoadPriority.selected,
           input: {
-            deviceId: selectedRecord.server.deviceId,
-            socketName: selectedRecord.server.socketName,
-            serverInstanceId: selectedRecord.server.instanceId,
+            processId: selectedRecord.processId,
             requestId: selectedRecord.requestId,
             includeRequestBody: false,
             includeResponseBody: true
@@ -300,18 +248,16 @@ export function useNetworkInspectorModel(
 
     bodyLoader.retainRecords(retainedRecordKeys);
     bodyLoader.schedule(jobs);
-  }, [bodyCache, bodyLoader, isActive, selectedRecord, selectedServerIsConnected, state.requests]);
+  }, [bodyCache, bodyLoader, isConnected, selectedRecord, state.requests]);
 
   const sidebarPlaceholder = useMemo(
     () =>
       sidebarPlaceholderText({
         totalItems: allRecords.length,
-        serverScopedItems: serverRecordCount,
         filteredItems: visibleRecords.length,
-        selectedServer: selectedServerModel,
         streamIsRetrying
       }),
-    [allRecords.length, selectedServerModel, serverRecordCount, streamIsRetrying, visibleRecords.length]
+    [allRecords.length, streamIsRetrying, visibleRecords.length]
   );
   const hasClearableItems = useMemo(() => allRecords.some(isCompletedRecord), [allRecords]);
   useEffect(() => {
@@ -343,21 +289,13 @@ export function useNetworkInspectorModel(
             label: "Export HAR (sanitized)",
             enabled: visibleRecords.length > 0,
             onClick: () => {
-              void exportAsHar(client, visibleRecords, undefined, selectedServerIsConnected);
+              void exportAsHar(client, visibleRecords, undefined, isConnected);
             }
           }
         ]
       })
       .catch(() => {});
-  }, [
-    client,
-    clearCompletedRecords,
-    hasClearableItems,
-    searchText,
-    selectedServerIsConnected,
-    sortNewestFirst,
-    visibleRecords
-  ]);
+  }, [client, clearCompletedRecords, hasClearableItems, searchText, isConnected, sortNewestFirst, visibleRecords]);
   useEffect(
     () => () => {
       void host.setToolbar({ start: [] }).catch(() => {});
@@ -366,13 +304,12 @@ export function useNetworkInspectorModel(
   );
 
   const selectRecord = useCallback((id: string) => setPreferredRecordId(id), []);
-  const openDocs = useCallback(() => void client.openExternal(docsUrl), [client]);
 
   return {
     client,
     uiState,
-    servers: displayServers,
-    selectedServer: selectedServerModel,
+    metadata,
+    isConnected,
     selectedRecord,
     selectedRecordId,
     visibleRecords,
@@ -382,14 +319,13 @@ export function useNetworkInspectorModel(
     exclusionFilters,
     hiddenRequestCount,
     sortNewestFirst,
-    serverRecordCount,
+    totalItems,
     hasClearableItems,
     streamIsRetrying,
     selectRecord,
     addExclusionFilter,
     removeExclusionFilter,
-    retryResponseBody,
-    openDocs
+    retryResponseBody
   };
 }
 
@@ -414,11 +350,7 @@ function createBodyHydrationRuntime(
 function hydrateCachedBodies(records: InspectorRecord[], bodyCache: RequestBodyCache): InspectorRecord[] {
   return records.map((record) => {
     if (record.kind !== "request") return record;
-    const bodies = bodyCache.peek(requestRecordKey(record.server, record.requestId));
+    const bodies = bodyCache.peek(requestRecordKey(record.processId, record.requestId));
     return bodies == null ? record : applyRequestBodies(record, bodies);
   });
-}
-
-function serverKey(server: ServerId | null): string {
-  return server == null ? "" : `${server.deviceId}\u0000${server.socketName}`;
 }

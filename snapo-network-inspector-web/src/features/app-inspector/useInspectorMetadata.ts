@@ -1,3 +1,4 @@
+import { readText } from "../../host/http";
 import { useEffect, useState } from "preact/hooks";
 import { host } from "../../host";
 import { useHostConnection } from "../../host/useHostConnection";
@@ -29,7 +30,7 @@ export function useInspectorMetadata() {
           cache: "no-store"
         });
         if (!response.ok) throw new Error("Unable to read app metadata.");
-        const metadata = (await response.json()) as InspectorMetadata;
+        const metadata = JSON.parse(await readText(response, 1024 * 1024)) as InspectorMetadata;
         if (
           !metadata ||
           typeof metadata.name !== "string" ||

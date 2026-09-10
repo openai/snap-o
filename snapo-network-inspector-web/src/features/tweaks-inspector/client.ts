@@ -1,5 +1,4 @@
 import type {
-  InspectorServerReference,
   InvokeTweakActionInput,
   StreamStarted,
   TweakList,
@@ -11,10 +10,10 @@ import { host } from "../../host";
 import { openInspectorLink } from "../../network/client";
 
 export interface TweaksClient {
-  listTweaks(server: InspectorServerReference): Promise<TweakList>;
+  listTweaks(): Promise<TweakList>;
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
   invokeTweakAction(input: InvokeTweakActionInput): Promise<void>;
-  startTweakStream(server: InspectorServerReference): Promise<StreamStarted>;
+  startTweakStream(onError?: (error: Error) => void): Promise<StreamStarted>;
   stopTweakStream(streamId: string): Promise<void>;
   onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
   openExternal(url: string): Promise<void>;
@@ -26,7 +25,7 @@ export function createTweaksClient(): TweaksClient {
 }
 
 class BrowserTweaksClient implements TweaksClient {
-  private streams = new Map<string, EventSource>();
+  private streams = new Map<string, (error?: Error) => void>();
   private listeners = new Set<(event: TweakStreamEvent) => void>();
   private requests = new Set<AbortController>();
   private disconnected = () => this.revokeConnection();
@@ -65,7 +64,7 @@ class BrowserTweaksClient implements TweaksClient {
   private revokeConnection(): void {
     for (const request of this.requests) request.abort();
     this.requests.clear();
-    for (const stream of this.streams.values()) stream.close();
+    for (const close of this.streams.values()) close();
     this.streams.clear();
   }
   listTweaks(): Promise<TweakList> {
@@ -78,25 +77,47 @@ class BrowserTweaksClient implements TweaksClient {
     await this.request("tweaks/action", "POST", { name: input.name });
   }
 
-  async startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
+  async startTweakStream(onError?: (error: Error) => void): Promise<StreamStarted> {
     if (!host.connected || !host.baseURL) throw new Error("Inspector is disconnected.");
     const streamId = crypto.randomUUID();
     const stream = new EventSource(new URL("tweaks/events", host.baseURL));
-    this.streams.set(streamId, stream);
-    stream.addEventListener("tweaks", (event) => {
-      if (this.streams.get(streamId) !== stream) return;
-      try {
-        const list = JSON.parse((event as MessageEvent<string>).data) as TweakList;
-        for (const callback of this.listeners) callback({ ...list, server, streamId });
-      } catch {
-        // Retain the previous values when a snapshot is invalid.
-      }
+    return new Promise((resolve, reject) => {
+      let opened = false;
+      const close = (error?: Error) => {
+        if (this.streams.get(streamId) !== close) return;
+        this.streams.delete(streamId);
+        clearTimeout(timeout);
+        stream.removeEventListener("open", open);
+        stream.removeEventListener("error", fail);
+        stream.removeEventListener("tweaks", receive);
+        stream.close();
+        if (!opened) reject(error ?? new Error("Inspector is disconnected."));
+        else if (error) onError?.(error);
+      };
+      const open = () => {
+        opened = true;
+        clearTimeout(timeout);
+        resolve({ streamId });
+      };
+      const fail = () => close(new Error("Tweaks event stream disconnected."));
+      const receive = (event: Event) => {
+        if (this.streams.get(streamId) !== close) return;
+        try {
+          const list = JSON.parse((event as MessageEvent<string>).data) as TweakList;
+          for (const callback of this.listeners) callback({ ...list, streamId });
+        } catch {
+          // Retain the previous values when a snapshot is invalid.
+        }
+      };
+      const timeout = setTimeout(() => close(new Error("Tweaks event stream connection timed out.")), 5_000);
+      this.streams.set(streamId, close);
+      stream.addEventListener("open", open);
+      stream.addEventListener("error", fail);
+      stream.addEventListener("tweaks", receive);
     });
-    return { streamId };
   }
   async stopTweakStream(streamId: string): Promise<void> {
-    this.streams.get(streamId)?.close();
-    this.streams.delete(streamId);
+    this.streams.get(streamId)?.();
   }
   onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
     this.listeners.add(callback);

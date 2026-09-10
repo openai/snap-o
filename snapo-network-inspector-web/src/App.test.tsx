@@ -27,7 +27,6 @@ vi.mock("./features/network-inspector/NetworkInspectorApp", () => ({
     return <div data-inspector="network" />;
   }
 }));
-const server = { deviceId: "inspector", socketName: "network" };
 const metadata = {
   name: "Demo",
   packageName: "com.example.demo",
@@ -98,8 +97,6 @@ describe("Network frontend with the shared host", () => {
         return () => events.delete(callback);
       }),
       onStatus: vi.fn(() => () => {}),
-      debugInspectorPreset: vi.fn(async () => "live" as const),
-      onDebugInspectorPreset: vi.fn(() => () => {}),
       listExclusionFilters: vi.fn(async () => []),
       addExclusionFilter: vi.fn(async () => {}),
       removeExclusionFilter: vi.fn(async () => {}),
@@ -152,7 +149,7 @@ describe("Network frontend with the shared host", () => {
     await act(async () => {
       for (const message of replayMessages)
         for (const receive of events) {
-          receive({ streamId: "network-stream", server, serverInstanceId: "1000:2000", message });
+          receive({ streamId: "network-stream", processId: "1000:2000", message });
         }
     });
     expect(mocks.model?.allRecords).toHaveLength(1);
@@ -166,7 +163,7 @@ describe("Network frontend with the shared host", () => {
     const selected = mocks.model!.selectedRecordId;
     const loads = vi.mocked(mocks.client.loadBodies).mock.calls.length;
     await publish(false);
-    expect(mocks.model?.selectedServer?.isConnected).toBe(false);
+    expect(mocks.model?.isConnected).toBe(false);
     expect(mocks.model?.visibleRecords).toHaveLength(1);
     expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
     expect(mocks.client.stopStream).toHaveBeenCalled();
@@ -193,8 +190,7 @@ describe("Network frontend with the shared host", () => {
         for (const receive of events)
           receive({
             streamId: "network-stream",
-            server,
-            serverInstanceId: "1000:2000",
+            processId: "1000:2000",
             message: {
               ...original,
               snapoSequence: original.snapoSequence! + 10,
@@ -223,7 +219,7 @@ describe("Network frontend with the shared host", () => {
     expect(mocks.client.startStream).not.toHaveBeenCalled();
     await publish(true);
     expect(fetchMetadata).toHaveBeenCalledWith(new URL("http://127.0.0.1:1234/.snap-o/info"), expect.anything());
-    expect(mocks.client.startStream).toHaveBeenCalledWith(server);
+    expect(mocks.client.startStream).toHaveBeenCalledWith(metadata);
   });
 
   it("does not restart an unchanged connection after a repeated host update", async () => {
@@ -273,6 +269,53 @@ describe("Network frontend with the shared host", () => {
       await vi.advanceTimersByTimeAsync(250);
     });
     expect(mocks.client.startStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares one metadata read with the real Network connection on each reconnect", async () => {
+    const { createNetworkClient } = await vi.importActual<typeof import("./network/client")>("./network/client");
+    class Events extends EventTarget {
+      constructor() {
+        super();
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+      close() {}
+    }
+    vi.stubGlobal("EventSource", Events);
+    fetchMetadata.mockImplementation(async (url) => {
+      if (String(url).endsWith("/.snap-o/info")) return Response.json(metadata);
+      if (String(url).endsWith("/network"))
+        return new Response("", {
+          headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": "0" }
+        });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    mocks.client = createNetworkClient();
+    await act(async () => render(<App />, container));
+    await flush();
+    await vi.waitFor(() =>
+      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+        "/.snap-o/info",
+        "/network"
+      ])
+    );
+    await publish(false);
+    await publish(true);
+    await vi.waitFor(() =>
+      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+        "/.snap-o/info",
+        "/network",
+        "/.snap-o/info",
+        "/network"
+      ])
+    );
+  });
+
+  it.each([1, 3])("does not start a Network stream for unsupported protocol v%s", async (protocolVersion) => {
+    fetchMetadata.mockResolvedValue(Response.json({ ...metadata, protocolVersion }));
+    await act(async () => render(<App />, container));
+    await flush();
+    await vi.waitFor(() => expect(mocks.model?.metadata?.protocolVersion).toBe(protocolVersion));
+    expect(mocks.client.startStream).not.toHaveBeenCalled();
   });
 
   it("updates filters after another window writes local storage", async () => {

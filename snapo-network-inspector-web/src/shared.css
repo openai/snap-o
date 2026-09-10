@@ -210,19 +210,3 @@ button {
 .text-button:hover {
   background: var(--surface-container-low);
 }
-
-.inspector-open-app {
-  all: revert;
-  min-height: 27px;
-  padding-inline: 10px;
-  font: inherit;
-  font-size: 11px;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.inspector-open-progress {
-  display: inline-flex;
-  min-height: 27px;
-  align-items: center;
-}

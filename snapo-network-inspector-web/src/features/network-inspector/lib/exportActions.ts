@@ -14,9 +14,7 @@ export async function copyCurl(client: NetworkClient, request: RequestRecord, lo
       hydrated = applyRequestBodies(
         request,
         await client.loadBodies({
-          deviceId: request.server.deviceId,
-          socketName: request.server.socketName,
-          serverInstanceId: request.server.instanceId,
+          processId: request.processId,
           requestId: request.requestId,
           includeRequestBody: true,
           includeResponseBody: false
@@ -118,9 +116,7 @@ async function loadBodiesForHar(
   if (!includeRequestBody && !includeResponseBody) return null;
   try {
     return await client.loadBodies({
-      deviceId: record.server.deviceId,
-      socketName: record.server.socketName,
-      serverInstanceId: record.server.instanceId,
+      processId: record.processId,
       requestId: record.requestId,
       includeRequestBody,
       includeResponseBody

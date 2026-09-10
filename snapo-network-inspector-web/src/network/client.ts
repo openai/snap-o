@@ -1,10 +1,9 @@
+import type { InspectorMetadata } from "../features/app-inspector/useInspectorMetadata";
 import type {
-  DebugInspectorPreset,
   LoadBodiesInput,
   RequestBodies,
   SaveFileInput,
   SaveFileResult,
-  StartStreamInput,
   StreamEvent,
   StreamStarted,
   StreamStatus
@@ -19,15 +18,13 @@ export interface NetworkClient {
   addExclusionFilter(filter: string): Promise<void>;
   removeExclusionFilter(filter: string): Promise<void>;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
-  startStream(input: StartStreamInput): Promise<StreamStarted>;
+  startStream(input: InspectorMetadata): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
   onEvent(callback: (event: StreamEvent) => void): () => void;
   onStatus(callback: (status: StreamStatus) => void): () => void;
   copyText(text: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   saveFile(input: SaveFileInput): Promise<SaveFileResult>;
-  debugInspectorPreset(): Promise<DebugInspectorPreset>;
-  onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void;
   dispose(): void;
 }
 
@@ -79,7 +76,7 @@ class BrowserNetworkClient implements NetworkClient {
     if (!connection) return Promise.reject(new Error("Inspector is disconnected."));
     return connection.loadBodies(input);
   }
-  async startStream(input: StartStreamInput): Promise<StreamStarted> {
+  async startStream(input: InspectorMetadata): Promise<StreamStarted> {
     if (!host.connected || !host.baseURL) throw new Error("Inspector is disconnected.");
     for (const connection of this.connections.values()) connection.close();
     this.connections.clear();
@@ -130,12 +127,6 @@ class BrowserNetworkClient implements NetworkClient {
         data: new Blob([data], { type: input.mimeType ?? "application/octet-stream" })
       })
     };
-  }
-  debugInspectorPreset(): Promise<DebugInspectorPreset> {
-    return Promise.resolve("live");
-  }
-  onDebugInspectorPreset(): () => void {
-    return () => {};
   }
 }
 

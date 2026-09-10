@@ -576,4 +576,4 @@ Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network p
 
 ## Browser access
 
-The desktop host provides the ADB-forwarded base URL. Browser clients use `fetch` and `EventSource` directly. HTTP and HTTPS loopback origins (`localhost`, `127.0.0.1`, and `[::1]`) are allowed through CORS. Other origins, including `null`, are rejected. `OPTIONS` permits `GET`, `PATCH`, and `POST` with `Content-Type`. Native clients may omit `Origin`; credentials are not required.
+The desktop host provides the ADB-forwarded base URL. Browser clients use `fetch` and `EventSource` directly. Every request must use a loopback `Host` (`localhost`, `127.0.0.1`, or `[::1]`, with an optional port). This blocks DNS rebinding through attacker-owned names. HTTP and HTTPS loopback origins are allowed through CORS. Other origins, including `null`, are rejected. `OPTIONS` permits `GET`, `PATCH`, and `POST` with `Content-Type`. Native clients may omit `Origin`; credentials are not required.

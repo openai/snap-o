@@ -1,20 +1,16 @@
 import {
   recordId,
-  serverMatches,
   type InspectorDataState,
   type InspectorRecord,
   type RequestRecord,
-  type ServerId,
   type WebSocketRecord
 } from "../../../network/cdp";
-import type { SnapOServer } from "../../../network/bridge-types";
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
 import { bodyMetadata } from "../../../network/payload";
 import { matchesNetworkSearch, parseNetworkSearchQuery } from "./search";
 
 export function filterRecords(
   records: InspectorRecord[],
-  selectedServer: ServerId | null,
   searchText: string,
   newestFirst: boolean,
   exclusionFilters: readonly string[] = []
@@ -25,30 +21,17 @@ export function filterRecords(
   searchQuery.includes.push(...exclusionQuery.includes);
   searchQuery.excludes.push(...exclusionQuery.excludes);
   const filteredRecords = records
-    .filter((record) => serverMatches(selectedServer, record.server))
     .filter((record) => matchesNetworkSearch(record, searchQuery))
     .sort((a, b) => a.startedAt - b.startedAt);
   if (newestFirst) filteredRecords.reverse();
   return filteredRecords;
 }
 
-export function countRecordsForServer(records: InspectorRecord[], selectedServer: ServerId | null): number {
-  return records.reduce((count, record) => count + (serverMatches(selectedServer, record.server) ? 1 : 0), 0);
-}
-
-export function countExcludedRecordsForServer(
-  records: InspectorRecord[],
-  selectedServer: ServerId | null,
-  exclusionFilters: readonly string[]
-): number {
+export function countExcludedRecords(records: InspectorRecord[], exclusionFilters: readonly string[]): number {
   if (exclusionFilters.length === 0) return 0;
 
   const exclusionQuery = parseNetworkSearchQuery(exclusionFilters.join(" "));
-  return records.reduce(
-    (count, record) =>
-      count + (serverMatches(selectedServer, record.server) && !matchesNetworkSearch(record, exclusionQuery) ? 1 : 0),
-    0
-  );
+  return records.reduce((count, record) => count + (!matchesNetworkSearch(record, exclusionQuery) ? 1 : 0), 0);
 }
 
 export function clearCompleted(state: InspectorDataState): InspectorDataState {
@@ -105,13 +88,6 @@ function isCompletedWebSocket(socket: WebSocketRecord): boolean {
   return socket.failed != null || socket.cancelled != null || socket.closed != null || socket.closing != null;
 }
 
-export function serverModelFor(servers: SnapOServer[], selected: ServerId | null): SnapOServer | null {
-  if (selected == null) return null;
-  return (
-    servers.find((server) => server.deviceId === selected.deviceId && server.socketName === selected.socketName) ?? null
-  );
-}
-
 export function splitUrl(url: string): { primary: string; secondary: string } {
   try {
     const parsed = new URL(url);
@@ -152,17 +128,11 @@ function contentLength(headers: RequestRecord["responseHeaders"]): number | null
 
 export function sidebarPlaceholderText(input: {
   totalItems: number;
-  serverScopedItems: number;
   filteredItems: number;
-  selectedServer: SnapOServer | null;
   streamIsRetrying?: boolean;
 }): string | null {
-  if (input.streamIsRetrying === true && input.serverScopedItems === 0) return "Reconnecting to network stream";
+  if (input.streamIsRetrying && input.totalItems === 0) return "Reconnecting to network stream";
   if (input.totalItems === 0) return "No activity yet";
-  if (input.serverScopedItems === 0) {
-    if (input.selectedServer == null || !input.selectedServer.hasAppInfo) return "Waiting for connection";
-    return "No activity for this app yet";
-  }
   if (input.filteredItems === 0) return "No matches";
   return null;
 }
@@ -179,44 +149,25 @@ export function contextMenuExportSelection(
 }
 
 export function resolveDetailEmptyState(input: {
-  servers: SnapOServer[];
-  selectedServer: SnapOServer | null;
-  serverScopedItems: number;
+  isConnected: boolean;
+  totalItems: number;
   streamIsRetrying?: boolean;
-  canOpenApp?: boolean;
-}): { title: string; body: string | null; showDocsLink: boolean } {
-  if (input.servers.length === 0) {
-    return {
-      title: "No compatible apps detected",
-      body: "Apps must include the `com.openai.snapo` dependencies to appear here.",
-      showDocsLink: true
-    };
-  }
-  if (input.streamIsRetrying === true && input.serverScopedItems === 0) {
-    return {
-      title: "Reconnecting",
-      body: "Snap-O will resume capturing requests when the network stream is available.",
-      showDocsLink: false
-    };
-  }
-  if (input.serverScopedItems === 0) {
-    const waitingForConnection = input.selectedServer == null || !input.selectedServer.hasAppInfo;
-    if (waitingForConnection) {
+}): { title: string; body: string } {
+  if (input.totalItems === 0) {
+    if (input.streamIsRetrying)
+      return {
+        title: "Reconnecting",
+        body: "Snap-O will resume capturing requests when the network stream is available."
+      };
+    if (!input.isConnected)
       return {
         title: "Waiting for connection",
-        body: input.canOpenApp ? null : "Open the app on your device to connect.",
-        showDocsLink: false
+        body: "Open the app on your device to connect."
       };
-    }
     return {
       title: "No activity for this app yet",
-      body: "Requests will appear here once the app makes network calls.",
-      showDocsLink: false
+      body: "Requests will appear here once the app makes network calls."
     };
   }
-  return {
-    title: "Select a record",
-    body: "Choose an entry to inspect its details.",
-    showDocsLink: false
-  };
+  return { title: "Select a record", body: "Choose an entry to inspect its details." };
 }

@@ -127,12 +127,12 @@ describe("network inspector search", () => {
   });
 });
 
-const server = { deviceId: "device", socketName: "socket", instanceId: "instance" };
+const processId = "process-1";
 
 function request(overrides: Partial<RequestRecord> = {}): RequestRecord {
   return {
     kind: "request",
-    server,
+    processId,
     requestId: "request",
     method: "GET",
     url: "https://example.com/request",
@@ -150,7 +150,7 @@ function request(overrides: Partial<RequestRecord> = {}): RequestRecord {
 function webSocket(overrides: Partial<WebSocketRecord> = {}): InspectorRecord {
   return {
     kind: "websocket",
-    server,
+    processId,
     socketId: "socket",
     method: "WS",
     url: "wss://example.com/socket",

@@ -3,7 +3,13 @@ import { NetworkConnection } from "./connection";
 import type { StreamEvent } from "./bridge-types";
 
 const baseURL = "http://127.0.0.1:1234/";
-const server = { deviceId: "test", socketName: "network" };
+const metadata = {
+  name: "Demo",
+  packageName: "example.demo",
+  protocolVersion: 2,
+  serverStartWallMs: 100,
+  serverStartMonoNs: 200
+};
 const event = (sequence: number, name = "request") => ({
   method: "Network.loadingFinished",
   params: { requestId: name },
@@ -26,8 +32,6 @@ function setup(history: (events: Events) => Response | Promise<Response>) {
   const received: StreamEvent[] = [];
   const status = vi.fn();
   const fetchRequest = vi.fn<typeof fetch>(async (url, init) => {
-    if (String(url).endsWith("/.snap-o/info"))
-      return Response.json({ protocolVersion: 2, serverStartWallMs: 100, serverStartMonoNs: 200 });
     if (String(url).endsWith("/network")) {
       expect(init?.headers).toEqual({ Accept: "application/x-ndjson" });
       return history(events);
@@ -39,7 +43,7 @@ function setup(history: (events: Events) => Response | Promise<Response>) {
     queueMicrotask(() => events.dispatchEvent(new Event("open")));
     return events as unknown as EventSource;
   });
-  const connection = new NetworkConnection(baseURL, server, (value) => received.push(value), status, {
+  const connection = new NetworkConnection(baseURL, metadata, (value) => received.push(value), status, {
     fetch: fetchRequest,
     eventSource
   });
@@ -68,7 +72,7 @@ describe("direct Network HTTP and SSE connection", () => {
     events.send(4);
     expect(received.map((value) => value.message.snapoSequence)).toEqual([2, 3, 4]);
     expect(received[0].message.params?.requestId).toBe("café");
-    expect(received[0].serverInstanceId).toBe("100:200");
+    expect(received[0].processId).toBe("100:200");
   });
   it.each([
     [JSON.stringify(event(1)), "1"],
@@ -93,18 +97,22 @@ describe("direct Network HTTP and SSE connection", () => {
     events.dispatchEvent(new Event("error"));
     expect(events.close).toHaveBeenCalledTimes(1);
     expect(status).toHaveBeenCalledWith(expect.objectContaining({ state: "exit" }));
-    await expect(connection.loadBodies({ ...server, requestId: "one" })).rejects.toThrow("disconnected");
+    await expect(connection.loadBodies({ processId: "100:200", requestId: "one" })).rejects.toThrow("disconnected");
   });
   it("uses the bound endpoint for body reads and encodes request IDs", async () => {
     const { connection, fetchRequest } = setup(() => snapshot());
     await connection.start();
-    const bodies = await connection.loadBodies({ ...server, requestId: "one/two+three", includeRequestBody: false });
+    const bodies = await connection.loadBodies({
+      processId: "100:200",
+      requestId: "one/two+three",
+      includeRequestBody: false
+    });
     expect(bodies.responseBody).toBe("response");
     expect(fetchRequest).toHaveBeenLastCalledWith(
       baseURL + "network/requests/one%2Ftwo%2Bthree/response-body",
       expect.anything()
     );
-    await expect(connection.loadBodies({ ...server, requestId: "one", serverInstanceId: "older" })).rejects.toThrow(
+    await expect(connection.loadBodies({ requestId: "one", processId: "older" })).rejects.toThrow(
       "earlier app process"
     );
   });

@@ -247,6 +247,18 @@ class NetworkInspectorHttpTest {
     }
 
     @Test
+    fun `HTTP rejects rebinding hosts before reading data or accepting mutations`() = runBlocking {
+        for (origin in listOf("", "Origin: http://attacker.example:1234\r\n", "Origin: http://localhost\r\n")) {
+            for (method in listOf("GET", "POST", "OPTIONS")) {
+                val output = ByteArrayOutputStream()
+                val request = "$method /.snap-o/info HTTP/1.1\r\nHost: attacker.example:1234\r\n$origin\r\n"
+                NetworkInspectorHttp(app).serveConnection(ByteArrayInputStream(request.toByteArray()), output)
+                assertTrue(output.toString("UTF-8").startsWith("HTTP/1.1 400"))
+            }
+        }
+    }
+
+    @Test
     fun `browser preflight allows loopback origins and rejects remote or opaque origins`() = runBlocking {
         for (origin in listOf("http://localhost", "http://127.0.0.1:5173", "http://[::1]:5173")) {
             val output = ByteArrayOutputStream()

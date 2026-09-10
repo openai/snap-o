@@ -43,9 +43,9 @@ describe("browser network client", () => {
   });
   it("rejects requests while disconnected", async () => {
     vi.spyOn(host, "connected", "get").mockReturnValue(false);
-    await expect(client.startStream({ deviceId: "test", socketName: "network" })).rejects.toThrow("disconnected");
-    await expect(client.loadBodies({ deviceId: "test", socketName: "network", requestId: "one" })).rejects.toThrow(
+    await expect(client.startStream({ name: "Demo", packageName: "example.demo", protocolVersion: 2 })).rejects.toThrow(
       "disconnected"
     );
+    await expect(client.loadBodies({ processId: "process-1", requestId: "one" })).rejects.toThrow("disconnected");
   });
 });

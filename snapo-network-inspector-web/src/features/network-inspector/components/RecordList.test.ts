@@ -78,12 +78,12 @@ describe("network request exclusion filter context menu", () => {
   });
 });
 
-const server = { deviceId: "device", socketName: "socket", instanceId: "instance" };
+const processId = "process-1";
 
 function request(url: string): RequestRecord {
   return {
     kind: "request",
-    server,
+    processId,
     requestId: "request",
     method: "GET",
     url,
@@ -100,7 +100,7 @@ function request(url: string): RequestRecord {
 function webSocket(url: string): WebSocketRecord {
   return {
     kind: "websocket",
-    server,
+    processId,
     socketId: "socket",
     method: "GET",
     url,

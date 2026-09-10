@@ -5,7 +5,7 @@ const startedAt = Date.parse("2026-08-21T12:00:00Z");
 function request(requestId: string, overrides: Partial<RequestRecord> = {}): RequestRecord {
   const record: RequestRecord = {
     kind: "request",
-    server: { deviceId: "preview-device", socketName: "preview-socket" },
+    processId: "preview-process",
     requestId,
     method: "POST",
     url: "https://api.example.com/v1/orders?include=items,shipping&locale=en-US",

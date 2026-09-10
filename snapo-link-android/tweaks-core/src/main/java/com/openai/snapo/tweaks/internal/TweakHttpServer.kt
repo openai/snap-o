@@ -361,7 +361,7 @@ internal class TweakHttpServer(
 
             val name = line.substring(0, separator).trim().lowercase(Locale.ROOT)
             val value = line.substring(separator + 1).trim()
-            if (headers.put(name, value) != null && name in listOf("content-length", "origin")) {
+            if (headers.put(name, value) != null && name in listOf("content-length", "host", "origin")) {
                 invalidRequest("Duplicate HTTP header: $name")
             }
         }
@@ -762,11 +762,17 @@ internal class TweakHttpServer(
         throw HttpFailure(400, message)
 }
 
-private fun browserOrigin(headers: Map<String, String>): String? {
+internal fun browserOrigin(headers: Map<String, String>): String? {
+    // Origin can be absent on same-origin GETs. Check Host to prevent DNS rebinding.
+    val hosts = setOf("localhost", "127.0.0.1", "[::1]")
+    val host = headers["host"].orEmpty()
+    val authority = runCatching { URI("http://$host") }.getOrNull()
+    if (authority?.host?.lowercase() !in hosts || authority?.rawAuthority != host || authority.rawUserInfo != null) {
+        throw IOException("Invalid Host header.")
+    }
     val value = headers["origin"] ?: return null
     val origin = runCatching { URI(value) }.getOrNull()
-    val hosts = setOf("localhost", "127.0.0.1", "[::1]")
-    val hasAuthority = origin?.scheme in listOf("http", "https") && origin?.host in hosts
+    val hasAuthority = origin?.scheme in listOf("http", "https") && origin?.host?.lowercase() in hosts
     val hasOnlyAuthority = origin?.rawUserInfo == null && origin?.rawQuery == null &&
         origin?.rawFragment == null && origin?.rawPath.isNullOrEmpty()
     if (!hasAuthority || !hasOnlyAuthority) {
