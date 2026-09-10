@@ -31,7 +31,7 @@ struct NetworkInspectorToolbarControls: View {
         } label: {
           Label(
             model.sortNewestFirst ? "Newest First" : "Oldest First",
-            systemImage: model.sortNewestFirst ? "arrow.down" : "arrow.up"
+            systemImage: model.sortNewestFirst ? "arrow.up" : "arrow.down"
           )
           .labelStyle(.iconOnly)
           .font(.system(size: 15, weight: .medium))
