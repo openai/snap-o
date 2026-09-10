@@ -29,7 +29,6 @@ describe("Tweaks connection recovery", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     client = {
-      usesNativeServerPicker: true,
       openApp: vi.fn(async () => {}),
       listTweaks: vi.fn(async () => response),
       startTweakStream: vi.fn(async () => ({ streamId: "stream-1" })),
@@ -61,7 +60,6 @@ describe("Tweaks connection recovery", () => {
       renderPreact(
         <TweaksInspectorApp
           client={client}
-          apps={[]}
           selectedApp={{
             id: selected.appId,
             name: "Demo",
@@ -82,7 +80,6 @@ describe("Tweaks connection recovery", () => {
               })
           }}
           isConnected={isConnected}
-          onSelect={() => {}}
         />,
         container
       )
@@ -160,8 +157,7 @@ describe("Tweaks connection recovery", () => {
     expect(client.updateTweaks).not.toHaveBeenCalled();
   });
 
-  it.each([true, false])("shows status text while loading with native picker %s", async (usesNativeServerPicker) => {
-    Object.assign(client, { usesNativeServerPicker });
+  it("shows status text while loading", async () => {
     let finish!: (value: TweakList) => void;
     vi.mocked(client.listTweaks).mockImplementationOnce(
       () =>
@@ -174,7 +170,6 @@ describe("Tweaks connection recovery", () => {
     expect(status?.textContent).toBe("Waiting for inspector");
     expect(status?.querySelector("svg")).toBeNull();
     expect(container.querySelector(".inspector-open-app")).not.toBeNull();
-    expect(container.querySelector(".tweaks-inspector-toolbar") != null).toBe(!usesNativeServerPicker);
 
     await act(async () => finish(response));
     expect(container.querySelector('[role="status"]')).toBeNull();

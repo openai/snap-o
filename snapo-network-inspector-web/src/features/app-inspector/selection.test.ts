@@ -25,10 +25,9 @@ describe("inspector metadata", () => {
   const current: SelectedAppInspector = { appId: processApp.id, ...tweaks };
   it("waits for the native Tweaks protocol version before enabling controls", () => {
     const pending = { ...current, protocolVersion: undefined };
-    expect(isInspectorMetadataPending(pending, true)).toBe(true);
-    expect(isInspectorMetadataPending(current, true)).toBe(false);
-    expect(isInspectorMetadataPending({ ...current, protocolVersion: 1 }, true)).toBe(false);
-    expect(isInspectorMetadataPending({ appId: processApp.id, ...network }, true)).toBe(false);
-    expect(isInspectorMetadataPending(pending, false)).toBe(false);
+    expect(isInspectorMetadataPending(pending)).toBe(true);
+    expect(isInspectorMetadataPending(current)).toBe(false);
+    expect(isInspectorMetadataPending({ ...current, protocolVersion: 1 })).toBe(false);
+    expect(isInspectorMetadataPending({ appId: processApp.id, ...network })).toBe(false);
   });
 });

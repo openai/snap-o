@@ -1,10 +1,5 @@
 import type { JSX } from "preact";
-import type {
-  AppInspectorKind,
-  AppInspectorOption,
-  InspectableApp,
-  SelectedAppInspector
-} from "../../network/bridge-types";
+import type { AppInspectorOption, InspectableApp } from "../../network/bridge-types";
 import { DetailContent } from "./components/DetailPane";
 import type { AppLaunchControl } from "../app-inspector/useAppLaunch";
 import { Sidebar } from "./components/Sidebar";
@@ -15,18 +10,14 @@ import { useSearchHighlights } from "./hooks/useSearchHighlights";
 export function NetworkInspectorApp({
   model,
   inspectorApps = [],
-  inspectorSelection = null,
   selectedApp = null,
   appLaunch,
-  preferredKind,
   onInspectorSelect
 }: {
   model: NetworkInspectorModel;
   inspectorApps?: InspectableApp[];
-  inspectorSelection?: SelectedAppInspector | null;
   selectedApp?: InspectableApp | null;
   appLaunch?: AppLaunchControl | null;
-  preferredKind?: AppInspectorKind | null;
   onInspectorSelect?(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
   const {
@@ -48,27 +39,15 @@ export function NetworkInspectorApp({
       style={{ "--sidebar-width": `${sidebarWidth}px` } as JSX.CSSProperties}
     >
       <Sidebar
-        servers={model.servers}
         selectedServer={model.selectedServer}
         replacementServer={model.replacementServer}
-        searchText={model.searchText}
         exclusionFilters={model.exclusionFilters}
         hiddenRequestCount={model.hiddenRequestCount}
-        sortNewestFirst={model.sortNewestFirst}
-        hasClearableItems={model.hasClearableItems}
         records={model.visibleRecords}
         allRecords={model.allRecords}
         placeholder={model.sidebarPlaceholder}
         selectedRecordId={model.selectedRecordId}
         client={model.client}
-        showsServerPicker={!model.client.usesNativeServerPicker}
-        showsInlineToolbar={!model.client.usesNativeServerPicker}
-        onServerChange={model.selectServer}
-        inspectorApps={inspectorApps}
-        inspectorSelection={inspectorSelection}
-        selectedApp={selectedApp}
-        preferredKind={preferredKind}
-        onInspectorSelect={onInspectorSelect}
         onReplacementServerClick={(server) => {
           const app = inspectorApps.find((candidate) =>
             candidate.inspectors.some(
@@ -82,11 +61,8 @@ export function NetworkInspectorApp({
           if (app && option && onInspectorSelect) onInspectorSelect(app, option);
           else model.selectReplacementServer(server);
         }}
-        onSearchTextChange={model.setSearchText}
         onAddExclusionFilter={model.addExclusionFilter}
         onRemoveExclusionFilter={model.removeExclusionFilter}
-        onToggleSortOrder={model.toggleSortOrder}
-        onClearCompleted={model.clearCompletedRecords}
         onRecordSelect={model.selectRecord}
       />
 

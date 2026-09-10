@@ -25,6 +25,15 @@ describe("native app launch bridge", () => {
   });
 });
 
+it("requires the native host instead of falling back to HTTP", () => {
+  vi.stubGlobal("window", {});
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+
+  expect(() => createNetworkClient()).toThrow("Open this inspector in the Snap-O macOS app.");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
 describe("native persistent exclusion filter bridge", () => {
   it("explicitly restores conventional exclusion filters instead of relying on an early page event", async () => {
     const postMessage = vi.fn().mockResolvedValue(["-example.com", "-statsig.com"]);

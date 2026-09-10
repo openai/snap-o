@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { Inbox, Send } from "lucide-preact";
 import { useMemo } from "preact/hooks";
-import type { NetworkClient } from "../../../network/client";
+import type { InspectorContentClient } from "../../../network/client";
 import type { WebSocketMessageRecord } from "../../../network/cdp";
 import { formatBytes, makeBodyPayload } from "../../../network/payload";
 import { useCopyFeedback } from "../hooks/useCopyFeedback";
@@ -15,7 +15,7 @@ export function WebSocketMessageCard({
   storageKey,
   uiState
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   message: WebSocketMessageRecord;
   storageKey: string;
   uiState: InspectorUiState;

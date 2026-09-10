@@ -2,12 +2,10 @@ import { render, type JSX } from "preact";
 import { useState } from "preact/hooks";
 import { RequestDetail } from "../features/network-inspector/components/RequestDetail";
 import { useInspectorUiState } from "../features/network-inspector/hooks/useInspectorUiState";
-import { createNetworkClient } from "../network/client";
+import { previewClient } from "./client";
 import { previewRequests } from "./requests";
 import "../styles.css";
 import "./preview.css";
-
-const client = createNetworkClient();
 
 function RequestDetailPreview(): JSX.Element {
   const [selectedId, setSelectedId] = useState(
@@ -42,7 +40,7 @@ function RequestDetailPreview(): JSX.Element {
       <main className="detail-pane">
         <RequestDetail
           key={record.requestId}
-          client={client}
+          client={previewClient}
           record={record}
           uiState={uiState}
           onRetryResponseBody={() => {}}

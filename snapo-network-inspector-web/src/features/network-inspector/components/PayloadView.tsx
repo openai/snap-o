@@ -1,7 +1,7 @@
 import type { JSX, ComponentChildren } from "preact";
 import { Check, Copy, Download } from "lucide-preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import type { NetworkClient } from "../../../network/client";
+import type { InspectorContentClient } from "../../../network/client";
 import {
   bodyMetadata as payloadMetadata,
   dataUrlForImage,
@@ -21,7 +21,7 @@ export function BodySection({
   storageKey,
   uiState
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   payload: BodyPayload;
   storageKey: string;
   uiState: InspectorUiState;
@@ -42,7 +42,7 @@ export function PayloadView({
   prettyInitiallyExpanded = true,
   embedded = false
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   payload: BodyPayload;
   storageKey: string;
   uiState: InspectorUiState;
@@ -152,7 +152,7 @@ function JsonOutline({
   initiallyExpanded,
   trailing
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   node: JsonNode;
   storageKey: string;
   uiState: InspectorUiState;
@@ -402,7 +402,7 @@ function jsonContextMenuItems({
   expandable,
   uiState
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   node: JsonNode;
   rowKey: string;
   descendantRowKeys: string[];
@@ -457,7 +457,13 @@ function jsonNodeCopyText(node: JsonNode): string {
   return JSON.stringify(node.rawValue, null, 2);
 }
 
-function ImagePreview({ client, payload }: { client: NetworkClient; payload: BodyPayload }): JSX.Element | null {
+function ImagePreview({
+  client,
+  payload
+}: {
+  client: InspectorContentClient;
+  payload: BodyPayload;
+}): JSX.Element | null {
   const dataUrl = dataUrlForImage(payload);
   const copyFeedback = useCopyFeedback(client, "image");
   const saveFeedback = useCopyFeedback(client, "save-image");

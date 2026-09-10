@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import type { NetworkClient } from "../../../network/client";
+import type { InspectorContentClient } from "../../../network/client";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";
 import { decodeRequestBodyForDisplay, makeBodyPayload } from "../../../network/payload";
 import { isLikelyStreamingRequest } from "../../../network/request-classification";
@@ -20,7 +20,7 @@ export function RequestDetail({
   isConnected = true,
   onRetryResponseBody
 }: {
-  client: NetworkClient;
+  client: InspectorContentClient;
   record: RequestRecord;
   uiState: InspectorUiState;
   isConnected?: boolean;

@@ -28,7 +28,7 @@ import {
 } from "./TweaksInspectorApp";
 
 describe("empty tweaks inspector", () => {
-  const client = { usesNativeServerPicker: true, openExternal: async () => {} } as unknown as NetworkClient;
+  const client = { openExternal: async () => {} } as unknown as NetworkClient;
   const selection: SelectedAppInspector = {
     appId: "pixel:com.example.settings",
     kind: "tweaks",
@@ -36,9 +36,7 @@ describe("empty tweaks inspector", () => {
   };
 
   it("waits for the initial tweak request before showing an empty state", () => {
-    const markup = renderToStaticMarkup(
-      createElement(TweaksInspectorApp, { client, apps: [], selection, onSelect() {} })
-    );
+    const markup = renderToStaticMarkup(createElement(TweaksInspectorApp, { client, selection }));
 
     expect(markup).not.toContain('class="empty-detail"');
     expect(markup).not.toContain("No tweaks on screen");
@@ -426,60 +424,6 @@ describe("registered tweak actions", () => {
         command: "invokeTweakAction",
         payload: { server, name: "Motion/Toggle animation" }
       });
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("posts named action invocations through the browser inspector proxy", async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ name: "Motion/Toggle animation" })
-    });
-    vi.stubGlobal("window", {});
-    vi.stubGlobal("fetch", fetch);
-
-    try {
-      await createNetworkClient().invokeTweakAction({ server, name: "Motion/Toggle animation" });
-
-      expect(fetch).toHaveBeenCalledWith("/api/inspector/tweaks/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ server, name: "Motion/Toggle animation" })
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("preserves upstream conflict errors instead of replacing them with an HTTP status", async () => {
-    vi.stubGlobal("window", {});
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 409,
-        json: async () => ({ error: "Action Motion/Toggle animation has conflicting registrations." })
-      })
-    );
-
-    try {
-      await expect(
-        createNetworkClient().invokeTweakAction({ server, name: "Motion/Toggle animation" })
-      ).rejects.toThrow("Action Motion/Toggle animation has conflicting registrations.");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("preserves generic HTTP status errors for unrelated network requests", async () => {
-    const json = vi.fn().mockResolvedValue({ error: "Unrelated conflict" });
-    vi.stubGlobal("window", {});
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 409, json }));
-
-    try {
-      await expect(createNetworkClient().listServers()).rejects.toThrow("Request failed with 409");
-      expect(json).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
