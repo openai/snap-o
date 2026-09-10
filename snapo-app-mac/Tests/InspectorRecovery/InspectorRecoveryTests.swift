@@ -128,7 +128,6 @@ struct InspectorRecoveryTests {
     print("A new service instance can reconnect immediately")
 
     adb.recoverProperties()
-    adb.emitDevices(payload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy", "stalled"] }
     let recovered = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
     _ = await recovered.listInspectorApps()
@@ -146,7 +145,7 @@ struct InspectorRecoveryTests {
     await forwardFailure.stop()
     print("Port forwarding failures enter the same cooldown as failed inspector requests")
     await tracker.stopTracking()
-    print("Property failures are not cached; the device becomes eligible when tracking retries successfully")
+    print("Property failures recover without another device tracking event")
   }
 
   static func eventually(_ condition: () async -> Bool) async throws {
