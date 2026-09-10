@@ -7,7 +7,7 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(
   {
-    ignores: ["dist-renderer/**", "node_modules/**"]
+    ignores: ["dist-renderer/**", "dist-tweaks/**", "node_modules/**"]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

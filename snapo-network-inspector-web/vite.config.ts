@@ -1,7 +1,7 @@
 import preact from "@preact/preset-vite";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: "./",
   plugins: [preact({ reactAliasesEnabled: false })],
   server: {
@@ -9,7 +9,8 @@ export default defineConfig({
     port: 5173
   },
   build: {
-    outDir: "dist-renderer",
+    outDir: mode === "tweaks" ? "dist-tweaks" : "dist-renderer",
+    rolldownOptions: { input: mode === "tweaks" ? "tweaks.html" : "index.html" },
     emptyOutDir: true
   }
-});
+}));

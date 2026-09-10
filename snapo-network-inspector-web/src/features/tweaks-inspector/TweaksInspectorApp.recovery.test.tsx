@@ -3,7 +3,7 @@ import { act } from "preact/test-utils";
 import { render as renderPreact } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SelectedAppInspector, TweakList, TweakStreamEvent } from "../../network/bridge-types";
-import type { NetworkClient } from "../../network/client";
+import type { TweaksClient } from "./client";
 import { TweaksInspectorApp } from "./TweaksInspectorApp";
 
 const selection: SelectedAppInspector = {
@@ -22,14 +22,14 @@ const connectionError = new Error("Could not connect to the server.");
 
 describe("Tweaks connection recovery", () => {
   let container: HTMLDivElement;
-  let client: NetworkClient;
+  let client: TweaksClient;
   let receive: (event: TweakStreamEvent) => void;
   let reset: () => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
     client = {
-      openApp: vi.fn(async () => {}),
+      openSelectedApp: vi.fn(async () => {}),
       listTweaks: vi.fn(async () => response),
       startTweakStream: vi.fn(async () => ({ streamId: "stream-1" })),
       stopTweakStream: vi.fn(async () => {}),
@@ -44,7 +44,7 @@ describe("Tweaks connection recovery", () => {
         return () => {};
       }),
       nativeTweaksStateChanged: vi.fn()
-    } as unknown as NetworkClient;
+    } as unknown as TweaksClient;
     container = document.createElement("div");
     document.body.append(container);
   });
@@ -72,12 +72,7 @@ describe("Tweaks connection recovery", () => {
           appLaunch={{
             pending: false,
             error: null,
-            open: () =>
-              void client.openApp!({
-                deviceId: selected.server.deviceId,
-                packageName: "com.example.demo",
-                androidUserId: 0
-              })
+            open: () => void client.openSelectedApp(selected.appId)
           }}
           isConnected={isConnected}
         />,
@@ -216,11 +211,7 @@ describe("Tweaks connection recovery", () => {
     const openButton = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
     expect(openButton.textContent).toBe("Open Demo");
     await act(async () => openButton.click());
-    expect(client.openApp).toHaveBeenCalledExactlyOnceWith({
-      deviceId: "phone",
-      packageName: "com.example.demo",
-      androidUserId: 0
-    });
+    expect(client.openSelectedApp).toHaveBeenCalledExactlyOnceWith(selection.appId);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);

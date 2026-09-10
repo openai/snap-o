@@ -1,5 +1,5 @@
-import { type Dispatch, type StateUpdater, useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { createNetworkClient, type NetworkClient } from "../../../network/client";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { type NetworkClient } from "../../../network/client";
 import { bodyLoadPriority, RequestBodyLoader, type BodyLoadJob } from "../../../network/body-loader";
 import { hydratedBodyRetentionLimitBytes, RequestBodyCache } from "../../../network/body-retention";
 import {
@@ -24,8 +24,6 @@ import {
   countRecordsForServer,
   filterRecords,
   isCompletedRecord,
-  mergeServersWithRetainedSelection,
-  pickSelectedServer,
   serverModelFor,
   shouldRequestRequestBody,
   shouldRequestResponseBody,
@@ -59,16 +57,11 @@ export interface NetworkInspectorModel {
 }
 
 export function useNetworkInspectorModel(
-  controlledServer?: ServerId | null,
-  isActive = true,
-  allowsConnection = true
+  client: NetworkClient,
+  hostServer: SnapOServer | null,
+  isActive: boolean
 ): NetworkInspectorModel {
-  const client = useMemo(() => createNetworkClient(), []);
   const [state, setState] = useState<InspectorDataState>(() => createEmptyInspectorState());
-  const [preferredServer, setPreferredServer] = useState<ServerId | null>(null);
-  const hostPreferredDeviceIdRef = useRef<string | null>(null);
-  const serversRef = useRef<SnapOServer[]>([]);
-  const selectedServerRef = useRef<ServerId | null>(null);
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [exclusionFilters, setExclusionFilters] = useState<string[]>([]);
@@ -128,30 +121,13 @@ export function useNetworkInspectorModel(
     return () => bodyLoader.dispose();
   }, [bodyLoader]);
 
+  const deviceId = hostServer?.deviceId;
+  const socketName = hostServer?.socketName;
   const selectedServer = useMemo(
-    () => (controlledServer === undefined ? pickSelectedServer(preferredServer, state.servers) : controlledServer),
-    [controlledServer, preferredServer, state.servers]
-  );
-  const selectServer = useCallback((server: ServerId | null) => {
-    setPreferredServer(server);
-    setPreferredRecordId(null);
-  }, []);
-
-  useEffect(() => {
-    selectedServerRef.current = selectedServer;
-    if (isActive && selectedServer != null) client.selectedDeviceChanged(selectedServer.deviceId);
-  }, [client, isActive, selectedServer]);
-
-  useEffect(
-    () =>
-      client.onPreferredDevice((deviceId) => {
-        hostPreferredDeviceIdRef.current = deviceId;
-        selectDeviceServer(deviceId, serversRef.current, setPreferredServer);
-      }),
-    [client]
+    () => (deviceId == null || socketName == null ? null : { deviceId, socketName }),
+    [deviceId, socketName]
   );
 
-  useEffect(() => client.onNativeSelectedServer(selectServer), [client, selectServer]);
   useEffect(() => client.onNativeSearchText(setSearchText), [client]);
   useEffect(
     () =>
@@ -204,42 +180,10 @@ export function useNetworkInspectorModel(
     };
   }, [client]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    let disposed = false;
-    const refresh = async () => {
-      const activeServers = await client.listServers();
-      if (disposed) return;
-      serversRef.current = activeServers;
-      if (hostPreferredDeviceIdRef.current != null) {
-        selectDeviceServer(hostPreferredDeviceIdRef.current, activeServers, setPreferredServer);
-      }
-
-      setState((current) => {
-        const servers = mergeServersWithRetainedSelection(activeServers, current.servers, selectedServerRef.current);
-        return areServersEqual(current.servers, servers) ? current : { ...current, servers };
-      });
-    };
-
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 2_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [client, isActive]);
-
   const selectedServerKey = serverKey(selectedServer);
   const displayServers = useMemo(
-    () =>
-      applyDebugInspectorPreset(state.servers, selectedServer, debugPreset).map((server) =>
-        !allowsConnection &&
-        server.deviceId === selectedServer?.deviceId &&
-        server.socketName === selectedServer.socketName
-          ? { ...server, isConnected: false }
-          : server
-      ),
-    [allowsConnection, debugPreset, selectedServer, state.servers]
+    () => applyDebugInspectorPreset(hostServer == null ? [] : [hostServer], selectedServer, debugPreset),
+    [debugPreset, hostServer, selectedServer]
   );
   const selectedServerModel = useMemo(
     () => serverModelFor(displayServers, selectedServer),
@@ -402,7 +346,6 @@ export function useNetworkInspectorModel(
   useEffect(() => {
     if (!isActive) return;
     client.nativeInspectorStateChanged({
-      servers: displayServers,
       selectedServer:
         selectedServerModel == null
           ? null
@@ -416,7 +359,6 @@ export function useNetworkInspectorModel(
   }, [
     client,
     isActive,
-    displayServers,
     hasClearableItems,
     hasVisibleRecords,
     searchText,
@@ -479,44 +421,6 @@ function hydrateCachedBodies(records: InspectorRecord[], bodyCache: RequestBodyC
   });
 }
 
-function selectDeviceServer(
-  deviceId: string,
-  servers: SnapOServer[],
-  setPreferredServer: Dispatch<StateUpdater<ServerId | null>>
-): void {
-  setPreferredServer((current) => {
-    if (current?.deviceId === deviceId) return current;
-    const match = servers.find((server) => server.deviceId === deviceId);
-    return match == null ? current : { deviceId: match.deviceId, socketName: match.socketName };
-  });
-}
-
 function serverKey(server: ServerId | null): string {
   return server == null ? "" : `${server.deviceId}\u0000${server.socketName}`;
-}
-
-function areServersEqual(left: SnapOServer[], right: SnapOServer[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((server, index) => areServerModelsEqual(server, right[index]));
-}
-
-function areServerModelsEqual(left: SnapOServer, right: SnapOServer | undefined): boolean {
-  if (right == null) return false;
-  return (
-    left.server === right.server &&
-    left.deviceId === right.deviceId &&
-    left.socketName === right.socketName &&
-    left.displayName === right.displayName &&
-    left.deviceDisplayTitle === right.deviceDisplayTitle &&
-    left.appIconBase64 === right.appIconBase64 &&
-    left.isConnected === right.isConnected &&
-    left.hasAppInfo === right.hasAppInfo &&
-    left.pid === right.pid &&
-    (left.instanceId ?? null) === (right.instanceId ?? null) &&
-    left.protocolVersion === right.protocolVersion &&
-    left.isProtocolNewerThanSupported === right.isProtocolNewerThanSupported &&
-    left.isProtocolOlderThanSupported === right.isProtocolOlderThanSupported &&
-    left.packageName === right.packageName &&
-    left.appName === right.appName
-  );
 }

@@ -1,0 +1,272 @@
+.tweaks-inspector {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--surface-bright);
+}
+
+.tweaks-reset {
+  border: 0;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.tweaks-reset:hover {
+  color: var(--on-surface);
+}
+
+.tweaks-inspector-content {
+  width: min(100%, 1040px);
+  min-height: 0;
+  overflow-y: auto;
+  margin-inline: auto;
+  padding: 20px clamp(28px, 4vw, 36px) 48px;
+}
+
+.tweaks-fields {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.tweaks-fields:disabled {
+  opacity: 0.5;
+}
+
+.tweaks-error {
+  margin: 0 0 14px;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.tweaks-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  align-items: start;
+  gap: 0 44px;
+}
+
+.tweaks-column {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+}
+
+.tweaks-section {
+  padding-block: 14px 22px;
+}
+
+.tweaks-section h2 {
+  margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 16px;
+}
+
+.tweaks-section.collapsed h2 {
+  margin-bottom: 0;
+}
+
+.tweaks-section-toggle {
+  position: relative;
+  display: flex;
+  width: calc(100% + 22px);
+  align-items: center;
+  margin-left: -22px;
+  border: 0;
+  background: transparent;
+  padding: 0 0 0 22px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tweaks-section-chevron {
+  position: absolute;
+  left: 3px;
+}
+
+.tweaks-section-toggle[aria-expanded="false"] .tweaks-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.tweaks-section-list {
+  display: grid;
+  gap: 14px;
+}
+
+.tweaks-section-list[hidden] {
+  display: none;
+}
+
+.tweaks-control {
+  display: grid;
+  gap: 7px;
+}
+
+.tweaks-control-line {
+  display: flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 9px;
+}
+
+.tweaks-control-label,
+.tweaks-select span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tweaks-control-label {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.tweaks-control-line-range .tweaks-control-label {
+  flex: 1;
+}
+
+.tweaks-control-field {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.tweaks-action-button {
+  all: revert;
+  min-height: 27px;
+  padding-inline: 10px;
+  font: inherit;
+  font-size: 11px;
+}
+
+.tweaks-action-conflict {
+  margin: 0;
+  color: var(--error);
+  font-size: 11px;
+}
+
+.tweaks-number,
+.tweaks-hex,
+.tweaks-string,
+.tweaks-select {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--surface-container-high);
+  padding: 5px 8px;
+  color: var(--on-surface);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tweaks-number {
+  width: 60px;
+  text-align: right;
+}
+
+.tweaks-hex {
+  width: 88px;
+  text-transform: uppercase;
+}
+
+.tweaks-string {
+  width: 100%;
+  min-height: 32px;
+}
+
+.tweaks-select-wrap {
+  min-width: 0;
+}
+
+.tweaks-select {
+  display: flex;
+  max-width: 176px;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+}
+
+.tweaks-select-listbox {
+  position: fixed;
+  z-index: 30;
+  max-width: min(240px, calc(100vw - 16px));
+  overflow-y: auto;
+  border: 1px solid var(--outline);
+  border-radius: 4px;
+  background: var(--surface-bright);
+  padding: 4px;
+}
+
+.tweaks-select-option {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  padding: 5px 8px;
+  color: var(--on-surface);
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tweaks-select-option:is(:hover, :focus-visible, [aria-selected="true"]) {
+  background: var(--surface-container-high);
+}
+
+.tweaks-range {
+  width: clamp(90px, 35%, 170px);
+  height: 17px;
+  margin: 0;
+  accent-color: var(--on-surface);
+}
+
+.tweaks-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--on-surface);
+}
+
+.tweaks-color-fields {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tweaks-color,
+.bezier-open {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.tweaks-color-button,
+.bezier-open {
+  background: var(--surface-bright);
+}
+
+.tweaks-color-swatch {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+}

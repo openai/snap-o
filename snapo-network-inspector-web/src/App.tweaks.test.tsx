@@ -2,19 +2,14 @@
 import { act } from "preact/test-utils";
 import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppInspectorKind, InspectableApp, SelectedAppInspector, TweakList } from "./network/bridge-types";
-import type { NetworkClient } from "./network/client";
-import { InspectorRestoration } from "./features/app-inspector/restoration";
-import { App } from "./App";
+import type { InspectableApp, InspectorHostState, TweakList } from "./network/bridge-types";
+import type { TweaksClient } from "./features/tweaks-inspector/client";
+import { TweaksApp } from "./TweaksApp";
 
-const mocks = vi.hoisted(() => ({ client: null as unknown as NetworkClient }));
-vi.mock("./network/client", () => ({ createNetworkClient: () => mocks.client }));
-vi.mock("./features/network-inspector/hooks/useNetworkInspectorModel", () => ({
-  useNetworkInspectorModel: () => ({})
-}));
-vi.mock("./features/network-inspector/NetworkInspectorApp", () => ({ NetworkInspectorApp: () => null }));
+const mocks = vi.hoisted(() => ({ client: null as unknown as TweaksClient }));
+vi.mock("./features/tweaks-inspector/client", () => ({ createTweaksClient: () => mocks.client }));
 
-function app(pid: number, kind: AppInspectorKind = "tweaks"): InspectableApp {
+function app(pid: number): InspectableApp {
   return {
     id: `phone:pid:${pid}`,
     name: "Demo",
@@ -23,121 +18,153 @@ function app(pid: number, kind: AppInspectorKind = "tweaks"): InspectableApp {
     processName: "com.example.demo",
     deviceId: "phone",
     deviceDisplayTitle: "Phone",
-    inspectors: [{ kind, protocolVersion: 4, server: { deviceId: "phone", socketName: `snapo_${kind}_${pid}` } }]
+    inspectors: [
+      { kind: "tweaks", protocolVersion: 4, server: { deviceId: "phone", socketName: `snapo_tweaks_${pid}` } }
+    ]
   };
 }
 
-describe("retained Tweaks view", () => {
+function connected(target: InspectableApp): InspectorHostState {
+  const selection = { appId: target.id, ...target.inspectors[0] };
+  return {
+    revision: 0,
+    selection,
+    selectedApp: target,
+    networkServer: null,
+    isActive: true,
+    isConnected: true,
+    isWaiting: false
+  };
+}
+
+const list = (value: string): TweakList => ({
+  tweaks: [{ name: "Demo title", type: "string", value, default: "Default" }]
+});
+
+describe("Tweaks frontend host state", () => {
   let container: HTMLDivElement;
-  let discovered: InspectableApp[];
-  let selectApp: (id: string) => void;
-  let nativeSelect: (selection: SelectedAppInspector) => void;
+  let host: InspectorHostState;
+  let receiveHost: (state: InspectorHostState) => void;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    discovered = [app(10)];
-    const saved = new InspectorRestoration();
-    saved.reconcile(discovered);
+    host = { ...connected(app(10)), appLaunch: { pending: false } };
     mocks.client = {
-      loadInspectorPreferences: vi.fn(async () => saved.serialize()),
-      saveInspectorPreferences: vi.fn(async () => {}),
-      listInspectorApps: vi.fn(async () => discovered),
-      openApp: vi.fn(async () => {}),
-      appInspectorStateChanged: vi.fn(),
-      onNativeSelectedInspector: vi.fn((callback) => {
-        nativeSelect = callback;
+      inspectorHostState: vi.fn(async () => structuredClone(host)),
+      onInspectorHostState: vi.fn((callback) => {
+        receiveHost = callback;
         return () => {};
       }),
-      onNativeSelectedApp: vi.fn((callback) => {
-        selectApp = callback;
-        return () => {};
-      }),
-      listTweaks: vi.fn(
-        async (): Promise<TweakList> => ({
-          tweaks: [{ name: "Demo title", type: "string", value: "Cached value", default: "Default" }]
-        })
-      ),
+      openSelectedApp: vi.fn(async () => {}),
+      listTweaks: vi.fn(async () => list("Cached value")),
       startTweakStream: vi.fn(async () => ({ streamId: "stream" })),
       stopTweakStream: vi.fn(async () => {}),
       onTweaksChanged: vi.fn(() => () => {}),
       onNativeTweaksReset: vi.fn(() => () => {}),
       nativeTweaksStateChanged: vi.fn()
-    } as unknown as NetworkClient;
+    } as unknown as TweaksClient;
     container = document.createElement("div");
     document.body.append(container);
   });
 
   afterEach(async () => {
-    await act(async () => {
-      await render(null, container);
-    });
+    await act(async () => render(null, container));
     container.remove();
     vi.useRealTimers();
   });
 
-  async function renderWaitingForTweaks() {
-    const starter = {
-      ...app(1, "network"),
-      processName: "com.example.starter",
-      packageName: "com.example.starter"
-    };
-    discovered = [app(10, "network")];
-    vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    await act(async () => {
-      await selectApp(discovered[0].id);
-    });
+  async function publish(state: Partial<InspectorHostState>, launch = host.appLaunch) {
+    host = { ...host, ...state, revision: host.revision + 1, appLaunch: launch };
+    await act(async () => receiveHost(structuredClone(host)));
   }
 
-  it("preserves the real Tweaks view through disconnect and PID replacement", async () => {
-    await act(() => render(<App />, container));
+  it("preserves values until the host connects a replacement process", async () => {
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    await vi.waitFor(() => {
-      expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Cached value");
-    });
+    await vi.waitFor(() =>
+      expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Cached value")
+    );
     const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
     expect(input.value).toBe("Cached value");
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
+    await publish({ isConnected: false, isWaiting: true });
     expect(container.querySelector('input[type="text"]')).toBe(input);
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
     expect(container.querySelector('[role="status"]')).toBeNull();
-
-    let finish!: (value: TweakList) => void;
-    vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    discovered = [app(20)];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    expect(container.querySelector('input[type="text"]')).toBe(input);
-    expect(input.value).toBe("Cached value");
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    await publish({});
     expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selection: null, replacementApp: discovered[0] })
-    );
-    expect(container.querySelector(".replacement-banner")).toBeNull();
-    await act(async () => nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] }));
-    await act(async () =>
-      finish({ tweaks: [{ name: "Demo title", type: "string", value: "Fresh value", default: "Default" }] })
-    );
+    vi.mocked(mocks.client.listTweaks).mockResolvedValueOnce(list("Fresh value"));
+    await publish(connected(app(20)));
     expect(input.value).toBe("Fresh value");
     await vi.waitFor(() => expect(container.querySelector("fieldset")?.disabled).toBe(false));
   });
 
-  it("keeps the launch spinner through the transition into Tweaks and shows data as soon as it loads", async () => {
+  it("retains values while hidden and waits for a fresh snapshot when shown", async () => {
+    await act(async () => render(<TweaksApp />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await vi.waitFor(() =>
+      expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Cached value")
+    );
+    const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    await publish({ isActive: false, isConnected: false });
+    expect(container.querySelector('input[type="text"]')).toBe(input);
+    expect(mocks.client.stopTweakStream).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
+    let reply!: (value: TweakList) => void;
+    vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          reply = resolve;
+        })
+    );
+    await publish({ isActive: true, isConnected: true });
+    expect(container.querySelector('input[type="text"]')).toBe(input);
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    await act(async () => reply(list("Refreshed value")));
+    expect(input.value).toBe("Refreshed value");
+    await vi.waitFor(() => expect(container.querySelector("fieldset")?.disabled).toBe(false));
+  });
+
+  it("waits for host readiness before requesting Tweaks", async () => {
+    host = { ...host, isConnected: false, isWaiting: true, selection: { ...host.selection!, protocolVersion: null } };
+    await act(async () => render(<TweaksApp />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(mocks.client.listTweaks).not.toHaveBeenCalled();
+    expect(mocks.client.startTweakStream).not.toHaveBeenCalled();
+    await publish(connected(app(10)));
+    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
+    expect(mocks.client.startTweakStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart requests and streams when a scan repeats the same connection", async () => {
+    await act(async () => render(<TweaksApp />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await publish({});
+    await publish({});
+    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
+    expect(mocks.client.startTweakStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.stopTweakStream).not.toHaveBeenCalled();
+  });
+
+  it("shows native launch progress while waiting for the first snapshot", async () => {
+    host = { ...host, selection: null, isConnected: false, isWaiting: true };
+    await act(async () => render(<TweaksApp />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    expect(mocks.client.openSelectedApp).toHaveBeenCalledWith(host.selectedApp!.id);
+    await publish({}, { pending: true });
     let finish!: (value: TweakList) => void;
     vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
       () =>
@@ -145,81 +172,34 @@ describe("retained Tweaks view", () => {
           finish = resolve;
         })
     );
-    await renderWaitingForTweaks();
-    expect(container.querySelector(".inspector-loading-shell")).not.toBeNull();
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
-
-    discovered = [app(20)];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
+    await publish(connected(app(20)));
     expect(container.querySelector(".tweaks-inspector")).not.toBeNull();
-    expect(container.querySelector(".inspector-loading-shell")).toBeNull();
     expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for inspector");
-
-    await act(async () =>
-      finish({ tweaks: [{ name: "Demo title", type: "string", value: "Ready", default: "Default" }] })
-    );
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Ready");
-    expect(container.querySelector('[role="progressbar"]')).toBeNull();
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-  });
-
-  it("restores Open five seconds after the click even when the waiting view changes", async () => {
-    vi.mocked(mocks.client.listTweaks).mockImplementationOnce(() => new Promise(() => {}));
-    await renderWaitingForTweaks();
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    discovered = [app(20)];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_500);
-    });
-    expect(container.querySelector(".tweaks-inspector")).not.toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3_499);
-    });
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
+    await publish({}, { pending: false });
     expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
-    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    await act(async () => finish(list("Ready")));
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Ready");
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
   });
 
-  it("keeps a successfully loaded empty view through disconnect", async () => {
+  it("keeps an empty snapshot visible through disconnect", async () => {
     vi.mocked(mocks.client.listTweaks).mockResolvedValue({ tweaks: [] });
-    await act(() => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    await vi.waitFor(() => expect(container.textContent).toContain("No tweaks on screen"));
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await vi.waitFor(() => expect(container.textContent).toContain("No tweaks on screen"));
+    await publish({ isConnected: false, isWaiting: true });
+    expect(container.textContent).toContain("No tweaks on screen");
     expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
   it.each([
-    { packageName: "com.example.other", processName: "com.example.other", androidUserId: 0 },
-    { packageName: "com.example.demo", processName: "com.example.demo", androidUserId: 10 }
-  ])("does not show another app or profile's cached values while loading", async (target) => {
-    await act(() => render(<App />, container));
+    { processName: "com.example.other", androidUserId: 0 },
+    { processName: "com.example.demo", androidUserId: 10 }
+  ])("clears cached values when the host selects another app or profile", async (identity) => {
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
-    });
-    const other = { ...app(20), ...target };
-    discovered = [app(10), other];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
     });
     let finish!: (value: TweakList) => void;
     vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
@@ -228,14 +208,26 @@ describe("retained Tweaks view", () => {
           finish = resolve;
         })
     );
-    await act(async () => {
-      await selectApp(other.id);
-    });
+    await publish(connected({ ...app(20), ...identity }));
     expect(container.querySelector('input[type="text"]')).toBeNull();
-    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    await act(async () => finish({ tweaks: [] }));
+    expect(container.textContent).toContain("No tweaks on screen");
+  });
+
+  it("handles absent optional fields in a native snapshot", async () => {
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
-      await finish({ tweaks: [] });
+      await vi.advanceTimersByTimeAsync(0);
     });
-    await vi.waitFor(() => expect(container.textContent).toContain("No tweaks on screen"));
+    await act(async () =>
+      receiveHost({
+        revision: 1,
+        isActive: true,
+        isConnected: false,
+        isWaiting: true
+      } as InspectorHostState)
+    );
+    expect(container.querySelector('input[type="text"]')).toBeNull();
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
   });
 });

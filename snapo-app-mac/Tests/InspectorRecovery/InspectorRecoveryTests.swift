@@ -74,17 +74,35 @@ struct InspectorRecoveryTests {
     adb.emitDevices(payload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy"] }
     let service = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
+    let suite = "SnapOHostRecoveryTests.\(UUID().uuidString)"
+    let preferences = UserDefaults(suiteName: suite)!
+    preferences.set(#"{"apps":[]}"#, forKey: "inspectorPreferences")
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let host = AppInspectorModel(
+      preferences: preferences,
+      discover: { await service.discoverInspectors() },
+      openApp: { try await service.openApp($0) }
+    )
+    host.start()
+    try await eventually {
+      let apps = host.snapshot.state.apps
+      return apps.count == 1 && apps.first?.deviceId == "healthy" && apps.first?.inspectors.count == 2
+    }
+    host.selectApp(host.snapshot.state.apps[0])
+    precondition(host.snapshot.state.selection?.server.deviceId == "healthy")
+    host.stop()
+    print("Native discovery publishes and selects healthy apps beside stalled devices")
     let frozen = NetworkServerReference(deviceId: "frozen", socketName: "snapo_tweaks_42")
     let healthy = NetworkServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
-    _ = await service.listInspectorApps()
+    _ = await service.discoverInspectors().apps
     try await eventually {
-      let apps = await service.listInspectorApps()
+      let apps = await service.discoverInspectors().apps
       return InspectorHTTP.state.count == 1 && apps.count == 1 && apps.first?.inspectors.count == 2
     }
     let count = adb.forwardCount
     let networkCount = NetworkSession.state.count
     for _ in 0 ..< 50 {
-      _ = await service.listInspectorApps()
+      _ = await service.discoverInspectors().apps
       do {
         _ = try await service.listTweaks(for: frozen)
         fatalError("Frozen inspector should remain disconnected during cooldown")
@@ -101,7 +119,7 @@ struct InspectorRecoveryTests {
     InspectorHTTP.state.unfreeze()
     NetworkSession.state.unfreeze()
     try await Task.sleep(for: .milliseconds(3200))
-    try await eventually { await service.listInspectorApps().count == 2 }
+    try await eventually { await service.discoverInspectors().apps.count == 2 }
     _ = try await service.listTweaks(for: frozen)
     precondition(adb.forwardCount == count + 1)
     precondition(NetworkSession.state.count == networkCount + 1)
@@ -109,12 +127,12 @@ struct InspectorRecoveryTests {
 
     await NetworkSession.state.disconnectFrozen()
     try await eventually {
-      let apps = await service.listInspectorApps()
+      let apps = await service.discoverInspectors().apps
       return apps.first(where: { $0.deviceId == "frozen" })?.inspectors.map(\.kind) == [.tweaks]
     }
     let disconnectedCount = NetworkSession.state.count
     for _ in 0 ..< 50 {
-      _ = await service.listInspectorApps()
+      _ = await service.discoverInspectors().apps
     }
     precondition(NetworkSession.state.count == disconnectedCount)
     _ = try await service.listTweaks(for: frozen)
@@ -122,7 +140,7 @@ struct InspectorRecoveryTests {
     await service.stop()
 
     let restarted = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
-    try await eventually { await restarted.listInspectorApps().count == 2 }
+    try await eventually { await restarted.discoverInspectors().apps.count == 2 }
     _ = try await restarted.listTweaks(for: frozen)
     await restarted.stop()
     print("A new service instance can reconnect immediately")
@@ -130,7 +148,7 @@ struct InspectorRecoveryTests {
     adb.recoverProperties()
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy", "stalled"] }
     let recovered = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
-    _ = await recovered.listInspectorApps()
+    _ = await recovered.discoverInspectors().apps
     precondition(adb.scannedDeviceIDs.contains("stalled"))
     await recovered.stop()
     let failingPayload = "forward-failure device transport_id:4"
@@ -139,7 +157,7 @@ struct InspectorRecoveryTests {
     let forwardFailure = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
     let beforeForwardFailure = adb.forwardCount
     for _ in 0 ..< 50 {
-      _ = await forwardFailure.listInspectorApps()
+      _ = await forwardFailure.discoverInspectors().apps
     }
     precondition(adb.forwardCount == beforeForwardFailure + 1)
     await forwardFailure.stop()

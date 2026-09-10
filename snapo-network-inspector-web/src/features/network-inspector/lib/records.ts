@@ -105,35 +105,6 @@ function isCompletedWebSocket(socket: WebSocketRecord): boolean {
   return socket.failed != null || socket.cancelled != null || socket.closed != null || socket.closing != null;
 }
 
-export function pickSelectedServer(current: ServerId | null, servers: SnapOServer[]): ServerId | null {
-  if (servers.length === 0) return null;
-  if (
-    current != null &&
-    servers.some((server) => server.deviceId === current.deviceId && server.socketName === current.socketName)
-  ) {
-    return current;
-  }
-  return { deviceId: servers[0].deviceId, socketName: servers[0].socketName };
-}
-
-export function mergeServersWithRetainedSelection(
-  activeServers: SnapOServer[],
-  currentServers: SnapOServer[],
-  selectedServer: ServerId | null
-): SnapOServer[] {
-  if (selectedServer == null || activeServers.some((server) => serverMatches(selectedServer, server))) {
-    return activeServers;
-  }
-
-  const retained = currentServers.find((server) => serverMatches(selectedServer, server));
-  if (retained == null) return activeServers;
-
-  return [...activeServers, { ...retained, isConnected: false }].sort((left, right) => {
-    const device = left.deviceId.localeCompare(right.deviceId);
-    return device !== 0 ? device : left.socketName.localeCompare(right.socketName);
-  });
-}
-
 export function serverModelFor(servers: SnapOServer[], selected: ServerId | null): SnapOServer | null {
   if (selected == null) return null;
   return (

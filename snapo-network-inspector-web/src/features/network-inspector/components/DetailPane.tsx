@@ -4,7 +4,7 @@ import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord } from "../../../network/cdp";
 import type { InspectableApp, SnapOServer } from "../../../network/bridge-types";
 import { OpenAppButton } from "../../app-inspector/components/OpenAppButton";
-import type { AppLaunchControl } from "../../app-inspector/useAppLaunch";
+import type { AppLaunchControl } from "../../app-inspector/useAppInspector";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { resolveDetailEmptyState } from "../lib/records";
 import { isUnsupportedLegacyProtocolRequestSelection, unsupportedLegacyProtocolMessage } from "../lib/protocol";

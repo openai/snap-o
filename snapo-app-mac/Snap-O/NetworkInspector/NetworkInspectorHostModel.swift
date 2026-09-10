@@ -11,7 +11,6 @@ final class NetworkInspectorHostModel {
     static let hiddenHosts = "networkInspector.hiddenHosts"
   }
 
-  private(set) var servers: [NetworkInspectorServer] = []
   private(set) var selectedServer: NetworkInspectorServer?
   private(set) var inspectorApps: [InspectableApp] = []
   private(set) var selectedInspector: SelectedAppInspector?
@@ -27,41 +26,41 @@ final class NetworkInspectorHostModel {
   private(set) var hasResettableTweaks = false
   private(set) var selectedRecordKind: String?
   private(set) var hasVisibleRecords = false
-  private(set) var isPageReady = false
+  var isPageReady: Bool {
+    pages[preferredInspectorKind ?? .network]?.isReady ?? false
+  }
 
-  @ObservationIgnored let webContainer: NetworkInspectorWebContainer
+  var webContainer: NetworkInspectorWebContainer? {
+    pages[preferredInspectorKind ?? .network]?.container
+  }
+
+  private struct PageIdentity: Equatable {
+    let appID: String?
+    let server: InspectorServerReference?
+  }
+
+  private struct Page {
+    let identity: PageIdentity
+    let container: NetworkInspectorWebContainer
+    var isReady = false
+  }
+
+  private var pages: [AppInspectorKind: Page] = [:]
+  @ObservationIgnored private let service: NetworkInspectorService
+  @ObservationIgnored private var pageTransitions: [AppInspectorKind: Task<Void, Never>] = [:]
+  @ObservationIgnored private var isStopped = false
+  @ObservationIgnored private let appInspector: AppInspectorModel
   @ObservationIgnored private var outputTask: Task<Void, Never>?
   @ObservationIgnored private var exclusionFiltersObserver: NSObjectProtocol?
 
-  init(service: NetworkInspectorService) {
-    let bridge = NetworkInspectorWebBridge(service: service)
-    webContainer = NetworkInspectorWebContainer(bridge: bridge)
-
-    bridge.inspectorStateChangedHandler = { [weak self] state in
-      self?.apply(state)
-    }
-    bridge.appInspectorStateChangedHandler = { [weak self] state in
-      self?.apply(state)
-    }
-    bridge.tweaksStateChangedHandler = { [weak self] state in
-      self?.apply(state)
-    }
-    bridge.exclusionFiltersHandler = { [weak self] in
-      self?.exclusionFilters ?? []
-    }
-    bridge.addExclusionFilterHandler = { [weak self] filter in
-      self?.addExclusionFilter(filter)
-    }
-    bridge.removeExclusionFilterHandler = { [weak self] filter in
-      self?.removeExclusionFilter(filter)
-    }
-    webContainer.pageReadinessChangedHandler = { [weak self] isReady in
-      guard let self else { return }
-      isPageReady = isReady
-      if isReady {
-        sendPageEvent(name: "network:exclusion-filters", payload: exclusionFilters)
-      }
-    }
+  init(service: NetworkInspectorService, preferences: UserDefaults = .standard) {
+    self.service = service
+    appInspector = AppInspectorModel(
+      preferences: preferences,
+      discover: { await service.discoverInspectors() },
+      openApp: { try await service.openApp($0) }
+    )
+    appInspector.stateChanged = { [weak self] snapshot in self?.apply(snapshot) }
     exclusionFiltersObserver = NotificationCenter.default.addObserver(
       forName: Keys.exclusionFiltersDidChange,
       object: nil,
@@ -71,7 +70,8 @@ final class NetworkInspectorHostModel {
         self?.reloadExclusionFilters()
       }
     }
-    webContainer.start()
+    apply(appInspector.snapshot)
+    appInspector.start()
 
     outputTask = Task { [weak self] in
       await self?.consumeOutputs(from: service)
@@ -79,33 +79,36 @@ final class NetworkInspectorHostModel {
   }
 
   func stop() {
+    guard !isStopped else { return }
+    isStopped = true
     outputTask?.cancel()
     outputTask = nil
     if let exclusionFiltersObserver {
       NotificationCenter.default.removeObserver(exclusionFiltersObserver)
       self.exclusionFiltersObserver = nil
     }
-    webContainer.stop()
+    appInspector.stop()
+    for (kind, page) in pages {
+      page.container.stop()
+      let transition = pageTransitions[kind]
+      pageTransitions[kind] = Task {
+        await transition?.value
+        await page.container.finishStopping()
+      }
+    }
+    pages.removeAll()
   }
 
   func selectApp(_ app: InspectableApp) {
-    sendPageEvent(name: "inspector:app-selected", payload: app.id)
+    appInspector.selectApp(app)
   }
 
   func selectInspector(_ app: InspectableApp, option: AppInspectorOption) {
-    sendPageEvent(
-      name: "inspector:selected",
-      payload: SelectedAppInspector(
-        appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion
-      )
-    )
+    appInspector.selectInspector(app, option: option)
   }
 
   func reconnectToNewProcess() {
-    guard let app = replacementApp,
-          let option = app.inspectors.first(where: { $0.kind == preferredInspectorKind })
-    else { return }
-    selectInspector(app, option: option)
+    appInspector.reconnectToNewProcess()
   }
 
   func setSearchText(_ searchText: String) {
@@ -155,14 +158,65 @@ final class NetworkInspectorHostModel {
     sendPageEvent(name: "tweaks:reset", payload: true)
   }
 
-  private func apply(_ state: NetworkInspectorNativeState) {
-    servers = state.servers
-    guard let displayedNetwork, displayedNetwork.server == state.selectedServer else { return }
-    selectedServer = state.selectedServer.flatMap { selection in
-      state.servers.first {
-        $0.deviceId == selection.deviceId && $0.socketName == selection.socketName
+  private func apply(_ snapshot: AppInspectorSnapshot) {
+    guard !isStopped else { return }
+    apply(snapshot.state)
+    let kind = snapshot.state.preferredKind ?? .network
+    let state = snapshot.pageState(for: kind)
+    selectedServer = snapshot.pageState(for: .network).networkServer
+    let identity = PageIdentity(appID: state.selectedApp?.id, server: state.selection?.server)
+    if pages[kind]?.identity != identity {
+      replacePage(kind: kind, identity: identity)
+    }
+    for (kind, page) in pages {
+      page.container.sendPageEvent(name: "inspector:state", payload: snapshot.pageState(for: kind))
+    }
+  }
+
+  private func replacePage(kind: AppInspectorKind, identity: PageIdentity) {
+    let previous = pages[kind]?.container
+    previous?.stop()
+    if kind == .network {
+      searchText = ""
+      sortNewestFirst = false
+      hasClearableItems = false
+      selectedRecordKind = nil
+      hasVisibleRecords = false
+    } else {
+      hasResettableTweaks = false
+    }
+
+    let bridge = NetworkInspectorWebBridge(service: service, kind: kind)
+    let container = NetworkInspectorWebContainer(bridge: bridge, kind: kind)
+    bridge.inspectorHostStateHandler = { [weak self] in self?.appInspector.snapshot.pageState(for: kind) }
+    bridge.openSelectedAppHandler = { [weak self] appID in self?.appInspector.openSelectedApp(appId: appID) }
+    bridge.inspectorStateChangedHandler = { [weak self] state in self?.apply(state) }
+    bridge.tweaksStateChangedHandler = { [weak self] state in self?.apply(state) }
+    bridge.exclusionFiltersHandler = { [weak self] in self?.exclusionFilters ?? [] }
+    bridge.addExclusionFilterHandler = { [weak self] filter in self?.addExclusionFilter(filter) }
+    bridge.removeExclusionFilterHandler = { [weak self] filter in self?.removeExclusionFilter(filter) }
+    container.pageReadinessChangedHandler = { [weak self, weak container] isReady in
+      guard let self, let container, pages[kind]?.container === container else { return }
+      pages[kind]?.isReady = isReady
+      if isReady {
+        container.sendPageEvent(name: "network:exclusion-filters", payload: exclusionFilters)
+        container.sendPageEvent(name: "inspector:state", payload: appInspector.snapshot.pageState(for: kind))
       }
     }
+    pages[kind] = Page(identity: identity, container: container)
+    let transition = pageTransitions[kind]
+    pageTransitions[kind] = Task { [weak self] in
+      // Finish old requests and stream cleanup before a new page can send commands.
+      await transition?.value
+      await previous?.finishStopping()
+      guard let self, !isStopped, pages[kind]?.container === container else { return }
+      container.start()
+      pageTransitions[kind] = nil
+    }
+  }
+
+  private func apply(_ state: NetworkInspectorNativeState) {
+    guard let displayedNetwork, displayedNetwork.server == state.selectedServer else { return }
     searchText = state.searchText
     sortNewestFirst = state.sortNewestFirst
     hasClearableItems = state.hasClearableItems
@@ -182,7 +236,7 @@ final class NetworkInspectorHostModel {
 
   private func apply(_ state: AppInspectorState) {
     if selectedInspector?.kind != state.selection?.kind || selectedInspector?.server != state.selection?.server {
-      webContainer.closeNativeColorPanel()
+      webContainer?.closeNativeColorPanel()
       hasResettableTweaks = false
     }
     if state.displayedNetwork == nil || displayedNetwork?.server != state.displayedNetwork?.server {
@@ -222,12 +276,20 @@ final class NetworkInspectorHostModel {
 
       // A producer-side buffer overflow finishes the stream. Reloading stops the
       // old server stream and makes the page request a complete replay.
-      webContainer.recoverFromEventOverflow()
+      for page in pages.values {
+        page.container.recoverFromEventOverflow()
+      }
     }
   }
 
   private func sendPageEvent(name: String, payload: some Encodable) {
-    webContainer.sendPageEvent(name: name, payload: payload)
+    if name.hasPrefix("network:") {
+      pages[.network]?.container.sendPageEvent(name: name, payload: payload)
+    } else if name.hasPrefix("tweaks:") {
+      pages[.tweaks]?.container.sendPageEvent(name: name, payload: payload)
+    } else {
+      webContainer?.sendPageEvent(name: name, payload: payload)
+    }
   }
 
   private func saveExclusionFilters(_ filters: [String]) {

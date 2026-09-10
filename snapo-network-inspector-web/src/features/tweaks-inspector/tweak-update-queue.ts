@@ -1,5 +1,5 @@
 import type { InspectorServerReference, TweakUpdate, TweakUpdateError, TweakValue } from "../../network/bridge-types";
-import type { NetworkClient } from "../../network/client";
+import type { TweaksClient } from "./client";
 
 interface TweakUpdateQueueCallbacks {
   onUpdate(tweaks: TweakUpdate[], pending: ReadonlyMap<string, TweakValue | null>): void;
@@ -21,7 +21,7 @@ export class TweakUpdateQueue {
   private generation = 0;
 
   constructor(
-    private readonly client: Pick<NetworkClient, "updateTweaks">,
+    private readonly client: Pick<TweaksClient, "updateTweaks">,
     private readonly server: InspectorServerReference,
     private readonly callbacks: TweakUpdateQueueCallbacks
   ) {}

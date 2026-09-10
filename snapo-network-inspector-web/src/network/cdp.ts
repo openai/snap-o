@@ -1,4 +1,4 @@
-import type { CdpMessage, RequestBodies, ResponseBodyLoadError, SnapOServer } from "./bridge-types";
+import type { CdpMessage, RequestBodies, ResponseBodyLoadError } from "./bridge-types";
 import type { Protocol } from "devtools-protocol";
 import { isLikelyStreamingRequest } from "./request-classification";
 
@@ -140,7 +140,6 @@ export interface WebSocketFailedRecord {
 }
 
 export interface InspectorDataState {
-  servers: SnapOServer[];
   requests: Map<string, RequestRecord>;
   webSockets: Map<string, WebSocketRecord>;
   latestSequenceByServer: Map<string, number>;
@@ -162,7 +161,6 @@ export const inspectorRetentionLimits = {
 
 export function createEmptyInspectorState(): InspectorDataState {
   return {
-    servers: [],
     requests: new Map(),
     webSockets: new Map(),
     latestSequenceByServer: new Map()

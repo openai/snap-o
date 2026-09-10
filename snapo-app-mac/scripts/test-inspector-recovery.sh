@@ -18,6 +18,8 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   "$TEST_DIR/DeviceClient.o" Snap-O/Models/Device+Formatting.swift \
   Snap-O/ADB/DeviceTracker.swift \
   Snap-O/NetworkInspector/NetworkInspectorBridgeModels.swift \
+  Snap-O/NetworkInspector/InspectorSelection.swift \
+  Snap-O/NetworkInspector/AppInspectorModel.swift \
   Snap-O/NetworkInspector/TweakEventStreamDecoder.swift \
   Snap-O/NetworkInspector/TweaksInspectorService.swift \
   Snap-O/NetworkInspector/NetworkInspectorService.swift \
