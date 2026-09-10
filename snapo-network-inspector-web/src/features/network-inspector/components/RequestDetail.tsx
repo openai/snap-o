@@ -1,4 +1,5 @@
-import { memo, useEffect, useState } from "react";
+import type { JSX } from "preact";
+import { memo, useEffect, useState } from "preact/compat";
 import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type Header, type RequestRecord } from "../../../network/cdp";

@@ -1,4 +1,5 @@
-import { type CSSProperties } from "react";
+import type { JSX } from "preact";
+import { type CSSProperties } from "preact/compat";
 import type {
   AppInspectorKind,
   AppInspectorOption,

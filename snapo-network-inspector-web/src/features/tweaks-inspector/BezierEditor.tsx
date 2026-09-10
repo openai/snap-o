@@ -1,6 +1,7 @@
-import { createPortal } from "react-dom";
-import { useId, useLayoutEffect, useRef, useState } from "react";
-import { RotateCcw, X } from "lucide-react";
+import type { JSX } from "preact";
+import { createPortal } from "preact/compat";
+import { useId, useLayoutEffect, useRef, useState } from "preact/compat";
+import { RotateCcw, X } from "lucide-preact";
 import type { BezierValue, TweakValueDescriptor } from "../../network/bridge-types";
 import { bezierPresets, bezierValue, moveBezier, readBezier, type BezierCoordinates } from "./bezier";
 import "./bezier.css";
@@ -79,7 +80,7 @@ export function BezierEditor({
     };
   }, [open]);
   const value = readBezier(tweak.value);
-  const drag = useRef<{ index: number; pointerId: number } | null>(null);
+  const dragRef = useRef<{ index: number; pointerId: number } | null>(null);
   if (!value) return <span>Invalid curve</span>;
   const start = graphPoint(0, 0),
     end = graphPoint(1, 1),
@@ -87,7 +88,7 @@ export function BezierEditor({
     p2 = graphPoint(value[2], value[3]);
   const emit = (next: BezierCoordinates) => onChange(bezierValue(next));
   const finish = () => {
-    drag.current = null;
+    dragRef.current = null;
   };
   return (
     <span>
@@ -146,7 +147,7 @@ export function BezierEditor({
                 viewBox={graphViewBox}
                 aria-label={`${tweak.name} curve`}
                 onPointerMove={(event) => {
-                  const active = drag.current;
+                  const active = dragRef.current;
                   if (!active || active.pointerId !== event.pointerId) return;
                   const matrix = event.currentTarget.getScreenCTM();
                   if (!matrix) return;
@@ -184,7 +185,7 @@ export function BezierEditor({
                       if (event.button !== 0) return;
                       event.preventDefault();
                       event.currentTarget.focus();
-                      drag.current = { index, pointerId: event.pointerId };
+                      dragRef.current = { index, pointerId: event.pointerId };
                       event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
                     }}
                     onKeyDown={(event) => {

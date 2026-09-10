@@ -1,4 +1,5 @@
-import type { ClipboardEvent, ReactNode } from "react";
+import type { JSX } from "preact";
+import type { ClipboardEvent, ReactNode } from "preact/compat";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 
 export function Section({
@@ -60,6 +61,7 @@ export function HeadersTable({ headers }: { headers: HeaderRow[] }): JSX.Element
 }
 
 function copyHeaders(event: ClipboardEvent<HTMLDivElement>, headers: HeaderRow[]): void {
+  if (event.clipboardData == null) return;
   const selectedHeaders = selectedHeaderRows(event.currentTarget, headers);
   const copiedHeaders = selectedHeaders.length > 0 ? selectedHeaders : headers;
   event.clipboardData.setData("text/plain", copiedHeaders.map(formatHeaderLine).join("\n"));

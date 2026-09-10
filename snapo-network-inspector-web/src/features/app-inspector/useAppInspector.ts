@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "preact/compat";
 import type { AppInspectorOption, InspectableApp } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
 import { InspectorRestoration } from "./restoration";
@@ -8,10 +8,10 @@ export function useAppInspector(client: NetworkClient) {
   const [owner] = useState(() => new InspectorRestoration());
   const [state, setState] = useState(() => owner.snapshot());
   const [loading, setLoading] = useState(true);
-  const lastSaved = useRef<string | null>(null);
-  const saveQueue = useRef(Promise.resolve());
-  const requestRefresh = useRef<(() => void) | null>(null);
-  const refreshNow = useCallback(() => requestRefresh.current?.(), []);
+  const lastSavedRef = useRef<string | null>(null);
+  const saveQueueRef = useRef(Promise.resolve());
+  const requestRefreshRef = useRef<(() => void) | null>(null);
+  const refreshNow = useCallback(() => requestRefreshRef.current?.(), []);
   const { appLaunch, reconcileSelection, isPolling } = useAppLaunch(client, state.selectedApp, refreshNow);
 
   const publish = useCallback(() => {
@@ -20,12 +20,12 @@ export function useAppInspector(client: NetworkClient) {
     setState(snapshot);
     client.appInspectorStateChanged(snapshot);
     const saved = owner.serialize();
-    if (saved !== lastSaved.current) {
-      lastSaved.current = saved;
-      saveQueue.current = saveQueue.current
+    if (saved !== lastSavedRef.current) {
+      lastSavedRef.current = saved;
+      saveQueueRef.current = saveQueueRef.current
         .then(() => client.saveInspectorPreferences(saved))
         .catch(() => {
-          if (lastSaved.current === saved) lastSaved.current = null;
+          if (lastSavedRef.current === saved) lastSavedRef.current = null;
         });
     }
   }, [client, owner, reconcileSelection]);
@@ -59,7 +59,7 @@ export function useAppInspector(client: NetworkClient) {
         refreshing = false;
       }
     };
-    requestRefresh.current = () => void refresh();
+    requestRefreshRef.current = () => void refresh();
 
     const unsubscribeInspector = client.onNativeSelectedInspector((selection) => {
       const state = owner.snapshot();
@@ -81,7 +81,7 @@ export function useAppInspector(client: NetworkClient) {
       .then((saved) => {
         if (disposed) return;
         owner.hydrate(saved);
-        lastSaved.current = saved;
+        lastSavedRef.current = saved;
         initialized = true;
         publish();
         void refresh();
@@ -91,7 +91,7 @@ export function useAppInspector(client: NetworkClient) {
     }, 2_500);
     return () => {
       disposed = true;
-      requestRefresh.current = null;
+      requestRefreshRef.current = null;
       window.clearInterval(interval);
       unsubscribeInspector();
       unsubscribeApp();

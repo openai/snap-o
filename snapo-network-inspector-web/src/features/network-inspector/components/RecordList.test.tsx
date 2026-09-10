@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { act, useState } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { act } from "preact/test-utils";
+import { useState } from "preact/compat";
+import { createRoot } from "preact/compat/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type RequestRecord } from "../../../network/cdp";
@@ -14,10 +15,9 @@ const onSelect = vi.fn();
 const onAddExclusionFilter = vi.fn();
 const scrollIntoView = vi.fn();
 let container: HTMLDivElement;
-let root: Root;
+let root: ReturnType<typeof createRoot>;
 
 beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
   onSelect.mockClear();
   onAddExclusionFilter.mockClear();

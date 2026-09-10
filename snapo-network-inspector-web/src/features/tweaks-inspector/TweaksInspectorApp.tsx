@@ -1,6 +1,7 @@
+import type { JSX } from "preact";
 import { BezierEditor } from "./BezierEditor";
-import { ChevronDown, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import { ChevronDown, RotateCcw } from "lucide-preact";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "preact/compat";
 import type {
   AppInspectorOption,
   InspectableApp,
@@ -69,7 +70,7 @@ export function TweaksInspectorApp({
   const [collapsedSections, setCollapsedSections] = useState(() => new Set<string>());
   const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
   const sectionListId = useId();
-  const activeColorPanel = useRef<ActiveColorPanelSession | null>(null);
+  const activeColorPanelRef = useRef<ActiveColorPanelSession | null>(null);
   const currentConnection = connectionState?.connection === connection ? connectionState : null;
   const canEdit = isConnected && currentConnection?.error === null;
   const connectionError = currentConnection?.error ?? null;
@@ -173,8 +174,8 @@ export function TweaksInspectorApp({
   }, [client, connection, isConnected, queue, server]);
 
   const closeActiveColorPanel = useCallback(async () => {
-    const active = activeColorPanel.current;
-    activeColorPanel.current = null;
+    const active = activeColorPanelRef.current;
+    activeColorPanelRef.current = null;
     if (active) await client.closeNativeColorPanel?.(active.sessionId);
   }, [client]);
 
@@ -185,16 +186,16 @@ export function TweaksInspectorApp({
   const openNativeColorPanel = useCallback(
     (tweak: TweakValueDescriptor, present = true) => {
       if (!canEdit || !hasNativeColorPanel || client.openNativeColorPanel === undefined) {
-        activeColorPanel.current = null;
+        activeColorPanelRef.current = null;
         return;
       }
 
       const sessionId = String(++nextColorPanelSession);
-      activeColorPanel.current = { tweak, sessionId };
+      activeColorPanelRef.current = { tweak, sessionId };
       void client.openNativeColorPanel(String(tweak.value), sessionId, present).catch((cause: unknown) => {
-        if (activeColorPanel.current?.sessionId !== sessionId) return;
+        if (activeColorPanelRef.current?.sessionId !== sessionId) return;
 
-        activeColorPanel.current = null;
+        activeColorPanelRef.current = null;
         setError(cause instanceof Error ? cause.message : "Unable to open the color picker.");
       });
     },
@@ -204,7 +205,7 @@ export function TweaksInspectorApp({
   const updateTweak = useCallback(
     (tweak: TweakValueDescriptor, value: TweakValue) => {
       if (!canEdit) return;
-      const active = activeColorPanel.current;
+      const active = activeColorPanelRef.current;
       if (active?.tweak.name === tweak.name && active.tweak.value !== value) {
         openNativeColorPanel({ ...tweak, value }, false);
       }
@@ -221,13 +222,13 @@ export function TweaksInspectorApp({
   );
 
   useEffect(() => {
-    const active = activeColorPanel.current;
+    const active = activeColorPanelRef.current;
     if (active === null) return;
 
     const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
     if (tweak === undefined || tweak.type === "action") {
       void closeActiveColorPanel().catch((cause: unknown) => {
-        if (activeColorPanel.current !== null) return;
+        if (activeColorPanelRef.current !== null) return;
 
         setError(cause instanceof Error ? cause.message : "Unable to close the color picker.");
       });
@@ -235,7 +236,7 @@ export function TweaksInspectorApp({
     }
 
     if (tweak.value === active.tweak.value) {
-      activeColorPanel.current = { ...active, tweak };
+      activeColorPanelRef.current = { ...active, tweak };
       return;
     }
 
@@ -246,13 +247,13 @@ export function TweaksInspectorApp({
     if (!hasNativeColorPanel || client.onNativeColorPanelChange === undefined) return;
 
     const unsubscribe = client.onNativeColorPanelChange((event) => {
-      const active = activeColorPanel.current;
+      const active = activeColorPanelRef.current;
       if (active === null) return;
 
       const value = nativePanelTweakColor(event, active.sessionId);
       if (value === null) return;
 
-      activeColorPanel.current = { ...active, tweak: { ...active.tweak, value } };
+      activeColorPanelRef.current = { ...active, tweak: { ...active.tweak, value } };
       updateTweak(active.tweak, value);
     });
 
@@ -355,7 +356,7 @@ export function TweaksInspectorApp({
             disabled={!canEdit}
             aria-label="Tweaks"
             aria-disabled={!canEdit}
-            {...(!canEdit ? { inert: "" } : {})}
+            inert={!canEdit}
           >
             <div className="tweaks-columns">
               {sections.map((column, index) => (
@@ -761,7 +762,7 @@ function TweakEnumField({
     });
   };
 
-  const navigate = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const navigate = (event: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || options.length === 0) return;
 
     event.preventDefault();
@@ -787,7 +788,8 @@ function TweakEnumField({
       ref={rootRef}
       onKeyDown={navigate}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setListboxStyle(null);
+        if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget))
+          setListboxStyle(null);
       }}
     >
       <button

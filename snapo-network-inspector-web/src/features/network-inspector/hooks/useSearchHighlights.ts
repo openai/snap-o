@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, type RefObject } from "preact/compat";
 import { parseKeywordSearchQuery, searchHighlightRanges } from "../../../network/keyword-search";
 
 const SearchHighlightName = "network-search-match";

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "preact/compat";
 import type { InspectableApp, OpenAppInput } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
 
@@ -30,23 +30,23 @@ function launchInput(app: InspectableApp | null): OpenAppInput | null {
 
 export function useAppLaunch(client: NetworkClient, selectedApp: InspectableApp | null, refresh: () => void) {
   const [launchState, setLaunchState] = useState<{ key: string; pending: boolean; error: string | null } | null>(null);
-  const activeLaunch = useRef<LaunchAttempt | null>(null);
-  const currentApp = useRef(selectedApp);
+  const activeLaunchRef = useRef<LaunchAttempt | null>(null);
+  const currentAppRef = useRef(selectedApp);
 
   const cancelLaunch = useCallback(() => {
-    const attempt = activeLaunch.current;
+    const attempt = activeLaunchRef.current;
     if (attempt) {
       window.clearTimeout(attempt.timeout);
       window.clearInterval(attempt.interval);
-      activeLaunch.current = null;
+      activeLaunchRef.current = null;
     }
   }, []);
 
   const reconcileSelection = useCallback(
     (app: InspectableApp | null) => {
-      const previous = currentApp.current;
-      currentApp.current = app;
-      // Native selection changes must cancel a launch before React renders the next app.
+      const previous = currentAppRef.current;
+      currentAppRef.current = app;
+      // Native selection changes must cancel a launch before the inspector renders the next app.
       if (appKey(previous) !== appKey(app)) {
         cancelLaunch();
         setLaunchState(null);
@@ -56,33 +56,33 @@ export function useAppLaunch(client: NetworkClient, selectedApp: InspectableApp 
   );
 
   const openSelectedApp = useCallback(async () => {
-    const app = currentApp.current;
+    const app = currentAppRef.current;
     const key = appKey(app);
     const input = launchInput(app);
-    if (!app || !key || !input || !client.openApp || activeLaunch.current) return;
+    if (!app || !key || !input || !client.openApp || activeLaunchRef.current) return;
 
     const attempt: LaunchAttempt = { opening: true, waiting: true };
-    activeLaunch.current = attempt;
+    activeLaunchRef.current = attempt;
     setLaunchState({ key, pending: true, error: null });
     attempt.timeout = window.setTimeout(() => {
-      if (activeLaunch.current !== attempt) return;
+      if (activeLaunchRef.current !== attempt) return;
       attempt.waiting = false;
       window.clearInterval(attempt.interval);
       refresh();
-      if (!attempt.opening) activeLaunch.current = null;
+      if (!attempt.opening) activeLaunchRef.current = null;
       setLaunchState({ key, pending: attempt.opening, error: null });
     }, 5_000);
     attempt.interval = window.setInterval(refresh, 500);
 
     try {
       await client.openApp(input);
-      if (activeLaunch.current !== attempt) return;
+      if (activeLaunchRef.current !== attempt) return;
       attempt.opening = false;
-      if (!attempt.waiting) activeLaunch.current = null;
+      if (!attempt.waiting) activeLaunchRef.current = null;
       setLaunchState({ key, pending: attempt.waiting, error: null });
       refresh();
     } catch (cause) {
-      if (activeLaunch.current !== attempt) return;
+      if (activeLaunchRef.current !== attempt) return;
       cancelLaunch();
       setLaunchState({
         key,
@@ -94,7 +94,7 @@ export function useAppLaunch(client: NetworkClient, selectedApp: InspectableApp 
 
   useEffect(() => cancelLaunch, [cancelLaunch, client]);
 
-  const isPolling = useCallback(() => activeLaunch.current?.waiting === true, []);
+  const isPolling = useCallback(() => activeLaunchRef.current?.waiting === true, []);
   const currentLaunch = launchState?.key === appKey(selectedApp) ? launchState : null;
   const appLaunch: AppLaunchControl | null =
     launchInput(selectedApp) && client.openApp

@@ -1,8 +1,45 @@
-import { renderToStaticMarkup } from "react-dom/server";
+// @vitest-environment jsdom
+import { render } from "preact";
+import { act } from "preact/test-utils";
+import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
 import { ExclusionFilterControl, ExclusionFilterPopover } from "./ExclusionFilterControl";
 
 describe("persistent exclusion filter controls", () => {
+  it("updates the filter on input and restores focus after submitting", async () => {
+    const container = document.createElement("div");
+    const onAddFilter = vi.fn();
+    document.body.append(container);
+    try {
+      await act(() =>
+        render(
+          <ExclusionFilterPopover
+            popupId="exclusions"
+            exclusionFilters={[]}
+            onAddFilter={onAddFilter}
+            onRemoveFilter={vi.fn()}
+          />,
+          container
+        )
+      );
+      const input = container.querySelector("input")!;
+      const button = container.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+      expect(button.disabled).toBe(true);
+      await act(() => {
+        input.value = "api.example.test";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(button.disabled).toBe(false);
+      await act(() => button.click());
+      expect(onAddFilter).toHaveBeenCalledExactlyOnceWith("-api.example.test");
+      expect(input.value).toBe("");
+      expect(document.activeElement).toBe(input);
+    } finally {
+      await act(() => render(null, container));
+      container.remove();
+    }
+  });
+
   it("shows a subtle hidden-request summary and settings control without an attention badge", () => {
     const markup = renderToStaticMarkup(
       <ExclusionFilterControl

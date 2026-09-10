@@ -1,4 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
 import type { InspectableApp, SnapOServer } from "../../../network/bridge-types";
 import type { NetworkClient } from "../../../network/client";

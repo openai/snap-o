@@ -1,5 +1,6 @@
-import { Plus, Settings2, X } from "lucide-react";
-import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import type { JSX } from "preact";
+import { Plus, Settings2, X } from "lucide-preact";
+import { type FormEvent, useEffect, useId, useRef, useState } from "preact/compat";
 import { normalizeExclusionFilter } from "../lib/exclusionFilters";
 
 export function ExclusionFilterControl({
@@ -110,10 +111,10 @@ export function ExclusionFilterPopover({
         <input
           ref={inputRef}
           value={filterText}
-          onChange={(event) => setFilterText(event.target.value)}
+          onChange={(event) => setFilterText(event.currentTarget.value)}
           placeholder="Text to exclude"
           aria-label="Text to exclude"
-          spellCheck={false}
+          spellcheck={false}
           autoCapitalize="none"
           autoComplete="off"
         />

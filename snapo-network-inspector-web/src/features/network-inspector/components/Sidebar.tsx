@@ -1,5 +1,6 @@
-import { RefreshCw, SortAsc, SortDesc, Trash2 } from "lucide-react";
-import { memo } from "react";
+import type { JSX } from "preact";
+import { RefreshCw, SortAsc, SortDesc, Trash2 } from "lucide-preact";
+import { memo } from "preact/compat";
 import type { NetworkClient } from "../../../network/client";
 import type { InspectorRecord, ServerId } from "../../../network/cdp";
 import type {
@@ -119,7 +120,7 @@ export const Sidebar = memo(function Sidebar({
           <div className="search-row">
             <input
               value={searchText}
-              onChange={(event) => onSearchTextChange(event.target.value)}
+              onChange={(event) => onSearchTextChange(event.currentTarget.value)}
               placeholder="Filter by keyword"
               aria-label="Filter by keyword"
             />

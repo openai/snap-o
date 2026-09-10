@@ -1,4 +1,5 @@
-import { renderToStaticMarkup } from "react-dom/server";
+// @vitest-environment jsdom
+import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it } from "vitest";
 import type { NetworkClient } from "../../../network/client";
 import type { RequestRecord } from "../../../network/cdp";
@@ -46,7 +47,12 @@ describe("Response Body loading state", () => {
 
     expect(markup).toContain("Response Body");
     expect(markup).toContain("Captured 7.3 MB");
-    expect(markup).toContain('<div class="payload-card"><div class="body-loading" role="status">');
+    expect(
+      document
+        .createRange()
+        .createContextualFragment(markup)
+        .querySelector('.payload-card > .body-loading[role="status"]')
+    ).not.toBeNull();
     expect(markup).toContain("body-loading-spinner");
     expect(markup).toContain('aria-hidden="true"');
     expect(markup).toContain("Loading");
@@ -98,7 +104,10 @@ describe("Response Body loading state", () => {
       />
     );
     expect(markup).toContain("Couldn’t load the response. Try again.");
-    expect(markup).toContain('type="button">Retry</button>');
+    expect(
+      document.createRange().createContextualFragment(markup).querySelector('.body-load-message button[type="button"]')
+        ?.textContent
+    ).toBe("Retry");
     expect(markup).not.toContain("no longer available");
     expect(markup).not.toContain("Loading");
   });
@@ -252,7 +261,10 @@ describe("SSE stream status", () => {
     });
 
     expect(markup).toContain("· Closed");
-    expect(markup).toContain('role="status">Stream closed: Read timed out.</div>');
+    expect(
+      document.createRange().createContextualFragment(markup).querySelector('.stream-close-message[role="status"]')
+        ?.textContent
+    ).toBe("Stream closed: Read timed out.");
     expect(markup.match(/Read timed out\./g)).toHaveLength(1);
     expect(markup.indexOf("Stream closed:")).toBeGreaterThan(markup.indexOf("sample-event"));
   });

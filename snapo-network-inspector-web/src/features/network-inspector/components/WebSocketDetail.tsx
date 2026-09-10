@@ -1,4 +1,5 @@
-import { memo } from "react";
+import type { JSX } from "preact";
+import { memo } from "preact/compat";
 import type { NetworkClient } from "../../../network/client";
 import { recordId, type WebSocketRecord } from "../../../network/cdp";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";

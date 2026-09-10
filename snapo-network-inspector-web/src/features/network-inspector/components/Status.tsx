@@ -1,3 +1,4 @@
+import type { JSX } from "preact";
 import type { InspectorRecord, RequestStatus } from "../../../network/cdp";
 import { statusDisplayName, statusToneClass } from "../lib/format";
 import { recordShowsActiveIndicator } from "../lib/records";

@@ -1,5 +1,5 @@
-import { StrictMode, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { render, type JSX } from "preact";
+import { useState } from "preact/compat";
 import { RequestDetail } from "../features/network-inspector/components/RequestDetail";
 import { useInspectorUiState } from "../features/network-inspector/hooks/useInspectorUiState";
 import { createNetworkClient } from "../network/client";
@@ -24,7 +24,7 @@ function RequestDetailPreview(): JSX.Element {
           id="preview-request"
           value={record.requestId}
           onChange={(event) => {
-            const requestId = event.target.value;
+            const requestId = event.currentTarget.value;
             setSelectedId(requestId);
             const url = new URL(window.location.href);
             url.searchParams.set("request", requestId);
@@ -52,8 +52,4 @@ function RequestDetailPreview(): JSX.Element {
   );
 }
 
-createRoot(document.getElementById("root") as HTMLElement).render(
-  <StrictMode>
-    <RequestDetailPreview />
-  </StrictMode>
-);
+render(<RequestDetailPreview />, document.getElementById("root") as HTMLElement);

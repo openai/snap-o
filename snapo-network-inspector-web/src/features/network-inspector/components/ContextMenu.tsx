@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, type KeyboardEvent } from "react";
+import type { JSX } from "preact";
+import { useLayoutEffect, useRef, type KeyboardEvent } from "preact/compat";
 
 export interface ContextMenuState {
   x: number;
@@ -53,8 +54,7 @@ export function ContextMenu({
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // Callers dismiss menus on window keydown. Let the menu finish handling its own keys first.
     event.stopPropagation();
-    if (event.defaultPrevented || event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey)
-      return;
+    if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
 
     if (event.key === "Escape" || event.key === "Tab") {
       if (event.key === "Escape") event.preventDefault();

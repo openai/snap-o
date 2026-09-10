@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "preact/compat";
 import type { NetworkClient } from "../../../network/client";
 
 export function useCopyFeedback(
