@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "id": "network",
+  "name": "Network",
+  "icon": "network",
+  "hostApiVersion": 1,
+  "discovery": {
+    "socketPrefix": "snapo_network_"
+  }
+}

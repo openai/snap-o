@@ -225,8 +225,28 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn(f"{old_path}:1:{declaration}", report)
         self.assertIn(f"{new_path}:1:{declaration}", report)
 
+    def test_reports_versions_and_native_changes_after_inspector_package_move(self):
+        for index, package in ((3, "network"), (4, "tweaks")):
+            _, old_path, declaration = DECLARATIONS[index]
+            new_path = old_path.replace("snapo-network-inspector-web/", f"inspectors/{package}/", 1)
+            self.write(new_path, self.baseline[old_path])
+            (self.repo / old_path).unlink()
+        native = "snapo-app-mac/Snap-O/Inspectors/InspectorHTTPService.swift"
+        self.write(native, "struct InspectorHTTPService {}\n")
+        self.commit()
+
+        report = self.report()
+        comparison = report.split("Mac/web/CLI clients protocol comparison:", 1)[1]
+        self.assertNotIn("UNRESOLVED", comparison)
+        for index, package in ((3, "network"), (4, "tweaks")):
+            _, old_path, declaration = DECLARATIONS[index]
+            new_path = old_path.replace("snapo-network-inspector-web/", f"inspectors/{package}/", 1)
+            self.assertIn(f"{old_path}:1:{declaration}", comparison)
+            self.assertIn(f"{new_path}:1:{declaration}", comparison)
+        self.assertIn(native, comparison)
+
     def test_each_missing_declaration_is_unresolved_despite_other_matches(self):
-        debug = "snapo-network-inspector-web/src/features/network-inspector/lib/debug.ts"
+        debug = "inspectors/network/src/features/network-inspector/lib/debug.ts"
         for label, missing_path, declaration in DECLARATIONS:
             with self.subTest(label=label):
                 for path, content in self.baseline.items():

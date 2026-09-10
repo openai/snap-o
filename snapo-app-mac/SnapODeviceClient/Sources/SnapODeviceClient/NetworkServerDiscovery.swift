@@ -19,7 +19,7 @@ public enum NetworkServerDiscovery {
   }
 
   public static func pid(inSocketName socketName: String) -> Int? {
-    InspectorKind.network.pid(inSocketName: socketName)
+    InspectorSocketDefinition(id: InspectorID(rawValue: "network"), socketPrefix: socketPrefix).pid(inSocketName: socketName)
   }
 
   public static func packageName(inCmdline output: String) -> String? {
@@ -78,9 +78,10 @@ public enum NetworkServerDiscovery {
 
   public static func packageNameHint(
     for reference: NetworkServerReference,
-    using adb: ADBClient
+    using adb: ADBClient,
+    pid: Int? = nil
   ) async -> String? {
-    guard let pid = InspectorKind.allCases.compactMap({ $0.pid(inSocketName: reference.socketName) }).first,
+    guard let pid = pid ?? Self.pid(inSocketName: reference.socketName),
           let output = try? await adb.runDiscoveryShellString(
             deviceID: reference.deviceId,
             command: "cat /proc/\(pid)/cmdline 2>/dev/null"
@@ -93,9 +94,10 @@ public enum NetworkServerDiscovery {
 
   public static func androidUserID(
     for reference: NetworkServerReference,
-    using adb: ADBClient
+    using adb: ADBClient,
+    pid: Int? = nil
   ) async -> Int? {
-    guard let pid = InspectorKind.allCases.compactMap({ $0.pid(inSocketName: reference.socketName) }).first,
+    guard let pid = pid ?? Self.pid(inSocketName: reference.socketName),
           let output = try? await adb.runDiscoveryShellString(
             deviceID: reference.deviceId,
             command: "cat /proc/\(pid)/status 2>/dev/null"

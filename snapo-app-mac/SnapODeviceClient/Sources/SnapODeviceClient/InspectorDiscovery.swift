@@ -1,11 +1,29 @@
 import Foundation
 
-public enum InspectorKind: String, Codable, Sendable, CaseIterable {
-  case network
-  case tweaks
+public struct InspectorID: RawRepresentable, Hashable, Codable, Sendable {
+  public let rawValue: String
 
-  public var socketPrefix: String {
-    "snapo_\(rawValue)_"
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+
+  public init(from decoder: Decoder) throws {
+    rawValue = try decoder.singleValueContainer().decode(String.self)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
+}
+
+public struct InspectorSocketDefinition: Sendable, Equatable {
+  public let id: InspectorID
+  public let socketPrefix: String
+
+  public init(id: InspectorID, socketPrefix: String) {
+    self.id = id
+    self.socketPrefix = socketPrefix
   }
 
   public func pid(inSocketName socketName: String) -> Int? {
@@ -59,28 +77,27 @@ public struct InspectorAppMetadata: Sendable, Equatable {
 }
 
 public struct InspectorEndpoint: Sendable {
-  public let kind: InspectorKind
+  public let kind: InspectorID
+  public let pid: Int?
   public let reference: NetworkServerReference
   public let deviceDisplayTitle: String
   public let protocolVersion: Int?
   public let metadata: InspectorAppMetadata
 
   public init(
-    kind: InspectorKind,
+    kind: InspectorID,
     reference: NetworkServerReference,
     deviceDisplayTitle: String,
+    pid: Int? = nil,
     protocolVersion: Int? = nil,
     metadata: InspectorAppMetadata = InspectorAppMetadata()
   ) {
     self.kind = kind
+    self.pid = pid
     self.reference = reference
     self.deviceDisplayTitle = deviceDisplayTitle
     self.protocolVersion = protocolVersion
     self.metadata = metadata
-  }
-
-  public var pid: Int? {
-    kind.pid(inSocketName: reference.socketName)
   }
 
   public var processID: String {
@@ -104,32 +121,43 @@ public struct InspectableProcess: Sendable {
 }
 
 public struct DiscoveredInspectorSocket: Sendable, Equatable {
-  public let kind: InspectorKind
+  public let kind: InspectorID
+  public let pid: Int
   public let reference: NetworkServerReference
 }
 
 public enum InspectorDiscovery {
-  public static func sockets(inProcNetUnix output: String, deviceID: String) -> [DiscoveredInspectorSocket] {
+  public static func sockets(
+    inProcNetUnix output: String,
+    deviceID: String,
+    definitions: [InspectorSocketDefinition]
+  ) -> [DiscoveredInspectorSocket] {
     Set(output.split(separator: "\n").compactMap { $0.split(whereSeparator: \.isWhitespace).last })
       .sorted().compactMap { token in
         guard token.first == "@" else { return nil }
         let name = String(token.dropFirst())
-        guard let kind = InspectorKind.allCases.first(where: { $0.pid(inSocketName: name) != nil }) else {
+        guard let definition = definitions.first(where: { $0.pid(inSocketName: name) != nil }),
+              let pid = definition.pid(inSocketName: name) else {
           return nil
         }
         return DiscoveredInspectorSocket(
-          kind: kind,
+          kind: definition.id,
+          pid: pid,
           reference: NetworkServerReference(deviceId: deviceID, socketName: name)
         )
       }
   }
 
-  public static func discover(on deviceIDs: [String], using adb: ADBClient) async -> [DiscoveredInspectorSocket] {
+  public static func discover(
+    on deviceIDs: [String],
+    using adb: ADBClient,
+    definitions: [InspectorSocketDefinition]
+  ) async -> [DiscoveredInspectorSocket] {
     await withTaskGroup(of: [DiscoveredInspectorSocket].self) { group in
       for deviceID in deviceIDs {
         group.addTask {
           guard let output = try? await adb.listUnixSockets(deviceID: deviceID) else { return [] }
-          return Self.sockets(inProcNetUnix: output, deviceID: deviceID)
+          return Self.sockets(inProcNetUnix: output, deviceID: deviceID, definitions: definitions)
         }
       }
       var sockets: [DiscoveredInspectorSocket] = []
@@ -143,7 +171,7 @@ public enum InspectorDiscovery {
   public static func processes(from endpoints: [InspectorEndpoint]) -> [InspectableProcess] {
     Dictionary(grouping: endpoints, by: \.processID).map { id, endpoints in
       let ordered = endpoints.sorted {
-        if $0.kind != $1.kind { return $0.kind == .network }
+        if $0.kind != $1.kind { return $0.kind.rawValue < $1.kind.rawValue }
         return $0.reference.socketName < $1.reference.socketName
       }
       let first = ordered[0]

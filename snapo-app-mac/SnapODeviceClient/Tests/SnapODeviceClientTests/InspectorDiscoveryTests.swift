@@ -4,6 +4,10 @@ import Testing
 
 @Suite("Inspector process discovery")
 struct InspectorDiscoveryTests {
+  private let definitions = ["network", "tweaks", "sample"].map {
+    InspectorSocketDefinition(id: InspectorID(rawValue: $0), socketPrefix: "snapo_\($0)_")
+  }
+
   @Test("discovers both inspector kinds from one socket snapshot")
   func parsesSharedSnapshot() {
     let output = """
@@ -14,7 +18,7 @@ struct InspectorDiscoveryTests {
     5: 0 @snapo_unknown_42
     6: 0 @snapo_tweaks_0
     """
-    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
+    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone", definitions: definitions)
     #expect(sockets.map(\.kind) == [.network, .tweaks])
     #expect(sockets.map(\.reference.deviceId) == ["phone", "phone"])
     #expect(sockets.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42"])
@@ -24,7 +28,7 @@ struct InspectorDiscoveryTests {
   func preservesBridgeEncoding() throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = .sortedKeys
-    #expect(try String(bytes: encoder.encode(InspectorKind.tweaks), encoding: .utf8) == "\"tweaks\"")
+    #expect(try String(bytes: encoder.encode(InspectorID.tweaks), encoding: .utf8) == "\"tweaks\"")
     let server = NetworkServerReference(deviceId: "device", socketName: "snapo_tweaks_42")
     #expect(try String(bytes: encoder.encode(server), encoding: .utf8)
       == "{\"deviceId\":\"device\",\"socketName\":\"snapo_tweaks_42\"}")
@@ -32,13 +36,13 @@ struct InspectorDiscoveryTests {
 
   @Test("extracts only valid process IDs from both inspector sockets")
   func parsesProcessIDs() {
-    #expect(InspectorKind.network.pid(inSocketName: "snapo_network_42") == 42)
-    #expect(InspectorKind.tweaks.pid(inSocketName: "snapo_tweaks_42") == 42)
+    #expect(definitions[0].pid(inSocketName: "snapo_network_42") == 42)
+    #expect(definitions[1].pid(inSocketName: "snapo_tweaks_42") == 42)
     for suffix in ["", "0", "-1", "+1", "42_extra", "999999999999999999999999"] {
-      #expect(InspectorKind.network.pid(inSocketName: "snapo_network_\(suffix)") == nil)
-      #expect(InspectorKind.tweaks.pid(inSocketName: "snapo_tweaks_\(suffix)") == nil)
+      #expect(definitions[0].pid(inSocketName: "snapo_network_\(suffix)") == nil)
+      #expect(definitions[1].pid(inSocketName: "snapo_tweaks_\(suffix)") == nil)
     }
-    #expect(InspectorKind.network.pid(inSocketName: "snapo_tweaks_42") == nil)
+    #expect(definitions[0].pid(inSocketName: "snapo_tweaks_42") == nil)
   }
 
   @Test("merges inspector sockets before any app info is available")
@@ -118,16 +122,22 @@ struct InspectorDiscoveryTests {
   }
 
   private func endpoint(
-    _ kind: InspectorKind,
+    _ kind: InspectorID,
     device: String = "device",
     pid: Int = 42,
     metadata: InspectorAppMetadata = InspectorAppMetadata()
   ) -> InspectorEndpoint {
     InspectorEndpoint(
       kind: kind,
-      reference: NetworkServerReference(deviceId: device, socketName: "\(kind.socketPrefix)\(pid)"),
+      reference: NetworkServerReference(deviceId: device, socketName: "snapo_\(kind.rawValue)_\(pid)"),
       deviceDisplayTitle: "Device",
+      pid: pid,
       metadata: metadata
     )
   }
+}
+
+private extension InspectorID {
+  static let network = Self(rawValue: "network")
+  static let tweaks = Self(rawValue: "tweaks")
 }

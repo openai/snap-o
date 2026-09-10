@@ -240,10 +240,12 @@ print_client_protocol_declarations() {
     'snapo-app-mac/SnapODeviceClient/Sources/SnapODeviceClient/NetworkProtocol.swift'
   print_protocol_declaration "$1" 'Web Network supported version' \
     'const supportedProtocolVersion[[:space:]:=]' \
-    'snapo-network-inspector-web/src/features/network-inspector/lib/protocol.ts'
+    'snapo-network-inspector-web/src/features/network-inspector/lib/protocol.ts' \
+    'inspectors/network/src/features/network-inspector/lib/protocol.ts'
   print_protocol_declaration "$1" 'Web Tweaks modified-state/reset feature threshold' \
     'const modifiedTweakProtocolVersion[[:space:]:=]' \
-    'snapo-network-inspector-web/src/features/tweaks-inspector/TweaksInspectorApp.tsx'
+    'snapo-network-inspector-web/src/features/tweaks-inspector/TweaksInspectorApp.tsx' \
+    'inspectors/tweaks/src/features/tweaks-inspector/TweaksInspectorApp.tsx'
   print_protocol_declaration "$1" 'CLI Tweaks minimum-version checks' \
     'protocol_version[[:space:]]*<[[:space:]]*[0-9]+' \
     'scripts/snapo'
@@ -288,7 +290,7 @@ print_protocol_evidence 'Android servers' "$ANDROID_BASE" \
 print_protocol_evidence 'Mac/web/CLI clients' "$MAC_BASE" \
   print_client_protocol_declarations \
   contracts snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
-  snapo-network-inspector-web scripts
+  snapo-app-mac/Snap-O/Inspectors snapo-network-inspector-web inspectors scripts
 printf '%s\n' 'Protocol review must be recorded for this source SHA before the version bump; this report does not approve compatibility.'
 
 printf '%s\n' ''

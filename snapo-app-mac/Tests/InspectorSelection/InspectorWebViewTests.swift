@@ -10,24 +10,17 @@ actor InspectorHTTPService {
   }
 }
 
-actor NetworkInspectorService {
+actor InspectorService {
+  nonisolated let registry: InspectorPluginRegistry
   let apps: [InspectableApp]
   let endpoint = InspectorHTTPService.Endpoint(id: UUID(), baseURL: URL(string: "http://127.0.0.1:1234/")!)
-  init(apps: [InspectableApp]) {
+  init(apps: [InspectableApp], registry: InspectorPluginRegistry) {
     self.apps = apps
+    self.registry = registry
   }
 
   func discoverInspectors() async -> InspectorDiscoverySnapshot {
-    InspectorDiscoverySnapshot(apps: apps, networkServers: apps.map { app in
-      let reference = app.inspectors.first { $0.kind == .network }!.server
-      return NetworkInspectorServer(
-        server: reference.key, deviceId: app.deviceId, socketName: reference.socketName,
-        deviceDisplayTitle: app.deviceDisplayTitle, displayName: app.name,
-        isConnected: true, hasAppInfo: true, pid: 10, protocolVersion: 2,
-        isProtocolNewerThanSupported: false, isProtocolOlderThanSupported: false, appIconBase64: nil,
-        packageName: app.packageName, appName: app.name, instanceId: nil
-      )
-    })
+    InspectorDiscoverySnapshot(apps: apps)
   }
 
   func openApp(_ input: OpenAppInput) async throws {}
@@ -51,7 +44,7 @@ struct InspectorWebViewTests {
     InspectableApp(
       id: "phone:pid:\(pid)", name: "Demo \(pid)", packageName: "com.example.demo\(pid)",
       processName: "com.example.demo\(pid)", androidUserId: 0, deviceId: "phone", deviceDisplayTitle: "Phone",
-      appIconBase64: nil, inspectors: AppInspectorKind.allCases.map { kind in
+      appIconBase64: nil, inspectors: [InspectorID.network, .tweaks, .sample].map { kind in
         AppInspectorOption(kind: kind, server: InspectorServerReference(
           deviceId: "phone", socketName: "snapo_\(kind.rawValue)_\(pid)"
         ), protocolVersion: 4)
@@ -67,9 +60,24 @@ struct InspectorWebViewTests {
     defer { preferences.removePersistentDomain(forName: suite) }
     let first = app(10)
     let second = app(20)
-    let service = NetworkInspectorService(apps: [first, second])
-    let model = NetworkInspectorHostModel(service: service, preferences: preferences)
-    let hosting = NSHostingView(rootView: NetworkInspectorWebView(model: model))
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.copyItem(at: URL(fileURLWithPath: "../inspectors/dist"), to: root)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.copyItem(
+      at: URL(fileURLWithPath: "Tests/InspectorSelection/Fixtures/sample"),
+      to: root.appendingPathComponent("sample")
+    )
+    let registry = try InspectorPluginRegistry(directory: root)
+    precondition(registry.plugins.count == 3)
+    let sockets = InspectorDiscovery.sockets(
+      inProcNetUnix: "1: 0 @snapo_sample_10",
+      deviceID: "phone",
+      definitions: registry.socketDefinitions
+    )
+    precondition(sockets.first?.kind == .sample && sockets.first?.pid == 10)
+    let service = InspectorService(apps: [first, second], registry: registry)
+    let model = InspectorHostModel(service: service, preferences: preferences)
+    let hosting = NSHostingView(rootView: InspectorWebView(model: model))
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
       styleMask: [.borderless], backing: .buffered, defer: false
@@ -83,17 +91,44 @@ struct InspectorWebViewTests {
       model.inspectorApps.count == 2 && model.isPageReady && model.webContainer?.webView.superview != nil
     }
     let network = model.webContainer!.webView
+    try await eventually("Packaged Network JavaScript should render") {
+      await (try? network.evaluateJavaScript("document.querySelector('#root').childElementCount > 0") as? Bool) == true
+    }
     let canCreateSession = try await network.evaluateJavaScript("isSecureContext && typeof crypto.randomUUID === 'function'") as? Bool
     precondition(canCreateSession == true, "The frontend needs a secure localhost origin for session IDs")
     _ = try await network.evaluateJavaScript("window.testState = 'network state'")
     let storageKey = "test-" + UUID().uuidString
     _ = try await network.evaluateJavaScript("localStorage.setItem('\(storageKey)', 'network value')")
 
+    model.selectInspector(first, option: first.inspectors.first { $0.kind == .sample }!)
+    try await eventually("A third plugin should load its index.html") { model.isPageReady && model.webContainer?.webView !== network }
+    let sample = model.webContainer!.webView
+    let marker = try await sample.evaluateJavaScript("document.querySelector('#sample-inspector').textContent") as? String
+    precondition(marker == "Sample inspector", "Load the plugin HTML without assuming a root element")
+    let sampleState = try await sample.callAsyncJavaScript(
+      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
+      arguments: [:], in: nil, contentWorld: .page
+    ) as? [String: Any]
+    precondition(sampleState?["connected"] as? Bool == true)
+    let sampleStorage = try await sample.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
+    precondition(sampleStorage is NSNull)
+    _ = try await sample.evaluateJavaScript("window.testState = 'sample state'")
+    model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
+    try await eventually("Network should return after the sample plugin") { network.superview != nil }
+    model.selectInspector(first, option: first.inspectors.first { $0.kind == .sample }!)
+    try await eventually("The sample plugin should reuse its view") { sample.superview != nil }
+    let retainedSample = try await sample.evaluateJavaScript("window.testState") as? String
+    precondition(retainedSample == "sample state")
+    print("A third manifest discovers, loads, connects, and retains an isolated page")
+
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .tweaks }!)
     try await eventually("Tweaks should load in its own view") {
       model.isPageReady && model.webContainer?.webView !== network && network.superview == nil
     }
     let tweaks = model.webContainer!.webView
+    try await eventually("Packaged Tweaks JavaScript should render") {
+      await (try? tweaks.evaluateJavaScript("document.querySelector('#root').childElementCount > 0") as? Bool) == true
+    }
     _ = try await tweaks.evaluateJavaScript("window.testState = 'tweaks state'")
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
     try await eventually("Switching back should reuse Network") {
@@ -108,7 +143,7 @@ struct InspectorWebViewTests {
     let tweaksState = try await tweaks.evaluateJavaScript("window.testState") as? String
     precondition(tweaksState == "tweaks state")
     let hiddenNetworkState = try await network.callAsyncJavaScript(
-      "return await window.webkit.messageHandlers.snapoNetwork.postMessage({command:'hostState'});",
+      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
       arguments: [:], in: nil, contentWorld: .page
     ) as? [String: Any]
     precondition(hiddenNetworkState?["connected"] as? Bool == false)
@@ -117,20 +152,20 @@ struct InspectorWebViewTests {
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
     try await eventually("Network should remount") { network.superview != nil }
     let activeState = try await network.callAsyncJavaScript(
-      "return await window.webkit.messageHandlers.snapoNetwork.postMessage({command:'hostState'});",
+      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
       arguments: [:], in: nil, contentWorld: .page
     ) as? [String: Any]
     precondition(activeState?["baseURL"] as? String == "http://127.0.0.1:1234/")
     _ = try await network.callAsyncJavaScript(
       """
-      return await window.webkit.messageHandlers.snapoNetwork.postMessage({command:'setToolbar',payload:{revision:1,
-        actions:[{type:'button',id:'clear',label:'Clear',icon:'clear',enabled:true}]}});
+      return await window.webkit.messageHandlers.snapoHost.postMessage({command:'setToolbar',payload:{revision:1000000,
+        actions:[{type:'button',id:'test-clear',label:'Clear',icon:'clear',enabled:true}]}});
       """, arguments: [:], in: nil, contentWorld: .page
     )
     precondition(model.toolbarActions.count == 1)
     model.webContainer!.recoverFromEventOverflow()
     try await eventually("Page recovery should reload the inspector") { model.isPageReady }
-    precondition(model.toolbarActions.isEmpty)
+    precondition(!model.toolbarActions.contains { $0.id == "test-clear" })
     model.selectApp(second)
     let replacement = model.webContainer!.webView
     precondition(replacement !== network, "Changing the selected app replaces that inspector's view")
