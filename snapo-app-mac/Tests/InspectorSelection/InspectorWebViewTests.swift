@@ -3,82 +3,36 @@ import SnapODeviceClient
 import SwiftUI
 import WebKit
 
+actor InspectorHTTPService {
+  struct Endpoint {
+    let id: UUID
+    let baseURL: URL
+  }
+}
+
 actor NetworkInspectorService {
   let apps: [InspectableApp]
-  private let output = AsyncStream<NetworkInspectorOutput>.makeStream()
-  private(set) var streamStarts = 0
-  private(set) var cancelledStarts = 0
-  private(set) var stoppedKinds: [AppInspectorKind] = []
-  private var holdCleanup = false
-  private var cleanup: CheckedContinuation<Void, Never>?
-
-  var isCleanupBlocked: Bool {
-    cleanup != nil
-  }
-
-  func holdNextCleanup() {
-    holdCleanup = true
-  }
-
-  func releaseCleanup() {
-    cleanup?.resume()
-    cleanup = nil
-  }
-
+  let endpoint = InspectorHTTPService.Endpoint(id: UUID(), baseURL: URL(string: "http://127.0.0.1:1234/")!)
   init(apps: [InspectableApp]) {
     self.apps = apps
   }
 
   func discoverInspectors() async -> InspectorDiscoverySnapshot {
-    InspectorDiscoverySnapshot(apps: apps, networkServers: [])
-  }
-
-  func outputStream() -> AsyncStream<NetworkInspectorOutput> {
-    output.stream
-  }
-
-  func isRunning() -> Bool {
-    true
+    InspectorDiscoverySnapshot(apps: apps, networkServers: apps.map { app in
+      let reference = app.inspectors.first { $0.kind == .network }!.server
+      return NetworkInspectorServer(
+        server: reference.key, deviceId: app.deviceId, socketName: reference.socketName,
+        deviceDisplayTitle: app.deviceDisplayTitle, displayName: app.name,
+        isConnected: true, hasAppInfo: true, pid: 10, protocolVersion: 2,
+        isProtocolNewerThanSupported: false, isProtocolOlderThanSupported: false, appIconBase64: nil,
+        packageName: app.packageName, appName: app.name, instanceId: nil
+      )
+    })
   }
 
   func openApp(_ input: OpenAppInput) async throws {}
-  func listTweaks(for reference: InspectorServerReference) async throws -> TweakList {
-    TweakList(tweaks: [])
-  }
-
-  func updateTweaks(_ input: UpdateTweaksInput) async throws -> TweakUpdates {
-    TweakUpdates(tweaks: [], errors: nil)
-  }
-
-  func invokeTweakAction(_ input: InvokeTweakActionInput) async throws {}
-  func startTweakStream(_ reference: InspectorServerReference) async throws -> NetworkStreamStarted {
-    NetworkStreamStarted(streamId: "tweaks")
-  }
-
-  func stopTweakStream(_ id: String) async {}
-  func startStream(_ reference: NetworkServerReference) async throws -> NetworkStreamStarted {
-    streamStarts += 1
-    do { try await Task.sleep(for: .seconds(30)) } catch {
-      cancelledStarts += 1
-      throw error
-    }
-    return NetworkStreamStarted(streamId: "network")
-  }
-
-  func stopStream(_ id: String) async {}
-  func stopAllStreams(kind: AppInspectorKind) async {
-    stoppedKinds.append(kind)
-    if holdCleanup {
-      holdCleanup = false
-      await withCheckedContinuation { cleanup = $0 }
-    }
-  }
-
-  func loadBodies(_ input: NetworkLoadBodiesInput) async -> NetworkRequestBodies {
-    NetworkRequestBodies(
-      requestId: input.requestId, requestBody: nil, responseBody: nil,
-      responseBodyBase64Encoded: nil, responseBodyLoadError: nil
-    )
+  func inspectorEndpoint(for reference: InspectorServerReference) async throws -> InspectorHTTPService.Endpoint {
+    endpoint
   }
 }
 
@@ -129,9 +83,11 @@ struct InspectorWebViewTests {
       model.inspectorApps.count == 2 && model.isPageReady && model.webContainer?.webView.superview != nil
     }
     let network = model.webContainer!.webView
+    let canCreateSession = try await network.evaluateJavaScript("isSecureContext && typeof crypto.randomUUID === 'function'") as? Bool
+    precondition(canCreateSession == true, "The frontend needs a secure localhost origin for session IDs")
     _ = try await network.evaluateJavaScript("window.testState = 'network state'")
-    let stoppedBeforeTweaks = await service.stoppedKinds
-    precondition(!stoppedBeforeTweaks.contains(.tweaks), "Do not create inactive inspector pages eagerly")
+    let storageKey = "test-" + UUID().uuidString
+    _ = try await network.evaluateJavaScript("localStorage.setItem('\(storageKey)', 'network value')")
 
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .tweaks }!)
     try await eventually("Tweaks should load in its own view") {
@@ -152,39 +108,45 @@ struct InspectorWebViewTests {
     let tweaksState = try await tweaks.evaluateJavaScript("window.testState") as? String
     precondition(tweaksState == "tweaks state")
     let hiddenNetworkState = try await network.callAsyncJavaScript(
-      "return await window.webkit.messageHandlers.snapoNetwork.postMessage({command:'inspectorHostState'});",
+      "return await window.webkit.messageHandlers.snapoNetwork.postMessage({command:'hostState'});",
       arguments: [:], in: nil, contentWorld: .page
     ) as? [String: Any]
-    precondition(hiddenNetworkState?["isActive"] as? Bool == false)
+    precondition(hiddenNetworkState?["connected"] as? Bool == false)
     print("Inspector types reuse their own view and receive inactive connection state")
 
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
     try await eventually("Network should remount") { network.superview != nil }
-    _ = try await network.evaluateJavaScript("""
-    void window.webkit.messageHandlers.snapoNetwork.postMessage({
-      command: 'startStream', payload: {deviceId:'phone',socketName:'snapo_network_10'}
-    }).catch(() => {});
-    """)
-    try await eventually("Old page request should start") { await service.streamStarts == 1 }
-    await service.holdNextCleanup()
+    let activeState = try await network.callAsyncJavaScript(
+      "return await window.webkit.messageHandlers.snapoNetwork.postMessage({command:'hostState'});",
+      arguments: [:], in: nil, contentWorld: .page
+    ) as? [String: Any]
+    precondition(activeState?["baseURL"] as? String == "http://127.0.0.1:1234/")
+    _ = try await network.callAsyncJavaScript(
+      """
+      return await window.webkit.messageHandlers.snapoNetwork.postMessage({command:'setToolbar',payload:{revision:1,
+        actions:[{type:'button',id:'clear',label:'Clear',icon:'clear',enabled:true}]}});
+      """, arguments: [:], in: nil, contentWorld: .page
+    )
+    precondition(model.toolbarActions.count == 1)
     model.webContainer!.recoverFromEventOverflow()
-    try await eventually("Page recovery should begin cleanup") { await service.isCleanupBlocked }
+    try await eventually("Page recovery should reload the inspector") { model.isPageReady }
+    precondition(model.toolbarActions.isEmpty)
     model.selectApp(second)
     let replacement = model.webContainer!.webView
     precondition(replacement !== network, "Changing the selected app replaces that inspector's view")
-    try await Task.sleep(for: .milliseconds(50))
-    precondition(!model.isPageReady, "Wait for old recovery cleanup before starting the replacement")
-    await service.releaseCleanup()
-    try await eventually("Cancel old requests before loading the replacement") {
-      await service.cancelledStarts == 1 && model.isPageReady && replacement.superview != nil
-    }
+    try await eventually("The replacement page should load") { model.isPageReady && replacement.superview != nil }
+    let stored = try await replacement.evaluateJavaScript("localStorage.getItem('\(storageKey)')") as? String
+    precondition(stored == "network value", "Storage survives replacement pages of the same inspector")
+    let isolated = try await tweaks.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
+    precondition(isolated is NSNull, "Each inspector has separate storage")
+    _ = try await replacement.evaluateJavaScript("localStorage.removeItem('\(storageKey)')")
     precondition(network.superview == nil)
     let replacementState = try await replacement.evaluateJavaScript("typeof window.testState") as? String
     precondition(replacementState == "undefined")
     model.selectInspector(second, option: second.inspectors.first { $0.kind == .tweaks }!)
     precondition(model.webContainer?.webView !== tweaks, "Do not reuse another app's cached Tweaks page")
     try await eventually("The second app's Tweaks page should load") { model.isPageReady }
-    print("Changing apps replaces cached pages and cancels pending bridge requests")
+    print("Changing apps replaces cached pages and preserves inspector storage")
 
     model.selectApp(first)
     model.selectApp(second)

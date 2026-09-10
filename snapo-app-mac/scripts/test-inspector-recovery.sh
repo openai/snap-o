@@ -20,8 +20,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   Snap-O/NetworkInspector/NetworkInspectorBridgeModels.swift \
   Snap-O/NetworkInspector/InspectorSelection.swift \
   Snap-O/NetworkInspector/AppInspectorModel.swift \
-  Snap-O/NetworkInspector/TweakEventStreamDecoder.swift \
-  Snap-O/NetworkInspector/TweaksInspectorService.swift \
+  Snap-O/NetworkInspector/InspectorHTTPService.swift \
   Snap-O/NetworkInspector/NetworkInspectorService.swift \
   Tests/InspectorRecovery/InspectorRecoveryTests.swift -o "$TEST_DIR/inspector-recovery-tests"
 "$TEST_DIR/inspector-recovery-tests"

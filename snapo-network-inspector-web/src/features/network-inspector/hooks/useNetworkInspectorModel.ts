@@ -1,3 +1,4 @@
+import { host } from "../../../host";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { type NetworkClient } from "../../../network/client";
 import { bodyLoadPriority, RequestBodyLoader, type BodyLoadJob } from "../../../network/body-loader";
@@ -16,7 +17,7 @@ import type { DebugInspectorPreset, SnapOServer } from "../../../network/bridge-
 import { NetworkStreamController, type StreamLifecycleState } from "../../../network/stream-controller";
 import { useInspectorUiState } from "./useInspectorUiState";
 import { applyDebugInspectorPreset } from "../lib/debug";
-import { copyCurl, exportAsHar } from "../lib/exportActions";
+import { exportAsHar } from "../lib/exportActions";
 import { ExclusionFiltersRevision, normalizeExclusionFilter, normalizeExclusionFilters } from "../lib/exclusionFilters";
 import {
   clearCompleted,
@@ -59,7 +60,8 @@ export interface NetworkInspectorModel {
 export function useNetworkInspectorModel(
   client: NetworkClient,
   hostServer: SnapOServer | null,
-  isActive: boolean
+  isActive: boolean,
+  connectionRevision = 0
 ): NetworkInspectorModel {
   const [state, setState] = useState<InspectorDataState>(() => createEmptyInspectorState());
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
@@ -128,34 +130,29 @@ export function useNetworkInspectorModel(
     [deviceId, socketName]
   );
 
-  useEffect(() => client.onNativeSearchText(setSearchText), [client]);
-  useEffect(
-    () =>
-      client.onNativeExclusionFilters((filters) => {
-        exclusionFiltersRevision.invalidate();
-        setExclusionFilters(normalizeExclusionFilters(filters));
-      }),
-    [client, exclusionFiltersRevision]
-  );
-  useEffect(() => client.onNativeSortOrder(setSortNewestFirst), [client]);
-  useEffect(() => {
-    if (isActive) return client.onNativeClearCompleted(clearCompletedRecords);
-  }, [clearCompletedRecords, client, isActive]);
-
   useEffect(() => {
     let disposed = false;
-    const revision = exclusionFiltersRevision.capture();
-    void client.listExclusionFilters().then(
-      (filters) => {
-        if (!disposed && exclusionFiltersRevision.isCurrent(revision)) {
-          setExclusionFilters(normalizeExclusionFilters(filters));
-        }
-      },
-      () => {}
-    );
-
+    const reload = () => {
+      const revision = exclusionFiltersRevision.capture();
+      void client.listExclusionFilters().then(
+        (filters) => {
+          if (!disposed && exclusionFiltersRevision.isCurrent(revision))
+            setExclusionFilters(normalizeExclusionFilters(filters));
+        },
+        () => {}
+      );
+    };
+    const changed = (event: StorageEvent) => {
+      if (event.key === null || event.key === "network.exclusionFilters") {
+        exclusionFiltersRevision.invalidate();
+        reload();
+      }
+    };
+    reload();
+    window.addEventListener("storage", changed);
     return () => {
       disposed = true;
+      window.removeEventListener("storage", changed);
     };
   }, [client, exclusionFiltersRevision]);
 
@@ -206,7 +203,7 @@ export function useNetworkInspectorModel(
     });
     controller.start();
     return () => controller.dispose();
-  }, [client, isActive, selectedServer, selectedServerConnectionKey, selectedServerIsConnected]);
+  }, [client, isActive, connectionRevision, selectedServer, selectedServerConnectionKey, selectedServerIsConnected]);
 
   const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
 
@@ -317,55 +314,56 @@ export function useNetworkInspectorModel(
     [allRecords.length, selectedServerModel, serverRecordCount, streamIsRetrying, visibleRecords.length]
   );
   const hasClearableItems = useMemo(() => allRecords.some(isCompletedRecord), [allRecords]);
-  const selectedRecordKind = selectedRecord?.kind ?? null;
-  const hasVisibleRecords = visibleRecords.length > 0;
-
-  useEffect(
-    () =>
-      client.onNativeCopySelectedUrl(() => {
-        if (isActive && selectedRecord != null) void client.copyText(selectedRecord.url);
-      }),
-    [client, isActive, selectedRecord]
-  );
-  useEffect(
-    () =>
-      client.onNativeCopySelectedCurl(() => {
-        if (isActive && selectedRecord?.kind === "request")
-          void copyCurl(client, selectedRecord, selectedServerIsConnected);
-      }),
-    [client, isActive, selectedRecord, selectedServerIsConnected]
-  );
-  useEffect(
-    () =>
-      client.onNativeExportVisibleHar(() => {
-        if (isActive) void exportAsHar(client, visibleRecords, undefined, selectedServerIsConnected);
-      }),
-    [client, isActive, selectedServerIsConnected, visibleRecords]
-  );
-
   useEffect(() => {
-    if (!isActive) return;
-    client.nativeInspectorStateChanged({
-      selectedServer:
-        selectedServerModel == null
-          ? null
-          : { deviceId: selectedServerModel.deviceId, socketName: selectedServerModel.socketName },
-      searchText,
-      sortNewestFirst,
-      hasClearableItems,
-      selectedRecordKind,
-      hasVisibleRecords
-    });
+    void host
+      .setToolbar({
+        start: [
+          {
+            type: "button",
+            id: "clear",
+            icon: "clear",
+            label: "Clear completed requests",
+            enabled: hasClearableItems,
+            onClick: clearCompletedRecords
+          },
+          {
+            type: "button",
+            id: "sort",
+            icon: sortNewestFirst ? "sortDescending" : "sortAscending",
+            label: sortNewestFirst ? "Show oldest first" : "Show newest first",
+            onClick: () => setSortNewestFirst(!sortNewestFirst)
+          },
+          { type: "search", id: "search", label: "Filter requests", value: searchText, onChange: setSearchText }
+        ],
+        end: [
+          {
+            type: "button",
+            id: "export",
+            icon: "export",
+            label: "Export HAR (sanitized)",
+            enabled: visibleRecords.length > 0,
+            onClick: () => {
+              void exportAsHar(client, visibleRecords, undefined, selectedServerIsConnected);
+            }
+          }
+        ]
+      })
+      .catch(() => {});
   }, [
     client,
-    isActive,
+    clearCompletedRecords,
     hasClearableItems,
-    hasVisibleRecords,
     searchText,
-    selectedRecordKind,
-    selectedServerModel,
-    sortNewestFirst
+    selectedServerIsConnected,
+    sortNewestFirst,
+    visibleRecords
   ]);
+  useEffect(
+    () => () => {
+      void host.setToolbar({ start: [] }).catch(() => {});
+    },
+    []
+  );
 
   const selectRecord = useCallback((id: string) => setPreferredRecordId(id), []);
   const openDocs = useCallback(() => void client.openExternal(docsUrl), [client]);

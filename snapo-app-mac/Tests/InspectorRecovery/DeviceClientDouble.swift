@@ -18,7 +18,7 @@ public final class ADBClient: @unchecked Sendable {
   public func forwardLocalAbstract(deviceID: String, abstractSocket: String) async throws -> ADBForwardHandle {
     lock.withLock { forwards += 1 }
     if deviceID == "forward-failure" { throw ADBError.requestTimedOut("Test timeout") }
-    return ADBForwardHandle(port: deviceID == "frozen" ? 12345 : 12346)
+    return ADBForwardHandle(port: deviceID == "frozen" ? (abstractSocket.contains("network") ? 12344 : 12345) : 12346)
   }
 
   public var scannedDeviceIDs: [String] {
@@ -44,7 +44,10 @@ public final class ADBClient: @unchecked Sendable {
 
   public func openApp(deviceID: String, packageName: String, androidUserID: Int) async throws {}
 
-  public func removeForward(_ handle: ADBForwardHandle) async {}
+  public func removeForward(_ handle: ADBForwardHandle) async {
+    precondition(!Task.isCancelled)
+  }
+
   public func listUnixSockets(deviceID: String) async throws -> String {
     lock.withLock { socketDevices.append(deviceID) }
     return "1: 0 @snapo_network_42\n2: 0 @snapo_tweaks_42"
@@ -52,63 +55,6 @@ public final class ADBClient: @unchecked Sendable {
 
   public func runDiscoveryShellString(deviceID: String, command: String) async throws -> String {
     command.contains("cmdline") ? "com.example.demo" : "Uid: 10000"
-  }
-}
-
-public actor NetworkSession {
-  public static let state = State()
-  private let recordsStream = AsyncStream<NetworkServerRecord>.makeStream()
-
-  public final class State: @unchecked Sendable {
-    private let lock = NSLock()
-    private var attempts = 0
-    private var frozen = true
-    private var frozenSession: NetworkSession?
-    public var count: Int {
-      lock.withLock { attempts }
-    }
-
-    public func unfreeze() {
-      lock.withLock { frozen = false }
-    }
-
-    public func disconnectFrozen() async {
-      let session = lock.withLock { frozenSession }
-      await session?.close()
-    }
-
-    func record(_ session: NetworkSession, device: String) {
-      if device == "frozen" { lock.withLock { frozenSession = session } }
-    }
-
-    func shouldFail(_ device: String) -> Bool {
-      lock.withLock {
-        attempts += 1
-        return device == "frozen" && frozen
-      }
-    }
-  }
-
-  public static func connect(
-    to reference: NetworkServerReference, using adb: ADBClient, defaultCommandTimeout: Duration
-  ) async throws -> NetworkSession {
-    if state.shouldFail(reference.deviceId) { throw ADBError.requestTimedOut("Test timeout") }
-    let session = NetworkSession()
-    state.record(session, device: reference.deviceId)
-    return session
-  }
-
-  public func records() -> AsyncStream<NetworkServerRecord> {
-    recordsStream.stream
-  }
-
-  public func close() {
-    recordsStream.continuation.finish()
-  }
-
-  public func send(method: String) async throws {}
-  public func command(method: String, params: [String: JSONValue], timeout: Duration) async throws -> NetworkCDPMessage {
-    NetworkCDPMessage(id: 1)
   }
 }
 

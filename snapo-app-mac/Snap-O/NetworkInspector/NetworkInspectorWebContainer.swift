@@ -1,3 +1,5 @@
+import AppKit
+import CryptoKit
 import Foundation
 import WebKit
 
@@ -16,6 +18,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
 
   private let embeddedHTML: String?
   private let developmentURL: URL?
+  static let pageOrigin = URL(string: "http://localhost/")
   private let bridge: NetworkInspectorWebBridge
   private var isStopped = false
   private var recoveryTask: Task<Void, Never>?
@@ -38,6 +41,13 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     embeddedHTML = resourceDirectory.flatMap(Self.makeEmbeddedHTML)
     developmentURL = Self.developmentURL(kind: kind)
     self.bridge = bridge
+    let inspectorID = "com.openai.snap-o.inspector.\(kind.rawValue)"
+    let bytes = Array(SHA256.hash(data: Data(inspectorID.utf8)).prefix(16))
+    let identifier = UUID(uuid: (
+      bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+      bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+    ))
+    configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: identifier)
     configuration.userContentController.addScriptMessageHandler(
       bridge,
       contentWorld: .page,
@@ -46,8 +56,11 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     webView = WKWebView(frame: .zero, configuration: configuration)
     super.init()
     webView.navigationDelegate = self
+    bridge.colorPanelClosedHandler = { [weak self] id in
+      self?.sendPageEvent(name: "host:color-closed", payload: id)
+    }
     bridge.colorPanelChangedHandler = { [weak self] change in
-      self?.sendPageEvent(name: "tweaks:color-panel-changed", payload: change)
+      self?.sendPageEvent(name: "host:color-changed", payload: change)
     }
   }
 
@@ -65,6 +78,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     recoveryTask?.cancel()
     closeNativeColorPanel()
     bridge.colorPanelChangedHandler = nil
+    bridge.colorPanelClosedHandler = nil
     invalidatePageEventDelivery(clearPending: true)
     webView.stopLoading()
     webView.configuration.userContentController.removeScriptMessageHandler(
@@ -132,25 +146,21 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     _ webView: WKWebView,
     decidePolicyFor navigationAction: WKNavigationAction
   ) async -> WKNavigationActionPolicy {
-    guard navigationAction.targetFrame?.isMainFrame == true,
-          let url = navigationAction.request.url
-    else {
+    guard let url = navigationAction.request.url else { return .cancel }
+    if navigationAction.navigationType == .linkActivated,
+       ["http", "https"].contains(url.scheme?.lowercased() ?? ""), !ownsPage(url) {
+      NSWorkspace.shared.open(url)
       return .cancel
     }
+    guard navigationAction.targetFrame?.isMainFrame == true else { return .cancel }
+    if url.absoluteString == "about:blank" || ownsPage(url) { return .allow }
 
-    if url.absoluteString == "about:blank" {
-      return .allow
-    }
-    if let developmentURL, Self.hasSameOrigin(url, developmentURL) {
-      return .allow
-    }
     return .cancel
   }
 
   private func enqueue(_ event: PendingPageEvent) {
     if pendingPageEvents.count + inFlightPageEventCount >= Self.maximumPendingPageEvents {
-      // Dropping a CDP event would corrupt the page model. Reset the page so its
-      // next stream starts from a fresh replay instead.
+      // Reload if the page cannot keep up with host state changes.
       recoverPage()
       return
     }
@@ -225,11 +235,16 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     guard let embeddedHTML else {
       webView.loadHTMLString(
         "<p style='font: 13px -apple-system; padding: 16px'>Inspector resources are unavailable.</p>",
-        baseURL: nil
+        baseURL: Self.pageOrigin
       )
       return
     }
-    webView.loadHTMLString(embeddedHTML, baseURL: nil)
+    webView.loadHTMLString(embeddedHTML, baseURL: Self.pageOrigin)
+  }
+
+  private func ownsPage(_ url: URL) -> Bool {
+    if let developmentURL { return Self.hasSameOrigin(url, developmentURL) }
+    return url == Self.pageOrigin
   }
 
   private static func developmentURL(kind: AppInspectorKind) -> URL? {

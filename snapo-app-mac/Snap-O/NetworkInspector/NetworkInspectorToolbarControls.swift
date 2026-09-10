@@ -6,99 +6,61 @@ struct NetworkInspectorToolbarControls: View {
   @Bindable var model: NetworkInspectorHostModel
   @Binding var isSearchPresented: Bool
 
-  private var sortHelp: String {
-    model.sortNewestFirst
-      ? "Sorted newest first. Show oldest first"
-      : "Sorted oldest first. Show newest first"
+  var placement: InspectorToolbarAction.Placement = .start
+
+  private var actions: [InspectorToolbarAction] {
+    model.toolbarActions.filter { $0.position == placement }
   }
 
   var body: some View {
     HStack(spacing: 8) {
-      HStack(spacing: 0) {
-        Button {
-          model.clearCompletedRecords()
-        } label: {
-          Label("Clear Completed Requests", systemImage: "trash")
-            .labelStyle(.iconOnly)
-            .font(.system(size: 15, weight: .medium))
-            .frame(width: 34, height: 32)
-        }
-        .help("Clear completed requests")
-        .disabled(!model.hasClearableItems)
-
-        Button {
-          model.setSortNewestFirst(!model.sortNewestFirst)
-        } label: {
-          Label(
-            model.sortNewestFirst ? "Newest First" : "Oldest First",
-            systemImage: model.sortNewestFirst ? "arrow.up" : "arrow.down"
-          )
-          .labelStyle(.iconOnly)
-          .font(.system(size: 15, weight: .medium))
-          .frame(width: 34, height: 32)
-        }
-        .help(sortHelp)
-
-        if !isSearchPresented {
-          Button {
-            isSearchPresented = true
-          } label: {
-            Label("Filter Requests", systemImage: "magnifyingglass")
-              .labelStyle(.iconOnly)
-              .font(.system(size: 15, weight: .medium))
-              .frame(width: 34, height: 32)
+      if !actions.isEmpty {
+        HStack(spacing: 0) {
+          ForEach(actions) { action in
+            if action.type == .button {
+              Button { model.activateToolbarAction(action.id) } label: {
+                Label(action.label, systemImage: action.icon?.symbol ?? "questionmark")
+                  .labelStyle(.iconOnly)
+                  .font(SnapOToolbarStyle.iconFont)
+                  .frame(width: 34, height: 32)
+              }
+              .help(action.label)
+              .disabled(action.enabled == false)
+            } else {
+              Button { isSearchPresented.toggle() } label: {
+                Label(action.label, systemImage: "magnifyingglass").labelStyle(.iconOnly)
+                  .font(SnapOToolbarStyle.iconFont)
+                  .frame(width: 34, height: 32)
+              }
+              .help(action.label)
+              .keyboardShortcut("f", modifiers: .command)
+              .disabled(action.enabled == false)
+            }
           }
-          .help("Filter requests (⌘F)")
-          .keyboardShortcut("f", modifiers: .command)
-          .transition(.opacity)
         }
+        .controlSize(.extraLarge)
+        .snapOToolbarGroupStyle()
       }
-      .snapOToolbarGroupStyle()
-
-      if isSearchPresented {
+      if isSearchPresented, let search = actions.first(where: { $0.type == .search }) {
         NetworkInspectorSearchField(
           text: Binding(
-            get: { model.searchText },
-            set: { model.setSearchText($0) }
-          )
-        ) {
-          isSearchPresented = false
-        }
-        .transition(
-          .modifier(
-            active: NetworkInspectorSearchTransition(progress: 0),
-            identity: NetworkInspectorSearchTransition(progress: 1)
-          )
-        )
+            get: { search.value ?? "" },
+            set: { model.activateToolbarAction(search.id, value: $0) }
+          ),
+          label: search.label
+        ) { isSearchPresented = false }
+          .frame(width: 220)
+          .disabled(search.enabled == false)
       }
     }
+    .frame(minWidth: placement == .start ? 110 : nil, alignment: .trailing)
     .disabled(!model.isPageReady)
-    .onAppear {
-      if !model.searchText.isEmpty {
-        isSearchPresented = true
-      }
-    }
-    .onChange(of: model.searchText) {
-      if !model.searchText.isEmpty {
-        isSearchPresented = true
-      }
-    }
-  }
-}
-
-private struct NetworkInspectorSearchTransition: ViewModifier {
-  let progress: CGFloat
-
-  func body(content: Content) -> some View {
-    content
-      .frame(width: 220 * progress, height: 28, alignment: .leading)
-      .clipped()
-      .opacity(progress)
   }
 }
 
 private struct NetworkInspectorSearchField: NSViewRepresentable {
   @Binding var text: String
+  let label: String
   let dismiss: () -> Void
 
   func makeCoordinator() -> Coordinator {
@@ -107,7 +69,7 @@ private struct NetworkInspectorSearchField: NSViewRepresentable {
 
   func makeNSView(context: Context) -> FocusedSearchField {
     let searchField = FocusedSearchField(string: text)
-    searchField.placeholderString = "Filter requests"
+    searchField.placeholderString = label
     searchField.sendsSearchStringImmediately = true
     searchField.sendsWholeSearchString = true
     searchField.delegate = context.coordinator

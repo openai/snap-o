@@ -3,35 +3,26 @@ import SnapODeviceClient
 import WebKit
 
 @MainActor
-final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply {
+final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDelegate {
   struct NativeColorPanelChange: Encodable {
     let color: String
     let sessionId: String
+    let revision: Int
   }
 
   static let messageHandlerName = "snapoNetwork"
 
   private weak static var colorPanelOwner: NetworkInspectorWebBridge?
 
-  var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
-  var inspectorHostStateHandler: (() -> InspectorHostState?)?
-  var openSelectedAppHandler: ((String) -> Void)?
-  var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
+  var hostStateHandler: (() -> InspectorConnectionState)?
+  var toolbarHandler: ((InspectorToolbar) throws -> Void)?
   var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
-  var exclusionFiltersHandler: (() -> [String])?
-  var addExclusionFilterHandler: ((String) -> Void)?
-  var removeExclusionFilterHandler: ((String) -> Void)?
+  var colorPanelClosedHandler: ((String) -> Void)?
 
-  private let service: NetworkInspectorService
-  private let kind: AppInspectorKind
   private var isStopped = false
   private var requests: [UUID: Task<Void, Never>] = [:]
   private var activeColorPanelSessionID: String?
-
-  init(service: NetworkInspectorService, kind: AppInspectorKind) {
-    self.service = service
-    self.kind = kind
-  }
+  private var colorPanelRevision = 0
 
   func invalidate() {
     isStopped = true
@@ -46,21 +37,22 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     for task in pending {
       await task.value
     }
-    await service.stopAllStreams(kind: kind)
   }
 
   func prepareForPageReload() async {
     closeNativeColorPanel()
-    await service.stopAllStreams(kind: kind)
   }
 
   func closeNativeColorPanel() {
+    let sessionID = activeColorPanelSessionID
     activeColorPanelSessionID = nil
+    if let sessionID { colorPanelClosedHandler?(sessionID) }
     guard Self.colorPanelOwner === self else { return }
 
     let panel = NSColorPanel.shared
     panel.setTarget(nil)
     panel.setAction(nil)
+    panel.delegate = nil
     Self.colorPanelOwner = nil
     panel.orderOut(nil)
   }
@@ -102,24 +94,13 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
 
   private func handle(command: String, payload: Any?) async throws -> Any? {
     switch command {
-    case "appVersion":
-      return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-    case "inspectorHostState":
-      guard let state = inspectorHostStateHandler?() else { throw NetworkInspectorError.invalidBridgeMessage }
+    case "hostState":
+      guard let state = hostStateHandler?() else { throw NetworkInspectorError.invalidBridgeMessage }
       return try Self.jsonObject(state)
-    case "openSelectedApp":
-      let input = try Self.decode(SelectedAppInput.self, from: payload)
-      openSelectedAppHandler?(input.appId)
-      return nil
-    case "listTweaks":
-      let reference = try Self.decode(InspectorServerReference.self, from: payload)
-      return try await Self.jsonObject(service.listTweaks(for: reference))
-    case "updateTweaks":
-      let input = try Self.decode(UpdateTweaksInput.self, from: payload)
-      return try await Self.jsonObject(service.updateTweaks(input))
-    case "invokeTweakAction":
-      let input = try Self.decode(InvokeTweakActionInput.self, from: payload)
-      try await service.invokeTweakAction(input)
+    case "setToolbar":
+      let toolbar = try Self.decode(InspectorToolbar.self, from: payload)
+      try toolbar.validate()
+      try toolbarHandler?(toolbar)
       return nil
     case "openNativeColorPanel":
       try openNativeColorPanel(Self.decode(NativeColorPanelInput.self, from: payload))
@@ -130,62 +111,14 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
         closeNativeColorPanel()
       }
       return nil
-    case "startTweakStream":
-      let reference = try Self.decode(InspectorServerReference.self, from: payload)
-      return try await Self.jsonObject(service.startTweakStream(reference))
-    case "stopTweakStream":
-      let input = try Self.decode(StreamIdentifier.self, from: payload)
-      await service.stopTweakStream(input.streamId)
-      return nil
-    case "listExclusionFilters":
-      return try Self.jsonObject(exclusionFiltersHandler?() ?? [])
-    case "addExclusionFilter":
-      let input = try Self.decode(ExclusionFilterInput.self, from: payload)
-      addExclusionFilterHandler?(input.filter)
-      return nil
-    case "removeExclusionFilter":
-      let input = try Self.decode(ExclusionFilterInput.self, from: payload)
-      removeExclusionFilterHandler?(input.filter)
-      return nil
-    case "loadBodies":
-      let input = try Self.decode(NetworkLoadBodiesInput.self, from: payload)
-      return try await Self.jsonObject(service.loadBodies(input))
-    case "startStream":
-      let input = try Self.decode(NetworkServerReference.self, from: payload)
-      return try await Self.jsonObject(service.startStream(input))
-    case "stopStream":
-      let input = try Self.decode(StreamIdentifier.self, from: payload)
-      await service.stopStream(input.streamId)
-      return nil
     case "copyText":
       let input = try Self.decode(ClipboardText.self, from: payload)
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
       pasteboard.setString(input.text, forType: .string)
       return nil
-    case "openExternal":
-      let input = try Self.decode(ExternalURL.self, from: payload)
-      guard let url = URL(string: input.url),
-            ["http", "https"].contains(url.scheme?.lowercased() ?? "")
-      else {
-        throw NetworkInspectorError.invalidBridgeMessage
-      }
-      NSWorkspace.shared.open(url)
-      return nil
     case "saveFile":
       return try Self.jsonObject(saveFile(Self.decode(NetworkSaveFileInput.self, from: payload)))
-    case "debugInspectorPreset":
-      return "live"
-    case "inspectorStateChanged":
-      try inspectorStateChangedHandler?(
-        Self.decode(NetworkInspectorNativeState.self, from: payload)
-      )
-      return nil
-    case "tweaksStateChanged":
-      try tweaksStateChangedHandler?(
-        Self.decode(TweaksInspectorNativeState.self, from: payload)
-      )
-      return nil
     default:
       throw NetworkInspectorError.invalidBridgeMessage
     }
@@ -211,17 +144,20 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     )
     let panel = NSColorPanel.shared
     let shouldPresent = input.present ?? true
-    guard shouldPresent || (Self.colorPanelOwner === self && panel.isVisible) else { return }
+    guard shouldPresent || (Self.colorPanelOwner === self && panel.isVisible
+      && activeColorPanelSessionID == input.sessionId && input.revision >= colorPanelRevision) else { return }
 
     let presentationWindow = NSApp.mainWindow
     let shouldCenterPanel = !panel.isVisible || Self.colorPanelOwner !== self
     panel.setTarget(nil)
     panel.setAction(nil)
-    Self.colorPanelOwner?.activeColorPanelSessionID = nil
+    if Self.colorPanelOwner !== self { Self.colorPanelOwner?.closeNativeColorPanel() }
     panel.showsAlpha = true
     panel.isContinuous = true
     panel.color = color
     activeColorPanelSessionID = input.sessionId
+    colorPanelRevision = input.revision
+    panel.delegate = self
     panel.setTarget(self)
     panel.setAction(#selector(colorPanelDidChange(_:)))
     Self.colorPanelOwner = self
@@ -231,6 +167,11 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     if shouldPresent {
       panel.makeKeyAndOrderFront(nil)
     }
+  }
+
+  func windowWillClose(_ notification: Notification) {
+    guard Self.colorPanelOwner === self else { return }
+    closeNativeColorPanel()
   }
 
   private func positionColorPanel(_ panel: NSColorPanel, over window: NSWindow?) {
@@ -272,7 +213,8 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     colorPanelChangedHandler?(
       NativeColorPanelChange(
         color: String(format: "#%02X%02X%02X%02X", red, green, blue, alpha),
-        sessionId: sessionId
+        sessionId: sessionId,
+        revision: colorPanelRevision
       )
     )
   }
@@ -291,17 +233,18 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
       throw NetworkInspectorError.invalidBridgeMessage
     }
 
+    let isHAR = URL(fileURLWithPath: input.defaultPath).pathExtension.lowercased() == "har"
     let panel = NSSavePanel()
     panel.canCreateDirectories = true
     panel.nameFieldStringValue = input.defaultPath
-    if input.directoryKind == .har {
+    if isHAR {
       panel.directoryURL = SaveLocation.defaultHARExportDirectory()
     }
     guard panel.runModal() == .OK, let url = panel.url else {
       return NetworkSaveFileResult(saved: false, path: nil)
     }
     try data.write(to: url, options: .atomic)
-    if input.directoryKind == .har {
+    if isHAR {
       SaveLocation.setLastHARExportDirectoryURL(url.deletingLastPathComponent())
     }
     return NetworkSaveFileResult(saved: true, path: url.path)
@@ -315,22 +258,6 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     return try JSONDecoder().decode(type, from: data)
   }
 
-  private struct SelectedAppInput: Decodable {
-    let appId: String
-  }
-
-  private struct StreamIdentifier: Decodable {
-    let streamId: String
-  }
-
-  private struct ExclusionFilterInput: Decodable {
-    let filter: String
-  }
-
-  private struct ExternalURL: Decodable {
-    let url: String
-  }
-
   private struct ClipboardText: Decodable {
     let text: String
   }
@@ -339,6 +266,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     let color: String
     let sessionId: String
     let present: Bool?
+    let revision: Int
   }
 
   private struct NativeColorPanelSessionInput: Decodable {

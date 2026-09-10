@@ -4,6 +4,7 @@ import { render as renderPreact } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SelectedAppInspector, TweakList, TweakStreamEvent } from "../../network/bridge-types";
 import type { TweaksClient } from "./client";
+import { host, type ToolbarAction } from "../../host";
 import { TweaksInspectorApp } from "./TweaksInspectorApp";
 
 const selection: SelectedAppInspector = {
@@ -25,9 +26,19 @@ describe("Tweaks connection recovery", () => {
   let client: TweaksClient;
   let receive: (event: TweakStreamEvent) => void;
   let reset: () => void;
+  const openApp = vi.fn();
+  let toolbar: readonly ToolbarAction[] = [];
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(host, "setToolbar").mockImplementation(async ({ start: actions }) => {
+      toolbar = actions;
+      reset = () => {
+        const action = actions[0];
+        if (action?.type === "button" && action.enabled !== false) action.onClick();
+      };
+    });
+    openApp.mockReset();
     client = {
       openSelectedApp: vi.fn(async () => {}),
       listTweaks: vi.fn(async () => response),
@@ -53,6 +64,7 @@ describe("Tweaks connection recovery", () => {
     await act(async () => renderPreact(null, container));
     container.remove();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   async function render(selected = selection, isConnected = true) {
@@ -72,7 +84,7 @@ describe("Tweaks connection recovery", () => {
           appLaunch={{
             pending: false,
             error: null,
-            open: () => void client.openSelectedApp(selected.appId)
+            open: () => openApp(selected.appId)
           }}
           isConnected={isConnected}
         />,
@@ -211,7 +223,7 @@ describe("Tweaks connection recovery", () => {
     const openButton = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
     expect(openButton.textContent).toBe("Open Demo");
     await act(async () => openButton.click());
-    expect(client.openSelectedApp).toHaveBeenCalledExactlyOnceWith(selection.appId);
+    expect(openApp).toHaveBeenCalledExactlyOnceWith(selection.appId);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
@@ -314,10 +326,7 @@ describe("Tweaks connection recovery", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(client.updateTweaks).not.toHaveBeenCalled();
-    expect(client.nativeTweaksStateChanged).toHaveBeenLastCalledWith({
-      server: selection.server,
-      hasResettableTweaks: false
-    });
+    expect(toolbar[0]?.enabled).toBe(false);
     const loads = vi.mocked(client.listTweaks).mock.calls.length;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);

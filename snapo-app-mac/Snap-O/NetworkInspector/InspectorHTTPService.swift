@@ -1,8 +1,9 @@
 import Foundation
 import SnapODeviceClient
 
-actor TweaksInspectorService {
+actor InspectorHTTPService {
   struct App {
+    let kind: InspectorKind
     let deviceID: String
     var deviceDisplayTitle: String
     let socketName: String
@@ -12,12 +13,21 @@ actor TweaksInspectorService {
     var androidUserID: Int?
     var protocolVersion: Int?
     var appIconBase64: String?
+    var instanceID: String?
   }
 
   private struct AppInfo: Decodable {
     let name: String
     let packageName: String
     let protocolVersion: Int?
+    let processName: String?
+    let serverStartWallMs: Int64?
+    let serverStartMonoNs: Int64?
+
+    var instanceID: String? {
+      guard let serverStartWallMs, let serverStartMonoNs else { return nil }
+      return "\(serverStartWallMs):\(serverStartMonoNs)"
+    }
   }
 
   private struct ErrorResponse: Decodable {
@@ -56,14 +66,15 @@ actor TweaksInspectorService {
     }
   }
 
-  func refresh(devices: [Device], references: [NetworkServerReference], using adb: ADBClient) async {
+  func refresh(devices: [Device], sockets: [DiscoveredInspectorSocket], using adb: ADBClient) async {
     guard !isStopped else { return }
     let devicesByID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
-    let activeKeys = Set(references.map(\.key))
+    let activeKeys = Set(sockets.map(\.reference.key))
     retryAfter = retryAfter.filter { activeKeys.contains($0.key) && $0.value > .now }
 
     await withTaskGroup(of: Void.self) { group in
-      for reference in references {
+      for socket in sockets {
+        let reference = socket.reference
         guard let device = devicesByID[reference.deviceId], !Task.isCancelled, !isStopped else { continue }
         let key = reference.key
         guard retryAfter[key] == nil else { continue }
@@ -74,6 +85,7 @@ actor TweaksInspectorService {
         } else {
           group.addTask {
             await self.connect(
+              kind: socket.kind,
               reference: reference,
               deviceDisplayTitle: device.displayTitle,
               using: adb
@@ -87,64 +99,22 @@ actor TweaksInspectorService {
     for key in connections.keys.filter({ !activeKeys.contains($0) }) {
       guard let connection = connections.removeValue(forKey: key) else { continue }
       connection.metadataTask?.cancel()
-      await adb.removeForward(connection.forward)
+      await removeForward(connection.forward, using: adb)
     }
   }
 
-  func listTweaks(for reference: InspectorServerReference) async throws -> TweakList {
+  struct Endpoint {
+    let id: UUID
+    let baseURL: URL
+  }
+
+  func endpoint(for reference: InspectorServerReference) throws -> Endpoint {
     let connection = try connection(for: reference)
-    return try await load(TweakList.self, path: "tweaks", connection: connection)
+    return Endpoint(id: connection.id, baseURL: connection.baseURL)
   }
 
-  func updateTweaks(_ input: UpdateTweaksInput) async throws -> TweakUpdates {
-    let connection = try connection(for: input.server)
-    var request = URLRequest(url: connection.baseURL.appending(path: "tweaks"))
-    request.httpMethod = "PATCH"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try JSONEncoder().encode(TweakPatch(values: input.values))
-
-    let (data, response) = try await data(for: request, connection: connection)
-    try Self.validate(response, data: data)
-    return try JSONDecoder().decode(TweakUpdates.self, from: data)
-  }
-
-  func invokeTweakAction(_ input: InvokeTweakActionInput) async throws {
-    let connection = try connection(for: input.server)
-    var request = URLRequest(url: connection.baseURL.appending(path: "tweaks/action"))
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try JSONEncoder().encode(TweakAction(name: input.name))
-
-    let (data, response) = try await data(for: request, connection: connection)
-    try Self.validate(response, data: data)
-  }
-
-  func streamTweaks(
-    for reference: InspectorServerReference,
-    onChange: @escaping @Sendable (TweakList) async -> Void
-  ) async throws {
-    let connection = try connection(for: reference)
-    var request = URLRequest(url: connection.baseURL.appending(path: "tweaks/events"))
-    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-
-    do {
-      let (bytes, response) = try await URLSession.shared.bytes(for: request)
-      try Self.validate(response)
-
-      // SSE frames end with an empty line, which AsyncBytes.lines omits.
-      var decoder = TweakEventStreamDecoder()
-
-      for try await byte in bytes {
-        try Task.checkCancellation()
-
-        guard let data = decoder.consume(byte) else { continue }
-        let tweaks = try JSONDecoder().decode(TweakList.self, from: data)
-        await onChange(tweaks)
-      }
-    } catch {
-      await invalidateConnection(connection, after: error)
-      throw error
-    }
+  private func isCurrent(_ connection: Connection) -> Bool {
+    !isStopped && connections[connection.reference.key]?.id == connection.id
   }
 
   func stop() async {
@@ -159,11 +129,12 @@ actor TweaksInspectorService {
     retryAfter.removeAll()
 
     for forward in forwards {
-      await adb.removeForward(forward)
+      await removeForward(forward, using: adb)
     }
   }
 
   private func connect(
+    kind: InspectorKind,
     reference: NetworkServerReference,
     deviceDisplayTitle: String,
     using adb: ADBClient
@@ -183,7 +154,7 @@ actor TweaksInspectorService {
       forward = handle
 
       guard !Task.isCancelled, !isStopped else {
-        await adb.removeForward(handle)
+        await removeForward(handle, using: adb)
         return
       }
 
@@ -195,10 +166,11 @@ actor TweaksInspectorService {
       async let androidUserID = NetworkServerDiscovery.androidUserID(for: reference, using: adb)
       let metadata = await (processName: processName, androidUserID: androidUserID)
       guard !Task.isCancelled, !isStopped else {
-        await adb.removeForward(handle)
+        await removeForward(handle, using: adb)
         return
       }
       let app = App(
+        kind: kind,
         deviceID: reference.deviceId,
         deviceDisplayTitle: deviceDisplayTitle,
         socketName: reference.socketName,
@@ -212,15 +184,13 @@ actor TweaksInspectorService {
         retryAfter[key] = .now.advanced(by: Self.retryCooldown)
       }
       if let forward {
-        await adb.removeForward(forward)
+        await removeForward(forward, using: adb)
       }
     }
   }
 
   private func populateMetadata(for key: String) {
     guard let connection = connections[key],
-          connection.app.protocolVersion == nil || connection.app.processName == nil
-          || connection.app.androidUserID == nil || !connection.hasLoadedIcon,
           connection.metadataTask == nil else { return }
     connections[key]?.metadataTask = Task { [weak self] in
       await self?.loadMetadata(for: key, connectionID: connection.id)
@@ -245,18 +215,19 @@ actor TweaksInspectorService {
       connections[key]?.app.androidUserID = metadata.androidUserID ?? connection.app.androidUserID
     }
 
-    if connection.app.protocolVersion == nil,
-       let info = try? await load(
-         AppInfo.self,
-         path: ".snap-o/info",
-         connection: connection,
-         timeoutInterval: Self.discoveryRequestTimeout
-       ),
-       !Task.isCancelled,
-       var current = connections[key], current.id == connectionID {
+    if let info = try? await load(
+      AppInfo.self,
+      path: ".snap-o/info",
+      connection: connection,
+      timeoutInterval: Self.discoveryRequestTimeout
+    ),
+      !Task.isCancelled,
+      var current = connections[key], current.id == connectionID {
       current.app.name = info.name
       current.app.packageName = info.packageName
       current.app.protocolVersion = info.protocolVersion ?? 1
+      current.app.processName = info.processName ?? current.app.processName
+      current.app.instanceID = info.instanceID
       connections[key] = current
     }
 
@@ -309,7 +280,20 @@ actor TweaksInspectorService {
 
   private func data(for request: URLRequest, connection: Connection) async throws -> (Data, URLResponse) {
     do {
-      return try await URLSession.shared.data(for: request)
+      let configuration = URLSessionConfiguration.ephemeral
+      configuration.connectionProxyDictionary = [:]
+      configuration.httpCookieStorage = nil
+      configuration.urlCredentialStorage = nil
+      let session = URLSession(configuration: configuration, delegate: InspectorHTTPRedirectPolicy(), delegateQueue: nil)
+      defer { session.invalidateAndCancel() }
+      let (bytes, response) = try await session.bytes(for: request)
+      var data = Data()
+      for try await byte in bytes {
+        guard data.count < 1_048_576 else { throw NetworkInspectorError.invalidBridgeMessage }
+        data.append(byte)
+      }
+      guard isCurrent(connection) else { throw CancellationError() }
+      return (data, response)
     } catch {
       await invalidateConnection(connection, after: error)
       throw error
@@ -326,9 +310,14 @@ actor TweaksInspectorService {
     // Frozen apps keep listening but cannot accept connections. Avoid filling their queues on every scan.
     retryAfter[key] = .now.advanced(by: Self.retryCooldown)
     // A brief device disconnect can remove the forward without changing the Android socket.
-    connections.removeValue(forKey: key)?.metadataTask?.cancel()
+    connections.removeValue(forKey: key)
     let adb = await adbService.exec()
-    await adb.removeForward(connection.forward)
+    await removeForward(connection.forward, using: adb)
+  }
+
+  private func removeForward(_ forward: ADBForwardHandle, using adb: ADBClient) async {
+    // Cleanup must still run when metadata loading or discovery was cancelled.
+    await Task { await adb.removeForward(forward) }.value
   }
 
   private static func validate(_ response: URLResponse, data: Data? = nil) throws {
@@ -337,11 +326,23 @@ actor TweaksInspectorService {
     }
     guard (200 ... 299).contains(response.statusCode) else {
       let message = data.flatMap { try? JSONDecoder().decode(ErrorResponse.self, from: $0).error }
-        ?? "Tweak request failed (\(response.statusCode))."
+        ?? "Inspector request failed (\(response.statusCode))."
       throw NetworkInspectorError.tweakRequestFailed(
         statusCode: response.statusCode,
         message: message
       )
     }
+  }
+}
+
+private final class InspectorHTTPRedirectPolicy: NSObject, URLSessionTaskDelegate {
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest,
+    completionHandler: @escaping @Sendable (URLRequest?) -> Void
+  ) {
+    completionHandler(nil)
   }
 }

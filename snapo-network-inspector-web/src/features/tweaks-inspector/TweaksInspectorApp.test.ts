@@ -9,6 +9,7 @@ import type {
   TweakDescriptor,
   TweakValueDescriptor
 } from "../../network/bridge-types";
+import { host } from "../../host";
 import { createTweaksClient, type TweaksClient } from "./client";
 import {
   applyTweakUpdates,
@@ -82,54 +83,28 @@ describe("editable tweak colors", () => {
   });
 
   it("applies native RGBA updates", () => {
-    expect(nativePanelTweakColor({ color: "#a1b2c344", sessionId: "active" }, "active")).toBe("#A1B2C344");
-  });
-
-  it("ignores stale native color events from a previously opened field", () => {
-    expect(nativePanelTweakColor({ color: "#a1b2c344", sessionId: "previous" }, "active")).toBeNull();
+    expect(nativePanelTweakColor("#a1b2c344")).toBe("#A1B2C344");
   });
 
   it("keeps panel-originated changes on the current session", () => {
-    expect(nativePanelTweakColor({ color: "#11223380", sessionId: "current" }, "current")).toBe("#11223380");
-    expect(nativePanelTweakColor({ color: "#44556640", sessionId: "current" }, "current")).toBe("#44556640");
-  });
-
-  it("rejects queued panel events after an external change refreshes its session", () => {
-    expect(nativePanelTweakColor({ color: "#11223380", sessionId: "before-sync" }, "after-sync")).toBeNull();
-    expect(nativePanelTweakColor({ color: "#44556640", sessionId: "after-sync" }, "after-sync")).toBe("#44556640");
-  });
-
-  it("closes only the native color-panel session that lost its tweak", async () => {
-    const postMessage = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("window", { webkit: { messageHandlers: { snapoNetwork: { postMessage } } } });
-
-    try {
-      const client = createTweaksClient();
-      await client.closeNativeColorPanel?.("removed-session");
-
-      expect(postMessage).toHaveBeenCalledWith({
-        command: "closeNativeColorPanel",
-        payload: { sessionId: "removed-session" }
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    expect(nativePanelTweakColor("#11223380")).toBe("#11223380");
+    expect(nativePanelTweakColor("#44556640")).toBe("#44556640");
   });
 
   it("keeps the alpha component when a native color is translucent", () => {
-    expect(nativePanelTweakColor({ color: "#a1b2c380", sessionId: "active" }, "active")).toBe("#A1B2C380");
+    expect(nativePanelTweakColor("#a1b2c380")).toBe("#A1B2C380");
   });
 
   it("omits the alpha component when a native color is fully opaque", () => {
-    expect(nativePanelTweakColor({ color: "#a1b2c3ff", sessionId: "active" }, "active")).toBe("#A1B2C3");
+    expect(nativePanelTweakColor("#a1b2c3ff")).toBe("#A1B2C3");
   });
 
   it("canonicalizes originally RGBA colors to RGB when made opaque", () => {
-    expect(nativePanelTweakColor({ color: "#5468FFFF", sessionId: "active" }, "active")).toBe("#5468FF");
+    expect(nativePanelTweakColor("#5468FFFF")).toBe("#5468FF");
   });
 
   it("ignores native color updates without an alpha component", () => {
-    expect(nativePanelTweakColor({ color: "#a1b2c3", sessionId: "active" }, "active")).toBeNull();
+    expect(nativePanelTweakColor("#a1b2c3")).toBeNull();
   });
 
   it("keeps the browser-native color input when no native panel is available", () => {
@@ -413,18 +388,25 @@ describe("registered tweak actions", () => {
     expect(document.createRange().createContextualFragment(markup).querySelector("button:disabled")).not.toBeNull();
   });
 
-  it("invokes actions through the native desktop bridge", async () => {
-    const postMessage = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("window", { webkit: { messageHandlers: { snapoNetwork: { postMessage } } } });
-
+  it("invokes actions through the forwarded HTTP endpoint", async () => {
+    vi.spyOn(host, "connected", "get").mockReturnValue(true);
+    vi.spyOn(host, "baseURL", "get").mockReturnValue("http://127.0.0.1:1234/");
+    vi.spyOn(host, "addEventListener").mockImplementation(() => {});
+    const fetchRequest = vi.fn(async () => Response.json({ name: "Motion/Toggle animation" }));
+    vi.stubGlobal("fetch", fetchRequest);
+    const client = createTweaksClient();
     try {
-      await createTweaksClient().invokeTweakAction({ server, name: "Motion/Toggle animation" });
-
-      expect(postMessage).toHaveBeenCalledWith({
-        command: "invokeTweakAction",
-        payload: { server, name: "Motion/Toggle animation" }
-      });
+      await client.invokeTweakAction({ server, name: "Motion/Toggle animation" });
+      expect(fetchRequest).toHaveBeenCalledWith(
+        new URL("http://127.0.0.1:1234/tweaks/action"),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ name: "Motion/Toggle animation" })
+        })
+      );
     } finally {
+      client.dispose();
+      vi.restoreAllMocks();
       vi.unstubAllGlobals();
     }
   });

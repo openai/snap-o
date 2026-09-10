@@ -55,114 +55,6 @@ struct AppInspectorState: Equatable, Codable {
   let isRestoring: Bool
 }
 
-struct BezierCurve: Codable {
-  let x1: Double
-  let y1: Double
-  let x2: Double
-  let y2: Double
-}
-
-enum TweakValue: Codable {
-  case bool(Bool)
-  case int(Int)
-  case double(Double)
-  case string(String)
-  case bezier(BezierCurve)
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.singleValueContainer()
-    if let value = try? container.decode(Bool.self) {
-      self = .bool(value)
-    } else if let value = try? container.decode(Int.self) {
-      self = .int(value)
-    } else if let value = try? container.decode(Double.self) {
-      self = .double(value)
-    } else if let value = try? container.decode(BezierCurve.self) {
-      self = .bezier(value)
-    } else {
-      self = try .string(container.decode(String.self))
-    }
-  }
-
-  func encode(to encoder: Encoder) throws {
-    var container = encoder.singleValueContainer()
-    switch self {
-    case .bool(let value):
-      try container.encode(value)
-    case .int(let value):
-      try container.encode(value)
-    case .double(let value):
-      try container.encode(value)
-    case .string(let value):
-      try container.encode(value)
-    case .bezier(let value):
-      try container.encode(value)
-    }
-  }
-}
-
-struct TweakDescriptor: Codable {
-  let name: String
-  let type: String
-  let `default`: TweakValue?
-  let value: TweakValue?
-  let modified: Bool?
-  let min: TweakValue?
-  let max: TweakValue?
-  let step: TweakValue?
-  let options: [String]?
-  let conflicted: Bool?
-}
-
-struct TweakList: Codable {
-  let tweaks: [TweakDescriptor]
-}
-
-struct TweakStreamEvent: Codable {
-  let streamId: String
-  let server: InspectorServerReference
-  let tweaks: [TweakDescriptor]
-}
-
-struct TweaksInspectorNativeState: Codable {
-  let server: InspectorServerReference
-  let hasResettableTweaks: Bool
-}
-
-struct TweakUpdate: Codable {
-  let name: String
-  let value: TweakValue
-  let modified: Bool?
-}
-
-struct TweakUpdateError: Codable {
-  let name: String
-  let error: String
-}
-
-struct TweakUpdates: Codable {
-  let tweaks: [TweakUpdate]
-  let errors: [TweakUpdateError]?
-}
-
-struct TweakPatch: Codable {
-  let values: [String: TweakValue?]
-}
-
-struct UpdateTweaksInput: Codable {
-  let server: InspectorServerReference
-  let values: [String: TweakValue?]
-}
-
-struct InvokeTweakActionInput: Codable {
-  let server: InspectorServerReference
-  let name: String
-}
-
-struct TweakAction: Codable {
-  let name: String
-}
-
 struct NetworkInspectorServer: Codable {
   let server: String
   let deviceId: String
@@ -181,76 +73,11 @@ struct NetworkInspectorServer: Codable {
   let instanceId: String?
 }
 
-struct NetworkInspectorNativeState: Codable {
-  let selectedServer: NetworkServerReference?
-  let searchText: String
-  let sortNewestFirst: Bool
-  let hasClearableItems: Bool
-  let selectedRecordKind: String?
-  let hasVisibleRecords: Bool
-}
-
-struct NetworkLoadBodiesInput: Codable {
-  let deviceId: String
-  let socketName: String
-  let serverInstanceId: String?
-  let requestId: String
-  let includeRequestBody: Bool?
-  let includeResponseBody: Bool?
-}
-
-struct NetworkRequestBodies: Codable {
-  let requestId: String
-  let requestBody: String?
-  let responseBody: String?
-  let responseBodyBase64Encoded: Bool?
-  let responseBodyLoadError: NetworkResponseBodyLoadError?
-}
-
-enum NetworkResponseBodyLoadError: String, Codable {
-  case unavailable
-  case failed
-
-  static func resolve(_ response: NetworkCDPMessage?) -> Self? {
-    if response?.error == nil, response?.result?["body"]?.stringValue != nil { return nil }
-    if let error = response?.error,
-       error.code == -32000,
-       error.message.hasPrefix("No response body captured for ") {
-      return .unavailable
-    }
-    return .failed
-  }
-}
-
-struct NetworkStreamStarted: Codable {
-  let streamId: String
-}
-
-struct NetworkStreamEvent: Codable {
-  let streamId: String
-  let server: NetworkServerReference
-  let serverInstanceId: String?
-  let message: NetworkCDPMessage
-}
-
-struct NetworkStreamStatus: Codable {
-  let streamId: String
-  let state: String
-  let message: String?
-  let code: Int?
-  let signal: String?
-}
-
 struct NetworkSaveFileInput: Codable {
   let defaultPath: String
   let data: String
   let mimeType: String?
   let encoding: String?
-  let directoryKind: NetworkSaveDirectoryKind?
-}
-
-enum NetworkSaveDirectoryKind: String, Codable {
-  case har
 }
 
 struct NetworkSaveFileResult: Codable {
@@ -258,26 +85,9 @@ struct NetworkSaveFileResult: Codable {
   let path: String?
 }
 
-enum NetworkInspectorOutput {
-  case event(NetworkStreamEvent)
-  case status(NetworkStreamStatus)
-  case tweaks(TweakStreamEvent)
-}
-
 extension NetworkInspectorServer: Sendable {}
-extension NetworkInspectorNativeState: Sendable {}
-extension NetworkLoadBodiesInput: Sendable {}
-extension NetworkRequestBodies: Sendable {}
-extension NetworkStreamStarted: Sendable {}
-extension NetworkStreamEvent: Sendable {}
-extension NetworkStreamStatus: Sendable {}
-extension TweakValue: Sendable {}
-extension TweakDescriptor: Sendable {}
-extension TweakList: Sendable {}
-extension TweakStreamEvent: Sendable {}
 extension NetworkSaveFileInput: Sendable {}
 extension NetworkSaveFileResult: Sendable {}
-extension NetworkInspectorOutput: Sendable {}
 
 enum NetworkInspectorError: LocalizedError {
   case invalidBridgeMessage
@@ -294,4 +104,65 @@ enum NetworkInspectorError: LocalizedError {
       message
     }
   }
+}
+
+struct InspectorConnectionState: Encodable {
+  var revision = 0
+  var baseURL: String?
+  var connected = false
+}
+
+struct InspectorToolbar: Decodable {
+  let revision: Int
+  var actions: [InspectorToolbarAction]
+
+  func validate() throws {
+    guard revision > 0,
+          actions.count(where: { $0.position == .start }) <= 3,
+          Set(actions.map(\.id)).count == actions.count,
+          !actions.contains(where: { $0.type == .search && $0.position == .end }),
+          actions.count(where: { $0.type == .search }) <= 1,
+          actions.allSatisfy({ !$0.id.isEmpty && !$0.label.isEmpty && $0.id.count <= 100 && $0.label.count <= 200
+              && ($0.type != .button || $0.icon != nil) }) else {
+      throw NetworkInspectorError.invalidBridgeMessage
+    }
+  }
+}
+
+struct InspectorToolbarAction: Decodable, Identifiable {
+  enum Kind: String, Decodable { case button, search }
+  enum Placement: String, Decodable { case start, end }
+  enum Icon: String, Decodable {
+    case clear, sortAscending, sortDescending, search, export, reset
+    var symbol: String {
+      switch self {
+      case .clear: "trash"
+      case .sortAscending: "arrow.down"
+      case .sortDescending: "arrow.up"
+      case .search: "magnifyingglass"
+      case .export: "square.and.arrow.up"
+      case .reset: "arrow.counterclockwise"
+      }
+    }
+  }
+
+  let placement: Placement?
+  var position: Placement {
+    placement ?? .start
+  }
+
+  let type: Kind
+  let id: String
+  let icon: Icon?
+  let label: String
+  let enabled: Bool?
+  var value: String?
+  var inputRevision: Int?
+}
+
+struct InspectorToolbarEvent: Encodable {
+  let revision: Int
+  let id: String
+  var value: String?
+  var inputRevision: Int?
 }
