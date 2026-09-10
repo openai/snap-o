@@ -5,7 +5,7 @@ import type { InspectorRecord, RequestRecord, StreamEventRecord } from "../../..
 import { copyCurl, exportAsHar, hydrateRecordsForHar } from "./exportActions";
 
 describe("export body readiness", () => {
-  it("copies and exports cached data without querying an offline server", async () => {
+  it("copies and exports cached data without querying an offline processId", async () => {
     const client = {
       loadBodies: vi.fn(),
       copyText: vi.fn(async () => {}),
@@ -166,7 +166,7 @@ describe("HAR body hydration budget", () => {
   it("counts WebSocket preview text and omits it when it exceeds the budget", async () => {
     const socket: InspectorRecord = {
       kind: "websocket",
-      server,
+      processId,
       socketId: "socket",
       method: "WS",
       url: "wss://example.com/socket",
@@ -194,12 +194,12 @@ describe("HAR body hydration budget", () => {
   });
 });
 
-const server = { deviceId: "device", socketName: "socket", instanceId: "instance" };
+const processId = "process-1";
 
 function request(id: string, overrides: Partial<RequestRecord> = {}): RequestRecord {
   return {
     kind: "request",
-    server,
+    processId,
     requestId: id,
     method: "GET",
     url: `https://example.com/${id}`,

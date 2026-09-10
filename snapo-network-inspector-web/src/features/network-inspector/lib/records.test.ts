@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RequestRecord, WebSocketRecord } from "../../../network/cdp";
 import {
-  countExcludedRecordsForServer,
+  countExcludedRecords,
   filterRecords,
   responseBodyCaptureMetadata,
   shouldRequestRequestBody,
@@ -13,13 +13,13 @@ describe("persistent exclusion filters", () => {
     const hidden = request({ requestId: "hidden", url: "https://events.example.com/track" });
     const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
 
-    expect(filterRecords([hidden, visible], server, "", false, ["-example.com"])).toEqual([visible]);
+    expect(filterRecords([hidden, visible], "", false, ["-example.com"])).toEqual([visible]);
   });
 
   it("hides WebSocket connections to excluded hosts", () => {
     const hidden: WebSocketRecord = {
       kind: "websocket",
-      server,
+      processId,
       socketId: "hidden-socket",
       method: "GET",
       url: "wss://stream.example.com/live",
@@ -33,7 +33,7 @@ describe("persistent exclusion filters", () => {
     };
     const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
 
-    expect(filterRecords([hidden, visible], server, "", false, ["-example.com"])).toEqual([visible]);
+    expect(filterRecords([hidden, visible], "", false, ["-example.com"])).toEqual([visible]);
   });
 
   it("continues applying keyword filters to hosts that are not hidden", () => {
@@ -41,9 +41,7 @@ describe("persistent exclusion filters", () => {
     const matching = request({ requestId: "matching", url: "https://api.openai.com/conversation" });
     const unrelated = request({ requestId: "unrelated", url: "https://api.openai.com/models" });
 
-    expect(filterRecords([hidden, matching, unrelated], server, "conversation", false, ["-example.com"])).toEqual([
-      matching
-    ]);
+    expect(filterRecords([hidden, matching, unrelated], "conversation", false, ["-example.com"])).toEqual([matching]);
   });
 
   it.each([
@@ -62,15 +60,15 @@ describe("persistent exclusion filters", () => {
     const records = [hidden, searchHidden, visible];
     const exclusionFilters = ["-events.example.com"];
 
-    expect(countExcludedRecordsForServer(records, server, exclusionFilters)).toBe(1);
-    expect(filterRecords(records, server, searchText, false, exclusionFilters)).toEqual([visible]);
+    expect(countExcludedRecords(records, exclusionFilters)).toBe(1);
+    expect(filterRecords(records, searchText, false, exclusionFilters)).toEqual([visible]);
   });
 
   it("traverses stream events once when search and exclusions are empty", () => {
     const visible = request();
     const iterateEvents = vi.spyOn(visible.streamEvents, Symbol.iterator);
 
-    expect(filterRecords([visible], server, "", false)).toEqual([visible]);
+    expect(filterRecords([visible], "", false)).toEqual([visible]);
     expect(iterateEvents).toHaveBeenCalledTimes(1);
   });
 
@@ -78,19 +76,19 @@ describe("persistent exclusion filters", () => {
     const hidden = request({ requestId: "hidden", method: "POST", url: "https://api.openai.com/messages" });
     const visible = request({ requestId: "visible", method: "GET", url: "https://api.openai.com/messages" });
 
-    expect(filterRecords([hidden, visible], server, "", false, ["-post"])).toEqual([visible]);
+    expect(filterRecords([hidden, visible], "", false, ["-post"])).toEqual([visible]);
   });
 
-  it("counts only excluded requests belonging to the selected server", () => {
+  it("counts excluded requests across retained app processes", () => {
     const hidden = request({ requestId: "hidden", url: "https://events.example.com/track" });
     const visible = request({ requestId: "visible", url: "https://api.openai.com/conversation" });
     const anotherServer = request({
-      requestId: "another-server",
-      server: { deviceId: "another-device", socketName: "socket", instanceId: "instance" },
+      requestId: "another-processId",
+      processId: "process-2",
       url: "https://events.example.com/track"
     });
 
-    expect(countExcludedRecordsForServer([hidden, visible, anotherServer], server, ["-example.com"])).toBe(1);
+    expect(countExcludedRecords([hidden, visible, anotherServer], ["-example.com"])).toBe(2);
   });
 });
 
@@ -141,12 +139,12 @@ describe("response body loading", () => {
   });
 });
 
-const server = { deviceId: "device", socketName: "socket", instanceId: "instance" };
+const processId = "process-1";
 
 function request(overrides: Partial<RequestRecord> = {}): RequestRecord {
   return {
     kind: "request",
-    server,
+    processId,
     requestId: "request",
     method: "POST",
     url: "https://example.com/request",

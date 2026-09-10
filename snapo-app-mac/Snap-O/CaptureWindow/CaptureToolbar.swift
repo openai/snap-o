@@ -138,18 +138,10 @@ struct CaptureToolbar: View {
 
         if let networkModel {
           HStack(spacing: 8) {
-            Group {
-              if networkModel.preferredInspectorKind == .tweaks {
-                tweaksInspectorControls(model: networkModel)
-              } else {
-                NetworkInspectorToolbarControls(
-                  model: networkModel,
-                  isSearchPresented: $isNetworkSearchPresented
-                )
-              }
-            }
-            // Reserve the three-button network group's width without stretching its background.
-            .frame(minWidth: 110, alignment: .leading)
+            NetworkInspectorToolbarControls(
+              model: networkModel,
+              isSearchPresented: $isNetworkSearchPresented
+            )
 
             AppInspectorPicker(model: networkModel)
               .padding(.leading, 4)
@@ -160,8 +152,13 @@ struct CaptureToolbar: View {
 
         Spacer()
 
-        if let networkModel, networkModel.preferredInspectorKind != .tweaks {
-          NetworkInspectorExportMenu(model: networkModel)
+        if let networkModel {
+          NetworkInspectorToolbarControls(
+            model: networkModel,
+            isSearchPresented: $isNetworkSearchPresented,
+            placement: .end
+          )
+          .padding(.trailing, 8)
         }
 
         networkToggleSlot
@@ -277,20 +274,6 @@ struct CaptureToolbar: View {
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
     .disabled(!workspace.canToggleNetwork)
-  }
-
-  private func tweaksInspectorControls(model: NetworkInspectorHostModel) -> some View {
-    Button {
-      model.resetTweaks()
-    } label: {
-      Label("Reset All Tweaks", systemImage: "arrow.counterclockwise")
-        .labelStyle(.iconOnly)
-        .font(.system(size: 15, weight: .medium))
-        .frame(width: 34, height: 32)
-    }
-    .help("Reset all tweaks")
-    .snapOToolbarGroupStyle()
-    .disabled(!model.isPageReady || !model.hasResettableTweaks)
   }
 
   private func toggleIcon(_ systemName: String) -> some View {

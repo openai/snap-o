@@ -1,57 +1,45 @@
 import Foundation
 
-/// An already-connected transport that supplies decoded records in wire order.
+/// HTTP reads and a separately controlled stream of live network events.
 public protocol NetworkSessionTransport: Sendable {
   func records() async -> AsyncThrowingStream<NetworkServerRecord, Error>
-  func send(_ message: NetworkCDPMessage) async throws
+  func startEvents() async throws
+  func stopEvents() async
+  func requestBody(requestID: String) async throws -> String
+  func responseBody(requestID: String) async throws -> NetworkResponseBody
+  func replaySnapshot(_ receive: @Sendable (NetworkServerRecord) async throws -> Void) async throws -> UInt64
   func close() async
 }
 
 public enum NetworkSessionError: Error, LocalizedError, Sendable, Equatable {
   case closed
-  case commandTimedOut(String)
   case transportFailed(String)
 
   public var errorDescription: String? {
     switch self {
-    case .closed:
-      "The network session is closed."
-    case .commandTimedOut(let method):
-      "Timed out waiting for \(method)."
-    case .transportFailed(let message):
-      "The network transport failed: \(message)"
+    case .closed: "The network session is closed."
+    case .transportFailed(let message): "The network transport failed: \(message)"
     }
   }
 }
 
-/// Coordinates one network-inspector transport and its request/reply lifecycle.
+/// Joins a finite HTTP snapshot with live SSE records from the same app process.
 public actor NetworkSession {
   private static let maximumBufferedRecords = 4096
-
-  private struct PendingCommand {
-    let continuation: CheckedContinuation<NetworkCDPMessage, Error>
-    let timeoutTask: Task<Void, Never>
-    var writeTask: Task<Void, Never>?
-  }
-
   private let transport: any NetworkSessionTransport
-  private let defaultCommandTimeout: Duration
   private let recordStream: AsyncStream<NetworkServerRecord>
   private let recordContinuation: AsyncStream<NetworkServerRecord>.Continuation
-
   private var readerTask: Task<Void, Never>?
-  private var writeTail: Task<Void, Error>?
-  private var pendingCommands: [Int: PendingCommand] = [:]
-  private var nextCommandID = 1
+  private var startTask: Task<Void, Error>?
   private var isClosed = false
+  private var replayBuffer: [NetworkServerRecord]?
+  private var streamGeneration = 0
+  private var streamEnabled = false
+  private var replayWatermark: UInt64?
   private var terminalFailure: NetworkSessionError?
 
-  public init(
-    transport: any NetworkSessionTransport,
-    defaultCommandTimeout: Duration = .seconds(2)
-  ) {
+  public init(transport: any NetworkSessionTransport) {
     self.transport = transport
-    self.defaultCommandTimeout = defaultCommandTimeout
     (recordStream, recordContinuation) = AsyncStream.makeStream(
       of: NetworkServerRecord.self,
       bufferingPolicy: .bufferingOldest(Self.maximumBufferedRecords)
@@ -60,82 +48,103 @@ public actor NetworkSession {
 
   public static func connect(
     to reference: NetworkServerReference,
-    using adb: ADBClient = ADBClient(),
-    defaultCommandTimeout: Duration = .seconds(2)
+    using adb: ADBClient = ADBClient()
   ) async throws -> NetworkSession {
     let transport = try await ADBNetworkTransport.open(reference: reference, using: adb)
-    return NetworkSession(
-      transport: transport,
-      defaultCommandTimeout: defaultCommandTimeout
-    )
+    return NetworkSession(transport: transport)
   }
 
-  /// Returns the session's single ordered stream of unsolicited records.
   public func records() -> AsyncStream<NetworkServerRecord> {
     startReaderIfNeeded()
     return recordStream
   }
 
-  public func send(
-    method: String,
-    params: [String: JSONValue]? = nil
-  ) async throws {
+  public func requestBody(requestID: String) async throws -> String {
     try ensureOpen()
-    startReaderIfNeeded()
-    try await enqueueWrite(
-      NetworkCDPMessage(method: method, params: params)
-    )
+    let body = try await transport.requestBody(requestID: requestID)
+    try ensureOpen()
+    return body
   }
 
-  public func command(
-    method: String,
-    params: [String: JSONValue]? = nil,
-    timeout: Duration? = nil
-  ) async throws -> NetworkCDPMessage {
-    try Task.checkCancellation()
+  public func responseBody(requestID: String) async throws -> NetworkResponseBody {
     try ensureOpen()
-    startReaderIfNeeded()
+    let body = try await transport.responseBody(requestID: requestID)
+    try ensureOpen()
+    return body
+  }
 
-    let commandID = allocateCommandID()
-    let message = NetworkCDPMessage(id: commandID, method: method, params: params)
-    let commandTimeout = timeout ?? defaultCommandTimeout
-
-    return try await withTaskCancellationHandler {
-      try await withCheckedThrowingContinuation { continuation in
-        guard !Task.isCancelled else {
-          continuation.resume(throwing: CancellationError())
-          return
-        }
-        let timeoutTask = Task { [weak self] in
-          do {
-            try await Task.sleep(for: commandTimeout)
-          } catch {
-            return
-          }
-          await self?.timeoutCommand(commandID, method: method)
-        }
-        pendingCommands[commandID] = PendingCommand(
-          continuation: continuation,
-          timeoutTask: timeoutTask,
-          writeTask: nil
-        )
-        let writeTask = Task { [weak self] in
-          guard let self else { return }
-          await writeCommand(message, commandID: commandID)
-        }
-        pendingCommands[commandID]?.writeTask = writeTask
+  public func startStream() async throws {
+    try ensureOpen()
+    if streamEnabled { return }
+    if let startTask { return try await startTask.value }
+    streamGeneration += 1
+    let generation = streamGeneration
+    let task = Task { try await beginStream(generation: generation) }
+    startTask = task
+    do {
+      try await withTaskCancellationHandler {
+        try await task.value
+      } onCancel: {
+        task.cancel()
       }
-    } onCancel: {
-      Task { await self.cancelCommand(commandID) }
+      if generation == streamGeneration { startTask = nil }
+    } catch {
+      if generation == streamGeneration { startTask = nil }
+      throw error
     }
   }
 
+  private func beginStream(generation: Int) async throws {
+    replayBuffer = []
+    replayWatermark = nil
+    startReaderIfNeeded()
+    do {
+      try await transport.startEvents()
+      try Task.checkCancellation()
+      let watermark = try await transport.replaySnapshot { record in
+        try await self.receiveSnapshot(record, generation: generation)
+      }
+      try ensureOpen()
+      guard generation == streamGeneration else { throw CancellationError() }
+      let buffered = replayBuffer ?? []
+      replayBuffer = nil
+      replayWatermark = watermark
+      streamEnabled = true
+      publish(.replayComplete(watermark: watermark))
+      for record in buffered {
+        receive(record)
+      }
+    } catch {
+      if generation == streamGeneration {
+        replayBuffer = nil
+        streamEnabled = false
+        await transport.stopEvents()
+      }
+      throw error
+    }
+  }
+
+  public func stopStream() async {
+    streamGeneration += 1
+    startTask?.cancel()
+    startTask = nil
+    replayBuffer = nil
+    replayWatermark = nil
+    streamEnabled = false
+    await transport.stopEvents()
+  }
+
+  private func receiveSnapshot(_ record: NetworkServerRecord, generation: Int) throws {
+    try ensureOpen()
+    guard generation == streamGeneration else { throw CancellationError() }
+    publish(record)
+  }
+
   public func close() async {
-    guard transitionToClosed(with: NetworkSessionError.closed) else { return }
+    guard transitionToClosed() else { return }
     await transport.close()
   }
 
-  /// Returns the failure that ended the record stream, or `nil` after a normal close.
   public func recordStreamFailure() -> NetworkSessionError? {
     terminalFailure
   }
@@ -161,112 +170,58 @@ public actor NetworkSession {
 
   private func receive(_ record: NetworkServerRecord) {
     guard !isClosed else { return }
-    if case .network(let message) = record,
-       message.method == nil,
-       let id = message.id,
-       let pending = pendingCommands.removeValue(forKey: id) {
-      pending.timeoutTask.cancel()
-      pending.writeTask?.cancel()
-      pending.continuation.resume(returning: message)
-      return
-    }
-    if case .dropped = recordContinuation.yield(record) {
-      let error = NetworkSessionError.transportFailed(
-        "The network record consumer could not keep up. Reconnect to obtain a fresh replay."
-      )
-      guard transitionToClosed(with: error, terminalFailure: error) else { return }
-      let transport = transport
-      Task { await transport.close() }
-    }
-  }
-
-  private func writeCommand(_ message: NetworkCDPMessage, commandID: Int) async {
-    guard pendingCommands[commandID] != nil else { return }
-    do {
-      try await enqueueWrite(message)
-    } catch {
-      failCommand(commandID, with: error)
-    }
-  }
-
-  private func enqueueWrite(_ message: NetworkCDPMessage) async throws {
-    try ensureOpen()
-    let previousWrite = writeTail
-    let transport = transport
-    let write = Task {
-      if let previousWrite {
-        _ = try? await previousWrite.value
+    if case .network(let message) = record, let sequence = message.snapoSequence {
+      if replayBuffer != nil {
+        guard replayBuffer!.count < Self.maximumBufferedRecords else {
+          failRecordBuffer()
+          return
+        }
+        replayBuffer?.append(record)
+        return
       }
-      try Task.checkCancellation()
-      try await transport.send(message)
+      guard streamEnabled else { return }
+      if let replayWatermark, sequence <= replayWatermark { return }
     }
-    writeTail = write
-    try await withTaskCancellationHandler {
-      try await write.value
-    } onCancel: {
-      write.cancel()
-    }
+    publish(record)
   }
 
-  private func timeoutCommand(_ id: Int, method: String) {
-    failCommand(id, with: NetworkSessionError.commandTimedOut(method))
+  private func publish(_ record: NetworkServerRecord) {
+    guard !isClosed else { return }
+    if case .dropped = recordContinuation.yield(record) { failRecordBuffer() }
   }
 
-  private func cancelCommand(_ id: Int) {
-    failCommand(id, with: CancellationError())
-  }
-
-  private func failCommand(_ id: Int, with error: any Error) {
-    guard let pending = pendingCommands.removeValue(forKey: id) else { return }
-    pending.timeoutTask.cancel()
-    pending.writeTask?.cancel()
-    pending.continuation.resume(throwing: error)
+  private func failRecordBuffer() {
+    let error = NetworkSessionError.transportFailed(
+      "The network record consumer could not keep up. Reconnect to obtain a fresh snapshot."
+    )
+    guard transitionToClosed(terminalFailure: error) else { return }
+    let transport = transport
+    Task { await transport.close() }
   }
 
   private func transportDidEnd(error: (any Error)?) async {
-    let sessionError = error.map {
-      NetworkSessionError.transportFailed($0.localizedDescription)
-    } ?? NetworkSessionError.closed
-    guard transitionToClosed(
-      with: sessionError,
-      terminalFailure: error == nil ? nil : sessionError
-    ) else { return }
+    let failure = error.map { NetworkSessionError.transportFailed($0.localizedDescription) }
+    guard transitionToClosed(terminalFailure: failure) else { return }
     await transport.close()
   }
 
-  private func transitionToClosed(
-    with error: any Error,
-    terminalFailure: NetworkSessionError? = nil
-  ) -> Bool {
+  private func transitionToClosed(terminalFailure: NetworkSessionError? = nil) -> Bool {
     guard !isClosed else { return false }
     isClosed = true
+    streamGeneration += 1
+    streamEnabled = false
+    replayBuffer = nil
     self.terminalFailure = terminalFailure
+    startTask?.cancel()
+    startTask = nil
     readerTask?.cancel()
     readerTask = nil
-    writeTail?.cancel()
-    writeTail = nil
-
-    let pending = Array(pendingCommands.values)
-    pendingCommands.removeAll()
-    for command in pending {
-      command.timeoutTask.cancel()
-      command.writeTask?.cancel()
-      command.continuation.resume(throwing: error)
-    }
     recordContinuation.finish()
     return true
   }
 
   private func ensureOpen() throws {
+    try Task.checkCancellation()
     guard !isClosed else { throw NetworkSessionError.closed }
-  }
-
-  private func allocateCommandID() -> Int {
-    var candidate = nextCommandID
-    while pendingCommands[candidate] != nil {
-      candidate = candidate == Int.max ? 1 : candidate + 1
-    }
-    nextCommandID = candidate == Int.max ? 1 : candidate + 1
-    return candidate
   }
 }

@@ -67,7 +67,7 @@ The CLI and Snap-O macOS app own socket discovery, forwarding, and cleanup. The 
 
 ## Custom interfaces: browsers, Node, Swift, and Compose
 
-Build a custom surface when an existing CLI, desktop inspector, or in-app overlay does not match the desired controls or workflow. All external hosts should discover the tweak socket, establish an accessible ADB transport, read `/app` and `/tweaks`, send batched `PATCH /tweaks` value updates, invoke explicitly requested actions with `POST /tweaks/action`, and consume full active snapshots from `/tweaks/events`. Render actions without assuming `value` or `default`; disable invocation when `conflicted` is true. Request `/tweaks?include=adjusted` when a workflow needs retained ordinary or app-owned adjustment snapshots, including inactive declarations.
+Build a custom surface when an existing CLI, desktop inspector, or in-app overlay does not match the desired controls or workflow. All external hosts should discover the tweak socket, establish an accessible ADB transport, read `/.snap-o/info` and `/tweaks`, send batched `PATCH /tweaks` value updates, invoke explicitly requested actions with `POST /tweaks/action`, and consume full active snapshots from `/tweaks/events`. Render actions without assuming `value` or `default`; disable invocation when `conflicted` is true. Request `/tweaks?include=adjusted` when a workflow needs retained ordinary or app-owned adjustment snapshots, including inactive declarations.
 
 - A browser interface can use `fetch` and `EventSource` through a same-origin proxy; see [protocol.md](protocol.md) for browser transport restrictions.
 - A Node host or terminal tool can use built-in `fetch` for requests and parse the response body as a standard SSE stream.

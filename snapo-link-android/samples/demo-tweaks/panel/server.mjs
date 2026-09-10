@@ -22,7 +22,7 @@ const staticFiles = new Map([
   ],
 ]);
 
-const tweakRoutes = new Set(["/app", "/app/icon", "/tweaks", "/tweaks/events"]);
+const tweakRoutes = new Set(["/.snap-o/info", "/.snap-o/appicon", "/tweaks", "/tweaks/events"]);
 
 export function parseAdbDevices(output) {
   return output
@@ -99,7 +99,7 @@ function adbCandidates() {
 
 async function probeTweakTarget(target, packageName, fetcher) {
   try {
-    const response = await fetcher(new URL("/app", target), {
+    const response = await fetcher(new URL("/.snap-o/info", target), {
       signal: AbortSignal.timeout(1_500),
     });
 
@@ -646,7 +646,7 @@ async function handleApps(request, response, connection, pathname) {
       return;
     }
 
-    await proxyTweak(request, response, connection, "/app/icon", app.target);
+    await proxyTweak(request, response, connection, "/.snap-o/appicon", app.target);
     return;
   }
 

@@ -1,35 +1,24 @@
 package com.openai.snapo.network
 
-import kotlinx.coroutines.channels.Channel
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReplayDeliveryTest {
     @Test
-    fun `queued live events covered by the replay watermark are skipped`() {
-        assertFalse(shouldDeliverAfterReplay(networkEvent(sequence = 40L), watermark = 41L))
-        assertFalse(shouldDeliverAfterReplay(networkEvent(sequence = 41L), watermark = 41L))
-        assertTrue(shouldDeliverAfterReplay(networkEvent(sequence = 42L), watermark = 41L))
+    fun `SSE subscribers close instead of dropping events when their queue fills`() {
+        val stream = NetworkEventStream {}
+        repeat(512) { assertTrue(stream.offer(byteArrayOf(1))) }
+        assertFalse(stream.offer(byteArrayOf(2)))
+        assertTrue(stream.isClosed)
     }
 
     @Test
-    fun `unsequenced events remain compatible with older producers`() {
-        assertTrue(shouldDeliverAfterReplay(networkEvent(sequence = null), watermark = 41L))
+    fun `SSE subscribers bound queued bytes as well as event count`() {
+        val stream = NetworkEventStream {}
+        val event = ByteArray(1024 * 1024)
+        repeat(32) { assertTrue(stream.offer(event)) }
+        assertFalse(stream.offer(event))
+        assertTrue(stream.isClosed)
     }
-
-    @Test
-    fun `full channel is reported as a delivery failure`() {
-        val channel = Channel<Int>(capacity = 1)
-
-        assertTrue(channel.trySendSuccessfully(1))
-        assertFalse(channel.trySendSuccessfully(2))
-
-        channel.close()
-    }
-
-    private fun networkEvent(sequence: Long?): CdpMessage = CdpMessage(
-        method = CdpNetworkMethod.RequestWillBeSent,
-        snapoSequence = sequence,
-    )
 }

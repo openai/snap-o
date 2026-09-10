@@ -321,7 +321,7 @@ test("browser panel renders, streams, validates, and resets live tweaks", async 
       });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({
         name: "Snap-O Tweaks Demo",
         packageName: "com.openai.snapo.demo.tweaks",
@@ -602,7 +602,7 @@ test("legacy tweak protocols reset changed values using their defaults", async (
         return jsonResponse({ apps: [app], selectedAppId: app.id });
       }
 
-      if (pathname === "/app") return jsonResponse(app);
+      if (pathname === "/.snap-o/info") return jsonResponse(app);
 
       if (pathname === "/tweaks" && options?.method === "PATCH") {
         const { values } = JSON.parse(options.body);
@@ -672,7 +672,7 @@ test("mixed tweak updates keep successful changes and restore rejected rows", as
       if (pathname === "/apps") {
         return jsonResponse({ apps: [app], selectedAppId: app.id });
       }
-      if (pathname === "/app") return jsonResponse(app);
+      if (pathname === "/.snap-o/info") return jsonResponse(app);
       if (pathname === "/tweaks" && options?.method === "PATCH") {
         const { values } = JSON.parse(options.body);
         patches.push(values);
@@ -746,7 +746,7 @@ test("mixed tweak resets keep successful changes and report rejected names", asy
       if (pathname === "/apps") {
         return jsonResponse({ apps: [app], selectedAppId: app.id });
       }
-      if (pathname === "/app") return jsonResponse(app);
+      if (pathname === "/.snap-o/info") return jsonResponse(app);
       if (pathname === "/tweaks" && options?.method === "PATCH") {
         const { values } = JSON.parse(options.body);
         patches.push(values);
@@ -839,7 +839,7 @@ test("owner status controls null resets independently of the initial default", a
       return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
     }
 
@@ -960,7 +960,7 @@ test("switches available inspectors beside the app-only picker", async () => {
       return jsonResponse({ apps: [app], selectedAppId: app.id });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({ name: app.name, packageName: app.packageName });
     }
 
@@ -1018,7 +1018,7 @@ test("sliders stream immediately and wait for each request before sending the la
       });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({
         name: "Snap-O Tweaks Demo",
         packageName: "com.openai.snapo.demo.tweaks",
@@ -1141,7 +1141,7 @@ test("groups tweaks only by explicit folder paths and patches their full names",
       return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
     }
 
@@ -1198,7 +1198,7 @@ test("restores section and tweak order as folders disappear and reappear", async
       return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
     }
 
@@ -1287,7 +1287,7 @@ test("remembers folder order independently for each selected app", async () => {
       });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       const selected = selectedId === secondApp.id ? secondApp : demoApp;
       return jsonResponse({ name: selected.name, packageName: selected.packageName });
     }
@@ -1398,7 +1398,7 @@ test("switches apps only after pending slider updates finish", async () => {
       return jsonResponse({ app: id === secondApp.id ? secondApp : demoApp });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       const app = selectedId === secondApp.id ? secondApp : demoApp;
       return jsonResponse({ name: app.name, packageName: app.packageName });
     }
@@ -1515,7 +1515,7 @@ test("automatic refresh replaces tweaks when the app changes screens", async () 
       return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
     }
 
@@ -1578,7 +1578,7 @@ test("motion tweaks appear and disappear as the visibility tweak changes composi
       return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
     }
 
@@ -1685,7 +1685,7 @@ test("streams batched composition changes without polling tweak values", async (
       return jsonResponse({ apps: [demoApp], selectedAppId: demoApp.id });
     }
 
-    if (pathname === "/app") {
+    if (pathname === "/.snap-o/info") {
       return jsonResponse({ name: demoApp.name, packageName: demoApp.packageName });
     }
 
@@ -1792,7 +1792,7 @@ test("Bezier rows edit whole curves, reject overshoot, reset, and survive stream
   globalThis.fetch = async (pathname, options) => {
     const app = { ...demoApp, protocolVersion: 5 };
     if (pathname === "/apps") return jsonResponse({ apps: [app], selectedAppId: app.id });
-    if (pathname === "/app") return jsonResponse(app);
+    if (pathname === "/.snap-o/info") return jsonResponse(app);
     if (pathname === "/tweaks" && options?.method === "PATCH") {
       const { values } = JSON.parse(options.body);
       patches.push(values);

@@ -14,47 +14,23 @@ struct NetworkProtocolTests {
     #expect(message.params?["requestId"] == .string("r1"))
   }
 
-  @Test("remains compatible when sequence metadata is absent")
-  func decodesLegacyMessage() throws {
-    let data = Data(#"{"method":"SnapO.replayComplete"}"#.utf8)
-    let message = try JSONDecoder().decode(NetworkCDPMessage.self, from: data)
-
-    #expect(message.snapoSequence == nil)
-    #expect(message.method == SnapONetworkProtocol.Method.replayComplete)
-  }
-
-  @Test("decodes the replay watermark")
-  func decodesReplayWatermark() {
-    let record = NetworkRecordCodec.decode(
-      #"{"method":"SnapO.replayComplete","params":{"watermark":17}}"#
-    )
-
-    #expect(record == .replayComplete(watermark: 17))
+  @Test("rejects legacy control messages")
+  func rejectsLegacyControls() {
+    #expect(NetworkRecordCodec.decode(#"{"method":"SnapO.replayComplete","params":{"watermark":17}}"#) == .unknown)
+    #expect(NetworkRecordCodec.decode(#"{"id":1,"result":{}}"#) == .unknown)
   }
 
   @Test("decodes the shared HTTP replay contract")
   func decodesSharedReplayFixture() throws {
     let fixtureURL = repositoryRoot
-      .appendingPathComponent("contracts/network/v1/http-replay.jsonl")
+      .appendingPathComponent("contracts/network/v2/history.jsonl")
     let lines = try String(contentsOf: fixtureURL, encoding: .utf8)
       .split(separator: "\n")
       .map(String.init)
     let records = lines.map(NetworkRecordCodec.decode)
 
-    #expect(records.count == 5)
-    #expect(records[0] == .appInfo(
-      NetworkAppInfo(
-        protocolVersion: 1,
-        packageName: "com.example.app",
-        processName: "com.example.app",
-        pid: 42,
-        serverStartWallMs: 1_710_000_000_000,
-        serverStartMonoNs: 100_000_000_000,
-        mode: "safe",
-        icon: nil
-      )
-    ))
-    #expect(records[3] == .network(
+    #expect(records.count == 3)
+    #expect(records[2] == .network(
       NetworkCDPMessage(
         method: "Network.loadingFinished",
         params: [
@@ -65,7 +41,6 @@ struct NetworkProtocolTests {
         snapoSequence: 3
       )
     ))
-    #expect(records[4] == .replayComplete(watermark: 3))
   }
 
   private var repositoryRoot: URL {

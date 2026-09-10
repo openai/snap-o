@@ -72,12 +72,12 @@ function reply(response, status, body, headers = {}) {
 
 before(async () => {
   upstream = createServer(async (request, response) => {
-    if (request.url === "/app" && request.method === "GET") {
+    if (request.url === "/.snap-o/info" && request.method === "GET") {
       reply(response, 200, app);
       return;
     }
 
-    if (request.url === "/app/icon" && request.method === "GET") {
+    if (request.url === "/.snap-o/appicon" && request.method === "GET") {
       reply(response, 200, icon);
       return;
     }
@@ -275,7 +275,7 @@ test("serves Network Inspector's official Lucide app-picker chevron", async () =
 });
 
 test("proxies app metadata without adding an icon URL", async () => {
-  const response = await fetch(new URL("/app", panel.url));
+  const response = await fetch(new URL("/.snap-o/info", panel.url));
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), app);
 });
@@ -345,9 +345,9 @@ test("switches only to a discovered app and routes its tweaks and icon", async (
 
   function makeAppServer(identity, image) {
     return createServer(async (request, response) => {
-      if (request.url === "/app" && request.method === "GET") {
+      if (request.url === "/.snap-o/info" && request.method === "GET") {
         reply(response, 200, identity);
-      } else if (request.url === "/app/icon" && request.method === "GET") {
+      } else if (request.url === "/.snap-o/appicon" && request.method === "GET") {
         reply(response, 200, image);
       } else if (request.url === "/tweaks" && request.method === "GET") {
         reply(response, 200, { tweaks: initialTweaks });
@@ -410,7 +410,7 @@ test("switches only to a discovered app and routes its tweaks and icon", async (
     assert.equal(selection.status, 200);
     assert.equal((await selection.json()).app.name, second.name);
 
-    const metadata = await fetch(new URL("/app", multiPanel.url));
+    const metadata = await fetch(new URL("/.snap-o/info", multiPanel.url));
     assert.deepEqual(await metadata.json(), second);
 
     const image = await fetch(
@@ -435,7 +435,7 @@ test("switches only to a discovered app and routes its tweaks and icon", async (
     });
     assert.equal(unknown.status, 404);
 
-    const current = await fetch(new URL("/app", multiPanel.url));
+    const current = await fetch(new URL("/.snap-o/info", multiPanel.url));
     assert.deepEqual(await current.json(), second);
   } finally {
     await multiPanel.close();
@@ -449,7 +449,7 @@ test("switches only to a discovered app and routes its tweaks and icon", async (
 });
 
 test("proxies the application icon as an unchanged PNG", async () => {
-  const response = await fetch(new URL("/app/icon", panel.url));
+  const response = await fetch(new URL("/.snap-o/appicon", panel.url));
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "image/png");
@@ -543,7 +543,7 @@ test("preserves Android validation errors", async () => {
 });
 
 test("preserves allowed methods from the Android app", async () => {
-  const response = await fetch(new URL("/app", panel.url), { method: "POST" });
+  const response = await fetch(new URL("/.snap-o/info", panel.url), { method: "POST" });
 
   assert.equal(response.status, 405);
   assert.equal(response.headers.get("allow"), "GET");
@@ -725,7 +725,7 @@ test("creates its own ADB forward for a running app", async () => {
   };
 
   const fetcher = async (url) => {
-    assert.equal(url.href, "http://127.0.0.1:49231/app");
+    assert.equal(url.href, "http://127.0.0.1:49231/.snap-o/info");
     return new Response(JSON.stringify(app), {
       headers: { "Content-Type": "application/json" },
     });
@@ -838,7 +838,7 @@ test("recovers automatically when the Android app process changes", async () => 
 
   function makeUpstream(identity) {
     return createServer((request, response) => {
-      if (request.url === "/app") {
+      if (request.url === "/.snap-o/info") {
         reply(response, 200, identity);
       } else if (request.url === "/tweaks") {
         reply(response, 200, { tweaks: initialTweaks });
@@ -871,7 +871,7 @@ test("recovers automatically when the Android app process changes", async () => 
   });
 
   try {
-    const first = await fetch(new URL("/app", recoveringPanel.url));
+    const first = await fetch(new URL("/.snap-o/info", recoveringPanel.url));
     assert.deepEqual(await first.json(), app);
     assert.equal(discoveries, 1);
 
@@ -879,7 +879,7 @@ test("recovers automatically when the Android app process changes", async () => 
     original.closeAllConnections();
     await new Promise((resolve) => original.close(resolve));
 
-    const recovered = await fetch(new URL("/app", recoveringPanel.url));
+    const recovered = await fetch(new URL("/.snap-o/info", recoveringPanel.url));
     assert.equal(recovered.status, 200);
     assert.deepEqual(await recovered.json(), replacementApp);
     assert.equal(discoveries, 2);

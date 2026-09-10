@@ -2,7 +2,7 @@
 
 A model built this inspector as one way to find running apps and change live values. Each app must use Snap-O Tweaks.
 
-This is only a demo, not part of the feature or the expected way to use it. You do not need this inspector. Any tool can use `/app`, `/tweaks`, `/tweaks?include=adjusted`, and `/tweaks/events` to build its own live UI.
+This is only a demo, not part of the feature or the expected way to use it. You do not need this inspector. Any tool can use `/.snap-o/info`, `/tweaks`, `/tweaks?include=adjusted`, and `/tweaks/events` to build its own live UI.
 
 ## What you need
 
@@ -54,7 +54,7 @@ To find apps, the inspector:
 2. Puts real devices before emulators.
 3. Finds each live `snapo_tweaks_<pid>` socket.
 4. Uses or creates an `adb` port forward.
-5. Reads `/app` to get the app name and package.
+5. Reads `/.snap-o/info` to get the app name and package.
 
 It checks for new apps every few seconds. Tweak and screen changes stream from the app as they happen. If an app starts again, the inspector keeps the same app selected when possible. If no app is running, it shows an empty state and waits.
 

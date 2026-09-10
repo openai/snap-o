@@ -304,6 +304,21 @@ struct CaptureWindow: View {
           Group {
             if let networkModel = networkSession.model {
               NetworkInspectorWebView(model: networkModel)
+                .overlay {
+                  if networkModel.isWaiting || networkModel.selectedInspector == nil {
+                    VStack(spacing: 12) {
+                      Text(networkModel.selectedInspectorApp.map { "Waiting for \($0.name)" } ?? "Select an app to inspect")
+                        .foregroundStyle(.secondary)
+                      if let launch = networkModel.appLaunch {
+                        Button(launch.pending ? "Opening…" : "Open App") { networkModel.openSelectedApp() }
+                          .disabled(launch.pending)
+                        if let error = launch.error { Text(error).foregroundStyle(.red) }
+                      }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .textBackgroundColor))
+                  }
+                }
             } else {
               ProgressView()
             }

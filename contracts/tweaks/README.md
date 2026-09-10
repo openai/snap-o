@@ -25,11 +25,11 @@ ADB prints the assigned localhost port:
 curl -fsS http://127.0.0.1:43817/tweaks
 ```
 
-Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `JsonReader`/`JsonWriter`. Use JSON for app and tweak responses, PNG for `/app/icon`, and server-sent events for `/tweaks/events`. Ordinary responses include `Content-Length` and close their connection. Event streams keep their connection open. Bound request sizes and concurrent connections, and apply a read timeout while receiving each request. No server dependency, Android TCP port, or `INTERNET` permission is needed.
+Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `JsonReader`/`JsonWriter`. Use JSON for app and tweak responses, PNG for `/.snap-o/appicon`, and server-sent events for `/tweaks/events`. Ordinary responses include `Content-Length` and close their connection. Event streams keep their connection open. Bound request sizes and concurrent connections, and apply a read timeout while receiving each request. No server dependency, Android TCP port, or `INTERNET` permission is needed.
 
 ## REST API
 
-### GET /app
+### GET /.snap-o/info
 
 Return the app's user-facing Android label, package name, and Tweaks protocol version:
 
@@ -37,13 +37,13 @@ Return the app's user-facing Android label, package name, and Tweaks protocol ve
 {
   "name": "Snap-O Tweaks Demo",
   "packageName": "com.openai.snapo.demo.tweaks",
-  "protocolVersion": 5
+  "protocolVersion": 6
 }
 ```
 
-Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
+Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors. Version 6 moves metadata and icons from `/app` and `/app/icon` to `/.snap-o/info` and `/.snap-o/appicon`. This is a breaking discovery change: update clients and Android libraries together. The old routes are not served. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
 
-### GET /app/icon
+### GET /.snap-o/appicon
 
 Lazily return the app icon as a 96 × 96 PNG with `Content-Type: image/png`. Return `404` when the icon is unavailable.
 
@@ -573,3 +573,7 @@ A non-exported `ContentProvider` in the live artifact starts the runtime by defa
 This flag allows the Tweaks server and, if installed and enabled, the in-app overlay. It does not enable Network Inspector, which has its own `snapo.network.allow_release` application flag. The no-op release artifacts are still recommended: they return default values, contain no provider, and let R8 remove unused calls and tweak-name strings. Verify the release APK contains neither tweak-only strings nor the live provider, registry, server, or socket.
 
 Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network protocol change, groups, scopes, units, separate tweak IDs, or revisions.
+
+## Browser access
+
+The desktop host provides the ADB-forwarded base URL. Browser clients use `fetch` and `EventSource` directly. Every request must use a loopback `Host` (`localhost`, `127.0.0.1`, or `[::1]`, with an optional port). This blocks DNS rebinding through attacker-owned names. HTTP and HTTPS loopback origins are allowed through CORS. Other origins, including `null`, are rejected. `OPTIONS` permits `GET`, `PATCH`, and `POST` with `Content-Type`. Native clients may omit `Origin`; credentials are not required.

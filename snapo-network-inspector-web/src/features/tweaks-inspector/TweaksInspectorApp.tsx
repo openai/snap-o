@@ -1,10 +1,9 @@
+import type { InspectorMetadata } from "../app-inspector/useInspectorMetadata";
 import type { JSX } from "preact";
 import { BezierEditor } from "./BezierEditor";
 import { ChevronDown, RotateCcw } from "lucide-preact";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import type {
-  InspectableApp,
-  SelectedAppInspector,
   StreamStarted,
   TweakActionDescriptor,
   TweakDescriptor,
@@ -12,9 +11,9 @@ import type {
   TweakValue,
   TweakValueDescriptor
 } from "../../network/bridge-types";
-import type { NativeColorPanelChange, TweaksClient } from "./client";
+import type { TweaksClient } from "./client";
+import { host, type ColorPicker } from "../../host";
 import { InspectorWaitingState } from "../app-inspector/components/InspectorWaitingState";
-import type { AppLaunchControl } from "../app-inspector/useAppInspector";
 import { TweakUpdateQueue } from "./tweak-update-queue";
 
 interface TweakSection {
@@ -30,28 +29,24 @@ interface TweakOrdering {
 
 interface ActiveColorPanelSession {
   tweak: TweakValueDescriptor;
-  sessionId: string;
+  picker?: ColorPicker;
 }
 
-let nextColorPanelSession = 0;
 const docsUrl = "https://openai.github.io/snap-o/tweaks.html#expose-values";
 const modifiedTweakProtocolVersion = 4;
 
 export function TweaksInspectorApp({
   client,
-  selection,
-  selectedApp,
-  appLaunch,
-  isConnected
+  metadata,
+  isConnected,
+  connectionRevision = 0
 }: {
   client: TweaksClient;
-  selection: SelectedAppInspector;
-  selectedApp?: InspectableApp | null;
-  appLaunch?: AppLaunchControl | null;
+  metadata: InspectorMetadata;
   isConnected: boolean;
+  connectionRevision?: number;
 }): JSX.Element {
-  const server = selection.server;
-  const connection = useMemo(() => ({ server, isConnected }), [isConnected, server]);
+  const connection = useMemo(() => ({ isConnected, connectionRevision }), [isConnected, connectionRevision]);
   const [tweaks, setTweaks] = useState<TweakDescriptor[]>([]);
   const [hasSnapshot, setHasSnapshot] = useState(false);
   const [connectionState, setConnectionState] = useState<{
@@ -62,24 +57,23 @@ export function TweaksInspectorApp({
   const [saving, setSaving] = useState(false);
   const [invokingActions, setInvokingActions] = useState(() => new Set<string>());
   const [collapsedSections, setCollapsedSections] = useState(() => new Set<string>());
-  const [orderByApp] = useState(() => new Map<string, TweakOrdering>());
+  const [ordering] = useState<TweakOrdering>(() => ({ sections: new Map(), tweaks: new Map() }));
   const sectionListId = useId();
   const activeColorPanelRef = useRef<ActiveColorPanelSession | null>(null);
   const currentConnection = connectionState?.connection === connection ? connectionState : null;
   const canEdit = isConnected && currentConnection?.error === null;
   const connectionError = currentConnection?.error ?? null;
-  const protocolVersion = selection.protocolVersion ?? 1;
-  const hasNativeColorPanel =
-    typeof client.openNativeColorPanel === "function" && typeof client.onNativeColorPanelChange === "function";
+  const displayedError = connectionError ?? error;
+  const protocolVersion = metadata.protocolVersion;
   const queue = useMemo(
     () =>
-      new TweakUpdateQueue(client, server, {
+      new TweakUpdateQueue(client, {
         onUpdate(updates, pending) {
           setTweaks((current) => applyTweakUpdates(current, updates, pending, protocolVersion));
         },
         onRejected(_errors, pending, inFlight, isCurrent) {
           void client
-            .listTweaks(server)
+            .listTweaks()
             .then((response) => {
               if (!isCurrent()) return;
               const pendingAtReply = new Map(pending);
@@ -97,7 +91,7 @@ export function TweaksInspectorApp({
         onError: setError,
         onSavingChange: setSaving
       }),
-    [client, protocolVersion, server]
+    [client, protocolVersion]
   );
 
   useEffect(() => {
@@ -106,6 +100,7 @@ export function TweaksInspectorApp({
     let streamStart: Promise<StreamStarted> | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let retryDelay = 250;
+    let streamFailed = false;
 
     const applySnapshot = (incoming: TweakDescriptor[]) => {
       // Preserve the queue state at receipt, before React defers this update.
@@ -117,14 +112,15 @@ export function TweaksInspectorApp({
     };
 
     const unsubscribe = client.onTweaksChanged((event) => {
-      if (disposed || event.server.deviceId !== server.deviceId || event.server.socketName !== server.socketName) {
+      if (disposed) {
         return;
       }
 
       // The initial event can arrive before the start reply identifies its stream.
-      void streamStart?.then(
+      const pending = streamStart;
+      void pending?.then(
         ({ streamId }) => {
-          if (disposed || event.streamId !== streamId) return;
+          if (disposed || streamFailed || pending !== streamStart || event.streamId !== streamId) return;
           applySnapshot(event.tweaks);
           setConnectionState({ connection, error: null });
         },
@@ -133,25 +129,33 @@ export function TweaksInspectorApp({
     });
 
     const connect = async () => {
-      try {
-        const response = await client.listTweaks(server);
-        if (disposed) return;
-        applySnapshot(response.tweaks);
-        setConnectionState(null);
+      streamStart = undefined;
+      streamFailed = false;
+      const failed = (cause: unknown) => {
+        if (disposed || streamFailed) return;
+        streamFailed = true;
+        queue.cancel();
         setSaving(false);
-
-        streamStart = client.startTweakStream(server);
-        await streamStart;
-        if (disposed) return;
-        setConnectionState({ connection, error: null });
-      } catch (cause) {
-        if (disposed) return;
         setConnectionState({
           connection,
           error: cause instanceof Error ? cause.message : "Unable to connect to tweaks."
         });
         retryTimer = setTimeout(() => void connect(), retryDelay);
         retryDelay = Math.min(retryDelay * 2, 4_000);
+      };
+      try {
+        const response = await client.listTweaks();
+        if (disposed) return;
+        applySnapshot(response.tweaks);
+        setConnectionState(null);
+        setSaving(false);
+
+        streamStart = client.startTweakStream(failed);
+        await streamStart;
+        if (disposed || streamFailed) return;
+        setConnectionState({ connection, error: null });
+      } catch (cause) {
+        failed(cause);
       }
     };
     void connect();
@@ -163,35 +167,23 @@ export function TweaksInspectorApp({
       unsubscribe();
       void streamStart?.then(({ streamId }) => client.stopTweakStream(streamId)).catch(() => {});
     };
-  }, [client, connection, isConnected, queue, server]);
+  }, [client, connection, isConnected, queue]);
 
   const closeActiveColorPanel = useCallback(async () => {
     const active = activeColorPanelRef.current;
     activeColorPanelRef.current = null;
-    if (active) await client.closeNativeColorPanel?.(active.sessionId);
-  }, [client]);
+    await active?.picker?.close();
+  }, []);
 
   useEffect(() => {
     if (!canEdit) void closeActiveColorPanel().catch(() => {});
   }, [canEdit, closeActiveColorPanel]);
 
-  const openNativeColorPanel = useCallback(
-    (tweak: TweakValueDescriptor, present = true) => {
-      if (!canEdit || !hasNativeColorPanel || client.openNativeColorPanel === undefined) {
-        activeColorPanelRef.current = null;
-        return;
-      }
-
-      const sessionId = String(++nextColorPanelSession);
-      activeColorPanelRef.current = { tweak, sessionId };
-      void client.openNativeColorPanel(String(tweak.value), sessionId, present).catch((cause: unknown) => {
-        if (activeColorPanelRef.current?.sessionId !== sessionId) return;
-
-        activeColorPanelRef.current = null;
-        setError(cause instanceof Error ? cause.message : "Unable to open the color picker.");
-      });
+  useEffect(
+    () => () => {
+      void closeActiveColorPanel().catch(() => {});
     },
-    [canEdit, client, hasNativeColorPanel]
+    [closeActiveColorPanel]
   );
 
   const updateTweak = useCallback(
@@ -199,9 +191,9 @@ export function TweaksInspectorApp({
       if (!canEdit) return;
       const active = activeColorPanelRef.current;
       if (active?.tweak.name === tweak.name && active.tweak.value !== value) {
-        openNativeColorPanel({ ...tweak, value }, false);
+        active.tweak = { ...tweak, value };
+        void active.picker?.setValue(String(value)).catch(() => {});
       }
-
       setTweaks((current) =>
         current.map((item) =>
           item.name === tweak.name && item.type !== "action" ? { ...item, value, modified: true } : item
@@ -210,50 +202,56 @@ export function TweaksInspectorApp({
       queue.enqueue(tweak.name, value);
       void queue.flush();
     },
-    [canEdit, openNativeColorPanel, queue]
+    [canEdit, queue]
+  );
+
+  const openNativeColorPanel = useCallback(
+    (tweak: TweakValueDescriptor) => {
+      if (!canEdit) return;
+      const active: ActiveColorPanelSession = { tweak };
+      activeColorPanelRef.current = active;
+      void host
+        .openColorPicker({
+          value: String(tweak.value),
+          onChange(color) {
+            if (activeColorPanelRef.current !== active) return;
+            const value = nativePanelTweakColor(color);
+            if (value === null) return;
+            active.tweak = { ...active.tweak, value };
+            updateTweak(active.tweak, value);
+          },
+          onClose() {
+            if (activeColorPanelRef.current === active) activeColorPanelRef.current = null;
+          }
+        })
+        .then((picker) => {
+          if (activeColorPanelRef.current !== active) {
+            void picker.close().catch(() => {});
+            return;
+          }
+          active.picker = picker;
+          if (active.tweak.value !== tweak.value) void picker.setValue(String(active.tweak.value)).catch(() => {});
+        })
+        .catch((cause: unknown) => {
+          if (activeColorPanelRef.current !== active) return;
+          activeColorPanelRef.current = null;
+          setError(cause instanceof Error ? cause.message : "Unable to open the color picker.");
+        });
+    },
+    [canEdit, updateTweak]
   );
 
   useEffect(() => {
     const active = activeColorPanelRef.current;
     if (active === null) return;
-
     const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
     if (tweak === undefined || tweak.type === "action") {
-      void closeActiveColorPanel().catch((cause: unknown) => {
-        if (activeColorPanelRef.current !== null) return;
-
-        setError(cause instanceof Error ? cause.message : "Unable to close the color picker.");
-      });
-      return;
-    }
-
-    if (tweak.value === active.tweak.value) {
-      activeColorPanelRef.current = { ...active, tweak };
-      return;
-    }
-
-    openNativeColorPanel(tweak, false);
-  }, [closeActiveColorPanel, openNativeColorPanel, tweaks]);
-
-  useEffect(() => {
-    if (!hasNativeColorPanel || client.onNativeColorPanelChange === undefined) return;
-
-    const unsubscribe = client.onNativeColorPanelChange((event) => {
-      const active = activeColorPanelRef.current;
-      if (active === null) return;
-
-      const value = nativePanelTweakColor(event, active.sessionId);
-      if (value === null) return;
-
-      activeColorPanelRef.current = { ...active, tweak: { ...active.tweak, value } };
-      updateTweak(active.tweak, value);
-    });
-
-    return () => {
       void closeActiveColorPanel().catch(() => {});
-      unsubscribe();
-    };
-  }, [client, closeActiveColorPanel, hasNativeColorPanel, updateTweak]);
+      return;
+    }
+    if (tweak.value !== active.tweak.value) void active.picker?.setValue(String(tweak.value)).catch(() => {});
+    active.tweak = tweak;
+  }, [closeActiveColorPanel, tweaks]);
 
   const invokeAction = useCallback(
     (action: TweakActionDescriptor) => {
@@ -263,7 +261,7 @@ export function TweaksInspectorApp({
       setError(null);
 
       void client
-        .invokeTweakAction({ server, name: action.name })
+        .invokeTweakAction({ name: action.name })
         .catch((cause: unknown) => {
           setError(cause instanceof Error ? cause.message : `Unable to invoke ${action.name}.`);
         })
@@ -275,7 +273,7 @@ export function TweaksInspectorApp({
           });
         });
     },
-    [canEdit, client, server]
+    [canEdit, client]
   );
 
   const resetTweak = useCallback(
@@ -297,32 +295,43 @@ export function TweaksInspectorApp({
     void queue.flush();
   }, [canEdit, protocolVersion, queue, tweaks]);
 
-  useEffect(() => client.onNativeTweaksReset(resetAll), [client, resetAll]);
-
-  const sections = useMemo(
-    () => groupTweaks(tweaks, selection.appId, orderByApp),
-    [orderByApp, selection.appId, tweaks]
-  );
+  const sections = useMemo(() => groupTweaks(tweaks, ordering), [ordering, tweaks]);
   const hasChanges = canResetTweaks(tweaks, protocolVersion);
 
   useEffect(() => {
-    client.nativeTweaksStateChanged({
-      server,
-      hasResettableTweaks: canEdit && hasChanges && !saving
-    });
-  }, [canEdit, client, hasChanges, saving, server]);
+    void host
+      .setToolbar({
+        start: [
+          {
+            type: "button",
+            id: "reset",
+            icon: "reset",
+            label: "Reset Tweaks",
+            enabled: canEdit && hasChanges && !saving,
+            onClick: resetAll
+          }
+        ]
+      })
+      .catch(() => {});
+  }, [canEdit, hasChanges, resetAll, saving]);
+  useEffect(
+    () => () => {
+      void host.setToolbar({ start: [] }).catch(() => {});
+    },
+    []
+  );
 
   return (
     <main className="tweaks-inspector">
       {!hasSnapshot ? (
-        <InspectorWaitingState launch={appLaunch} app={selectedApp} error={connectionError} />
-      ) : hasSnapshot && !error && tweaks.length === 0 ? (
+        <InspectorWaitingState error={connectionError} />
+      ) : hasSnapshot && !displayedError && tweaks.length === 0 ? (
         <TweaksEmptyState onOpenDocs={() => void client.openExternal(docsUrl)} />
       ) : (
         <div className="tweaks-inspector-content">
-          {error ? (
+          {displayedError ? (
             <p className="tweaks-error" role="alert">
-              {error}
+              {displayedError}
             </p>
           ) : null}
           <fieldset
@@ -336,7 +345,7 @@ export function TweaksInspectorApp({
               {sections.map((column, index) => (
                 <div className="tweaks-column" key={index}>
                   {column.map((section) => {
-                    const sectionKey = `${selection.appId}\0${section.name}`;
+                    const sectionKey = section.name;
                     const collapsed = section.name !== "" && collapsedSections.has(sectionKey);
                     return (
                       <section className={`tweaks-section${collapsed ? " collapsed" : ""}`} key={section.name}>
@@ -375,7 +384,7 @@ export function TweaksInspectorApp({
                               onInvoke={invokeAction}
                               invoking={invokingActions.has(tweak.name)}
                               onReset={resetTweak}
-                              onOpenColorPanel={hasNativeColorPanel ? openNativeColorPanel : undefined}
+                              onOpenColorPanel={openNativeColorPanel}
                             />
                           ))}
                         </div>
@@ -462,17 +471,7 @@ export function reconcileStreamedTweaks(
   });
 }
 
-export function groupTweaks(
-  tweaks: TweakDescriptor[],
-  appId: string,
-  saved: Map<string, TweakOrdering>
-): TweakSection[][] {
-  let ordering = saved.get(appId);
-  if (!ordering) {
-    ordering = { sections: new Map(), tweaks: new Map() };
-    saved.set(appId, ordering);
-  }
-
+export function groupTweaks(tweaks: TweakDescriptor[], ordering: TweakOrdering): TweakSection[][] {
   const active = new Map<string, TweakDescriptor[]>();
 
   for (const tweak of tweaks) {
@@ -896,10 +895,8 @@ export function tweakColorWithPreservedAlpha(committed: string, color: string): 
   return `${color.toUpperCase()}${alpha}`;
 }
 
-export function nativePanelTweakColor(event: NativeColorPanelChange, sessionId: string): string | null {
-  if (event.sessionId !== sessionId) return null;
-
-  const normalized = parseTweakColor(event.color);
+export function nativePanelTweakColor(color: string): string | null {
+  const normalized = parseTweakColor(color);
   if (normalized === null || normalized.length !== 9) return null;
 
   return normalized.slice(7) === "FF" ? normalized.slice(0, 7) : normalized;

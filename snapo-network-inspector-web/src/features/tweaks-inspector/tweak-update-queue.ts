@@ -1,4 +1,4 @@
-import type { InspectorServerReference, TweakUpdate, TweakUpdateError, TweakValue } from "../../network/bridge-types";
+import type { TweakUpdate, TweakUpdateError, TweakValue } from "../../network/bridge-types";
 import type { TweaksClient } from "./client";
 
 interface TweakUpdateQueueCallbacks {
@@ -22,7 +22,6 @@ export class TweakUpdateQueue {
 
   constructor(
     private readonly client: Pick<TweaksClient, "updateTweaks">,
-    private readonly server: InspectorServerReference,
     private readonly callbacks: TweakUpdateQueueCallbacks
   ) {}
 
@@ -53,7 +52,7 @@ export class TweakUpdateQueue {
 
         let result;
         try {
-          result = await this.client.updateTweaks({ server: this.server, values });
+          result = await this.client.updateTweaks({ values });
         } finally {
           for (const name of names) this.inFlight.delete(name);
         }

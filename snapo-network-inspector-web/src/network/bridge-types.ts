@@ -1,64 +1,3 @@
-export interface SnapOServer {
-  server: string;
-  deviceId: string;
-  socketName: string;
-  deviceDisplayTitle: string;
-  displayName: string;
-  isConnected: boolean;
-  hasAppInfo: boolean;
-  pid?: number | null;
-  instanceId?: string | null;
-  protocolVersion?: number | null;
-  isProtocolNewerThanSupported: boolean;
-  isProtocolOlderThanSupported: boolean;
-  appIconBase64?: string | null;
-  packageName?: string | null;
-  appName?: string | null;
-}
-
-export type AppInspectorKind = "network" | "tweaks";
-
-export interface InspectorServerReference {
-  deviceId: string;
-  socketName: string;
-}
-
-export interface AppInspectorOption {
-  kind: AppInspectorKind;
-  server: InspectorServerReference;
-  protocolVersion?: number | null;
-}
-
-export interface InspectableApp {
-  id: string;
-  name: string;
-  packageName?: string | null;
-  processName?: string | null;
-  androidUserId?: number | null;
-  deviceId: string;
-  deviceDisplayTitle: string;
-  appIconBase64?: string | null;
-  inspectors: AppInspectorOption[];
-}
-
-export interface SelectedAppInspector {
-  appId: string;
-  kind: AppInspectorKind;
-  server: InspectorServerReference;
-  protocolVersion?: number | null;
-}
-
-export interface InspectorHostState {
-  revision: number;
-  selection: SelectedAppInspector | null;
-  selectedApp: InspectableApp | null;
-  networkServer: SnapOServer | null;
-  isActive: boolean;
-  isConnected: boolean;
-  isWaiting: boolean;
-  appLaunch?: { pending: boolean; error?: string | null } | null;
-}
-
 export interface BezierValue {
   x1: number;
   y1: number;
@@ -94,12 +33,6 @@ export interface TweakList {
 
 export interface TweakStreamEvent extends TweakList {
   streamId: string;
-  server: InspectorServerReference;
-}
-
-export interface NativeTweaksState {
-  server: InspectorServerReference;
-  hasResettableTweaks: boolean;
 }
 
 export interface TweakUpdate {
@@ -119,22 +52,11 @@ export interface TweakUpdates {
 }
 
 export interface UpdateTweaksInput {
-  server: InspectorServerReference;
   values: Record<string, TweakValue | null>;
 }
 
 export interface InvokeTweakActionInput {
-  server: InspectorServerReference;
   name: string;
-}
-
-export interface NativeInspectorState {
-  selectedServer: StartStreamInput | null;
-  searchText: string;
-  sortNewestFirst: boolean;
-  hasClearableItems: boolean;
-  selectedRecordKind: "request" | "websocket" | null;
-  hasVisibleRecords: boolean;
 }
 
 export interface CdpMessage {
@@ -162,17 +84,10 @@ export interface RequestBodies {
 }
 
 export interface LoadBodiesInput {
-  deviceId: string;
-  socketName: string;
-  serverInstanceId?: string | null;
+  processId: string;
   requestId: string;
   includeRequestBody?: boolean;
   includeResponseBody?: boolean;
-}
-
-export interface StartStreamInput {
-  deviceId: string;
-  socketName: string;
 }
 
 export interface StreamStarted {
@@ -181,8 +96,7 @@ export interface StreamStarted {
 
 export interface StreamEvent {
   streamId: string;
-  server: StartStreamInput;
-  serverInstanceId?: string | null;
+  processId: string;
   message: CdpMessage;
 }
 
@@ -208,5 +122,3 @@ export interface SaveFileResult {
   saved: boolean;
   path?: string | null;
 }
-
-export type DebugInspectorPreset = "live" | "protocolOlder" | "protocolNewer";

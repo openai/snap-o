@@ -2,13 +2,6 @@ package com.openai.snapo.network
 
 import kotlinx.serialization.Serializable
 
-object SnapOMethod {
-    const val AppInfo: String = "SnapO.appInfo"
-    const val ReplayComplete: String = "SnapO.replayComplete"
-    const val StartStream: String = "SnapO.startStream"
-    const val StopStream: String = "SnapO.stopStream"
-}
-
 @Serializable
 data class SnapOAppInfoParams(
     val protocolVersion: Int,
@@ -29,9 +22,4 @@ data class SnapOAppIcon(
     val base64Data: String,
 )
 
-@Serializable
-internal data class SnapOReplayCompleteParams(
-    val watermark: Long? = null,
-)
-
-internal const val NetworkProtocolVersion: Int = 1
+internal const val NetworkProtocolVersion: Int = 2

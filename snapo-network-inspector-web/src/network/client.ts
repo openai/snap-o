@@ -1,153 +1,146 @@
+import type { InspectorMetadata } from "../features/app-inspector/useInspectorMetadata";
 import type {
-  DebugInspectorPreset,
   LoadBodiesInput,
-  NativeInspectorState,
   RequestBodies,
   SaveFileInput,
   SaveFileResult,
-  StartStreamInput,
   StreamEvent,
   StreamStarted,
-  StreamStatus,
-  InspectorHostState
+  StreamStatus
 } from "./bridge-types";
-import type { InspectorHostClient } from "../host/client";
-import { invokeNative, listenWebKitEvent, requireNativeBridge } from "../host/bridge";
+import { host } from "../host";
+import { NetworkConnection } from "./connection";
+import { version } from "../../package.json";
 
-export interface NetworkClient extends InspectorHostClient {
+export interface NetworkClient {
   appVersion(): Promise<string>;
   listExclusionFilters(): Promise<string[]>;
   addExclusionFilter(filter: string): Promise<void>;
   removeExclusionFilter(filter: string): Promise<void>;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
-  startStream(input: StartStreamInput): Promise<StreamStarted>;
+  startStream(input: InspectorMetadata): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
   onEvent(callback: (event: StreamEvent) => void): () => void;
   onStatus(callback: (status: StreamStatus) => void): () => void;
   copyText(text: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   saveFile(input: SaveFileInput): Promise<SaveFileResult>;
-  debugInspectorPreset(): Promise<DebugInspectorPreset>;
-  onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void;
-  nativeInspectorStateChanged(state: NativeInspectorState): void;
-  onNativeSearchText(callback: (searchText: string) => void): () => void;
-  onNativeExclusionFilters(callback: (filters: string[]) => void): () => void;
-  onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void;
-  onNativeClearCompleted(callback: () => void): () => void;
-  onNativeCopySelectedUrl(callback: () => void): () => void;
-  onNativeCopySelectedCurl(callback: () => void): () => void;
-  onNativeExportVisibleHar(callback: () => void): () => void;
+  dispose(): void;
 }
 
 export type InspectorContentClient = Pick<NetworkClient, "copyText" | "saveFile">;
 
 export function createNetworkClient(): NetworkClient {
-  requireNativeBridge();
-  return new WebKitNetworkClient();
+  return new BrowserNetworkClient();
 }
 
-class WebKitNetworkClient implements NetworkClient {
+class BrowserNetworkClient implements NetworkClient {
+  private connections = new Map<string, NetworkConnection>();
+  private events = new Set<(event: StreamEvent) => void>();
+  private statuses = new Set<(status: StreamStatus) => void>();
+  private disconnected = () => {
+    for (const connection of this.connections.values()) connection.close();
+    this.connections.clear();
+  };
+
+  constructor() {
+    host.addEventListener("connection", this.disconnected);
+  }
+  dispose(): void {
+    host.removeEventListener("connection", this.disconnected);
+    for (const connection of this.connections.values()) connection.close();
+    this.connections.clear();
+  }
   appVersion(): Promise<string> {
-    return this.invoke<string>("appVersion");
+    return Promise.resolve(version);
   }
 
-  inspectorHostState(): Promise<InspectorHostState> {
-    return this.invoke("inspectorHostState");
+  async listExclusionFilters(): Promise<string[]> {
+    return readExclusionFilters();
   }
-
-  onInspectorHostState(callback: (state: InspectorHostState) => void): () => void {
-    return listenWebKitEvent("inspector:state", callback);
+  async addExclusionFilter(filter: string): Promise<void> {
+    localStorage.setItem(
+      "network.exclusionFilters",
+      JSON.stringify([...new Set([...readExclusionFilters(), filter])].sort())
+    );
   }
-
-  openSelectedApp(appId: string): Promise<void> {
-    return this.invoke("openSelectedApp", { appId });
-  }
-
-  listExclusionFilters(): Promise<string[]> {
-    return this.invoke<string[]>("listExclusionFilters");
-  }
-
-  addExclusionFilter(filter: string): Promise<void> {
-    return this.invoke<void>("addExclusionFilter", { filter });
-  }
-
-  removeExclusionFilter(filter: string): Promise<void> {
-    return this.invoke<void>("removeExclusionFilter", { filter });
+  async removeExclusionFilter(filter: string): Promise<void> {
+    localStorage.setItem(
+      "network.exclusionFilters",
+      JSON.stringify(readExclusionFilters().filter((item) => item !== filter))
+    );
   }
 
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
-    return this.invoke<RequestBodies>("loadBodies", input);
+    const connection = this.connections.values().next().value;
+    if (!connection) return Promise.reject(new Error("Inspector is disconnected."));
+    return connection.loadBodies(input);
   }
-
-  startStream(input: StartStreamInput): Promise<StreamStarted> {
-    return this.invoke<StreamStarted>("startStream", input);
+  async startStream(input: InspectorMetadata): Promise<StreamStarted> {
+    if (!host.connected || !host.baseURL) throw new Error("Inspector is disconnected.");
+    for (const connection of this.connections.values()) connection.close();
+    this.connections.clear();
+    const connection = new NetworkConnection(
+      host.baseURL,
+      input,
+      (event) => {
+        for (const listener of this.events) listener(event);
+      },
+      (status) => {
+        if (status.state === "exit" || status.state === "error") this.connections.delete(status.streamId);
+        for (const listener of this.statuses) listener(status);
+      }
+    );
+    this.connections.set(connection.id, connection);
+    try {
+      await connection.start();
+    } catch (error) {
+      connection.close();
+      throw error;
+    }
+    return { streamId: connection.id };
   }
-
-  stopStream(streamId: string): Promise<void> {
-    return this.invoke<void>("stopStream", { streamId });
+  async stopStream(streamId: string): Promise<void> {
+    this.connections.get(streamId)?.close();
+    this.connections.delete(streamId);
   }
-
   onEvent(callback: (event: StreamEvent) => void): () => void {
-    return listenWebKitEvent<StreamEvent>("network:event", callback);
+    this.events.add(callback);
+    return () => this.events.delete(callback);
   }
-
   onStatus(callback: (status: StreamStatus) => void): () => void {
-    return listenWebKitEvent<StreamStatus>("network:status", callback);
+    this.statuses.add(callback);
+    return () => this.statuses.delete(callback);
   }
-
   copyText(text: string): Promise<void> {
-    return this.invoke<void>("copyText", { text });
+    return host.copyText(text);
   }
-
-  openExternal(url: string): Promise<void> {
-    return this.invoke<void>("openExternal", { url });
+  async openExternal(url: string): Promise<void> {
+    openInspectorLink(url);
   }
-
-  saveFile(input: SaveFileInput): Promise<SaveFileResult> {
-    return this.invoke<SaveFileResult>("saveFile", input);
+  async saveFile(input: SaveFileInput): Promise<SaveFileResult> {
+    const data =
+      input.encoding === "base64" ? Uint8Array.from(atob(input.data), (char) => char.charCodeAt(0)) : input.data;
+    return {
+      saved: await host.saveFile({
+        name: input.defaultPath,
+        data: new Blob([data], { type: input.mimeType ?? "application/octet-stream" })
+      })
+    };
   }
+}
 
-  debugInspectorPreset(): Promise<DebugInspectorPreset> {
-    return this.invoke<DebugInspectorPreset>("debugInspectorPreset");
-  }
+export function openInspectorLink(url: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.click();
+}
 
-  onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void {
-    return listenWebKitEvent<DebugInspectorPreset>("debug:inspector-preset", callback);
-  }
-
-  nativeInspectorStateChanged(state: NativeInspectorState): void {
-    void this.invoke<void>("inspectorStateChanged", state);
-  }
-
-  onNativeSearchText(callback: (searchText: string) => void): () => void {
-    return listenWebKitEvent<string>("network:search-text", callback);
-  }
-
-  onNativeExclusionFilters(callback: (filters: string[]) => void): () => void {
-    return listenWebKitEvent<string[]>("network:exclusion-filters", callback);
-  }
-
-  onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void {
-    return listenWebKitEvent<boolean>("network:sort-newest-first", callback);
-  }
-
-  onNativeClearCompleted(callback: () => void): () => void {
-    return listenWebKitEvent<boolean>("network:clear-completed", callback);
-  }
-
-  onNativeCopySelectedUrl(callback: () => void): () => void {
-    return listenWebKitEvent<boolean>("network:copy-selected-url", callback);
-  }
-
-  onNativeCopySelectedCurl(callback: () => void): () => void {
-    return listenWebKitEvent<boolean>("network:copy-selected-curl", callback);
-  }
-
-  onNativeExportVisibleHar(callback: () => void): () => void {
-    return listenWebKitEvent<boolean>("network:export-visible-har", callback);
-  }
-
-  private async invoke<T>(command: string, payload?: unknown): Promise<T> {
-    return invokeNative<T>(command, payload);
+function readExclusionFilters(): string[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem("network.exclusionFilters") ?? "[]");
+    return Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
   }
 }

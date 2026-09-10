@@ -362,7 +362,7 @@ const expandedUiState: InspectorUiState = {
 function request(overrides: Partial<RequestRecord>): RequestRecord {
   return {
     kind: "request",
-    server: { deviceId: "device", socketName: "socket", instanceId: "instance" },
+    processId: "process-1",
     requestId: "request",
     method: "GET",
     url: "https://example.com/large-response",

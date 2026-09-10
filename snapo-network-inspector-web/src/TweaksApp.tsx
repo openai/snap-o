@@ -1,32 +1,21 @@
 import type { JSX } from "preact";
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo } from "preact/hooks";
 import { createTweaksClient } from "./features/tweaks-inspector/client";
 import { TweaksInspectorApp } from "./features/tweaks-inspector/TweaksInspectorApp";
 import { InspectorWaitingState } from "./features/app-inspector/components/InspectorWaitingState";
-import { useAppInspector } from "./features/app-inspector/useAppInspector";
+import { useInspectorMetadata } from "./features/app-inspector/useInspectorMetadata";
 
 export function TweaksApp(): JSX.Element {
   const client = useMemo(() => createTweaksClient(), []);
-  const { selection, selectedApp, isConnected, appLaunch } = useAppInspector(client);
-
+  useEffect(() => () => client.dispose(), [client]);
+  const { connected, revision, metadata } = useInspectorMetadata();
   return (
     <div className="window-frame">
-      {selection ? (
-        <TweaksInspectorApp
-          key={
-            selectedApp
-              ? `${selectedApp.deviceId}:${selectedApp.androidUserId ?? "unknown"}:${selectedApp.processName ?? selectedApp.id}`
-              : selection.appId
-          }
-          client={client}
-          selection={selection}
-          isConnected={isConnected}
-          selectedApp={selectedApp}
-          appLaunch={appLaunch}
-        />
+      {metadata ? (
+        <TweaksInspectorApp client={client} metadata={metadata} isConnected={connected} connectionRevision={revision} />
       ) : (
         <main className="inspector-loading-shell">
-          <InspectorWaitingState launch={appLaunch} app={selectedApp} />
+          <InspectorWaitingState />
         </main>
       )}
     </div>

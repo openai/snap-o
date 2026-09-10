@@ -1,5 +1,6 @@
+import type { InspectorMetadata } from "../features/app-inspector/useInspectorMetadata";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StartStreamInput, StreamStarted, StreamStatus } from "./bridge-types";
+import type { StreamStarted, StreamStatus } from "./bridge-types";
 import { NetworkStreamController, type StreamLifecycleState } from "./stream-controller";
 
 describe("NetworkStreamController", () => {
@@ -10,7 +11,7 @@ describe("NetworkStreamController", () => {
     const client = new TestStreamClient();
     client.startResults.push(new Error("first"), new Error("second"), { streamId: "stream-3" });
     const states: StreamLifecycleState[] = [];
-    const controller = new NetworkStreamController(client, server, (state) => states.push(state));
+    const controller = new NetworkStreamController(client, metadata, (state) => states.push(state));
 
     controller.start();
     await settlePromises();
@@ -35,7 +36,7 @@ describe("NetworkStreamController", () => {
     vi.useFakeTimers();
     const client = new TestStreamClient();
     client.startResults.push({ streamId: "stream-1" }, { streamId: "stream-2" });
-    const controller = new NetworkStreamController(client, server, () => {});
+    const controller = new NetworkStreamController(client, metadata, () => {});
 
     controller.start();
     await settlePromises();
@@ -52,7 +53,7 @@ describe("NetworkStreamController", () => {
     const client = new TestStreamClient();
     const pending = deferred<StreamStarted>();
     client.startResults.push(pending.promise, { streamId: "stream-2" });
-    const controller = new NetworkStreamController(client, server, () => {});
+    const controller = new NetworkStreamController(client, metadata, () => {});
 
     controller.start();
     client.emitStatus({ streamId: "stream-1", state: "error", message: "closed" });
@@ -68,7 +69,7 @@ describe("NetworkStreamController", () => {
     vi.useFakeTimers();
     const client = new TestStreamClient();
     client.startResults.push(new Error("unavailable"));
-    const controller = new NetworkStreamController(client, server, () => {});
+    const controller = new NetworkStreamController(client, metadata, () => {});
 
     controller.start();
     await settlePromises();
@@ -83,7 +84,7 @@ describe("NetworkStreamController", () => {
     vi.useFakeTimers();
     const client = new TestStreamClient();
     client.startResults.push(new Error("first"), new Error("second"), new Error("third"), { streamId: "stream-4" });
-    const controller = new NetworkStreamController(client, server, () => {}, { retryDelaysMs: [10, 20] });
+    const controller = new NetworkStreamController(client, metadata, () => {}, { retryDelaysMs: [10, 20] });
 
     controller.start();
     await settlePromises();
@@ -98,7 +99,7 @@ describe("NetworkStreamController", () => {
   });
 });
 
-const server: StartStreamInput = { deviceId: "device", socketName: "socket" };
+const metadata: InspectorMetadata = { name: "Demo", packageName: "example.demo", protocolVersion: 2 };
 
 class TestStreamClient {
   readonly startResults: Array<StreamStarted | Error | Promise<StreamStarted>> = [];

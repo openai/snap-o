@@ -1,102 +1,129 @@
 import type {
-  InspectorHostState,
-  InspectorServerReference,
   InvokeTweakActionInput,
-  NativeTweaksState,
   StreamStarted,
   TweakList,
   TweakStreamEvent,
   TweakUpdates,
   UpdateTweaksInput
 } from "../../network/bridge-types";
-import type { InspectorHostClient } from "../../host/client";
-import { invokeNative, listenWebKitEvent, requireNativeBridge } from "../../host/bridge";
+import { host } from "../../host";
+import { openInspectorLink } from "../../network/client";
 
-export interface NativeColorPanelChange {
-  color: string;
-  sessionId: string;
-}
-
-export interface TweaksClient extends InspectorHostClient {
-  listTweaks(server: InspectorServerReference): Promise<TweakList>;
+export interface TweaksClient {
+  listTweaks(): Promise<TweakList>;
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
   invokeTweakAction(input: InvokeTweakActionInput): Promise<void>;
-  startTweakStream(server: InspectorServerReference): Promise<StreamStarted>;
+  startTweakStream(onError?: (error: Error) => void): Promise<StreamStarted>;
   stopTweakStream(streamId: string): Promise<void>;
   onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
-  openNativeColorPanel?(color: string, sessionId: string, present?: boolean): Promise<void>;
-  closeNativeColorPanel?(sessionId: string): Promise<void>;
-  onNativeColorPanelChange?(callback: (event: NativeColorPanelChange) => void): () => void;
-  nativeTweaksStateChanged(state: NativeTweaksState): void;
-  onNativeTweaksReset(callback: () => void): () => void;
   openExternal(url: string): Promise<void>;
+  dispose(): void;
 }
 
 export function createTweaksClient(): TweaksClient {
-  requireNativeBridge();
-  return new WebKitTweaksClient();
+  return new BrowserTweaksClient();
 }
 
-class WebKitTweaksClient implements TweaksClient {
-  private invoke = invokeNative;
+class BrowserTweaksClient implements TweaksClient {
+  private streams = new Map<string, (error?: Error) => void>();
+  private listeners = new Set<(event: TweakStreamEvent) => void>();
+  private requests = new Set<AbortController>();
+  private disconnected = () => this.revokeConnection();
 
-  inspectorHostState(): Promise<InspectorHostState> {
-    return this.invoke("inspectorHostState");
+  constructor() {
+    host.addEventListener("connection", this.disconnected);
+  }
+  dispose(): void {
+    host.removeEventListener("connection", this.disconnected);
+    this.revokeConnection();
   }
 
-  onInspectorHostState(callback: (state: InspectorHostState) => void): () => void {
-    return listenWebKitEvent("inspector:state", callback);
+  private async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+    if (!host.connected || !host.baseURL) throw new Error("Inspector is disconnected.");
+    const controller = new AbortController();
+    this.requests.add(controller);
+    try {
+      const response = await fetch(new URL(path, host.baseURL), {
+        method,
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
+        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        redirect: "error",
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(error?.error ?? `Inspector request failed (${response.status}).`);
+      }
+      return (await response.json()) as T;
+    } finally {
+      this.requests.delete(controller);
+    }
   }
 
-  openSelectedApp(appId: string): Promise<void> {
-    return this.invoke("openSelectedApp", { appId });
+  private revokeConnection(): void {
+    for (const request of this.requests) request.abort();
+    this.requests.clear();
+    for (const close of this.streams.values()) close();
+    this.streams.clear();
   }
-
-  listTweaks(server: InspectorServerReference): Promise<TweakList> {
-    return this.invoke<TweakList>("listTweaks", server);
+  listTweaks(): Promise<TweakList> {
+    return this.request("tweaks");
   }
-
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
-    return this.invoke<TweakUpdates>("updateTweaks", input);
+    return this.request("tweaks", "PATCH", { values: input.values });
+  }
+  async invokeTweakAction(input: InvokeTweakActionInput): Promise<void> {
+    await this.request("tweaks/action", "POST", { name: input.name });
   }
 
-  invokeTweakAction(input: InvokeTweakActionInput): Promise<void> {
-    return this.invoke<void>("invokeTweakAction", input);
+  async startTweakStream(onError?: (error: Error) => void): Promise<StreamStarted> {
+    if (!host.connected || !host.baseURL) throw new Error("Inspector is disconnected.");
+    const streamId = crypto.randomUUID();
+    const stream = new EventSource(new URL("tweaks/events", host.baseURL));
+    return new Promise((resolve, reject) => {
+      let opened = false;
+      const close = (error?: Error) => {
+        if (this.streams.get(streamId) !== close) return;
+        this.streams.delete(streamId);
+        clearTimeout(timeout);
+        stream.removeEventListener("open", open);
+        stream.removeEventListener("error", fail);
+        stream.removeEventListener("tweaks", receive);
+        stream.close();
+        if (!opened) reject(error ?? new Error("Inspector is disconnected."));
+        else if (error) onError?.(error);
+      };
+      const open = () => {
+        opened = true;
+        clearTimeout(timeout);
+        resolve({ streamId });
+      };
+      const fail = () => close(new Error("Tweaks event stream disconnected."));
+      const receive = (event: Event) => {
+        if (this.streams.get(streamId) !== close) return;
+        try {
+          const list = JSON.parse((event as MessageEvent<string>).data) as TweakList;
+          for (const callback of this.listeners) callback({ ...list, streamId });
+        } catch {
+          // Retain the previous values when a snapshot is invalid.
+        }
+      };
+      const timeout = setTimeout(() => close(new Error("Tweaks event stream connection timed out.")), 5_000);
+      this.streams.set(streamId, close);
+      stream.addEventListener("open", open);
+      stream.addEventListener("error", fail);
+      stream.addEventListener("tweaks", receive);
+    });
   }
-
-  startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
-    return this.invoke<StreamStarted>("startTweakStream", server);
+  async stopTweakStream(streamId: string): Promise<void> {
+    this.streams.get(streamId)?.();
   }
-
-  stopTweakStream(streamId: string): Promise<void> {
-    return this.invoke<void>("stopTweakStream", { streamId });
-  }
-
   onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
-    return listenWebKitEvent<TweakStreamEvent>("tweaks:changed", callback);
+    this.listeners.add(callback);
+    return () => this.listeners.delete(callback);
   }
-
-  openNativeColorPanel(color: string, sessionId: string, present = true): Promise<void> {
-    return this.invoke<void>("openNativeColorPanel", { color, sessionId, present });
-  }
-
-  closeNativeColorPanel(sessionId: string): Promise<void> {
-    return this.invoke<void>("closeNativeColorPanel", { sessionId });
-  }
-
-  onNativeColorPanelChange(callback: (event: NativeColorPanelChange) => void): () => void {
-    return listenWebKitEvent<NativeColorPanelChange>("tweaks:color-panel-changed", callback);
-  }
-
-  nativeTweaksStateChanged(state: NativeTweaksState): void {
-    void this.invoke("tweaksStateChanged", state);
-  }
-
-  onNativeTweaksReset(callback: () => void): () => void {
-    return listenWebKitEvent<boolean>("tweaks:reset", () => callback());
-  }
-
-  openExternal(url: string): Promise<void> {
-    return this.invoke("openExternal", { url });
+  async openExternal(url: string): Promise<void> {
+    openInspectorLink(url);
   }
 }

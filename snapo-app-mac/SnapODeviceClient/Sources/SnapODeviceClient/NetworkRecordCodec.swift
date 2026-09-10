@@ -16,37 +16,10 @@ public enum NetworkRecordCodec {
       return .unknown
     }
 
-    switch message.method {
-    case SnapONetworkProtocol.Method.appInfo:
-      guard let params = message.params,
-            let paramsData = try? JSONEncoder().encode(JSONValue.object(params)),
-            let info = try? JSONDecoder().decode(NetworkAppInfo.self, from: paramsData)
-      else {
-        return .unknown
-      }
-      return .appInfo(info)
-
-    case SnapONetworkProtocol.Method.replayComplete:
-      return .replayComplete(watermark: watermark(in: message.params))
-
-    case .some:
-      return .network(message)
-
-    case .none where message.id != nil:
-      return .network(message)
-
-    case .none:
+    guard message.method?.hasPrefix("Network.") == true, message.params != nil,
+          message.id == nil, message.result == nil, message.error == nil else {
       return .unknown
     }
-  }
-
-  private static func watermark(in params: [String: JSONValue]?) -> UInt64? {
-    guard case .number(let value)? = params?["watermark"],
-          value >= 0,
-          value.rounded(.towardZero) == value
-    else {
-      return nil
-    }
-    return UInt64(exactly: value)
+    return .network(message)
   }
 }

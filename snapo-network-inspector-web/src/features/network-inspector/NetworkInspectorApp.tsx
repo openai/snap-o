@@ -1,21 +1,11 @@
 import type { JSX } from "preact";
-import type { InspectableApp } from "../../network/bridge-types";
 import { DetailContent } from "./components/DetailPane";
-import type { AppLaunchControl } from "../app-inspector/useAppInspector";
 import { Sidebar } from "./components/Sidebar";
 import type { NetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
 import { usePersistentSplitPane } from "./hooks/usePersistentSplitPane";
 import { useSearchHighlights } from "./hooks/useSearchHighlights";
 
-export function NetworkInspectorApp({
-  model,
-  selectedApp = null,
-  appLaunch
-}: {
-  model: NetworkInspectorModel;
-  selectedApp?: InspectableApp | null;
-  appLaunch?: AppLaunchControl | null;
-}): JSX.Element {
+export function NetworkInspectorApp({ model }: { model: NetworkInspectorModel }): JSX.Element {
   const {
     containerRef,
     sidebarWidth,
@@ -35,7 +25,8 @@ export function NetworkInspectorApp({
       style={{ "--sidebar-width": `${sidebarWidth}px` } as JSX.CSSProperties}
     >
       <Sidebar
-        selectedServer={model.selectedServer}
+        metadata={model.metadata}
+        isConnected={model.isConnected}
         exclusionFilters={model.exclusionFilters}
         hiddenRequestCount={model.hiddenRequestCount}
         records={model.visibleRecords}
@@ -68,14 +59,11 @@ export function NetworkInspectorApp({
         <DetailContent
           client={model.client}
           record={model.selectedRecord}
-          servers={model.servers}
-          selectedServer={model.selectedServer}
-          selectedApp={selectedApp}
-          appLaunch={appLaunch}
-          serverScopedItems={model.serverRecordCount}
+          metadata={model.metadata}
+          isConnected={model.isConnected}
+          totalItems={model.totalItems}
           streamIsRetrying={model.streamIsRetrying}
           uiState={model.uiState}
-          onOpenDocs={model.openDocs}
           onRetryResponseBody={model.retryResponseBody}
         />
       </main>

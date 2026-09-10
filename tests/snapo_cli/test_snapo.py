@@ -1,3 +1,4 @@
+import base64
 import contextlib
 import gzip
 import http.server
@@ -70,12 +71,19 @@ def response_event():
 
 
 class WireServer:
-    def __init__(self, handler, adb_handshake=False):
+    def __init__(self, handler, adb_handshake=False, protocol_version=2, bodies=None, history=(), watermark=0, complete_history=True):
         self.handler = handler
+        self.history = history
+        self.watermark = watermark
+        self.complete_history = complete_history
+        self.http_requests = []
+        self.peers = []
         self.adb_handshake = adb_handshake
+        self.protocol_version = protocol_version
+        self.bodies = bodies or {}
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listener.bind(("127.0.0.1", 0))
-        self.listener.listen(1)
+        self.listener.listen(16)
         self.port = self.listener.getsockname()[1]
         self.received = []
         self.failure = None
@@ -92,6 +100,8 @@ class WireServer:
             with socket.create_connection(("127.0.0.1", self.port), timeout=1):
                 pass
         self.thread.join(timeout=3)
+        for peer in self.peers:
+            peer.join(timeout=3)
         self.listener.close()
         if error_type is not None:
             return
@@ -101,37 +111,113 @@ class WireServer:
             raise AssertionError("wire server did not stop")
 
     def run(self):
-        try:
+        while not self.stopping.is_set():
             connection, _ = self.listener.accept()
+            if self.stopping.is_set():
+                connection.close()
+                break
+            peer = threading.Thread(target=self.serve, args=(connection,), daemon=True)
+            self.peers.append(peer)
+            peer.start()
+
+    def serve(self, connection):
+        try:
             with connection:
-                if self.stopping.is_set():
-                    return
-                connection.settimeout(2)
+                connection.settimeout(3)
                 stream = connection.makefile("rwb", buffering=0)
+                commands = []
                 if self.adb_handshake:
                     for _ in range(2):
                         length = int(stream.read(4), 16)
-                        self.received.append(stream.read(length).decode("utf-8"))
+                        commands.append(stream.read(length).decode("utf-8"))
                         stream.write(b"OKAY")
-                hello = stream.readline()
-                self.received.append(hello.decode("utf-8").rstrip())
-                self.handler(stream, self.received)
+                request = stream.readline()
+                head = request
+                while not head.endswith(b"\r\n\r\n"):
+                    line = stream.readline()
+                    if not line:
+                        raise EOFError("HTTP headers ended early")
+                    head += line
+                path = request.decode("ascii").split()[1]
+                self.received.extend(commands)
+                if path.startswith("/.snap-o/info"):
+                    self.http_requests.append(path)
+                    body = json.dumps({"name": "Example", "packageName": "com.example", "processName": "com.example", "protocolVersion": self.protocol_version,
+                        "pid": 42, "serverStartWallMs": 1000, "serverStartMonoNs": 2000, "mode": "debug"}).encode()
+                    stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+                elif path == "/network" and b"Accept: application/x-ndjson\r\n" in head:
+                    self.http_requests.append(path)
+                    stream.write((f"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\nSnapO-Sequence: {self.watermark}\r\n\r\n").encode())
+                    for message in self.history:
+                        body = json.dumps(message).encode() + b"\n"
+                        stream.write(f"{len(body):x}\r\n".encode() + body + b"\r\n")
+                    if self.complete_history:
+                        stream.write(b"0\r\n\r\n")
+                elif path == "/network" and b"Accept: text/event-stream\r\n" in head:
+                    self.http_requests.append(path)
+                    stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n")
+                    self.handler(stream, self.received)
+                    # Keep the stream alive until the client closes it.
+                    stream.read(1)
+                elif path.startswith("/network/requests/"):
+                    self.http_requests.append(path)
+                    kind = path.split("?")[0].rsplit("/", 1)[-1]
+                    body = self.bodies.get(kind)
+                    status = "200 OK" if body is not None else "404 Not Found"
+                    payload = json.dumps(body if body is not None else {"error": "No body captured"}).encode()
+                    stream.write(f"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {len(payload)}\r\n\r\n".encode() + payload)
+                else:
+                    raise AssertionError(f"Unexpected HTTP path: {path}")
         except Exception as error:
-            self.failure = error
-
-
-def read_message(stream, received):
-    value = json.loads(stream.readline())
-    received.append(value)
-    return value
+            if not self.stopping.is_set():
+                self.failure = error
 
 
 def write_message(stream, value):
-    stream.write(json.dumps(value, separators=(",", ":")).encode("utf-8") + b"\n")
+    sequence = value.get("snapoSequence", 1) if isinstance(value, dict) else 1
+    if isinstance(value, dict):
+        value = {**value, "snapoSequence": sequence}
+    payload = f"id: {sequence}\ndata: ".encode() + json.dumps(value, separators=(",", ":")).encode() + b"\n\n"
+    stream.write(f"{len(payload):x}\r\n".encode() + payload + b"\r\n")
 
 
 def open_session(port):
-    return snapo.Session(snapo.LocalAbstractSocket(port=port))
+    factory = lambda timeout=5: snapo.LocalAbstractSocket(port=port, timeout=timeout)
+    snapo.read_network_metadata(factory)
+    return snapo.Session(factory)
+
+
+class SSETests(unittest.TestCase):
+    def decoder(self, payload):
+        decoder = object.__new__(snapo.NetworkSSE)
+        decoder.pending = bytearray()
+        decoder.response_lock = threading.Lock()
+        decoder.response = mock.Mock()
+        chunks = iter(bytes([byte]) for byte in payload)
+        decoder.response.read1.side_effect = lambda _: next(chunks, b"")
+        return decoder
+
+    def test_comments_crlf_multiline_and_split_utf8(self):
+        event = self.decoder(': heartbeat\r\nid: 9\r\nevent: ready\r\ndata: {\r\ndata: "label":"🙂"}\r\n\r\n'.encode()).read_event()
+        self.assertEqual(event["data"], {"label": "🙂"})
+        self.assertEqual(event["id"], "9")
+        self.assertEqual(event["event"], "ready")
+
+    def test_partial_and_invalid_events_fail(self):
+        for payload in (b'data: {}\n', b'data: "\xff"\n\n', b'data: nope\n\n'):
+            with self.subTest(payload=payload), self.assertRaises(snapo.SnapOError):
+                self.decoder(payload).read_event()
+
+    def test_event_size_is_bounded(self):
+        with mock.patch.object(snapo, "MAX_RECORD_BYTES", 4):
+            with self.assertRaisesRegex(snapo.SnapOError, "too large"):
+                self.decoder(b'data: 12345\n\n').read_event()
+
+    def test_old_protocol_is_rejected_without_a_legacy_retry(self):
+        with WireServer(lambda *_: self.fail("No stream expected"), protocol_version=1) as wire:
+            with self.assertRaisesRegex(snapo.SnapOError, "Unsupported Network Inspector protocol"):
+                open_session(wire.port)
+        self.assertEqual(wire.http_requests, ["/.snap-o/info"])
 
 
 class FakeADB:
@@ -254,7 +340,7 @@ class TweakHTTPServer:
 
             def do_GET(self):
                 owner.requests.append(("GET", self.path, None))
-                if self.path == "/app":
+                if self.path == "/.snap-o/info":
                     self.send_json(200, owner.app)
                 elif self.path == "/tweaks":
                     self.send_json(200, {"tweaks": owner.descriptors})
@@ -913,7 +999,9 @@ except KeyboardInterrupt:
         server = snapo.Server("emulator-5554", "snapo_network_42")
         transport = mock.Mock(socket=mock.Mock())
         with mock.patch.object(snapo.ServerConnection, "open_socket", return_value=transport):
-            with mock.patch.object(snapo.Session, "close", side_effect=RuntimeError("close failed")):
+            session = mock.Mock()
+            session.close.side_effect = RuntimeError("close failed")
+            with mock.patch.object(snapo, "Session", return_value=session), mock.patch.object(snapo, "read_network_metadata", return_value={"pid": 42}):
                 with self.assertRaisesRegex(RuntimeError, "close failed"):
                     with snapo.ConnectedSession(adb, server):
                         pass
@@ -933,170 +1021,109 @@ except KeyboardInterrupt:
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_shared_http_replay_fixture_terminates_with_replay_complete(self):
-        fixture = REPOSITORY / "contracts" / "network" / "v1" / "http-replay.jsonl"
-        records = [json.loads(line) for line in fixture.read_text(encoding="utf-8").splitlines()]
-        self.assertEqual(records[0]["method"], "SnapO.appInfo")
-        self.assertEqual(records[-1]["method"], "SnapO.replayComplete")
-        self.assertEqual(records[-1]["params"]["watermark"], 3)
+    def test_shared_history_fixture_contains_only_sequenced_network_events(self):
+        root = REPOSITORY / "contracts" / "network" / "v2"
+        app = json.loads((root / "app.json").read_text())
+        records = [json.loads(line) for line in (root / "history.jsonl").read_text().splitlines()]
+        self.assertEqual(app["protocolVersion"], 2)
+        with WireServer(lambda *_: self.fail("No stream expected"), history=records, watermark=3) as wire:
+            history = snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))
+            try:
+                self.assertEqual([history.read() for _ in records], records)
+                self.assertIsNone(history.read())
+            finally:
+                history.close()
 
-    def test_handshake_start_stream_and_replay_completion(self):
+    def test_incomplete_http_history_cannot_be_mistaken_for_completion(self):
+        event = {**request_event(), "snapoSequence": 1}
+        with WireServer(lambda *_: None, history=[event], watermark=1, complete_history=False) as wire:
+            history = snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))
+            try:
+                self.assertEqual(history.read(), event)
+                with self.assertRaisesRegex(snapo.SnapOError, "Unable to read network history"):
+                    history.read()
+            finally:
+                history.close()
+
+    def test_history_rejects_an_invalid_snapshot_cursor(self):
+        with WireServer(lambda *_: None, watermark="invalid") as wire:
+            with self.assertRaisesRegex(snapo.SnapOError, "Invalid history snapshot headers"):
+                snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))
+
+    def test_metadata_does_not_open_an_event_stream(self):
+        with WireServer(lambda *_: self.fail("Metadata must use HTTP")) as wire:
+            adb = FakeADB(forward_port=str(wire.port))
+            info = snapo.app_info(adb, snapo.Server("emulator-5554", "snapo_network_42"))
+        self.assertEqual(info["packageName"], "com.example")
+        self.assertEqual(wire.http_requests, ["/.snap-o/info"])
+        self.assertEqual(wire.received, [])
+
+    def test_http_history_joins_live_events_without_duplicates(self):
+        history = {**request_event(), "snapoSequence": 1}
+        live = {**response_event(), "snapoSequence": 2}
         def handler(stream, received):
-            started = read_message(stream, received)
-            self.assertEqual(started, {"method": "SnapO.startStream"})
-            write_message(stream, {"method": "SnapO.appInfo", "params": {"packageName": "com.example"}})
-            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 3}})
-
-        with WireServer(handler) as server:
-            session = open_session(server.port)
+            write_message(stream, history)
+            write_message(stream, live)
+        with WireServer(handler, history=[history], watermark=1) as wire:
+            session = open_session(wire.port)
             try:
                 session.start_stream()
-                self.assertEqual(session.read(1)["method"], "SnapO.appInfo")
-                self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
+                self.assertEqual(session.read(1), history)
+                self.assertIsNone(session.read(1))
+                self.assertFalse(session.replaying)
+                self.assertEqual(session.read(1), live)
             finally:
                 session.close()
-        self.assertEqual(server.received[0], "HelloSnapO")
+        self.assertEqual(wire.http_requests, ["/.snap-o/info", "/network", "/network"])
 
     def test_explicit_adb_endpoint_uses_direct_smart_socket_transport(self):
-        def handler(stream, received):
-            started = read_message(stream, received)
-            self.assertEqual(started, {"method": "SnapO.startStream"})
-            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
-
-        with WireServer(handler, adb_handshake=True) as wire:
+        with WireServer(lambda *_: None, adb_handshake=True) as wire:
             adb = snapo.ADB("/configured/adb", host="127.0.0.1", port=wire.port)
-            server = snapo.Server("emulator-5554", "snapo_network_42")
-            with snapo.ConnectedSession(adb, server) as session:
+            with snapo.ConnectedSession(adb, snapo.Server("emulator-5554", "snapo_network_42")) as session:
                 session.start_stream()
-                self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
-        self.assertEqual(
-            wire.received[:3],
-            [
-                "host:transport:emulator-5554",
-                "localabstract:snapo_network_42",
-                "HelloSnapO",
-            ],
-        )
+                self.assertIsNone(session.read(1))
+        self.assertEqual(wire.received, ["host:transport:emulator-5554", "localabstract:snapo_network_42"] * 3)
 
-    def test_ignores_valid_json_records_that_are_not_objects(self):
-        def handler(stream, received):
-            stream.write(b"null\n[]\n42\n\"text\"\n")
-            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
+    def test_invalid_live_records_fail_visibly(self):
+        for message in (None, [], 42, {"method": "Network.loadingFinished", "params": []}):
+            with self.subTest(message=message):
+                with WireServer(lambda stream, _: write_message(stream, message)) as wire:
+                    session = open_session(wire.port)
+                    try:
+                        session.start_stream()
+                        with self.assertRaisesRegex(snapo.SnapOError, "Invalid network event"):
+                            for _ in range(3):
+                                session.read(1)
+                    finally:
+                        session.close()
 
-        with WireServer(handler) as wire:
+    def test_body_reads_do_not_subscribe_and_encode_request_ids(self):
+        with WireServer(lambda *_: self.fail("No stream expected"), bodies={"response-body": {"body": "hello", "base64Encoded": False}}) as wire:
             session = open_session(wire.port)
             try:
-                self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
+                self.assertEqual(session.body("a/b ?", True), {"body": "hello", "base64Encoded": False})
             finally:
                 session.close()
+        self.assertEqual(wire.http_requests, ["/.snap-o/info", "/network/requests/a%2Fb%20%3F/response-body"])
 
-    def test_ignores_malformed_protocol_record_shapes(self):
-        malformed = [
-            {"method": [], "params": {}},
-            {"method": "Network.loadingFinished", "params": "invalid"},
-            {"method": "Network.loadingFinished", "params": []},
-            {"method": "Network.requestWillBeSent", "params": {"request": "invalid"}},
-            {"method": "Network.requestWillBeSent", "params": {"request": {"headers": "invalid"}}},
-            {"method": "Network.requestWillBeSent", "params": {"request": {"method": 7}}},
-            {"method": "Network.requestWillBeSent", "params": {"request": {"url": {"invalid": True}}}},
-            {"method": "Network.requestWillBeSent", "params": {"request": {"postDataEncoding": 7}}},
-            {"method": "Network.requestWillBeSent", "params": {"request": {"hasPostData": "yes"}}},
-            {"method": "Network.responseReceived", "params": {"response": []}},
-            {"method": "Network.responseReceived", "params": {"response": {"headers": []}}},
-            {"method": "Network.responseReceived", "params": {"response": {"url": {"invalid": True}}}},
-            {"method": "Network.responseReceived", "params": {"response": {"status": float("inf")}}},
-            {"method": "Network.responseReceived", "params": {"response": {"status": float("nan")}}},
-            {"method": "Network.responseReceived", "params": {"response": {"status": True}}},
-            {"method": "Network.webSocketCreated", "params": {"headers": "invalid"}},
-            {"id": 1, "result": "invalid"},
-            {"id": 1, "error": "invalid"},
-        ]
-
-        def handler(stream, received):
-            for message in malformed:
-                write_message(stream, message)
-            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 0}})
-
-        with WireServer(handler) as wire:
-            session = open_session(wire.port)
-            try:
-                self.assertEqual(session.read(1)["method"], "SnapO.replayComplete")
-            finally:
-                session.close()
-
-    def test_rejects_oversized_terminated_record(self):
-        def handler(stream, received):
-            stream.write(b'{"oversized":true}\n')
-
-        with WireServer(handler) as wire:
-            session = open_session(wire.port)
-            try:
-                with mock.patch.object(snapo, "MAX_RECORD_BYTES", 8):
-                    with self.assertRaisesRegex(snapo.SnapOError, "oversized"):
-                        session.read(1)
-            finally:
-                session.close()
-
-    def test_command_ignores_unrelated_id_and_correlates_response(self):
-        observed = []
-
-        def handler(stream, received):
-            command = read_message(stream, received)
-            write_message(stream, {"id": command["id"] + 10, "result": {"body": "unrelated"}})
-            write_message(stream, {"method": "Network.loadingFinished", "params": {"requestId": "other"}})
-            write_message(stream, {"id": command["id"], "result": {"body": "expected"}})
-
-        with WireServer(handler) as server:
-            session = open_session(server.port)
-            try:
-                reply = session.command(
-                    "Network.getResponseBody",
-                    {"requestId": "request-1"},
-                    timeout=1,
-                    on_event=observed.append,
-                )
-            finally:
-                session.close()
-        self.assertEqual(reply["result"]["body"], "expected")
-        self.assertEqual(len(observed), 2)
-        self.assertEqual(server.received[1]["method"], "Network.getResponseBody")
-
-    def test_command_timeout_is_reported(self):
-        def handler(stream, received):
-            read_message(stream, received)
-            threading.Event().wait(0.12)
-
-        with WireServer(handler) as server:
-            session = open_session(server.port)
-            try:
-                with self.assertRaisesRegex(snapo.SnapOError, "Timed out waiting"):
-                    session.command("Network.getResponseBody", {"requestId": "request-1"}, timeout=0.03)
-            finally:
-                session.close()
+    def test_live_buffer_overflow_fails_visibly(self):
+        session = snapo.Session(None)
+        message = {**request_event(), "snapoSequence": 1}
+        session.events = mock.Mock()
+        session.events.read_event.return_value = {"data": message, "id": "1", "size": 1}
+        session._read_loop()
+        with self.assertRaisesRegex(snapo.SnapOError, "buffer filled"):
+            session.read(1)
+        session.close()
 
     def test_fetches_both_bodies_and_redacts_headers(self):
-        def handler(stream, received):
-            started = read_message(stream, received)
-            self.assertEqual(started["method"], "SnapO.startStream")
-            write_message(stream, request_event())
-            write_message(stream, response_event())
-            write_message(stream, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}})
-            request_command = read_message(stream, received)
-            write_message(stream, {"id": request_command["id"], "result": {"postData": '{"hello":"world"}'}})
-            response_command = read_message(stream, received)
-            write_message(
-                stream,
-                {"id": response_command["id"], "result": {"body": '{"ok":true}', "base64Encoded": False}},
-            )
-
-        with WireServer(handler) as wire:
+        history = [{**event, "snapoSequence": index} for index, event in enumerate([
+            request_event(), response_event(), {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}}], 1)]
+        bodies = {"request-body": {"postData": '{"hello":"world"}'}, "response-body": {"body": '{"ok":true}', "base64Encoded": False}}
+        with WireServer(lambda *_: None, history=history, watermark=3, bodies=bodies) as wire:
             session = open_session(wire.port)
             try:
-                details = snapo.request_details(
-                    session,
-                    snapo.Server("emulator-5554", "snapo_network_42"),
-                    "request-1",
-                )
+                details = snapo.request_details(session, snapo.Server("emulator-5554", "snapo_network_42"), "request-1")
             finally:
                 session.close()
         self.assertEqual(details["requestBody"], '{"hello":"world"}')
@@ -1105,65 +1132,26 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(details["requestHeaders"]["Authorization"], snapo.REDACTED)
         self.assertEqual(details["requestHeaders"]["Cookie"], snapo.REDACTED)
         self.assertEqual(details["responseHeaders"]["Set-Cookie"], snapo.REDACTED)
-        self.assertEqual(
-            [message["method"] for message in wire.received[2:]],
-            ["Network.getRequestPostData", "Network.getResponseBody"],
-        )
 
-    def test_zero_padded_content_length_skips_response_body_lookup(self):
-        def handler(stream, received):
-            read_message(stream, received)
-            request = request_event()
-            request["params"]["request"]["hasPostData"] = False
-            response = response_event()
-            response["params"]["response"]["headers"]["Content-Length"] = "00"
-            write_message(stream, request)
-            write_message(stream, response)
-            write_message(stream, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}})
-
-        with WireServer(handler) as wire:
-            session = open_session(wire.port)
-            try:
-                details = snapo.request_details(
-                    session,
-                    snapo.Server("emulator-5554", "snapo_network_42"),
-                    "request-1",
-                )
-            finally:
-                session.close()
-
-        self.assertEqual(details["responseBody"], "")
-        self.assertFalse(details["responseBodyBase64Encoded"])
-        self.assertEqual([message["method"] for message in wire.received[1:]], ["SnapO.startStream"])
-
-    def test_uncaptured_empty_response_body_does_not_hide_response_details(self):
-        def handler(stream, received):
-            read_message(stream, received)
-            request = request_event()
-            request["params"]["request"]["hasPostData"] = False
-            write_message(stream, request)
-            write_message(stream, response_event())
-            write_message(stream, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}})
-            command = read_message(stream, received)
-            write_message(
-                stream,
-                {"id": command["id"], "error": {"message": "No response body captured for request-1"}},
-            )
-
-        with WireServer(handler) as wire:
-            session = open_session(wire.port)
-            try:
-                details = snapo.request_details(
-                    session,
-                    snapo.Server("emulator-5554", "snapo_network_42"),
-                    "request-1",
-                )
-            finally:
-                session.close()
-
-        self.assertEqual(details["responseStatus"], 200)
-        self.assertEqual(details["responseBody"], "")
-        self.assertFalse(details["responseBodyBase64Encoded"])
+    def test_empty_response_bodies_preserve_details(self):
+        for length in (None, "00"):
+            with self.subTest(length=length):
+                request = request_event()
+                request["params"]["request"]["hasPostData"] = False
+                response = response_event()
+                if length is not None:
+                    response["params"]["response"]["headers"]["Content-Length"] = length
+                history = [{**event, "snapoSequence": index} for index, event in enumerate([
+                    request, response, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}}], 1)]
+                with WireServer(lambda *_: None, history=history, watermark=3) as wire:
+                    session = open_session(wire.port)
+                    try:
+                        details = snapo.request_details(session, snapo.Server("emulator-5554", "snapo_network_42"), "request-1")
+                    finally:
+                        session.close()
+                self.assertEqual(details["responseStatus"], 200)
+                self.assertEqual(details["responseBody"], "")
+                self.assertEqual(any("response-body" in path for path in wire.http_requests), length is None)
 
     def test_request_details_keeps_waiting_while_replay_is_active(self):
         clock = {"now": 0}
@@ -1171,11 +1159,12 @@ class ProtocolTests(unittest.TestCase):
         request["params"]["request"]["hasPostData"] = False
 
         class SlowReplaySession:
+            replaying = True
             def __init__(self):
                 self.messages = [
-                    {"method": "SnapO.appInfo", "params": {}},
-                    {"method": "SnapO.appInfo", "params": {}},
-                    {"method": "SnapO.appInfo", "params": {}},
+                    {"method": "Network.loadingFinished", "params": {"requestId": "other"}},
+                    {"method": "Network.loadingFinished", "params": {"requestId": "other"}},
+                    {"method": "Network.loadingFinished", "params": {"requestId": "other"}},
                     request,
                     response_event(),
                     {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}},
@@ -1188,8 +1177,8 @@ class ProtocolTests(unittest.TestCase):
                 clock["now"] += 2
                 return self.messages.pop(0)
 
-            def command(self, method, params, timeout, on_event):
-                return {"result": {"body": "", "base64Encoded": False}}
+            def body(self, request_id, response=False):
+                return {"body": "", "base64Encoded": False}
 
         with mock.patch.object(snapo.time, "monotonic", side_effect=lambda: clock["now"]):
             details = snapo.request_details(
@@ -1205,6 +1194,7 @@ class ProtocolTests(unittest.TestCase):
         clock = {"now": 0}
 
         class UnrelatedLiveTrafficSession:
+            replaying = False
             def __init__(self):
                 self.reads = 0
 
@@ -1217,7 +1207,7 @@ class ProtocolTests(unittest.TestCase):
                     raise AssertionError("request lookup kept extending its deadline after replay")
                 clock["now"] += 1
                 if self.reads == 1:
-                    return {"method": "SnapO.replayComplete", "params": {"watermark": 0}}
+                    return None
                 return {"method": "Network.loadingFinished", "params": {"requestId": "unrelated"}}
 
         session = UnrelatedLiveTrafficSession()
@@ -1275,7 +1265,7 @@ class TweakTransportTests(unittest.TestCase):
                 "GET /tweaks HTTP/1.1",
             ],
         )
-        self.assertNotIn("HelloSnapO", " ".join(wire.received))
+        self.assertNotIn("GET /network HTTP/1.1", " ".join(wire.received))
 
     def test_http_errors_include_status_and_server_message(self):
         adb = FakeTweakADB()
@@ -1327,7 +1317,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(app["appName"], "Snap-O Tweaks Demo")
         self.assertEqual(app["packageName"], "com.example.tweaks")
         self.assertEqual(app["protocolVersion"], 4)
-        self.assertEqual(wire.requests, [("GET", "/app", None)])
+        self.assertEqual(wire.requests, [("GET", "/.snap-o/info", None)])
         self.assertEqual(adb.calls[-1], ("emulator-5554", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_apps_infers_protocol_version_one_for_legacy_tweak_servers(self):
@@ -1711,7 +1701,7 @@ class TweakCommandTests(unittest.TestCase):
                     wire.requests,
                     [
                         ("GET", "/tweaks", None),
-                        ("GET", "/app", None),
+                        ("GET", "/.snap-o/info", None),
                         ("PATCH", "/tweaks", {"values": {"Typography/Font size": 16}}),
                     ],
                 )
@@ -1739,7 +1729,7 @@ class TweakCommandTests(unittest.TestCase):
                     wire.requests,
                     [
                         ("GET", "/tweaks", None),
-                        ("GET", "/app", None),
+                        ("GET", "/.snap-o/info", None),
                         (
                             "PATCH",
                             "/tweaks",
@@ -1812,7 +1802,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(result, 0, errors)
         self.assertEqual(
             wire.requests,
-            [("GET", "/tweaks", None), ("GET", "/app", None), ("PATCH", "/tweaks", {"values": values})],
+            [("GET", "/tweaks", None), ("GET", "/.snap-o/info", None), ("PATCH", "/tweaks", {"values": values})],
         )
         self.assertEqual(wire.descriptors[1]["value"], 0.7)
         self.assertTrue(all("modified" not in descriptor for descriptor in wire.descriptors))
@@ -1837,7 +1827,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(result, 0, errors)
         self.assertEqual(
             wire.requests,
-            [("GET", "/tweaks", None), ("GET", "/app", None), ("PATCH", "/tweaks", {"values": values})],
+            [("GET", "/tweaks", None), ("GET", "/.snap-o/info", None), ("PATCH", "/tweaks", {"values": values})],
         )
         self.assertEqual(output, "")
 
@@ -1848,7 +1838,7 @@ class TweakCommandTests(unittest.TestCase):
             result, output, errors, _ = self.run_command(["reset", "--all"], wire)
 
         self.assertEqual(result, 0, errors)
-        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("GET", "/app", None)])
+        self.assertEqual(wire.requests, [("GET", "/tweaks", None), ("GET", "/.snap-o/info", None)])
         self.assertEqual(wire.descriptors[0]["value"], 24)
         self.assertEqual(output, "")
 
@@ -1862,7 +1852,7 @@ class TweakCommandTests(unittest.TestCase):
             wire.requests,
             [
                 ("GET", "/tweaks", None),
-                ("GET", "/app", None),
+                ("GET", "/.snap-o/info", None),
                 ("PATCH", "/tweaks", {"values": {"Typography/Font size": None}}),
             ],
         )
@@ -1993,41 +1983,24 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(request["params"]["request"]["headers"]["Cookie"], snapo.REDACTED)
         self.assertEqual(response["params"]["response"]["headers"]["Set-Cookie"], snapo.REDACTED)
 
-    def test_snapshot_replay_timeout_resets_while_records_arrive(self):
+    def test_history_only_request_keeps_reading_until_http_completion(self):
         clock = {"now": 0}
-
-        class SlowReplaySession:
-            def __init__(self):
-                self.messages = [
-                    request_event(),
-                    response_event(),
-                    {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}},
-                    {"method": "SnapO.replayComplete", "params": {"watermark": 3}},
-                ]
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, error_type, error, traceback):
-                return False
-
-            def start_stream(self):
-                return None
-
-            def read(self, timeout):
-                clock["now"] += 2
-                return self.messages.pop(0)
-
+        history = mock.Mock()
+        messages = iter([request_event(), response_event(), {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}}, None])
+        def read():
+            clock["now"] += 2
+            return next(messages)
+        history.read.side_effect = read
         server = snapo.Server("emulator-5554", "snapo_network_42")
         options = snapo.parser().parse_args(["network", "requests", "--no-stream", "--json"])
         with mock.patch.object(snapo.time, "monotonic", side_effect=lambda: clock["now"]):
             with mock.patch.object(snapo, "discover", return_value=[server]):
-                with mock.patch.object(snapo, "ConnectedSession", return_value=SlowReplaySession()):
+                with mock.patch.object(snapo, "NetworkHistory", return_value=history), mock.patch.object(snapo, "read_network_metadata", return_value={"pid": 42}):
                     with contextlib.redirect_stdout(io.StringIO()):
                         result = snapo.run_requests(FakeADB(), options)
-
         self.assertEqual(result, 0)
         self.assertGreater(clock["now"], 5)
+        history.close.assert_called_once()
 
     def test_filter_tracks_matching_request_lifecycle(self):
         event_filter = snapo.EventFilter('example.test -"/private api"')
@@ -2091,16 +2064,13 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(snapo.decoded_body(encoded, "base64", "gzip"), encoded)
 
     def test_requests_json_never_prints_raw_sensitive_headers_and_cleans_up(self):
-        def handler(stream, received):
-            started = read_message(stream, received)
-            self.assertEqual(started["method"], "SnapO.startStream")
-            write_message(stream, request_event())
-            write_message(stream, response_event())
-            write_message(stream, {"method": "SnapO.replayComplete", "params": {"watermark": 2}})
+        history = [{**request_event(), "snapoSequence": 1}, {**response_event(), "snapoSequence": 2}]
+        def handler(*_):
+            self.fail("A history-only request must not open an event stream")
 
         adb = FakeADB()
         stdout = io.StringIO()
-        with WireServer(handler) as wire:
+        with WireServer(handler, history=history, watermark=2) as wire:
             adb.forward_port = wire.port
             with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
                 with mock.patch.object(snapo, "ADB", return_value=adb):
@@ -2117,6 +2087,7 @@ class OutputTests(unittest.TestCase):
                                 "--json",
                             ]
                         )
+        self.assertEqual(wire.http_requests, ["/.snap-o/info", "/network"])
         output = stdout.getvalue()
         self.assertEqual(code, 0)
         self.assertNotIn(REQUEST_SECRET, output)
@@ -2140,7 +2111,6 @@ class OutputTests(unittest.TestCase):
                 self.closed = True
 
         def handler(stream, received):
-            read_message(stream, received)
             write_message(stream, request_event())
 
         adb = FakeADB()

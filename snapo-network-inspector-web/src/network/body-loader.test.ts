@@ -176,8 +176,7 @@ function job(requestId: string, priority: BodyLoadJob["priority"]): BodyLoadJob 
     recordKey: requestId,
     priority,
     input: {
-      deviceId: "device",
-      socketName: "socket",
+      processId: "process-1",
       requestId,
       includeRequestBody: true
     }

@@ -19,6 +19,7 @@ import java.io.InputStreamReader
 import java.io.OutputStream
 import java.io.StringWriter
 import java.net.SocketTimeoutException
+import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.ExecutionException
@@ -28,7 +29,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
 
-internal const val TweaksProtocolVersion: Int = 5
+internal const val TweaksProtocolVersion: Int = 6
 
 internal data class TweakBatchError(
     val name: String,
@@ -163,10 +164,16 @@ internal class TweakHttpServer(
     private fun handleConnection(socket: LocalSocket) {
         socket.soTimeout = SocketTimeoutMillis
 
+        var origin: String? = null
         val response = try {
             val request = readRequest(socket.inputStream)
+            origin = browserOrigin(request.headers)
+            if (request.method == "OPTIONS") {
+                writeResponse(socket.outputStream, HttpResponse(200, byteArrayOf()), origin)
+                return
+            }
             if (request.path == "/tweaks/events" && request.method == "GET") {
-                streamTweaks(socket.outputStream)
+                streamTweaks(socket.outputStream, origin)
                 return
             }
             route(request)
@@ -184,12 +191,12 @@ internal class TweakHttpServer(
             errorResponse(400, "Malformed JSON number.")
         }
 
-        writeResponse(socket.outputStream, response)
+        writeResponse(socket.outputStream, response, origin)
     }
 
     private fun route(request: HttpRequest): HttpResponse = when (request.path) {
-        "/app" -> routeApp(request)
-        "/app/icon" -> routeAppIcon(request)
+        "/.snap-o/info" -> routeApp(request)
+        "/.snap-o/appicon" -> routeAppIcon(request)
         "/tweaks", "/tweaks?include=adjusted" -> routeTweaks(request)
         "/tweaks/action" -> routeTweakAction(request)
         "/tweaks/events" -> throw HttpFailure(
@@ -200,7 +207,7 @@ internal class TweakHttpServer(
         else -> throw HttpFailure(404, "Unknown endpoint: ${request.path}")
     }
 
-    private fun streamTweaks(output: OutputStream) {
+    private fun streamTweaks(output: OutputStream, origin: String?) {
         val subscription = try {
             changePublisher.subscribe()
         } catch (_: UninitializedTweakSnapshotException) {
@@ -210,7 +217,7 @@ internal class TweakHttpServer(
         subscription.use {
             output.write(
                 (
-                    "HTTP/1.1 200 OK\r\n" +
+                    "HTTP/1.1 200 OK\r\n" + corsHeaders(origin) +
                         "Content-Type: text/event-stream; charset=utf-8\r\n" +
                         "Cache-Control: no-cache\r\n" +
                         "Connection: close\r\n\r\n"
@@ -354,8 +361,8 @@ internal class TweakHttpServer(
 
             val name = line.substring(0, separator).trim().lowercase(Locale.ROOT)
             val value = line.substring(separator + 1).trim()
-            if (headers.put(name, value) != null && name == "content-length") {
-                invalidRequest("Duplicate Content-Length header.")
+            if (headers.put(name, value) != null && name in listOf("content-length", "host", "origin")) {
+                invalidRequest("Duplicate HTTP header: $name")
             }
         }
     }
@@ -697,10 +704,11 @@ internal class TweakHttpServer(
         )
     }
 
-    private fun writeResponse(output: OutputStream, response: HttpResponse) {
+    private fun writeResponse(output: OutputStream, response: HttpResponse, origin: String? = null) {
         val reason = reasonPhrase(response.statusCode)
         val headers = buildString {
             append("HTTP/1.1 ${response.statusCode} $reason\r\n")
+            append(corsHeaders(origin))
             append("Content-Type: ${response.contentType}\r\n")
             append("Content-Length: ${response.body.size}\r\n")
             if (response.allowedMethods != null) {
@@ -752,4 +760,31 @@ internal class TweakHttpServer(
 
     private fun invalidRequest(message: String): Nothing =
         throw HttpFailure(400, message)
+}
+
+internal fun browserOrigin(headers: Map<String, String>): String? {
+    // Origin can be absent on same-origin GETs. Check Host to prevent DNS rebinding.
+    val hosts = setOf("localhost", "127.0.0.1", "[::1]")
+    val host = headers["host"].orEmpty()
+    val authority = runCatching { URI("http://$host") }.getOrNull()
+    if (authority?.host?.lowercase() !in hosts || authority?.rawAuthority != host || authority.rawUserInfo != null) {
+        throw IOException("Invalid Host header.")
+    }
+    val value = headers["origin"] ?: return null
+    val origin = runCatching { URI(value) }.getOrNull()
+    val hasAuthority = origin?.scheme in listOf("http", "https") && origin?.host?.lowercase() in hosts
+    val hasOnlyAuthority = origin?.rawUserInfo == null && origin?.rawQuery == null &&
+        origin?.rawFragment == null && origin?.rawPath.isNullOrEmpty()
+    if (!hasAuthority || !hasOnlyAuthority) {
+        throw IOException("Cross-origin requests are not allowed.")
+    }
+    return value
+}
+
+private fun corsHeaders(origin: String?): String = if (origin == null) {
+    "Vary: Origin\r\n"
+} else {
+    "Access-Control-Allow-Origin: $origin\r\n" +
+        "Access-Control-Allow-Methods: GET, PATCH, POST\r\n" +
+        "Access-Control-Allow-Headers: Content-Type\r\nVary: Origin\r\n"
 }

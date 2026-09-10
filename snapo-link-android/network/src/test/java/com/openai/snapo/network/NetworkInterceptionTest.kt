@@ -3,7 +3,6 @@ package com.openai.snapo.network
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -26,22 +25,20 @@ class NetworkInterceptionTest {
             assertEquals("SnapO.intercept.request", events.last().method)
             resolve(exchange, "upstream")
             assertEquals("upstream", exchange.awaitDecision { false }.action)
-            assertNotNull(resolve(exchange, "upstream").error)
+            assertThrows(IllegalArgumentException::class.java) { resolve(exchange, "upstream") }
             exchange.response(InterceptionResponse(200, emptyList(), "e30="))
             assertEquals("SnapO.intercept.response", events.last().method)
-            val reply =
-                command(
-                    "SnapO.intercept.resolve",
-                    """
-                        {"exchangeId":"${exchange.id}","action":"fulfill",
-                         "response":{"status":201,"headerEntries":[],"body":"eyJuYW1lIjoiQ2FwdGFpbiJ9"}}
-                    """.trimIndent()
+            interception.resolve(
+                owner,
+                ProtocolJson.parseToJsonElement(
+                    """{"exchangeId":"${exchange.id}","action":"fulfill","phase":"response",
+                        "response":{"status":201,"headerEntries":[],"body":"eyJuYW1lIjoiQ2FwdGFpbiJ9"}}"""
                 )
-            assertNull(reply.error)
+            )
             assertEquals(201, exchange.awaitDecision { false }.response?.status)
         }
         assertEquals("SnapO.intercept.finished", events.last().method)
-        assertNotNull(resolve(exchange, "upstream").error)
+        assertThrows(IllegalArgumentException::class.java) { resolve(exchange, "upstream") }
     }
 
     @Test
@@ -51,40 +48,36 @@ class NetworkInterceptionTest {
         exchange.use {
             exchange.request(request)
             val other = Any()
-            assertNull(command("SnapO.intercept.enable", config(path = "/other"), other).error)
-            assertNotNull(
-                command(
-                    "SnapO.intercept.resolve",
-                    """{"exchangeId":"${exchange.id}","action":"upstream"}""",
-                    other
-                ).error
-            )
+            configure(config(path = "/other"), other)
+            assertThrows(IllegalArgumentException::class.java) {
+                resolve(exchange, "upstream", other)
+            }
             interception.disconnect(owner)
             assertEquals("fail", exchange.awaitDecision { false }.action)
             assertNull(interception.open("GET", "/api/profile"))
             requireNotNull(interception.open("GET", "/other")).close()
         }
-        assertNull(command("SnapO.intercept.enable", config(), Any()).error)
+        configure(config(), Any())
     }
 
     @Test
     fun `connections replace and disable only their own routes and pending exchanges`() {
         enable()
         val other = Any()
-        assertNull(command("SnapO.intercept.enable", config(path = "/other"), other).error)
+        configure(config(path = "/other"), other)
         val first = requireNotNull(interception.open("GET", "/api/profile"))
         val second = requireNotNull(interception.open("GET", "/other"))
         first.use {
             second.use {
                 first.request(request)
                 second.request(request.copy(url = "https://example.test/other"))
-                assertNull(command("SnapO.intercept.enable", config(path = "/replacement"), other).error)
+                configure(config(path = "/replacement"), other)
                 assertNull(interception.open("GET", "/other"))
                 requireNotNull(interception.open("GET", "/api/profile")).close()
-                assertNull(command("SnapO.intercept.disable", "{}", other).error)
+                interception.disconnect(other)
                 assertNull(interception.open("GET", "/replacement"))
                 assertEquals("fail", second.awaitDecision { false }.action)
-                assertNull(resolve(first, "upstream").error)
+                resolve(first, "upstream")
                 assertEquals("upstream", first.awaitDecision { false }.action)
             }
         }
@@ -94,7 +87,7 @@ class NetworkInterceptionTest {
     fun `reload keeps pending requests tied to their original route generation`() {
         enable()
         val original = requireNotNull(interception.open("GET", "/api/profile"))
-        assertNull(command("SnapO.intercept.enable", config("new")).error)
+        configure(config("new"))
         original.use {
             original.request(request)
             assertEquals("old", (events.last().params as JsonObject)["routeId"]?.jsonPrimitive?.content)
@@ -108,7 +101,7 @@ class NetworkInterceptionTest {
 
     @Test
     fun `a stalled handler and a canceled HTTP call release the waiting thread`() {
-        assertNull(command("SnapO.intercept.enable", config(timeout = 100)).error)
+        configure(config(timeout = 100))
         requireNotNull(interception.open("GET", "/api/profile")).use { exchange ->
             exchange.request(request)
             val timeout = assertThrows(IOException::class.java) { exchange.awaitDecision { false } }
@@ -121,27 +114,23 @@ class NetworkInterceptionTest {
         }
     }
 
-    private fun enable() { assertNull(command("SnapO.intercept.enable", config()).error) }
+    private fun enable() { configure(config()) }
 
     private fun config(id: String = "old", timeout: Long = 30_000, path: String = "/api/profile") =
         """{"routes":[{"id":"$id","method":"GET","path":"$path"}],"timeoutMs":$timeout}"""
 
-    private fun resolve(exchange: NetworkInterception.Exchange, action: String) =
-        command("SnapO.intercept.resolve", """{"exchangeId":"${exchange.id}","action":"$action"}""")
-
-    private fun command(method: String, params: String, connection: Any = owner): CdpMessage =
-        requireNotNull(
-            interception.command(
-                connection,
-                {
-                    events.add(it)
-                    true
-                },
-                CdpMessage(
-                    id = 1,
-                    method = method,
-                    params = ProtocolJson.parseToJsonElement(params),
-                )
+    private fun resolve(exchange: NetworkInterception.Exchange, action: String, runner: Any = owner) =
+        interception.resolve(
+            runner,
+            ProtocolJson.parseToJsonElement(
+                """{"exchangeId":"${exchange.id}","action":"$action","phase":"request"}"""
             )
         )
+
+    private fun configure(params: String, runner: Any = owner) {
+        interception.configure(runner, {
+            events.add(it)
+            true
+        }, ProtocolJson.parseToJsonElement(params))
+    }
 }

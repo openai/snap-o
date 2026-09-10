@@ -11,20 +11,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
-import java.io.BufferedWriter
-import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.sync.Semaphore
 import java.io.Closeable
-import java.io.IOException
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.net.SocketTimeoutException
-import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 
 internal data class NetworkReplaySnapshot(
     val messages: List<CdpMessage>,
@@ -50,11 +42,21 @@ internal class NetworkInspectorTransport(
     @Volatile
     private var acceptJob: Job? = null
 
-    private val sessionsGuard = Any()
-    private val sessions = LinkedHashSet<NetworkInspectorSession>()
+    private val connections = ConcurrentHashMap.newKeySet<LocalSocket>()
+    private val connectionSlots = Semaphore(128)
 
     private val appIcon: SnapOAppIcon? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         appIconProvider.loadAppIcon()
+    }
+
+    private val http by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        NetworkInspectorHttp(
+            buildAppInfo(),
+            runCatching { app.applicationInfo.loadLabel(app.packageManager).toString() }.getOrDefault(app.packageName),
+            snapshotProvider,
+            commandHandler,
+            interception,
+        )
     }
 
     fun start(): Boolean {
@@ -74,23 +76,25 @@ internal class NetworkInspectorTransport(
     override fun close() {
         acceptJob?.cancel()
         acceptJob = null
-        snapshotSessions().forEach { it.close() }
+        http.close()
+        connections.forEach { runCatching { it.close() } }
         runCatching { server?.close() }
         server = null
     }
 
     fun broadcast(message: CdpMessage) {
-        snapshotSessions().forEach { session ->
-            if (!session.queueLive(message)) {
-                session.close()
-            }
-        }
+        http.broadcast(message)
     }
 
     private suspend fun acceptLoop(server: LocalServerSocket) {
         while (currentCoroutineContext().isActive) {
             val socket = acceptSocketOrNull(server) ?: continue
-            scope.launch(Dispatchers.IO) { handleAcceptedSocket(socket) }
+            if (connectionSlots.tryAcquire()) {
+                connections.add(socket)
+                scope.launch(Dispatchers.IO) { handleAcceptedSocket(socket) }
+            } else {
+                runCatching { socket.close() }
+            }
         }
     }
 
@@ -104,40 +108,31 @@ internal class NetworkInspectorTransport(
         }
 
     private suspend fun handleAcceptedSocket(socket: LocalSocket) {
-        val session = NetworkInspectorSession(
-            socket = socket,
-            appInfoProvider = ::buildAppInfoMessage,
-            snapshotProvider = snapshotProvider,
-            commandHandler = commandHandler,
-            interception = interception,
-            scope = scope,
-        )
-        registerSession(session)
         try {
-            session.run()
+            socket.soTimeout = 5000
+            http.serveConnection(
+                socket.inputStream,
+                socket.outputStream,
+                onRequestRead = { socket.soTimeout = 0 },
+                closeConnection = { runCatching { socket.close() } },
+            )
         } finally {
-            unregisterSession(session)
-            session.close()
+            connections.remove(socket)
+            connectionSlots.release()
             runCatching { socket.close() }
         }
     }
 
-    private fun buildAppInfoMessage(): CdpMessage {
-        val params = SnapOAppInfoParams(
-            protocolVersion = NetworkProtocolVersion,
-            packageName = app.packageName,
-            processName = appProcessName(),
-            pid = Process.myPid(),
-            serverStartWallMs = serverStartWallMs,
-            serverStartMonoNs = serverStartMonoNs,
-            mode = config.modeLabel,
-            icon = appIcon,
-        )
-        return CdpMessage(
-            method = SnapOMethod.AppInfo,
-            params = ProtocolJson.encodeToJsonElement(SnapOAppInfoParams.serializer(), params),
-        )
-    }
+    private fun buildAppInfo(): SnapOAppInfoParams = SnapOAppInfoParams(
+        protocolVersion = NetworkProtocolVersion,
+        packageName = app.packageName,
+        processName = appProcessName(),
+        pid = Process.myPid(),
+        serverStartWallMs = serverStartWallMs,
+        serverStartMonoNs = serverStartMonoNs,
+        mode = config.modeLabel,
+        icon = appIcon,
+    )
 
     private fun appProcessName(): String {
         return try {
@@ -148,236 +143,4 @@ internal class NetworkInspectorTransport(
             app.packageName
         }
     }
-
-    private fun registerSession(session: NetworkInspectorSession) {
-        synchronized(sessionsGuard) {
-            sessions.add(session)
-        }
-    }
-
-    private fun unregisterSession(session: NetworkInspectorSession) {
-        synchronized(sessionsGuard) {
-            sessions.remove(session)
-        }
-    }
-
-    private fun snapshotSessions(): List<NetworkInspectorSession> =
-        synchronized(sessionsGuard) { sessions.toList() }
 }
-
-private class NetworkInspectorSession(
-    private val socket: LocalSocket,
-    private val appInfoProvider: () -> CdpMessage,
-    private val snapshotProvider: suspend () -> NetworkReplaySnapshot,
-    private val commandHandler: suspend (CdpMessage) -> CdpMessage?,
-    private val interception: NetworkInterception,
-    private val scope: CoroutineScope,
-) {
-    private val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8))
-    private val reader = BufferedReader(InputStreamReader(socket.inputStream, StandardCharsets.UTF_8))
-    private val outgoing = Channel<CdpMessage>(capacity = SessionQueueCapacity)
-    private val operations = Channel<SessionOperation>(capacity = SessionQueueCapacity)
-
-    @Volatile
-    private var writerJob: Job? = null
-
-    @Volatile
-    private var processorJob: Job? = null
-
-    @Volatile
-    private var isClosed: Boolean = false
-
-    suspend fun run() {
-        if (!performClientHandshake()) {
-            close()
-            return
-        }
-        startWriter()
-        startProcessor()
-        sendWithBackpressure(appInfoProvider())
-
-        while (!isClosed) {
-            val line = runCatching { reader.readLine() }.getOrNull() ?: break
-            decodeCommand(line)?.let { handleCommand(it) }
-        }
-    }
-
-    fun queueLive(message: CdpMessage): Boolean {
-        if (isClosed) return false
-        return operations.trySendSuccessfully(SessionOperation.Live(message))
-    }
-
-    fun close() {
-        if (isClosed) return
-        isClosed = true
-        interception.disconnect(this)
-        writerJob?.cancel()
-        writerJob = null
-        processorJob?.cancel()
-        processorJob = null
-        outgoing.close()
-        operations.close()
-        // Closing the socket first releases a reader blocked in readLine.
-        runCatching { socket.close() }
-        runCatching { writer.close() }
-        runCatching { reader.close() }
-    }
-
-    private fun startWriter() {
-        if (writerJob != null || isClosed) return
-        writerJob = scope.launch(Dispatchers.IO) {
-            for (message in outgoing) {
-                if (!writeLine(message)) {
-                    close()
-                    return@launch
-                }
-            }
-        }
-    }
-
-    private fun startProcessor() {
-        if (processorJob != null || isClosed) return
-        processorJob = scope.launch {
-            var streamStarted = false
-            var replayWatermark: Long? = null
-            for (operation in operations) {
-                when (operation) {
-                    SessionOperation.StartStream -> {
-                        if (streamStarted) continue
-                        replayWatermark = replaySnapshot()
-                        if (isClosed) return@launch
-                        streamStarted = true
-                    }
-
-                    SessionOperation.StopStream -> {
-                        streamStarted = false
-                        replayWatermark = null
-                    }
-
-                    is SessionOperation.Live -> {
-                        val watermark = replayWatermark
-                        if (streamStarted &&
-                            (watermark == null || shouldDeliverAfterReplay(operation.message, watermark))
-                        ) {
-                            sendWithBackpressure(operation.message)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun writeLine(message: CdpMessage): Boolean {
-        return try {
-            writer.write(ProtocolJson.encodeToString(CdpMessage.serializer(), message))
-            writer.write("\n")
-            writer.flush()
-            true
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
-    private fun decodeCommand(line: String): CdpMessage? {
-        if (line.isBlank()) return null
-        return runCatching {
-            ProtocolJson.decodeFromString(CdpMessage.serializer(), line)
-        }.getOrNull()
-    }
-
-    private suspend fun handleCommand(message: CdpMessage) {
-        when (message.method) {
-            SnapOMethod.StartStream -> queueControl(SessionOperation.StartStream)
-            SnapOMethod.StopStream -> queueControl(SessionOperation.StopStream)
-            else -> {
-                val result = interception.command(this, ::sendControl, message) ?: commandHandler(message)
-                result?.let { sendWithBackpressure(it) }
-            }
-        }
-    }
-
-    private fun sendControl(message: CdpMessage): Boolean =
-        !isClosed && outgoing.trySend(message).isSuccess
-
-    private suspend fun replaySnapshot(): Long {
-        val snapshot = snapshotProvider()
-        for (message in snapshot.messages) {
-            if (!sendWithBackpressure(message)) return snapshot.watermark
-        }
-        val replayComplete = CdpMessage(
-            method = SnapOMethod.ReplayComplete,
-            params = ProtocolJson.encodeToJsonElement(
-                SnapOReplayCompleteParams.serializer(),
-                SnapOReplayCompleteParams(watermark = snapshot.watermark),
-            ),
-        )
-        sendWithBackpressure(replayComplete)
-        return snapshot.watermark
-    }
-
-    private suspend fun queueControl(operation: SessionOperation) {
-        if (isClosed) return
-        runCatching { operations.send(operation) }
-    }
-
-    private suspend fun sendWithBackpressure(message: CdpMessage): Boolean {
-        if (isClosed) return false
-        return runCatching { outgoing.send(message) }
-            .fold(
-                onSuccess = { true },
-                onFailure = {
-                    close()
-                    false
-                },
-            )
-    }
-
-    private fun performClientHandshake(): Boolean {
-        return try {
-            readClientHello() == ClientHelloToken
-        } catch (_: SocketTimeoutException) {
-            false
-        } catch (_: IOException) {
-            false
-        }
-    }
-
-    private fun readClientHello(): String {
-        socket.soTimeout = ClientHelloTimeoutMs
-        val input = socket.inputStream
-        val buffer = ByteArrayOutputStream()
-        try {
-            while (buffer.size() <= ClientHelloMaxBytes) {
-                val value = input.read()
-                if (value == -1) {
-                    throw IOException("client handshake closed without data")
-                }
-                if (value == '\n'.code) {
-                    val raw = buffer.toString(StandardCharsets.UTF_8.name())
-                    return raw.trimEnd('\r')
-                }
-                buffer.write(value)
-            }
-            throw IOException("client handshake exceeded $ClientHelloMaxBytes bytes")
-        } finally {
-            socket.soTimeout = 0
-        }
-    }
-
-    private sealed interface SessionOperation {
-        object StartStream : SessionOperation
-        object StopStream : SessionOperation
-        data class Live(val message: CdpMessage) : SessionOperation
-    }
-}
-
-private const val SessionQueueCapacity = 512
-private const val ClientHelloToken = "HelloSnapO"
-private const val ClientHelloTimeoutMs = 1_000
-private const val ClientHelloMaxBytes = 4 * 1024
-
-internal fun <T> SendChannel<T>.trySendSuccessfully(element: T): Boolean =
-    trySend(element).isSuccess
-
-internal fun shouldDeliverAfterReplay(message: CdpMessage, watermark: Long): Boolean =
-    message.snapoSequence?.let { sequence -> sequence > watermark } ?: true
