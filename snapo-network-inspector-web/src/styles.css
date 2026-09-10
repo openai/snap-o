@@ -707,13 +707,16 @@ body.split-pane-resizing {
 }
 
 .body-loading-spinner circle {
+  /* Use the radius-9 circumference directly for WebKit compatibility. */
+  stroke-dasharray: 45.24 11.31;
+
   /* Move the gap so the circle stays fixed on the pixel grid. */
   animation: loading-spinner-gap 1s linear infinite;
 }
 
 @keyframes loading-spinner-gap {
   to {
-    stroke-dashoffset: -100;
+    stroke-dashoffset: -56.55;
   }
 }
 
