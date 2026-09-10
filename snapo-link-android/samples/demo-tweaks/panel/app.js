@@ -140,7 +140,7 @@ function mockRequest(path, options) {
     return { app: structuredClone(app) };
   }
 
-  if (path === "/app") {
+  if (path === "/.snap-o/info") {
     return structuredClone(mockApps.find((app) => app.id === mockSelectedAppId));
   }
 
@@ -1087,7 +1087,7 @@ async function load({ refreshApps = true } = {}) {
     }
 
     const [app, result] = await Promise.all([
-      request("/app"),
+      request("/.snap-o/info"),
       request("/tweaks"),
     ]);
 

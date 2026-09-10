@@ -128,27 +128,55 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         self.directory.cleanup()
 
     async def accept(self, reader, writer):
-        self.peer_task = asyncio.current_task()
-        self.writer = writer
-        self.assertEqual(b"HelloSnapO\n", await reader.readline())
-        self.connected.set_result(True)
-        while line := await reader.readline():
-            command = json.loads(line)
-            await self.commands.put(command)
-            await self.send({"id": command["id"], "result": {}})
+        try:
+            head = (await reader.readuntil(b"\r\n\r\n")).decode()
+            lines = head.split("\r\n")
+            method, target, _ = lines[0].split()
+            path = target.split("?")[0]
+            headers = dict(line.split(": ", 1) for line in lines[1:] if line)
+            body = json.loads(await reader.readexactly(int(headers["Content-Length"])))
+            if path == "/interception":
+                self.assertEqual(method, "POST")
+                self.peer_task = asyncio.current_task()
+                self.writer = writer
+                writer.write(b"HTTP/1.1 201 Created\r\nLocation: /interception/runner-one\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n")
+                await writer.drain()
+                await self.commands.put({"method": "routes", "params": body})
+                self.connected.set_result(True)
+                await reader.read()
+            else:
+                self.assertTrue(path.startswith("/interception/runner-one/"))
+                if path.endswith("/routes"):
+                    self.assertEqual(method, "PUT")
+                    command = "routes"
+                else:
+                    self.assertEqual(method, "POST")
+                    self.assertEqual(path.split("/")[3], "exchanges")
+                    self.assertEqual(len(path.split("/")), 5)
+                    body["exchangeId"] = path.split("/")[-1]
+                    self.assertIn(body["phase"], ("request", "response"))
+                    command = "decision"
+                await self.commands.put({"method": command, "params": body})
+                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
+                await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
-    async def send(self, message):
-        self.writer.write(json.dumps(message).encode() + b"\n")
+    async def send(self, message, event="message"):
+        payload = f"event: {event}\ndata: ".encode() + json.dumps(message).encode() + b"\n\n"
+        self.writer.write(f"{len(payload):x}\r\n".encode() + payload + b"\r\n")
         await self.writer.drain()
 
     async def start(self, source, watch=False, timeout=30):
         self.path.write_text(source)
         routes, digest = load_routes(self.path)
-        reader, writer = await asyncio.open_connection("127.0.0.1", self.server.sockets[0].getsockname()[1])
-        self.runner = Runner(reader, writer, self.path, routes, digest, timeout, watch, self.logs.put_nowait)
+        port = self.server.sockets[0].getsockname()[1]
+        factory = lambda timeout: snapo.LocalAbstractSocket(port=port, timeout=timeout)
+        self.runner = Runner(factory, self.path, routes, digest, timeout, watch, self.logs.put_nowait)
         self.runner_task = asyncio.create_task(self.runner.run())
         await self.connected
-        enable = await self.next_command("SnapO.intercept.enable")
+        enable = await self.next_command("routes")
         await asyncio.wait_for(self.logs.get(), 2)
         return {route["path"]: route["id"] for route in enable["routes"]}
 
@@ -178,6 +206,32 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("fulfill", resolution["action"])
         return json.loads(base64.b64decode(resolution["response"]["body"]))
 
+    async def test_sixty_four_upstream_calls_do_not_exhaust_http_workers(self):
+        routes = await self.start('from snapo import route\n@route("GET", "/api/profile")\nasync def profile(call):\n    return await call.upstream()\n')
+        for index in range(64):
+            await self.request(str(index), routes["/api/profile"])
+        pending = [await self.next_command("decision") for _ in range(64)]
+        self.assertEqual({str(index) for index in range(64)}, {item["exchangeId"] for item in pending})
+        self.assertTrue(all(item["action"] == "upstream" and item["phase"] == "request" for item in pending))
+        for index in range(64):
+            await self.response(str(index), {"index": index})
+        completed = [await self.next_command("decision") for _ in range(64)]
+        self.assertEqual(set(range(64)), {self.decoded(item)["index"] for item in completed})
+        self.assertTrue(all(item["phase"] == "response" for item in completed))
+
+    async def test_disconnect_cancels_paused_handlers_without_reconnecting(self):
+        routes = await self.start('from snapo import route\n@route("GET", "/api/profile")\nasync def profile(call):\n    return await call.upstream()\n')
+        await self.request("one", routes["/api/profile"])
+        await self.next_command("decision")
+        self.writer.close()
+        await self.writer.wait_closed()
+        with self.assertRaises(snapo.SnapOError):
+            await asyncio.wait_for(self.runner_task, 2)
+        self.runner_task = None
+        self.assertEqual(self.runner._calls, {})
+        self.assertEqual(self.runner._tasks, {})
+        self.assertTrue(self.commands.empty())
+
     async def test_editing_json_sends_upstream_once_and_preserves_repeated_headers(self):
         routes = await self.start('''from snapo import route
 @route("GET", "api/profile")
@@ -190,10 +244,12 @@ async def profile(call):
     return response
 ''')
         await self.request("one", routes["/api/profile"], "/api/profile?source=test")
-        upstream = await self.next_command("SnapO.intercept.resolve")
+        upstream = await self.next_command("decision")
         self.assertEqual("upstream", upstream["action"])
+        self.assertEqual("request", upstream["phase"])
         await self.response("one", {"name": "Ada", "role": "engineer"})
-        result = await self.next_command("SnapO.intercept.resolve")
+        result = await self.next_command("decision")
+        self.assertEqual("response", result["phase"])
         self.assertEqual({"name": "Space Captain", "role": "engineer"}, self.decoded(result))
         headers = result["response"]["headerEntries"]
         self.assertEqual(["first=1", "second=2"], [entry["value"] for entry in headers if entry["name"] == "Set-Cookie"])
@@ -211,11 +267,11 @@ async def list_tasks(call):
     return call.json({"tasks": tasks})
 ''')
         await self.request("create", routes["/api/tasks/create"], "/api/tasks/create", {"title": "Walk"}, "POST")
-        created = await self.next_command("SnapO.intercept.resolve")
+        created = await self.next_command("decision")
         self.assertEqual({"title": "Walk"}, self.decoded(created))
         self.assertEqual(201, created["response"]["status"])
         await self.request("list", routes["/api/tasks"], "/api/tasks")
-        listed = await self.next_command("SnapO.intercept.resolve")
+        listed = await self.next_command("decision")
         self.assertEqual({"tasks": [{"title": "Walk"}]}, self.decoded(listed))
 
     async def test_reload_keeps_in_flight_and_not_yet_announced_requests_on_old_handlers(self):
@@ -227,7 +283,7 @@ async def profile(call):
     return response
 ''')
         await self.request("inflight", routes["/api/profile"])
-        await self.next_command("SnapO.intercept.resolve")
+        await self.next_command("decision")
         self.path.write_text('''from snapo import route
 @route("GET", "api/profile")
 async def profile(call):
@@ -235,16 +291,16 @@ async def profile(call):
 ''')
         new_routes, _ = load_routes(self.path)
         install = asyncio.create_task(self.runner.install(new_routes))
-        enabled = await self.next_command("SnapO.intercept.enable")
+        enabled = await self.next_command("routes")
         await install
         await self.response("inflight", {})
-        self.assertEqual({"version": "old"}, self.decoded(await self.next_command("SnapO.intercept.resolve")))
+        self.assertEqual({"version": "old"}, self.decoded(await self.next_command("decision")))
         await self.request("late", routes["/api/profile"])
-        self.assertEqual("upstream", (await self.next_command("SnapO.intercept.resolve"))["action"])
+        self.assertEqual("upstream", (await self.next_command("decision"))["action"])
         await self.response("late", {})
-        self.assertEqual({"version": "old"}, self.decoded(await self.next_command("SnapO.intercept.resolve")))
+        self.assertEqual({"version": "old"}, self.decoded(await self.next_command("decision")))
         await self.request("new", enabled["routes"][0]["id"])
-        self.assertEqual({"version": "new"}, self.decoded(await self.next_command("SnapO.intercept.resolve")))
+        self.assertEqual({"version": "new"}, self.decoded(await self.next_command("decision")))
 
     async def test_concurrent_handlers_can_release_one_response_before_another(self):
         routes = await self.start('''from snapo import route
@@ -261,7 +317,7 @@ async def settings(call):
 ''')
         await self.request("profile", routes["/api/profile"])
         await self.request("settings", routes["/api/settings"], "/api/settings")
-        results = [await self.next_command("SnapO.intercept.resolve") for _ in range(2)]
+        results = [await self.next_command("decision") for _ in range(2)]
         self.assertEqual({"profile", "settings"}, {result["exchangeId"] for result in results})
         self.assertTrue(all(result["action"] == "fulfill" for result in results))
 
@@ -272,7 +328,7 @@ async def profile(call):
     raise ValueError("broken prototype")
 ''')
         await self.request("failed", routes["/api/profile"])
-        result = await self.next_command("SnapO.intercept.resolve")
+        result = await self.next_command("decision")
         self.assertEqual("fail", result["action"])
         self.assertIn("ValueError", result["error"])
 
@@ -286,11 +342,11 @@ async def profile(call):
         self.path.write_text("broken syntax!!!")
         self.assertIn("Reload failed", await asyncio.wait_for(self.logs.get(), 2))
         await self.request("old", routes["/api/profile"])
-        self.assertEqual({"version": "old"}, self.decoded(await self.next_command("SnapO.intercept.resolve")))
+        self.assertEqual({"version": "old"}, self.decoded(await self.next_command("decision")))
         self.path.write_text(original.replace('"old"', '"new"'))
-        enabled = await self.next_command("SnapO.intercept.enable")
+        enabled = await self.next_command("routes")
         await self.request("new", enabled["routes"][0]["id"])
-        self.assertEqual({"version": "new"}, self.decoded(await self.next_command("SnapO.intercept.resolve")))
+        self.assertEqual({"version": "new"}, self.decoded(await self.next_command("decision")))
 
 
 if __name__ == "__main__":

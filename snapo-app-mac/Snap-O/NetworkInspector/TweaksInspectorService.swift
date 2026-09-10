@@ -248,7 +248,7 @@ actor TweaksInspectorService {
     if connection.app.protocolVersion == nil,
        let info = try? await load(
          AppInfo.self,
-         path: "app",
+         path: ".snap-o/info",
          connection: connection,
          timeoutInterval: Self.discoveryRequestTimeout
        ),
@@ -275,7 +275,7 @@ actor TweaksInspectorService {
 
   private func loadIcon(connection: Connection) async throws -> Data? {
     let request = URLRequest(
-      url: connection.baseURL.appending(path: "app/icon"),
+      url: connection.baseURL.appending(path: ".snap-o/appicon"),
       timeoutInterval: Self.discoveryRequestTimeout
     )
     let (data, response) = try await data(for: request, connection: connection)

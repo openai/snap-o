@@ -4,7 +4,6 @@ import SnapODeviceClient
 actor NetworkInspectorService {
   private static let maximumBufferedOutputs = 4096
   private static let retryCooldown: Duration = .seconds(3)
-  private static let bodyCommandTimeout: Duration = .seconds(10)
 
   private struct ServerState {
     let reference: NetworkServerReference
@@ -198,7 +197,7 @@ actor NetworkInspectorService {
         id: UUID(),
         connectionID: state.connectionID,
         task: Task {
-          try await state.session.send(method: SnapONetworkProtocol.Method.startStream)
+          try await state.session.startStream()
         }
       )
       streamStartFlights[reference.key] = flight
@@ -243,7 +242,7 @@ actor NetworkInspectorService {
     guard !streams.values.contains(key), let session = servers[key]?.session else { return }
     activeStreamConnections.removeValue(forKey: key)
     streamStartFlights.removeValue(forKey: key)?.task.cancel()
-    try? await session.send(method: SnapONetworkProtocol.Method.stopStream)
+    await session.stopStream()
   }
 
   func stopAllStreams(kind: AppInspectorKind) async {
@@ -266,7 +265,7 @@ actor NetworkInspectorService {
     }
     for serverKey in serverKeys {
       guard let session = servers[serverKey]?.session else { continue }
-      try? await session.send(method: SnapONetworkProtocol.Method.stopStream)
+      await session.stopStream()
     }
   }
 
@@ -386,11 +385,12 @@ actor NetworkInspectorService {
     requestID: String
   ) async -> NetworkCDPMessage? {
     guard enabled, let session = servers[serverKey]?.session else { return nil }
-    return try? await session.command(
-      method: method,
-      params: ["requestId": .string(requestID)],
-      timeout: Self.bodyCommandTimeout
-    )
+    if method == SnapONetworkProtocol.Method.getRequestPostData {
+      guard let body = try? await session.requestBody(requestID: requestID) else { return nil }
+      return NetworkCDPMessage(result: ["postData": .string(body)])
+    }
+    guard let body = try? await session.responseBody(requestID: requestID) else { return nil }
+    return NetworkCDPMessage(result: ["body": .string(body.body), "base64Encoded": .bool(body.base64Encoded)])
   }
 
   private func refresh() async {
@@ -458,8 +458,7 @@ actor NetworkInspectorService {
     do {
       let session = try await NetworkSession.connect(
         to: reference,
-        using: adb,
-        defaultCommandTimeout: .milliseconds(1500)
+        using: adb
       )
       guard !Task.isCancelled, !isStopped else {
         await session.close()

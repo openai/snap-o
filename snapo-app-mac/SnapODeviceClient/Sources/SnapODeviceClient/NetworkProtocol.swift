@@ -1,14 +1,9 @@
 import Foundation
 
 public enum SnapONetworkProtocol {
-  public static let clientHello = "HelloSnapO"
-  public static let supportedVersion = 1
+  public static let supportedVersion = 2
 
   public enum Method {
-    public static let appInfo = "SnapO.appInfo"
-    public static let replayComplete = "SnapO.replayComplete"
-    public static let startStream = "SnapO.startStream"
-    public static let stopStream = "SnapO.stopStream"
     public static let getRequestPostData = "Network.getRequestPostData"
     public static let getResponseBody = "Network.getResponseBody"
   }
@@ -141,6 +136,16 @@ public struct NetworkAppInfo: Codable, Sendable, Equatable {
     self.serverStartMonoNs = serverStartMonoNs
     self.mode = mode
     self.icon = icon
+  }
+}
+
+public struct NetworkResponseBody: Codable, Sendable, Equatable {
+  public let body: String
+  public let base64Encoded: Bool
+
+  public init(body: String, base64Encoded: Bool) {
+    self.body = body
+    self.base64Encoded = base64Encoded
   }
 }
 

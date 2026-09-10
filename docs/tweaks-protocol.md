@@ -33,7 +33,7 @@ adb -s "$serial" shell cat /proc/net/unix
 port="$(adb -s "$serial" forward tcp:0 "localabstract:$socket")"
 base="http://127.0.0.1:$port"
 
-curl -fsS "$base/app"
+curl -fsS "$base/.snap-o/info"
 curl -fsS "$base/tweaks"
 ```
 
@@ -51,8 +51,8 @@ When its optional dependency is installed and its developer setting is enabled, 
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `GET` | `/app` | Read app metadata and the supported protocol version. |
-| `GET` | `/app/icon` | Read the app icon. |
+| `GET` | `/.snap-o/info` | Read app metadata and the supported protocol version. |
+| `GET` | `/.snap-o/appicon` | Read the app icon. |
 | `GET` | `/tweaks` | List value tweaks and actions with active owners. |
 | `GET` | `/tweaks?include=adjusted` | Include inactive, previously adjusted value tweaks. |
 | `PATCH` | `/tweaks` | Update or reset one or more live values. |
@@ -62,12 +62,12 @@ When its optional dependency is installed and its developer setting is enabled, 
 **Registration determines visibility.** Value tweaks and actions can be changed, invoked, or streamed only while they have active owners. Compose releases owners when they leave composition; other callers close their `TweakScope`. The adjusted-history endpoint can also return inactive, read-only value snapshots.
 {.notice}
 
-## GET /app {#get-app data-step="2"}
+## GET /.snap-o/info {#get-app data-step="2"}
 
 Read the running app’s user-visible name, Android package name, and supported Tweaks protocol version. Request this endpoint first so your client can select compatible behavior.
 
 ``` { .http title="Example Request" }
-GET /app HTTP/1.1
+GET /.snap-o/info HTTP/1.1
 Host: 127.0.0.1
 ```
 
@@ -75,7 +75,7 @@ Host: 127.0.0.1
 {
   "name": "Snap-O Tweaks Demo",
   "packageName": "com.openai.snapo.demo.tweaks",
-  "protocolVersion": 5
+  "protocolVersion": 6
 }
 ```
 
@@ -89,14 +89,16 @@ Host: 127.0.0.1
 
 Android 8.0.0 reports protocol 5; Android 7.0.0 reports protocol 4. Older clients that accept only primitive values cannot decode lists containing curves. Updated clients still support older servers.
 
+Version 6 moves metadata and icons to the generic `/.snap-o/info` and `/.snap-o/appicon` endpoints. Update hosts and Android libraries together; the old metadata routes are not served.
+
 The Tweaks protocol version is independent of the Network Inspector protocol version.
 
-## GET /app/icon {#get-app-icon data-step="3"}
+## GET /.snap-o/appicon {#get-app-icon data-step="3"}
 
 Read the running app’s icon. Use the response’s `Content-Type` without assuming a particular image format or size.
 
 ``` { .http title="Example Request" }
-GET /app/icon HTTP/1.1
+GET /.snap-o/appicon HTTP/1.1
 Host: 127.0.0.1
 ```
 

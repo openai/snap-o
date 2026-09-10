@@ -31,16 +31,6 @@ class NetworkProtocolCompatibilityTest {
     }
 
     @Test
-    fun `replay completion params carry the snapshot watermark`() {
-        val encoded = ProtocolJson.encodeToJsonElement(
-            SnapOReplayCompleteParams.serializer(),
-            SnapOReplayCompleteParams(watermark = 17L),
-        ).jsonObject
-
-        assertEquals(17L, encoded.getValue("watermark").jsonPrimitive.content.toLong())
-    }
-
-    @Test
     fun `loading finished carries response size and truncation metadata`() {
         val params = checkNotNull(
             ResponseFinished(

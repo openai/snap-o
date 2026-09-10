@@ -5,7 +5,6 @@ import argparse
 import asyncio
 import hashlib
 import inspect
-import itertools
 import types
 import uuid
 from collections.abc import MutableMapping
@@ -24,6 +23,9 @@ import socket
 import subprocess
 import sys
 import time
+import threading
+from collections import deque
+from urllib.parse import quote
 from dataclasses import dataclass, field
 
 
@@ -344,81 +346,269 @@ class ServerConnection:
 
 
 class Session:
-    def __init__(self, transport):
-        self.socket = transport.socket
-        self.buffer = bytearray()
-        self.next_id = 1
-        try:
-            self.send_bytes(b"HelloSnapO\n")
-        except BaseException:
-            self.socket.close()
-            raise
+    def __init__(self, open_socket):
+        self.open_socket = open_socket
+        self.history = None
+        self.events = None
+        self.replaying = False
+        self.watermark = None
+        self.reader_thread = None
+        self.closed = False
+        self.records = deque()
+        self.condition = threading.Condition()
+        self.reader_error = None
+        self.buffered_bytes = 0
 
     def close(self):
-        self.socket.close()
-
-    def send_bytes(self, payload):
-        try:
-            self.socket.sendall(payload)
-        except OSError as error:
-            raise SnapOError(f"Failed to write to Snap-O socket: {error}") from error
-
-    def send(self, message):
-        self.send_bytes(json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n")
+        self.closed = True
+        if self.events is not None:
+            self.events.close()
+        if self.history is not None:
+            self.history.close()
+        with self.condition:
+            self.condition.notify_all()
+        if self.reader_thread is not None:
+            self.reader_thread.join(timeout=2)
 
     def start_stream(self):
-        self.send({"method": "SnapO.startStream"})
+        if self.events is not None:
+            return
+        self.events = NetworkSSE(self.open_socket, "/network")
+        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+        self.reader_thread.start()
+        self.history = NetworkHistory(self.open_socket)
+        self.watermark = self.history.watermark
+        self.replaying = True
+
+    def _read_loop(self):
+        try:
+            while not self.closed:
+                event = self.events.read_event()
+                message = event["data"]
+                sequence = message.get("snapoSequence") if isinstance(message, dict) else None
+                if (not valid_record(message) or not str(message.get("method", "")).startswith("Network.")
+                        or type(sequence) is not int or sequence < 0):
+                    raise SnapOError("Invalid network event")
+                if event["id"] and event["id"] != str(sequence):
+                    raise SnapOError("Network SSE sequence does not match its event")
+                size = event["size"]
+                with self.condition:
+                    if len(self.records) >= 4096 or self.buffered_bytes + size > 32 * 1024 * 1024:
+                        raise SnapOError("Live event buffer filled; reconnect for a fresh snapshot")
+                    self.records.append((message, size))
+                    self.buffered_bytes += size
+                    self.condition.notify_all()
+        except SnapOError as error:
+            with self.condition:
+                self.reader_error = error
+                self.condition.notify_all()
+            self.events.close()
 
     def read(self, timeout):
-        deadline = time.monotonic() + timeout
-        while True:
-            newline = self.buffer.find(b"\n")
-            if newline >= 0:
-                line = bytes(self.buffer[:newline]).rstrip(b"\r")
-                del self.buffer[: newline + 1]
-                if len(line) > MAX_RECORD_BYTES:
-                    raise SnapOError("Snap-O sent an oversized network record")
-                if not line:
-                    continue
-                try:
-                    message = json.loads(line)
-                except (UnicodeDecodeError, ValueError):
-                    continue
-                if valid_record(message):
-                    return message
-                continue
-            if len(self.buffer) > MAX_RECORD_BYTES:
-                raise SnapOError("Snap-O sent an oversized network record")
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return None
-            self.socket.settimeout(remaining)
-            try:
-                chunk = self.socket.recv(64 * 1024)
-            except socket.timeout:
-                return None
-            except OSError as error:
-                raise SnapOError(f"Failed to read from Snap-O socket: {error}") from error
-            if not chunk:
-                raise SnapOError("Snap-O socket closed unexpectedly")
-            self.buffer.extend(chunk)
-
-    def command(self, method, params, timeout=10, on_event=None):
-        command_id = self.next_id
-        self.next_id += 1
-        self.send({"id": command_id, "method": method, "params": params})
-        deadline = time.monotonic() + timeout
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise SnapOError(f"Timed out waiting for {method}")
-            message = self.read(remaining)
-            if message is None:
-                raise SnapOError(f"Timed out waiting for {method}")
-            if message.get("id") == command_id and not message.get("method"):
+        if self.reader_error is not None:
+            raise self.reader_error
+        if self.history is not None:
+            message = self.history.read()
+            if message is not None:
                 return message
-            if on_event:
-                on_event(message)
+            self.history.close()
+            self.history = None
+            self.replaying = False
+            return None
+        deadline = time.monotonic() + timeout
+        with self.condition:
+            while True:
+                if self.reader_error is not None:
+                    raise self.reader_error
+                while self.records:
+                    message, size = self.records.popleft()
+                    self.buffered_bytes -= size
+                    if self.watermark is not None and message["snapoSequence"] <= self.watermark:
+                        continue
+                    return message
+                if self.closed:
+                    raise SnapOError("Snap-O session is closed")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+                self.condition.wait(remaining)
+
+    def body(self, request_id, response=False):
+        kind = "response-body" if response else "request-body"
+        path = f"/network/requests/{quote(request_id, safe='')}/{kind}"
+        request = NetworkHTTPResponse(self.open_socket, path)
+        try:
+            return request.read_json()
+        finally:
+            request.close()
+
+
+class NetworkHTTPError(SnapOError):
+    def __init__(self, status, message):
+        self.status = status
+        super().__init__(message)
+
+
+class NetworkHTTPResponse:
+    def __init__(self, open_socket, path, method="GET", body=None, accept="application/json"):
+        self.transport = open_socket(10)
+        self.response = None
+        self.pending = bytearray()
+        self.response_lock = threading.Lock()
+        self.closed = False
+        try:
+            payload = b"" if body is None else json.dumps(body, separators=(",", ":"), allow_nan=False).encode("utf-8")
+            if len(payload) > 2 * 1024 * 1024:
+                raise SnapOError("Network HTTP request is too large")
+            head = (f"{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
+                    f"Accept: {accept}\r\nContent-Type: application/json\r\nContent-Length: {len(payload)}\r\n\r\n")
+            self.transport.socket.sendall(head.encode("ascii") + payload)
+            self.response = http.client.HTTPResponse(self.transport.socket)
+            self.response.begin()
+            if self.response.status not in (200, 201):
+                message = f"Network HTTP request failed ({self.response.status}); update Snap-O and the Android library"
+                try:
+                    error = json.loads(self.response.read(65536)).get("error")
+                    if isinstance(error, str):
+                        message = error
+                except (ValueError, AttributeError):
+                    pass
+                raise NetworkHTTPError(self.response.status, message)
+        except (OSError, http.client.HTTPException) as error:
+            self.close()
+            raise SnapOError(f"Network HTTP request failed; check the Android library version: {error}") from error
+        except BaseException:
+            self.close()
+            raise
+
+    def read_json(self, limit=MAX_RECORD_BYTES):
+        try:
+            if self.response.getheader("Content-Type", "").split(";")[0].strip() != "application/json":
+                raise SnapOError("Expected a network JSON response")
+            with self.response_lock:
+                data = self.response.read(limit + 1)
+            if len(data) > limit:
+                raise SnapOError("Network HTTP response is too large")
+            value = json.loads(data)
+            if not isinstance(value, dict):
+                raise SnapOError("Invalid network HTTP response")
+            return value
+        except (OSError, http.client.HTTPException, ValueError) as error:
+            raise SnapOError(f"Unable to read network HTTP response: {error}") from error
+
+    def read_line(self, limit=MAX_RECORD_BYTES + 1):
+        scanned = 0
+        while True:
+            end = self.pending.find(b"\n", scanned)
+            if end >= 0:
+                if end >= limit:
+                    raise SnapOError("Network HTTP line is too large")
+                line = bytes(self.pending[:end + 1])
+                del self.pending[:end + 1]
+                return line
+            if len(self.pending) >= limit:
+                raise SnapOError("Network HTTP line is too large")
+            scanned = len(self.pending)
+            # HTTPResponse.readline() can hide an incomplete chunked response.
+            with self.response_lock:
+                data = self.response.read1(64 * 1024)
+            if not data:
+                line = bytes(self.pending)
+                self.pending.clear()
+                return line
+            self.pending.extend(data)
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        # Release a blocking SSE read before closing its buffered HTTP reader.
+        try:
+            self.transport.socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        with self.response_lock:
+            if self.response is not None:
+                self.response.close()
+        self.transport.socket.close()
+
+
+def read_network_metadata(open_socket):
+    request = NetworkHTTPResponse(open_socket, "/.snap-o/info")
+    try:
+        metadata = request.read_json(1024 * 1024)
+        if type(metadata.get("protocolVersion")) is not int or metadata["protocolVersion"] != 2:
+            raise SnapOError("Unsupported Network Inspector protocol; update Snap-O and the Android library")
+        return metadata
+    finally:
+        request.close()
+
+
+class NetworkHistory(NetworkHTTPResponse):
+    def __init__(self, open_socket):
+        super().__init__(open_socket, "/network", accept="application/x-ndjson")
+        try:
+            if self.response.getheader("Content-Type", "").split(";")[0].strip() != "application/x-ndjson":
+                raise SnapOError("Expected a network history response")
+            cursor = self.response.getheader("SnapO-Sequence", "")
+            if not cursor.isascii() or not cursor.isdecimal():
+                raise SnapOError("Invalid history snapshot headers")
+            self.watermark = int(cursor)
+        except BaseException:
+            self.close()
+            raise
+
+    def read(self):
+        try:
+            line = self.read_line()
+            if not line:
+                return None
+            if len(line) > MAX_RECORD_BYTES + 1 or not line.endswith(b"\n"):
+                raise SnapOError("Incomplete or oversized history record")
+            message = json.loads(line)
+            sequence = message.get("snapoSequence") if isinstance(message, dict) else None
+            if not valid_record(message) or type(sequence) is not int or not 0 <= sequence <= self.watermark:
+                raise SnapOError("Invalid history record")
+            return message
+        except (OSError, http.client.HTTPException, ValueError) as error:
+            raise SnapOError(f"Unable to read network history: {error}") from error
+
+
+class NetworkSSE(NetworkHTTPResponse):
+    def __init__(self, open_socket, path, method="GET", body=None):
+        super().__init__(open_socket, path, method, body, accept="text/event-stream")
+        if self.response.getheader("Content-Type", "").split(";")[0].strip() != "text/event-stream":
+            self.close()
+            raise SnapOError("Expected a network SSE response")
+        self.transport.socket.settimeout(30)
+
+    def read_event(self):
+        data = bytearray()
+        event_name = "message"
+        event_id = ""
+        try:
+            while True:
+                line = self.read_line(MAX_RECORD_BYTES + 128)
+                if not line or not line.endswith(b"\n"):
+                    raise SnapOError("Network event stream ended")
+                line = line[:-1].removesuffix(b"\r")
+                if not line:
+                    if data:
+                        return {"event": event_name, "id": event_id, "data": json.loads(data[:-1]), "size": len(data)}
+                    event_name, event_id = "message", ""
+                    continue
+                field, _, value = line.partition(b":")
+                value = value.removeprefix(b" ")
+                if field == b"data":
+                    if len(data) + len(value) > MAX_RECORD_BYTES:
+                        raise SnapOError("Network SSE event is too large")
+                    data.extend(value + b"\n")
+                elif field == b"event":
+                    event_name = value.decode("utf-8")
+                elif field == b"id":
+                    event_id = value.decode("utf-8")
+        except (OSError, http.client.HTTPException, ValueError) as error:
+            raise SnapOError(f"Unable to read network events: {error}") from error
 
 
 def valid_record(message):
@@ -488,7 +678,8 @@ class ConnectedSession:
     def __enter__(self):
         self.connection.__enter__()
         try:
-            self.session = Session(self.connection.open_socket())
+            read_network_metadata(self.connection.open_socket)
+            self.session = Session(self.connection.open_socket)
         except BaseException:
             self.connection.__exit__(*sys.exc_info())
             raise
@@ -760,15 +951,10 @@ def emit_event(message, as_json):
 
 def app_info(adb, server):
     try:
-        with ConnectedSession(adb, server) as session:
-            deadline = time.monotonic() + 1.5
-            while time.monotonic() < deadline:
-                message = session.read(max(0, deadline - time.monotonic()))
-                if message and message.get("method") == "SnapO.appInfo":
-                    return message.get("params") or {}
+        with ServerConnection(adb, server) as connection:
+            return read_network_metadata(connection.open_socket)
     except SnapOError:
         return {}
-    return {}
 
 
 def emit_app(server, name, package, as_json, current_device, details="", protocol_version=None):
@@ -807,23 +993,24 @@ def run_list(adb, options):
 def run_requests(adb, options):
     server = choose_server(discover(adb, options), options.socket)
     event_filter = EventFilter(options.filter)
+    if options.no_stream:
+        with ServerConnection(adb, server) as connection:
+            read_network_metadata(connection.open_socket)
+            history = NetworkHistory(connection.open_socket)
+            try:
+                while (message := history.read()) is not None:
+                    if event_filter.matches(message):
+                        emit_event(message, options.json)
+            finally:
+                history.close()
+        return 0
     with ConnectedSession(adb, server) as session:
         session.start_stream()
-        deadline = time.monotonic() + 5 if options.no_stream else None
         while True:
-            timeout = max(0, deadline - time.monotonic()) if deadline else 3600
-            if deadline and timeout == 0:
-                raise SnapOError(f"Timed out waiting for snapshot from {server.identifier}")
-            message = session.read(timeout)
+            message = session.read(3600)
             if message is None:
-                if deadline:
-                    raise SnapOError(f"Timed out waiting for snapshot from {server.identifier}")
                 continue
-            if deadline:
-                deadline = time.monotonic() + 5
             method = message.get("method")
-            if method == "SnapO.replayComplete" and options.no_stream:
-                return 0
             if isinstance(method, str) and method.startswith("Network.") and event_filter.matches(message):
                 emit_event(message, options.json)
 
@@ -1011,6 +1198,7 @@ class Call:
         self._upstream_task = None
         self._response = asyncio.get_running_loop().create_future()
         self._finalizing = False
+        self._phase = "request"
 
     async def upstream(self):
         """Send the original request on Android once, and return its response."""
@@ -1036,41 +1224,48 @@ class Call:
 
 
 class Runner:
-    def __init__(self, reader, writer, path, routes, digest, timeout=30, watch=True, log=print):
-        self.reader = reader
-        self.writer = writer
+    def __init__(self, open_socket, path, routes, digest, timeout=30, watch=True, log=print):
+        self.open_socket = open_socket
         self.path = pathlib.Path(path)
         self.routes = routes
         self.digest = digest
         self.timeout = timeout
         self.watch = watch
         self.log = log
-        self._ids = itertools.count(1)
-        self._commands = {}
+        self.runner_id = None
+        self.events = None
+        self._http_slots = asyncio.Semaphore(16)
         self._handlers = {}
         self._handler_expiry = {}
         self._calls = {}
         self._tasks = {}
         self._reader_task = None
 
-    async def command(self, method, params):
-        import json
-
-        identifier = next(self._ids)
-        future = asyncio.get_running_loop().create_future()
-        self._commands[identifier] = future
+    async def _open(self, response_type, path, method="GET", body=None):
+        task = asyncio.create_task(asyncio.to_thread(
+            response_type, self.open_socket, path, method, body))
         try:
-            self.writer.write(json.dumps({"id": identifier, "method": method, "params": params}, separators=(",", ":")).encode() + b"\n")
-            await self.writer.drain()
-            reply = await asyncio.wait_for(future, 10)
-            if "error" in reply:
-                raise RuntimeError(reply["error"].get("message", "Snap-O command failed"))
-            return reply.get("result", {})
-        finally:
-            self._commands.pop(identifier, None)
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # Opening a socket in a worker cannot be cancelled. Close its eventual result.
+            def close_result(completed):
+                if not completed.cancelled() and completed.exception() is None:
+                    completed.result().close()
+            task.add_done_callback(close_result)
+            raise
+
+    async def request(self, path, method, body=None):
+        async with self._http_slots:
+            response = await self._open(NetworkHTTPResponse, path, method, body)
+            try:
+                return await asyncio.to_thread(response.read_json)
+            finally:
+                response.close()
 
     async def resolve(self, identifier, action, **values):
-        await self.command("SnapO.intercept.resolve", {"exchangeId": identifier, "action": action, **values})
+        call = self._calls[identifier]
+        path = f"/interception/{quote(self.runner_id, safe='')}/exchanges/{quote(identifier, safe='')}"
+        await self.request(path, "POST", {"phase": call._phase, "action": action, **values})
 
     async def install(self, routes):
         generation = uuid.uuid4().hex
@@ -1079,7 +1274,16 @@ class Runner:
             identifier = f"{generation}:{index}"
             self._handlers[identifier] = (handler, path)
             wire.append({"id": identifier, "method": method, "path": path})
-        await self.command("SnapO.intercept.enable", {"routes": wire, "timeoutMs": int(self.timeout * 1000)})
+        configuration = {"routes": wire, "timeoutMs": int(self.timeout * 1000)}
+        if self.runner_id is None:
+            self.events = await self._open(NetworkSSE, "/interception", "POST", configuration)
+            location = self.events.response.getheader("Location", "")
+            match = re.fullmatch(r"/interception/([A-Za-z0-9-]+)", location)
+            if self.events.response.status != 201 or match is None:
+                raise SnapOError("Interception stream did not return its location")
+            self.runner_id = match.group(1)
+        else:
+            await self.request(f"/interception/{quote(self.runner_id, safe='')}/routes", "PUT", configuration)
         # Android may have matched an old route but still be reading its request body.
         # Keep retired generations for the lifetime of those paused exchanges.
         now = asyncio.get_running_loop().time()
@@ -1094,12 +1298,10 @@ class Runner:
         self.log(f"Loaded {len(routes)} route(s) from {self.path}")
 
     async def run(self):
-        self.writer.write(b"HelloSnapO\n")
-        await self.writer.drain()
-        self._reader_task = asyncio.create_task(self._read())
         watcher = None
         try:
             await self.install(self.routes)
+            self._reader_task = asyncio.create_task(self._read())
             if self.watch:
                 watcher = asyncio.create_task(self._watch())
             running = [self._reader_task, *([watcher] if watcher else [])]
@@ -1107,64 +1309,54 @@ class Runner:
             for task in done:
                 task.result()
         finally:
-            if watcher is not None:
-                watcher.cancel()
-            self._reader_task.cancel()
-            for task in list(self._tasks.values()):
+            # Closing the owning SSE connection unregisters routes and releases its reader.
+            if self.events is not None:
+                self.events.close()
+            tasks = [*self._tasks.values(), *([self._reader_task] if self._reader_task else []),
+                     *([watcher] if watcher else [])]
+            for task in tasks:
                 task.cancel()
             for call in list(self._calls.values()):
                 call._cancel()
-            for future in list(self._commands.values()):
-                if not future.done():
-                    future.cancel()
-            await asyncio.gather(self._reader_task, *self._tasks.values(), *([watcher] if watcher else []), return_exceptions=True)
-            self.writer.close()
-            await self.writer.wait_closed()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _read(self):
-        import json
+        while True:
+            message = (await asyncio.to_thread(self.events.read_event))["data"]
+            if not isinstance(message, dict) or not isinstance(message.get("params"), dict):
+                raise SnapOError("Invalid interception event")
+            event = message["params"]
+            identifier = event.get("exchangeId")
+            if not isinstance(identifier, str) or not identifier:
+                raise SnapOError("Invalid interception exchange ID")
+            method = message.get("method")
+            if method == "SnapO.intercept.request":
+                if identifier in self._tasks or len(self._tasks) >= 64:
+                    raise SnapOError("Interception exchange limit exceeded")
+                handler, path = self._handlers.get(event["routeId"], (None, None))
+                call = Call(self, event, path)
+                self._calls[identifier] = call
+                self._tasks[identifier] = asyncio.create_task(self._handle(call, handler))
+            elif method == "SnapO.intercept.response":
+                call = self._calls.get(identifier)
+                if call is not None and not call._response.done():
+                    call._phase = "response"
+                    call._response.set_result(Response._from_wire(event["response"]))
+            elif method == "SnapO.intercept.finished":
+                call = self._calls.get(identifier)
+                if identifier in self._tasks and (call is None or not call._finalizing):
+                    if call is not None:
+                        self.log(f"Request ended before handler completed: {call.request.method} {call.request.path}")
+                    self._tasks[identifier].cancel()
+                    if call is not None:
+                        call._cancel()
+                    self._calls.pop(identifier, None)
+                    self._tasks.pop(identifier, None)
+            else:
+                raise SnapOError("Unknown interception event")
 
-        try:
-            while True:
-                line = await self.reader.readline()
-                if not line:
-                    raise ConnectionError("Snap-O disconnected; interception stopped")
-                message = json.loads(line)
-                identifier = message.get("id")
-                if identifier in self._commands:
-                    future = self._commands[identifier]
-                    if not future.done():
-                        future.set_result(message)
-                    continue
-                event = message.get("params", {})
-                method = message.get("method")
-                if method == "SnapO.intercept.request":
-                    identifier = event["exchangeId"]
-                    handler, path = self._handlers.get(event["routeId"], (None, None))
-                    self._tasks[identifier] = asyncio.create_task(self._handle(event, handler, path))
-                elif method == "SnapO.intercept.response":
-                    call = self._calls.get(event["exchangeId"])
-                    if call is not None and not call._response.done():
-                        call._response.set_result(Response._from_wire(event["response"]))
-                elif method == "SnapO.intercept.finished":
-                    identifier = event["exchangeId"]
-                    call = self._calls.get(identifier)
-                    if identifier in self._tasks and (call is None or not call._finalizing):
-                        if call is not None:
-                            self.log(f"Request ended before handler completed: {call.request.method} {call.request.path}")
-                        self._tasks[identifier].cancel()
-                        if call is None:
-                            self._tasks.pop(identifier, None)
-        except Exception as error:
-            for future in list(self._commands.values()):
-                if not future.done():
-                    future.set_exception(error)
-            raise
-
-    async def _handle(self, event, handler, path):
-        identifier = event["exchangeId"]
-        call = Call(self, event, path)
-        self._calls[identifier] = call
+    async def _handle(self, call, handler):
+        identifier = call._id
         try:
             if handler is None:
                 raise RuntimeError("Handler is no longer loaded")
@@ -1180,7 +1372,7 @@ class Runner:
             call._finalizing = True
             try:
                 await self.resolve(identifier, "fail", error=f"Python handler failed: {type(error).__name__}")
-            except (ConnectionError, RuntimeError, asyncio.TimeoutError):
+            except (SnapOError, ConnectionError, RuntimeError, asyncio.TimeoutError):
                 pass
         finally:
             call._cancel()
@@ -1206,13 +1398,6 @@ class Runner:
             self.digest = digest
 
 
-async def run_socket(sock, path, routes, digest, timeout, watch):
-    sock.setblocking(False)
-    reader, writer = await asyncio.open_connection(sock=sock, limit=2 * 1024 * 1024)
-    runner = Runner(reader, writer, path, routes, digest, timeout, watch, log=lambda line: print(line, file=sys.stderr, flush=True))
-    await runner.run()
-
-
 def run_intercept(adb, options):
     path = pathlib.Path(options.file).resolve()
     try:
@@ -1225,16 +1410,12 @@ def run_intercept(adb, options):
             return 0
         server = choose_server(discover(adb, options), options.socket)
         with ServerConnection(adb, server) as connection:
-            transport = connection.open_socket()
-            try:
-                asyncio.run(run_socket(transport.socket, path, routes, digest, options.timeout, not options.no_watch))
-            finally:
-                transport.socket.close()
+            read_network_metadata(connection.open_socket)
+            runner = Runner(connection.open_socket, path, routes, digest, options.timeout,
+                            not options.no_watch, log=lambda line: print(line, file=sys.stderr, flush=True))
+            asyncio.run(runner.run())
     except Exception as error:
-        detail = str(error)
-        if "Unsupported method: SnapO.intercept.enable" in detail:
-            detail = "This app does not support routes. Rebuild it with a Snap-O library that supports interception."
-        raise SnapOError(detail) from error
+        raise SnapOError(str(error)) from error
     return 0
 
 
@@ -1295,16 +1476,15 @@ class RequestState:
         return False
 
 
-def command_result(session, method, request_id, state):
+def body_result(session, request_id, response=False):
     last_error = None
     for _ in range(3):
         try:
-            return session.command(
-                method,
-                {"requestId": request_id},
-                timeout=10,
-                on_event=state.update,
-            )
+            return session.body(request_id, response)
+        except NetworkHTTPError as error:
+            if error.status == 404:
+                return None
+            raise
         except SnapOError as error:
             last_error = error
     raise last_error
@@ -1322,8 +1502,7 @@ def request_details(session, server, request_id):
             state.update(message)
             if not extended and replaying:
                 deadline = time.monotonic() + 5
-                if message.get("method") == "SnapO.replayComplete":
-                    replaying = False
+        replaying = session.replaying
         if state.request_seen and not extended:
             deadline = time.monotonic() + 70
             extended = True
@@ -1338,30 +1517,24 @@ def request_details(session, server, request_id):
 
     request_body = None
     if state.has_post_data:
-        reply = command_result(session, "Network.getRequestPostData", request_id, state)
-        error = reply.get("error")
-        if error and "no request body captured" not in str(error.get("message", "")).lower():
-            raise SnapOError(str(error.get("message", "Malformed response for Network.getRequestPostData")))
-        if not error:
-            request_body = (reply.get("result") or {}).get("postData")
+        result = body_result(session, request_id)
+        if result is not None:
+            request_body = result.get("postData")
             if not isinstance(request_body, str):
-                raise SnapOError("Malformed response for Network.getRequestPostData")
+                raise SnapOError("Malformed request body response")
 
     response_body = ""
     base64_encoded = False
     if not state.has_no_response_body():
-        reply = command_result(session, "Network.getResponseBody", request_id, state)
-        error = reply.get("error")
-        if error:
-            message = str(error.get("message", "Unable to load response body"))
-            if state.failure or "no response body captured" not in message.lower():
-                raise SnapOError(state.failure or message)
+        result = body_result(session, request_id, response=True)
+        if result is None:
+            if state.failure:
+                raise SnapOError(state.failure)
         else:
-            result = reply.get("result") or {}
             response_body = result.get("body")
             base64_encoded = result.get("base64Encoded")
             if not isinstance(response_body, str) or not isinstance(base64_encoded, bool):
-                raise SnapOError("Malformed response for Network.getResponseBody")
+                raise SnapOError("Malformed response body response")
 
     return {
         "server": server.identifier,
@@ -1568,7 +1741,7 @@ def run_tweak_apps(adb, options):
     for server in servers:
         try:
             with TweakConnection(adb, server) as connection:
-                info = connection.request("GET", "/app")
+                info = connection.request("GET", "/.snap-o/info")
         except SnapOError:
             continue
         name = info.get("name")
@@ -1672,7 +1845,7 @@ def run_tweak_reset(adb, options):
         if not selected:
             return 0
 
-        app = connection.request("GET", "/app")
+        app = connection.request("GET", "/.snap-o/info")
         protocol_version = app.get("protocolVersion", 1)
         if type(protocol_version) is not int or protocol_version < 1:
             raise SnapOError("Snap-O tweaks server returned an invalid protocol version")

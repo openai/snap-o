@@ -1,0 +1,9 @@
+{
+  "protocolVersion": 2,
+  "packageName": "com.example.app",
+  "processName": "com.example.app",
+  "pid": 42,
+  "serverStartWallMs": 1710000000000,
+  "serverStartMonoNs": 100000000000,
+  "mode": "safe"
+}

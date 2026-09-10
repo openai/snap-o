@@ -2,50 +2,19 @@ package com.openai.snapo.network
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.buildJsonObject
 import java.io.Closeable
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-/** Connection-owned routes. Inspection clients never receive or control paused requests. */
+/** Runner-owned routes. Inspection clients never receive or control paused requests. */
 class NetworkInterception {
     private val lock = Any()
     private val leases = mutableListOf<Lease>()
     private val pending = mutableMapOf<String, Exchange>()
 
-    internal fun command(
-        owner: Any,
-        send: (CdpMessage) -> Boolean,
-        message: CdpMessage,
-    ): CdpMessage? {
-        if (message.method?.startsWith("SnapO.intercept.") != true) return null
-        val id = message.id ?: return null
-        return try {
-            synchronized(lock) {
-                when (message.method) {
-                    "SnapO.intercept.enable" -> enable(owner, send, message.params)
-                    "SnapO.intercept.disable" -> disconnect(owner)
-                    "SnapO.intercept.resolve" -> resolve(owner, message.params)
-                    else -> error("Unsupported interception command")
-                }
-            }
-            CdpMessage(id = id, result = buildJsonObject {})
-        } catch (error: IllegalArgumentException) {
-            CdpMessage(
-                id = id,
-                error = CdpError(code = -32602, message = error.message ?: "Invalid interception command")
-            )
-        } catch (error: IllegalStateException) {
-            CdpMessage(
-                id = id,
-                error = CdpError(code = -32602, message = error.message ?: "Invalid interception command")
-            )
-        }
-    }
-
-    private fun enable(owner: Any, send: (CdpMessage) -> Boolean, params: JsonElement?) {
+    internal fun configure(owner: Any, send: (CdpMessage) -> Boolean, params: JsonElement?) = synchronized(lock) {
         val config = ProtocolJson.decodeFromJsonElement(InterceptionConfig.serializer(), requireNotNull(params))
         require(config.routes.size in 1..128) { "Register between 1 and 128 routes" }
         require(config.timeoutMs in 100..120_000) { "timeoutMs must be between 100 and 120000" }
@@ -62,8 +31,8 @@ class NetworkInterception {
         leases.add(Lease(owner, send, config))
     }
 
-    private fun resolve(owner: Any, params: JsonElement?) {
-        require(leases.any { it.owner === owner }) { "This connection does not own interception" }
+    internal fun resolve(owner: Any, params: JsonElement?) = synchronized(lock) {
+        require(leases.any { it.owner === owner }) { "This runner does not own interception" }
         val decision = ProtocolJson.decodeFromJsonElement(InterceptionDecision.serializer(), requireNotNull(params))
         require(decision.action in setOf("upstream", "fulfill", "fail")) { "Unknown interception action" }
         if (decision.action == "fulfill") {
@@ -82,7 +51,7 @@ class NetworkInterception {
 
     /** Returns null without reading the body when no route matches. */
     fun open(method: String, path: String): Exchange? = synchronized(lock) {
-        // A request belongs to one matching connection; overrides are not chained.
+        // A request belongs to one matching runner; overrides are not chained.
         val (current, route) = leases.firstNotNullOfOrNull { candidate ->
             candidate.config.routes.firstOrNull { it.method == method && it.path == path }
                 ?.let { candidate to it }
@@ -102,6 +71,7 @@ class NetworkInterception {
         private val decisions = LinkedBlockingQueue<InterceptionDecision>(1)
         private val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
         private var awaiting = false
+        private var phase = "request"
         private var aborted: String? = null
 
         fun request(request: InterceptionRequest) = publish(
@@ -123,6 +93,7 @@ class NetworkInterception {
         private fun publish(method: String, params: JsonElement) = synchronized(lock) {
             val failure = aborted ?: if (System.nanoTime() >= deadline) "Snap-O handler timed out" else null
             if (failure != null) throw IOException(failure)
+            phase = if (method == "SnapO.intercept.request") "request" else "response"
             awaiting = true
             if (!send(CdpMessage(method = method, params = params))) {
                 disconnect(owner)
@@ -131,7 +102,8 @@ class NetworkInterception {
         }
 
         internal fun offer(decision: InterceptionDecision): Boolean {
-            if (!awaiting || aborted != null) return false
+            if (!awaiting || aborted != null || decision.phase != phase) return false
+            if (phase == "response" && decision.action == "upstream") return false
             awaiting = false
             return decisions.offer(decision)
         }
@@ -139,7 +111,7 @@ class NetworkInterception {
         internal fun abort(reason: String) {
             aborted = reason
             decisions.clear()
-            decisions.offer(InterceptionDecision(id, "fail", error = reason))
+            decisions.offer(InterceptionDecision(id, "fail", phase, error = reason))
         }
 
         fun awaitDecision(isCanceled: () -> Boolean): InterceptionDecision {
@@ -205,6 +177,7 @@ data class InterceptionResponse(val status: Int, val headerEntries: List<Interce
 data class InterceptionDecision(
     val exchangeId: String,
     val action: String,
+    val phase: String,
     val response: InterceptionResponse? = null,
     val error: String? = null
 )

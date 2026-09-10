@@ -47,10 +47,10 @@ private final class InspectorHTTP: URLProtocol, @unchecked Sendable {
       client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
       return
     }
-    let icon = url.path == "/app/icon"
+    let icon = url.path == "/.snap-o/appicon"
     let response = HTTPURLResponse(url: url, statusCode: icon ? 404 : 200, httpVersion: nil, headerFields: nil)!
     client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-    let body = url.path == "/app" ? #"{"name":"Demo","packageName":"com.example.demo","protocolVersion":4}"# : #"{"tweaks":[]}"#
+    let body = url.path == "/.snap-o/info" ? #"{"name":"Demo","packageName":"com.example.demo","protocolVersion":4}"# : #"{"tweaks":[]}"#
     client?.urlProtocol(self, didLoad: Data(body.utf8))
     client?.urlProtocolDidFinishLoading(self)
   }

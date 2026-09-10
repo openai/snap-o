@@ -1,6 +1,6 @@
 import type { DebugInspectorPreset, SnapOServer } from "../../../network/bridge-types";
 
-const supportedProtocolVersion = 1;
+import { supportedProtocolVersion } from "./protocol";
 
 export function applyDebugInspectorPreset(
   servers: SnapOServer[],

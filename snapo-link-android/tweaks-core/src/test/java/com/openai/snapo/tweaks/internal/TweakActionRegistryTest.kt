@@ -15,8 +15,8 @@ class TweakActionRegistryTest {
     }
 
     @Test
-    fun `protocol version includes Bezier curves`() {
-        assertEquals(5, TweaksProtocolVersion)
+    fun `protocol version includes generic inspector metadata endpoints`() {
+        assertEquals(6, TweaksProtocolVersion)
     }
 
     @Test

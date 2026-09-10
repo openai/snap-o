@@ -1,6 +1,6 @@
 # Snap-O Tweaks protocol
 
-Snap-O Tweaks exposes a small HTTP API through an Android abstract Unix socket. It is separate from the Network Inspector socket and does not use the `HelloSnapO` handshake.
+Snap-O Tweaks exposes a small HTTP API through an Android abstract Unix socket. It is separate from the Network Inspector socket.
 
 ## Discover and forward a server
 
@@ -32,8 +32,8 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 | Request | Result |
 | --- | --- |
-| `GET /app` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":5}`. |
-| `GET /app/icon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
+| `GET /.snap-o/info` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":6}`. |
+| `GET /.snap-o/appicon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
 | `GET /tweaks?include=adjusted` | Active descriptors plus previously adjusted ordinary or app-owned value snapshots retained outside composition. |
 | `PATCH /tweaks` | One update containing one or more named values. Version 3 and later apply valid entries and report individual errors. |
@@ -42,15 +42,15 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
 
-`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds `bezier` curves. Use the reported version to select compatible update, status, and reset behavior.
+`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds `bezier` curves. Version 6 uses the generic `/.snap-o/info` and `/.snap-o/appicon` endpoints; older servers need an updated Android library. Use the reported version to select compatible update, status, and reset behavior.
 
 ### Read metadata and active values
 
 ```bash
-curl -fsS "$base/app"
+curl -fsS "$base/.snap-o/info"
 curl -fsS "$base/tweaks"
 curl -fsS "$base/tweaks?include=adjusted"
-curl -fsS "$base/app/icon" -o /tmp/snapo-tweak-app-icon
+curl -fsS "$base/.snap-o/appicon" -o /tmp/snapo-tweak-app-icon
 ```
 
 The tweak response has this shape:
