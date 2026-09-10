@@ -23,15 +23,35 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   var removeExclusionFilterHandler: ((String) -> Void)?
 
   private let service: NetworkInspectorService
+  private let kind: AppInspectorKind
+  private var isStopped = false
+  private var requests: [UUID: Task<Void, Never>] = [:]
   private var activeColorPanelSessionID: String?
 
-  init(service: NetworkInspectorService) {
+  init(service: NetworkInspectorService, kind: AppInspectorKind) {
     self.service = service
+    self.kind = kind
+  }
+
+  func invalidate() {
+    isStopped = true
+    closeNativeColorPanel()
+    for task in requests.values {
+      task.cancel()
+    }
+  }
+
+  func finishStopping() async {
+    let pending = Array(requests.values)
+    for task in pending {
+      await task.value
+    }
+    await service.stopAllStreams(kind: kind)
   }
 
   func prepareForPageReload() async {
     closeNativeColorPanel()
-    await service.stopAllStreams()
+    await service.stopAllStreams(kind: kind)
   }
 
   func closeNativeColorPanel() {
@@ -49,7 +69,7 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     _ userContentController: WKUserContentController,
     didReceive message: WKScriptMessage
   ) async -> (Any?, String?) {
-    guard message.frameInfo.isMainFrame,
+    guard !isStopped, message.frameInfo.isMainFrame,
           let body = message.body as? [String: Any],
           let command = body["command"] as? String
     else {
@@ -57,11 +77,22 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     }
 
     let payload = body["payload"]
-    do {
-      return try await (handle(command: command, payload: payload), nil)
-    } catch {
-      return (nil, error.localizedDescription)
+    let id = UUID()
+    var reply: (Any?, String?) = (nil, CancellationError().localizedDescription)
+    let task = Task { @MainActor in
+      do {
+        try Task.checkCancellation()
+        let result = try await handle(command: command, payload: payload)
+        try Task.checkCancellation()
+        reply = (result, nil)
+      } catch {
+        reply = (nil, error.localizedDescription)
+      }
     }
+    requests[id] = task
+    await task.value
+    requests.removeValue(forKey: id)
+    return reply
   }
 
   static func jsonObject(_ value: some Encodable) throws -> Any {

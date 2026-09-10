@@ -136,7 +136,7 @@ describe("native Network selection", () => {
       revision: 0,
       selection,
       selectedApp: target,
-      preferredKind: "network",
+      isActive: true,
       isConnected: true,
       isWaiting: false,
       networkServer: {
@@ -269,7 +269,7 @@ describe("native Network selection", () => {
   it("keeps Network data while its page is hidden for Tweaks", async () => {
     await captureTraffic();
     const initial = host;
-    await publish({ selection: null, networkServer: null, preferredKind: "tweaks", isConnected: false });
+    await publish({ selection: null, networkServer: null, isActive: false, isConnected: false });
     expect(mocks.client.stopStream).toHaveBeenCalled();
     await publish(initial);
     expect(mocks.model?.allRecords).toHaveLength(1);

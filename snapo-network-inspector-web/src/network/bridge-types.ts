@@ -53,7 +53,7 @@ export interface InspectorHostState {
   selection: SelectedAppInspector | null;
   selectedApp: InspectableApp | null;
   networkServer: SnapOServer | null;
-  preferredKind: AppInspectorKind;
+  isActive: boolean;
   isConnected: boolean;
   isWaiting: boolean;
   appLaunch?: { pending: boolean; error?: string | null } | null;

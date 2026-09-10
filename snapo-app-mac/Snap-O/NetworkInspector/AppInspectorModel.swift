@@ -10,7 +10,7 @@ struct InspectorHostState: Encodable {
   let selection: SelectedAppInspector?
   let selectedApp: InspectableApp?
   let networkServer: NetworkInspectorServer?
-  let preferredKind: AppInspectorKind
+  let isActive: Bool
   let isConnected: Bool
   let isWaiting: Bool
   let appLaunch: AppLaunchState?
@@ -23,18 +23,18 @@ struct AppInspectorSnapshot {
   let appLaunch: AppLaunchState?
   let networkServer: NetworkInspectorServer?
 
-  var pageState: InspectorHostState {
-    let kind = state.preferredKind ?? .network
+  func pageState(for kind: AppInspectorKind) -> InspectorHostState {
     let displayed = kind == .network ? state.displayedNetwork : state.displayedTweaks
     let waiting = loading || state.isRestoring || (state.selection?.kind == .tweaks && state.selection?.protocolVersion == nil)
+    let active = (state.preferredKind ?? .network) == kind
     let available = kind != .network || networkServer?.isConnected == true
-    let connected = !waiting && available && state.selection?.kind == kind
-    var server = state.displayedNetwork != nil ? networkServer : nil
-    let serverIsConnected = kind == .network && connected && server?.isConnected == true
+    let connected = active && !waiting && available && state.selection?.kind == kind
+    var server = kind == .network && displayed != nil ? networkServer : nil
+    let serverIsConnected = connected && server?.isConnected == true
     server?.isConnected = serverIsConnected
     return InspectorHostState(
       revision: revision, selection: displayed, selectedApp: state.selectedApp,
-      networkServer: server, preferredKind: kind, isConnected: connected,
+      networkServer: server, isActive: active, isConnected: connected,
       isWaiting: waiting, appLaunch: appLaunch
     )
   }

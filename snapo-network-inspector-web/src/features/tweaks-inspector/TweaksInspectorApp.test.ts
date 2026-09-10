@@ -9,7 +9,7 @@ import type {
   TweakDescriptor,
   TweakValueDescriptor
 } from "../../network/bridge-types";
-import { createNetworkClient, type NetworkClient } from "../../network/client";
+import { createTweaksClient, type TweaksClient } from "./client";
 import {
   applyTweakUpdates,
   canResetTweaks,
@@ -28,7 +28,7 @@ import {
 } from "./TweaksInspectorApp";
 
 describe("empty tweaks inspector", () => {
-  const client = { openExternal: async () => {} } as unknown as NetworkClient;
+  const client = { openExternal: async () => {} } as unknown as TweaksClient;
   const selection: SelectedAppInspector = {
     appId: "pixel:com.example.settings",
     kind: "tweaks",
@@ -104,7 +104,7 @@ describe("editable tweak colors", () => {
     vi.stubGlobal("window", { webkit: { messageHandlers: { snapoNetwork: { postMessage } } } });
 
     try {
-      const client = createNetworkClient();
+      const client = createTweaksClient();
       await client.closeNativeColorPanel?.("removed-session");
 
       expect(postMessage).toHaveBeenCalledWith({
@@ -418,7 +418,7 @@ describe("registered tweak actions", () => {
     vi.stubGlobal("window", { webkit: { messageHandlers: { snapoNetwork: { postMessage } } } });
 
     try {
-      await createNetworkClient().invokeTweakAction({ server, name: "Motion/Toggle animation" });
+      await createTweaksClient().invokeTweakAction({ server, name: "Motion/Toggle animation" });
 
       expect(postMessage).toHaveBeenCalledWith({
         command: "invokeTweakAction",

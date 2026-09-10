@@ -246,11 +246,14 @@ actor NetworkInspectorService {
     try? await session.send(method: SnapONetworkProtocol.Method.stopStream)
   }
 
-  func stopAllStreams() async {
-    let activeTweakStreams = Array(tweakStreams.values)
-    tweakStreams.removeAll()
-    for stream in activeTweakStreams {
-      stream.cancel()
+  func stopAllStreams(kind: AppInspectorKind) async {
+    if kind == .tweaks {
+      let activeTweakStreams = Array(tweakStreams.values)
+      tweakStreams.removeAll()
+      for stream in activeTweakStreams {
+        stream.cancel()
+      }
+      return
     }
 
     let serverKeys = Set(streams.values)

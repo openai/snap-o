@@ -13,7 +13,7 @@ const emptyState: InspectorHostState = {
   selection: null,
   selectedApp: null,
   networkServer: null,
-  preferredKind: "network",
+  isActive: false,
   isConnected: false,
   isWaiting: true
 };

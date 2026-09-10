@@ -323,44 +323,45 @@ struct InspectorSelectionTests {
     let model = AppInspectorModel(preferences: defaults, discover: {
       InspectorDiscoverySnapshot(apps: apps, networkServers: servers)
     }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
-    expect(model.snapshot.pageState.isWaiting, "Wait for initial native discovery")
+    expect(model.snapshot.pageState(for: .network).isWaiting, "Wait for initial native discovery")
     model.start()
     await settle()
-    var page = model.snapshot.pageState
-    expect(page.preferredKind == .network && page.isConnected && !page.isWaiting, "Publish the active Network connection")
+    var page = model.snapshot.pageState(for: .network)
+    expect(page.isActive && page.isConnected && !page.isWaiting, "Publish the active Network connection")
     expect(page.networkServer?.instanceId == "original", "Publish native session metadata")
     let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as! [String: Any]
     expect(json["state"] == nil && json["apps"] == nil, "Do not send native selection internals to pages")
+    expect(model.snapshot.pageState(for: .tweaks).selection == nil, "Send only this page's connection")
     apps = []
     servers = []
     model.refresh()
     await settle()
-    page = model.snapshot.pageState
+    page = model.snapshot.pageState(for: .network)
     expect(!page.isConnected && page.networkServer?.isConnected == false, "Disconnect retained data")
     expect(page.networkServer?.instanceId == "original", "Retain metadata for captured data")
     apps = [app(20)]
     servers = [networkServer(20)]
     model.refresh()
     await settle()
-    page = model.snapshot.pageState
+    page = model.snapshot.pageState(for: .network)
     expect(!page.isConnected && page.networkServer?.socketName == "snapo_network_10", "Do not follow replacement discovery")
     model.reconnectToNewProcess()
-    page = model.snapshot.pageState
+    page = model.snapshot.pageState(for: .network)
     expect(page.isConnected && page.networkServer?.socketName == "snapo_network_20", "Connect only after native approval")
     model.selectInspector(app(20), option: app(20).inspectors[1])
-    page = model.snapshot.pageState
-    expect(page.preferredKind == .tweaks && page.networkServer?.isConnected == false, "Deactivate the hidden Network page")
-    expect(page.networkServer?.socketName == "snapo_network_20", "Retain Network data while showing Tweaks")
-    expect(model.snapshot.pageState.isConnected, "Activate Tweaks from the native choice")
+    page = model.snapshot.pageState(for: .network)
+    expect(!page.isActive && page.networkServer?.isConnected == false, "Deactivate the hidden Network page")
+    expect(page.selection?.server.socketName == "snapo_network_20", "Keep the hidden page mounted with its data")
+    expect(model.snapshot.pageState(for: .tweaks).isConnected, "Activate Tweaks from the native choice")
     apps = [app(20, version: nil)]
     model.refresh()
     await settle()
-    page = model.snapshot.pageState
+    page = model.snapshot.pageState(for: .tweaks)
     expect(!page.isConnected && page.isWaiting, "Wait for Tweaks protocol metadata in the host")
     apps = [app(20, version: 1)]
     model.refresh()
     await settle()
-    expect(model.snapshot.pageState.isConnected, "Allow known older Tweaks protocols")
+    expect(model.snapshot.pageState(for: .tweaks).isConnected, "Allow known older Tweaks protocols")
     model.stop()
     clock.cancelAll()
     await settle()

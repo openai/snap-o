@@ -12,7 +12,7 @@ import type {
   TweakValue,
   TweakValueDescriptor
 } from "../../network/bridge-types";
-import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
+import type { NativeColorPanelChange, TweaksClient } from "./client";
 import { InspectorWaitingState } from "../app-inspector/components/InspectorWaitingState";
 import type { AppLaunchControl } from "../app-inspector/useAppInspector";
 import { TweakUpdateQueue } from "./tweak-update-queue";
@@ -44,7 +44,7 @@ export function TweaksInspectorApp({
   appLaunch,
   isConnected
 }: {
-  client: NetworkClient;
+  client: TweaksClient;
   selection: SelectedAppInspector;
   selectedApp?: InspectableApp | null;
   appLaunch?: AppLaunchControl | null;

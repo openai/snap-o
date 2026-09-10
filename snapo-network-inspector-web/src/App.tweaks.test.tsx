@@ -3,15 +3,11 @@ import { act } from "preact/test-utils";
 import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InspectableApp, InspectorHostState, TweakList } from "./network/bridge-types";
-import type { NetworkClient } from "./network/client";
-import { App } from "./App";
+import type { TweaksClient } from "./features/tweaks-inspector/client";
+import { TweaksApp } from "./TweaksApp";
 
-const mocks = vi.hoisted(() => ({ client: null as unknown as NetworkClient }));
-vi.mock("./network/client", () => ({ createNetworkClient: () => mocks.client }));
-vi.mock("./features/network-inspector/hooks/useNetworkInspectorModel", () => ({
-  useNetworkInspectorModel: () => ({})
-}));
-vi.mock("./features/network-inspector/NetworkInspectorApp", () => ({ NetworkInspectorApp: () => null }));
+const mocks = vi.hoisted(() => ({ client: null as unknown as TweaksClient }));
+vi.mock("./features/tweaks-inspector/client", () => ({ createTweaksClient: () => mocks.client }));
 
 function app(pid: number): InspectableApp {
   return {
@@ -35,7 +31,7 @@ function connected(target: InspectableApp): InspectorHostState {
     selection,
     selectedApp: target,
     networkServer: null,
-    preferredKind: "tweaks",
+    isActive: true,
     isConnected: true,
     isWaiting: false
   };
@@ -66,7 +62,7 @@ describe("Tweaks frontend host state", () => {
       onTweaksChanged: vi.fn(() => () => {}),
       onNativeTweaksReset: vi.fn(() => () => {}),
       nativeTweaksStateChanged: vi.fn()
-    } as unknown as NetworkClient;
+    } as unknown as TweaksClient;
     container = document.createElement("div");
     document.body.append(container);
   });
@@ -83,7 +79,7 @@ describe("Tweaks frontend host state", () => {
   }
 
   it("preserves values until the host connects a replacement process", async () => {
-    await act(async () => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -104,9 +100,40 @@ describe("Tweaks frontend host state", () => {
     await vi.waitFor(() => expect(container.querySelector("fieldset")?.disabled).toBe(false));
   });
 
+  it("retains values while hidden and waits for a fresh snapshot when shown", async () => {
+    await act(async () => render(<TweaksApp />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await vi.waitFor(() =>
+      expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Cached value")
+    );
+    const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    await publish({ isActive: false, isConnected: false });
+    expect(container.querySelector('input[type="text"]')).toBe(input);
+    expect(mocks.client.stopTweakStream).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
+    let reply!: (value: TweakList) => void;
+    vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          reply = resolve;
+        })
+    );
+    await publish({ isActive: true, isConnected: true });
+    expect(container.querySelector('input[type="text"]')).toBe(input);
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    await act(async () => reply(list("Refreshed value")));
+    expect(input.value).toBe("Refreshed value");
+    await vi.waitFor(() => expect(container.querySelector("fieldset")?.disabled).toBe(false));
+  });
+
   it("waits for host readiness before requesting Tweaks", async () => {
     host = { ...host, isConnected: false, isWaiting: true, selection: { ...host.selection!, protocolVersion: null } };
-    await act(async () => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
@@ -118,7 +145,7 @@ describe("Tweaks frontend host state", () => {
   });
 
   it("does not restart requests and streams when a scan repeats the same connection", async () => {
-    await act(async () => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -131,7 +158,7 @@ describe("Tweaks frontend host state", () => {
 
   it("shows native launch progress while waiting for the first snapshot", async () => {
     host = { ...host, selection: null, isConnected: false, isWaiting: true };
-    await act(async () => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -157,7 +184,7 @@ describe("Tweaks frontend host state", () => {
 
   it("keeps an empty snapshot visible through disconnect", async () => {
     vi.mocked(mocks.client.listTweaks).mockResolvedValue({ tweaks: [] });
-    await act(async () => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -170,7 +197,7 @@ describe("Tweaks frontend host state", () => {
     { processName: "com.example.other", androidUserId: 0 },
     { processName: "com.example.demo", androidUserId: 10 }
   ])("clears cached values when the host selects another app or profile", async (identity) => {
-    await act(async () => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -188,14 +215,14 @@ describe("Tweaks frontend host state", () => {
   });
 
   it("handles absent optional fields in a native snapshot", async () => {
-    await act(async () => render(<App />, container));
+    await act(async () => render(<TweaksApp />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     await act(async () =>
       receiveHost({
         revision: 1,
-        preferredKind: "tweaks",
+        isActive: true,
         isConnected: false,
         isWaiting: true
       } as InspectorHostState)

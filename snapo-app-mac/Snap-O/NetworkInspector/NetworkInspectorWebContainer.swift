@@ -17,6 +17,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
   private let embeddedHTML: String?
   private let developmentURL: URL?
   private let bridge: NetworkInspectorWebBridge
+  private var isStopped = false
   private var recoveryTask: Task<Void, Never>?
   private var pendingPageEvents: [PendingPageEvent] = []
   private var pageEventDeliveryGeneration: UInt = 0
@@ -29,11 +30,13 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     }
   }
 
-  init(bridge: NetworkInspectorWebBridge) {
+  init(bridge: NetworkInspectorWebBridge, kind: AppInspectorKind) {
     let configuration = WKWebViewConfiguration()
-    let resourceDirectory = Bundle.main.resourceURL?.appendingPathComponent("NetworkInspector")
+    let resourceDirectory = Bundle.main.resourceURL?.appendingPathComponent(
+      kind == .network ? "NetworkInspector" : "TweaksInspector"
+    )
     embeddedHTML = resourceDirectory.flatMap(Self.makeEmbeddedHTML)
-    developmentURL = Self.developmentURL()
+    developmentURL = Self.developmentURL(kind: kind)
     self.bridge = bridge
     configuration.userContentController.addScriptMessageHandler(
       bridge,
@@ -49,12 +52,17 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
   }
 
   func start() {
+    guard !isStopped else { return }
     loadInspector()
   }
 
   func stop() {
+    guard !isStopped else { return }
+    isStopped = true
+    isPageReady = false
+    bridge.invalidate()
+    webView.navigationDelegate = nil
     recoveryTask?.cancel()
-    recoveryTask = nil
     closeNativeColorPanel()
     bridge.colorPanelChangedHandler = nil
     invalidatePageEventDelivery(clearPending: true)
@@ -63,6 +71,12 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
       forName: NetworkInspectorWebBridge.messageHandlerName,
       contentWorld: .page
     )
+  }
+
+  func finishStopping() async {
+    await recoveryTask?.value
+    recoveryTask = nil
+    await bridge.finishStopping()
   }
 
   func closeNativeColorPanel() {
@@ -74,11 +88,12 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
   }
 
   func sendPageEvent(name: String, payload: some Encodable) {
-    guard let payload = try? NetworkInspectorWebBridge.jsonObject(payload) else { return }
+    guard !isStopped, let payload = try? NetworkInspectorWebBridge.jsonObject(payload) else { return }
     enqueue(PendingPageEvent(name: name, payload: payload))
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    guard !isStopped else { return }
     isPageReady = true
     sendNextPageEventBatchIfNeeded()
   }
@@ -96,7 +111,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
   }
 
   private func recoverPage() {
-    guard recoveryTask == nil else { return }
+    guard !isStopped, recoveryTask == nil else { return }
     isPageReady = false
     invalidatePageEventDelivery(clearPending: true)
     webView.stopLoading()
@@ -209,7 +224,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
 
     guard let embeddedHTML else {
       webView.loadHTMLString(
-        "<p style='font: 13px -apple-system; padding: 16px'>Network Inspector resources are unavailable.</p>",
+        "<p style='font: 13px -apple-system; padding: 16px'>Inspector resources are unavailable.</p>",
         baseURL: nil
       )
       return
@@ -217,7 +232,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     webView.loadHTMLString(embeddedHTML, baseURL: nil)
   }
 
-  private static func developmentURL() -> URL? {
+  private static func developmentURL(kind: AppInspectorKind) -> URL? {
     #if DEBUG
     guard let rawURL = ProcessInfo.processInfo.environment["SNAPO_NETWORK_INSPECTOR_DEV_URL"],
           let url = URL(string: rawURL),
@@ -227,7 +242,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
     else {
       return nil
     }
-    return url
+    return kind == .tweaks ? URL(string: "tweaks.html", relativeTo: url)?.absoluteURL : url
     #else
     return nil
     #endif
@@ -269,7 +284,7 @@ final class NetworkInspectorWebContainer: NSObject, WKNavigationDelegate {
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Snap-O Network Inspector</title>
+        <title>Snap-O Inspector</title>
         <style>\(escapedStyle)</style>
       </head>
       <body>

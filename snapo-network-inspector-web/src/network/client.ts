@@ -1,11 +1,4 @@
 import type {
-  InspectorServerReference,
-  InvokeTweakActionInput,
-  NativeTweaksState,
-  TweakList,
-  TweakStreamEvent,
-  TweakUpdates,
-  UpdateTweaksInput,
   DebugInspectorPreset,
   LoadBodiesInput,
   NativeInspectorState,
@@ -21,22 +14,8 @@ import type {
 import type { InspectorHostClient } from "../host/client";
 import { invokeNative, listenWebKitEvent, requireNativeBridge } from "../host/bridge";
 
-export interface NativeColorPanelChange {
-  color: string;
-  sessionId: string;
-}
-
 export interface NetworkClient extends InspectorHostClient {
   appVersion(): Promise<string>;
-  listTweaks(server: InspectorServerReference): Promise<TweakList>;
-  updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
-  invokeTweakAction(input: InvokeTweakActionInput): Promise<void>;
-  startTweakStream(server: InspectorServerReference): Promise<StreamStarted>;
-  stopTweakStream(streamId: string): Promise<void>;
-  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
-  openNativeColorPanel?(color: string, sessionId: string, present?: boolean): Promise<void>;
-  closeNativeColorPanel?(sessionId: string): Promise<void>;
-  onNativeColorPanelChange?(callback: (event: NativeColorPanelChange) => void): () => void;
   listExclusionFilters(): Promise<string[]>;
   addExclusionFilter(filter: string): Promise<void>;
   removeExclusionFilter(filter: string): Promise<void>;
@@ -50,8 +29,6 @@ export interface NetworkClient extends InspectorHostClient {
   saveFile(input: SaveFileInput): Promise<SaveFileResult>;
   debugInspectorPreset(): Promise<DebugInspectorPreset>;
   onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void;
-  nativeTweaksStateChanged(state: NativeTweaksState): void;
-  onNativeTweaksReset(callback: () => void): () => void;
   nativeInspectorStateChanged(state: NativeInspectorState): void;
   onNativeSearchText(callback: (searchText: string) => void): () => void;
   onNativeExclusionFilters(callback: (filters: string[]) => void): () => void;
@@ -84,42 +61,6 @@ class WebKitNetworkClient implements NetworkClient {
 
   openSelectedApp(appId: string): Promise<void> {
     return this.invoke("openSelectedApp", { appId });
-  }
-
-  listTweaks(server: InspectorServerReference): Promise<TweakList> {
-    return this.invoke<TweakList>("listTweaks", server);
-  }
-
-  updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
-    return this.invoke<TweakUpdates>("updateTweaks", input);
-  }
-
-  invokeTweakAction(input: InvokeTweakActionInput): Promise<void> {
-    return this.invoke<void>("invokeTweakAction", input);
-  }
-
-  startTweakStream(server: InspectorServerReference): Promise<StreamStarted> {
-    return this.invoke<StreamStarted>("startTweakStream", server);
-  }
-
-  stopTweakStream(streamId: string): Promise<void> {
-    return this.invoke<void>("stopTweakStream", { streamId });
-  }
-
-  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
-    return listenWebKitEvent<TweakStreamEvent>("tweaks:changed", callback);
-  }
-
-  openNativeColorPanel(color: string, sessionId: string, present = true): Promise<void> {
-    return this.invoke<void>("openNativeColorPanel", { color, sessionId, present });
-  }
-
-  closeNativeColorPanel(sessionId: string): Promise<void> {
-    return this.invoke<void>("closeNativeColorPanel", { sessionId });
-  }
-
-  onNativeColorPanelChange(callback: (event: NativeColorPanelChange) => void): () => void {
-    return listenWebKitEvent<NativeColorPanelChange>("tweaks:color-panel-changed", callback);
   }
 
   listExclusionFilters(): Promise<string[]> {
@@ -204,14 +145,6 @@ class WebKitNetworkClient implements NetworkClient {
 
   onNativeExportVisibleHar(callback: () => void): () => void {
     return listenWebKitEvent<boolean>("network:export-visible-har", callback);
-  }
-
-  nativeTweaksStateChanged(state: NativeTweaksState): void {
-    void this.invoke<void>("tweaksStateChanged", state);
-  }
-
-  onNativeTweaksReset(callback: () => void): () => void {
-    return listenWebKitEvent<boolean>("tweaks:reset", () => callback());
   }
 
   private async invoke<T>(command: string, payload?: unknown): Promise<T> {
