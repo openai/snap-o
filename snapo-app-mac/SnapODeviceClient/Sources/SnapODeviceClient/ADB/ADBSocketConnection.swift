@@ -40,6 +40,7 @@ public final class ADBSocketConnection {
   private let socketDescriptor: Int32
   private let closeLock = NSLock()
   private var isClosed = false
+  private var ioTimeout: Duration?
   private var lineBuffer = Data()
   private var isSkippingOversizedLine = false
 
@@ -64,6 +65,34 @@ public final class ADBSocketConnection {
     guard shouldClose else { return }
     shutdown(socketDescriptor, SHUT_RDWR)
     Darwin.close(socketDescriptor)
+  }
+
+  /// Use only before handing the connection to concurrent readers or writers.
+  func withRequestTimeout<T>(_ timeout: Duration, _ body: () throws -> T) throws -> T {
+    let previous = ioTimeout
+    defer { try? setIOTimeout(previous) }
+    try setIOTimeout(timeout)
+    return try body()
+  }
+
+  private func setIOTimeout(_ timeout: Duration?) throws {
+    try closeLock.withLock {
+      guard !isClosed else { throw ADBError.protocolFailure("ADB connection closed") }
+      let parts = (timeout ?? .zero).components
+      var value = timeval(tv_sec: Int(parts.seconds), tv_usec: Int32(parts.attoseconds / 1_000_000_000_000))
+      for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
+        guard setsockopt(socketDescriptor, SOL_SOCKET, option, &value, socklen_t(MemoryLayout<timeval>.size)) == 0 else {
+          throw Self.makeSocketError(errno, context: "setsockopt")
+        }
+      }
+      ioTimeout = timeout
+    }
+  }
+
+  private func checkOpen() throws {
+    guard !closeLock.withLock({ isClosed }) else {
+      throw ADBError.protocolFailure("ADB connection closed")
+    }
   }
 
   public func sendTrackDevices() throws {
@@ -246,6 +275,7 @@ public final class ADBSocketConnection {
 
       while remaining > 0 {
         try Task.checkCancellation()
+        try checkOpen()
         let written = Darwin.send(socketDescriptor, pointer, remaining, 0)
 
         if written > 0 {
@@ -260,6 +290,9 @@ public final class ADBSocketConnection {
 
         let errorCode = errno
         if errorCode == EINTR { continue }
+        if ioTimeout != nil, errorCode == EAGAIN || errorCode == EWOULDBLOCK {
+          throw ADBError.requestTimedOut("ADB write")
+        }
         throw Self.makeSocketError(errorCode, context: "send")
       }
     }
@@ -314,6 +347,7 @@ public final class ADBSocketConnection {
   private func readOnce(into buffer: inout [UInt8]) throws -> Int {
     while true {
       try Task.checkCancellation()
+      try checkOpen()
       let result = buffer.withUnsafeMutableBytes { pointer -> Int in
         guard let baseAddress = pointer.baseAddress else { return -1 }
         return Int(Darwin.recv(socketDescriptor, baseAddress, pointer.count, 0))
@@ -323,6 +357,9 @@ public final class ADBSocketConnection {
       if result == 0 { return 0 }
 
       if errno == EINTR { continue }
+      if ioTimeout != nil, errno == EAGAIN || errno == EWOULDBLOCK {
+        throw ADBError.requestTimedOut("ADB read")
+      }
       throw Self.makeSocketError(errno, context: "recv")
     }
   }

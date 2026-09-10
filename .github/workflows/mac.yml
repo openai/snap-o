@@ -79,6 +79,9 @@ jobs:
       - name: Test capture startup
         working-directory: snapo-app-mac
         run: sh scripts/test-startup-capture.sh
+      - name: Test inspector recovery
+        working-directory: snapo-app-mac
+        run: sh scripts/test-inspector-recovery.sh
 
   build:
     runs-on: macos-26

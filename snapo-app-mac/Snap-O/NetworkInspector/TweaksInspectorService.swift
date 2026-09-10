@@ -38,9 +38,11 @@ actor TweaksInspectorService {
   }
 
   private static let discoveryRequestTimeout: TimeInterval = 2
+  private static let retryCooldown: Duration = .seconds(3)
 
   private let adbService: ADBService
   private var connections: [String: Connection] = [:]
+  private var retryAfter: [String: ContinuousClock.Instant] = [:]
   private var isStopped = false
 
   init(adbService: ADBService) {
@@ -58,11 +60,13 @@ actor TweaksInspectorService {
     guard !isStopped else { return }
     let devicesByID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
     let activeKeys = Set(references.map(\.key))
+    retryAfter = retryAfter.filter { activeKeys.contains($0.key) && $0.value > .now }
 
     await withTaskGroup(of: Void.self) { group in
       for reference in references {
         guard let device = devicesByID[reference.deviceId], !Task.isCancelled, !isStopped else { continue }
         let key = reference.key
+        guard retryAfter[key] == nil else { continue }
         if var connection = connections[key] {
           connection.app.deviceDisplayTitle = device.displayTitle
           connections[key] = connection
@@ -152,6 +156,7 @@ actor TweaksInspectorService {
     let adb = await adbService.exec()
     let forwards = connections.values.map(\.forward)
     connections.removeAll()
+    retryAfter.removeAll()
 
     for forward in forwards {
       await adb.removeForward(forward)
@@ -164,7 +169,7 @@ actor TweaksInspectorService {
     using adb: ADBClient
   ) async {
     let key = reference.key
-    guard !Task.isCancelled, !isStopped, connections[key] == nil else {
+    guard !Task.isCancelled, !isStopped, connections[key] == nil, retryAfter[key] == nil else {
       return
     }
 
@@ -203,6 +208,9 @@ actor TweaksInspectorService {
       connections[key] = Connection(id: UUID(), app: app, forward: handle, baseURL: baseURL)
       populateMetadata(for: key)
     } catch {
+      if !Task.isCancelled, !isStopped {
+        retryAfter[key] = .now.advanced(by: Self.retryCooldown)
+      }
       if let forward {
         await adb.removeForward(forward)
       }
@@ -315,6 +323,8 @@ actor TweaksInspectorService {
     let key = connection.reference.key
     guard connections[key]?.id == connection.id else { return }
 
+    // Frozen apps keep listening but cannot accept connections. Avoid filling their queues on every scan.
+    retryAfter[key] = .now.advanced(by: Self.retryCooldown)
     // A brief device disconnect can remove the forward without changing the Android socket.
     connections.removeValue(forKey: key)?.metadataTask?.cancel()
     let adb = await adbService.exec()

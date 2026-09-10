@@ -122,12 +122,12 @@ actor DeviceTracker {
       for (index, element) in parsed.enumerated() {
         group.addTask {
           let (id, fields) = element
-          let info = await self.deviceInfo(
+          guard let info = await self.deviceInfo(
             for: id,
             transportID: fields["transport_id"],
             fallbackModel: fields["model"],
             exec: exec
-          )
+          ) else { return nil }
           return (
             index,
             Device(
@@ -186,13 +186,13 @@ actor DeviceTracker {
     transportID: String?,
     fallbackModel: String?,
     exec: ADBClient
-  ) async -> DeviceInfo {
+  ) async -> DeviceInfo? {
     if let cached = await infoCache.value(for: id, transportID: transportID) {
       return cached
     }
 
-    // Single getprop dump and extract the properties we care about
-    let props = await (try? exec.getProperties(deviceID: id, prefix: "ro.")) ?? [:]
+    // A failed shell request means this device is not ready for discovery or capture.
+    guard let props = try? await exec.getProperties(deviceID: id, prefix: "ro.") else { return nil }
 
     let model = fallbackModel
       ?? cleanProp("ro.product.model", in: props)

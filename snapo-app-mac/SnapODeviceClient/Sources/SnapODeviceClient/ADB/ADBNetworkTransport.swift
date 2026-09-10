@@ -25,9 +25,11 @@ public final class ADBNetworkTransport: NetworkSessionTransport, @unchecked Send
   ) async throws -> ADBNetworkTransport {
     let socket = try await adb.makeConnection()
     do {
-      try socket.sendTransport(to: reference.deviceId)
-      try socket.sendLocalAbstract(reference.socketName)
-      return try ADBNetworkTransport(socket: socket)
+      return try socket.withRequestTimeout(.seconds(2)) {
+        try socket.sendTransport(to: reference.deviceId)
+        try socket.sendLocalAbstract(reference.socketName)
+        return try ADBNetworkTransport(socket: socket)
+      }
     } catch {
       socket.close()
       throw error

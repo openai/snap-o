@@ -15,6 +15,8 @@ public struct ADBClient: Sendable {
   public typealias PathResolver = @Sendable () async throws -> URL
   public typealias ServerObserver = @Sendable () async -> Void
 
+  private let connectionFactory: @Sendable () throws -> ADBSocketConnection
+  private let discoveryTimeout: Duration
   private let pathResolver: PathResolver
   private let notifyServerAvailable: ServerObserver
 
@@ -26,8 +28,20 @@ public struct ADBClient: Sendable {
     pathResolver: @escaping PathResolver = { throw ADBError.adbNotFound },
     serverObserver: @escaping ServerObserver = {}
   ) {
+    connectionFactory = { try ADBSocketConnection() }
+    discoveryTimeout = .seconds(2)
     self.pathResolver = pathResolver
     notifyServerAvailable = serverObserver
+  }
+
+  init(
+    discoveryTimeout: Duration,
+    connectionFactory: @escaping @Sendable () throws -> ADBSocketConnection
+  ) {
+    self.discoveryTimeout = discoveryTimeout
+    self.connectionFactory = connectionFactory
+    pathResolver = { throw ADBError.adbNotFound }
+    notifyServerAvailable = {}
   }
 
   public func screencapPNG(deviceID: String) async throws -> Data {
@@ -225,7 +239,7 @@ public struct ADBClient: Sendable {
   }
 
   public func getProperties(deviceID: String, prefix: String? = nil) async throws -> [String: String] {
-    let output = try await runShellString(deviceID: deviceID, command: "getprop")
+    let output = try await runDiscoveryShellString(deviceID: deviceID, command: "getprop")
     var result: [String: String] = [:]
     for line in output.split(separator: "\n") {
       guard let property = parsePropertyLine(line) else { continue }
@@ -287,7 +301,7 @@ public struct ADBClient: Sendable {
   }
 
   public func listUnixSockets(deviceID: String) async throws -> String {
-    try await runShellString(deviceID: deviceID, command: "cat /proc/net/unix")
+    try await runDiscoveryShellString(deviceID: deviceID, command: "cat /proc/net/unix")
   }
 
   public func forwardLocalAbstract(
@@ -295,26 +309,30 @@ public struct ADBClient: Sendable {
     abstractSocket: String
   ) async throws -> ADBForwardHandle {
     try await withConnection { connection in
-      let remote = "localabstract:\(abstractSocket)"
-      let portValue = try Self.allocateEphemeralPort()
-      _ = try connection.sendHostCommand(
-        "host-serial:\(deviceID):forward:tcp:\(portValue);\(remote)",
-        expectsResponse: false
-      )
-      return ADBForwardHandle(
-        deviceID: deviceID,
-        localPort: portValue,
-        remote: remote
-      )
+      try connection.withRequestTimeout(discoveryTimeout) {
+        let remote = "localabstract:\(abstractSocket)"
+        let portValue = try Self.allocateEphemeralPort()
+        _ = try connection.sendHostCommand(
+          "host-serial:\(deviceID):forward:tcp:\(portValue);\(remote)",
+          expectsResponse: false
+        )
+        return ADBForwardHandle(
+          deviceID: deviceID,
+          localPort: portValue,
+          remote: remote
+        )
+      }
     }
   }
 
   public func removeForward(_ handle: ADBForwardHandle) async {
     _ = try? await withConnection { connection in
-      try connection.sendHostCommand(
-        "host-serial:\(handle.deviceID):killforward:tcp:\(handle.localPort)",
-        expectsResponse: false
-      )
+      try connection.withRequestTimeout(discoveryTimeout) {
+        try connection.sendHostCommand(
+          "host-serial:\(handle.deviceID):killforward:tcp:\(handle.localPort)",
+          expectsResponse: false
+        )
+      }
     }
   }
 
@@ -324,6 +342,20 @@ public struct ADBClient: Sendable {
   }
 
   // MARK: - Private helpers
+
+  func runDiscoveryShellString(deviceID: String, command: String) async throws -> String {
+    let data = try await withConnection { connection in
+      try connection.withRequestTimeout(discoveryTimeout) {
+        try connection.sendTransport(to: deviceID)
+        try connection.sendShell(command)
+        return try connection.readToEnd()
+      }
+    }
+    guard let output = String(data: data, encoding: .utf8) else {
+      throw ADBError.parseFailure("non-utf8 output from adb")
+    }
+    return output
+  }
 
   private func runShellData(deviceID: String, command: String) async throws -> Data {
     try await withConnection { connection in
@@ -346,8 +378,14 @@ public struct ADBClient: Sendable {
     _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
   ) async throws -> T {
     try await runWithRetry(maxAttempts: maxAttempts) { connection in
-      defer { connection.close() }
-      return try body(connection)
+      // Blocking ADB I/O must not occupy Swift's cooperative executor threads.
+      try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          let result = Result { try body(connection) }
+          connection.close()
+          continuation.resume(with: result)
+        }
+      }
     }
   }
 
@@ -359,16 +397,18 @@ public struct ADBClient: Sendable {
     var didRestartServer = false
 
     for attempt in 0 ..< maxAttempts {
+      try Task.checkCancellation()
       try await ADBClient.serverLauncher.waitForOngoingRestart()
 
       do {
-        let connection = try ADBSocketConnection()
+        let connection = try connectionFactory()
         do {
           let value = try await withTaskCancellationHandler {
             try await operation(connection)
           } onCancel: {
             connection.close()
           }
+          try Task.checkCancellation()
           await notifyServerAvailable()
           return value
         } catch {

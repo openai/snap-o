@@ -208,41 +208,29 @@ describe("app inspector restoration UI", () => {
     expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
   });
 
-  it("selects and saves a fallback when the remembered app is unavailable", async () => {
+  it("waits for the remembered app when another app arrives first", async () => {
     const other = { ...app(30, ["network"]), processName: "com.example.other", androidUserId: 10 };
     discovered = [other];
     await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
-        "snapo_network_30"
-      );
-    });
-    const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
-    expect(JSON.parse(saved!).last).toEqual({
-      deviceId: "phone",
-      processName: "com.example.other",
-      androidUserId: 10,
-      kind: "network"
-    });
+    expect(container.querySelector("[data-inspector]")).toBeNull();
+    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
 
-    discovered = [app(20, ["network", "tweaks"])];
+    discovered = [other, app(20, ["network", "tweaks"])];
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        selection: null,
-        selectedApp: expect.objectContaining({ id: other.id, androidUserId: 10 })
-      })
-    );
-    expect(mocks.client.saveInspectorPreferences).toHaveBeenCalledTimes(1);
-    expect(mocks.client.startStream).not.toHaveBeenCalledWith(discovered[0].inspectors[0].server);
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
+        "snapo_network_20"
+      );
+    });
+    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
   });
 
-  it("saves a fallback for legacy preferences without guessing the saved profile", async () => {
+  it("preserves legacy preferences without guessing the saved profile", async () => {
     const legacy = { deviceId: "phone", processName: "com.example.demo", kind: "network" };
     vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(
       JSON.stringify({ last: legacy, apps: [legacy] })
@@ -255,47 +243,48 @@ describe("app inspector restoration UI", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
-    const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
-    expect(JSON.parse(saved!).last).toEqual({
-      deviceId: "phone",
-      processName: "com.example.other",
-      androidUserId: 10,
-      kind: "tweaks"
-    });
+    expect(container.querySelector("[data-inspector]")).toBeNull();
+    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
   });
 
-  it("keeps trying discovery until a usable fallback appears", async () => {
+  it("keeps trying discovery for the saved inspector after a failed scan", async () => {
     discovered = [];
     vi.mocked(mocks.client.listInspectorApps).mockRejectedValueOnce(new Error("Discovery unavailable"));
     await act(() => render(<App />, container));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(2_500);
     });
+    discovered = [{ ...app(30, ["network"]), processName: "com.example.other" }];
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
+    expect(container.querySelector("[data-inspector]")).toBeNull();
     expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-    discovered = [{ ...app(30, ["network"]), processName: "com.example.other" }];
+    discovered = [app(20, ["network"])];
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
     await vi.waitFor(() => {
       expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
-        "snapo_network_30"
+        "snapo_network_20"
       );
     });
-    expect(mocks.client.saveInspectorPreferences).toHaveBeenCalledTimes(1);
   });
 
-  it("selects an available inspector when the saved inspector is missing at startup", async () => {
+  it("waits for the saved inspector when another kind arrives first at startup", async () => {
     await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
-    const saved = vi.mocked(mocks.client.saveInspectorPreferences).mock.lastCall![0];
-    expect(JSON.parse(saved!).last.kind).toBe("tweaks");
+    expect(container.querySelector("[data-inspector]")).toBeNull();
+    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
+    discovered = [app(20, ["network", "tweaks"])];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
+    });
   });
 
   it("shows status and an open action without a spinner until the remembered inspector appears", async () => {
