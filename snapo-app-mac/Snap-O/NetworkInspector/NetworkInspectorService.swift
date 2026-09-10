@@ -3,6 +3,7 @@ import SnapODeviceClient
 
 actor NetworkInspectorService {
   private static let maximumBufferedOutputs = 4096
+  private static let retryCooldown: Duration = .seconds(3)
   private static let bodyCommandTimeout: Duration = .seconds(10)
 
   private struct ServerState {
@@ -32,6 +33,7 @@ actor NetworkInspectorService {
   private let tweaksService: TweaksInspectorService
 
   private var servers: [String: ServerState] = [:]
+  private var retryAfter: [String: ContinuousClock.Instant] = [:]
   private var streams: [String: String] = [:]
   private var activeStreamConnections: [String: UUID] = [:]
   private var streamStartFlights: [String: StreamStartFlight] = [:]
@@ -330,6 +332,7 @@ actor NetworkInspectorService {
 
     let activeServers = Array(servers.values)
     servers.removeAll()
+    retryAfter.removeAll()
     for state in activeServers {
       state.recordTask.cancel()
       await state.session.close()
@@ -426,6 +429,7 @@ actor NetworkInspectorService {
     )
     let devicesByID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
     let seenKeys = Set(references.map(\.key))
+    retryAfter = retryAfter.filter { seenKeys.contains($0.key) && $0.value > .now }
     for reference in references {
       guard let device = devicesByID[reference.deviceId] else { continue }
 
@@ -453,6 +457,7 @@ actor NetworkInspectorService {
     reference: NetworkServerReference,
     using adb: ADBClient
   ) async {
+    guard retryAfter[reference.key] == nil else { return }
     do {
       let session = try await NetworkSession.connect(
         to: reference,
@@ -488,7 +493,8 @@ actor NetworkInspectorService {
       )
       await populateProcessMetadata(reference: reference, connectionID: connectionID, using: adb)
     } catch {
-      return
+      guard !Task.isCancelled, !isStopped else { return }
+      retryAfter[reference.key] = .now.advanced(by: Self.retryCooldown)
     }
   }
 
@@ -537,6 +543,7 @@ actor NetworkInspectorService {
 
   private func sessionDidEnd(serverKey: String, connectionID: UUID) async {
     guard servers[serverKey]?.connectionID == connectionID else { return }
+    retryAfter[serverKey] = .now.advanced(by: Self.retryCooldown)
     await removeServer(serverKey, message: nil)
   }
 

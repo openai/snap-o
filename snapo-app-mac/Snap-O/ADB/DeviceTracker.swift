@@ -8,6 +8,7 @@ actor DeviceTracker {
   private let infoCache = DeviceInfoCache()
 
   private var trackTask: Task<Void, Never>?
+  private var propertyTask: Task<Void, Never>?
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
   private(set) var latestDevices: [Device] = []
 
@@ -46,6 +47,8 @@ actor DeviceTracker {
     let task = trackTask
     task?.cancel()
     trackTask = nil
+    propertyTask?.cancel()
+    propertyTask = nil
     let activeContinuations = Array(continuations.values)
     continuations.removeAll()
     for continuation in activeContinuations {
@@ -87,9 +90,8 @@ actor DeviceTracker {
       do {
         for try await payload in stream {
           if Task.isCancelled { break }
-          let devices = await parseDevices(from: payload, exec: exec)
-          if Task.isCancelled { break }
-          broadcast(devices)
+          propertyTask?.cancel()
+          propertyTask = Task { await self.refreshProperties(from: payload, exec: exec) }
         }
         if Task.isCancelled { break }
         await handleTrackingInterruption()
@@ -104,8 +106,26 @@ actor DeviceTracker {
   }
 
   private func handleTrackingInterruption() async {
+    propertyTask?.cancel()
+    propertyTask = nil
     await infoCache.removeAll()
     if hasSeenFirstMessage { broadcast([]) }
+  }
+
+  private func refreshProperties(from payload: String, exec: ADBClient) async {
+    let deviceCount = payload.split(separator: "\n").compactMap(parseDeviceRow).count
+    while !Task.isCancelled {
+      let devices = await parseDevices(from: payload, exec: exec)
+      guard !Task.isCancelled else { return }
+      broadcast(devices)
+      guard devices.count < deviceCount else { return }
+      // Successful properties are cached; only failed devices need another shell request.
+      do {
+        try await Task.sleep(for: .seconds(3))
+      } catch {
+        return
+      }
+    }
   }
 
   // MARK: - Device parsing
@@ -122,12 +142,12 @@ actor DeviceTracker {
       for (index, element) in parsed.enumerated() {
         group.addTask {
           let (id, fields) = element
-          let info = await self.deviceInfo(
+          guard let info = await self.deviceInfo(
             for: id,
             transportID: fields["transport_id"],
             fallbackModel: fields["model"],
             exec: exec
-          )
+          ) else { return nil }
           return (
             index,
             Device(
@@ -186,13 +206,13 @@ actor DeviceTracker {
     transportID: String?,
     fallbackModel: String?,
     exec: ADBClient
-  ) async -> DeviceInfo {
+  ) async -> DeviceInfo? {
     if let cached = await infoCache.value(for: id, transportID: transportID) {
       return cached
     }
 
-    // Single getprop dump and extract the properties we care about
-    let props = await (try? exec.getProperties(deviceID: id, prefix: "ro.")) ?? [:]
+    // A failed shell request means this device is not ready for discovery or capture.
+    guard let props = try? await exec.getProperties(deviceID: id, prefix: "ro.") else { return nil }
 
     let model = fallbackModel
       ?? cleanProp("ro.product.model", in: props)
@@ -211,6 +231,7 @@ actor DeviceTracker {
       manufacturer: manufacturer,
       avdName: avdName
     )
+    guard !Task.isCancelled else { return nil }
     await infoCache.set(info, for: id, transportID: transportID)
     return info
   }

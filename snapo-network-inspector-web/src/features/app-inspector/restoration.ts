@@ -128,20 +128,10 @@ export class InspectorRestoration {
       exact ??
       (preference?.androidUserId != null ? apps.find((candidate) => matches(candidate, preference)) : undefined);
 
-    // Only startup may replace a missing saved app or inspector.
-    if (this.startupSelectionPending) {
-      const startupApp = app?.inspectors.some((option) => option.kind === this.kind)
-        ? app
-        : apps.find((candidate) => identity(candidate) && candidate.inspectors.length > 0);
-      if (startupApp) {
-        const preferredKind =
-          startupApp === app
-            ? this.kind
-            : (this.saved.apps.find((candidate) => matches(startupApp, candidate))?.kind ?? this.kind);
-        const option =
-          startupApp.inspectors.find((candidate) => candidate.kind === preferredKind) ?? startupApp.inspectors[0];
-        return this.selectInspector(startupApp, option);
-      }
+    // A saved choice must survive partial scans and slow inspector connections.
+    if (this.startupSelectionPending && !preference) {
+      const first = apps.find((candidate) => identity(candidate) && candidate.inspectors.length > 0);
+      if (first) return this.selectApp(first);
     }
 
     if (app && this.kind && this.target && app.id !== this.target.id && Object.keys(this.retained).length > 0) {
@@ -152,6 +142,7 @@ export class InspectorRestoration {
       this.remember(app, this.kind);
       const option = app.inspectors.find((candidate) => candidate.kind === this.kind);
       this.setCurrent(app, option);
+      if (option) this.startupSelectionPending = false;
     } else {
       this.current = null;
     }

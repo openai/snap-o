@@ -81,7 +81,7 @@ public enum NetworkServerDiscovery {
     using adb: ADBClient
   ) async -> String? {
     guard let pid = InspectorKind.allCases.compactMap({ $0.pid(inSocketName: reference.socketName) }).first,
-          let output = try? await adb.runShellString(
+          let output = try? await adb.runDiscoveryShellString(
             deviceID: reference.deviceId,
             command: "cat /proc/\(pid)/cmdline 2>/dev/null"
           )
@@ -96,7 +96,7 @@ public enum NetworkServerDiscovery {
     using adb: ADBClient
   ) async -> Int? {
     guard let pid = InspectorKind.allCases.compactMap({ $0.pid(inSocketName: reference.socketName) }).first,
-          let output = try? await adb.runShellString(
+          let output = try? await adb.runDiscoveryShellString(
             deviceID: reference.deviceId,
             command: "cat /proc/\(pid)/status 2>/dev/null"
           ) else { return nil }
