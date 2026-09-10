@@ -141,19 +141,6 @@ export function serverModelFor(servers: SnapOServer[], selected: ServerId | null
   );
 }
 
-export function replacementCandidate(servers: SnapOServer[], selectedServer: SnapOServer | null): SnapOServer | null {
-  if (selectedServer == null || selectedServer.isConnected) return null;
-  return (
-    servers.find(
-      (server) =>
-        server.isConnected &&
-        server.deviceId === selectedServer.deviceId &&
-        server.displayName === selectedServer.displayName &&
-        server.socketName !== selectedServer.socketName
-    ) ?? null
-  );
-}
-
 export function splitUrl(url: string): { primary: string; secondary: string } {
   try {
     const parsed = new URL(url);

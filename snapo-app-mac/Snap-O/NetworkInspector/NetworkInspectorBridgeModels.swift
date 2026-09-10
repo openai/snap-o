@@ -45,6 +45,7 @@ struct AppInspectorState: Codable {
   let displayedNetwork: SelectedAppInspector?
   let displayedTweaks: SelectedAppInspector?
   let selectedApp: InspectableApp?
+  let replacementApp: InspectableApp?
   let preferredKind: AppInspectorKind?
   let isRestoring: Bool
 }

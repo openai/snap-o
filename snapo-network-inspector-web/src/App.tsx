@@ -10,7 +10,7 @@ import { useAppInspector } from "./features/app-inspector/useAppInspector";
 
 export function App(): JSX.Element {
   const client = useMemo(() => createNetworkClient(), []);
-  const { apps, selection, displayedNetwork, displayedTweaks, selectedApp, isRestoring, loading, select, appLaunch } =
+  const { selection, displayedNetwork, displayedTweaks, selectedApp, isRestoring, loading, appLaunch } =
     useAppInspector(client);
   const pending = loading || isRestoring || (selection != null && isInspectorMetadataPending(selection));
   const showsNetwork = displayedNetwork != null || (!pending && selection?.kind !== "tweaks");
@@ -40,13 +40,7 @@ export function App(): JSX.Element {
           appLaunch={appLaunch}
         />
       ) : (
-        <NetworkInspectorApp
-          model={networkModel}
-          inspectorApps={apps}
-          selectedApp={selectedApp}
-          appLaunch={appLaunch}
-          onInspectorSelect={select}
-        />
+        <NetworkInspectorApp model={networkModel} selectedApp={selectedApp} appLaunch={appLaunch} />
       )}
     </div>
   );

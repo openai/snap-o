@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import type { AppInspectorOption, InspectableApp } from "../../network/bridge-types";
+import type { InspectableApp } from "../../network/bridge-types";
 import { DetailContent } from "./components/DetailPane";
 import type { AppLaunchControl } from "../app-inspector/useAppLaunch";
 import { Sidebar } from "./components/Sidebar";
@@ -9,16 +9,12 @@ import { useSearchHighlights } from "./hooks/useSearchHighlights";
 
 export function NetworkInspectorApp({
   model,
-  inspectorApps = [],
   selectedApp = null,
-  appLaunch,
-  onInspectorSelect
+  appLaunch
 }: {
   model: NetworkInspectorModel;
-  inspectorApps?: InspectableApp[];
   selectedApp?: InspectableApp | null;
   appLaunch?: AppLaunchControl | null;
-  onInspectorSelect?(app: InspectableApp, option?: AppInspectorOption): void;
 }): JSX.Element {
   const {
     containerRef,
@@ -40,7 +36,6 @@ export function NetworkInspectorApp({
     >
       <Sidebar
         selectedServer={model.selectedServer}
-        replacementServer={model.replacementServer}
         exclusionFilters={model.exclusionFilters}
         hiddenRequestCount={model.hiddenRequestCount}
         records={model.visibleRecords}
@@ -48,19 +43,6 @@ export function NetworkInspectorApp({
         placeholder={model.sidebarPlaceholder}
         selectedRecordId={model.selectedRecordId}
         client={model.client}
-        onReplacementServerClick={(server) => {
-          const app = inspectorApps.find((candidate) =>
-            candidate.inspectors.some(
-              (option) =>
-                option.kind === "network" &&
-                option.server.deviceId === server.deviceId &&
-                option.server.socketName === server.socketName
-            )
-          );
-          const option = app?.inspectors.find((candidate) => candidate.kind === "network");
-          if (app && option && onInspectorSelect) onInspectorSelect(app, option);
-          else model.selectReplacementServer(server);
-        }}
         onAddExclusionFilter={model.addExclusionFilter}
         onRemoveExclusionFilter={model.removeExclusionFilter}
         onRecordSelect={model.selectRecord}

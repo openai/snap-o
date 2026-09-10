@@ -60,6 +60,7 @@ export interface AppInspectorState {
   displayedNetwork: SelectedAppInspector | null;
   displayedTweaks: SelectedAppInspector | null;
   selectedApp: InspectableApp | null;
+  replacementApp: InspectableApp | null;
   preferredKind: AppInspectorKind | null;
   isRestoring: boolean;
 }
@@ -215,4 +216,4 @@ export interface SaveFileResult {
   path?: string | null;
 }
 
-export type DebugInspectorPreset = "live" | "protocolOlder" | "protocolNewer" | "replacementProcess";
+export type DebugInspectorPreset = "live" | "protocolOlder" | "protocolNewer";

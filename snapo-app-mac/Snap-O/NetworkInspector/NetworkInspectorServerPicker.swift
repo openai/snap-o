@@ -67,6 +67,39 @@ struct AppInspectorPicker: View {
   }
 }
 
+struct AppInspectorReconnectButton: View {
+  @Bindable var model: NetworkInspectorHostModel
+  @Environment(\.colorScheme)
+  private var colorScheme
+
+  private var backgroundColor: Color {
+    colorScheme == .dark
+      ? Color(red: 184 / 255, green: 106 / 255, blue: 0)
+      : Color(red: 246 / 255, green: 158 / 255, blue: 0)
+  }
+
+  var body: some View {
+    if model.replacementApp != nil {
+      Button {
+        model.reconnectToNewProcess()
+      } label: {
+        Label("New process", systemImage: "arrow.clockwise")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 12)
+          .frame(height: SnapOToolbarStyle.singleControlSize)
+          .background(backgroundColor, in: Capsule())
+          .contentShape(Capsule())
+      }
+      .buttonStyle(.plain)
+      .fixedSize()
+      .help("Reconnect to the new process")
+      .accessibilityLabel("Reconnect to new process")
+      .disabled(!model.isPageReady)
+    }
+  }
+}
+
 struct AppInspectorViewPicker: View {
   @Bindable var model: NetworkInspectorHostModel
 

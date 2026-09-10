@@ -36,7 +36,7 @@ describe("inspector restoration", () => {
     expect(owner.reconcile([app()]).selection).toBe(current);
   });
 
-  it("waits through an empty scan and Tweaks-first discovery, then restores Network", () => {
+  it("waits for an explicit reconnect after Network appears on the new process", () => {
     const owner = selected();
     const displayedNetwork = owner.snapshot().selection;
     const saved = owner.serialize();
@@ -49,9 +49,36 @@ describe("inspector restoration", () => {
     expect(owner.serialize()).toBe(saved);
     expect(owner.snapshot().displayedNetwork).toBe(displayedNetwork);
     expect(owner.reconcile([app(20)])).toMatchObject({
+      selection: null,
+      displayedNetwork,
+      selectedApp: { id: "phone:pid:10" },
+      replacementApp: app(20),
+      isRestoring: true
+    });
+    expect(owner.selectApp(app(20))).toMatchObject({
       selection: { kind: "network", server: { socketName: "snapo_network_20" } },
+      replacementApp: null,
       isRestoring: false
     });
+  });
+
+  it.each(["network", "tweaks"] as const)("pins %s across process changes until explicitly reconnected", (kind) => {
+    const owner = selected(kind);
+    const initial = owner.snapshot();
+    const displayed = kind === "network" ? "displayedNetwork" : "displayedTweaks";
+    for (const pid of [20, 20, 30]) {
+      const state = owner.reconcile([app(pid)]);
+      expect(state.selection).toBeNull();
+      expect(state[displayed]).toBe(initial.selection);
+      expect(state.selectedApp?.id).toBe(initial.selectedApp?.id);
+      expect(state.replacementApp?.id).toBe(app(pid).id);
+    }
+    expect(owner.reconcile([]).replacementApp).toBeNull();
+    owner.selectApp(app(30));
+    expect(owner.snapshot().selection).toBeNull();
+    owner.reconcile([app(30)]);
+    expect(owner.snapshot().selection?.kind).toBe(kind);
+    expect(owner.snapshot().replacementApp).toBeNull();
   });
 
   it("does not show the previous app's history after an explicit app change", () => {
@@ -71,7 +98,8 @@ describe("inspector restoration", () => {
     expect(kinds()).toEqual(["network", "tweaks"]);
     expect(owner.snapshot().selection).toBeNull();
     owner.reconcile([app(20)]);
-    expect(owner.snapshot().selectedApp?.inspectors).toEqual(app(20).inspectors);
+    expect(owner.snapshot().selectedApp?.inspectors).toEqual(app().inspectors);
+    expect(owner.selectApp(app(20)).selectedApp?.inspectors).toEqual(app(20).inspectors);
   });
 
   it("treats cached inspector choices as intent without reconnecting stale sockets", () => {
@@ -94,7 +122,11 @@ describe("inspector restoration", () => {
     owner.reconcile([app(20, ["tweaks"])]);
     const partial = owner.snapshot().selectedApp!;
     expect(owner.selectInspector(partial, partial.inspectors[0]).selection).toBeNull();
-    expect(owner.selectInspector(partial, partial.inspectors[1]).selection?.server.socketName).toBe("snapo_tweaks_20");
+    expect(owner.selectInspector(partial, partial.inspectors[1]).selection).toBeNull();
+    const replacement = owner.snapshot().replacementApp!;
+    expect(owner.selectInspector(replacement, replacement.inspectors[0]).selection?.server.socketName).toBe(
+      "snapo_tweaks_20"
+    );
     expect(owner.reconcile([app(20)]).selection?.kind).toBe("tweaks");
   });
 
@@ -110,7 +142,8 @@ describe("inspector restoration", () => {
     const displayedTweaks = owner.snapshot().selection;
     expect(owner.reconcile([])).toMatchObject({ selection: null, displayedTweaks, isRestoring: true });
     expect(owner.reconcile([app(20, ["network"])])).toMatchObject({ selection: null, displayedTweaks });
-    expect(owner.reconcile([app(20)]).displayedTweaks?.server.socketName).toBe("snapo_tweaks_20");
+    expect(owner.reconcile([app(20)])).toMatchObject({ selection: null, displayedTweaks, replacementApp: app(20) });
+    expect(owner.selectApp(app(20)).displayedTweaks?.server.socketName).toBe("snapo_tweaks_20");
     const other = app(30, ["network"], "com.example.other");
     owner.reconcile([app(20), other]);
     expect(owner.selectApp(other).displayedTweaks).toBeNull();
@@ -134,8 +167,9 @@ describe("inspector restoration", () => {
       app(20, ["network"], "com.example.demo:worker"),
       app(10, ["network"], "com.example.demo", "tablet")
     ];
-    expect(owner.reconcile(others).selection).toBeNull();
-    expect(owner.reconcile([...others, app(40)]).selection?.server.socketName).toBe("snapo_network_40");
+    expect(owner.reconcile(others)).toMatchObject({ selection: null, replacementApp: null });
+    expect(owner.reconcile([...others, app(40)])).toMatchObject({ selection: null, replacementApp: app(40) });
+    expect(owner.selectApp(app(40)).selection?.server.socketName).toBe("snapo_network_40");
   });
 
   it("lets an explicit inspector choice cancel pending restoration", () => {
@@ -247,7 +281,9 @@ describe("inspector restoration", () => {
     expect(owner.reconcile([personal]).selection).toBeNull();
     expect(owner.snapshot().selectedApp?.androidUserId).toBe(10);
     const replacement = app(40, ["network", "tweaks"], "com.example.demo", "phone", 10);
-    expect(owner.reconcile([personal, replacement]).selection?.appId).toBe(replacement.id);
+    expect(owner.snapshot().replacementApp).toBeNull();
+    expect(owner.reconcile([personal, replacement])).toMatchObject({ selection: null, replacementApp: replacement });
+    expect(owner.selectApp(replacement).selection?.appId).toBe(replacement.id);
     const restored = new InspectorRestoration(owner.serialize());
     expect(restored.reconcile([personal, replacement]).selection).toMatchObject({
       appId: replacement.id,
@@ -370,7 +406,12 @@ describe("inspector restoration", () => {
     });
     expect(owner.reconcile([app(20, ["tweaks"]), other]).selection).toBeNull();
     expect(owner.serialize()).toBe(saved);
-    expect(owner.reconcile([other, app(40)]).selection).toMatchObject({ appId: "phone:pid:40", kind: "network" });
+    expect(owner.reconcile([other, app(40)])).toMatchObject({
+      selection: null,
+      displayedNetwork,
+      replacementApp: app(40)
+    });
+    expect(owner.selectApp(app(40)).selection).toMatchObject({ appId: "phone:pid:40", kind: "network" });
   });
 
   it("does not override an explicit startup choice while its identity is pending", () => {

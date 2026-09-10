@@ -31,28 +31,7 @@ export function applyDebugInspectorPreset(
         isProtocolOlderThanSupported: false
       };
       return nextServers;
-    case "replacementProcess":
-      return withReplacementProcess(nextServers, selectedIndex);
   }
-}
-
-function withReplacementProcess(servers: SnapOServer[], selectedIndex: number): SnapOServer[] {
-  const selected = servers[selectedIndex];
-  const replacementSocketName = `${selected.socketName}:debug-replacement`;
-  const replacement: SnapOServer = {
-    ...selected,
-    server: `${selected.deviceId}:${replacementSocketName}`,
-    socketName: replacementSocketName,
-    isConnected: true,
-    pid: selected.pid == null ? 99999 : selected.pid + 1
-  };
-  const nextServers = [...servers];
-  nextServers[selectedIndex] = { ...selected, isConnected: false };
-  nextServers.push(replacement);
-  return nextServers.sort((left, right) => {
-    const device = left.deviceId.localeCompare(right.deviceId);
-    return device !== 0 ? device : left.socketName.localeCompare(right.socketName);
-  });
 }
 
 function serverMatches(
