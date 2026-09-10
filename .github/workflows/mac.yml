@@ -82,6 +82,9 @@ jobs:
       - name: Test inspector recovery
         working-directory: snapo-app-mac
         run: sh scripts/test-inspector-recovery.sh
+      - name: Test inspector selection
+        working-directory: snapo-app-mac
+        run: sh scripts/test-inspector-selection.sh
 
   build:
     runs-on: macos-26

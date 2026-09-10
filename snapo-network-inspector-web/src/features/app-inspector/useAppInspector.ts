@@ -1,102 +1,64 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import type { AppInspectorOption, InspectableApp } from "../../network/bridge-types";
-import type { NetworkClient } from "../../network/client";
-import { InspectorRestoration } from "./restoration";
-import { useAppLaunch } from "./useAppLaunch";
+import { useEffect, useState } from "preact/hooks";
+import type { InspectorHostState, SelectedAppInspector } from "../../network/bridge-types";
+import type { InspectorHostClient } from "../../host/client";
 
-export function useAppInspector(client: NetworkClient) {
-  const [owner] = useState(() => new InspectorRestoration());
-  const [state, setState] = useState(() => owner.snapshot());
-  const [loading, setLoading] = useState(true);
-  const lastSavedRef = useRef<string | null>(null);
-  const saveQueueRef = useRef(Promise.resolve());
-  const requestRefreshRef = useRef<(() => void) | null>(null);
-  const refreshNow = useCallback(() => requestRefreshRef.current?.(), []);
-  const { appLaunch, reconcileSelection, isPolling } = useAppLaunch(client, state.selectedApp, refreshNow);
+export interface AppLaunchControl {
+  pending: boolean;
+  error: string | null;
+  open(): void;
+}
 
-  const publish = useCallback(() => {
-    const snapshot = owner.snapshot();
-    reconcileSelection(snapshot.selectedApp);
-    setState(snapshot);
-    client.appInspectorStateChanged(snapshot);
-    const saved = owner.serialize();
-    if (saved !== lastSavedRef.current) {
-      lastSavedRef.current = saved;
-      saveQueueRef.current = saveQueueRef.current
-        .then(() => client.saveInspectorPreferences(saved))
-        .catch(() => {
-          if (lastSavedRef.current === saved) lastSavedRef.current = null;
-        });
-    }
-  }, [client, owner, reconcileSelection]);
+const emptyState: InspectorHostState = {
+  revision: -1,
+  selection: null,
+  selectedApp: null,
+  networkServer: null,
+  preferredKind: "network",
+  isConnected: false,
+  isWaiting: true
+};
 
-  const select = useCallback(
-    (app: InspectableApp, option?: AppInspectorOption) => {
-      if (option) owner.selectInspector(app, option);
-      else owner.selectApp(app);
-      publish();
-    },
-    [owner, publish]
-  );
+function retainSelection(previous: SelectedAppInspector | null, next: SelectedAppInspector | null) {
+  return previous?.appId === next?.appId &&
+    previous?.kind === next?.kind &&
+    previous?.server.deviceId === next?.server.deviceId &&
+    previous?.server.socketName === next?.server.socketName &&
+    previous?.protocolVersion === next?.protocolVersion
+    ? previous
+    : next;
+}
 
+export function useAppInspector(client: InspectorHostClient) {
+  const [host, setHost] = useState<InspectorHostState>(emptyState);
   useEffect(() => {
     let disposed = false;
-    let refreshing = false;
-    let initialized = false;
-
-    const refresh = async () => {
-      if (!initialized || refreshing) return;
-      refreshing = true;
-      try {
-        const apps = await client.listInspectorApps();
-        if (disposed) return;
-        owner.reconcile(apps);
-        publish();
-        setLoading(false);
-      } catch {
-        // A failed scan is not evidence that the user's chosen app has gone away.
-      } finally {
-        refreshing = false;
-      }
-    };
-    requestRefreshRef.current = () => void refresh();
-
-    const unsubscribeInspector = client.onNativeSelectedInspector((selection) => {
-      const state = owner.snapshot();
-      const app =
-        state.selectedApp?.id === selection.appId
-          ? state.selectedApp
-          : state.apps.find((candidate) => candidate.id === selection.appId);
-      const option = app?.inspectors.find((candidate) => candidate.kind === selection.kind);
-      if (app && option) select(app, option);
-    });
-    const unsubscribeApp = client.onNativeSelectedApp((id) => {
-      const app = owner.snapshot().apps.find((candidate) => candidate.id === id);
-      if (app) select(app);
-    });
-
-    void client
-      .loadInspectorPreferences()
-      .catch(() => null)
-      .then((saved) => {
-        if (disposed) return;
-        owner.hydrate(saved);
-        lastSavedRef.current = saved;
-        initialized = true;
-        publish();
-        void refresh();
+    const receive = (next: InspectorHostState) => {
+      if (disposed) return;
+      setHost((previous) => {
+        if (next.revision < previous.revision) return previous;
+        // Swift omits absent optional fields. Keep stable connection objects across scans.
+        const state = { ...emptyState, ...next };
+        state.selection = retainSelection(previous.selection, state.selection);
+        return state;
       });
-    const interval = window.setInterval(() => {
-      if (!document.hidden && !isPolling()) void refresh();
-    }, 2_500);
+    };
+    const unsubscribe = client.onInspectorHostState(receive);
+    void client.inspectorHostState().then(receive, () => {});
     return () => {
       disposed = true;
-      requestRefreshRef.current = null;
-      window.clearInterval(interval);
-      unsubscribeInspector();
-      unsubscribeApp();
+      unsubscribe();
     };
-  }, [client, isPolling, owner, publish, select]);
+  }, [client]);
 
-  return { ...state, loading, select, appLaunch };
+  const appLaunch: AppLaunchControl | null =
+    host.appLaunch && host.selectedApp
+      ? {
+          pending: host.appLaunch.pending,
+          error: host.appLaunch.error ?? null,
+          open: () => {
+            void client.openSelectedApp(host.selectedApp!.id).catch(() => {});
+          }
+        }
+      : null;
+  return { ...host, appLaunch };
 }

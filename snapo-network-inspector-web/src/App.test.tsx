@@ -6,14 +6,12 @@ import type {
   AppInspectorKind,
   CdpMessage,
   InspectableApp,
-  SelectedAppInspector,
-  SnapOServer,
+  InspectorHostState,
   StreamEvent
 } from "./network/bridge-types";
 import type { NetworkClient } from "./network/client";
 import { recordId } from "./network/cdp";
 import type { NetworkInspectorModel } from "./features/network-inspector/hooks/useNetworkInspectorModel";
-import { InspectorRestoration } from "./features/app-inspector/restoration";
 import { App } from "./App";
 
 const mocks = vi.hoisted(() => ({
@@ -58,9 +56,6 @@ vi.mock("./features/network-inspector/NetworkInspectorApp", () => ({
     return <div data-inspector="network" data-socket={model.selectedServer?.socketName} />;
   }
 }));
-vi.mock("./features/tweaks-inspector/TweaksInspectorApp", () => ({
-  TweaksInspectorApp: () => <div data-inspector="tweaks" />
-}));
 
 function app(pid: number, kinds: AppInspectorKind[]): InspectableApp {
   return {
@@ -79,45 +74,27 @@ function app(pid: number, kinds: AppInspectorKind[]): InspectableApp {
   };
 }
 
-describe("app inspector restoration UI", () => {
+describe("native Network selection", () => {
   let container: HTMLDivElement;
   let discovered: InspectableApp[];
-  let nativeSelect: (selection: SelectedAppInspector) => void;
-  let nativeSelectApp: (id: string) => void;
+  let host: InspectorHostState;
+  let receiveHost: (state: InspectorHostState) => void;
   let nativeSearch: (text: string) => void;
   let events: Set<(event: StreamEvent) => void>;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    discovered = [app(20, ["tweaks"])];
+    discovered = [app(20, ["network", "tweaks"])];
+    host = connected(discovered[0]);
     events = new Set();
     mocks.model = null;
-    const saved = new InspectorRestoration();
-    saved.reconcile([app(10, ["network", "tweaks"])]);
     mocks.client = {
-      loadInspectorPreferences: vi.fn(async () => saved.serialize()),
-      saveInspectorPreferences: vi.fn(async () => {}),
-      listInspectorApps: vi.fn(async () => discovered),
-      openApp: vi.fn(async () => {}),
-      listServers: vi.fn(async () =>
-        discovered.flatMap((app) =>
-          app.inspectors
-            .filter((option) => option.kind === "network")
-            .map(
-              (option): SnapOServer => ({
-                ...option.server,
-                server: app.id,
-                deviceDisplayTitle: app.deviceDisplayTitle,
-                displayName: app.name,
-                isConnected: true,
-                hasAppInfo: true,
-                instanceId: app.id,
-                isProtocolNewerThanSupported: false,
-                isProtocolOlderThanSupported: false
-              })
-            )
-        )
-      ),
+      inspectorHostState: vi.fn(async () => structuredClone(host)),
+      onInspectorHostState: vi.fn((callback) => {
+        receiveHost = callback;
+        return () => {};
+      }),
+      openSelectedApp: vi.fn(async () => {}),
       startStream: vi.fn(async () => ({ streamId: "network-stream" })),
       stopStream: vi.fn(async () => {}),
       loadBodies: vi.fn(async ({ requestId }) => ({ requestId, responseBody: "cached response" })),
@@ -128,10 +105,7 @@ describe("app inspector restoration UI", () => {
       onStatus: vi.fn(() => () => {}),
       debugInspectorPreset: vi.fn(async () => "live"),
       onDebugInspectorPreset: vi.fn(() => () => {}),
-      selectedDeviceChanged: vi.fn(),
-      onPreferredDevice: vi.fn(() => () => {}),
       nativeInspectorStateChanged: vi.fn(),
-      onNativeSelectedServer: vi.fn(() => () => {}),
       onNativeSearchText: vi.fn((callback) => {
         nativeSearch = callback;
         return () => {};
@@ -142,16 +116,7 @@ describe("app inspector restoration UI", () => {
       onNativeClearCompleted: vi.fn(() => () => {}),
       onNativeCopySelectedUrl: vi.fn(() => () => {}),
       onNativeCopySelectedCurl: vi.fn(() => () => {}),
-      onNativeExportVisibleHar: vi.fn(() => () => {}),
-      appInspectorStateChanged: vi.fn(),
-      onNativeSelectedInspector: vi.fn((callback) => {
-        nativeSelect = callback;
-        return () => {};
-      }),
-      onNativeSelectedApp: vi.fn((callback) => {
-        nativeSelectApp = callback;
-        return () => {};
-      })
+      onNativeExportVisibleHar: vi.fn(() => () => {})
     } as unknown as NetworkClient;
     container = document.createElement("div");
     document.body.append(container);
@@ -165,513 +130,53 @@ describe("app inspector restoration UI", () => {
     vi.useRealTimers();
   });
 
-  async function renderWaitingForInspector() {
-    const starter = { ...app(1, ["tweaks"]), processName: "com.example.starter", packageName: "com.example.starter" };
-    vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
+  function connected(target: InspectableApp): InspectorHostState {
+    const selection = { appId: target.id, ...target.inspectors[0] };
+    return {
+      revision: 0,
+      selection,
+      selectedApp: target,
+      preferredKind: "network",
+      isConnected: true,
+      isWaiting: false,
+      networkServer: {
+        ...selection.server,
+        server: target.id,
+        deviceDisplayTitle: target.deviceDisplayTitle,
+        displayName: target.name,
+        isConnected: true,
+        hasAppInfo: true,
+        instanceId: target.id,
+        isProtocolNewerThanSupported: false,
+        isProtocolOlderThanSupported: false
+      },
+      appLaunch: { pending: false }
+    };
+  }
+
+  async function publish(state: Partial<InspectorHostState>, launch = host.appLaunch) {
+    host = { ...host, ...state, revision: host.revision + 1, appLaunch: launch };
+    await act(async () => receiveHost(structuredClone(host)));
+  }
+
+  async function disconnect() {
+    discovered = [];
+    await publish({
+      isConnected: false,
+      isWaiting: true,
+      networkServer: { ...host.networkServer!, isConnected: false }
     });
-    // Explicit selection can wait for an inspector after startup chooses a usable app.
     await act(async () => {
-      await nativeSelectApp(discovered[0].id);
+      await vi.advanceTimersByTimeAsync(2_500);
     });
   }
 
-  it("waits for initial discovery before restoring the saved app and inspector", async () => {
-    const other = { ...app(30, ["tweaks"]), processName: "com.example.other" };
-    discovered = [other, app(20, ["network", "tweaks"])];
-    let finish!: (apps: InspectableApp[]) => void;
-    vi.mocked(mocks.client.listInspectorApps).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(mocks.client.startStream).not.toHaveBeenCalled();
-    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selectedApp: null, selection: null })
-    );
-    await act(async () => {
-      await finish(discovered);
-    });
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
-        "snapo_network_20"
-      );
-    });
-    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-  });
-
-  it("waits for the remembered app when another app arrives first", async () => {
-    const other = { ...app(30, ["network"]), processName: "com.example.other", androidUserId: 10 };
-    discovered = [other];
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(container.querySelector("[data-inspector]")).toBeNull();
-    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-
-    discovered = [other, app(20, ["network", "tweaks"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
-        "snapo_network_20"
-      );
-    });
-    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-  });
-
-  it("preserves legacy preferences without guessing the saved profile", async () => {
-    const legacy = { deviceId: "phone", processName: "com.example.demo", kind: "network" };
-    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(
-      JSON.stringify({ last: legacy, apps: [legacy] })
-    );
-    discovered = [
-      { ...app(30, ["tweaks"]), processName: "com.example.other", androidUserId: 10 },
-      app(20, ["network"])
-    ];
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(container.querySelector("[data-inspector]")).toBeNull();
-    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-  });
-
-  it("keeps trying discovery for the saved inspector after a failed scan", async () => {
-    discovered = [];
-    vi.mocked(mocks.client.listInspectorApps).mockRejectedValueOnce(new Error("Discovery unavailable"));
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    discovered = [{ ...app(30, ["network"]), processName: "com.example.other" }];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    expect(container.querySelector("[data-inspector]")).toBeNull();
-    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-    discovered = [app(20, ["network"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
-        "snapo_network_20"
-      );
-    });
-  });
-
-  it("waits for the saved inspector when another kind arrives first at startup", async () => {
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(container.querySelector("[data-inspector]")).toBeNull();
-    expect(mocks.client.saveInspectorPreferences).not.toHaveBeenCalled();
-    discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
-    });
-  });
-
-  it("shows status and an open action without a spinner until the remembered inspector appears", async () => {
-    await renderWaitingForInspector();
-    expect(container.querySelector('[role="status"] svg')).toBeNull();
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for inspector");
-    expect(container.querySelector("[data-inspector]")).toBeNull();
-    expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
-
-    discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
-        "snapo_network_20"
-      );
-    });
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-  });
-
-  it("opens the remembered app on its device and prevents duplicate launches", async () => {
-    let finish!: () => void;
-    vi.mocked(mocks.client.openApp!).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await renderWaitingForInspector();
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
-    await act(async () => {
-      button.click();
-      button.click();
-    });
-    expect(mocks.client.openApp).toHaveBeenCalledExactlyOnceWith({
-      deviceId: "phone",
-      packageName: "com.example.demo",
-      androidUserId: 0
-    });
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for inspector");
-    await act(async () => {
-      await finish();
-    });
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
-    });
-    expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
-    expect(container.querySelector('[role="progressbar"]')).toBeNull();
-    expect(container.querySelector('[role="status"]')).not.toBeNull();
-  });
-
-  it("shows launch errors and allows a retry without stopping discovery", async () => {
-    vi.mocked(mocks.client.openApp!).mockRejectedValueOnce(new Error("Device is offline."));
-    await renderWaitingForInspector();
-    const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
-    await act(async () => {
-      await button.click();
-    });
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Device is offline.");
-    expect(container.querySelector('[role="progressbar"]')).toBeNull();
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(mocks.client.openApp).toHaveBeenCalledTimes(2);
-
-    discovered = [app(20, ["network", "tweaks"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-  });
-
-  it("does not offer app launch when the client does not support it", async () => {
-    delete mocks.client.openApp;
-    await renderWaitingForInspector();
-    expect(container.querySelector('[role="status"]')).not.toBeNull();
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(container.querySelector('[role="status"] .body-loading-spinner svg')).not.toBeNull();
-  });
-
-  it.each([
-    { packageName: null, androidUserId: 0 },
-    { packageName: "com.example.demo", androidUserId: null }
-  ])("does not offer app launch without a confirmed package and Android user", async (metadata) => {
-    const waitingApp = { ...app(20, ["tweaks"]), ...metadata, processName: "com.example.demo:worker" };
-    const saved = new InspectorRestoration();
-    saved.reconcile([{ ...waitingApp, inspectors: app(20, ["network"]).inspectors }]);
-    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(saved.serialize());
-    discovered = [waitingApp];
-    await renderWaitingForInspector();
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selectedApp: expect.objectContaining({ processName: "com.example.demo:worker" }) })
-    );
-    expect(container.querySelector('[role="status"]')).not.toBeNull();
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(mocks.client.openApp).not.toHaveBeenCalled();
-  });
-
-  it("opens a retained secondary process in its own Android user", async () => {
-    const workApp = { ...app(20, ["tweaks"]), androidUserId: 10, processName: "com.example.demo:worker" };
-    const saved = new InspectorRestoration();
-    saved.reconcile([workApp]);
-    saved.selectInspector(workApp, { kind: "network", server: { deviceId: "phone", socketName: "snapo_network_20" } });
-    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(saved.serialize());
-    discovered = [workApp];
-    await renderWaitingForInspector();
-    discovered = [{ ...workApp, id: "phone:pid:30", androidUserId: 0 }];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    expect(mocks.client.openApp).toHaveBeenCalledExactlyOnceWith({
-      deviceId: "phone",
-      packageName: "com.example.demo",
-      androidUserId: 10
-    });
-  });
-
-  it("refreshes immediately after opening and every half second for five seconds", async () => {
-    await renderWaitingForInspector();
-    const scans = vi.mocked(mocks.client.listInspectorApps);
-    const initialScans = scans.mock.calls.length;
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    expect(scans).toHaveBeenCalledTimes(initialScans + 1);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(499);
-    });
-    expect(scans).toHaveBeenCalledTimes(initialScans + 1);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(scans).toHaveBeenCalledTimes(initialScans + 2);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4_499);
-    });
-    expect(scans).toHaveBeenCalledTimes(initialScans + 10);
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(scans).toHaveBeenCalledTimes(initialScans + 11);
-    expect(container.querySelector(".inspector-open-app")).not.toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_499);
-    });
-    expect(scans).toHaveBeenCalledTimes(initialScans + 11);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(scans).toHaveBeenCalledTimes(initialScans + 12);
-  });
-
-  it("does not overlap slow scans during the launch window", async () => {
-    await renderWaitingForInspector();
-    const scans = vi.mocked(mocks.client.listInspectorApps);
-    let finish!: (apps: InspectableApp[]) => void;
-    scans.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    const scanCount = scans.mock.calls.length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_000);
-    });
-    expect(scans).toHaveBeenCalledTimes(scanCount);
-    await act(async () => {
-      await finish(discovered);
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    expect(scans).toHaveBeenCalledTimes(scanCount + 1);
-  });
-
-  it("keeps polling after a failed scan and stops fast polling after a launch error", async () => {
-    await renderWaitingForInspector();
-    const scans = vi.mocked(mocks.client.listInspectorApps);
-    let fail!: (error: Error) => void;
-    vi.mocked(mocks.client.openApp!).mockImplementationOnce(
-      () =>
-        new Promise((_, reject) => {
-          fail = reject;
-        })
-    );
-    scans.mockRejectedValueOnce(new Error("Discovery unavailable"));
-    const scanCount = scans.mock.calls.length;
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
-    });
-    expect(scans).toHaveBeenCalledTimes(scanCount + 2);
-    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => {
-      await fail(new Error("Device disconnected"));
-    });
-    expect(container.querySelector(".inspector-open-app")).not.toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_000);
-    });
-    expect(scans).toHaveBeenCalledTimes(scanCount + 2);
-  });
-
-  it("does not allow another launch while adb is still running after the wait window", async () => {
-    let finish!: () => void;
-    vi.mocked(mocks.client.openApp!).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await renderWaitingForInspector();
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
-    });
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
-    await act(async () => {
-      await finish();
-    });
-    expect(container.querySelector(".inspector-open-app")).not.toBeNull();
-  });
-
-  it("cancels launch polling and ignores a late launch result after unmount", async () => {
-    let finish!: () => void;
-    vi.mocked(mocks.client.openApp!).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await renderWaitingForInspector();
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    await act(async () => {
-      await render(null, container);
-    });
-    const scans = vi.mocked(mocks.client.listInspectorApps);
-    const scanCount = scans.mock.calls.length;
-    await act(async () => {
-      await finish();
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(7_500);
-    });
-    expect(scans).toHaveBeenCalledTimes(scanCount);
-  });
-
-  it.each([
-    { packageName: "com.example.other", androidUserId: 0 },
-    { packageName: "com.example.demo", androidUserId: 10 }
-  ])("does not carry a pending launch or its error into another app or profile", async (target) => {
-    const other = { ...app(30, ["tweaks"]), ...target, name: "Other", processName: null };
-    discovered.push(other);
-    let fail!: (error: Error) => void;
-    vi.mocked(mocks.client.openApp!).mockImplementationOnce(
-      () =>
-        new Promise((_, reject) => {
-          fail = reject;
-        })
-    );
-    await renderWaitingForInspector();
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    await act(async () => {
-      await nativeSelectApp(other.id);
-    });
-    const button = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
-    expect(button.textContent).toBe("Open Other");
-    expect(button.disabled).toBe(false);
-    const scans = vi.mocked(mocks.client.listInspectorApps);
-    const scanCount = scans.mock.calls.length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    expect(scans).toHaveBeenCalledTimes(scanCount);
-    await act(async () => {
-      await fail(new Error("Old launch failed."));
-    });
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    await act(async () => {
-      await button.click();
-    });
-    expect(mocks.client.openApp).toHaveBeenLastCalledWith({ deviceId: "phone", ...target });
-  });
-
-  it("clears a launch error when leaving and returning to the same app", async () => {
-    const other = { ...app(30, ["tweaks"]), name: "Other", packageName: "com.example.other", processName: null };
-    discovered.push(other);
-    vi.mocked(mocks.client.openApp!).mockRejectedValueOnce(new Error("Device is offline."));
-    await renderWaitingForInspector();
-    await act(async () => {
-      await container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click();
-    });
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Device is offline.");
-
-    await act(async () => {
-      nativeSelectApp(other.id);
-      nativeSelectApp(discovered[0].id);
-    });
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.querySelector(".inspector-open-app")?.textContent).toBe("Open Demo");
-  });
-
-  it("honors a native explicit choice while discovery is in flight", async () => {
-    await renderWaitingForInspector();
-    let finish!: (apps: InspectableApp[]) => void;
-    vi.mocked(mocks.client.listInspectorApps).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await act(async () => {
-      await nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] });
-    });
-    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
-    await act(async () => {
-      await finish([app(20, ["network", "tweaks"])]);
-    });
-    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
-  });
-
-  it("waits without selecting a placeholder, then opens its identified replacement", async () => {
-    vi.mocked(mocks.client.loadInspectorPreferences).mockResolvedValue(null);
-    discovered = [{ ...app(10, ["network"]), processName: null, name: "snapo_network_10" }];
-    await act(() => render(<App />, container));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(container.querySelector('[role="status"]')).not.toBeNull();
-    expect(container.querySelector("[data-inspector]")).toBeNull();
-    expect(mocks.client.startStream).not.toHaveBeenCalled();
-    expect(container.querySelector(".inspector-open-app")).toBeNull();
-    expect(container.querySelector('[role="status"] .body-loading-spinner svg')).not.toBeNull();
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selectedApp: null, selection: null, isRestoring: true })
-    );
-
-    discovered = [app(20, ["network"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    await vi.waitFor(() => {
-      expect(container.querySelector('[data-inspector="network"]')?.getAttribute("data-socket")).toBe(
-        "snapo_network_20"
-      );
-    });
-    await vi.waitFor(() => {
-      expect(mocks.client.startStream).toHaveBeenCalledWith({ deviceId: "phone", socketName: "snapo_network_20" });
-    });
-  });
-
   async function captureTraffic() {
     discovered = [app(20, ["network", "tweaks"])];
-    await act(() => render(<App />, container));
+    await act(async () => render(<App />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -692,10 +197,7 @@ describe("app inspector restoration UI", () => {
     await captureTraffic();
     const selectedRecordId = mocks.model?.selectedRecordId;
     const bodyLoads = vi.mocked(mocks.client.loadBodies).mock.calls.length;
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
+    await disconnect();
     expect(container.querySelector(".inspector-loading-shell")).toBeNull();
     expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
     expect(mocks.model?.selectedServer?.isConnected).toBe(false);
@@ -721,6 +223,7 @@ describe("app inspector restoration UI", () => {
     expect(mocks.model?.visibleRecords).toHaveLength(1);
 
     discovered = [app(20, ["network", "tweaks"])];
+    await publish(connected(discovered[0]));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
@@ -728,74 +231,6 @@ describe("app inspector restoration UI", () => {
     expect(mocks.model?.selectedRecordId).toBe(selectedRecordId);
     expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
     expect(mocks.client.loadBodies).toHaveBeenCalledTimes(bodyLoads);
-  });
-
-  it("honors cached native toolbar choices offline without starting stale streams", async () => {
-    await captureTraffic();
-    const initial = discovered[0];
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    const starts = vi.mocked(mocks.client.startStream).mock.calls.length;
-    await act(async () => {
-      await nativeSelect({ appId: initial.id, ...initial.inspectors[1] });
-    });
-    expect(container.querySelector(".inspector-loading-shell")).not.toBeNull();
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selection: null, preferredKind: "tweaks", isRestoring: true })
-    );
-    await act(async () => {
-      await nativeSelect({ appId: initial.id, ...initial.inspectors[0] });
-    });
-    expect(container.querySelector('[data-inspector="network"]')).not.toBeNull();
-    expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
-    expect(mocks.client.startStream).toHaveBeenCalledTimes(starts);
-  });
-
-  it("keeps old-process traffic visible until the native reconnect action", async () => {
-    await captureTraffic();
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    discovered = [app(30, ["network", "tweaks"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_20");
-    expect(mocks.model?.visibleRecords).toHaveLength(1);
-    expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
-    expect(mocks.client.startStream).not.toHaveBeenCalledWith(discovered[0].inspectors[0].server);
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selection: null, replacementApp: discovered[0] })
-    );
-    await act(async () => nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] }));
-    expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_30");
-    expect(mocks.model?.visibleRecords).toHaveLength(0);
-    expect(mocks.model?.allRecords).toMatchObject([
-      { server: { socketName: "snapo_network_20" }, responseBody: "cached response" }
-    ]);
-  });
-
-  it("ignores a native reconnect click after the replacement process disappears", async () => {
-    await captureTraffic();
-    discovered = [app(30, ["network", "tweaks"])];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    const replacement = discovered[0];
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
-    await act(async () => nativeSelect({ appId: replacement.id, ...replacement.inspectors[0] }));
-    expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_20");
-    expect(mocks.model?.visibleRecords).toHaveLength(1);
-    expect(mocks.client.startStream).not.toHaveBeenCalledWith(replacement.inspectors[0].server);
-    expect(mocks.client.appInspectorStateChanged).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selection: null, replacementApp: null })
-    );
   });
 
   it("allows browsing another captured request without loading bodies offline", async () => {
@@ -817,10 +252,7 @@ describe("app inspector restoration UI", () => {
       (record) => record.kind === "request" && record.requestId === "request-2"
     )!;
     const bodyLoads = vi.mocked(mocks.client.loadBodies).mock.calls.length;
-    discovered = [];
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_500);
-    });
+    await disconnect();
     await act(async () => {
       await mocks.model!.selectRecord(recordId(second));
     });
@@ -834,17 +266,82 @@ describe("app inspector restoration UI", () => {
     });
   });
 
-  it("retains network traffic while viewing Tweaks", async () => {
+  it("keeps Network data while its page is hidden for Tweaks", async () => {
     await captureTraffic();
-    await act(async () => {
-      await nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[1] });
-    });
-    expect(container.querySelector('[data-inspector="tweaks"]')).not.toBeNull();
+    const initial = host;
+    await publish({ selection: null, networkServer: null, preferredKind: "tweaks", isConnected: false });
     expect(mocks.client.stopStream).toHaveBeenCalled();
-    await act(async () => {
-      await nativeSelect({ appId: discovered[0].id, ...discovered[0].inspectors[0] });
-    });
+    await publish(initial);
     expect(mocks.model?.allRecords).toHaveLength(1);
     expect(mocks.model?.selectedRecord).toMatchObject({ responseBody: "cached response" });
+  });
+
+  it("waits for the host to authorize a replacement process", async () => {
+    await captureTraffic();
+    await disconnect();
+    discovered = [app(30, ["network", "tweaks"])];
+    await publish({});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_20");
+    expect(mocks.client.startStream).not.toHaveBeenCalledWith(discovered[0].inspectors[0].server);
+    await publish(connected(discovered[0]));
+    expect(mocks.model?.selectedServer?.socketName).toBe("snapo_network_30");
+    expect(mocks.model?.visibleRecords).toHaveLength(0);
+    expect(mocks.model?.allRecords).toMatchObject([
+      { server: { socketName: "snapo_network_20" }, responseBody: "cached response" }
+    ]);
+  });
+
+  it("uses pushed metadata without polling or restarting an unchanged connection", async () => {
+    await captureTraffic();
+    const starts = vi.mocked(mocks.client.startStream).mock.calls.length;
+    await publish({});
+    await publish({ networkServer: { ...host.networkServer!, displayName: "Updated name" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(mocks.model?.selectedServer?.displayName).toBe("Updated name");
+    expect(mocks.client.startStream).toHaveBeenCalledTimes(starts);
+    expect(mocks.client.inspectorHostState).toHaveBeenCalledTimes(1);
+    expect(mocks.client.stopStream).not.toHaveBeenCalled();
+    await publish({ networkServer: { ...host.networkServer!, instanceId: "new-session" } });
+    expect(mocks.client.stopStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.startStream).toHaveBeenCalledTimes(starts + 1);
+  });
+
+  it("ignores an initial state reply that arrives after a newer host event", async () => {
+    let reply!: (state: InspectorHostState) => void;
+    vi.mocked(mocks.client.inspectorHostState).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          reply = resolve;
+        })
+    );
+    const old = structuredClone(host);
+    await act(async () => render(<App />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await publish({ selection: null, networkServer: null, isConnected: false, isWaiting: true });
+    await act(async () => reply(old));
+    expect(container.querySelector(".inspector-loading-shell")).not.toBeNull();
+    expect(mocks.client.startStream).not.toHaveBeenCalled();
+  });
+
+  it("shows native launch status and sends only the Open command", async () => {
+    host = { ...host, selection: null, networkServer: null, isConnected: false, isWaiting: true };
+    await act(async () => render(<App />, container));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>(".inspector-open-app")!.click());
+    expect(mocks.client.openSelectedApp).toHaveBeenCalledWith(host.selectedApp!.id);
+    await publish({}, { pending: true });
+    expect(container.querySelector(".inspector-open-app")).toBeNull();
+    await publish({}, { pending: false, error: "Device is offline." });
+    expect(container.textContent).toContain("Device is offline.");
+    expect(container.querySelector(".inspector-open-app")).not.toBeNull();
   });
 });

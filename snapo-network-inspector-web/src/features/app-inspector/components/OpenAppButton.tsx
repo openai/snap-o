@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import type { InspectableApp } from "../../../network/bridge-types";
-import type { AppLaunchControl } from "../useAppLaunch";
+import type { AppLaunchControl } from "../useAppInspector";
 
 export function OpenAppButton({ app, launch }: { app: InspectableApp; launch: AppLaunchControl }): JSX.Element {
   return (

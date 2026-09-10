@@ -95,7 +95,6 @@ struct AppInspectorReconnectButton: View {
       .fixedSize()
       .help("Reconnect to the new process")
       .accessibilityLabel("Reconnect to new process")
-      .disabled(!model.isPageReady)
     }
   }
 }

@@ -1,42 +1,33 @@
 import type {
-  AppInspectorState,
-  DebugInspectorPreset,
-  InspectableApp,
   InspectorServerReference,
   InvokeTweakActionInput,
+  NativeTweaksState,
+  TweakList,
+  TweakStreamEvent,
+  TweakUpdates,
+  UpdateTweaksInput,
+  DebugInspectorPreset,
   LoadBodiesInput,
   NativeInspectorState,
-  NativeTweaksState,
-  OpenAppInput,
   RequestBodies,
   SaveFileInput,
   SaveFileResult,
-  SelectedAppInspector,
-  SnapOServer,
   StartStreamInput,
   StreamEvent,
   StreamStarted,
   StreamStatus,
-  TweakList,
-  TweakStreamEvent,
-  TweakUpdates,
-  UpdateTweaksInput
+  InspectorHostState
 } from "./bridge-types";
+import type { InspectorHostClient } from "../host/client";
+import { invokeNative, listenWebKitEvent, requireNativeBridge } from "../host/bridge";
 
 export interface NativeColorPanelChange {
   color: string;
   sessionId: string;
 }
 
-export interface NetworkClient {
+export interface NetworkClient extends InspectorHostClient {
   appVersion(): Promise<string>;
-  listInspectorApps(): Promise<InspectableApp[]>;
-  openApp?(app: OpenAppInput): Promise<void>;
-  loadInspectorPreferences(): Promise<string | null>;
-  saveInspectorPreferences(value: string): Promise<void>;
-  appInspectorStateChanged(state: AppInspectorState): void;
-  onNativeSelectedApp(callback: (appId: string) => void): () => void;
-  listServers(): Promise<SnapOServer[]>;
   listTweaks(server: InspectorServerReference): Promise<TweakList>;
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
   invokeTweakAction(input: InvokeTweakActionInput): Promise<void>;
@@ -59,13 +50,9 @@ export interface NetworkClient {
   saveFile(input: SaveFileInput): Promise<SaveFileResult>;
   debugInspectorPreset(): Promise<DebugInspectorPreset>;
   onDebugInspectorPreset(callback: (preset: DebugInspectorPreset) => void): () => void;
-  selectedDeviceChanged(deviceId: string): void;
-  onPreferredDevice(callback: (deviceId: string) => void): () => void;
-  nativeInspectorStateChanged(state: NativeInspectorState): void;
   nativeTweaksStateChanged(state: NativeTweaksState): void;
-  onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void;
-  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void;
   onNativeTweaksReset(callback: () => void): () => void;
+  nativeInspectorStateChanged(state: NativeInspectorState): void;
   onNativeSearchText(callback: (searchText: string) => void): () => void;
   onNativeExclusionFilters(callback: (filters: string[]) => void): () => void;
   onNativeSortOrder(callback: (sortNewestFirst: boolean) => void): () => void;
@@ -78,19 +65,8 @@ export interface NetworkClient {
 export type InspectorContentClient = Pick<NetworkClient, "copyText" | "saveFile">;
 
 export function createNetworkClient(): NetworkClient {
-  if (webKitMessageHandler() == null) throw new Error("Open this inspector in the Snap-O macOS app.");
+  requireNativeBridge();
   return new WebKitNetworkClient();
-}
-
-interface WebKitMessageHandler {
-  postMessage(message: { command: string; payload?: unknown }): Promise<unknown>;
-}
-
-function webKitMessageHandler(): WebKitMessageHandler | null {
-  const hostWindow = window as Window & {
-    webkit?: { messageHandlers?: { snapoNetwork?: WebKitMessageHandler } };
-  };
-  return hostWindow.webkit?.messageHandlers?.snapoNetwork ?? null;
 }
 
 class WebKitNetworkClient implements NetworkClient {
@@ -98,32 +74,16 @@ class WebKitNetworkClient implements NetworkClient {
     return this.invoke<string>("appVersion");
   }
 
-  listInspectorApps(): Promise<InspectableApp[]> {
-    return this.invoke<InspectableApp[]>("listInspectorApps");
+  inspectorHostState(): Promise<InspectorHostState> {
+    return this.invoke("inspectorHostState");
   }
 
-  openApp(app: OpenAppInput): Promise<void> {
-    return this.invoke<void>("openApp", app);
+  onInspectorHostState(callback: (state: InspectorHostState) => void): () => void {
+    return listenWebKitEvent("inspector:state", callback);
   }
 
-  loadInspectorPreferences(): Promise<string | null> {
-    return this.invoke<string | null>("loadInspectorPreferences");
-  }
-
-  saveInspectorPreferences(value: string): Promise<void> {
-    return this.invoke<void>("saveInspectorPreferences", { value });
-  }
-
-  appInspectorStateChanged(state: AppInspectorState): void {
-    void this.invoke<void>("appInspectorStateChanged", state);
-  }
-
-  onNativeSelectedApp(callback: (appId: string) => void): () => void {
-    return listenWebKitEvent<string>("inspector:app-selected", callback);
-  }
-
-  listServers(): Promise<SnapOServer[]> {
-    return this.invoke<SnapOServer[]>("listServers");
+  openSelectedApp(appId: string): Promise<void> {
+    return this.invoke("openSelectedApp", { appId });
   }
 
   listTweaks(server: InspectorServerReference): Promise<TweakList> {
@@ -214,32 +174,8 @@ class WebKitNetworkClient implements NetworkClient {
     return listenWebKitEvent<DebugInspectorPreset>("debug:inspector-preset", callback);
   }
 
-  selectedDeviceChanged(deviceId: string): void {
-    void this.invoke<void>("selectedDeviceChanged", { deviceId });
-  }
-
-  onPreferredDevice(callback: (deviceId: string) => void): () => void {
-    return listenWebKitEvent<string>("network:preferred-device", callback);
-  }
-
   nativeInspectorStateChanged(state: NativeInspectorState): void {
     void this.invoke<void>("inspectorStateChanged", state);
-  }
-
-  nativeTweaksStateChanged(state: NativeTweaksState): void {
-    void this.invoke<void>("tweaksStateChanged", state);
-  }
-
-  onNativeSelectedServer(callback: (server: StartStreamInput) => void): () => void {
-    return listenWebKitEvent<StartStreamInput>("network:selected-server", callback);
-  }
-
-  onNativeSelectedInspector(callback: (selection: SelectedAppInspector) => void): () => void {
-    return listenWebKitEvent<SelectedAppInspector>("inspector:selected", callback);
-  }
-
-  onNativeTweaksReset(callback: () => void): () => void {
-    return listenWebKitEvent<boolean>("tweaks:reset", () => callback());
   }
 
   onNativeSearchText(callback: (searchText: string) => void): () => void {
@@ -270,15 +206,15 @@ class WebKitNetworkClient implements NetworkClient {
     return listenWebKitEvent<boolean>("network:export-visible-har", callback);
   }
 
-  private async invoke<T>(command: string, payload?: unknown): Promise<T> {
-    const handler = webKitMessageHandler();
-    if (handler == null) throw new Error("Snap-O native bridge is unavailable");
-    return (await handler.postMessage({ command, payload })) as T;
+  nativeTweaksStateChanged(state: NativeTweaksState): void {
+    void this.invoke<void>("tweaksStateChanged", state);
   }
-}
 
-function listenWebKitEvent<T>(eventName: string, callback: (payload: T) => void): () => void {
-  const listener = (event: Event) => callback((event as CustomEvent<T>).detail);
-  window.addEventListener(`snapo:${eventName}`, listener);
-  return () => window.removeEventListener(`snapo:${eventName}`, listener);
+  onNativeTweaksReset(callback: () => void): () => void {
+    return listenWebKitEvent<boolean>("tweaks:reset", () => callback());
+  }
+
+  private async invoke<T>(command: string, payload?: unknown): Promise<T> {
+    return invokeNative<T>(command, payload);
+  }
 }

@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { LoadingSpinner } from "../../../components/LoadingSpinner";
 import type { InspectableApp } from "../../../network/bridge-types";
-import type { AppLaunchControl } from "../useAppLaunch";
+import type { AppLaunchControl } from "../useAppInspector";
 import { OpenAppButton } from "./OpenAppButton";
 
 export function InspectorWaitingState({

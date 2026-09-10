@@ -36,7 +36,7 @@ describe("empty tweaks inspector", () => {
   };
 
   it("waits for the initial tweak request before showing an empty state", () => {
-    const markup = renderToStaticMarkup(createElement(TweaksInspectorApp, { client, selection }));
+    const markup = renderToStaticMarkup(createElement(TweaksInspectorApp, { client, selection, isConnected: true }));
 
     expect(markup).not.toContain('class="empty-detail"');
     expect(markup).not.toContain("No tweaks on screen");

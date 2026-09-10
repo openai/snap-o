@@ -14,7 +14,8 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
   private weak static var colorPanelOwner: NetworkInspectorWebBridge?
 
   var inspectorStateChangedHandler: ((NetworkInspectorNativeState) -> Void)?
-  var appInspectorStateChangedHandler: ((AppInspectorState) -> Void)?
+  var inspectorHostStateHandler: (() -> InspectorHostState?)?
+  var openSelectedAppHandler: ((String) -> Void)?
   var tweaksStateChangedHandler: ((TweaksInspectorNativeState) -> Void)?
   var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
   var exclusionFiltersHandler: (() -> [String])?
@@ -72,22 +73,12 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     switch command {
     case "appVersion":
       return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-    case "listServers":
-      return try await Self.jsonObject(service.listServers())
-    case "listInspectorApps":
-      return try await Self.jsonObject(service.listInspectorApps())
-    case "openApp":
-      let input = try Self.decode(OpenAppInput.self, from: payload)
-      try await service.openApp(input)
-      return nil
-    case "loadInspectorPreferences":
-      return UserDefaults.standard.string(forKey: "inspectorPreferences")
-    case "saveInspectorPreferences":
-      let input = try Self.decode(InspectorPreferencesInput.self, from: payload)
-      UserDefaults.standard.set(input.value, forKey: "inspectorPreferences")
-      return nil
-    case "appInspectorStateChanged":
-      try appInspectorStateChangedHandler?(Self.decode(AppInspectorState.self, from: payload))
+    case "inspectorHostState":
+      guard let state = inspectorHostStateHandler?() else { throw NetworkInspectorError.invalidBridgeMessage }
+      return try Self.jsonObject(state)
+    case "openSelectedApp":
+      let input = try Self.decode(SelectedAppInput.self, from: payload)
+      openSelectedAppHandler?(input.appId)
       return nil
     case "listTweaks":
       let reference = try Self.decode(InspectorServerReference.self, from: payload)
@@ -154,8 +145,6 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
       return try Self.jsonObject(saveFile(Self.decode(NetworkSaveFileInput.self, from: payload)))
     case "debugInspectorPreset":
       return "live"
-    case "selectedDeviceChanged":
-      return nil
     case "inspectorStateChanged":
       try inspectorStateChangedHandler?(
         Self.decode(NetworkInspectorNativeState.self, from: payload)
@@ -295,8 +284,8 @@ final class NetworkInspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply
     return try JSONDecoder().decode(type, from: data)
   }
 
-  private struct InspectorPreferencesInput: Decodable {
-    let value: String
+  private struct SelectedAppInput: Decodable {
+    let appId: String
   }
 
   private struct StreamIdentifier: Decodable {

@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import type { InspectableApp } from "../../network/bridge-types";
 import { DetailContent } from "./components/DetailPane";
-import type { AppLaunchControl } from "../app-inspector/useAppLaunch";
+import type { AppLaunchControl } from "../app-inspector/useAppInspector";
 import { Sidebar } from "./components/Sidebar";
 import type { NetworkInspectorModel } from "./hooks/useNetworkInspectorModel";
 import { usePersistentSplitPane } from "./hooks/usePersistentSplitPane";

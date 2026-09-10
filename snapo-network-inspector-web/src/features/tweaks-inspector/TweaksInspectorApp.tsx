@@ -14,7 +14,7 @@ import type {
 } from "../../network/bridge-types";
 import type { NativeColorPanelChange, NetworkClient } from "../../network/client";
 import { InspectorWaitingState } from "../app-inspector/components/InspectorWaitingState";
-import type { AppLaunchControl } from "../app-inspector/useAppLaunch";
+import type { AppLaunchControl } from "../app-inspector/useAppInspector";
 import { TweakUpdateQueue } from "./tweak-update-queue";
 
 interface TweakSection {
@@ -42,13 +42,13 @@ export function TweaksInspectorApp({
   selection,
   selectedApp,
   appLaunch,
-  isConnected = true
+  isConnected
 }: {
   client: NetworkClient;
   selection: SelectedAppInspector;
   selectedApp?: InspectableApp | null;
   appLaunch?: AppLaunchControl | null;
-  isConnected?: boolean;
+  isConnected: boolean;
 }): JSX.Element {
   const server = selection.server;
   const connection = useMemo(() => ({ server, isConnected }), [isConnected, server]);

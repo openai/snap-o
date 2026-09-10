@@ -63,13 +63,7 @@ actor NetworkInspectorService {
     }
   }
 
-  func listServers() async -> [NetworkInspectorServer] {
-    guard !isStopped else { return [] }
-    await refresh()
-    return currentServers()
-  }
-
-  func listInspectorApps() async -> [InspectableApp] {
+  func discoverInspectors() async -> InspectorDiscoverySnapshot {
     await refresh()
     let tweakApps = await tweaksService.currentApps()
     let networkEndpoints = servers.values.map { state in
@@ -124,7 +118,7 @@ actor NetworkInspectorService {
         }
       )
     }
-    return orderedInspectorApps(apps)
+    return InspectorDiscoverySnapshot(apps: orderedInspectorApps(apps), networkServers: currentServers())
   }
 
   func openApp(_ input: OpenAppInput) async throws {

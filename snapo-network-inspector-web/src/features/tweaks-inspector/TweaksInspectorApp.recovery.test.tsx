@@ -29,7 +29,7 @@ describe("Tweaks connection recovery", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     client = {
-      openApp: vi.fn(async () => {}),
+      openSelectedApp: vi.fn(async () => {}),
       listTweaks: vi.fn(async () => response),
       startTweakStream: vi.fn(async () => ({ streamId: "stream-1" })),
       stopTweakStream: vi.fn(async () => {}),
@@ -72,12 +72,7 @@ describe("Tweaks connection recovery", () => {
           appLaunch={{
             pending: false,
             error: null,
-            open: () =>
-              void client.openApp!({
-                deviceId: selected.server.deviceId,
-                packageName: "com.example.demo",
-                androidUserId: 0
-              })
+            open: () => void client.openSelectedApp(selected.appId)
           }}
           isConnected={isConnected}
         />,
@@ -216,11 +211,7 @@ describe("Tweaks connection recovery", () => {
     const openButton = container.querySelector<HTMLButtonElement>(".inspector-open-app")!;
     expect(openButton.textContent).toBe("Open Demo");
     await act(async () => openButton.click());
-    expect(client.openApp).toHaveBeenCalledExactlyOnceWith({
-      deviceId: "phone",
-      packageName: "com.example.demo",
-      androidUserId: 0
-    });
+    expect(client.openSelectedApp).toHaveBeenCalledExactlyOnceWith(selection.appId);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);

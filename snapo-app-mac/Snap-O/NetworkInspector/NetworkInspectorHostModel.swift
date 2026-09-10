@@ -11,7 +11,6 @@ final class NetworkInspectorHostModel {
     static let hiddenHosts = "networkInspector.hiddenHosts"
   }
 
-  private(set) var servers: [NetworkInspectorServer] = []
   private(set) var selectedServer: NetworkInspectorServer?
   private(set) var inspectorApps: [InspectableApp] = []
   private(set) var selectedInspector: SelectedAppInspector?
@@ -30,37 +29,37 @@ final class NetworkInspectorHostModel {
   private(set) var isPageReady = false
 
   @ObservationIgnored let webContainer: NetworkInspectorWebContainer
+  @ObservationIgnored private let appInspector: AppInspectorModel
   @ObservationIgnored private var outputTask: Task<Void, Never>?
   @ObservationIgnored private var exclusionFiltersObserver: NSObjectProtocol?
 
   init(service: NetworkInspectorService) {
     let bridge = NetworkInspectorWebBridge(service: service)
     webContainer = NetworkInspectorWebContainer(bridge: bridge)
-
-    bridge.inspectorStateChangedHandler = { [weak self] state in
-      self?.apply(state)
-    }
-    bridge.appInspectorStateChangedHandler = { [weak self] state in
-      self?.apply(state)
-    }
-    bridge.tweaksStateChangedHandler = { [weak self] state in
-      self?.apply(state)
-    }
-    bridge.exclusionFiltersHandler = { [weak self] in
-      self?.exclusionFilters ?? []
-    }
-    bridge.addExclusionFilterHandler = { [weak self] filter in
-      self?.addExclusionFilter(filter)
-    }
-    bridge.removeExclusionFilterHandler = { [weak self] filter in
-      self?.removeExclusionFilter(filter)
-    }
+    appInspector = AppInspectorModel(
+      discover: { await service.discoverInspectors() },
+      openApp: { try await service.openApp($0) }
+    )
+    bridge.inspectorHostStateHandler = { [weak self] in self?.appInspector.snapshot.pageState }
+    bridge.openSelectedAppHandler = { [weak self] appId in self?.appInspector.openSelectedApp(appId: appId) }
+    bridge.inspectorStateChangedHandler = { [weak self] state in self?.apply(state) }
+    bridge.tweaksStateChangedHandler = { [weak self] state in self?.apply(state) }
+    bridge.exclusionFiltersHandler = { [weak self] in self?.exclusionFilters ?? [] }
+    bridge.addExclusionFilterHandler = { [weak self] filter in self?.addExclusionFilter(filter) }
+    bridge.removeExclusionFilterHandler = { [weak self] filter in self?.removeExclusionFilter(filter) }
     webContainer.pageReadinessChangedHandler = { [weak self] isReady in
       guard let self else { return }
       isPageReady = isReady
       if isReady {
         sendPageEvent(name: "network:exclusion-filters", payload: exclusionFilters)
+        sendPageEvent(name: "inspector:state", payload: appInspector.snapshot.pageState)
       }
+    }
+    appInspector.stateChanged = { [weak self] snapshot in
+      guard let self else { return }
+      apply(snapshot.state)
+      selectedServer = snapshot.pageState.networkServer
+      sendPageEvent(name: "inspector:state", payload: snapshot.pageState)
     }
     exclusionFiltersObserver = NotificationCenter.default.addObserver(
       forName: Keys.exclusionFiltersDidChange,
@@ -71,7 +70,9 @@ final class NetworkInspectorHostModel {
         self?.reloadExclusionFilters()
       }
     }
+    apply(appInspector.snapshot.state)
     webContainer.start()
+    appInspector.start()
 
     outputTask = Task { [weak self] in
       await self?.consumeOutputs(from: service)
@@ -85,27 +86,20 @@ final class NetworkInspectorHostModel {
       NotificationCenter.default.removeObserver(exclusionFiltersObserver)
       self.exclusionFiltersObserver = nil
     }
+    appInspector.stop()
     webContainer.stop()
   }
 
   func selectApp(_ app: InspectableApp) {
-    sendPageEvent(name: "inspector:app-selected", payload: app.id)
+    appInspector.selectApp(app)
   }
 
   func selectInspector(_ app: InspectableApp, option: AppInspectorOption) {
-    sendPageEvent(
-      name: "inspector:selected",
-      payload: SelectedAppInspector(
-        appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion
-      )
-    )
+    appInspector.selectInspector(app, option: option)
   }
 
   func reconnectToNewProcess() {
-    guard let app = replacementApp,
-          let option = app.inspectors.first(where: { $0.kind == preferredInspectorKind })
-    else { return }
-    selectInspector(app, option: option)
+    appInspector.reconnectToNewProcess()
   }
 
   func setSearchText(_ searchText: String) {
@@ -156,13 +150,7 @@ final class NetworkInspectorHostModel {
   }
 
   private func apply(_ state: NetworkInspectorNativeState) {
-    servers = state.servers
     guard let displayedNetwork, displayedNetwork.server == state.selectedServer else { return }
-    selectedServer = state.selectedServer.flatMap { selection in
-      state.servers.first {
-        $0.deviceId == selection.deviceId && $0.socketName == selection.socketName
-      }
-    }
     searchText = state.searchText
     sortNewestFirst = state.sortNewestFirst
     hasClearableItems = state.hasClearableItems

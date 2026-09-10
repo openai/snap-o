@@ -4,7 +4,7 @@ import SnapODeviceClient
 typealias AppInspectorKind = InspectorKind
 typealias InspectorServerReference = NetworkServerReference
 
-struct AppInspectorOption: Codable, Identifiable {
+struct AppInspectorOption: Equatable, Codable, Identifiable {
   let kind: AppInspectorKind
   let server: InspectorServerReference
   let protocolVersion: Int?
@@ -14,7 +14,7 @@ struct AppInspectorOption: Codable, Identifiable {
   }
 }
 
-struct InspectableApp: Codable, Identifiable {
+struct InspectableApp: Equatable, Codable, Identifiable {
   let id: String
   let name: String
   let packageName: String?
@@ -26,20 +26,25 @@ struct InspectableApp: Codable, Identifiable {
   let inspectors: [AppInspectorOption]
 }
 
+struct InspectorDiscoverySnapshot {
+  let apps: [InspectableApp]
+  let networkServers: [NetworkInspectorServer]
+}
+
 struct OpenAppInput: Codable {
   let deviceId: String
   let packageName: String
   let androidUserId: Int
 }
 
-struct SelectedAppInspector: Codable {
+struct SelectedAppInspector: Equatable, Codable {
   let appId: String
   let kind: AppInspectorKind
   let server: InspectorServerReference
   let protocolVersion: Int?
 }
 
-struct AppInspectorState: Codable {
+struct AppInspectorState: Equatable, Codable {
   let apps: [InspectableApp]
   let selection: SelectedAppInspector?
   let displayedNetwork: SelectedAppInspector?
@@ -164,7 +169,7 @@ struct NetworkInspectorServer: Codable {
   let socketName: String
   let deviceDisplayTitle: String
   let displayName: String
-  let isConnected: Bool
+  var isConnected: Bool
   let hasAppInfo: Bool
   let pid: Int?
   let protocolVersion: Int?
@@ -177,7 +182,6 @@ struct NetworkInspectorServer: Codable {
 }
 
 struct NetworkInspectorNativeState: Codable {
-  let servers: [NetworkInspectorServer]
   let selectedServer: NetworkServerReference?
   let searchText: String
   let sortNewestFirst: Bool

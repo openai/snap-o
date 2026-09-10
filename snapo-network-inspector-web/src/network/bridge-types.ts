@@ -41,12 +41,6 @@ export interface InspectableApp {
   inspectors: AppInspectorOption[];
 }
 
-export interface OpenAppInput {
-  deviceId: string;
-  packageName: string;
-  androidUserId: number;
-}
-
 export interface SelectedAppInspector {
   appId: string;
   kind: AppInspectorKind;
@@ -54,15 +48,15 @@ export interface SelectedAppInspector {
   protocolVersion?: number | null;
 }
 
-export interface AppInspectorState {
-  apps: InspectableApp[];
+export interface InspectorHostState {
+  revision: number;
   selection: SelectedAppInspector | null;
-  displayedNetwork: SelectedAppInspector | null;
-  displayedTweaks: SelectedAppInspector | null;
   selectedApp: InspectableApp | null;
-  replacementApp: InspectableApp | null;
-  preferredKind: AppInspectorKind | null;
-  isRestoring: boolean;
+  networkServer: SnapOServer | null;
+  preferredKind: AppInspectorKind;
+  isConnected: boolean;
+  isWaiting: boolean;
+  appLaunch?: { pending: boolean; error?: string | null } | null;
 }
 
 export interface BezierValue {
@@ -135,7 +129,6 @@ export interface InvokeTweakActionInput {
 }
 
 export interface NativeInspectorState {
-  servers: SnapOServer[];
   selectedServer: StartStreamInput | null;
   searchText: string;
   sortNewestFirst: boolean;
