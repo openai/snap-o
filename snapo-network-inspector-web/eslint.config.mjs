@@ -28,7 +28,20 @@ export default defineConfig(
     plugins: {
       "react-hooks": reactHooks
     },
-    rules: reactHooks.configs.recommended.rules
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["react", "react/*", "react-dom", "react-dom/*", "preact/compat", "preact/compat/*"],
+              message: "Use preact, preact/hooks, and native DOM events."
+            }
+          ]
+        }
+      ]
+    }
   },
   prettier
 );

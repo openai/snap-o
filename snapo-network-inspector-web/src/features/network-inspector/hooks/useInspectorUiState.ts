@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "preact/compat";
+import { useCallback, useMemo, useState } from "preact/hooks";
 
 interface InspectorUiPreferences {
   sections: Record<string, boolean>;

@@ -3,7 +3,7 @@ Snap-O is a public, open-source Android inspection tool.
 ## Repository Layout
 
 - `snapo-app-mac/`: macOS app and shared Swift device client.
-- `snapo-network-inspector-web/`: Preact UI embedded in the macOS app.
+- `snapo-network-inspector-web/`: Web UI embedded in the macOS app.
 - `snapo-link-android/`: Android libraries and sample apps.
 - `contracts/`: shared protocol definitions and fixtures.
 - `docs/`: Markdown sources for GitHub Pages. See `docs/README.md` for the build and authoring conventions.

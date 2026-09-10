@@ -1,10 +1,61 @@
 // @vitest-environment jsdom
 import { renderToStaticMarkup } from "preact-render-to-string";
-import { describe, expect, it } from "vitest";
+import { render } from "preact";
+import { act } from "preact/test-utils";
+import { describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
 import type { RequestRecord } from "../../../network/cdp";
 import type { InspectorUiState } from "../hooks/useInspectorUiState";
 import { RequestDetail } from "./RequestDetail";
+import { SseEventList } from "./StreamEvents";
+import { useInspectorUiState } from "../hooks/useInspectorUiState";
+import * as payload from "../../../network/payload";
+
+describe("stream event rendering", () => {
+  it("reuses existing payloads on append while updating copy feedback and pretty mode", async () => {
+    vi.useFakeTimers();
+    const makePayload = vi.spyOn(payload, "makeBodyPayload");
+    const container = document.createElement("div");
+    const client = { copyText: vi.fn(async () => {}) } as unknown as NetworkClient;
+    const events = Array.from({ length: 100 }, (_, index) => ({
+      sequence: index + 1,
+      timestamp: index,
+      data: `{"item":${index}}`,
+      raw: `data: {"item":${index}}\n\n`
+    }));
+    function Stream({ events }: { events: RequestRecord["streamEvents"] }) {
+      const uiState = useInspectorUiState();
+      return <SseEventList client={client} events={events} status="Streaming" storageKey="stream" uiState={uiState} />;
+    }
+    try {
+      await act(() => render(<Stream events={events} />, container));
+      expect(makePayload).toHaveBeenCalledTimes(100);
+      const firstRow = container.querySelector(".event-row")!;
+      makePayload.mockClear();
+      await act(() => render(<Stream events={[...events, { ...events[0], sequence: 101 }]} />, container));
+      expect(makePayload).toHaveBeenCalledTimes(1);
+      expect(container.querySelectorAll(".event-row")).toHaveLength(101);
+      expect(container.querySelector(".event-row")).toBe(firstRow);
+
+      const toggle = firstRow.querySelector<HTMLButtonElement>(".inline-text-toggle")!;
+      await act(() => toggle.click());
+      expect(toggle.textContent).toBe("RAW");
+      const copy = firstRow.querySelector<HTMLButtonElement>('button[aria-label="Copy"]')!;
+      await act(async () => copy.click());
+      expect(client.copyText).toHaveBeenCalledWith(events[0].data);
+      expect(copy.getAttribute("aria-label")).toBe("Copied");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(copy.getAttribute("aria-label")).toBe("Copy");
+      expect(makePayload).toHaveBeenCalledTimes(1);
+    } finally {
+      act(() => render(null, container));
+      makePayload.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("Response Body loading state", () => {
   it("shows an uncached body as offline instead of loading forever", () => {

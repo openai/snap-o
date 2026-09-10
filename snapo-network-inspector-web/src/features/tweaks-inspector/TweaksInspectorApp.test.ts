@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { createElement, type MouseEvent, type PointerEvent, type ReactElement } from "preact/compat";
+import { createElement, render, type JSX, type VNode } from "preact";
+import { act } from "preact/test-utils";
 import { renderToStaticMarkup } from "preact-render-to-string";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -145,6 +146,30 @@ describe("editable tweak colors", () => {
     expect(markup).not.toContain("tweaks-color-button");
   });
 
+  it("updates browser color edits before commit while preserving alpha", () => {
+    const container = document.createElement("div");
+    const tweak = colorTweak();
+    const onChange = vi.fn();
+    document.body.append(container);
+    try {
+      act(() => render(createElement(TweakColorField, { tweak, onChange }), container));
+      const input = container.querySelector<HTMLInputElement>('input[type="color"]')!;
+      for (const color of ["#112233", "#445566"]) {
+        act(() => {
+          input.value = color;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      }
+      expect(onChange.mock.calls).toEqual([
+        [tweak, "#11223380"],
+        [tweak, "#44556680"]
+      ]);
+    } finally {
+      act(() => render(null, container));
+      container.remove();
+    }
+  });
+
   it("renders an accessible native-panel swatch instead of the HTML color input", () => {
     const markup = renderToStaticMarkup(
       createElement(TweakColorField, {
@@ -201,8 +226,8 @@ describe("enumerated tweak values", () => {
       onClose: () => events.push("close")
     });
 
-    option.props.onPointerDown({ button: 0, preventDefault } as unknown as PointerEvent<HTMLButtonElement>);
-    option.props.onClick({ detail: 1 } as MouseEvent<HTMLButtonElement>);
+    option.props.onPointerDown({ button: 0, preventDefault } as unknown as JSX.TargetedPointerEvent<HTMLButtonElement>);
+    option.props.onClick({ detail: 1 } as JSX.TargetedMouseEvent<HTMLButtonElement>);
 
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(events).toEqual(["change:Dark", "close"]);
@@ -214,7 +239,7 @@ describe("enumerated tweak values", () => {
     const preventDefault = vi.fn();
     const option = enumListboxOption(1, { onChange, onClose });
 
-    option.props.onPointerDown({ button: 2, preventDefault } as unknown as PointerEvent<HTMLButtonElement>);
+    option.props.onPointerDown({ button: 2, preventDefault } as unknown as JSX.TargetedPointerEvent<HTMLButtonElement>);
 
     expect(preventDefault).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
@@ -227,10 +252,10 @@ describe("enumerated tweak values", () => {
     const current = enumListboxOption(0, { onChange, onClose });
     const changed = enumListboxOption(1, { onChange, onClose });
 
-    current.props.onClick({ detail: 0 } as MouseEvent<HTMLButtonElement>);
+    current.props.onClick({ detail: 0 } as JSX.TargetedMouseEvent<HTMLButtonElement>);
     expect(onChange).not.toHaveBeenCalled();
 
-    changed.props.onClick({ detail: 0 } as MouseEvent<HTMLButtonElement>);
+    changed.props.onClick({ detail: 0 } as JSX.TargetedMouseEvent<HTMLButtonElement>);
 
     expect(onChange).toHaveBeenCalledExactlyOnceWith(enumTweak(), "Dark");
     expect(onClose).toHaveBeenCalledTimes(2);
@@ -675,9 +700,9 @@ function enumListboxOption(
     onChange(tweak: TweakValueDescriptor, value: TweakValueDescriptor["value"]): void;
     onClose(): void;
   }
-): ReactElement<{
-  onPointerDown(event: PointerEvent<HTMLButtonElement>): void;
-  onClick(event: MouseEvent<HTMLButtonElement>): void;
+): VNode<{
+  onPointerDown(event: JSX.TargetedPointerEvent<HTMLButtonElement>): void;
+  onClick(event: JSX.TargetedMouseEvent<HTMLButtonElement>): void;
 }> {
   const listbox = TweakEnumListbox({
     id: "appearance-theme-options",

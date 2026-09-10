@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "preact/compat";
+import { type Dispatch, type StateUpdater, useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { createNetworkClient, type NetworkClient } from "../../../network/client";
 import { bodyLoadPriority, RequestBodyLoader, type BodyLoadJob } from "../../../network/body-loader";
 import { hydratedBodyRetentionLimitBytes, RequestBodyCache } from "../../../network/body-retention";
@@ -522,7 +522,7 @@ function hydrateCachedBodies(records: InspectorRecord[], bodyCache: RequestBodyC
 function selectDeviceServer(
   deviceId: string,
   servers: SnapOServer[],
-  setPreferredServer: Dispatch<SetStateAction<ServerId | null>>
+  setPreferredServer: Dispatch<StateUpdater<ServerId | null>>
 ): void {
   setPreferredServer((current) => {
     if (current?.deviceId === deviceId) return current;

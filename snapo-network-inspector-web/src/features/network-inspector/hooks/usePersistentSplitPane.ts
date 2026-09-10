@@ -1,14 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type PointerEvent,
-  type RefObject
-} from "preact/compat";
+import type { JSX, RefObject } from "preact";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 
 const sidebarWidthStorageKey = "snapo.networkInspector.sidebarWidth.v1";
 const defaultSidebarWidthRatio = 0.28;
@@ -23,10 +14,10 @@ export interface PersistentSplitPane {
   sidebarWidth: number;
   minSidebarWidth: number;
   maxSidebarWidth: number;
-  beginResize(event: PointerEvent<HTMLDivElement>): void;
-  continueResize(event: PointerEvent<HTMLDivElement>): void;
-  endResize(event: PointerEvent<HTMLDivElement>): void;
-  resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>): void;
+  beginResize(event: JSX.TargetedPointerEvent<HTMLDivElement>): void;
+  continueResize(event: JSX.TargetedPointerEvent<HTMLDivElement>): void;
+  endResize(event: JSX.TargetedPointerEvent<HTMLDivElement>): void;
+  resizeWithKeyboard(event: JSX.TargetedKeyboardEvent<HTMLDivElement>): void;
 }
 
 export function usePersistentSplitPane(): PersistentSplitPane {
@@ -75,7 +66,7 @@ export function usePersistentSplitPane(): PersistentSplitPane {
   );
 
   const beginResize = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
+    (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       document.body.classList.add("split-pane-resizing");
@@ -85,14 +76,14 @@ export function usePersistentSplitPane(): PersistentSplitPane {
   );
 
   const continueResize = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
+    (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
       if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
       resizeFromClientX(event.clientX);
     },
     [resizeFromClientX]
   );
 
-  const endResize = useCallback((event: PointerEvent<HTMLDivElement>) => {
+  const endResize = useCallback((event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -100,7 +91,7 @@ export function usePersistentSplitPane(): PersistentSplitPane {
   }, []);
 
   const resizeWithKeyboard = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
+    (event: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
       switch (event.key) {
         case "ArrowLeft":
           event.preventDefault();

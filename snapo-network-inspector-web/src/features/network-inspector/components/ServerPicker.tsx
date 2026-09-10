@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { ChevronDown } from "lucide-preact";
-import { useEffect, useId, useRef, useState } from "preact/compat";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import type { SnapOServer } from "../../../network/bridge-types";
 import type { ServerId } from "../../../network/cdp";
 

@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { BezierEditor } from "./BezierEditor";
 import { ChevronDown, RotateCcw } from "lucide-preact";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "preact/compat";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import type {
   AppInspectorOption,
   InspectableApp,
@@ -590,7 +590,7 @@ function TweakControl({
             max={tweak.max}
             step={tweak.step ?? (tweak.type === "int" ? 1 : 0.01)}
             value={Number(tweak.value)}
-            onChange={(event) => onChange(tweak, Number(event.currentTarget.value))}
+            onInput={(event) => onChange(tweak, Number(event.currentTarget.value))}
           />
         ) : null}
         <span className="tweaks-control-field">
@@ -609,7 +609,7 @@ function TweakControl({
           type="text"
           aria-label={tweak.name}
           value={String(tweak.value)}
-          onChange={(event) => onChange(tweak, event.currentTarget.value)}
+          onInput={(event) => onChange(tweak, event.currentTarget.value)}
         />
       ) : null}
     </div>
@@ -695,7 +695,7 @@ export function TweakField({
         max={tweak.max}
         step={tweak.step ?? (tweak.type === "int" ? 1 : 0.01)}
         value={Number(tweak.value)}
-        onChange={(event) => {
+        onInput={(event) => {
           const value = Number(event.currentTarget.value);
           if (event.currentTarget.validity.valid && Number.isFinite(value)) {
             onChange(tweak, value);
@@ -715,7 +715,7 @@ function TweakEnumField({
   tweak: TweakValueDescriptor;
   onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
 }): JSX.Element {
-  const [listboxStyle, setListboxStyle] = useState<CSSProperties | null>(null);
+  const [listboxStyle, setListboxStyle] = useState<JSX.CSSProperties | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
@@ -787,7 +787,7 @@ function TweakEnumField({
       className="tweaks-select-wrap"
       ref={rootRef}
       onKeyDown={navigate}
-      onBlur={(event) => {
+      onFocusOut={(event) => {
         if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget))
           setListboxStyle(null);
       }}
@@ -820,7 +820,7 @@ export function TweakEnumListbox({
   onClose
 }: {
   id: string;
-  style?: CSSProperties;
+  style?: JSX.CSSProperties;
   tweak: TweakValueDescriptor;
   onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
   onClose(): void;
@@ -887,7 +887,7 @@ export function TweakColorField({
           type="color"
           aria-label={`${tweak.name} color`}
           value={committed.slice(0, 7)}
-          onChange={(event) => {
+          onInput={(event) => {
             onChange(tweak, tweakColorWithPreservedAlpha(committed, event.currentTarget.value));
           }}
         />
@@ -898,7 +898,7 @@ export function TweakColorField({
         aria-label={`${tweak.name} hex`}
         maxLength={9}
         value={value}
-        onChange={(event) => {
+        onInput={(event) => {
           const next = event.currentTarget.value;
           setDraft({ committed, value: next });
 

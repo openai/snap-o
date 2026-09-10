@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useLayoutEffect, useRef, type KeyboardEvent } from "preact/compat";
+import { useLayoutEffect, useRef } from "preact/hooks";
 
 export interface ContextMenuState {
   x: number;
@@ -51,7 +51,7 @@ export function ContextMenu({
     if (autoFocus) menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, [autoFocus, menu]);
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
     // Callers dismiss menus on window keydown. Let the menu finish handling its own keys first.
     event.stopPropagation();
     if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;

@@ -2,7 +2,7 @@
 
 This project contains the Preact App Inspector renderer embedded in Snap-O's native macOS app. The Swift app hosts the built files in a `WKWebView` and provides device, Network Inspector, and Snap-O Tweaks operations through the WebKit message bridge in `src/network/client.ts`.
 
-Components use `preact/compat` to preserve React-compatible input events and memoization. Icons use `lucide-preact`; React and ReactDOM are not runtime dependencies.
+Components use `preact` and `preact/hooks` with native DOM events. Text inputs use `onInput` for live edits. Expensive render trees use `useMemo` to retain unchanged children. Icons use `lucide-preact`; React, ReactDOM, and `preact/compat` are not used.
 
 The renderer also retains its HTTP transport so it can run in a browser-hosted environment. It contains only portable web UI code.
 

@@ -1,6 +1,6 @@
-import type { JSX } from "preact";
+import type { JSX, ComponentChildren } from "preact";
 import { Check, Copy, Download } from "lucide-preact";
-import { useEffect, useMemo, useState, type ReactNode } from "preact/compat";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import type { NetworkClient } from "../../../network/client";
 import {
   bodyMetadata as payloadMetadata,
@@ -158,7 +158,7 @@ function JsonOutline({
   uiState: InspectorUiState;
   depth?: number;
   initiallyExpanded: boolean;
-  trailing?: ReactNode;
+  trailing?: ComponentChildren;
 }): JSX.Element {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const expandable = node.children.length > 0;
@@ -316,14 +316,14 @@ function JsonInlinePreview({ node }: { node: JsonNode }): JSX.Element {
   return <span className="json-preview">{inlinePreviewParts(node, 120)}</span>;
 }
 
-function inlinePreviewParts(node: JsonNode, maxLength: number): ReactNode {
+function inlinePreviewParts(node: JsonNode, maxLength: number): ComponentChildren {
   const fullText = inlinePreviewText(node);
   if (fullText.length > maxLength)
     return <span className="json-punctuation">{`${fullText.slice(0, Math.max(0, maxLength - 3))}...`}</span>;
   return renderInlinePreviewNode(node);
 }
 
-function renderInlinePreviewNode(node: JsonNode): ReactNode {
+function renderInlinePreviewNode(node: JsonNode): ComponentChildren {
   if (node.type === "object") {
     if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
     return (

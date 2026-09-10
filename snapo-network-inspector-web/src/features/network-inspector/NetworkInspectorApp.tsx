@@ -1,5 +1,4 @@
 import type { JSX } from "preact";
-import { type CSSProperties } from "preact/compat";
 import type {
   AppInspectorKind,
   AppInspectorOption,
@@ -43,7 +42,11 @@ export function NetworkInspectorApp({
   useSearchHighlights(containerRef, model.searchText);
 
   return (
-    <div className="app-shell" ref={containerRef} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+    <div
+      className="app-shell"
+      ref={containerRef}
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as JSX.CSSProperties}
+    >
       <Sidebar
         servers={model.servers}
         selectedServer={model.selectedServer}

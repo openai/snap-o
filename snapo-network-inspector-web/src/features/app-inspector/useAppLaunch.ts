@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "preact/compat";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { InspectableApp, OpenAppInput } from "../../network/bridge-types";
 import type { NetworkClient } from "../../network/client";
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "preact/test-utils";
-import { createRoot } from "preact/compat/client";
+import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppInspectorKind, InspectableApp, TweakList } from "./network/bridge-types";
 import type { NetworkClient } from "./network/client";
@@ -28,7 +28,6 @@ function app(pid: number, kind: AppInspectorKind = "tweaks"): InspectableApp {
 }
 
 describe("retained Tweaks view", () => {
-  let root: ReturnType<typeof createRoot>;
   let container: HTMLDivElement;
   let discovered: InspectableApp[];
   let selectApp: (id: string) => void;
@@ -63,12 +62,11 @@ describe("retained Tweaks view", () => {
     } as unknown as NetworkClient;
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
   });
 
   afterEach(async () => {
     await act(async () => {
-      await root.unmount();
+      await render(null, container);
     });
     container.remove();
     vi.useRealTimers();
@@ -82,7 +80,7 @@ describe("retained Tweaks view", () => {
     };
     discovered = [app(10, "network")];
     vi.mocked(mocks.client.listInspectorApps).mockResolvedValueOnce([starter, ...discovered]);
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -92,7 +90,7 @@ describe("retained Tweaks view", () => {
   }
 
   it("preserves the real Tweaks view through disconnect and PID replacement", async () => {
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -188,7 +186,7 @@ describe("retained Tweaks view", () => {
 
   it("keeps a successfully loaded empty view through disconnect", async () => {
     vi.mocked(mocks.client.listTweaks).mockResolvedValue({ tweaks: [] });
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -205,7 +203,7 @@ describe("retained Tweaks view", () => {
     { packageName: "com.example.other", processName: "com.example.other", androidUserId: 0 },
     { packageName: "com.example.demo", processName: "com.example.demo", androidUserId: 10 }
   ])("does not show another app or profile's cached values while loading", async (target) => {
-    await act(() => root.render(<App />));
+    await act(() => render(<App />, container));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
