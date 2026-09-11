@@ -5,10 +5,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.io.OutputStream
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** One request and its response. A handler may send exactly one response. */
 class InspectorCall internal constructor(
@@ -49,13 +53,17 @@ class InspectorCall internal constructor(
         }
     }
 
-    /** The session and its child coroutines end when the client disconnects or the handler returns. */
+    /** Heartbeats and child coroutines end with the session. Set heartbeatInterval to null to disable heartbeats. */
     suspend fun respondSse(
         statusCode: Int = 200,
         headers: Map<String, String> = emptyMap(),
         chunked: Boolean = true,
+        heartbeatInterval: Duration? = 30.seconds,
         block: suspend InspectorSseSession.() -> Unit,
     ) = coroutineScope {
+        require(heartbeatInterval == null || heartbeatInterval.isPositive() && heartbeatInterval.isFinite()) {
+            "Heartbeat interval must be positive and finite, or null"
+        }
         onStreaming()
         startStream("text/event-stream; charset=utf-8", statusCode, headers, chunked)
         val scope = this
@@ -73,6 +81,14 @@ class InspectorCall internal constructor(
             coroutineScope {
                 val session =
                     InspectorSseSession(this, this@InspectorCall, connection.output, chunked, connection::close)
+                if (heartbeatInterval != null) {
+                    launch {
+                        while (isActive) {
+                            delay(heartbeatInterval)
+                            session.heartbeat()
+                        }
+                    }
+                }
                 try {
                     session.block()
                 } finally {

@@ -9,7 +9,7 @@ The runtime provides:
 - HTTP request parsing with configurable body limits, methods, and protocol versions.
 - Host and Origin validation, CORS headers, and HTTP response writing.
 - A common debuggable-app and explicit release opt-in check.
-- Optional SSE event and heartbeat framing.
+- SSE event framing and automatic heartbeat comments.
 
 Each inspector owns its routes, JSON payloads, startup provider, release metadata key, and event delivery policy. Network retains its ordered event queue and replay history. Tweaks retains its latest-snapshot publisher and main-thread updates.
 
@@ -73,7 +73,20 @@ The default request policy accepts HTTP/1.1, caps bodies at 64 KiB, and requires
 
 ### Streaming
 
-SSE handlers run in a coroutine scope. `send(data, event, id)` frames an event, and `heartbeat()` writes a keep-alive comment. The inspector chooses event sources, heartbeat intervals, buffering, and replay policies. Cancelling the server or disconnecting the client closes the socket and cancels the producer and its child coroutines. Child coroutines also end when the handler returns. Use suspending operations or `runInterruptible` for blocking event sources.
+SSE handlers run in a coroutine scope. `send(data, event, id)` frames an event. The runtime sends a `: keep-alive` comment every 30 seconds automatically, including while the producer waits for data. Writes are serialized with events, and comments do not become frontend message events.
+
+Both `sse` and `respondSse` accept `heartbeatInterval`. Use a positive, finite Kotlin `Duration` to override the interval, or `null` to disable automatic heartbeats. `heartbeat()` still writes one immediate comment when needed:
+
+```kotlin
+sse("/events", heartbeatInterval = 15.seconds) {
+    example.events.collect { send(it, event = "sample") }
+}
+sse("/manual-events", heartbeatInterval = null) {
+    example.events.collect { send(it, event = "sample") }
+}
+```
+
+The inspector chooses event sources, buffering, and replay policies. Cancelling the server or disconnecting the client closes the socket and cancels the producer, heartbeat job, and other child coroutines. They also end when the handler returns. Use suspending operations or `runInterruptible` for blocking event sources. Network, Tweaks, and Example all use the shared 30-second default; none schedules its own heartbeat loop.
 
 Use `respondSse` inside an ordinary route when streaming depends on request headers or setup can fail before sending response headers. It supports status and headers such as Network's interception `Location`. Its default is chunked HTTP/1.1 framing; `chunked = false` preserves protocols that end their body by closing the connection. `InspectorSseSession.write` sends an already-framed SSE event for inspectors that queue encoded bytes.
 

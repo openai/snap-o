@@ -60,7 +60,7 @@ After publication, replace the frontend's `file:vendor/host.tgz` dependency with
 - `app/`: a tiny Android app used to try the tool. Its main code has no dependency on the tool.
 - `example-tool/build.gradle.kts`: runtime dependency and plugin configuration. The plugin generates the descriptor and frontend ZIP.
 - `ExampleInitProvider.kt`: process-scoped startup and the release opt-in check.
-- `ExampleServer.kt`: GET returns a synthetic snapshot, POST increments a fake counter, and SSE streams snapshots from a `StateFlow`. The runtime handles HTTP preflight, browser access, errors, and cleanup. The counter resets when the app process restarts.
+- `ExampleServer.kt`: GET returns a synthetic snapshot, POST increments a fake counter, and SSE streams snapshots from a `StateFlow`. The runtime handles HTTP preflight, browser access, errors, and cleanup. The counter resets when the app process restarts. The runtime automatically sends heartbeat comments every 30 seconds while waiting for changes.
 - `frontend/src/snapshot.ts`: protocol validation, snapshot requests, the increment command, and event-stream cleanup on connection changes. Revisions prevent a late GET response from replacing newer streamed data.
 - `frontend/src/main.ts`: native toolbar search/refresh, copy, save, and color-picker APIs.
 

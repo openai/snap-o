@@ -61,7 +61,6 @@ internal fun applyTweakBatch(
 
 private const val MaxBodyBytes = 64 * 1024
 private const val MainThreadTimeoutMillis = 5_000L
-private const val EventHeartbeatSeconds = 15L
 
 internal class TweakHttpServer(
     private val mainHandler: Handler = Handler(Looper.getMainLooper()),
@@ -158,10 +157,7 @@ internal class TweakHttpServer(
             respondSse(chunked = false) {
                 sendTweaks(subscription.initial)
                 while (isActive) {
-                    val snapshot = runInterruptible {
-                        subscription.events.poll(EventHeartbeatSeconds, TimeUnit.SECONDS)
-                    }
-                    if (snapshot == null) heartbeat() else sendTweaks(snapshot)
+                    sendTweaks(runInterruptible { subscription.events.take() })
                 }
             }
         }

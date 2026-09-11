@@ -3,7 +3,6 @@ package com.openai.snapo.network
 import com.openai.snapo.inspector.InspectorSse
 import com.openai.snapo.inspector.InspectorSseSession
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.withTimeoutOrNull
 
 /** One bounded SSE response. Its socket also defines the interception owner's lifetime. */
 internal class NetworkEventStream {
@@ -50,9 +49,9 @@ internal class NetworkEventStream {
         }
         try {
             while (!isClosed) {
-                val event = withTimeoutOrNull(10_000) { events.receive() }
-                if (event != null) synchronized(lock) { queuedBytes -= event.size }
-                session.write(event ?: Heartbeat)
+                val event = events.receive()
+                synchronized(lock) { queuedBytes -= event.size }
+                session.write(event)
             }
         } finally {
             close()
@@ -72,4 +71,3 @@ internal fun sseEvent(text: String, event: String? = null, sequence: Long? = nul
 }
 
 private const val MaxQueuedBytes = 32 * 1024 * 1024
-private val Heartbeat = InspectorSse.heartbeat()

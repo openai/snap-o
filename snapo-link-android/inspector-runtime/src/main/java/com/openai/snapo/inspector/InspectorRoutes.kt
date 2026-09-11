@@ -1,6 +1,8 @@
 package com.openai.snapo.inspector
 
 import java.net.URLDecoder
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** Routes are registered once, before the server starts. JSON serialization belongs to the inspector. */
 class InspectorRoutes internal constructor() {
@@ -20,8 +22,12 @@ class InspectorRoutes internal constructor() {
     fun patch(path: String, handler: suspend InspectorCall.() -> Unit) = route("PATCH", path, handler)
     fun delete(path: String, handler: suspend InspectorCall.() -> Unit) = route("DELETE", path, handler)
 
-    fun sse(path: String, handler: suspend InspectorSseSession.() -> Unit) {
-        get(path) { respondSse(block = handler) }
+    /** Sends a heartbeat comment every 30 seconds by default. Null disables automatic heartbeats. */
+    fun sse(path: String, heartbeatInterval: Duration? = 30.seconds, handler: suspend InspectorSseSession.() -> Unit) {
+        require(heartbeatInterval == null || heartbeatInterval.isPositive() && heartbeatInterval.isFinite()) {
+            "Heartbeat interval must be positive and finite, or null"
+        }
+        get(path) { respondSse(heartbeatInterval = heartbeatInterval, block = handler) }
     }
 
     /** A whole path segment can be a parameter, such as /requests/{id}. */
