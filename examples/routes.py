@@ -1,4 +1,4 @@
-"""Run with: scripts/snapo network intercept examples/routes.py -s DEVICE_SERIAL"""
+"""Run with: cli/snapo network intercept examples/routes.py -s DEVICE_SERIAL"""
 
 import asyncio
 

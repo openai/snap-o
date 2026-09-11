@@ -2,19 +2,24 @@ Snap-O is a public, open-source Android inspection tool.
 
 ## Repository Layout
 
-- `snapo-app-mac/`: macOS app and shared Swift device client.
-- `inspectors/`: Web UI embedded in the macOS app.
-- `snapo-link-android/`: Android libraries and sample apps.
+- `app-macos/`: macOS app, device transport, and native tests.
+- `cli/`: standalone Python client and its tests.
+- `plugins/`: Network and Tweaks, each with Android libraries and a frontend.
+- `sdk/`: plugin authoring APIs, runtime, and Gradle integration.
+- `plugin-reader/`: Android helper used by the macOS app and CLI to read plugin metadata and frontend assets.
+- `examples/`: Android demo apps, an independent plugin project, and CLI examples.
+- `build-logic/` and `gradle/`: internal Gradle conventions and root build tooling.
 - `contracts/`: shared protocol definitions and fixtures.
-- `docs/`: Markdown sources for GitHub Pages. See `docs/README.md` for the build and authoring conventions.
-- `scripts/snapo` and `tests/snapo_cli/`: standalone Python command-line client and tests.
+- `docs/`: GitHub Pages sources and theme. See `docs/README.md` for build conventions.
+- `scripts/`: contributor utilities.
 
 ## Working Across Components
 
 - Read the component's `AGENTS.md` before changing it.
-- Keep macOS ADB and device transport in `SnapODeviceClient`. Keep UI code in the app and web inspector.
+- Keep macOS ADB and device transport in `app-macos/Snap-O/Device/`. Keep UI code in the app and plugin frontends.
+- Android plugins use `sdk/runtime` and its `PluginServer` API. Keep shared socket and HTTP behavior in the runtime.
 - The Python CLI implements its own transport; it does not use the Swift client.
-- When changing shared behavior, check the Android libraries, macOS client, web inspector, and Python CLI. Use `contracts/` and its fixtures to keep them compatible.
+- When changing shared behavior, check the Android libraries, macOS client, web tool, and Python CLI. Use `contracts/` and its fixtures to keep them compatible.
 
 ## Public Repository
 

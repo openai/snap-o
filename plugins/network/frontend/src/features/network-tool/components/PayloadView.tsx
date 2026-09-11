@@ -1,0 +1,531 @@
+import type { JSX, ComponentChildren } from "preact";
+import { Check, Copy, Download } from "lucide-preact";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import type { ToolContentClient } from "../../../network/client";
+import {
+  bodyMetadata as payloadMetadata,
+  dataUrlForImage,
+  isImagePayload,
+  parseJsonNode,
+  type BodyPayload,
+  type JsonNode
+} from "../../../network/payload";
+import { useCopyFeedback } from "../hooks/useCopyFeedback";
+import type { ToolUiState } from "../hooks/useToolUiState";
+import { copyImageToClipboard, imageFileName } from "../lib/imageActions";
+import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
+
+export function BodySection({
+  client,
+  payload,
+  storageKey,
+  uiState
+}: {
+  client: ToolContentClient;
+  payload: BodyPayload;
+  storageKey: string;
+  uiState: ToolUiState;
+}): JSX.Element {
+  if (isImagePayload(payload)) return <ImagePreview client={client} payload={payload} />;
+  return (
+    <PayloadView client={client} payload={payload} storageKey={storageKey} uiState={uiState} prettyInitiallyExpanded />
+  );
+}
+
+export function PayloadView({
+  client,
+  payload,
+  storageKey,
+  uiState,
+  showsToggle = true,
+  showsCopyButton = true,
+  prettyInitiallyExpanded = true,
+  embedded = false
+}: {
+  client: ToolContentClient;
+  payload: BodyPayload;
+  storageKey: string;
+  uiState: ToolUiState;
+  showsToggle?: boolean;
+  showsCopyButton?: boolean;
+  prettyInitiallyExpanded?: boolean;
+  embedded?: boolean;
+}): JSX.Element {
+  const defaultPretty = payload.prettyText != null;
+  const pretty = uiState.prettyEnabled(storageKey, defaultPretty);
+  const displayText = pretty && payload.prettyText != null ? payload.prettyText : payload.displayText;
+  const jsonRoot = useMemo(
+    () =>
+      pretty && payload.jsonFormat === "single" && payload.prettyText != null
+        ? parseJsonNode(payload.prettyText)
+        : null,
+    [payload.jsonFormat, payload.prettyText, pretty]
+  );
+  const copyFeedback = useCopyFeedback(client, displayText);
+  const hasToggle = showsToggle && payload.prettyText != null;
+  const hasCopy = showsCopyButton && displayText.length > 0;
+  const controls =
+    hasToggle || hasCopy ? (
+      <>
+        {hasToggle ? (
+          <InlineTextToggle
+            label={pretty ? "PRETTY" : "RAW"}
+            onClick={() => uiState.setPrettyEnabled(storageKey, !pretty)}
+          />
+        ) : null}
+        {hasCopy ? <InlineCopyButton copied={copyFeedback.copied} onCopy={copyFeedback.copy} /> : null}
+      </>
+    ) : null;
+
+  return (
+    <div className={embedded ? "payload-view embedded" : "payload-card"}>
+      {payload.jsonFormat === "invalid" ? (
+        <div className="json-parse-hint">Unable to pretty print (invalid or truncated JSON)</div>
+      ) : null}
+      <div className="payload-scroll">
+        {jsonRoot == null ? (
+          controls == null ? (
+            <pre>{displayText}</pre>
+          ) : (
+            <div className="raw-payload-row">
+              <pre>{displayText}</pre>
+              <span className="raw-payload-controls">{controls}</span>
+            </div>
+          )
+        ) : (
+          <JsonOutline
+            client={client}
+            node={jsonRoot}
+            storageKey={`${storageKey}:json`}
+            uiState={uiState}
+            initiallyExpanded={prettyInitiallyExpanded}
+            trailing={controls == null ? null : <span className="json-row-trailing">{controls}</span>}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function InlineTextToggle({ label, onClick }: { label: string; onClick: () => void }): JSX.Element {
+  return (
+    <button className="inline-text-toggle" type="button" onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+export function InlineCopyButton({
+  copied,
+  onCopy,
+  label = "Copy",
+  iconOnly = false
+}: {
+  copied: boolean;
+  onCopy: () => void;
+  label?: string;
+  iconOnly?: boolean;
+}): JSX.Element {
+  const accessibleLabel = copied ? "Copied" : label;
+  return (
+    <button
+      className={iconOnly ? "inline-action inline-action-icon" : "inline-action"}
+      type="button"
+      onClick={onCopy}
+      aria-label={iconOnly ? accessibleLabel : undefined}
+      title={iconOnly ? accessibleLabel : undefined}
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+      {iconOnly ? null : copied ? "Copied" : label}
+    </button>
+  );
+}
+
+export { payloadMetadata };
+
+function JsonOutline({
+  client,
+  node,
+  storageKey,
+  uiState,
+  depth = 0,
+  initiallyExpanded,
+  trailing
+}: {
+  client: ToolContentClient;
+  node: JsonNode;
+  storageKey: string;
+  uiState: ToolUiState;
+  depth?: number;
+  initiallyExpanded: boolean;
+  trailing?: ComponentChildren;
+}): JSX.Element {
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const expandable = node.children.length > 0;
+  const rowKey = `${storageKey}:${node.key}`;
+  const expanded = expandable ? uiState.jsonExpanded(rowKey, depth === 0 ? initiallyExpanded : false) : false;
+  const stringValue = node.type === "string" ? String(node.rawValue) : null;
+  const stringIsCollapsible = stringValue != null && stringValue.split("\n").length > MaxCollapsedStringLines;
+  const [stringExpanded, setStringExpanded] = useState(false);
+  const descendantRowKeys = useMemo(() => collectDescendantRowKeys(node, storageKey), [node, storageKey]);
+  const closingSymbol = node.type === "array" ? "]" : "}";
+
+  useEffect(() => {
+    if (menu == null) return;
+    const close = () => setMenu(null);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [menu]);
+
+  return (
+    <div className="json-outline">
+      <div
+        className={[
+          "json-row",
+          trailing == null ? "" : "json-row-with-trailing",
+          stringIsCollapsible ? "json-row-multiline" : ""
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        style={{ paddingLeft: `${depth * 14}px` }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: jsonContextMenuItems({
+              client,
+              node,
+              rowKey,
+              descendantRowKeys,
+              expanded,
+              expandable,
+              uiState
+            })
+          });
+        }}
+      >
+        {expandable ? (
+          <button
+            className="json-toggle"
+            type="button"
+            onClick={() => uiState.setJsonExpanded(rowKey, !expanded)}
+            aria-label={expanded ? "Collapse JSON node" : "Expand JSON node"}
+          >
+            <span className={expanded ? "triangle expanded" : "triangle"} />
+          </button>
+        ) : (
+          <span className="json-toggle-spacer" />
+        )}
+        <JsonNodeLine node={node} expanded={expanded} stringExpanded={stringExpanded} />
+        {trailing}
+      </div>
+      {stringIsCollapsible ? (
+        <div className="json-string-expander-row" style={{ paddingLeft: `${depth * 14}px` }}>
+          <span className="json-toggle-spacer" />
+          <button className="json-string-expander" type="button" onClick={() => setStringExpanded((value) => !value)}>
+            {stringExpanded ? "See less" : "See more"}
+          </button>
+        </div>
+      ) : null}
+      {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {expanded ? (
+        <>
+          {node.children.map((child) => (
+            <JsonOutline
+              key={child.key}
+              client={client}
+              node={child}
+              storageKey={storageKey}
+              uiState={uiState}
+              depth={depth + 1}
+              initiallyExpanded={false}
+            />
+          ))}
+          <div className="json-row json-closing-row" style={{ paddingLeft: `${depth * 14}px` }}>
+            <span className="json-toggle-spacer" />
+            <span className="json-punctuation">{closingSymbol}</span>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function JsonNodeLine({
+  node,
+  expanded,
+  stringExpanded
+}: {
+  node: JsonNode;
+  expanded: boolean;
+  stringExpanded: boolean;
+}): JSX.Element {
+  return (
+    <span className="json-line">
+      {node.label.length === 0 ? null : (
+        <>
+          <span className="json-key">{node.label}</span>
+          <span className="json-punctuation json-property-separator">:</span>
+        </>
+      )}
+      <JsonNodeValue node={node} expanded={expanded} stringExpanded={stringExpanded} />
+    </span>
+  );
+}
+
+function JsonNodeValue({
+  node,
+  expanded,
+  stringExpanded
+}: {
+  node: JsonNode;
+  expanded: boolean;
+  stringExpanded: boolean;
+}): JSX.Element {
+  if (node.type === "object") {
+    if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
+    if (expanded) return <span className="json-punctuation">{"{"}</span>;
+    return <JsonInlinePreview node={node} />;
+  }
+  if (node.type === "array") {
+    if (node.children.length === 0) return <span className="json-punctuation">[ ]</span>;
+    if (expanded) return <span className="json-punctuation">[</span>;
+    return <JsonInlinePreview node={node} />;
+  }
+  if (node.type === "string") {
+    const value = String(node.rawValue);
+    const stringIsCollapsible = value.split("\n").length > MaxCollapsedStringLines;
+    return (
+      <span className={stringIsCollapsible ? "json-string json-string-multiline" : "json-string"}>
+        {jsonStringForDisplay(value, stringExpanded)}
+      </span>
+    );
+  }
+  if (node.type === "number" || node.type === "boolean") {
+    return <span className="json-number-bool">{String(node.rawValue)}</span>;
+  }
+  return <span className="json-null">null</span>;
+}
+
+function JsonInlinePreview({ node }: { node: JsonNode }): JSX.Element {
+  return <span className="json-preview">{inlinePreviewParts(node, 120)}</span>;
+}
+
+function inlinePreviewParts(node: JsonNode, maxLength: number): ComponentChildren {
+  const fullText = inlinePreviewText(node);
+  if (fullText.length > maxLength)
+    return <span className="json-punctuation">{`${fullText.slice(0, Math.max(0, maxLength - 3))}...`}</span>;
+  return renderInlinePreviewNode(node);
+}
+
+function renderInlinePreviewNode(node: JsonNode): ComponentChildren {
+  if (node.type === "object") {
+    if (node.children.length === 0) return <span className="json-punctuation">{"{ }"}</span>;
+    return (
+      <>
+        <span className="json-punctuation">{"{ "}</span>
+        {node.children.map((child, index) => (
+          <span key={child.key}>
+            {index === 0 ? null : <span className="json-punctuation">, </span>}
+            <span className="json-key">{jsonQuoted(child.label)}</span>
+            <span className="json-punctuation">: </span>
+            {renderInlinePreviewNode(child)}
+          </span>
+        ))}
+        <span className="json-punctuation">{" }"}</span>
+      </>
+    );
+  }
+  if (node.type === "array") {
+    if (node.children.length === 0) return <span className="json-punctuation">[ ]</span>;
+    return (
+      <>
+        <span className="json-punctuation">[ </span>
+        {node.children.map((child, index) => (
+          <span key={child.key}>
+            {index === 0 ? null : <span className="json-punctuation">, </span>}
+            {renderInlinePreviewNode(child)}
+          </span>
+        ))}
+        <span className="json-punctuation"> ]</span>
+      </>
+    );
+  }
+  if (node.type === "string") return <span className="json-string">{jsonQuoted(String(node.rawValue))}</span>;
+  if (node.type === "number" || node.type === "boolean") {
+    return <span className="json-number-bool">{String(node.rawValue)}</span>;
+  }
+  return <span className="json-null">null</span>;
+}
+
+function inlinePreviewText(node: JsonNode): string {
+  if (node.type === "object") {
+    if (node.children.length === 0) return "{ }";
+    return `{ ${node.children.map((child) => `${jsonQuoted(child.label)}: ${inlinePreviewText(child)}`).join(", ")} }`;
+  }
+  if (node.type === "array") {
+    if (node.children.length === 0) return "[ ]";
+    return `[ ${node.children.map(inlinePreviewText).join(", ")} ]`;
+  }
+  if (node.type === "string") return jsonQuoted(String(node.rawValue));
+  if (node.type === "number" || node.type === "boolean") return String(node.rawValue);
+  return "null";
+}
+
+function jsonQuoted(value: string): string {
+  return JSON.stringify(value);
+}
+
+function jsonStringForDisplay(value: string, expanded: boolean): string {
+  const lines = value.split("\n");
+  const visibleLines =
+    lines.length <= MaxCollapsedStringLines || expanded ? lines : lines.slice(0, MaxCollapsedStringLines);
+  const suffix = lines.length <= MaxCollapsedStringLines || expanded ? [] : ["..."];
+  return `"${[...visibleLines.map(jsonStringLineForDisplay), ...suffix].join("\n")}"`;
+}
+
+function jsonStringLineForDisplay(value: string): string {
+  return jsonQuoted(value).slice(1, -1);
+}
+
+function jsonContextMenuItems({
+  client,
+  node,
+  rowKey,
+  descendantRowKeys,
+  expanded,
+  expandable,
+  uiState
+}: {
+  client: ToolContentClient;
+  node: JsonNode;
+  rowKey: string;
+  descendantRowKeys: string[];
+  expanded: boolean;
+  expandable: boolean;
+  uiState: ToolUiState;
+}): ContextMenuItem[] {
+  const hasCollapsibleChildren = descendantRowKeys.length > 0;
+  const showExpandAll = expandable && (!expanded || descendantRowKeys.some((key) => !uiState.jsonExpanded(key, false)));
+  const items: ContextMenuItem[] = [
+    {
+      label: "Copy Value",
+      action: () => void client.copyText(jsonNodeCopyText(node))
+    }
+  ];
+
+  if (showExpandAll) {
+    items.push({
+      label: "Expand All",
+      action: () => {
+        uiState.setJsonExpanded(rowKey, true);
+        for (const key of descendantRowKeys) uiState.setJsonExpanded(key, true);
+      }
+    });
+  }
+
+  if (expanded && hasCollapsibleChildren) {
+    items.push({
+      label: "Collapse Children",
+      action: () => {
+        for (const key of descendantRowKeys) uiState.setJsonExpanded(key, false);
+      }
+    });
+  }
+
+  return items;
+}
+
+function collectDescendantRowKeys(node: JsonNode, storageKey: string): string[] {
+  const keys: string[] = [];
+  for (const child of node.children) {
+    if (child.children.length > 0) keys.push(`${storageKey}:${child.key}`);
+    keys.push(...collectDescendantRowKeys(child, storageKey));
+  }
+  return keys;
+}
+
+function jsonNodeCopyText(node: JsonNode): string {
+  if (node.type === "string") return String(node.rawValue);
+  if (node.type === "number" || node.type === "boolean") return String(node.rawValue);
+  if (node.type === "null") return "null";
+  return JSON.stringify(node.rawValue, null, 2);
+}
+
+function ImagePreview({ client, payload }: { client: ToolContentClient; payload: BodyPayload }): JSX.Element | null {
+  const dataUrl = dataUrlForImage(payload);
+  const copyFeedback = useCopyFeedback(client, "image");
+  const saveFeedback = useCopyFeedback(client, "save-image");
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+
+  useEffect(() => {
+    if (menu == null) return;
+    const close = () => setMenu(null);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [menu]);
+
+  if (dataUrl == null) return null;
+
+  const copyImage = () => {
+    copyFeedback.copyWithoutClipboard();
+    void copyImageToClipboard(dataUrl, payload.contentType ?? "image/png");
+  };
+  const saveImage = () => {
+    void client
+      .saveFile({
+        defaultPath: imageFileName(payload.contentType),
+        data: payload.rawText.replace(/\s+/gu, ""),
+        mimeType: payload.contentType,
+        encoding: "base64"
+      })
+      .then((result) => {
+        if (result.saved) saveFeedback.copyWithoutClipboard();
+      });
+  };
+
+  return (
+    <div className="image-preview-card">
+      <div className="image-actions">
+        <InlineCopyButton copied={copyFeedback.copied} label="Copy Image" onCopy={copyImage} iconOnly />
+        <button
+          className="inline-action inline-action-icon"
+          type="button"
+          aria-label={saveFeedback.copied ? "Saved" : "Save Image As..."}
+          title={saveFeedback.copied ? "Saved" : "Save Image As..."}
+          onClick={saveImage}
+        >
+          {saveFeedback.copied ? <Check size={14} /> : <Download size={14} />}
+        </button>
+      </div>
+      <img
+        className="image-preview"
+        src={dataUrl}
+        alt=""
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({
+            x: event.clientX,
+            y: event.clientY,
+            items: [
+              { label: "Copy Image", action: copyImage },
+              { label: "Save Image As...", action: saveImage }
+            ]
+          });
+        }}
+      />
+      {menu == null ? null : <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+    </div>
+  );
+}
+
+const MaxCollapsedStringLines = 20;

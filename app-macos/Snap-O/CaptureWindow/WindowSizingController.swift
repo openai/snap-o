@@ -1,0 +1,835 @@
+import AppKit
+import QuartzCore
+import SwiftUI
+
+/// Owns the main workspace window's aspect constraint and frame persistence.
+/// Layout transitions preserve pane sizes while the window absorbs the added
+/// or removed pane.
+struct WindowSizingController: NSViewRepresentable {
+  let displayInfo: DisplayInfo?
+  let layout: WorkspaceLayout
+  let capturePaneWidth: CGFloat
+  let capturePaneWidthChanged: @MainActor (CGFloat) -> Void
+  let presentationChanged: @MainActor (WorkspaceLayoutPresentationEvent) -> Void
+
+  static let minimumCaptureEdge: CGFloat = 240
+  static let minimumCapturePaneEdge: CGFloat = 260
+
+  static func minimumCaptureContentSize(aspectRatio: CGFloat?) -> CGSize {
+    guard let aspectRatio, aspectRatio > 0 else {
+      return CGSize(width: minimumCaptureEdge, height: minimumCaptureEdge)
+    }
+    return CGSize(
+      width: minimumCaptureEdge * max(aspectRatio, 1),
+      height: minimumCaptureEdge * max(1 / aspectRatio, 1)
+    )
+  }
+
+  static func minimumCapturePaneWidth(aspectRatio: CGFloat?) -> CGFloat {
+    max(
+      minimumCapturePaneEdge,
+      minimumCaptureContentSize(aspectRatio: aspectRatio).width
+    )
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    DispatchQueue.main.async {
+      guard let window = view.window else { return }
+      context.coordinator.attach(to: window)
+      context.coordinator.update(
+        layout: layout,
+        displayInfo: displayInfo,
+        capturePaneWidth: capturePaneWidth,
+        capturePaneWidthChanged: capturePaneWidthChanged,
+        presentationChanged: presentationChanged
+      )
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    context.coordinator.update(
+      layout: layout,
+      displayInfo: displayInfo,
+      capturePaneWidth: capturePaneWidth,
+      capturePaneWidthChanged: capturePaneWidthChanged,
+      presentationChanged: presentationChanged
+    )
+  }
+
+  @MainActor
+  final class Coordinator: NSObject, NSWindowDelegate {
+    private struct LayoutSnapshot {
+      let frame: NSRect
+      let workspaceSize: CGSize
+    }
+
+    private struct LayoutChange {
+      let previousLayout: WorkspaceLayout
+      let layout: WorkspaceLayout
+      let displayInfo: DisplayInfo?
+      let snapshot: LayoutSnapshot
+    }
+
+    private enum Constants {
+      static let toolContentSize = CGSize(width: 1100, height: 720)
+      static let bothContentSize = CGSize(width: 1300, height: 760)
+      static let minimumToolContentSize = CGSize(width: 720, height: 480)
+      static let minimumBothContentSize = CGSize(width: 980, height: 480)
+      static let defaultToolPaneWidth: CGFloat = 940
+      static let dividerWidth: CGFloat = 1
+    }
+
+    private enum HorizontalAnchor {
+      case leading
+      case center
+      case trailing
+    }
+
+    private weak var window: NSWindow?
+    private var currentAspect: CGFloat = 1
+    private var currentLayout: WorkspaceLayout?
+    private var currentDisplayInfo: DisplayInfo?
+    private var currentCapturePaneWidth = WorkspaceLayoutController.defaultCapturePaneWidth
+    private var rememberedToolPaneWidth = Constants.defaultToolPaneWidth
+    private var pendingLayout: WorkspaceLayout = .capture
+    private var pendingDisplayInfo: DisplayInfo?
+    private var pendingCapturePaneWidth = WorkspaceLayoutController.defaultCapturePaneWidth
+    private var capturePaneWidthChanged: (@MainActor (CGFloat) -> Void)?
+    private var presentationChanged: (@MainActor (WorkspaceLayoutPresentationEvent) -> Void)?
+    private var transitionGeneration = 0
+    private var isApplyingLayoutTransition = false
+
+    func attach(to window: NSWindow) {
+      guard self.window !== window else { return }
+      self.window = window
+      window.delegate = self
+      update(
+        layout: pendingLayout,
+        displayInfo: pendingDisplayInfo,
+        capturePaneWidth: pendingCapturePaneWidth,
+        capturePaneWidthChanged: capturePaneWidthChanged ?? { _ in },
+        presentationChanged: presentationChanged ?? { _ in }
+      )
+    }
+
+    func update(
+      layout: WorkspaceLayout,
+      displayInfo: DisplayInfo?,
+      capturePaneWidth: CGFloat,
+      capturePaneWidthChanged: @escaping @MainActor (CGFloat) -> Void,
+      presentationChanged: @escaping @MainActor (WorkspaceLayoutPresentationEvent) -> Void
+    ) {
+      pendingLayout = layout
+      pendingDisplayInfo = displayInfo
+      pendingCapturePaneWidth = capturePaneWidth
+      self.capturePaneWidthChanged = capturePaneWidthChanged
+      self.presentationChanged = presentationChanged
+      guard let window else { return }
+
+      let previousLayout = currentLayout
+      let layoutChanged = previousLayout != nil && previousLayout != layout
+      let displayChanged = currentDisplayInfo != displayInfo
+      currentCapturePaneWidth = capturePaneWidth
+
+      if isApplyingLayoutTransition, !layoutChanged {
+        currentDisplayInfo = displayInfo
+        return
+      }
+
+      if currentLayout == nil {
+        currentLayout = layout
+        currentDisplayInfo = displayInfo
+        applyMinimumSize(layout: layout, displayInfo: displayInfo, to: window)
+        applyInitialFrame(for: layout, displayInfo: displayInfo, to: window)
+        ensureMinimumBothContentSize(displayInfo: displayInfo, window: window)
+        synchronizeCapturePaneWidthIfNeeded(for: layout, window: window)
+      } else if layoutChanged, let previousLayout {
+        let snapshot = LayoutSnapshot(
+          frame: window.frame,
+          workspaceSize: workspaceContentSize(for: window)
+        )
+        rememberPaneSizes(for: previousLayout, window: window)
+        saveFrame(snapshot.frame, layout: previousLayout)
+        let transition = workspaceTransition(
+          from: previousLayout,
+          to: layout,
+          snapshot: snapshot,
+          displayInfo: displayInfo,
+          window: window
+        )
+
+        currentLayout = layout
+        currentDisplayInfo = displayInfo
+        transitionGeneration += 1
+        let generation = transitionGeneration
+        isApplyingLayoutTransition = true
+
+        DispatchQueue.main.async { [weak self, weak window] in
+          guard
+            let self,
+            let window,
+            transitionGeneration == generation,
+            currentLayout == layout
+          else {
+            return
+          }
+
+          if let transition {
+            presentationChanged(.transitionWillBegin(transition))
+          } else {
+            presentationChanged(.layoutDidApply(layout))
+          }
+          applyMinimumSize(layout: layout, displayInfo: displayInfo, to: window)
+
+          DispatchQueue.main.async { [weak self, weak window] in
+            guard
+              let self,
+              let window,
+              transitionGeneration == generation,
+              currentLayout == layout
+            else {
+              return
+            }
+
+            applyTransition(
+              LayoutChange(
+                previousLayout: previousLayout,
+                layout: layout,
+                displayInfo: displayInfo,
+                snapshot: snapshot
+              ),
+              window: window
+            ) { [weak self, weak window] in
+              guard
+                let self,
+                let window,
+                transitionGeneration == generation,
+                currentLayout == layout
+              else {
+                return
+              }
+
+              presentationChanged(.layoutDidApply(layout))
+              isApplyingLayoutTransition = false
+              ensureMinimumBothContentSize(displayInfo: displayInfo, window: window)
+              rememberPaneSizes(for: layout, window: window)
+              saveFrame(window.frame, layout: layout)
+            }
+          }
+        }
+        return
+      } else if layout == .capture, displayChanged, let displayInfo {
+        sizeCaptureWindow(for: displayInfo, window: window, anchor: .center)
+        synchronizeCapturePaneWidthIfNeeded(for: layout, window: window)
+      } else {
+        applyMinimumSize(layout: layout, displayInfo: displayInfo, to: window)
+        ensureMinimumBothContentSize(displayInfo: displayInfo, window: window)
+      }
+
+      currentDisplayInfo = displayInfo
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+      let width = max(frameSize.width, sender.minSize.width)
+      guard currentLayout == .capture, !isApplyingLayoutTransition else {
+        return NSSize(width: width, height: frameSize.height)
+      }
+      let aspect = max(currentAspect, 0.0001)
+      return NSSize(
+        width: width,
+        height: (WindowChromeMetrics.totalToolbarHeight + (width / aspect)).rounded()
+      )
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+      guard let window = notification.object as? NSWindow else { return }
+      rememberPaneSizesForCurrentLayout(window: window)
+      synchronizeCapturePaneWidthIfNeeded(for: currentLayout, window: window)
+      saveCurrentFrame(from: notification)
+    }
+
+    func windowDidMove(_ notification: Notification) {
+      saveCurrentFrame(from: notification)
+    }
+
+    private func applyInitialFrame(
+      for layout: WorkspaceLayout,
+      displayInfo: DisplayInfo?,
+      to window: NSWindow
+    ) {
+      if let storedFrame = storedFrame(layout: layout) {
+        window.setFrame(constrained(storedFrame, for: window), display: true, animate: false)
+        if layout == .capture, let displayInfo {
+          updateAspect(for: displayInfo)
+          reshapeCaptureWindow(window, anchor: .center)
+        }
+        rememberPaneSizes(for: layout, window: window)
+        return
+      }
+
+      switch layout {
+      case .capture:
+        if let displayInfo {
+          sizeCaptureWindow(for: displayInfo, window: window, anchor: .center)
+        }
+      case .tool:
+        setContentSize(Constants.toolContentSize, for: window, anchor: .center)
+      case .both:
+        setContentSize(Constants.bothContentSize, for: window, anchor: .center)
+      }
+      rememberPaneSizes(for: layout, window: window)
+    }
+
+    private func applyTransition(
+      _ change: LayoutChange,
+      window: NSWindow,
+      completion: @escaping @MainActor () -> Void
+    ) {
+      let previousLayout = change.previousLayout
+      let layout = change.layout
+      let displayInfo = change.displayInfo
+      let snapshot = change.snapshot
+      let currentContentSize = snapshot.workspaceSize
+      let targetFrame: NSRect?
+
+      switch (previousLayout, layout) {
+      case (.capture, .both):
+        let captureWidth = currentContentSize.width
+        synchronizeCapturePaneWidth(captureWidth)
+        targetFrame = captureRevealTargetFrame(
+          toolWidth: rememberedToolPaneWidth,
+          relativeTo: snapshot.frame,
+          window: window
+        )
+
+      case (.both, .capture):
+        if let previewSize = standaloneCaptureContentSize(
+          workspaceSize: currentContentSize,
+          displayInfo: displayInfo
+        ) {
+          if let displayInfo {
+            updateAspect(for: displayInfo)
+          }
+          synchronizeCapturePaneWidth(previewSize.width)
+          targetFrame = constrained(
+            frameFor(
+              contentSize: previewSize,
+              anchor: .leading,
+              relativeTo: snapshot.frame
+            ),
+            for: window
+          )
+        } else {
+          let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
+          let toolWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
+          synchronizeCapturePaneWidth(captureWidth)
+          targetFrame = frameByAdjustingWorkspaceEdges(
+            trailingBy: -(Constants.dividerWidth + toolWidth),
+            relativeTo: snapshot.frame
+          )
+        }
+
+      case (.tool, .both):
+        let captureWidth = max(
+          currentCapturePaneWidth,
+          WindowSizingController.minimumCapturePaneWidth(
+            aspectRatio: displayInfo?.aspectRatio
+          )
+        )
+        targetFrame = toolRevealTargetFrame(
+          captureWidth: captureWidth,
+          relativeTo: snapshot.frame,
+          window: window
+        )
+
+      case (.both, .tool):
+        let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
+        let toolWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
+        rememberedToolPaneWidth = toolWidth
+        targetFrame = frameByAdjustingWorkspaceEdges(
+          leadingBy: captureWidth + Constants.dividerWidth,
+          relativeTo: snapshot.frame
+        )
+
+      case (.capture, .tool):
+        targetFrame = constrained(
+          frameFor(
+            contentSize: CGSize(
+              width: rememberedToolPaneWidth,
+              height: currentContentSize.height
+            ),
+            anchor: .leading,
+            relativeTo: snapshot.frame
+          ),
+          for: window
+        )
+
+      case (.tool, .capture):
+        if let displayInfo {
+          updateAspect(for: displayInfo)
+        }
+        let captureWidth = max(
+          currentCapturePaneWidth,
+          WindowSizingController.minimumCapturePaneWidth(
+            aspectRatio: displayInfo?.aspectRatio
+          )
+        )
+        targetFrame = constrained(
+          frameFor(
+            contentSize: CGSize(
+              width: captureWidth,
+              height: captureWidth / max(currentAspect, 0.0001)
+            ),
+            anchor: .trailing,
+            relativeTo: snapshot.frame
+          ),
+          for: window
+        )
+
+      default:
+        targetFrame = nil
+      }
+
+      guard let targetFrame else {
+        completion()
+        return
+      }
+      animate(window: window, to: targetFrame, completion: completion)
+    }
+
+    private func workspaceTransition(
+      from previousLayout: WorkspaceLayout,
+      to layout: WorkspaceLayout,
+      snapshot: LayoutSnapshot,
+      displayInfo: DisplayInfo?,
+      window: NSWindow
+    ) -> WorkspaceLayoutTransition? {
+      let workspaceSize = snapshot.workspaceSize
+      let initialCaptureWidth: CGFloat
+      let finalCaptureWidth: CGFloat
+      let initialToolWidth: CGFloat
+      let finalToolWidth: CGFloat
+      let finalWindowWidth: CGFloat
+      let pane: WorkspaceLayoutTransition.Pane
+
+      switch (previousLayout, layout) {
+      case (.capture, .both):
+        pane = .tool
+        initialCaptureWidth = workspaceSize.width
+        initialToolWidth = rememberedToolPaneWidth
+        finalWindowWidth = captureRevealTargetFrame(
+          toolWidth: initialToolWidth,
+          relativeTo: snapshot.frame,
+          window: window
+        ).width
+        finalCaptureWidth = constrainedCapturePaneWidth(
+          initialCaptureWidth,
+          totalWidth: finalWindowWidth,
+          displayInfo: displayInfo
+        )
+        finalToolWidth = max(
+          finalWindowWidth - finalCaptureWidth - Constants.dividerWidth,
+          0
+        )
+      case (.both, .capture):
+        pane = .tool
+        initialCaptureWidth = actualCapturePaneWidth(totalWidth: workspaceSize.width)
+        finalCaptureWidth = standaloneCaptureContentSize(
+          workspaceSize: workspaceSize,
+          displayInfo: displayInfo
+        )?.width ?? initialCaptureWidth
+        initialToolWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
+        finalToolWidth = initialToolWidth
+        finalWindowWidth = finalCaptureWidth
+      case (.tool, .both):
+        pane = .capture
+        initialCaptureWidth = max(
+          currentCapturePaneWidth,
+          WindowSizingController.minimumCapturePaneWidth(
+            aspectRatio: displayInfo?.aspectRatio
+          )
+        )
+        initialToolWidth = workspaceSize.width
+        finalWindowWidth = toolRevealTargetFrame(
+          captureWidth: initialCaptureWidth,
+          relativeTo: snapshot.frame,
+          window: window
+        ).width
+        finalCaptureWidth = constrainedCapturePaneWidth(
+          initialCaptureWidth,
+          totalWidth: finalWindowWidth,
+          displayInfo: displayInfo
+        )
+        finalToolWidth = max(
+          finalWindowWidth - finalCaptureWidth - Constants.dividerWidth,
+          0
+        )
+      case (.both, .tool):
+        pane = .capture
+        initialCaptureWidth = actualCapturePaneWidth(totalWidth: workspaceSize.width)
+        finalCaptureWidth = initialCaptureWidth
+        initialToolWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
+        finalToolWidth = initialToolWidth
+        finalWindowWidth = finalToolWidth
+      default:
+        return nil
+      }
+
+      return WorkspaceLayoutTransition(
+        pane: pane,
+        fromLayout: previousLayout,
+        toLayout: layout,
+        initialWindowWidth: workspaceSize.width,
+        finalWindowWidth: finalWindowWidth,
+        initialCapturePaneWidth: initialCaptureWidth,
+        finalCapturePaneWidth: finalCaptureWidth,
+        initialToolPaneWidth: initialToolWidth,
+        finalToolPaneWidth: finalToolWidth
+      )
+    }
+
+    private func standaloneCaptureContentSize(
+      workspaceSize: CGSize,
+      displayInfo: DisplayInfo?
+    ) -> CGSize? {
+      guard let displayInfo else { return nil }
+      return captureContentSizeRespectingMinimum(
+        fittedCapturePreviewSize(
+          paneWidth: actualCapturePaneWidth(totalWidth: workspaceSize.width),
+          paneHeight: workspaceSize.height,
+          aspectRatio: displayInfo.aspectRatio
+        )
+      )
+    }
+
+    private func frameByAdjustingWorkspaceEdges(
+      leadingBy leadingDelta: CGFloat = 0,
+      trailingBy trailingDelta: CGFloat = 0,
+      relativeTo frame: NSRect
+    ) -> NSRect {
+      let minX = frame.minX + leadingDelta
+      let maxX = frame.maxX + trailingDelta
+      return NSRect(
+        x: minX,
+        y: frame.minY,
+        width: maxX - minX,
+        height: frame.height
+      )
+    }
+
+    private func toolRevealTargetFrame(
+      captureWidth: CGFloat,
+      relativeTo frame: NSRect,
+      window: NSWindow
+    ) -> NSRect {
+      constrained(
+        frameByAdjustingWorkspaceEdges(
+          leadingBy: -(captureWidth + Constants.dividerWidth),
+          relativeTo: frame
+        ),
+        for: window
+      )
+    }
+
+    private func captureRevealTargetFrame(
+      toolWidth: CGFloat,
+      relativeTo frame: NSRect,
+      window: NSWindow
+    ) -> NSRect {
+      constrained(
+        frameByAdjustingWorkspaceEdges(
+          trailingBy: Constants.dividerWidth + toolWidth,
+          relativeTo: frame
+        ),
+        for: window
+      )
+    }
+
+    private func constrainedCapturePaneWidth(
+      _ width: CGFloat,
+      totalWidth: CGFloat,
+      displayInfo: DisplayInfo?
+    ) -> CGFloat {
+      let minimumWidth = WindowSizingController.minimumCapturePaneWidth(
+        aspectRatio: displayInfo?.aspectRatio
+      )
+      return min(
+        max(width, minimumWidth),
+        max(totalWidth - Constants.minimumToolContentSize.width, minimumWidth)
+      )
+    }
+
+    private func animate(
+      window: NSWindow,
+      to frame: NSRect,
+      completion: @escaping @MainActor () -> Void
+    ) {
+      guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+        window.setFrame(frame, display: true, animate: false)
+        completion()
+        return
+      }
+
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = 0.24
+        context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        window.animator().setFrame(frame, display: true)
+      } completionHandler: {
+        Task { @MainActor in
+          completion()
+        }
+      }
+    }
+
+    private func applyMinimumSize(
+      layout: WorkspaceLayout,
+      displayInfo: DisplayInfo?,
+      to window: NSWindow
+    ) {
+      switch layout {
+      case .capture:
+        window.contentMinSize = sizeIncludingWindowChrome(
+          WindowSizingController.minimumCaptureContentSize(
+            aspectRatio: displayInfo?.aspectRatio
+          )
+        )
+      case .tool:
+        window.contentMinSize = sizeIncludingWindowChrome(Constants.minimumToolContentSize)
+      case .both:
+        window.contentMinSize = sizeIncludingWindowChrome(
+          minimumBothContentSize(displayInfo: displayInfo)
+        )
+      }
+    }
+
+    private func minimumBothContentSize(displayInfo: DisplayInfo?) -> CGSize {
+      let captureSize = WindowSizingController.minimumCaptureContentSize(
+        aspectRatio: displayInfo?.aspectRatio
+      )
+      let captureWidth = WindowSizingController.minimumCapturePaneWidth(
+        aspectRatio: displayInfo?.aspectRatio
+      )
+      return CGSize(
+        width: max(
+          Constants.minimumBothContentSize.width,
+          captureWidth + Constants.dividerWidth + Constants.minimumToolContentSize.width
+        ),
+        height: max(Constants.minimumBothContentSize.height, captureSize.height)
+      )
+    }
+
+    private func ensureMinimumBothContentSize(
+      displayInfo: DisplayInfo?,
+      window: NSWindow
+    ) {
+      guard currentLayout == .both else { return }
+      let minimumSize = minimumBothContentSize(displayInfo: displayInfo)
+      let currentSize = workspaceContentSize(for: window)
+      let targetSize = CGSize(
+        width: max(currentSize.width, minimumSize.width),
+        height: max(currentSize.height, minimumSize.height)
+      )
+      guard targetSize != currentSize else { return }
+      setContentSize(targetSize, for: window, anchor: .leading)
+    }
+
+    private func sizeCaptureWindow(
+      for displayInfo: DisplayInfo,
+      window: NSWindow,
+      anchor: HorizontalAnchor
+    ) {
+      let targetContentSize = scaledContentSize(for: displayInfo)
+      updateAspect(for: displayInfo)
+      setContentSize(targetContentSize, for: window, anchor: anchor)
+    }
+
+    private func reshapeCaptureWindow(_ window: NSWindow, anchor: HorizontalAnchor) {
+      let contentWidth = window.frame.width
+      let contentSize = CGSize(width: contentWidth, height: contentWidth / max(currentAspect, 0.0001))
+      setContentSize(contentSize, for: window, anchor: anchor)
+    }
+
+    private func updateAspect(for displayInfo: DisplayInfo) {
+      let contentSize = scaledContentSize(for: displayInfo)
+      currentAspect = contentSize.width / max(contentSize.height, 1)
+    }
+
+    private func setContentSize(
+      _ contentSize: CGSize,
+      for window: NSWindow,
+      anchor: HorizontalAnchor,
+      relativeTo sourceFrame: NSRect? = nil
+    ) {
+      let frame = constrained(
+        frameFor(
+          contentSize: contentSize,
+          anchor: anchor,
+          relativeTo: sourceFrame ?? window.frame
+        ),
+        for: window
+      )
+      window.setFrame(frame, display: true, animate: false)
+    }
+
+    private func frameFor(
+      contentSize: CGSize,
+      anchor: HorizontalAnchor,
+      relativeTo sourceFrame: NSRect
+    ) -> NSRect {
+      let width = contentSize.width
+      let newHeight = contentSize.height + WindowChromeMetrics.totalToolbarHeight
+      let x: CGFloat = switch anchor {
+      case .leading:
+        sourceFrame.minX
+      case .center:
+        sourceFrame.midX - (width / 2)
+      case .trailing:
+        sourceFrame.maxX - width
+      }
+      return NSRect(
+        x: x,
+        y: sourceFrame.maxY - newHeight,
+        width: width,
+        height: newHeight
+      )
+    }
+
+    private func scaledContentSize(for display: DisplayInfo) -> CGSize {
+      var width = display.size.width
+      if let density = display.densityScale, density > 0 {
+        width /= density
+      }
+      width = width.rounded()
+      var height = width / display.aspectRatio
+      let minimumCaptureEdge = WindowSizingController.minimumCaptureEdge
+      let scale = max(minimumCaptureEdge / width, minimumCaptureEdge / height, 1)
+      width *= scale
+      height *= scale
+      return CGSize(width: width.rounded(), height: height.rounded())
+    }
+
+    private func captureContentSizeRespectingMinimum(_ contentSize: CGSize) -> CGSize {
+      let minimumCaptureEdge = WindowSizingController.minimumCaptureEdge
+      let scale = max(
+        minimumCaptureEdge / contentSize.width,
+        minimumCaptureEdge / contentSize.height,
+        1
+      )
+      return CGSize(width: contentSize.width * scale, height: contentSize.height * scale)
+    }
+
+    private func sizeIncludingWindowChrome(_ workspaceSize: CGSize) -> CGSize {
+      CGSize(
+        width: workspaceSize.width,
+        height: workspaceSize.height + WindowChromeMetrics.totalToolbarHeight
+      )
+    }
+
+    private func workspaceContentSize(for window: NSWindow) -> CGSize {
+      CGSize(
+        width: window.frame.width,
+        height: max(window.frame.height - WindowChromeMetrics.totalToolbarHeight, 0)
+      )
+    }
+
+    private func actualCapturePaneWidth(totalWidth: CGFloat) -> CGFloat {
+      let minimumWidth = WindowSizingController.minimumCapturePaneWidth(
+        aspectRatio: currentDisplayInfo?.aspectRatio
+      )
+      return min(
+        max(currentCapturePaneWidth, minimumWidth),
+        max(totalWidth - Constants.minimumToolContentSize.width, minimumWidth)
+      )
+    }
+
+    private func fittedCapturePreviewSize(
+      paneWidth: CGFloat,
+      paneHeight: CGFloat,
+      aspectRatio: CGFloat
+    ) -> CGSize {
+      let aspectRatio = max(aspectRatio, 0.0001)
+      let width = min(paneWidth, paneHeight * aspectRatio)
+      return CGSize(width: width, height: width / aspectRatio)
+    }
+
+    private func rememberPaneSizesForCurrentLayout(window: NSWindow) {
+      guard let currentLayout else { return }
+      rememberPaneSizes(for: currentLayout, window: window)
+    }
+
+    private func rememberPaneSizes(for layout: WorkspaceLayout, window: NSWindow) {
+      let contentWidth = window.frame.width
+      switch layout {
+      case .capture:
+        currentCapturePaneWidth = contentWidth
+      case .tool:
+        rememberedToolPaneWidth = max(contentWidth, Constants.minimumToolContentSize.width)
+      case .both:
+        let captureWidth = actualCapturePaneWidth(totalWidth: contentWidth)
+        rememberedToolPaneWidth = max(
+          contentWidth - captureWidth - Constants.dividerWidth,
+          Constants.minimumToolContentSize.width
+        )
+      }
+    }
+
+    private func synchronizeCapturePaneWidthIfNeeded(
+      for layout: WorkspaceLayout?,
+      window: NSWindow
+    ) {
+      guard layout == .capture else { return }
+      synchronizeCapturePaneWidth(window.frame.width)
+    }
+
+    private func synchronizeCapturePaneWidth(_ width: CGFloat) {
+      let width = max(
+        width.rounded(),
+        WindowSizingController.minimumCapturePaneWidth(
+          aspectRatio: currentDisplayInfo?.aspectRatio
+        )
+      )
+      currentCapturePaneWidth = width
+      guard abs(pendingCapturePaneWidth - width) > 0.5 else { return }
+      pendingCapturePaneWidth = width
+      guard let capturePaneWidthChanged else { return }
+      DispatchQueue.main.async {
+        capturePaneWidthChanged(width)
+      }
+    }
+
+    private func constrained(_ frame: NSRect, for window: NSWindow) -> NSRect {
+      guard let screen = window.screen ?? NSScreen.main else { return frame }
+      let visibleFrame = screen.visibleFrame
+      let width = min(max(frame.width, window.minSize.width), visibleFrame.width)
+      let height = min(frame.height, visibleFrame.height)
+      let x = min(max(frame.minX, visibleFrame.minX), visibleFrame.maxX - width)
+      let y = min(max(frame.minY, visibleFrame.minY), visibleFrame.maxY - height)
+      return NSRect(x: x, y: y, width: width, height: height)
+    }
+
+    private func saveCurrentFrame(from notification: Notification) {
+      guard let window = notification.object as? NSWindow, let currentLayout else { return }
+      saveFrame(window.frame, layout: currentLayout)
+    }
+
+    private func saveFrame(_ frame: NSRect, layout: WorkspaceLayout) {
+      UserDefaults.standard.set(NSStringFromRect(frame), forKey: frameKey(layout))
+    }
+
+    private func storedFrame(layout: WorkspaceLayout) -> NSRect? {
+      guard let value = UserDefaults.standard.string(forKey: frameKey(layout)) else { return nil }
+      let frame = NSRectFromString(value)
+      return frame.width > 0 && frame.height > 0 ? frame : nil
+    }
+
+    private func frameKey(_ layout: WorkspaceLayout) -> String {
+      "workspace.windowFrame.\(layout.rawValue)"
+    }
+  }
+}

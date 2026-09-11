@@ -26,7 +26,7 @@ The script reports changed files and protocol definitions at `--ref` (default: `
 
 ## Check protocol changes
 
-Complete this review before updating the version, including for mac-only releases. Compare the [protocol definitions](../contracts/), Android command handlers and payloads, and Mac, web, and CLI clients. Check new or moved code as well as the paths listed by preflight.
+Complete this review before updating the version, including for mac-only releases. Compare the [protocol definitions](../contracts), Android command handlers and payloads, and Mac, web, and CLI clients. Check new or moved code as well as the paths listed by preflight.
 
 - Record old and new Network and Tweaks protocol numbers, client-supported versions, and the versions that enable optional features. List changes to commands, events, fields, and behavior.
 - Classify changes as none, additive, or breaking. Record the required version bump, or explain why keeping the number is compatible and how clients detect new features. An unchanged constant does not prove the API is unchanged.
@@ -37,20 +37,19 @@ Record the decision and test results with the source SHA. Fix failures and merge
 
 ## Build and test
 
-Run the normal checks for changed code. Use the setup and commands in the [macOS/web](../.github/workflows/mac.yml), [Android](../.github/workflows/android-link.yml), and [CLI](../.github/workflows/snapo-cli.yml) workflows. Confirm CI passed on the commit being released.
+Run the normal checks for changed code. Use the setup and commands in the [macOS/web](../.github/workflows/mac.yml), [Android](../.github/workflows/android.yml), and [CLI](../.github/workflows/snapo-cli.yml) workflows. Confirm CI passed on the commit being released.
 
 Before the version update, run the macOS build for `mac` or `both`, and Android publication validation for `android` or `both`:
 
 ```bash
-(cd snapo-app-mac && \
+(cd app-macos && \
   xcodebuild -project Snap-O.xcodeproj -scheme Snap-O \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build)
 
-(cd snapo-link-android && \
-  ./gradlew --no-daemon validateMavenCentralRelease)
+./gradlew --no-daemon validateMavenCentralRelease
 ```
 
-Use `snapo-link-android/build/reports/maven-central/publications.tsv` for the Android library coordinates.
+Use `build/reports/maven-central/publications.tsv` for the Android library coordinates.
 
 Test the release workflow before updating the version when build, signing, packaging, or publishing code changes. Check changes to the Xcode project, macOS build scripts, source CI, and frontend build files against the release workflow's setup. Source-only changes still need normal tests, but do not require an extra release workflow run when that workflow is unchanged.
 
@@ -91,9 +90,9 @@ Open a temporary copy of the final app and confirm the changed flows work. Revie
 
 For each library in the tag's generated `publications.tsv`, check the staged POM, Gradle metadata, AAR, sources, javadocs, and signatures before publishing.
 
-Confirm `inspector-runtime` appears in the publication manifest and in the Network and Tweaks runtime dependencies. Its AAR must not contribute an inspector descriptor, frontend ZIP, or initialization provider. Runtime API changes must pass the independent Example build and HTTP routing/streaming tests, including client disconnect cancellation.
+Confirm `plugin-runtime` appears in the publication manifest and in the Network and Tweaks runtime dependencies. Its AAR must not contribute a tool descriptor, frontend ZIP, or initialization provider. Runtime API changes must pass the independent Example build and HTTP routing/streaming tests, including client disconnect cancellation.
 
-For Network and Tweaks AARs, also verify the generated inspector descriptor and the frontend ZIP under `assets/snapo/inspectors/<id>/`. The ZIP must contain `index.html` and its referenced assets.
+For Network and Tweaks AARs, also verify the generated tool descriptor and the frontend ZIP under `assets/snapo/inspectors/<id>/`. The ZIP must contain `index.html` and its referenced assets.
 
 Keep unused icons, preview data, tests, and source maps out of frontend ZIPs. Verify that the Material Symbols license and notice remain in each AAR's Android assets.
 

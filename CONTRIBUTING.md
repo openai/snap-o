@@ -15,6 +15,32 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
    git checkout -b feature/YourFeatureName
    ```
 
+## Repository layout
+
+| Folder | Purpose |
+| --- | --- |
+| `app-macos/` | Native app, device transport, and Xcode tests |
+| `cli/` | Python CLI and tests |
+| `plugins/` | Network and Tweaks implementations, each with `android/` and `frontend/` |
+| `sdk/` | Plugin authoring APIs, runtime, and Gradle integration |
+| `plugin-reader/` | Android APK metadata and frontend asset reader |
+| `examples/` | Demo apps, an independent plugin, and CLI examples |
+| `contracts/` | Protocol definitions and shared fixtures |
+| `docs/` | Documentation sources, theme, and tests |
+| `build-logic/`, `gradle/` | Internal build conventions and Gradle wrapper configuration |
+| `release/`, `scripts/` | Release checks and contributor utilities |
+| `skills/` | Codex plugin skills |
+
+Open the repository root in Android Studio. Run `./gradlew` from that root; published Android artifact names are independent of folder names.
+
+The macOS app owns its device code under `Snap-O/Device/`. Run its unit tests with:
+
+```sh
+cd app-macos
+xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
+```
+
 ## Making Changes
 
 - Follow the existing Swift style and code conventions.
@@ -24,17 +50,17 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 
 ### macOS Swift Tooling
 
-The macOS app pins SwiftFormat and SwiftLint in `snapo-app-mac/mise.toml`. Install the repo-owned tool versions once, then use the shared `mise` tasks so local checks match CI:
+The macOS app pins SwiftFormat and SwiftLint in `app-macos/mise.toml`. Install the repo-owned tool versions once, then use the shared `mise` tasks so local checks match CI:
 
 ```bash
-cd snapo-app-mac
+cd app-macos
 mise trust
 mise install
 mise run format
 mise run lint
 ```
 
-To update the pinned tools intentionally, bump the versions in `snapo-app-mac/mise.toml` and rerun `mise install` plus `mise run lint`.
+To update the pinned tools intentionally, bump the versions in `app-macos/mise.toml` and rerun `mise install` plus `mise run lint`.
 
 ## Documentation
 
@@ -46,7 +72,7 @@ For release preparation and acceptance checks, see [Release requirements](releas
 
 If you need to notarize the app yourself:
 
-1. Copy `snapo-app-mac/Config/Signing.xcconfig.sample` → `snapo-app-mac/Config/Signing.xcconfig`.
+1. Copy `app-macos/Config/Signing.xcconfig.sample` → `app-macos/Config/Signing.xcconfig`.
 2. Edit the new file with your Apple Developer Team ID and signing certificate name.
 3. Use Xcode's Product → Archive flow, then distribute or upload as usual. The file is ignored by Git, so your credentials remain private.
 

@@ -1,6 +1,6 @@
 # HTTP interception
 
-Interception uses the [Network Inspector HTTP protocol](README.md) on `snapo_network_<pid>`. A POST registers routes and returns their owning SSE connection. Decisions travel over separate HTTP requests. Interception events are sent only to that runner; they are never replayed or broadcast to inspectors.
+Interception uses the [Network Tool HTTP protocol](README.md) on `snapo_network_<pid>`. A POST registers routes and returns their owning SSE connection. Decisions travel over separate HTTP requests. Interception events are sent only to that runner; they are never replayed or broadcast to tools.
 
 ## Register and release routes
 

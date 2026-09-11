@@ -80,5 +80,5 @@ The build generates the tab buttons, accessibility attributes, and keyboard navi
 
 ## Theme
 
-`mkdocs.yml` configures the build. Templates live in `docs-theme/`; styles, scripts, and images live in `docs/assets/`.
+`mkdocs.yml` configures the build. Templates live in `docs/theme/`; styles, scripts, and images live in `docs/assets/`.
 `docs/hooks.py` handles numbered sections, code captions, and dependency tabs.

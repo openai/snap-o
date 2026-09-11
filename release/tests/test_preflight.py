@@ -159,6 +159,58 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("frontend/src/features/tweaks-inspector/protocol.ts", report)
         self.assertIn("const supportedProtocolVersion = 7", report)
 
+    def test_reports_versions_after_tool_rename(self):
+        (self.repo / DECLARATIONS[0][1]).unlink()
+        (self.repo / DECLARATIONS[1][1]).unlink()
+        self.write("snapo-link-android/network/build.gradle.kts", "snapoTool {\n    protocolVersion = 3\n}\n")
+        self.write("snapo-link-android/network/frontend/src/features/network-tool/lib/protocol.ts", "export const supportedProtocolVersion = 3;\n")
+        self.write("snapo-link-android/tweaks-core/build.gradle.kts", "snapoTool {\n    protocolVersion = 7\n}\n")
+        self.write("snapo-link-android/tweaks-core/frontend/src/features/tweaks-tool/protocol.ts", "export const supportedProtocolVersion = 7;\n")
+        self.commit()
+        report = self.report()
+        self.assertNotIn("UNRESOLVED:", report)
+        self.assertIn("protocolVersion = 3", report)
+        self.assertIn("network/frontend/src/features/network-tool/lib/protocol.ts", report)
+        self.assertIn("protocolVersion = 7", report)
+        self.assertIn("frontend/src/features/tweaks-tool/protocol.ts", report)
+        self.assertIn("const supportedProtocolVersion = 7", report)
+
+    def test_reports_versions_after_plugins_directory_move(self):
+        (self.repo / DECLARATIONS[0][1]).unlink()
+        (self.repo / DECLARATIONS[1][1]).unlink()
+        self.write("plugins/network/build.gradle.kts", "snapoTool {\n    protocolVersion = 3\n}\n")
+        self.write("plugins/network/frontend/src/features/network-tool/lib/protocol.ts", "export const supportedProtocolVersion = 3;\n")
+        self.write("plugins/tweaks-core/build.gradle.kts", "snapoTool {\n    protocolVersion = 7\n}\n")
+        self.write("plugins/tweaks-core/frontend/src/features/tweaks-tool/protocol.ts", "export const supportedProtocolVersion = 7;\n")
+        self.commit()
+        report = self.report()
+        self.assertNotIn("UNRESOLVED:", report)
+        self.assertIn("plugins/network/build.gradle.kts", report)
+        self.assertIn("plugins/tweaks-core/build.gradle.kts", report)
+        self.assertIn("protocolVersion = 3", report)
+        self.assertIn("network/frontend/src/features/network-tool/lib/protocol.ts", report)
+        self.assertIn("protocolVersion = 7", report)
+        self.assertIn("frontend/src/features/tweaks-tool/protocol.ts", report)
+        self.assertIn("const supportedProtocolVersion = 7", report)
+
+    def test_reports_versions_after_plugin_implementation_grouping(self):
+        (self.repo / DECLARATIONS[0][1]).unlink()
+        (self.repo / DECLARATIONS[1][1]).unlink()
+        self.write("plugins/implementations/network/core/build.gradle.kts", "snapoPlugin {\n    protocolVersion = 3\n}\n")
+        self.write("plugins/implementations/network/frontend/src/features/network-tool/lib/protocol.ts", "export const supportedProtocolVersion = 3;\n")
+        self.write("plugins/implementations/tweaks/core/build.gradle.kts", "snapoPlugin {\n    protocolVersion = 7\n}\n")
+        self.write("plugins/implementations/tweaks/frontend/src/features/tweaks-tool/protocol.ts", "export const supportedProtocolVersion = 7;\n")
+        self.commit()
+        report = self.report()
+        self.assertNotIn("UNRESOLVED:", report)
+        self.assertIn("plugins/implementations/network/core/build.gradle.kts", report)
+        self.assertIn("plugins/implementations/tweaks/core/build.gradle.kts", report)
+        self.assertIn("protocolVersion = 3", report)
+        self.assertIn("network/frontend/src/features/network-tool/lib/protocol.ts", report)
+        self.assertIn("protocolVersion = 7", report)
+        self.assertIn("frontend/src/features/tweaks-tool/protocol.ts", report)
+        self.assertIn("const supportedProtocolVersion = 7", report)
+
     def test_reports_extracted_android_runtime_for_protocol_review(self):
         runtime = "snapo-link-android/inspector-runtime/src/main/java/com/openai/snapo/inspector/InspectorHttpRequest.kt"
         self.write(runtime, "package com.openai.snapo.inspector\n")
@@ -298,6 +350,29 @@ class ProtocolReportTests(unittest.TestCase):
             self.assertIn(f"{new_path}:1:{declaration}", comparison)
         self.assertIn(native, comparison)
 
+    def test_reports_protocols_after_repository_reorganization(self):
+        for _, path, _ in DECLARATIONS:
+            (self.repo / path).unlink(missing_ok=True)
+        declarations = {
+            "plugins/network/android/core/build.gradle.kts": "protocolVersion = 3",
+            "plugins/tweaks/android/core/build.gradle.kts": "protocolVersion = 7",
+            "plugins/network/frontend/src/features/network-tool/lib/protocol.ts": "const supportedProtocolVersion = 3;",
+            "plugins/tweaks/frontend/src/features/tweaks-tool/protocol.ts": "const supportedProtocolVersion = 7;",
+            "cli/snapo": "NETWORK_PROTOCOL_VERSION = 3\nTWEAKS_PROTOCOL_VERSION = 7",
+        }
+        for path, content in declarations.items():
+            self.write(path, content + "\n")
+        for path in ("app-macos/Snap-O/Device/PluginDiscovery.swift", "sdk/runtime/src/Changed.kt", "plugin-reader/src/Changed.java"):
+            self.write(path, "// fixture\n")
+        self.commit()
+        report = self.report()
+        self.assertNotIn("UNRESOLVED", report)
+        for path in declarations:
+            self.assertIn(path, report)
+        self.assertIn("app-macos/Snap-O/Device/PluginDiscovery.swift", report)
+        self.assertIn("sdk/runtime/src/Changed.kt", report)
+        self.assertIn("plugin-reader/src/Changed.java", report)
+
     def test_reports_removed_swift_network_client(self):
         label, path, declaration = DECLARATIONS[2]
         (self.repo / path).unlink()
@@ -321,7 +396,9 @@ class ProtocolReportTests(unittest.TestCase):
                 self.commit()
                 report = self.report()
                 self.assertEqual(report.count("UNRESOLVED:"), 1)
-                self.assertIn(f"UNRESOLVED: {label} not found in {missing_path}", report)
+                self.assertIn(f"UNRESOLVED: {label} not found in", report)
+                unresolved = next(line for line in report.splitlines() if f"UNRESOLVED: {label}" in line)
+                self.assertIn(missing_path, unresolved)
                 for other_label, _, other_declaration in DECLARATIONS:
                     if other_label != label:
                         self.assertEqual(report.count(other_declaration), 2)

@@ -1,7 +1,7 @@
 ---
 layout: guide
-title: Network Inspector Guide · Snap-O
-description: Add Snap-O Network Inspector to an Android app using OkHttp, Ktor, or
+title: Network Guide · Snap-O
+description: Add Snap-O Network to an Android app using OkHttp, Ktor, or
   HttpURLConnection.
 styles:
 - guide.css
@@ -14,7 +14,7 @@ breadcrumbs:
   href: index.html
 ---
 
-# Network Inspector Guide
+# Network Guide
 
 Capture network requests from an Android app with Snap-O, including response bodies, Server-Sent Events, and WebSocket messages. Works with OkHttp, Ktor's OkHttp engine, and HttpURLConnection.
 {.lead}
@@ -238,11 +238,11 @@ val client = HttpClient(OkHttp) {
 
 1. Install and launch the debug build on an authorized Android device or emulator.
 2. Open Snap-O on macOS and select the connected device.
-3. Open **Tools → Show App Inspector**, use the toolbar inspector button, or press **⌘⌥I**.
+3. Open **Tools → Show Tool Pane**, use the toolbar tool button, or press **⌘⌥I**.
 4. Find the app process in the picker and click its **Network** icon, then trigger a request in the Android app.
 5. Open the request to inspect headers, bodies, timing, SSE, or WebSocket messages.
 
-Each running app process has one picker row, with shortcuts for its available inspectors. At startup, Snap-O restores your last app and inspector when available, or selects another available app. During a session, it keeps captured requests visible through disconnects and reconnects when the selected app returns.
+Each running app process has one picker row, with shortcuts for its available tools. At startup, Snap-O restores your last app and tool when available, or selects another available app. During a session, it keeps captured requests visible through disconnects and reconnects when the selected app returns.
 {.notice}
 
 If the selected Android app stops, click **Open app** on the waiting screen when available, or launch it on your device.
@@ -257,7 +257,7 @@ Use the arrow keys to move between requests. Server-Sent Events show whether the
 
 ### Intercept requests {#python-overrides}
 
-Use `snapo network intercept` to change a real API response or return mock data. The inspector shows the response delivered to the app while your Python handlers run separately. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.
+Use `snapo network intercept` to change a real API response or return mock data. The tool shows the response delivered to the app while your Python handlers run separately. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.
 
 ## Troubleshooting {#troubleshoot data-step="5"}
 
@@ -271,12 +271,12 @@ Use `snapo network intercept` to change a real API response or return mock data.
 
 ## Advanced setup {#advanced data-step="6"}
 
-Debug builds initialize the on-device server automatically through `SnapONetworkInitProvider`. Release builds do not start the server unless Network Inspector is explicitly enabled. Most apps should keep the defaults and use the no-op release artifact.
+Debug builds initialize the on-device server automatically through `SnapONetworkInitProvider`. Release builds do not start the server unless Network is explicitly enabled. Most apps should keep the defaults and use the no-op release artifact.
 
 <details markdown="1">
-<summary>Enable Network Inspector in release builds</summary>
+<summary>Enable Network in release builds</summary>
 
-If you intentionally include the real network dependency in a release build, add the following metadata directly to your application's `<application>` element. This opt-in applies only to Network Inspector. No-op release artifacts remain the recommended setup for most apps.
+If you intentionally include the real network dependency in a release build, add the following metadata directly to your application's `<application>` element. This opt-in applies only to Network. No-op release artifacts remain the recommended setup for most apps.
 
 ``` { .xml title="AndroidManifest.xml" }
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -315,7 +315,7 @@ The provider supports automatic initialization, main-process filtering, and repl
 
 | Metadata key | Default | Purpose |
 | --- | --- | --- |
-| `snapo.auto_init` | `true` | Starts the inspector during app initialization. |
+| `snapo.auto_init` | `true` | Starts the tool during app initialization. |
 | `snapo.main_process_only` | `true` | Restricts automatic initialization to the app's main process. |
 | `snapo.buffer_window_ms` | `300000` | Sets the rolling replay window in milliseconds. |
 | `snapo.max_events` | `10000` | Caps the number of events retained for replay. |
@@ -326,7 +326,7 @@ The provider supports automatic initialization, main-process filtering, and repl
 <details markdown="1">
 <summary>Manual initialization</summary>
 
-If automatic initialization is disabled, initialize the inspector from your application process with a custom `NetworkInspectorConfig`.
+If automatic initialization is disabled, initialize the tool from your application process with a custom `NetworkInspectorConfig`.
 
 ``` { .kotlin title="Kotlin" }
 import com.openai.snapo.network.NetworkInspector

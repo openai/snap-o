@@ -31,7 +31,7 @@ Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `
 
 ### Discovery and readiness
 
-Read app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The Tweaks frontend and CLI require protocol version **7** before sending HTTP requests. Missing, older, and newer versions produce an unsupported-protocol error. The native host does not interpret inspector protocol versions.
+Read app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The Tweaks frontend and CLI require protocol version **7** before sending HTTP requests. Missing, older, and newer versions produce an unsupported-protocol error. The native host does not interpret tool protocol versions.
 
 `OPTIONS /` returns an empty readiness response. The server does not serve HTTP metadata or icon endpoints. Version 7 removes those endpoints; update Snap-O and Android libraries together. Values, actions, curves, batch errors, modification flags, and null resets retain their existing behavior.
 
@@ -186,7 +186,7 @@ Reset uses `null` and restores the complete default or invokes the app-owned res
 
 Curve values use structured JSON objects.
 Earlier clients that accept only primitives cannot decode lists containing curves.
-New clients still support earlier servers. The Network Inspector protocol is unchanged.
+New clients still support earlier servers. The Network Tool protocol is unchanged.
 
 ```kotlin
 val curve by tweak(
@@ -208,7 +208,7 @@ Opt in to a complete list of active tweaks and previously adjusted ordinary or a
 curl -fsS 'http://127.0.0.1:43817/tweaks?include=adjusted'
 ```
 
-The response uses the same `{"tweaks":[...]}` shape and complete tweak descriptors as `GET /tweaks`. Include every currently active tweak, whether or not it has been adjusted, and every inactive ordinary or app-owned tweak whose effective value or modification status changed after a successful inspector adjustment. Preserve its complete descriptor, last effective value, and authoritative modification status after its final usage leaves composition. App-owned history retains only an immutable snapshot, never its source, callbacks, or observers; a returning source supplies its own current value. Separate screens may reuse a name with different declarations; include each independently adjusted complete descriptor, even when names repeat. An active descriptor takes precedence over its matching historical snapshot. Order names by first observation, regardless of later activation or adjustment. For repeated names, list the active declaration first, followed by historical declarations in stable adjustment order.
+The response uses the same `{"tweaks":[...]}` shape and complete tweak descriptors as `GET /tweaks`. Include every currently active tweak, whether or not it has been adjusted, and every inactive ordinary or app-owned tweak whose effective value or modification status changed after a successful tool adjustment. Preserve its complete descriptor, last effective value, and authoritative modification status after its final usage leaves composition. App-owned history retains only an immutable snapshot, never its source, callbacks, or observers; a returning source supplies its own current value. Separate screens may reuse a name with different declarations; include each independently adjusted complete descriptor, even when names repeat. An active descriptor takes precedence over its matching historical snapshot. Order names by first observation, regardless of later activation or adjustment. For repeated names, list the active declaration first, followed by historical declarations in stable adjustment order.
 
 An adjusted tweak remains in this history even after it is reset. An app-owned reset can leave an effective value different from the captured default while its modification status is false. An inactive tweak that was never adjusted, a no-op update that changes neither its value nor its modification status, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
 
@@ -468,7 +468,7 @@ private fun SharedPreferences.tweak(
 }
 ```
 
-The inspector captures the source's initial value when first observed. Snap-O accesses the source and updates its observable value and modification status on the Android main thread. The first app read or inspector request initializes this snapshot and may wait for the main thread; later inspector requests use cached values without accessing the source, even when the main thread is blocked. Reset calls `reset()`, and `isModified` reports whether the setting is stored. Source changes update the snapshot and stream when `observe()` emits; no polling is needed. Previously adjusted sources leave immutable history without retaining their sources or restoring values into returning sources. Both live and no-op artifacts defer reading the source until its value or default is observed. The no-op artifact never registers a tweak, edits the source, or observes it.
+The tool captures the source's initial value when first observed. Snap-O accesses the source and updates its observable value and modification status on the Android main thread. The first app read or tool request initializes this snapshot and may wait for the main thread; later tool requests use cached values without accessing the source, even when the main thread is blocked. Reset calls `reset()`, and `isModified` reports whether the setting is stored. Source changes update the snapshot and stream when `observe()` emits; no polling is needed. Previously adjusted sources leave immutable history without retaining their sources or restoring values into returning sources. Both live and no-op artifacts defer reading the source until its value or default is observed. The no-op artifact never registers a tweak, edits the source, or observes it.
 
 Multiple composables can expose the same app-owned tweak. The first active source handles its value, updates, resets, and modification status. Only its `observe()` flow is collected. When it leaves composition, the next active source takes over. Sources with the same name must use the same setting and value type. Conflicts are not checked and can cause wrong values or runtime errors.
 
@@ -479,7 +479,7 @@ dependencies {
     debugImplementation(project(":tweaks"))
     releaseImplementation(project(":tweaks-noop"))
 
-    // Optional: include the floating on-device inspector.
+    // Optional: include the floating on-device tool.
     debugImplementation(project(":tweaks-overlay"))
     releaseImplementation(project(":tweaks-overlay-noop"))
 }
@@ -488,8 +488,8 @@ dependencies {
 ```text
 :tweaks                 Compose API, live registry, HTTP, and abstract socket.
 :tweaks-noop            Matching Compose API that returns default values.
-:tweaks-overlay         Optional floating Compose tweak inspector.
-:tweaks-overlay-noop    Matching no-op overlay without the inspector.
+:tweaks-overlay         Optional floating Compose tweak tool.
+:tweaks-overlay-noop    Matching no-op overlay without the tool.
 :samples:demo-tweaks    Standalone Compose sample with no network integration.
 ```
 
@@ -545,7 +545,7 @@ Install the standalone debug sample on a connected Android device:
 From the repository root, start the sample's optional host-side tweak panel:
 
 ```bash
-node snapo-link-android/samples/demo-tweaks/panel/server.mjs
+node examples/android/demo-tweaks/panel/server.mjs
 ```
 
 Open `http://127.0.0.1:4175`. The dependency-free panel discovers connected devices and live tweak sockets, creates its own ADB forward, displays the app icon and tweaks, and reconnects when the app process changes. It is a model-built demo, not a required setup step or the expected way to use Snap-O Tweaks. Any agent or host can use the same endpoints to create its own UI. See the sample panel's README for device and package selection.
@@ -558,7 +558,7 @@ A non-exported `ContentProvider` in the live artifact starts the runtime by defa
 </application>
 ```
 
-This flag allows the Tweaks server and, if installed and enabled, the in-app overlay. It does not enable Network Inspector, which has its own `snapo.network.allow_release` application flag. The no-op release artifacts are still recommended: they return default values, contain no provider, and let R8 remove unused calls and tweak-name strings. Verify the release APK contains neither tweak-only strings nor the live provider, registry, server, or socket.
+This flag allows the Tweaks server and, if installed and enabled, the in-app overlay. It does not enable Network Tool, which has its own `snapo.network.allow_release` application flag. The no-op release artifacts are still recommended: they return default values, contain no provider, and let R8 remove unused calls and tweak-name strings. Verify the release APK contains neither tweak-only strings nor the live provider, registry, server, or socket.
 
 Phase one requires no Ktor, OkHttp, extra JSON library, Snap-O Mac UI, network protocol change, groups, scopes, units, separate tweak IDs, or revisions.
 

@@ -7,14 +7,13 @@ on:
       - '.agents/plugins/marketplace.json'
       - '.codex-plugin/plugin.json'
       - 'VERSION'
-      - 'scripts/snapo'
-      - 'scripts/snapo-discovery.jar'
-      - 'android-discovery/**'
+      - 'cli/snapo'
+      - 'plugin-reader/**'
       - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
-      - 'tests/snapo_cli/**'
+      - 'cli/tests/**'
       - 'contracts/**'
       - '.github/workflows/snapo-cli.yml'
   pull_request:
@@ -23,14 +22,13 @@ on:
       - '.agents/plugins/marketplace.json'
       - '.codex-plugin/plugin.json'
       - 'VERSION'
-      - 'scripts/snapo'
-      - 'scripts/snapo-discovery.jar'
-      - 'android-discovery/**'
+      - 'cli/snapo'
+      - 'plugin-reader/**'
       - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
-      - 'tests/snapo_cli/**'
+      - 'cli/tests/**'
       - 'contracts/**'
       - '.github/workflows/snapo-cli.yml'
 
@@ -38,7 +36,7 @@ permissions:
   contents: read
 
 env:
-  SNAPO_CLI: scripts/snapo
+  SNAPO_CLI: cli/snapo
 
 jobs:
   test:
@@ -51,9 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Check Python CLI
-        run: python3 -m py_compile "$SNAPO_CLI" tests/snapo_cli/test_snapo.py
+        run: python3 -m py_compile "$SNAPO_CLI" cli/tests/test_snapo.py
       - name: Test Python CLI
-        run: python3 -m unittest discover -s tests/snapo_cli -p 'test_*.py' -v
+        run: python3 -m unittest discover -s cli/tests -p 'test_*.py' -v
       - name: Test release scripts
         run: |
           bash -n release/preflight.sh

@@ -44,7 +44,7 @@ adb -s "$serial" forward --remove "tcp:$port"
 
 The Snap-O CLI manages this discovery and cleanup automatically. For a remote ADB server, an ADB forward is local to the server’s host; tunnel it to your client, or use the CLI with both `--adb-host` and `--adb-port` for direct ADB transport.
 
-Debug builds enable the server by default. A nondebuggable app can enable it only by including the real Tweaks dependency and setting `snapo.tweaks.allow_release` to `true` in its application's `<application>` metadata. Release no-op artifacts remain the recommended default. See [release setup](tweaks.md#install) for the manifest example. Network Inspector has its own independent `snapo.network.allow_release` opt-in.
+Debug builds enable the server by default. A nondebuggable app can enable it only by including the real Tweaks dependency and setting `snapo.tweaks.allow_release` to `true` in its application's `<application>` metadata. Release no-op artifacts remain the recommended default. See [release setup](tweaks.md#install) for the manifest example. Network has its own independent `snapo.network.allow_release` opt-in.
 
 When its optional dependency is installed and its developer setting is enabled, the on-device floating panel observes the same tweak registry directly. Changes from the panel, Snap-O, and custom clients update that shared registry without a separate panel-specific HTTP connection. Host applications observe updates through the event stream or their normal refresh behavior. See the [floating overlay setup](tweaks.md#floating-overlay) for Android integration.
 
@@ -62,7 +62,7 @@ When its optional dependency is installed and its developer setting is enabled, 
 
 ## Manifest discovery {#get-app data-step="2"}
 
-Read app identity and the Tweaks descriptor from installed Android manifest resources before opening an inspector connection. The Tweaks frontend and CLI require protocol **7**. Missing, older, and newer versions are unsupported; update Snap-O and the Android library together.
+Read app identity and the Tweaks descriptor from installed Android manifest resources before opening a tool connection. The Tweaks frontend and CLI require protocol **7**. Missing, older, and newer versions are unsupported; update Snap-O and the Android library together.
 
 ``` { .shell title="Terminal · inspect app metadata" }
 snapo tweaks apps --json

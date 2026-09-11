@@ -1,0 +1,74 @@
+import {
+  matchesKeywordSearchDocument,
+  parseKeywordSearchQuery,
+  type KeywordSearchDocument,
+  type KeywordSearchQuery
+} from "../../../network/keyword-search";
+import type { Header, ToolRecord } from "../../../network/cdp";
+import { formatBytes } from "../../../network/payload";
+import { statusDisplayName } from "./format";
+
+export type NetworkSearchQuery = KeywordSearchQuery;
+
+export function parseNetworkSearchQuery(searchText: string): NetworkSearchQuery {
+  return parseKeywordSearchQuery(searchText);
+}
+
+export function matchesNetworkSearch(record: ToolRecord, query: NetworkSearchQuery): boolean {
+  return matchesKeywordSearchDocument(searchDocumentForRecord(record), query);
+}
+
+export function searchDocumentForRecord(record: ToolRecord): KeywordSearchDocument {
+  const parts = [record.url, record.method, statusSearchText(record)];
+  parts.push(...headersSearchText(record.requestHeaders), ...headersSearchText(record.responseHeaders));
+
+  if (record.kind === "request") {
+    // HTTP bodies hydrate only on selection, so indexing them would make results cache-dependent.
+    for (const event of record.streamEvents) {
+      parts.push(
+        event.eventName ?? "",
+        event.lastEventId ?? "",
+        event.comment ?? "",
+        event.data ?? event.raw,
+        event.retryMillis == null ? "" : String(event.retryMillis)
+      );
+    }
+    const closed = record.streamClosed;
+    if (closed != null && closed.reason !== "completed") {
+      parts.push(closed.message?.trim() || (closed.reason === "error" ? "Connection error." : closed.reason));
+    }
+  } else {
+    for (const message of record.messages) {
+      parts.push(
+        message.opcode,
+        message.preview ?? "",
+        message.payloadSize == null ? "" : formatBytes(message.payloadSize),
+        message.enqueued == null ? "" : message.enqueued ? "enqueued" : "immediate"
+      );
+    }
+    if (record.closeRequested != null) {
+      parts.push(
+        String(record.closeRequested.code),
+        record.closeRequested.reason ?? "",
+        record.closeRequested.initiated,
+        record.closeRequested.accepted ? "accepted" : "not accepted"
+      );
+    }
+    if (record.closing != null) parts.push(String(record.closing.code), record.closing.reason ?? "");
+    if (record.closed != null) parts.push(String(record.closed.code), record.closed.reason ?? "");
+    if (record.failed != null) parts.push(record.failed.message ?? "");
+  }
+
+  return { parts };
+}
+
+function headersSearchText(headers: Header[]): string[] {
+  return headers.flatMap((header) => [header.name, header.value, `${header.name}: ${header.value}`]);
+}
+
+function statusSearchText(record: ToolRecord): string {
+  const status = record.status;
+  if (status.kind === "pending") return record.kind === "websocket" ? "Pending" : "";
+  if (status.kind === "failure") return `Error ${status.message ?? ""}`;
+  return `${status.code} ${statusDisplayName(status.code)}`;
+}

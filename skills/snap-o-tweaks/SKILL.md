@@ -1,6 +1,6 @@
 ---
 name: snap-o-tweaks
-description: Inspect, stream, and explicitly adjust live Android UI tweak values or invoke app-owned actions through Snap-O. Use when a request mentions Snap-O Tweaks, tweak-enabled Android apps, runtime UI parameters, Compose tweak or action controls, tweak discovery, previously adjusted or currently inactive tweaks, applying all user-made tweak changes, typed values, defaults or resets, tweak batches, explicitly registered actions, the Tweaks REST/SSE API, or selecting between CLI, macOS inspector, in-app overlay, and custom tweak interfaces.
+description: Inspect, stream, and explicitly adjust live Android UI tweak values or invoke app-owned actions through Snap-O. Use when a request mentions Snap-O Tweaks, tweak-enabled Android apps, runtime UI parameters, Compose tweak or action controls, tweak discovery, previously adjusted or currently inactive tweaks, applying all user-made tweak changes, typed values, defaults or resets, tweak batches, explicitly registered actions, the Tweaks REST/SSE API, or selecting between CLI, macOS tool, in-app overlay, and custom tweak interfaces.
 ---
 
 # Snap-O Tweaks
@@ -11,7 +11,7 @@ Inspect live values and app-owned actions exposed by a debug-enabled Android app
 
 - **Agents, shells, automation, or CI:** Default to the shared `snapo` CLI; it requires only Python 3 and Android Platform Tools on macOS or Linux.
 - **Direct integration:** Use REST and server-sent events. See [references/protocol.md](references/protocol.md) for ADB forwarding, endpoints, typed values, batched updates, and streaming.
-- **Desktop inspection:** Use Snap-O's macOS Tweaks inspector.
+- **Desktop inspection:** Use Snap-O's macOS Tweaks tool.
 - **In-app controls:** Integrate `SnapOTweakOverlay`.
 - **Custom interfaces:** Build a browser, native, or Compose UI; browsers require a same-origin proxy.
 
@@ -22,7 +22,7 @@ Read [references/interaction-surfaces.md](references/interaction-surfaces.md) fo
 Use the executable shared by the installed Snap-O plugin:
 
 ```text
-../../scripts/snapo
+../../cli/snapo
 ```
 
 Resolve this plugin-root path relative to this `SKILL.md`, not the current working directory. Call the resolved path `$SNAPO_BIN`; if it is absent, the Snap-O plugin installation is incomplete.

@@ -32,8 +32,8 @@ Download the standalone script and its Android reader from the `main` branch:
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/scripts/snapo -o ~/.local/bin/snapo
-curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/scripts/snapo-discovery.jar -o ~/.local/bin/snapo-discovery.jar
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/cli/snapo -o ~/.local/bin/snapo
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/plugin-reader/snapo-discovery.jar -o ~/.local/bin/snapo-discovery.jar
 chmod +x ~/.local/bin/snapo
 ```
 

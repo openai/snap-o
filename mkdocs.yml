@@ -7,14 +7,14 @@ strict: true
 
 theme:
   name: null
-  custom_dir: docs-theme
+  custom_dir: docs/theme
 
 watch:
-  - docs-theme
+  - docs/theme
 
 nav:
   - Snap-O: index.md
-  - Network Inspector: network-inspector.md
+  - Network: network-inspector.md
   - Network Interception: network-intercept.md
   - Tweaks: tweaks.md
   - Tweaks Protocol: tweaks-protocol.md
@@ -27,6 +27,7 @@ exclude_docs: |
   /hooks.py
   /__pycache__/
   /tests/
+  /theme/
   !/.nojekyll
 
 markdown_extensions:

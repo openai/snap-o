@@ -1,4 +1,4 @@
 interface:
-  display_name: "Snap-O Network Inspector"
+  display_name: "Snap-O Network Tool"
   short_description: "Inspect Android traffic and override API responses"
   default_prompt: "Use $snap-o-network-inspector to inspect Android network traffic or override API responses with Python route handlers."
