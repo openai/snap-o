@@ -12,6 +12,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -whole-module-optimization \
   SnapODeviceClient/Sources/SnapODeviceClient/InspectorServerReference.swift \
   SnapODeviceClient/Sources/SnapODeviceClient/InspectorDiscovery.swift \
   SnapODeviceClient/Sources/SnapODeviceClient/InspectorManifest.swift \
+  SnapODeviceClient/Sources/SnapODeviceClient/LegacyInspectorMetadata.swift \
   SnapODeviceClient/Sources/SnapODeviceClient/DeviceDiscovery.swift \
   Tests/InspectorRecovery/DeviceClientDouble.swift \
   -emit-module-path "$TEST_DIR/SnapODeviceClient.swiftmodule" -o "$TEST_DIR/DeviceClient.o"
@@ -19,6 +20,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   "$TEST_DIR/DeviceClient.o" Snap-O/Models/Device+Formatting.swift \
   Snap-O/ADB/DeviceTracker.swift \
   Snap-O/Inspectors/InspectorModels.swift \
+  Snap-O/Inspectors/InspectorMetadata.swift \
   Tests/InspectorSelection/InspectorTestFixtures.swift \
   Snap-O/Inspectors/InspectorSelection.swift \
   Snap-O/Inspectors/AppInspectorModel.swift \

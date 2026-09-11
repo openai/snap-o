@@ -15,6 +15,16 @@ final class InspectorHostModel {
   private(set) var isWaiting = true
   var isDevelopmentServerPresented = false
 
+  var selectedCompatibility: InspectorCompatibility {
+    selectedInspectorApp?.inspectors.first { $0.kind == preferredInspectorID }?.compatibility ?? .unknown
+  }
+
+  var compatibilityExplanation: InspectorCompatibility? {
+    // A development frontend can replace a missing archive, but not an unknown inspector identity.
+    if developmentURL != nil, case .missingFrontend = selectedCompatibility { return nil }
+    return selectedCompatibility.title(for: preferredInspectorID) == nil ? nil : selectedCompatibility
+  }
+
   var isPageReady: Bool {
     activePage?.isReady ?? false
   }
@@ -68,6 +78,7 @@ final class InspectorHostModel {
     let packageRevision: String?
     let frontend: InspectorFrontend?
     let developmentURL: URL?
+    let compatibility: InspectorCompatibility
   }
 
   private struct Page {
@@ -182,10 +193,10 @@ final class InspectorHostModel {
       .flatMap(InspectorWebPolicy.developmentURL)
     let identity = PageIdentity(
       appID: pageState.selectedApp?.id, server: pageState.selection?.server,
-      processIdentity: pageState.selectedApp?.manifest?.processIdentity,
-      storageIdentifier: scope, packageRevision: pageState.selectedApp?.manifest?.app?.revision,
-      frontend: pageState.selectedApp?.manifest?.app?.inspectors.first { $0.id == kind }?.frontend,
-      developmentURL: developmentURL
+      processIdentity: pageState.selectedApp?.metadata?.verifiedIdentity?.processIdentity,
+      storageIdentifier: scope, packageRevision: pageState.selectedApp?.metadata?.verifiedIdentity?.revision,
+      frontend: pageState.selectedApp?.metadata?.inspectors.first { $0.id == kind }?.frontend,
+      developmentURL: developmentURL, compatibility: selectedCompatibility
     )
     if pages[kind]?.identity != identity { replacePage(kind: kind, identity: identity) }
     for kind in pages.keys {
@@ -231,10 +242,10 @@ final class InspectorHostModel {
     let app = state.selectedApp?.id == page.identity.appID
       ? state.selectedApp : inspectorApps.first { $0.id == page.identity.appID }
     // Hidden pages retain their own app's metadata when another app is selected.
-    let manifest = app?.manifest ?? page.connection.manifest
-    let inspector = manifest?.app?.inspectors.first { $0.id == kind }
-    guard page.endpointID != endpoint?.id || page.connection.manifest != manifest || page.connection.inspector != inspector else { return }
-    page.connection.manifest = manifest
+    let metadata = app?.metadata ?? page.connection.metadata
+    let inspector = metadata?.inspectors.first { $0.id == kind }
+    guard page.endpointID != endpoint?.id || page.connection.metadata != metadata || page.connection.inspector != inspector else { return }
+    page.connection.metadata = metadata
     page.connection.inspector = inspector
     page.endpointID = endpoint?.id
     page.connection.revision += 1
@@ -245,7 +256,7 @@ final class InspectorHostModel {
   }
 
   private func replacePage(kind: InspectorID, identity: PageIdentity) {
-    let manifest = appInspector.snapshot.pageState(for: kind).selectedApp?.manifest
+    let metadata = appInspector.snapshot.pageState(for: kind).selectedApp?.metadata
     let previous = pages[kind]?.container
     previous?.stop()
     bindings[kind]?.cancel()
@@ -298,15 +309,20 @@ final class InspectorHostModel {
       defer {
         if pages[kind]?.container === container { pageTransitions[kind] = nil }
       }
+      switch identity.compatibility {
+      case .supported: break
+      case .missingFrontend where identity.developmentURL != nil: break
+      default: return
+      }
       do {
         let frontend: InspectorFrontendBundle?
         if identity.developmentURL != nil {
           frontend = nil
         } else if identity.frontend != nil {
-          guard let server = identity.server, let manifest,
-                let inspector = manifest.app?.inspectors.first(where: { $0.id == kind }),
+          guard let server = identity.server, let processIdentity = metadata?.verifiedIdentity,
+                let inspector = metadata?.inspectors.first(where: { $0.id == kind }),
                 inspector.frontend?.hostApiVersion == 1 else { throw InspectorError.frontendUnavailable }
-          frontend = try await service.inspectorFrontend(for: server, manifest: manifest, inspector: inspector)
+          frontend = try await service.inspectorFrontend(for: server, identity: processIdentity, inspector: inspector)
         } else {
           throw InspectorError.frontendUnavailable
         }

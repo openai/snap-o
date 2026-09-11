@@ -12,9 +12,8 @@ enum InspectorWebPolicy {
   }
 
   static func storageIdentifier(app: InspectableApp?, inspector: InspectorID) -> UUID? {
-    guard let app, let manifest = app.manifest, manifest.processIdentity != nil,
-          let package = manifest.app?.packageName, let user = manifest.androidUserId else { return nil }
-    let scope = ["snapo.inspector.v2", app.deviceId, String(user), package, inspector.rawValue]
+    guard let app, let identity = app.metadata?.verifiedIdentity else { return nil }
+    let scope = ["snapo.inspector.v2", app.deviceId, String(identity.androidUserId), identity.packageName, inspector.rawValue]
     guard let data = try? JSONEncoder().encode(scope) else { return nil }
     let bytes = Array(SHA256.hash(data: data).prefix(16))
     return UUID(uuid: (

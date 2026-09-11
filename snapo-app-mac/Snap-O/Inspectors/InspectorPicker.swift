@@ -21,7 +21,7 @@ struct AppInspectorPicker: View {
         AppInspectorIcon(
           app: model.selectedInspectorApp,
           size: Metrics.iconSize,
-          statusSize: model.isRestoringInspector ? 0 : Metrics.statusSize
+          statusSize: model.isWaiting || model.compatibilityExplanation != nil ? 0 : Metrics.statusSize
         )
 
         HStack(spacing: 6) {
@@ -114,18 +114,14 @@ struct AppInspectorViewPicker: View {
             Label {
               Text(option.displayName)
             } icon: {
-              if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
-                Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
-              } else {
-                Image(systemName: "square")
-              }
+              InspectorToolIcon(option: option)
             }
             .labelStyle(.iconOnly)
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(model.preferredInspectorID == option.kind ? Color.accentColor : Color.primary)
             .frame(width: 34, height: 32)
           }
-          .help(option.displayName)
+          .help(option.displayName + (option.compatibility.isUnsupported ? ": Unsupported inspector" : ""))
         }
       }
       .snapOToolbarGroupStyle()
@@ -219,7 +215,8 @@ private struct AppInspectorPickerAppRow: View {
 
         AppInspectorPickerText(
           appName: app.name,
-          deviceName: app.deviceDisplayTitle
+          deviceName: app
+            .deviceDisplayTitle + (app.inspectors.contains { $0.compatibility.isUnsupported } ? " · Unsupported inspector" : "")
         )
 
         Spacer(minLength: CGFloat(app.inspectors.count) * Self.shortcutWidth + 8)
@@ -266,11 +263,7 @@ private struct AppInspectorPickerShortcut: View {
       Label {
         Text(option.displayName)
       } icon: {
-        if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
-          Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
-        } else {
-          Image(systemName: "square")
-        }
+        InspectorToolIcon(option: option)
       }
       .labelStyle(.iconOnly)
       .font(.system(size: 13))
@@ -285,9 +278,27 @@ private struct AppInspectorPickerShortcut: View {
       }
     }
     .buttonStyle(.plain)
-    .help("Open \(option.displayName)")
-    .accessibilityLabel("Open \(option.displayName) for \(appName)")
+    .help(option.compatibility.isUnsupported ? "\(option.displayName): Unsupported inspector" : "Open \(option.displayName)")
+    .accessibilityLabel("Open \(option.displayName) for \(appName)\(option.compatibility.isUnsupported ? ", unsupported inspector" : "")")
     .onHover { isHovering = $0 }
+  }
+}
+
+private struct InspectorToolIcon: View {
+  let option: AppInspectorOption
+
+  var body: some View {
+    if option.compatibility.isUnsupported {
+      Image(systemName: "exclamationmark.triangle.fill")
+    } else if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+      Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
+    } else if option.compatibility == .unknown {
+      ProgressView().progressViewStyle(.circular).controlSize(.small).frame(width: 16, height: 16)
+    } else if option.compatibility == .metadataUnavailable {
+      Image(systemName: "wifi.exclamationmark")
+    } else {
+      Image(systemName: "wrench")
+    }
   }
 }
 

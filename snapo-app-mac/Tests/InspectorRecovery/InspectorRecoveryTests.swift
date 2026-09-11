@@ -152,7 +152,10 @@ struct InspectorRecoveryTests {
     precondition(InspectorHTTP.state.count == 2)
     precondition(!adb.scannedDeviceIDs.contains("stalled"))
     print("A device with failed properties is excluded from app discovery")
-    _ = try await service.inspectorEndpoint(for: healthy)
+    do {
+      _ = try await service.inspectorEndpoint(for: healthy)
+      fatalError("Metadata must be verified before authorizing an endpoint")
+    } catch InspectorError.serverNotConnected {}
     print("Both inspector kinds suppress repeated failed connections while healthy inspectors remain usable")
 
     adb.setMetadataAvailable(true)
@@ -247,6 +250,11 @@ struct InspectorRecoveryTests {
       restartedApp.inspectors.first { $0.kind == .network }?.protocolVersion == nil,
       "Metadata is not shared across service instances"
     )
+    adb.setMetadataAvailable(true)
+    try await eventually {
+      await restarted.discoverInspectors().apps.first { $0.deviceId == "frozen" }?
+        .inspectors.first { $0.kind == .tweaks }?.compatibility == .supported
+    }
     let ownerID = UUID()
     var invalidated = false
     var retired = false
@@ -296,6 +304,11 @@ struct InspectorRecoveryTests {
     await tracker.stopTracking()
     print("Property failures recover without another device tracking event")
     try await refreshesSiblingDescriptors()
+    try compatibilityStates()
+    try await normalizesMetadata()
+    try await mixedCompatibility()
+    try await preservesMetadataAfterFailure()
+    try await restartsCanceledLegacyProbe()
   }
 
   static func refreshesSiblingDescriptors() async throws {
@@ -310,7 +323,7 @@ struct InspectorRecoveryTests {
     let service = InspectorService(adbService: adbService, deviceTracker: tracker)
     _ = await service.discoverInspectors()
     try await eventually {
-      await service.currentInspectors().apps.first?.manifest?.app?.inspectors.map(\.id) == [.network]
+      await service.currentInspectors().apps.first?.metadata?.inspectors.map(\.id) == [.network]
     }
     precondition(adb.metadataSocketRequests.count == 1)
     precondition(Set(adb.metadataSocketRequests[0]) == ["snapo_network_42", "snapo_network_43"])
@@ -319,23 +332,23 @@ struct InspectorRecoveryTests {
     var cachedApp = InspectorHTTPService.App(
       kind: .network, pid: 42, deviceID: "healthy", deviceDisplayTitle: "Phone", socketName: "snapo_network_42"
     )
-    precondition(cachedApp.needsManifestRead(lastAttempt: nil, now: now))
-    precondition(!cachedApp.needsManifestRead(lastAttempt: now, now: now.advanced(by: .seconds(29))))
-    precondition(cachedApp.needsManifestRead(lastAttempt: now, now: now.advanced(by: .seconds(30))))
-    cachedApp.manifest = await service.currentInspectors().apps.first!.manifest!
+    precondition(cachedApp.needsMetadataRead(lastAttempt: nil, now: now))
+    precondition(!cachedApp.needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(29))))
+    precondition(cachedApp.needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(30))))
+    cachedApp.metadata.applyPackageMetadata(testManifest(pid: 42, kinds: [.network]), kind: .network)
     precondition(
-      !cachedApp.needsManifestRead(lastAttempt: now, now: now.advanced(by: .seconds(60))),
+      !cachedApp.needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(60))),
       "Successful metadata stays cached after the failed-read retry window"
     )
-    cachedApp.awaitingManifest = true
-    precondition(cachedApp.needsManifestRead(lastAttempt: nil, now: now), "A replacement socket invalidates cached metadata")
-    precondition(!cachedApp.needsManifestRead(lastAttempt: now, now: now), "Failed replacement reads still back off")
+    cachedApp.awaitingMetadata = true
+    precondition(cachedApp.needsMetadataRead(lastAttempt: nil, now: now), "A replacement socket invalidates cached metadata")
+    precondition(!cachedApp.needsMetadataRead(lastAttempt: now, now: now), "Failed replacement reads still back off")
 
     adb.setSocketNames(["snapo_network_42", "snapo_network_43", "snapo_tweaks_42"], deviceID: "healthy")
     _ = await service.discoverInspectors()
     try await eventually {
       let app = await service.currentInspectors().apps.first
-      return app?.manifest?.app?.inspectors.map(\.id) == [.network, .tweaks]
+      return app?.metadata?.inspectors.map(\.id) == [.network, .tweaks]
         && app?.inspectors.map(\.protocolVersion) == [3, 7]
     }
     precondition(adb.metadataSocketRequests.count == 2)
@@ -345,11 +358,262 @@ struct InspectorRecoveryTests {
 
     adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
     let remaining = await service.discoverInspectors().apps.first!
-    precondition(remaining.manifest?.app?.inspectors.map(\.id) == [.network, .tweaks])
+    precondition(remaining.metadata?.inspectors.map(\.id) == [.network, .tweaks])
     precondition(remaining.inspectors.map(\.kind) == [.network], "A cached descriptor cannot make an absent server available")
     await service.stop()
     await tracker.stopTracking()
     print("A new socket refreshes sibling metadata; only live sockets determine inspector availability")
+  }
+
+  static func compatibilityStates() throws {
+    func status(inspectors: [[String: Any]], errors: [[String: String]] = []) throws -> InspectorCompatibility {
+      let record: [String: Any] = [
+        "version": 1, "pid": 42, "processIdentity": "boot:42:1", "androidUserId": 0,
+        "app": ["name": "Demo", "packageName": "com.example.demo", "revision": "1", "inspectors": inspectors, "errors": errors]
+      ]
+      let manifest = try JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
+      var metadata = InspectorMetadata()
+      metadata.applyPackageMetadata(manifest, kind: .network)
+      return InspectorHTTPService.App(
+        kind: .network, pid: 42, deviceID: "phone", deviceDisplayTitle: "Phone", socketName: "snapo_network_42", metadata: metadata
+      ).compatibility
+    }
+    let descriptor: [String: Any] = ["id": "network", "name": "Network", "protocolVersion": 3]
+    let missingFrontend = try status(inspectors: [descriptor])
+    precondition(missingFrontend == .missingFrontend(protocolVersion: 3))
+    let missingDescriptor = try status(inspectors: [])
+    precondition(missingDescriptor == .missingDescriptor)
+    let invalidDescriptor = try status(inspectors: [], errors: [["key": "snapo.inspector.network", "error": "Invalid XML"]])
+    precondition(invalidDescriptor == .invalidDescriptor)
+    let siblingError = try status(inspectors: [], errors: [["key": "snapo.inspector.tweaks", "error": "Invalid XML"]])
+    precondition(siblingError == .missingDescriptor)
+    for version in [0, 1, 2] {
+      var value = descriptor
+      value["frontend"] = ["assetPath": "frontend.zip", "hostApiVersion": version]
+      let actual = try status(inspectors: [value])
+      precondition(actual == (version == 1 ? .supported : .hostAPI(version: version)))
+    }
+    var pending = InspectorHTTPService.App(
+      kind: .network,
+      pid: 42,
+      deviceID: "phone",
+      deviceDisplayTitle: "Phone",
+      socketName: "snapo_network_42"
+    )
+    precondition(pending.compatibility == .unknown)
+    pending.metadataReadFailed = true
+    precondition(pending.compatibility == .metadataUnavailable && !pending.compatibility.isUnsupported)
+    print("Missing metadata, invalid descriptors, missing frontends, and host API versions remain distinct")
+  }
+
+  static func normalizesMetadata() async throws {
+    let adb = ADBClient()
+    adb.setLegacyKinds([.network])
+    let legacy = try await adb.legacyInspectorMetadata(
+      reference: InspectorServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: .network, pid: 42
+    )!
+    func record(
+      package: String = "com.example.demo",
+      processName: String = "com.example.demo",
+      revision: String = "1",
+      kinds: [InspectorID] = []
+    ) throws -> InspectorProcessMetadata {
+      let value: [String: Any] = [
+        "version": 1, "pid": 42, "processIdentity": "boot:42:1", "androidUserId": 0, "processName": processName,
+        "app": [
+          "name": "Package label",
+          "packageName": package,
+          "revision": revision,
+          "inspectors": kinds.map { kind in
+            [
+              "id": kind.rawValue,
+              "name": kind.rawValue,
+              "protocolVersion": 4,
+              "frontend": ["assetPath": "frontend.zip", "hostApiVersion": 1]
+            ] as [String: Any]
+          }
+        ]
+      ]
+      return try JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: value))
+    }
+    var metadata = InspectorMetadata()
+    precondition(metadata.applyLegacyMetadata(legacy, kind: .network))
+    precondition(metadata.process.name == "Demo" && metadata.process.packageName == "com.example.demo")
+    precondition(metadata.process.verifiedIdentity == nil && metadata.process.inspectors.isEmpty)
+    precondition(metadata.compatibility == .legacy(protocolVersion: 1))
+    let legacyConnection = try JSONSerialization.jsonObject(with: JSONEncoder().encode(
+      InspectorConnectionState(metadata: metadata.process)
+    )) as! [String: Any]
+    precondition(legacyConnection["manifest"] == nil)
+
+    let modern = try record(kinds: [.network])
+    precondition(metadata.applyPackageMetadata(modern, kind: .network))
+    precondition(metadata.process.name == "Package label" && metadata.process.verifiedIdentity != nil)
+    precondition(metadata.compatibility == .supported && metadata.protocolVersion == 4)
+    precondition(!metadata.applyLegacyMetadata(legacy, kind: .network))
+
+    let withoutDescriptor = try record()
+    metadata.applyPackageMetadata(withoutDescriptor, kind: .network)
+    precondition(metadata.applyLegacyMetadata(legacy, kind: .network))
+    precondition(metadata.process.name == "Package label")
+    let sibling = try record(kinds: [.tweaks])
+    metadata.applyPackageMetadata(sibling, kind: .network)
+    precondition(metadata.compatibility == .legacy(protocolVersion: 1))
+    let replacement = try record(revision: "2")
+    metadata.applyPackageMetadata(replacement, kind: .network)
+    precondition(metadata.compatibility == .missingDescriptor && metadata.protocolVersion == nil)
+
+    for mismatch in try [record(package: "com.example.other"), record(processName: "com.example.demo:other")] {
+      metadata.applyPackageMetadata(mismatch, kind: .network)
+      let previous = metadata
+      precondition(!metadata.applyLegacyMetadata(legacy, kind: .network) && metadata == previous)
+    }
+    print("Metadata normalization merges display fields, preserves verified identity, and rejects stale or conflicting legacy evidence")
+  }
+
+  static func mixedCompatibility() async throws {
+    let adbService = ADBService()
+    let adb = await adbService.exec()
+    adb.setMetadataAvailable(true)
+    adb.setLegacyKinds([.network])
+    let tracker = DeviceTracker(adbService: adbService)
+    await tracker.startTracking()
+    adb.emitDevices("healthy device transport_id:1")
+    try await eventually { await tracker.latestDevices.count == 1 }
+    let service = InspectorService(adbService: adbService, deviceTracker: tracker)
+    try await eventually {
+      let options = await service.discoverInspectors().apps.first?.inspectors
+      return options?.first { $0.kind == .network }?.compatibility == .legacy(protocolVersion: 1)
+        && options?.first { $0.kind == .tweaks }?.compatibility == .supported
+        && options?.allSatisfy(\.isConnected) == true
+    }
+    let app = await service.currentInspectors().apps.first!
+    precondition(app.inspectors.count == 2)
+    var selection = InspectorSelection()
+    selection.reconcile([app])
+    precondition(selection.state.preferredKind == .tweaks, "Initial selection prefers a compatible sibling")
+    selection.selectInspector(app, option: app.inspectors[0])
+    precondition(selection.state.preferredKind == .network, "Unsupported inspectors remain selectable")
+    do {
+      _ = try await service.inspectorEndpoint(for: app.inspectors[0].server)
+      fatalError("Legacy metadata must not authorize an inspector endpoint")
+    } catch InspectorError.serverNotConnected {}
+    _ = try await service.inspectorEndpoint(for: app.inspectors[1].server)
+    for _ in 0 ..< 5 {
+      _ = await service.discoverInspectors()
+    }
+    precondition(adb.legacyRequestCount == 1, "Known legacy metadata is cached and modern siblings are not probed")
+    adb.setLegacyKinds([])
+    adb.replaceListeners()
+    try await eventually {
+      await service.discoverInspectors().apps.first?.inspectors.allSatisfy { $0.compatibility == .supported } == true
+    }
+    precondition(adb.legacyRequestCount == 1, "Replacement listeners use fresh manifests before legacy detection")
+    await service.stop()
+    await tracker.stopTracking()
+    print("Unsupported inspectors remain visible and selectable beside usable siblings; listener replacement clears compatibility")
+  }
+
+  private static func refresh(_ service: InspectorHTTPService, using adb: ADBClient) async {
+    let device = Device(id: "healthy", model: "Phone", androidVersion: "Test", vendorModel: nil, manufacturer: nil, avdName: nil)
+    let sockets = await InspectorDiscovery.discover(on: [device.id], using: adb)
+    await service.refresh(devices: [device], sockets: sockets, using: adb)
+  }
+
+  static func preservesMetadataAfterFailure() async throws {
+    for failure: ADBClient.MetadataFailure in [.request, .record] {
+      let adbService = ADBService()
+      let adb = await adbService.exec()
+      adb.setMetadataAvailable(true)
+      adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
+      let service = InspectorHTTPService(adbService: adbService)
+      await refresh(service, using: adb)
+      try await eventually {
+        let app = await service.currentApps().apps.first
+        return app?.compatibility == .supported && app?.isConnected == true
+      }
+      let original = await service.currentApps().apps.first!
+      let network = InspectorServerReference(deviceId: "healthy", socketName: "snapo_network_42")
+      let tweaks = InspectorServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
+      adb.setMetadataFailure(failure)
+      adb.setSocketNames([network.socketName, tweaks.socketName], deviceID: "healthy")
+      await refresh(service, using: adb)
+      try await eventually {
+        let apps = await service.currentApps().apps
+        return apps.count == 2 && apps.allSatisfy(\.metadataReadFailed) && !apps.contains(where: \.checkingLegacy)
+      }
+      let failed = await service.currentApps().apps
+      precondition(failed[0].metadata.process == original.metadata.process, "Failed sibling discovery must preserve verified metadata")
+      precondition(failed[0].compatibility == .supported && failed[0].isConnected)
+      precondition(failed[1].compatibility == .metadataUnavailable)
+      _ = try await service.endpoint(for: network)
+      do {
+        _ = try await service.endpoint(for: tweaks)
+        fatalError("A new sibling cannot use another socket's cached descriptor")
+      } catch InspectorError.serverNotConnected {}
+      let now = ContinuousClock.now
+      precondition(!failed[0].needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(29))))
+      precondition(failed[0].needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(30))))
+      await refresh(service, using: adb)
+      precondition(adb.metadataSocketRequests.count == 2, "Failed metadata refreshes must still back off")
+
+      adb.replaceListeners()
+      await refresh(service, using: adb)
+      try await eventually {
+        let apps = await service.currentApps().apps
+        return adb.metadataSocketRequests.count == 3 && apps.allSatisfy(\.metadataReadFailed)
+      }
+      let replacement = await service.currentApps().apps.first!
+      precondition(replacement.metadata.process == original.metadata.process, "Retain display metadata while a replacement is unverified")
+      precondition(replacement.awaitingMetadata && !replacement.isConnected && replacement.compatibility == .metadataUnavailable)
+      do {
+        _ = try await service.endpoint(for: network)
+        fatalError("Preserved metadata cannot authorize a replacement listener after a failed read")
+      } catch InspectorError.serverNotConnected {}
+
+      adb.setMetadataFailure(nil)
+      adb.replaceListeners()
+      await refresh(service, using: adb)
+      try await eventually {
+        await service.currentApps().apps.allSatisfy { $0.compatibility == .supported && $0.isConnected && !$0.metadataReadFailed }
+      }
+      _ = try await service.endpoint(for: network)
+      _ = try await service.endpoint(for: tweaks)
+      await service.stop()
+    }
+    print("Failed refreshes preserve verified siblings, back off, and never authorize unverified replacement listeners")
+  }
+
+  static func restartsCanceledLegacyProbe() async throws {
+    let adbService = ADBService()
+    let adb = await adbService.exec()
+    adb.setMetadataAvailable(true)
+    adb.setLegacyKinds([.network])
+    adb.setLegacyBlocked(true)
+    adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
+    let service = InspectorHTTPService(adbService: adbService)
+    await refresh(service, using: adb)
+    try await eventually {
+      await service.currentApps().apps.first?.checkingLegacy == true && adb.legacyRequestCount == 1
+    }
+    adb.setSocketNames([], deviceID: "healthy")
+    await refresh(service, using: adb)
+    try await eventually { adb.legacyCancellationCount == 1 }
+    adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
+    await refresh(service, using: adb)
+    try await eventually { adb.legacyRequestCount == 2 }
+    let returned = await service.currentApps().apps.first!
+    precondition(!returned.checkingLegacy, "A canceled probe must not leave the cached loading flag set")
+    precondition(adb.metadataSocketRequests.count == 2, "Rediscovery must not wait for the failed-request cooldown")
+    adb.setLegacyBlocked(false)
+    try await eventually { await service.currentApps().apps.first?.compatibility == .legacy(protocolVersion: 1) }
+    adb.setLegacyBlocked(true)
+    adb.replaceListeners()
+    await refresh(service, using: adb)
+    try await eventually { adb.legacyRequestCount == 3 }
+    await service.stop()
+    try await eventually { adb.legacyCancellationCount == 2 }
+    print("Socket removal clears canceled probe state; rediscovery retries immediately and shutdown cancels active probes")
   }
 
   static func eventually(line: Int = #line, _ condition: () async -> Bool) async throws {

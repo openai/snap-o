@@ -198,13 +198,13 @@ public final class ADBSocketConnection {
     while true {
       try Task.checkCancellation()
       let remaining = ContinuousClock.now.duration(to: deadline)
-      guard remaining > .zero else { throw ADBError.requestTimedOut("Waiting for uinput acknowledgment") }
+      guard remaining > .zero else { throw ADBError.requestTimedOut("Waiting for socket data") }
       let parts = remaining.components
       let milliseconds = parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000 + 1
       var descriptor = pollfd(fd: socketDescriptor, events: Int16(POLLIN), revents: 0)
       let result = Darwin.poll(&descriptor, 1, Int32(clamping: milliseconds))
       if result > 0 { return try readChunk(maxLength: maxLength) }
-      if result == 0 { throw ADBError.requestTimedOut("Waiting for uinput acknowledgment") }
+      if result == 0 { throw ADBError.requestTimedOut("Waiting for socket data") }
       if errno != EINTR { throw Self.makeSocketError(errno, context: "poll") }
     }
   }

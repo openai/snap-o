@@ -58,6 +58,13 @@ public struct InspectorFrontendBundle: Sendable {
   }
 
   static func request(manifest: InspectorProcessMetadata, inspector: InspectorDescriptor) throws -> Data {
+    guard let identity = InspectorProcessIdentity(metadata: manifest) else {
+      throw ADBError.parseFailure("inspector process identity is missing or invalid")
+    }
+    return try request(identity: identity, inspector: inspector)
+  }
+
+  static func request(identity: InspectorProcessIdentity, inspector: InspectorDescriptor) throws -> Data {
     struct Request: Encodable {
       let processIdentity: String
       let androidUserId: Int
@@ -67,12 +74,12 @@ public struct InspectorFrontendBundle: Sendable {
       let assetPath: String
       let hostApiVersion: Int
     }
-    guard let processIdentity = manifest.processIdentity, let user = manifest.androidUserId, let app = manifest.app,
-          let frontend = inspector.frontend, validPath(frontend.assetPath), frontend.assetPath.hasSuffix(".zip") else {
+    guard let frontend = inspector.frontend, validPath(frontend.assetPath), frontend.assetPath.hasSuffix(".zip") else {
       throw ADBError.parseFailure("inspector frontend metadata is missing or invalid")
     }
     return try JSONEncoder().encode(Request(
-      processIdentity: processIdentity, androidUserId: user, packageName: app.packageName, revision: app.revision,
+      processIdentity: identity.processIdentity, androidUserId: identity.androidUserId,
+      packageName: identity.packageName, revision: identity.revision,
       inspectorId: inspector.id, assetPath: frontend.assetPath, hostApiVersion: frontend.hostApiVersion
     ))
   }

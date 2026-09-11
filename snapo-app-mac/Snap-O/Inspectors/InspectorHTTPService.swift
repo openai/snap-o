@@ -8,42 +8,51 @@ actor InspectorHTTPService {
     let deviceID: String
     var deviceDisplayTitle: String
     let socketName: String
-    var processNameHint: String?
-    var manifest: InspectorProcessMetadata?
+    var metadata = InspectorMetadata()
     var socketInode: String?
-    var awaitingManifest = false
+    var awaitingMetadata = false
     var isConnected = false
+    var metadataReadFailed = false
+    var checkingLegacy = false
+
+    var compatibility: InspectorCompatibility {
+      if awaitingMetadata { return metadataReadFailed ? .metadataUnavailable : .unknown }
+      if checkingLegacy { return .unknown }
+      if metadata.compatibility != .unknown { return metadata.compatibility }
+      return metadataReadFailed ? .metadataUnavailable : .unknown
+    }
 
     var name: String? {
-      manifest?.app?.name
+      metadata.process.name
     }
 
     var packageName: String? {
-      manifest?.app?.packageName
+      metadata.process.packageName
     }
 
     var processName: String? {
-      manifest?.processName ?? processNameHint
+      metadata.process.processName
     }
 
     var androidUserID: Int? {
-      manifest?.androidUserId
+      metadata.process.verifiedIdentity?.androidUserId
     }
 
     var appIconBase64: String? {
-      manifest?.app?.iconBase64
+      metadata.process.iconBase64
     }
 
     var descriptor: InspectorDescriptor? {
-      manifest?.app?.inspectors.first { $0.id == kind }
+      metadata.descriptor(for: kind)
     }
 
     var protocolVersion: Int? {
-      manifest?.app == nil ? nil : descriptor?.protocolVersion ?? 0
+      metadata.protocolVersion
     }
 
-    func needsManifestRead(lastAttempt: ContinuousClock.Instant?, now: ContinuousClock.Instant) -> Bool {
-      guard manifest == nil || awaitingManifest else { return false }
+    func needsMetadataRead(lastAttempt: ContinuousClock.Instant?, now: ContinuousClock.Instant) -> Bool {
+      guard metadata.process.verifiedIdentity == nil || awaitingMetadata || metadataReadFailed || metadata.needsLegacyProbe
+      else { return false }
       guard let lastAttempt else { return true }
       return lastAttempt.duration(to: now) >= .seconds(30)
     }
@@ -72,6 +81,7 @@ actor InspectorHTTPService {
   private var discoveredKeys: Set<String> = []
   private var retryAfter: [String: ContinuousClock.Instant] = [:]
   private var metadataTasks: [String: Task<Void, Never>] = [:]
+  private var legacyTasks: [String: Task<Void, Never>] = [:]
   private var metadataReadAt: [String: ContinuousClock.Instant] = [:]
   private let helperURL: URL
   private let session: URLSession
@@ -94,7 +104,7 @@ actor InspectorHTTPService {
     snapshotRevision += 1
     let apps = discoveredKeys.compactMap { key -> App? in
       guard var app = knownApps[key] else { return nil }
-      app.isConnected = connections[key]?.isReady == true && !app.awaitingManifest
+      app.isConnected = connections[key]?.isReady == true && !app.awaitingMetadata
       return app
     }.sorted {
       if $0.deviceID != $1.deviceID { return $0.deviceID < $1.deviceID }
@@ -139,6 +149,10 @@ actor InspectorHTTPService {
       guard let device = devicesByID[reference.deviceId] else { continue }
       if var previous = knownApps[reference.key], previous.socketInode != socket.inode {
         metadataReadAt[reference.key] = nil
+        legacyTasks.removeValue(forKey: reference.key)?.cancel()
+        previous.metadata.invalidateVersion()
+        previous.checkingLegacy = false
+        previous.metadataReadFailed = false
         if let connection = connections.removeValue(forKey: reference.key) {
           connection.healthTask?.cancel()
           await retireConnection(connection, using: adb)
@@ -146,7 +160,7 @@ actor InspectorHTTPService {
         if let processName = socket.processName, processName == previous.processName {
           // Keep display metadata, but verify the process before using a replacement listener.
           previous.socketInode = socket.inode
-          previous.awaitingManifest = true
+          previous.awaitingMetadata = true
           knownApps[reference.key] = previous
         } else {
           knownApps[reference.key] = nil
@@ -160,10 +174,15 @@ actor InspectorHTTPService {
       }
       knownApps[reference.key]?.deviceDisplayTitle = device.displayTitle
       if let processName = socket.processName {
-        knownApps[reference.key]?.processNameHint = processName
+        knownApps[reference.key]?.metadata.updateProcessName(processName)
       }
     }
-    populateManifests(sockets: sockets.filter { activeKeys.contains($0.reference.key) }, using: adb)
+    populateMetadata(sockets: sockets.filter { activeKeys.contains($0.reference.key) }, using: adb)
+    for key in legacyTasks.keys where !activeKeys.contains(key) {
+      legacyTasks.removeValue(forKey: key)?.cancel()
+      knownApps[key]?.checkingLegacy = false
+      metadataReadAt[key] = nil
+    }
     retryAfter = retryAfter.filter { activeKeys.contains($0.key) && $0.value > .now }
 
     await withTaskGroup(of: Void.self) { group in
@@ -230,6 +249,10 @@ actor InspectorHTTPService {
       task.cancel()
     }
     metadataTasks.removeAll()
+    for task in legacyTasks.values {
+      task.cancel()
+    }
+    legacyTasks.removeAll()
     metadataReadAt.removeAll()
     for connection in connections.values {
       connection.healthTask?.cancel()
@@ -289,25 +312,25 @@ actor InspectorHTTPService {
     }
   }
 
-  private func populateManifests(sockets: [DiscoveredInspectorSocket], using adb: ADBClient) {
+  private func populateMetadata(sockets: [DiscoveredInspectorSocket], using adb: ADBClient) {
     for (deviceID, sockets) in Dictionary(grouping: sockets, by: { $0.reference.deviceId }) {
       guard metadataTasks[deviceID] == nil else { continue }
       let pendingPIDs = Set(sockets.filter {
         guard let app = knownApps[$0.reference.key] else { return true }
-        return app.needsManifestRead(lastAttempt: metadataReadAt[$0.reference.key], now: .now)
+        return app.needsMetadataRead(lastAttempt: metadataReadAt[$0.reference.key], now: .now)
       }.map(\.pid))
       let pending = sockets.filter { pendingPIDs.contains($0.pid) }
       guard !pending.isEmpty else { continue }
       metadataTasks[deviceID] = Task { [weak self] in
-        await self?.loadManifests(deviceID: deviceID, sockets: pending, using: adb)
+        await self?.loadMetadata(deviceID: deviceID, sockets: pending, using: adb)
       }
     }
   }
 
-  private func loadManifests(deviceID: String, sockets: [DiscoveredInspectorSocket], using adb: ADBClient) async {
+  private func loadMetadata(deviceID: String, sockets: [DiscoveredInspectorSocket], using adb: ADBClient) async {
     defer { metadataTasks[deviceID] = nil }
     var batches: [[DiscoveredInspectorSocket]] = []
-    // Keep a process's visible inspectors together so every socket receives the same manifest.
+    // Keep a process's visible inspectors together so every socket receives the same package metadata.
     for process in Dictionary(grouping: sockets, by: \.pid).values {
       if let last = batches.indices.last, batches[last].count + process.count <= 64 {
         batches[last].append(contentsOf: process)
@@ -325,20 +348,40 @@ actor InspectorHTTPService {
         let key = socket.reference.key
         guard var app = knownApps[key], app.socketInode == socket.inode,
               discoveredKeys.contains(key) else { continue }
-        // Failed or unsupported metadata is retried without probing the app's HTTP server.
         metadataReadAt[key] = .now
-        guard let record = records?.first(where: { $0.pid == socket.pid }), record.app != nil else { continue }
-        guard app.manifest != record || app.awaitingManifest else { continue }
-        app.manifest = record
-        app.awaitingManifest = false
+        let hadResult = app.metadata.process.verifiedIdentity != nil || app.metadata.compatibility != .unknown || app.metadataReadFailed
+        let record = records?.first { $0.pid == socket.pid }
+        let updated = record.map { app.metadata.applyPackageMetadata($0, kind: app.kind) } ?? false
+        app.metadataReadFailed = !updated
+        if updated { app.awaitingMetadata = false }
+        let needsLegacy = app.metadata.needsLegacyProbe
+        app.checkingLegacy = needsLegacy && !hadResult
         knownApps[key] = app
+        if needsLegacy, legacyTasks[key] == nil {
+          legacyTasks[key] = Task { [weak self] in
+            await self?.loadLegacyMetadata(socket: socket, using: adb)
+          }
+        }
         changed = true
       }
       if changed { notifyChange() }
     }
   }
 
+  private func loadLegacyMetadata(socket: DiscoveredInspectorSocket, using adb: ADBClient) async {
+    let key = socket.reference.key
+    let metadata = try? await adb.legacyInspectorMetadata(reference: socket.reference, kind: socket.kind, pid: socket.pid)
+    guard !Task.isCancelled, !isStopped, discoveredKeys.contains(key),
+          var app = knownApps[key], app.socketInode == socket.inode else { return }
+    legacyTasks[key] = nil
+    app.checkingLegacy = false
+    if let metadata { app.metadata.applyLegacyMetadata(metadata, kind: app.kind) }
+    knownApps[key] = app
+    notifyChange()
+  }
+
   private func checkHealth(for key: String) {
+    guard knownApps[key]?.metadata.isLegacy != true else { return }
     guard let connection = connections[key], connection.healthTask == nil else { return }
     connections[key]?.healthTask = Task { [weak self] in
       await self?.loadHealth(for: key, connectionID: connection.id)
@@ -370,7 +413,8 @@ actor InspectorHTTPService {
 
   private func connection(for reference: InspectorServerReference) throws -> Connection {
     guard let connection = connections[reference.key], connection.isReady,
-          knownApps[reference.key]?.awaitingManifest == false else {
+          let app = knownApps[reference.key], !app.awaitingMetadata, let descriptor = app.descriptor,
+          descriptor.frontend == nil || descriptor.frontend?.hostApiVersion == 1 else {
       throw InspectorError.serverNotConnected(reference)
     }
     return connection
