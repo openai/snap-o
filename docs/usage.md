@@ -40,19 +40,21 @@ After you capture a screenshot or screen recording, you can drag and drop it wit
 | Copy image to clipboard   | `⌘C`     |
 | Previous device           | `⌘[`     |
 | Next device               | `⌘]`     |
-| Show / hide App Inspector | `⌥⌘I`    |
+| Show / hide Tool pane | `⌥⌘I`    |
 | Show / hide Capture       | `⌥⌘C`    |
 
-## App Inspector
+## Tool pane
 
-The app picker shows one row per running app process. Click the row to keep your current inspector type when available, or click a Network or Tweaks icon on the right to open that inspector directly. You can also switch inspectors beside the selected app in the toolbar.
+Apps bundle **plugins** that provide tools such as Network and Tweaks. Snap-O discovers these plugins and displays the selected tool’s frontend in the Tool pane.
+
+The app picker shows one row per running app process. Click the row to keep your current tool type when available, or click a Network or Tweaks icon on the right to open that tool directly. You can also switch tools beside the selected app in the toolbar.
 
 <p>
   <img src="assets/app-inspector-demo.png" width="360" alt="App picker with a leading selection checkmark and Network and Tweaks shortcuts">
   <br><em>Native picker rendered with synthetic demo data.</em>
 </p>
 
-Add the Android integration using the [Network Inspector guide](https://openai.github.io/snap-o/network-inspector.html) or [Tweaks guide](https://openai.github.io/snap-o/tweaks.html).
+Add the Android integration using the [Network guide](https://openai.github.io/snap-o/network-inspector.html) or [Tweaks guide](https://openai.github.io/snap-o/tweaks.html).
 
 ## ADB setup
 

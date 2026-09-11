@@ -6,26 +6,24 @@ on:
       - main
       - master
     paths:
-      - 'snapo-app-mac/**'
-      - 'inspectors/**'
-      - 'snapo-link-android/tweaks-core/frontend/**'
-      - 'snapo-link-android/network/frontend/**'
+      - 'app-macos/**'
+      - 'sdk/host/**'
+      - 'plugins/tweaks/frontend/**'
+      - 'plugins/network/frontend/**'
       - 'contracts/**'
-      - 'scripts/snapo'
-      - 'scripts/snapo-discovery.jar'
-      - 'android-discovery/**'
+      - 'cli/snapo'
+      - 'plugin-reader/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
     paths:
-      - 'snapo-app-mac/**'
-      - 'inspectors/**'
-      - 'snapo-link-android/tweaks-core/frontend/**'
-      - 'snapo-link-android/network/frontend/**'
+      - 'app-macos/**'
+      - 'sdk/host/**'
+      - 'plugins/tweaks/frontend/**'
+      - 'plugins/network/frontend/**'
       - 'contracts/**'
-      - 'scripts/snapo'
-      - 'scripts/snapo-discovery.jar'
-      - 'android-discovery/**'
+      - 'cli/snapo'
+      - 'plugin-reader/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
 
@@ -43,23 +41,23 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: inspectors/package-lock.json
+          cache-dependency-path: sdk/host/package-lock.json
       - name: Install dependencies
         run: |
-          npm ci --prefix inspectors
-          npm ci --prefix snapo-link-android/network/frontend
-          npm ci --prefix snapo-link-android/tweaks-core/frontend
+          npm ci --prefix sdk/host
+          npm ci --prefix plugins/network/frontend
+          npm ci --prefix plugins/tweaks/frontend
       - name: Check formatting
-        working-directory: inspectors
+        working-directory: sdk/host
         run: npm run format:check
       - name: Lint
-        working-directory: inspectors
+        working-directory: sdk/host
         run: npm run lint
       - name: Typecheck
-        working-directory: inspectors
+        working-directory: sdk/host
         run: npm run typecheck
       - name: Test
-        working-directory: inspectors
+        working-directory: sdk/host
         run: npm test
 
   test:
@@ -71,45 +69,45 @@ jobs:
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.1.1'
-      - name: Test shared device client
-        working-directory: snapo-app-mac/SnapODeviceClient
-        run: swift test
+      - name: Test macOS device services
+        working-directory: app-macos
+        run: xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
       - name: Test live preview frame export
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: sh scripts/test-live-preview-frame-export.sh
       - name: Test live preview pointer delivery
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: sh scripts/test-live-preview-pointer.sh
       - name: Test capture mode transitions
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: sh scripts/test-capture-modes.sh
       - name: Test capture startup
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: sh scripts/test-startup-capture.sh
-      - name: Set up Node for inspector lifecycle tests
+      - name: Set up Node for tool lifecycle tests
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
-            snapo-link-android/network/frontend/package-lock.json
-            snapo-link-android/tweaks-core/frontend/package-lock.json
+            plugins/network/frontend/package-lock.json
+            plugins/tweaks/frontend/package-lock.json
       - name: Build Network test resources
-        working-directory: snapo-link-android/network/frontend
+        working-directory: plugins/network/frontend
         run: |
           npm ci
           npm run build
       - name: Build Tweaks test resources
-        working-directory: snapo-link-android/tweaks-core/frontend
+        working-directory: plugins/tweaks/frontend
         run: |
           npm ci
           npm run build
-      - name: Test inspector recovery
-        working-directory: snapo-app-mac
-        run: sh scripts/test-inspector-recovery.sh
-      - name: Test inspector selection
-        working-directory: snapo-app-mac
-        run: sh scripts/test-inspector-selection.sh
+      - name: Test tool recovery
+        working-directory: app-macos
+        run: sh scripts/test-tool-recovery.sh
+      - name: Test tool selection
+        working-directory: app-macos
+        run: sh scripts/test-tool-selection.sh
 
   build:
     runs-on: macos-26
@@ -121,7 +119,7 @@ jobs:
         with:
           xcode-version: '26.1.1'
       - name: Build Snap-O
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: |
           set -o pipefail
           xcodebuild -project Snap-O.xcodeproj \
@@ -139,18 +137,18 @@ jobs:
         with:
           fetch-depth: 1
       - name: Set up mise
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: ./scripts/ci-install-mise.sh
       - name: Install tools
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mise trust --quiet
           mise install
       - name: SwiftFormat
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: mise exec -- swiftformat . --lint --config .swiftformat --reporter github-actions-log
       - name: SwiftLint
-        working-directory: snapo-app-mac
+        working-directory: app-macos
         run: mise exec -- swiftlint lint --strict --no-cache --reporter github-actions-logging

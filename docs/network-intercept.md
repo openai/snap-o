@@ -10,7 +10,7 @@ languages:
 - python
 - bash
 breadcrumbs:
-- label: ← Network Inspector
+- label: ← Network
   href: network-inspector.html
 ---
 
@@ -19,11 +19,11 @@ breadcrumbs:
 Edit real API responses or return mock data with Python handlers. Test new app states, errors, and delays through your Android app's existing OkHttp integration.
 {.lead}
 
-Run handlers with `snapo network intercept` and inspect the results in Network Inspector.
+Run handlers with `snapo network intercept` and inspect the results in Network.
 
 ## Check requirements {#requirements data-step="1"}
 
-Start with the [Network Inspector setup](network-inspector.md). Your debug app must use `SnapOOkHttpInterceptor` as an OkHttp application interceptor, including when using Ktor's OkHttp engine. Keep the no-op artifact in release builds.
+Start with the [Network setup](network-inspector.md). Your debug app must use `SnapOOkHttpInterceptor` as an OkHttp application interceptor, including when using Ktor's OkHttp engine. Keep the no-op artifact in release builds.
 
 Run the CLI on macOS or Linux with Python 3 and Android Platform Tools. No Python package installation is needed. The Snap-O desktop app can stay open for inspection, but the CLI does not require it to be running.
 
@@ -67,7 +67,7 @@ snapo network intercept prototype.py -s SERIAL -n SOCKET
 1. Wait for **Loaded 1 route(s)** in the terminal.
 2. Trigger the matching request in your Android app.
 3. Check the app's result and the terminal's method, path, and response status.
-4. Open Network Inspector to inspect the response delivered to the app.
+4. Open Network to inspect the response delivered to the app.
 
 Keep the runner open while testing. Press **Ctrl+C** to stop it and remove its routes. Requests already paused by that runner fail; later requests follow the normal network path unless another runner matches them.
 {style="margin-top: 18px"}
@@ -158,7 +158,7 @@ The runner watches your entry file by default. Save an edit to load new handlers
 Handler errors, deadlines, and runner disconnects fail affected requests. They do not send the request upstream as a fallback. Your app's own retry policy still applies.
 {.notice}
 
-Each runner owns its routes and paused requests. Reloading or stopping one runner leaves others active. Ordinary network inspectors may remain connected throughout testing.
+Each runner owns its routes and paused requests. Reloading or stopping one runner leaves others active. Ordinary network tools may remain connected throughout testing.
 
 ## Supported traffic and limits {#limits data-step="6"}
 
@@ -167,9 +167,9 @@ Each runner owns its routes and paused requests. Reloading or stopping one runne
 - Upstream and replacement response bodies are limited to 1 MiB. Replacement status codes must be between 200 and 599.
 - Requests with an `Accept` header containing `text/event-stream` bypass interception. An unexpected SSE response to an intercepted upstream call fails without buffering the stream.
 - Each runner can register up to 128 routes. An app process can have at most 64 paused exchanges across runners.
-- Network Inspector shows the response delivered to the app. It does not show a before/after comparison.
+- Network shows the response delivered to the app. It does not show a before/after comparison.
 
-Keep streaming and large-body endpoints outside your route set. Interception limits are separate from the inspector's capture limits.
+Keep streaming and large-body endpoints outside your route set. Interception limits are separate from the tool's capture limits.
 {style="margin-top: 18px"}
 
 ## Troubleshooting {#troubleshooting data-step="7"}

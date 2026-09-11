@@ -1,0 +1,525 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		E30000032F70000100C0FFEE = {isa = PBXContainerItemProxy; containerPortal = 3234F4492E2EC5030057AE77; proxyType = 1; remoteGlobalIDString = 3234F4502E2EC5030057AE77; remoteInfo = "Snap-O"; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		E30000042F70000100C0FFEE = {isa = PBXTargetDependency; target = 3234F4502E2EC5030057AE77; targetProxy = E30000032F70000100C0FFEE; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXBuildFile section */
+		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
+		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
+		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		3234F4512E2EC5030057AE77 /* Snap-O.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Snap-O.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		32AECEFA2E56725E00AA18F0 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		32AECEFC2E56725E00AA18F0 /* Signing.xcconfig.sample */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.xcconfig.sample; sourceTree = "<group>"; };
+		32D6DEB12E395E0B001A7DEE /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
+		E30000012F70000100C0FFEE /* Snap-OTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Snap-OTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		32AECE392E56513200AA18F0 /* Exceptions for "Snap-O" folder in "Snap-O" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3234F4502E2EC5030057AE77 /* Snap-O */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		3234F4532E2EC5030057AE77 /* Snap-O */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				32AECE392E56513200AA18F0 /* Exceptions for "Snap-O" folder in "Snap-O" target */,
+			);
+			path = "Snap-O";
+			sourceTree = "<group>";
+		};
+		E30000022F70000100C0FFEE /* Snap-OTests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = "Snap-OTests"; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3234F44E2E2EC5030057AE77 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */,
+				32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */,
+				D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E30000062F70000100C0FFEE = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3234F4482E2EC5030057AE77 = {
+			isa = PBXGroup;
+			children = (
+				E30000022F70000100C0FFEE /* Snap-OTests */,
+				3234F4532E2EC5030057AE77 /* Snap-O */,
+				32D6DEB02E395E0A001A7DEE /* Frameworks */,
+				3234F4522E2EC5030057AE77 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3234F4522E2EC5030057AE77 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E30000012F70000100C0FFEE /* Snap-OTests.xctest */,
+				3234F4512E2EC5030057AE77 /* Snap-O.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		32AECEFD2E56725E00AA18F0 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				32AECEFA2E56725E00AA18F0 /* Base.xcconfig */,
+				32AECEFC2E56725E00AA18F0 /* Signing.xcconfig.sample */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		32D6DEB02E395E0A001A7DEE /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				32AECEFD2E56725E00AA18F0 /* Config */,
+				32D6DEB12E395E0B001A7DEE /* AVKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3234F4502E2EC5030057AE77 /* Snap-O */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3234F45D2E2EC5040057AE77 /* Build configuration list for PBXNativeTarget "Snap-O" */;
+			buildPhases = (
+				3234F44D2E2EC5030057AE77 /* Sources */,
+				3234F44E2E2EC5030057AE77 /* Frameworks */,
+				3234F44F2E2EC5030057AE77 /* Resources */,
+				A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				3234F4532E2EC5030057AE77 /* Snap-O */,
+			);
+			name = "Snap-O";
+			packageProductDependencies = (
+				32C837092E6A5AD10003BDFA /* Sparkle */,
+				D20000022F70000100C0FFEE /* ZIPFoundation */,
+			);
+			productName = "Snap-O";
+			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E30000082F70000100C0FFEE /* Snap-OTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E30000092F70000100C0FFEE;
+			buildPhases = (E30000052F70000100C0FFEE, E30000062F70000100C0FFEE, E30000072F70000100C0FFEE);
+			buildRules = ();
+			dependencies = (E30000042F70000100C0FFEE);
+			fileSystemSynchronizedGroups = (E30000022F70000100C0FFEE);
+			name = "Snap-OTests";
+			productName = "Snap-OTests";
+			productReference = E30000012F70000100C0FFEE;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3234F4492E2EC5030057AE77 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					3234F4502E2EC5030057AE77 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+				};
+			};
+			buildConfigurationList = 3234F44C2E2EC5030057AE77 /* Build configuration list for PBXProject "Snap-O" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 3234F4482E2EC5030057AE77;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */,
+				D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 3234F4522E2EC5030057AE77 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E30000082F70000100C0FFEE /* Snap-OTests */,
+				3234F4502E2EC5030057AE77 /* Snap-O */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3234F44F2E2EC5030057AE77 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E30000072F70000100C0FFEE = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/../cli/snapo",
+				"$(PROJECT_DIR)/../plugin-reader/snapo-discovery.jar",
+			);
+			name = "Embed Snap-O CLI";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/snapo",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/snapo-discovery.jar",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../cli/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n/bin/mkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n/usr/bin/ditto \"${PROJECT_DIR}/../plugin-reader/snapo-discovery.jar\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/snapo-discovery.jar\"\n# Remove the old executable-directory copy from incremental builds.\n/bin/rm -f \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo-discovery.jar\"\n\nif [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3234F44D2E2EC5030057AE77 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E30000052F70000100C0FFEE = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3234F45B2E2EC5040057AE77 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 32AECEFA2E56725E00AA18F0 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2NKS52LMC8;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		3234F45C2E2EC5040057AE77 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 32AECEFA2E56725E00AA18F0 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2NKS52LMC8;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		3234F45E2E2EC5040057AE77 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = "Snap-O/SnapO.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = "$(BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Snap-O/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Snap-O";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = "$(VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited) PERF_TRACING";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		3234F45F2E2EC5040057AE77 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = "Snap-O/SnapO.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = "$(BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Snap-O/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Snap-O";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = "$(VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		E300000A2F70000100C0FFEE = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@loader_path/../Frameworks", "@executable_path/../Frameworks");
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Snap-O.app/Contents/MacOS/Snap-O";
+			};
+			name = Debug;
+		};
+		E300000B2F70000100C0FFEE = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@loader_path/../Frameworks", "@executable_path/../Frameworks");
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Snap-O.app/Contents/MacOS/Snap-O";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3234F44C2E2EC5030057AE77 /* Build configuration list for PBXProject "Snap-O" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3234F45B2E2EC5040057AE77 /* Debug */,
+				3234F45C2E2EC5040057AE77 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3234F45D2E2EC5040057AE77 /* Build configuration list for PBXNativeTarget "Snap-O" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3234F45E2E2EC5040057AE77 /* Debug */,
+				3234F45F2E2EC5040057AE77 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E30000092F70000100C0FFEE = {isa = XCConfigurationList; buildConfigurations = (E300000A2F70000100C0FFEE, E300000B2F70000100C0FFEE); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+
+
+/* Begin XCRemoteSwiftPackageReference section */
+		32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.1;
+			};
+		};
+
+		D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {kind = upToNextMajorVersion; minimumVersion = 0.9.20; };
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		32C837092E6A5AD10003BDFA /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+		D20000022F70000100C0FFEE /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 3234F4492E2EC5030057AE77 /* Project object */;
+}

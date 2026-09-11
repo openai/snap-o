@@ -1,0 +1,54 @@
+{
+  "name": "@snap-o/plugin-host",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint": "eslint . && npm run check:boundaries",
+    "test": "node --test scripts/*.test.mjs && vitest run src",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.5.0",
+    "jsdom": "^27.4.0",
+    "prettier": "^3.8.3",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.59.1",
+    "vite": "^8.0.9",
+    "vitest": "^4.1.9"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "description": "Host connection state, toolbar controls, and native helpers for Snap-O tools.",
+  "license": "Apache-2.0",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openai/snap-o.git",
+    "directory": "sdk/host"
+  }
+}

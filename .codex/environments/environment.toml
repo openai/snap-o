@@ -10,7 +10,7 @@ name = "Run Snap-O"
 icon = "run"
 command = '''
 set -e
-cd snapo-app-mac
+cd app-macos
 xcodebuild -project Snap-O.xcodeproj \
   -scheme Snap-O \
   -configuration Debug \
@@ -22,12 +22,11 @@ open DerivedData/Build/Products/Debug/Snap-O.app
 [[actions]]
 name = "Open Xcode"
 icon = "tool"
-command = "open snapo-app-mac/Snap-O.xcodeproj"
+command = "open app-macos/Snap-O.xcodeproj"
 
 [[actions]]
 name = "Open Android Studio"
 icon = "tool"
 command = '''
-cd snapo-link-android
 open -b com.google.android.studio build.gradle.kts
 '''

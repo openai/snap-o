@@ -3,7 +3,7 @@ name: snap-o-network-inspector
 description: Inspect Android network captures and intercept HTTP calls with the Snap-O CLI for a selected device/socket. Use for request/response details, websocket events, API response overrides, mock responses, or delays with Python route handlers.
 ---
 
-# Snap-O Network Inspector
+# Snap-O Network Tool
 
 Use this skill to inspect network traffic or override API responses in an Android app.
 
@@ -12,16 +12,16 @@ Use this skill to inspect network traffic or override API responses in an Androi
 Use the shared Python CLI bundled at the Snap-O plugin root:
 
 ```bash
-SNAPO_BIN=/path/to/snap-o/scripts/snapo
+SNAPO_BIN=/path/to/snap-o/cli/snapo
 ```
 
-Resolve `../../scripts/snapo` relative to the directory containing this `SKILL.md`; do not assume the current working directory. The script requires Python 3 and Android Platform Tools; no Python packages, compiler toolchain, or macOS application are required.
+Resolve `../../cli/snapo` relative to the directory containing this `SKILL.md`; do not assume the current working directory. The script requires Python 3 and Android Platform Tools; no Python packages, compiler toolchain, or macOS application are required.
 
 The script resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`. Use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. Wrappers selecting a remote ADB server must tunnel Snap-O forwards back to localhost; otherwise, pass both `--adb-host` and `--adb-port`.
 
 ## Current Command Surface
 
-- `snapo network list`: lists available Snap-O Network Inspector servers.
+- `snapo network list`: lists available Snap-O Network Tool servers.
 - `snapo network requests`: emits CDP network events for a server.
 - `snapo network show`: shows full details for a request id, including headers and bodies.
 - `snapo network intercept <file.py>`: runs [Python route handlers](references/interception.md) to edit or mock HTTP responses; requires Snap-O OkHttp interception support in the app.
@@ -54,7 +54,7 @@ Use `--no-app-info` to skip package and app metadata lookup.
 "$SNAPO_BIN" network requests -s <serial> -n <socket_name> --filter '<url-filter>' --no-stream --json
 ```
 
-`--filter` uses the same case-insensitive URL syntax as the Network Inspector search bar. Separate terms must all match, a term prefixed with `-` is excluded, and quotes or backslashes can escape whitespace.
+`--filter` uses the same case-insensitive URL syntax as the Network Tool search bar. Separate terms must all match, a term prefixed with `-` is excluded, and quotes or backslashes can escape whitespace.
 
 `network requests` replaces request `Authorization` and `Cookie` values and response `Set-Cookie` values with `[REDACTED]`.
 

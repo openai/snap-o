@@ -1,0 +1,283 @@
+import Foundation
+
+private let log = SnapOLog.tracker
+
+actor DeviceTracker {
+  private let adbService: ADBService
+  private let infoCache = DeviceInfoCache()
+
+  private var trackTask: Task<Void, Never>?
+  private var propertyTask: Task<Void, Never>?
+  private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
+  private(set) var latestDevices: [Device] = []
+
+  private var hasSeenFirstMessage: Bool = false
+
+  init(adbService: ADBService) {
+    self.adbService = adbService
+  }
+
+  // MARK: - Public API
+
+  func deviceStream() -> AsyncStream<[Device]> {
+    let id = UUID()
+    return AsyncStream { continuation in
+      continuations[id] = continuation
+      if self.hasSeenFirstMessage {
+        continuation.yield(self.latestDevices)
+      }
+
+      continuation.onTermination = { [weak self] _ in
+        Task { await self?.removeContinuation(id) }
+      }
+    }
+  }
+
+  // MARK: - Tracking
+
+  func startTracking() {
+    guard trackTask == nil else { return }
+    trackTask = Task { [weak self] in
+      await self?.trackLoop()
+    }
+  }
+
+  func stopTracking() async {
+    let task = trackTask
+    task?.cancel()
+    trackTask = nil
+    propertyTask?.cancel()
+    propertyTask = nil
+    let activeContinuations = Array(continuations.values)
+    continuations.removeAll()
+    for continuation in activeContinuations {
+      continuation.finish()
+    }
+    await task?.value
+  }
+
+  private func removeContinuation(_ id: UUID) {
+    continuations.removeValue(forKey: id)
+  }
+
+  private func broadcast(_ devices: [Device]) {
+    latestDevices = devices
+    hasSeenFirstMessage = true
+    let snapshot = Array(continuations.values)
+    for continuation in snapshot {
+      continuation.yield(devices)
+    }
+  }
+
+  private func trackLoop() async {
+    @inline(__always)
+    func pause() async {
+      try? await Task.sleep(for: .milliseconds(300))
+    }
+
+    while !Task.isCancelled {
+      let exec = await adbService.exec()
+      guard let (handle, stream) = try? await exec.trackDevices() else {
+        if Task.isCancelled { break }
+        await handleTrackingInterruption()
+        await pause()
+        continue
+      }
+
+      defer { handle.cancel() }
+
+      do {
+        for try await payload in stream {
+          if Task.isCancelled { break }
+          propertyTask?.cancel()
+          propertyTask = Task { await self.refreshProperties(from: payload, exec: exec) }
+        }
+        if Task.isCancelled { break }
+        await handleTrackingInterruption()
+        await pause()
+      } catch is CancellationError {
+        break
+      } catch {
+        await handleTrackingInterruption()
+        await pause()
+      }
+    }
+  }
+
+  private func handleTrackingInterruption() async {
+    propertyTask?.cancel()
+    propertyTask = nil
+    await infoCache.removeAll()
+    if hasSeenFirstMessage { broadcast([]) }
+  }
+
+  private func refreshProperties(from payload: String, exec: ADBClient) async {
+    let deviceCount = payload.split(separator: "\n").compactMap(parseDeviceRow).count
+    while !Task.isCancelled {
+      let devices = await parseDevices(from: payload, exec: exec)
+      guard !Task.isCancelled else { return }
+      broadcast(devices)
+      guard devices.count < deviceCount else { return }
+      // Successful properties are cached; only failed devices need another shell request.
+      do {
+        try await Task.sleep(for: .seconds(3))
+      } catch {
+        return
+      }
+    }
+  }
+
+  // MARK: - Device parsing
+
+  private func parseDevices(from payload: String, exec: ADBClient) async -> [Device] {
+    let parsed = payload
+      .split(separator: "\n", omittingEmptySubsequences: true)
+      .compactMap(parseDeviceRow)
+
+    let activeDeviceIDs = Set(parsed.map(\.id))
+    await infoCache.retain(deviceIDs: activeDeviceIDs)
+
+    return await withTaskGroup(of: (Int, Device)?.self) { group in
+      for (index, element) in parsed.enumerated() {
+        group.addTask {
+          let (id, fields) = element
+          guard let info = await self.deviceInfo(
+            for: id,
+            transportID: fields["transport_id"],
+            fallbackModel: fields["model"],
+            exec: exec
+          ) else { return nil }
+          return (
+            index,
+            Device(
+              id: id,
+              model: info.model,
+              androidVersion: info.version,
+              vendorModel: info.vendorModel,
+              manufacturer: info.manufacturer,
+              avdName: info.avdName
+            )
+          )
+        }
+      }
+      var out: [(Int, Device)] = []
+      for await indexedDevice in group {
+        if let indexedDevice { out.append(indexedDevice) }
+      }
+      return out.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+  }
+
+  /// Parses a single `adb devices -l` row like:
+  ///   `<serial> device product:foo model:Pixel_7 device:panther transport_id:3`
+  /// Returns nil for headers, empties, or unwanted states (offline/unauthorized).
+  private func parseDeviceRow(_ line: Substring) -> (id: String, fields: [String: String])? {
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let parts = trimmed.split(whereSeparator: \.isWhitespace)
+    guard let first = parts.first else { return nil }
+    let id = String(first)
+
+    if parts.count >= 2 {
+      let state = parts[1].lowercased()
+      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") || state.contains("authorizing") {
+        return nil
+      }
+    }
+
+    // Parse key:value pairs into a dictionary.
+    var fields: [String: String] = [:]
+    fields.reserveCapacity(6)
+    for part in parts.dropFirst() {
+      if let idx = part.firstIndex(of: ":") {
+        let key = String(part[..<idx])
+        let value = String(part[part.index(after: idx)...])
+        fields[key] = value
+      }
+    }
+
+    return (id, fields)
+  }
+
+  private func deviceInfo(
+    for id: String,
+    transportID: String?,
+    fallbackModel: String?,
+    exec: ADBClient
+  ) async -> DeviceInfo? {
+    if let cached = await infoCache.value(for: id, transportID: transportID) {
+      return cached
+    }
+
+    // A failed shell request means this device is not ready for discovery or capture.
+    guard let props = try? await exec.getProperties(deviceID: id, prefix: "ro.") else { return nil }
+
+    let model = fallbackModel
+      ?? cleanProp("ro.product.model", in: props)
+      ?? "Unknown Model"
+    let version = cleanProp("ro.build.version.release", in: props) ?? "Unknown API"
+    let vendorModel = cleanProp("ro.product.vendor.model", in: props)
+    let manufacturer = cleanProp("ro.product.vendor.manufacturer", in: props)
+      ?? cleanProp("ro.product.manufacturer", in: props)
+    let avdName = cleanProp("ro.boot.qemu.avd_name", in: props)
+      .map { $0.replacingOccurrences(of: "_", with: " ") }
+
+    let info = DeviceInfo(
+      model: model,
+      version: version,
+      vendorModel: vendorModel,
+      manufacturer: manufacturer,
+      avdName: avdName
+    )
+    guard !Task.isCancelled else { return nil }
+    await infoCache.set(info, for: id, transportID: transportID)
+    return info
+  }
+
+  // MARK: - Helpers
+
+  private struct DeviceInfo {
+    let model: String
+    let version: String
+    let vendorModel: String?
+    let manufacturer: String?
+    let avdName: String?
+  }
+
+  private actor DeviceInfoCache {
+    /// ADB can reuse an emulator serial, but each connection gets a new transport ID.
+    private struct Entry {
+      let transportID: String?
+      let info: DeviceInfo
+    }
+
+    private var storage: [String: Entry] = [:]
+
+    func value(for deviceID: String, transportID: String?) -> DeviceInfo? {
+      guard let entry = storage[deviceID], entry.transportID == transportID else {
+        return nil
+      }
+      return entry.info
+    }
+
+    func set(_ info: DeviceInfo, for deviceID: String, transportID: String?) {
+      storage[deviceID] = Entry(transportID: transportID, info: info)
+    }
+
+    func retain(deviceIDs: Set<String>) {
+      storage = storage.filter { deviceIDs.contains($0.key) }
+    }
+
+    func removeAll() {
+      storage.removeAll()
+    }
+  }
+
+  // MARK: - Property helpers
+
+  private func cleanProp(_ key: String, in props: [String: String]) -> String? {
+    guard let raw = props[key]?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+    return raw.isEmpty ? nil : raw
+  }
+}
