@@ -247,8 +247,26 @@ struct InspectorRecoveryTests {
       restartedApp.inspectors.first { $0.kind == .network }?.protocolVersion == nil,
       "Metadata is not shared across service instances"
     )
-    _ = try await restarted.inspectorEndpoint(for: frozen)
-    await restarted.stop()
+    let ownerID = UUID()
+    var invalidated = false
+    var retired = false
+    var releasePage: CheckedContinuation<Void, Never>?
+    let beforeRetirement = adb.removedPorts.count(where: { $0 == 12345 })
+    _ = try await restarted.inspectorEndpoint(for: frozen, ownerID: ownerID, invalidated: {
+      invalidated = true
+      await withCheckedContinuation { releasePage = $0 }
+      retired = true
+    })
+    let stop = Task { await restarted.stop() }
+    try await eventually { invalidated }
+    precondition(
+      adb.removedPorts.count(where: { $0 == 12345 }) == beforeRetirement,
+      "The forward stays reserved while an authorized page is still unloading"
+    )
+    releasePage?.resume()
+    await stop.value
+    precondition(retired && adb.removedPorts.count(where: { $0 == 12345 }) == beforeRetirement + 1)
+    print("Endpoint retirement waits for the page before releasing its forwarded port")
     print("A new service instance can reconnect immediately")
 
     adb.setMetadataAvailable(true)

@@ -38,9 +38,14 @@ actor InspectorService {
   }
 
   func openApp(_ input: OpenAppInput) async throws {}
-  func inspectorEndpoint(for reference: InspectorServerReference) async throws -> InspectorHTTPService.Endpoint {
+  func inspectorEndpoint(
+    for reference: InspectorServerReference, ownerID: UUID? = nil,
+    invalidated: (@MainActor @Sendable () async -> Void)? = nil
+  ) async throws -> InspectorHTTPService.Endpoint {
     endpoint
   }
+
+  func releaseInspectorEndpoint(ownerID: UUID) {}
 }
 
 @main
@@ -119,11 +124,14 @@ struct InspectorWebViewTests {
     let sample = model.webContainer!.webView
     let marker = try await sample.evaluateJavaScript("document.querySelector('#sample-inspector').textContent") as? String
     precondition(marker == "Sample inspector", "Load the plugin HTML without assuming a root element")
-    let sampleState = try await sample.callAsyncJavaScript(
-      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? [String: Any]
-    precondition(sampleState?["connected"] as? Bool == true)
+    var sampleState: [String: Any]?
+    try await eventually("The sample plugin should connect after its endpoint policy is installed") {
+      sampleState = try? await sample.callAsyncJavaScript(
+        "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
+        arguments: [:], in: nil, contentWorld: .page
+      ) as? [String: Any]
+      return sampleState?["connected"] as? Bool == true
+    }
     precondition((sampleState?["manifest"] as? [String: Any])?["pid"] as? Int == 10)
     precondition((sampleState?["inspector"] as? [String: Any])?["id"] as? String == "sample")
     let sampleStorage = try await sample.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
@@ -145,6 +153,8 @@ struct InspectorWebViewTests {
     try await eventually("Packaged Tweaks JavaScript should render") {
       await (try? tweaks.evaluateJavaScript("document.querySelector('#root').childElementCount > 0") as? Bool) == true
     }
+    let isolated = try await tweaks.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
+    precondition(isolated is NSNull, "Each inspector has separate storage")
     _ = try await tweaks.evaluateJavaScript("window.testState = 'tweaks state'")
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
     try await eventually("Switching back should reuse Network") {
@@ -180,10 +190,14 @@ struct InspectorWebViewTests {
 
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
     try await eventually("Network should remount") { network.superview != nil }
-    let activeState = try await network.callAsyncJavaScript(
-      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? [String: Any]
+    var activeState: [String: Any]?
+    try await eventually("Network should reconnect after remounting") {
+      activeState = try? await network.callAsyncJavaScript(
+        "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
+        arguments: [:], in: nil, contentWorld: .page
+      ) as? [String: Any]
+      return activeState?["connected"] as? Bool == true
+    }
     precondition(activeState?["baseURL"] as? String == "http://127.0.0.1:1234/")
     precondition((activeState?["inspector"] as? [String: Any])?["id"] as? String == "network")
     await service.setApps([app(10, connectedKinds: [.tweaks, .sample]), second])
@@ -218,10 +232,8 @@ struct InspectorWebViewTests {
     let replacement = model.webContainer!.webView
     precondition(replacement !== network, "Changing the selected app replaces that inspector's view")
     try await eventually("The replacement page should load") { model.isPageReady && replacement.superview != nil }
-    let stored = try await replacement.evaluateJavaScript("localStorage.getItem('\(storageKey)')") as? String
-    precondition(stored == "network value", "Storage survives replacement pages of the same inspector")
-    let isolated = try await tweaks.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
-    precondition(isolated is NSNull, "Each inspector has separate storage")
+    let stored = try await replacement.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
+    precondition(stored is NSNull, "Different providing apps cannot share inspector storage")
     _ = try await replacement.evaluateJavaScript("localStorage.removeItem('\(storageKey)')")
     precondition(network.superview == nil)
     let replacementState = try await replacement.evaluateJavaScript("typeof window.testState") as? String
@@ -229,7 +241,7 @@ struct InspectorWebViewTests {
     model.selectInspector(second, option: second.inspectors.first { $0.kind == .tweaks }!)
     precondition(model.webContainer?.webView !== tweaks, "Do not reuse another app's cached Tweaks page")
     try await eventually("The second app's Tweaks page should load") { model.isPageReady }
-    print("Changing apps replaces cached pages and preserves inspector storage")
+    print("Changing apps replaces cached pages and isolates inspector storage")
 
     model.selectApp(first)
     model.selectApp(second)
@@ -241,5 +253,145 @@ struct InspectorWebViewTests {
     model.stop()
     try await eventually("Stopping the host should unmount the active page") { finalPage.superview == nil }
     print("Rapid selection and shutdown leave no obsolete page mounted")
+    try await testSecurity(registry: registry, root: root)
+  }
+
+  static func testSecurity(registry: InspectorPluginRegistry, root: URL) async throws {
+    let directory = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SNAPO_WEB_SECURITY_FIXTURE_DIR"]!)
+    let portsFile = directory.appendingPathComponent("ports.json")
+    try await eventually("Security fixture should start") { FileManager.default.fileExists(atPath: portsFile.path) }
+    let ports = try JSONDecoder().decode([String: Int].self, from: Data(contentsOf: portsFile))
+    let allowed = URL(string: "http://127.0.0.1:\(ports["allowed"]!)/")!
+    let denied = URL(string: "http://127.0.0.1:\(ports["denied"]!)/")!
+    let (control, _) = try await URLSession.shared.data(from: denied.appendingPathComponent("control"))
+    precondition(String(data: control, encoding: .utf8) == "ok", "The forbidden endpoint must be reachable without WebKit's policy")
+    let fixture = try String(contentsOfFile: "Tests/InspectorSelection/Fixtures/hostile.html", encoding: .utf8)
+      .replacingOccurrences(of: "__ALLOWED__", with: String(allowed.absoluteString.dropLast()))
+      .replacingOccurrences(of: "__DENIED__", with: String(denied.absoluteString.dropLast()))
+    try fixture.write(to: root.appendingPathComponent("sample/index.html"), atomically: true, encoding: .utf8)
+    let bridge = InspectorWebBridge()
+    bridge.hostStateHandler = { InspectorConnectionState() }
+    bridge.isActiveHandler = { false }
+    let container = InspectorWebContainer(bridge: bridge, plugin: registry.plugin(for: .sample)!, storageIdentifier: nil)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+      styleMask: [.borderless],
+      backing: .buffered,
+      defer: false
+    )
+    let web = container.webView
+    window.contentView = web
+    window.orderBack(nil)
+    defer { container.stop()
+      window.orderOut(nil)
+    }
+    container.start()
+    try await eventually("Hostile fixture should execute only after the initial policy is installed") {
+      await (try? web.evaluateJavaScript("typeof window.attack === 'function'") as? Bool) == true
+    }
+    _ = try await web.callAsyncJavaScript("return await window.startup", arguments: [:], in: nil, contentWorld: .page)
+    let logURL = allowed.appendingPathComponent("requests")
+    let (initial, _) = try await URLSession.shared.data(from: logURL)
+    let initialRequests = try JSONSerialization.jsonObject(with: initial) as! [[String: Any]]
+    precondition(
+      initialRequests.count == 1 && initialRequests[0]["path"] as? String == "/control",
+      "No endpoint is allowed during startup"
+    )
+    try await container.allowEndpoint(allowed)
+    let result = try await web
+      .callAsyncJavaScript("return await window.attack()", arguments: [:], in: nil, contentWorld: .page) as! [String: Any]
+    for key in ["allowed", "allowedSSE", "allowedSocket", "dataImage"] {
+      precondition(result[key] as? String == "ok", key)
+    }
+    for key in ["denied", "redirect", "deniedSSE", "deniedSocket", "worker", "eval", "removedPolicy"] {
+      precondition(result[key] as? String == "blocked", key)
+    }
+    precondition(result["rtc"] as? String == "undefined" && result["uuid"] as? String == "function")
+    try await Task.sleep(for: .milliseconds(200))
+    let (log, _) = try await URLSession.shared.data(from: logURL)
+    let requests = try JSONSerialization.jsonObject(with: log) as! [[String: Any]]
+    precondition(
+      requests.allSatisfy { $0["port"] as? Int == ports["allowed"] || $0["path"] as? String == "/control" },
+      "Forbidden requests must not reach the other server, even through redirects or subresources"
+    )
+    let (connectionLog, _) = try await URLSession.shared.data(from: allowed.appendingPathComponent("connections"))
+    let connections = try JSONDecoder().decode([Int].self, from: connectionLog)
+    precondition(
+      connections.count(where: { $0 == ports["denied"] }) == 1,
+      "Preconnect must not establish a TCP connection to the forbidden endpoint"
+    )
+    print("WebKit blocks forbidden requests, redirects, subresources, workers, and WebRTC while preserving allowed streams")
+
+    let rejected = try await web.callAsyncJavaScript(
+      """
+      const send = (command, payload) => window.webkit.messageHandlers.snapoHost.postMessage({command,payload});
+      const results = await Promise.allSettled([
+        send('copyText', {text:'synthetic'}),
+        send('saveFile', {defaultPath:'synthetic.txt',data:'synthetic'}),
+        send('openNativeColorPanel', {sessionId:'test',color:'#112233',revision:0}),
+        send('setToolbar', {revision:1,actions:Array.from({length:12},(_,i)=>({id:String(i),label:'Action',type:'button',icon:'clear'}))}),
+        send('setToolbar', {revision:1,actions:[{id:'search',label:'Search',type:'search',inputRevision:9223372036854775807}]}),
+        send('copyText', {text:'x'.repeat(1048576)}), send('unknown', {})
+      ]);
+      return results.every(r=>r.status==='rejected');
+      """, arguments: [:], in: nil, contentWorld: .page
+    ) as? Bool
+    precondition(rejected == true, "Hidden inspectors and invalid messages must not invoke native actions")
+    let working = try await web.callAsyncJavaScript(
+      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'})",
+      arguments: [:],
+      in: nil,
+      contentWorld: .page
+    ) as? [String: Any]
+    precondition(working?["connected"] as? Bool == false, "Reject bad requests without disabling valid bridge calls")
+
+    let otherConfiguration = WKWebViewConfiguration()
+    otherConfiguration.websiteDataStore = .nonPersistent()
+    otherConfiguration.userContentController.addScriptMessageHandler(
+      bridge,
+      contentWorld: .page,
+      name: InspectorWebBridge.messageHandlerName
+    )
+    let other = WKWebView(frame: .zero, configuration: otherConfiguration)
+    other.loadHTMLString("<p>Other page</p>", baseURL: web.url)
+    try await eventually("Other page should load") { !other.isLoading && other.url != nil }
+    let foreign = try await other.callAsyncJavaScript(
+      "try {await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});return false;}catch{return true;}",
+      arguments: [:], in: nil, contentWorld: .page
+    ) as? Bool
+    precondition(foreign == true, "Even the same origin and URL in another WebView cannot use this bridge")
+    otherConfiguration.userContentController.removeAllScriptMessageHandlers()
+    other.stopLoading()
+    print("The native bridge rejects foreign pages, hidden native actions, oversized payloads, and invalid toolbar revisions")
+
+    let first = app(10)
+    let scope = InspectorWebPolicy.storageIdentifier(app: first, inspector: .sample)
+    precondition(scope != nil && scope != InspectorWebPolicy.storageIdentifier(app: app(20), inspector: .sample))
+    precondition(scope != InspectorWebPolicy.storageIdentifier(app: first, inspector: .network))
+    var restarted = app(11)
+    restarted.manifest = first.manifest
+    precondition(
+      scope == InspectorWebPolicy.storageIdentifier(app: restarted, inspector: .sample),
+      "Process IDs do not partition a provider's preferences"
+    )
+    restarted.manifest = nil
+    precondition(InspectorWebPolicy.storageIdentifier(app: restarted, inspector: .sample) == nil, "Unknown providers use ephemeral storage")
+    var nested: Any = "value"
+    for _ in 0 ..< 10 {
+      nested = ["nested": nested]
+    }
+    precondition(!InspectorWebBridge.validMessage(["command": "setToolbar", "payload": nested], command: "setToolbar"))
+    for invalid in ["https://127.0.0.1:1234/", "http://localhost:1234/", "http://127.0.0.1:1234/path", "http://127.0.0.1:1234/?q=1"] {
+      precondition(!InspectorWebPolicy.isInspectorEndpoint(URL(string: invalid)!))
+    }
+    let oldURL = web.url
+    container.recoverFromEventOverflow()
+    try await eventually("Recovery must replace the document identity") { web.url != oldURL && !web.isLoading }
+    container.stop()
+    await container.finishStopping()
+    precondition(web.url?.absoluteString == "about:blank", "A retired page must unload before releasing its endpoint")
+    let retired = try await web.evaluateJavaScript("typeof window.attack") as? String
+    precondition(retired == "undefined")
+    print("Storage scopes follow providers; recovery changes document identity; retirement unloads old JavaScript")
   }
 }

@@ -67,6 +67,7 @@ actor InspectorHTTPService {
 
   private let adbService: ADBService
   private var connections: [String: Connection] = [:]
+  private var endpointObservers: [UUID: [UUID: @MainActor @Sendable () async -> Void]] = [:]
   private var knownApps: [String: App] = [:]
   private var discoveredKeys: Set<String> = []
   private var retryAfter: [String: ContinuousClock.Instant] = [:]
@@ -140,7 +141,7 @@ actor InspectorHTTPService {
         metadataReadAt[reference.key] = nil
         if let connection = connections.removeValue(forKey: reference.key) {
           connection.healthTask?.cancel()
-          await removeForward(connection.forward, using: adb)
+          await retireConnection(connection, using: adb)
         }
         if let processName = socket.processName, processName == previous.processName {
           // Keep display metadata, but verify the process before using a replacement listener.
@@ -188,7 +189,7 @@ actor InspectorHTTPService {
     for key in connections.keys.filter({ !activeKeys.contains($0) }) {
       guard let connection = connections.removeValue(forKey: key) else { continue }
       connection.healthTask?.cancel()
-      await removeForward(connection.forward, using: adb)
+      await retireConnection(connection, using: adb)
     }
   }
 
@@ -197,9 +198,20 @@ actor InspectorHTTPService {
     let baseURL: URL
   }
 
-  func endpoint(for reference: InspectorServerReference) throws -> Endpoint {
+  func endpoint(
+    for reference: InspectorServerReference, ownerID: UUID? = nil,
+    invalidated: (@MainActor @Sendable () async -> Void)? = nil
+  ) throws -> Endpoint {
     let connection = try connection(for: reference)
+    if let ownerID, let invalidated { endpointObservers[connection.id, default: [:]][ownerID] = invalidated }
     return Endpoint(id: connection.id, baseURL: connection.baseURL)
+  }
+
+  func releaseEndpoint(ownerID: UUID) {
+    for id in endpointObservers.keys {
+      endpointObservers[id]?.removeValue(forKey: ownerID)
+      if endpointObservers[id]?.isEmpty == true { endpointObservers.removeValue(forKey: id) }
+    }
   }
 
   private func isCurrent(_ connection: Connection) -> Bool {
@@ -223,14 +235,14 @@ actor InspectorHTTPService {
       connection.healthTask?.cancel()
     }
     let adb = await adbService.exec()
-    let forwards = connections.values.map(\.forward)
+    let retired = Array(connections.values)
     connections.removeAll()
     knownApps.removeAll()
     discoveredKeys.removeAll()
     retryAfter.removeAll()
 
-    for forward in forwards {
-      await removeForward(forward, using: adb)
+    for connection in retired {
+      await retireConnection(connection, using: adb)
     }
   }
 
@@ -393,6 +405,18 @@ actor InspectorHTTPService {
     connections.removeValue(forKey: key)
     notifyChange()
     let adb = await adbService.exec()
+    await retireConnection(connection, using: adb)
+  }
+
+  private func retireConnection(_ connection: Connection, using adb: ADBClient) async {
+    connection.healthTask?.cancel()
+    let observers = endpointObservers.removeValue(forKey: connection.id) ?? [:]
+    // Keep the port reserved until every authorized page has unloaded.
+    await withTaskGroup(of: Void.self) { group in
+      for invalidate in observers.values {
+        group.addTask { await invalidate() }
+      }
+    }
     await removeForward(connection.forward, using: adb)
   }
 

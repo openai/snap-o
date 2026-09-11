@@ -1,11 +1,10 @@
 import AppKit
-import CryptoKit
 import Foundation
 import SnapODeviceClient
 import WebKit
 
 @MainActor
-final class InspectorWebContainer: NSObject, WKNavigationDelegate {
+final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   private struct PendingPageEvent {
     let name: String
     let payload: Any
@@ -14,6 +13,7 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
   private static let maximumPendingPageEvents = 2048
   private static let maximumPageEventBatchSize = 64
 
+  let id = UUID()
   let webView: WKWebView
   var pageReadinessChangedHandler: ((Bool) -> Void)?
 
@@ -22,6 +22,16 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
   static let pageOrigin = URL(string: "http://localhost/")
   private let bridge: InspectorWebBridge
   private var isStopped = false
+  private var policyTask: Task<Void, Never>?
+  private var policyGeneration = 0
+  private var endpoint: URL?
+  private var policyInstalled = false
+  private var currentRuleList: WKContentRuleList?
+  private var unloadNavigation: WKNavigation?
+  private var documentURL = InspectorWebContainer.pageOrigin?.appendingPathComponent(UUID().uuidString)
+  private var stopContinuation: CheckedContinuation<Void, Never>?
+  private var unloadTask: Task<Void, Never>?
+  private let ruleListIdentifier = "snapo.inspector." + UUID().uuidString
   private var recoveryTask: Task<Void, Never>?
   private var pendingPageEvents: [PendingPageEvent] = []
   private var pageEventDeliveryGeneration: UInt = 0
@@ -34,20 +44,19 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
     }
   }
 
-  init(bridge: InspectorWebBridge, plugin: InspectorPlugin) {
+  init(bridge: InspectorWebBridge, plugin: InspectorPlugin, storageIdentifier: UUID?) {
     let configuration = WKWebViewConfiguration()
     embeddedHTML = plugin.resourceDirectory.flatMap {
       try? String(contentsOf: $0.appendingPathComponent("index.html"), encoding: .utf8)
     }
     developmentURL = Self.developmentURL(pluginID: plugin.id)
     self.bridge = bridge
-    let inspectorID = "com.openai.snap-o.inspector.\(plugin.id.rawValue)"
-    let bytes = Array(SHA256.hash(data: Data(inspectorID.utf8)).prefix(16))
-    let identifier = UUID(uuid: (
-      bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-      bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
-    ))
-    configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: identifier)
+    configuration.websiteDataStore = storageIdentifier.map { WKWebsiteDataStore(forIdentifier: $0) } ?? .nonPersistent()
+    configuration.defaultWebpagePreferences.isLockdownModeEnabled = true
+    configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+    configuration.preferences.isElementFullscreenEnabled = false
+    configuration.allowsAirPlayForMediaPlayback = false
+    configuration.mediaTypesRequiringUserActionForPlayback = .all
     configuration.userContentController.addScriptMessageHandler(
       bridge,
       contentWorld: .page,
@@ -56,6 +65,17 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
     webView = WKWebView(frame: .zero, configuration: configuration)
     super.init()
     webView.navigationDelegate = self
+    webView.uiDelegate = self
+    webView.allowsLinkPreview = false
+    bridge.webView = webView
+    bridge.acceptsMessage = { [weak self] message in
+      guard let self, !isStopped, policyInstalled, message.webView === webView,
+            message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, ownsPage(url) else { return false }
+      let origin = message.frameInfo.securityOrigin
+      guard let expected = developmentURL ?? Self.pageOrigin else { return false }
+      return origin.protocol == expected.scheme && origin.host == expected.host
+        && origin.port == (expected.port ?? 0)
+    }
     bridge.colorPanelClosedHandler = { [weak self] id in
       self?.sendPageEvent(name: "host:color-closed", payload: id)
     }
@@ -66,7 +86,43 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
 
   func start() {
     guard !isStopped else { return }
-    loadInspector()
+    policyTask = Task { [weak self] in
+      guard let self else { return }
+      do {
+        try await allowEndpoint(nil)
+        guard !isStopped else { return }
+        loadInspector()
+      } catch {
+        // Never execute inspector code without an installed network policy.
+        guard !isStopped else { return }
+        webView.loadHTMLString("<p>Inspector security policy could not be loaded.</p>", baseURL: documentURL)
+      }
+    }
+  }
+
+  func allowEndpoint(_ endpoint: URL?) async throws {
+    guard !isStopped else { throw CancellationError() }
+    if policyInstalled, self.endpoint == endpoint { return }
+    policyGeneration += 1
+    let generation = policyGeneration
+    let encoded = try InspectorWebPolicy.contentRules(endpoint: endpoint, developmentURL: developmentURL)
+    let identifier = ruleListIdentifier + "." + String(generation)
+    let list = try await WKContentRuleListStore.default().compileContentRuleList(
+      forIdentifier: identifier, encodedContentRuleList: encoded
+    )
+    guard !Task.isCancelled, !isStopped, generation == policyGeneration, let list else {
+      try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: identifier)
+      throw CancellationError()
+    }
+    let controller = webView.configuration.userContentController
+    // The policies overlap during replacement; there is never an unfiltered interval.
+    let previous = currentRuleList
+    controller.add(list)
+    if let previous { controller.remove(previous) }
+    currentRuleList = list
+    self.endpoint = endpoint
+    policyInstalled = true
+    if let previous { try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: previous.identifier) }
   }
 
   func stop() {
@@ -74,7 +130,8 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
     isStopped = true
     isPageReady = false
     bridge.invalidate()
-    webView.navigationDelegate = nil
+    policyTask?.cancel()
+    policyGeneration += 1
     recoveryTask?.cancel()
     closeNativeColorPanel()
     bridge.colorPanelChangedHandler = nil
@@ -85,16 +142,27 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
       forName: InspectorWebBridge.messageHandlerName,
       contentWorld: .page
     )
+    unloadTask = Task { [self] in
+      await withCheckedContinuation { continuation in
+        stopContinuation = continuation
+        unloadNavigation = webView.loadHTMLString("", baseURL: nil)
+      }
+      webView.navigationDelegate = nil
+      webView.uiDelegate = nil
+    }
   }
 
   func finishStopping() async {
+    await unloadTask?.value
+    await policyTask?.value
+    if let currentRuleList { try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: currentRuleList.identifier) }
     await recoveryTask?.value
     recoveryTask = nil
     await bridge.finishStopping()
   }
 
   func closeNativeColorPanel() {
-    bridge.closeNativeColorPanel()
+    bridge.cancelPresentation()
   }
 
   func recoverFromEventOverflow() {
@@ -107,7 +175,13 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    guard !isStopped else { return }
+    if isStopped {
+      guard navigation === unloadNavigation else { return }
+      stopContinuation?.resume()
+      stopContinuation = nil
+      return
+    }
+    guard policyInstalled, let url = webView.url, ownsPage(url) else { return }
     isPageReady = true
     sendNextPageEventBatchIfNeeded()
   }
@@ -121,11 +195,17 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
   }
 
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-    recoverPage()
+    if isStopped {
+      stopContinuation?.resume()
+      stopContinuation = nil
+    } else {
+      recoverPage()
+    }
   }
 
   private func recoverPage() {
     guard !isStopped, recoveryTask == nil else { return }
+    documentURL = nil
     isPageReady = false
     invalidatePageEventDelivery(clearPending: true)
     webView.stopLoading()
@@ -147,15 +227,60 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
     decidePolicyFor navigationAction: WKNavigationAction
   ) async -> WKNavigationActionPolicy {
     guard let url = navigationAction.request.url else { return .cancel }
-    if navigationAction.navigationType == .linkActivated,
-       ["http", "https"].contains(url.scheme?.lowercased() ?? ""), !ownsPage(url) {
-      NSWorkspace.shared.open(url)
-      return .cancel
+    if isStopped { return url.absoluteString == "about:blank" ? .allow : .cancel }
+    guard navigationAction.targetFrame?.isMainFrame == true, !navigationAction.shouldPerformDownload else { return .cancel }
+    if ownsPage(url), navigationAction.navigationType == .other { return .allow }
+    if navigationAction.navigationType == .linkActivated, ["http", "https"].contains(url.scheme),
+       url.user == nil, url.password == nil, navigationAction.sourceFrame.isMainFrame,
+       let source = navigationAction.sourceFrame.request.url, ownsPage(source) {
+      // Script-created clicks also arrive as linkActivated; require native confirmation.
+      if await bridge.confirm("Open this link in your browser?", detail: url.absoluteString), !isStopped, ownsPage(source) {
+        NSWorkspace.shared.open(url)
+      }
     }
-    guard navigationAction.targetFrame?.isMainFrame == true else { return .cancel }
-    if url.absoluteString == "about:blank" || ownsPage(url) { return .allow }
-
     return .cancel
+  }
+
+  func webView(
+    _ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+    completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+  ) {
+    completionHandler(.cancelAuthenticationChallenge, nil)
+  }
+
+  func webView(
+    _ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+    initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType
+  ) async -> WKPermissionDecision {
+    .deny
+  }
+
+  func webView(
+    _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void
+  ) {
+    completionHandler(nil)
+  }
+
+  func webView(
+    _ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable () -> Void
+  ) {
+    completionHandler()
+  }
+
+  func webView(
+    _ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void
+  ) {
+    completionHandler(false)
+  }
+
+  func webView(
+    _ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+    initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (String?) -> Void
+  ) {
+    completionHandler(nil)
   }
 
   private func enqueue(_ event: PendingPageEvent) {
@@ -227,6 +352,7 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
   }
 
   private func loadInspector() {
+    documentURL = Self.pageOrigin?.appendingPathComponent(UUID().uuidString)
     if let developmentURL {
       webView.load(URLRequest(url: developmentURL))
       return
@@ -235,16 +361,18 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate {
     guard let embeddedHTML else {
       webView.loadHTMLString(
         "<p style='font: 13px -apple-system; padding: 16px'>Inspector resources are unavailable.</p>",
-        baseURL: Self.pageOrigin
+        baseURL: documentURL
       )
       return
     }
-    webView.loadHTMLString(embeddedHTML, baseURL: Self.pageOrigin)
+    webView.loadHTMLString(InspectorWebPolicy.protectedHTML(embeddedHTML), baseURL: documentURL)
   }
 
   private func ownsPage(_ url: URL) -> Bool {
     if let developmentURL { return Self.hasSameOrigin(url, developmentURL) }
-    return url == Self.pageOrigin
+    var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    components?.fragment = nil
+    return components?.url == documentURL
   }
 
   private static func developmentURL(pluginID: InspectorID) -> URL? {

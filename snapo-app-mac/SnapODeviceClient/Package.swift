@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
   name: "SnapODeviceClient",
   platforms: [
-    .macOS(.v15)
+    .macOS(.v26)
   ],
   products: [
     .library(name: "SnapODeviceClient", targets: ["SnapODeviceClient"])

@@ -104,12 +104,15 @@ struct InspectorToolbar: Decodable {
   var actions: [InspectorToolbarAction]
 
   func validate() throws {
-    guard revision > 0,
+    guard (1 ... Int(UInt32.max)).contains(revision), actions.count <= 11,
           actions.count(where: { $0.position == .start }) <= 3,
           Set(actions.map(\.id)).count == actions.count,
           !actions.contains(where: { $0.type == .search && $0.position == .end }),
           actions.count(where: { $0.type == .search }) <= 1,
-          actions.allSatisfy({ !$0.id.isEmpty && !$0.label.isEmpty && $0.id.count <= 100 && $0.label.count <= 200
+          actions
+          .allSatisfy({
+            !$0.id.isEmpty && !$0.label.isEmpty && $0.id.count <= 100 && $0.label.count <= 200 && ($0.value?.utf8.count ?? 0) <= 4096
+              && (0 ... Int(UInt32.max)).contains($0.inputRevision ?? 0)
               && ($0.type != .button || $0.icon != nil) }) else {
       throw InspectorError.invalidBridgeMessage
     }

@@ -33,6 +33,8 @@ final class InspectorHostModel {
   private struct PageIdentity: Equatable {
     let appID: String?
     let server: InspectorServerReference?
+    let processIdentity: String?
+    let storageIdentifier: UUID?
   }
 
   private struct Page {
@@ -79,6 +81,7 @@ final class InspectorHostModel {
       pageTransitions[kind] = Task {
         await transition?.value
         await page.container.finishStopping()
+        await service.releaseInspectorEndpoint(ownerID: page.container.id)
       }
     }
     pages.removeAll()
@@ -134,7 +137,11 @@ final class InspectorHostModel {
     guard let kind = state.preferredKind else { return }
     let pageState = snapshot.pageState(for: kind)
     isWaiting = pageState.isWaiting
-    let identity = PageIdentity(appID: pageState.selectedApp?.id, server: pageState.selection?.server)
+    let identity = PageIdentity(
+      appID: pageState.selectedApp?.id, server: pageState.selection?.server,
+      processIdentity: pageState.selectedApp?.manifest?.processIdentity,
+      storageIdentifier: InspectorWebPolicy.storageIdentifier(app: pageState.selectedApp, inspector: kind)
+    )
     if pages[kind]?.identity != identity { replacePage(kind: kind, identity: identity) }
     for kind in pages.keys {
       synchronizeConnection(kind: kind)
@@ -145,14 +152,25 @@ final class InspectorHostModel {
     bindings[kind]?.cancel()
     guard let page = pages[kind] else { return }
     let state = appInspector.snapshot.pageState(for: kind)
-    guard state.isActive, state.isConnected, page.isReady, let selection = state.selection else {
+    guard page.isReady else { return }
+    guard state.isActive, state.isConnected, let selection = state.selection else {
       setEndpoint(nil, kind: kind)
       return
     }
     bindings[kind] = Task { [weak self, weak container = page.container] in
       guard let self, let container else { return }
       do {
-        let target = try await service.inspectorEndpoint(for: selection.server)
+        let target = try await service.inspectorEndpoint(
+          for: selection.server, ownerID: container.id
+        ) { [weak self, weak container] in
+          guard let container else { return }
+          container.stop()
+          await container.finishStopping()
+          guard let self, !isStopped, pages[kind]?.container === container,
+                let identity = pages[kind]?.identity else { return }
+          replacePage(kind: kind, identity: identity)
+        }
+        try await container.allowEndpoint(target.baseURL)
         guard !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
         setEndpoint(target, kind: kind)
       } catch {
@@ -187,7 +205,11 @@ final class InspectorHostModel {
     previous?.stop()
     bindings[kind]?.cancel()
     let bridge = InspectorWebBridge()
-    let container = InspectorWebContainer(bridge: bridge, plugin: plugin)
+    let container = InspectorWebContainer(bridge: bridge, plugin: plugin, storageIdentifier: identity.storageIdentifier)
+    bridge.isActiveHandler = { [weak self, weak container] in
+      guard let self, let container else { return false }
+      return !isStopped && preferredInspectorID == kind && pages[kind]?.container === container
+    }
     bridge.hostStateHandler = { [weak self, weak container] in
       guard let self, let container, pages[kind]?.container === container else { return InspectorConnectionState() }
       return pages[kind]?.connection ?? InspectorConnectionState()
@@ -217,6 +239,7 @@ final class InspectorHostModel {
     pageTransitions[kind] = Task { [weak self] in
       await transition?.value
       await previous?.finishStopping()
+      if let previous { await self?.service.releaseInspectorEndpoint(ownerID: previous.id) }
       guard let self, !isStopped, pages[kind]?.container === container else { return }
       container.start()
       pageTransitions[kind] = nil
