@@ -79,14 +79,14 @@ public struct InspectorAppMetadata: Sendable, Equatable {
 public struct InspectorEndpoint: Sendable {
   public let kind: InspectorID
   public let pid: Int?
-  public let reference: NetworkServerReference
+  public let reference: InspectorServerReference
   public let deviceDisplayTitle: String
   public let protocolVersion: Int?
   public let metadata: InspectorAppMetadata
 
   public init(
     kind: InspectorID,
-    reference: NetworkServerReference,
+    reference: InspectorServerReference,
     deviceDisplayTitle: String,
     pid: Int? = nil,
     protocolVersion: Int? = nil,
@@ -123,7 +123,7 @@ public struct InspectableProcess: Sendable {
 public struct DiscoveredInspectorSocket: Sendable, Equatable {
   public let kind: InspectorID
   public let pid: Int
-  public let reference: NetworkServerReference
+  public let reference: InspectorServerReference
 }
 
 public enum InspectorDiscovery {
@@ -143,7 +143,7 @@ public enum InspectorDiscovery {
         return DiscoveredInspectorSocket(
           kind: definition.id,
           pid: pid,
-          reference: NetworkServerReference(deviceId: deviceID, socketName: name)
+          reference: InspectorServerReference(deviceId: deviceID, socketName: name)
         )
       }
   }

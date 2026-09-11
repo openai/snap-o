@@ -1,8 +1,6 @@
 import Foundation
 import SnapODeviceClient
 
-typealias InspectorServerReference = NetworkServerReference
-
 struct AppInspectorOption: Equatable, Codable, Identifiable {
   let kind: InspectorID
   let server: InspectorServerReference
@@ -74,7 +72,7 @@ extension InspectorSaveFileResult: Sendable {}
 
 enum InspectorError: LocalizedError {
   case invalidBridgeMessage
-  case serverNotConnected(NetworkServerReference)
+  case serverNotConnected(InspectorServerReference)
   case requestFailed(statusCode: Int, message: String)
 
   var errorDescription: String? {

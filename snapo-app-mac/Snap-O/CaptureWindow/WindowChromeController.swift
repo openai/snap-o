@@ -61,7 +61,7 @@ struct WindowChromeController: NSViewRepresentable {
       self.dividerX = dividerX
       dividerOverlay.dividerX = dividerX
       titleOverlay.title = title
-      titleOverlay.networkLeadingX = dividerX
+      titleOverlay.inspectorLeadingX = dividerX
     }
 
     func attach(to window: NSWindow?) {
@@ -116,7 +116,7 @@ struct WindowChromeController: NSViewRepresentable {
       frameView.addSubview(dividerOverlay, positioned: .above, relativeTo: nil)
 
       titleOverlay.title = title
-      titleOverlay.networkLeadingX = dividerX
+      titleOverlay.inspectorLeadingX = dividerX
       titleOverlay.frame = frameView.bounds
       titleOverlay.autoresizingMask = [.width, .height]
       frameView.addSubview(titleOverlay, positioned: .above, relativeTo: nil)
@@ -133,7 +133,7 @@ private final class WindowTitleOverlayView: NSView {
     }
   }
 
-  var networkLeadingX: CGFloat? {
+  var inspectorLeadingX: CGFloat? {
     didSet {
       needsDisplay = true
     }
@@ -159,10 +159,10 @@ private final class WindowTitleOverlayView: NSView {
     let contentRight = overlayX(forContentX: contentView.bounds.maxX, contentView: contentView)
     let leadingX: CGFloat
     let centerX: CGFloat
-    if let networkLeadingX {
-      let networkLeft = overlayX(forContentX: networkLeadingX, contentView: contentView)
-      leadingX = networkLeft + Self.horizontalPadding
-      centerX = (networkLeft + contentRight) / 2
+    if let inspectorLeadingX {
+      let inspectorLeft = overlayX(forContentX: inspectorLeadingX, contentView: contentView)
+      leadingX = inspectorLeft + Self.horizontalPadding
+      centerX = (inspectorLeft + contentRight) / 2
     } else {
       leadingX = max(contentLeft, windowControlsTrailingX) + Self.horizontalPadding
       centerX = (contentLeft + contentRight) / 2

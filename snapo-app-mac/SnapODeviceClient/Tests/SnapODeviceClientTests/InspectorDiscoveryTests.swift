@@ -29,7 +29,7 @@ struct InspectorDiscoveryTests {
     let encoder = JSONEncoder()
     encoder.outputFormatting = .sortedKeys
     #expect(try String(bytes: encoder.encode(InspectorID.tweaks), encoding: .utf8) == "\"tweaks\"")
-    let server = NetworkServerReference(deviceId: "device", socketName: "snapo_tweaks_42")
+    let server = InspectorServerReference(deviceId: "device", socketName: "snapo_tweaks_42")
     #expect(try String(bytes: encoder.encode(server), encoding: .utf8)
       == "{\"deviceId\":\"device\",\"socketName\":\"snapo_tweaks_42\"}")
   }
@@ -111,7 +111,7 @@ struct InspectorDiscoveryTests {
     let endpoints = ["legacy-one", "legacy-two"].map {
       InspectorEndpoint(
         kind: .network,
-        reference: NetworkServerReference(deviceId: "device", socketName: $0),
+        reference: InspectorServerReference(deviceId: "device", socketName: $0),
         deviceDisplayTitle: "Device",
         metadata: InspectorAppMetadata(appName: "Same name")
       )
@@ -129,7 +129,7 @@ struct InspectorDiscoveryTests {
   ) -> InspectorEndpoint {
     InspectorEndpoint(
       kind: kind,
-      reference: NetworkServerReference(deviceId: device, socketName: "snapo_\(kind.rawValue)_\(pid)"),
+      reference: InspectorServerReference(deviceId: device, socketName: "snapo_\(kind.rawValue)_\(pid)"),
       deviceDisplayTitle: "Device",
       pid: pid,
       metadata: metadata

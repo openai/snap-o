@@ -235,9 +235,13 @@ print_android_protocol_declarations() {
 }
 
 print_client_protocol_declarations() {
-  print_protocol_declaration "$1" 'Swift Network supported version' \
-    'static let supportedVersion[[:space:]:=]' \
-    'snapo-app-mac/SnapODeviceClient/Sources/SnapODeviceClient/NetworkProtocol.swift'
+  local swift_network_path='snapo-app-mac/SnapODeviceClient/Sources/SnapODeviceClient/NetworkProtocol.swift'
+  if git -C "$SNAPO_DIR" cat-file -e "$1:$swift_network_path" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Swift Network supported version' \
+      'static let supportedVersion[[:space:]:=]' "$swift_network_path"
+  else
+    printf '    Swift Network client: absent; review the Web Network client below.\n'
+  fi
   print_protocol_declaration "$1" 'Web Network supported version' \
     'const supportedProtocolVersion[[:space:]:=]' \
     'snapo-network-inspector-web/src/features/network-inspector/lib/protocol.ts' \

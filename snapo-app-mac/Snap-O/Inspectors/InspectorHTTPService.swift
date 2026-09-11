@@ -43,8 +43,8 @@ actor InspectorHTTPService {
     var hasLoadedIcon = false
     var metadataTask: Task<Void, Never>?
 
-    var reference: NetworkServerReference {
-      NetworkServerReference(deviceId: app.deviceID, socketName: app.socketName)
+    var reference: InspectorServerReference {
+      InspectorServerReference(deviceId: app.deviceID, socketName: app.socketName)
     }
   }
 
@@ -138,7 +138,7 @@ actor InspectorHTTPService {
   private func connect(
     kind: InspectorID,
     pid: Int,
-    reference: NetworkServerReference,
+    reference: InspectorServerReference,
     deviceDisplayTitle: String,
     using adb: ADBClient
   ) async {
@@ -165,8 +165,8 @@ actor InspectorHTTPService {
         throw InspectorError.invalidBridgeMessage
       }
 
-      async let processName = NetworkServerDiscovery.packageNameHint(for: reference, using: adb, pid: pid)
-      async let androidUserID = NetworkServerDiscovery.androidUserID(for: reference, using: adb, pid: pid)
+      async let processName = DeviceDiscovery.processName(deviceID: reference.deviceId, using: adb, pid: pid)
+      async let androidUserID = DeviceDiscovery.androidUserID(deviceID: reference.deviceId, using: adb, pid: pid)
       let metadata = await (processName: processName, androidUserID: androidUserID)
       guard !Task.isCancelled, !isStopped else {
         await removeForward(handle, using: adb)
@@ -211,8 +211,8 @@ actor InspectorHTTPService {
 
     if connection.app.processName == nil || connection.app.androidUserID == nil {
       let adb = await adbService.exec()
-      async let processName = NetworkServerDiscovery.packageNameHint(for: connection.reference, using: adb, pid: connection.app.pid)
-      async let androidUserID = NetworkServerDiscovery.androidUserID(for: connection.reference, using: adb, pid: connection.app.pid)
+      async let processName = DeviceDiscovery.processName(deviceID: connection.app.deviceID, using: adb, pid: connection.app.pid)
+      async let androidUserID = DeviceDiscovery.androidUserID(deviceID: connection.app.deviceID, using: adb, pid: connection.app.pid)
       let metadata = await (processName: processName, androidUserID: androidUserID)
       guard !Task.isCancelled, connections[key]?.id == connectionID else { return }
       connections[key]?.app.processName = metadata.processName ?? connection.app.processName

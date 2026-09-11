@@ -9,9 +9,9 @@ private struct CaptureWorkspaceMetrics: Equatable {
 private struct WorkspacePanePresentation {
   let layout: WorkspaceLayout
   let captureWidth: CGFloat
-  let networkWidth: CGFloat
+  let inspectorWidth: CGFloat
   let captureVisibleWidth: CGFloat
-  let networkVisibleWidth: CGFloat
+  let inspectorVisibleWidth: CGFloat
   let transitioningPane: WorkspaceLayoutTransition.Pane?
 }
 
@@ -32,7 +32,7 @@ struct CaptureWindow: View {
 
   @State private var controller: CaptureWindowController
   @State private var workspace: WorkspaceLayoutController
-  @State private var networkSession: InspectorSession
+  @State private var inspectorSession: InspectorSession
   @State private var presentedLayout: WorkspaceLayout
   @State private var layoutTransition: WorkspaceLayoutTransition?
   @State private var splitDragOrigin: CGFloat?
@@ -53,7 +53,7 @@ struct CaptureWindow: View {
     let workspace = WorkspaceLayoutController(snapshot: initialWorkspace)
     _controller = State(initialValue: captureController)
     _workspace = State(initialValue: workspace)
-    _networkSession = State(
+    _inspectorSession = State(
       initialValue: InspectorSession(
         adbService: adbService,
         deviceTracker: deviceTracker
@@ -69,18 +69,18 @@ struct CaptureWindow: View {
       .task {
         await controller.start()
       }
-      .task(id: workspace.showsNetwork) {
-        guard workspace.showsNetwork else {
-          networkSession.model?.webContainer?.closeNativeColorPanel()
+      .task(id: workspace.showsInspector) {
+        guard workspace.showsInspector else {
+          inspectorSession.model?.webContainer?.closeNativeColorPanel()
           // Hiding the pane is a layout change, not a session boundary. Preserve its streams and history until the window closes.
           return
         }
-        networkSession.startIfNeeded()
+        inspectorSession.startIfNeeded()
       }
       .onDisappear {
         Task {
           await controller.tearDown()
-          await networkSession.stop()
+          await inspectorSession.stop()
         }
       }
       .focusedSceneValue(\.captureController, controller)
@@ -123,7 +123,7 @@ struct CaptureWindow: View {
     switch layout {
     case .capture:
       controller.navigationTitle
-    case .network:
+    case .inspector:
       "Snap-O"
     case .both:
       "Snap-O"
@@ -141,8 +141,8 @@ struct CaptureWindow: View {
           aspectRatio: controller.displayInfoForSizing?.aspectRatio
         )
         : 0
-      let networkWidth = displayedLayout.showsNetwork
-        ? networkPaneWidth(
+      let inspectorWidth = displayedLayout.showsInspector
+        ? inspectorPaneWidth(
           totalWidth: geometry.size.width,
           captureWidth: captureWidth,
           layout: displayedLayout
@@ -152,22 +152,22 @@ struct CaptureWindow: View {
         totalWidth: geometry.size.width,
         captureWidth: captureWidth
       )
-      let networkVisibleWidth = visibleNetworkPaneWidth(
+      let inspectorVisibleWidth = visibleInspectorPaneWidth(
         totalWidth: geometry.size.width,
-        networkWidth: networkWidth
+        inspectorWidth: inspectorWidth
       )
       let dividerX = workspaceDividerX(
         totalWidth: geometry.size.width,
         captureWidth: captureWidth,
-        networkWidth: networkWidth,
+        inspectorWidth: inspectorWidth,
         layout: displayedLayout
       )
       let panePresentation = WorkspacePanePresentation(
         layout: displayedLayout,
         captureWidth: captureWidth,
-        networkWidth: networkWidth,
+        inspectorWidth: inspectorWidth,
         captureVisibleWidth: captureVisibleWidth,
-        networkVisibleWidth: networkVisibleWidth,
+        inspectorVisibleWidth: inspectorVisibleWidth,
         transitioningPane: layoutTransition?.pane
       )
 
@@ -176,11 +176,11 @@ struct CaptureWindow: View {
           controller: controller,
           workspace: workspace,
           presentedLayout: displayedLayout,
-          networkModel: networkSession.model,
+          inspectorModel: inspectorSession.model,
           capturePaneWidth: captureWidth,
-          networkPaneWidth: networkWidth,
+          inspectorPaneWidth: inspectorWidth,
           capturePaneVisibleWidth: captureVisibleWidth,
-          networkPaneVisibleWidth: networkVisibleWidth,
+          inspectorPaneVisibleWidth: inspectorVisibleWidth,
           transitioningPane: layoutTransition?.pane,
           titlebarHeight: titlebarHeight
         )
@@ -190,7 +190,7 @@ struct CaptureWindow: View {
           presentation: panePresentation
         )
       }
-      .background(networkSidebarBackground, ignoresSafeAreaEdges: [])
+      .background(inspectorSidebarBackground, ignoresSafeAreaEdges: [])
       .overlayPreferenceValue(CaptureWorkspaceMetricsKey.self) { metrics in
         if displayedLayout == .both,
            layoutTransition == nil,
@@ -224,18 +224,18 @@ struct CaptureWindow: View {
     if let layoutTransition {
       return layoutTransition.capturePaneWidth(windowWidth: totalWidth)
     }
-    return layout.showsNetwork
+    return layout.showsInspector
       ? constrainedCaptureWidth(totalWidth: totalWidth, aspectRatio: aspectRatio)
       : totalWidth
   }
 
-  private func networkPaneWidth(
+  private func inspectorPaneWidth(
     totalWidth: CGFloat,
     captureWidth: CGFloat,
     layout: WorkspaceLayout
   ) -> CGFloat {
     if let layoutTransition {
-      return layoutTransition.networkPaneWidth(windowWidth: totalWidth)
+      return layoutTransition.inspectorPaneWidth(windowWidth: totalWidth)
     }
     return layout.showsCapture
       ? max(totalWidth - captureWidth - 1, 0)
@@ -245,12 +245,12 @@ struct CaptureWindow: View {
   private func workspaceDividerX(
     totalWidth: CGFloat,
     captureWidth: CGFloat,
-    networkWidth: CGFloat,
+    inspectorWidth: CGFloat,
     layout: WorkspaceLayout
   ) -> CGFloat? {
     guard layout == .both else { return nil }
     if layoutTransition?.pane == .capture {
-      return totalWidth - networkWidth
+      return totalWidth - inspectorWidth
     }
     return captureWidth
   }
@@ -267,16 +267,16 @@ struct CaptureWindow: View {
     return captureWidth * visibility
   }
 
-  private func visibleNetworkPaneWidth(
+  private func visibleInspectorPaneWidth(
     totalWidth: CGFloat,
-    networkWidth: CGFloat
+    inspectorWidth: CGFloat
   ) -> CGFloat {
-    guard let layoutTransition, layoutTransition.pane == .network else {
-      return networkWidth
+    guard let layoutTransition, layoutTransition.pane == .inspector else {
+      return inspectorWidth
     }
     let progress = layoutTransition.progress(windowWidth: totalWidth)
-    let visibility = layoutTransition.toLayout.showsNetwork ? progress : 1 - progress
-    return networkWidth * visibility
+    let visibility = layoutTransition.toLayout.showsInspector ? progress : 1 - progress
+    return inspectorWidth * visibility
   }
 
   private func captureWorkspace(
@@ -297,20 +297,20 @@ struct CaptureWindow: View {
             )
             .clipped()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .zIndex(presentation.transitioningPane == .network ? 1 : 0)
+            .zIndex(presentation.transitioningPane == .inspector ? 1 : 0)
         }
 
-        if presentation.layout.showsNetwork {
+        if presentation.layout.showsInspector {
           Group {
-            if let networkModel = networkSession.model {
-              InspectorWebView(model: networkModel)
+            if let inspectorModel = inspectorSession.model {
+              InspectorWebView(model: inspectorModel)
                 .overlay {
-                  if networkModel.isWaiting || networkModel.selectedInspector == nil {
+                  if inspectorModel.isWaiting || inspectorModel.selectedInspector == nil {
                     VStack(spacing: 12) {
-                      Text(networkModel.selectedInspectorApp.map { "Waiting for \($0.name)" } ?? "Select an app to inspect")
+                      Text(inspectorModel.selectedInspectorApp.map { "Waiting for \($0.name)" } ?? "Select an app to inspect")
                         .foregroundStyle(.secondary)
-                      if let launch = networkModel.appLaunch {
-                        Button(launch.pending ? "Opening…" : "Open App") { networkModel.openSelectedApp() }
+                      if let launch = inspectorModel.appLaunch {
+                        Button(launch.pending ? "Opening…" : "Open App") { inspectorModel.openSelectedApp() }
                           .disabled(launch.pending)
                         if let error = launch.error { Text(error).foregroundStyle(.red) }
                       }
@@ -319,16 +319,16 @@ struct CaptureWindow: View {
                     .background(Color(nsColor: .textBackgroundColor))
                   }
                 }
-            } else if let error = networkSession.error {
+            } else if let error = inspectorSession.error {
               Text(error).foregroundStyle(.secondary)
             } else {
               ProgressView()
             }
           }
-          .frame(width: presentation.networkWidth, height: previewHeight)
+          .frame(width: presentation.inspectorWidth, height: previewHeight)
           .background(Color(nsColor: .windowBackgroundColor))
           .frame(
-            width: presentation.networkVisibleWidth,
+            width: presentation.inspectorVisibleWidth,
             height: previewHeight,
             alignment: .trailing
           )
@@ -360,7 +360,7 @@ struct CaptureWindow: View {
     controller: CaptureWindowController,
     layout: WorkspaceLayout
   ) -> some View {
-    CaptureSurfaceView(aspectRatio: layout.showsNetwork ? controller.displayInfoForSizing?.aspectRatio : nil) {
+    CaptureSurfaceView(aspectRatio: layout.showsInspector ? controller.displayInfoForSizing?.aspectRatio : nil) {
       captureContent(controller: controller)
     }
     .background(captureAreaBackground)
@@ -374,7 +374,7 @@ struct CaptureWindow: View {
     Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
   }
 
-  private var networkSidebarBackground: Color {
+  private var inspectorSidebarBackground: Color {
     if colorScheme == .dark {
       Color(red: 42.0 / 255.0, green: 42.0 / 255.0, blue: 42.0 / 255.0)
     } else {

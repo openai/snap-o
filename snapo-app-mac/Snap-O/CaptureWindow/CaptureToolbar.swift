@@ -30,17 +30,17 @@ struct CaptureToolbar: View {
   @Bindable var controller: CaptureWindowController
   @Bindable var workspace: WorkspaceLayoutController
   let presentedLayout: WorkspaceLayout
-  let networkModel: InspectorHostModel?
+  let inspectorModel: InspectorHostModel?
   let capturePaneWidth: CGFloat
-  let networkPaneWidth: CGFloat
+  let inspectorPaneWidth: CGFloat
   let capturePaneVisibleWidth: CGFloat
-  let networkPaneVisibleWidth: CGFloat
+  let inspectorPaneVisibleWidth: CGFloat
   let transitioningPane: WorkspaceLayoutTransition.Pane?
   let titlebarHeight: CGFloat
 
   @Environment(AppSettings.self)
   private var settings
-  @State private var isNetworkSearchPresented = false
+  @State private var isInspectorSearchPresented = false
 
   var body: some View {
     ZStack {
@@ -56,13 +56,13 @@ struct CaptureToolbar: View {
           .zIndex(paneZIndex(.capture))
       }
 
-      if presentedLayout.showsNetwork {
-        networkToolbarPane
-          .frame(width: networkPaneWidth, height: toolbarHeight)
-          .frame(width: networkPaneVisibleWidth, height: toolbarHeight, alignment: .trailing)
+      if presentedLayout.showsInspector {
+        inspectorToolbarPane
+          .frame(width: inspectorPaneWidth, height: toolbarHeight)
+          .frame(width: inspectorPaneVisibleWidth, height: toolbarHeight, alignment: .trailing)
           .clipped()
           .frame(maxWidth: .infinity, alignment: .trailing)
-          .zIndex(paneZIndex(.network))
+          .zIndex(paneZIndex(.inspector))
       }
     }
     .simultaneousGesture(WindowDragGesture())
@@ -81,9 +81,9 @@ struct CaptureToolbar: View {
     return min(max(capturePaneVisibleWidth / capturePaneWidth, 0), 1)
   }
 
-  private var networkVisibility: CGFloat {
-    guard networkPaneWidth > 0 else { return 0 }
-    return min(max(networkPaneVisibleWidth / networkPaneWidth, 0), 1)
+  private var inspectorVisibility: CGFloat {
+    guard inspectorPaneWidth > 0 else { return 0 }
+    return min(max(inspectorPaneVisibleWidth / inspectorPaneWidth, 0), 1)
   }
 
   private var captureToolbarPane: some View {
@@ -105,8 +105,8 @@ struct CaptureToolbar: View {
       if presentedLayout == .both {
         HStack {
           captureToggle()
-            .opacity(networkVisibility)
-            .allowsHitTesting(networkVisibility > 0.5)
+            .opacity(inspectorVisibility)
+            .allowsHitTesting(inspectorVisibility > 0.5)
           Spacer()
         }
         .frame(height: Self.height)
@@ -119,8 +119,8 @@ struct CaptureToolbar: View {
         HStack {
           Spacer()
           inspectorToggle()
-            .opacity(1 - networkVisibility)
-            .allowsHitTesting(networkVisibility < 0.5)
+            .opacity(1 - inspectorVisibility)
+            .allowsHitTesting(inspectorVisibility < 0.5)
         }
         .frame(height: Self.height)
         .padding(.trailing, 12)
@@ -129,44 +129,44 @@ struct CaptureToolbar: View {
     }
   }
 
-  private var networkToolbarPane: some View {
+  private var inspectorToolbarPane: some View {
     ZStack {
       Color(nsColor: .textBackgroundColor)
 
       HStack(spacing: 0) {
         captureToggleSlot
 
-        if let networkModel {
+        if let inspectorModel {
           HStack(spacing: 8) {
             InspectorToolbarControls(
-              model: networkModel,
-              isSearchPresented: $isNetworkSearchPresented
+              model: inspectorModel,
+              isSearchPresented: $isInspectorSearchPresented
             )
 
-            AppInspectorPicker(model: networkModel)
+            AppInspectorPicker(model: inspectorModel)
               .padding(.leading, 4)
-            AppInspectorReconnectButton(model: networkModel)
-            AppInspectorViewPicker(model: networkModel)
+            AppInspectorReconnectButton(model: inspectorModel)
+            AppInspectorViewPicker(model: inspectorModel)
           }
         }
 
         Spacer()
 
-        if let networkModel {
+        if let inspectorModel {
           InspectorToolbarControls(
-            model: networkModel,
-            isSearchPresented: $isNetworkSearchPresented,
+            model: inspectorModel,
+            isSearchPresented: $isInspectorSearchPresented,
             placement: .end
           )
           .padding(.trailing, 8)
         }
 
-        networkToggleSlot
+        inspectorToggleSlot
       }
       .frame(height: Self.height)
       .padding(.horizontal, 12)
       .offset(y: titlebarHeight / 2)
-      .animation(.easeOut(duration: 0.16), value: isNetworkSearchPresented)
+      .animation(.easeOut(duration: 0.16), value: isInspectorSearchPresented)
     }
   }
 
@@ -184,8 +184,8 @@ struct CaptureToolbar: View {
       .frame(width: width, alignment: .leading)
   }
 
-  private var networkToggleSlot: some View {
-    let visibility = min(captureVisibility, networkVisibility)
+  private var inspectorToggleSlot: some View {
+    let visibility = min(captureVisibility, inspectorVisibility)
     let width = (SnapOToolbarStyle.singleControlSize + 8) * captureVisibility
 
     return inspectorToggle()
@@ -265,15 +265,15 @@ struct CaptureToolbar: View {
 
   private func inspectorToggle() -> some View {
     Button {
-      workspace.toggleNetwork()
+      workspace.toggleInspector()
     } label: {
       toggleIcon("sidebar.right")
         .accessibilityLabel("App Inspector")
     }
-    .help(workspace.showsNetwork ? "Hide App Inspector (⌘⌥I)" : "Show App Inspector (⌘⌥I)")
+    .help(workspace.showsInspector ? "Hide App Inspector (⌘⌥I)" : "Show App Inspector (⌘⌥I)")
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
-    .disabled(!workspace.canToggleNetwork)
+    .disabled(!workspace.canToggleInspector)
   }
 
   private func toggleIcon(_ systemName: String) -> some View {

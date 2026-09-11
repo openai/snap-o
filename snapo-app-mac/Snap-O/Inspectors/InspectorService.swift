@@ -23,7 +23,7 @@ actor InspectorService {
     let endpoints = applications.map { app in
       InspectorEndpoint(
         kind: app.kind,
-        reference: NetworkServerReference(deviceId: app.deviceID, socketName: app.socketName),
+        reference: InspectorServerReference(deviceId: app.deviceID, socketName: app.socketName),
         deviceDisplayTitle: app.deviceDisplayTitle,
         pid: app.pid,
         protocolVersion: app.protocolVersion,
