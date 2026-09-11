@@ -3,9 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export function checkBoundaries(root) {
+export function checkBoundaries(root, packages) {
   root = fs.realpathSync(root);
-  const packages = fs.readdirSync(root).filter((name) => fs.existsSync(path.join(root, name, "package.json")));
   const errors = [];
   for (const name of packages) {
     const directory = path.join(root, name);
@@ -46,7 +45,11 @@ export function checkBoundaries(root) {
   return errors;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const errors = checkBoundaries(fileURLToPath(new URL("..", import.meta.url)));
+  const errors = checkBoundaries(fileURLToPath(new URL("..", import.meta.url)), [
+    "host-sdk",
+    "../snapo-link-android/network/frontend",
+    "../snapo-link-android/tweaks-core/frontend"
+  ]);
   if (errors.length) {
     console.error(errors.join("\n"));
     process.exitCode = 1;

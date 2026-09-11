@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import { describe, expect, it } from "vitest";
-import replayFixture from "../../../../contracts/network/v2/history.jsonl?raw";
+import replayFixture from "../../../../../contracts/network/v2/history.jsonl?raw";
 import {
   createEmptyInspectorState,
   enforceInspectorRetention,

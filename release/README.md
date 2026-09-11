@@ -52,7 +52,7 @@ Before the version update, run the macOS build for `mac` or `both`, and Android 
 
 Use `snapo-link-android/build/reports/maven-central/publications.tsv` for the Android library coordinates.
 
-Test the release workflow before updating the version when build, signing, packaging, or publishing code changes. Check changes to the Xcode project, macOS build scripts, source CI, and web build files against the release workflow's setup. Source-only changes still need normal tests, but do not require an extra release workflow run when that workflow is unchanged.
+Test the release workflow before updating the version when build, signing, packaging, or publishing code changes. Check changes to the Xcode project, macOS build scripts, source CI, and frontend build files against the release workflow's setup. Source-only changes still need normal tests, but do not require an extra release workflow run when that workflow is unchanged.
 
 For a macOS test run, verify the signed and notarized app, then open a temporary copy and confirm it works. Keep the installed prior release for the Sparkle update test. Android test runs must validate files without publishing them. Fix failures and repeat affected checks after changes.
 
@@ -81,13 +81,15 @@ Tag the validated version-update commit with `VERSION`, without a `v` prefix. Co
 
 A tagged build must produce `Snap-O.dmg`, `Snap-O.dmg.sha256`, and a generated Sparkle `<item>`. The checksum file contains only the SHA-256 digest. Compare it with the final DMG. Test builds may omit the checksum and Sparkle item.
 
-Mount the DMG and check the app's signature, notarization, embedded web files, and bundled CLI. Confirm the app version and build match the tag. Test relevant CLI commands, including route loading if interception changed. The normal `snapo --help` invocation must exit successfully; a notarization check alone is not enough.
+Mount the DMG and check the app's signature, notarization, bundled CLI and Android reader. Confirm the app version and build match the tag. Test relevant CLI commands, including route loading if interception changed. The normal `snapo --help` invocation must exit successfully; a notarization check alone is not enough.
 
 Open a temporary copy of the final app and confirm the changed flows work. Review the release notes before publishing.
 
 ## Publish Android libraries
 
 For each library in the tag's generated `publications.tsv`, check the staged POM, Gradle metadata, AAR, sources, javadocs, and signatures before publishing.
+
+For Network and Tweaks AARs, also verify the generated inspector descriptor and the frontend ZIP under `assets/snapo/inspectors/<id>/`. The ZIP must contain `index.html` and its referenced assets.
 
 After Maven Central finishes publishing, fetch each library's POM, Gradle metadata, AAR, sources, and javadocs directly from Maven Central. Also resolve all modules from a clean Android Gradle project using the Android plugin, `google()`, and `mavenCentral()`. Direct Central-only checks must skip transitive dependencies because AndroidX and Compose may require Google's repository.
 

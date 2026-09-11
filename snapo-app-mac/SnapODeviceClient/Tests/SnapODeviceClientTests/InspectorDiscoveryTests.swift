@@ -4,11 +4,7 @@ import Testing
 
 @Suite("Inspector process discovery")
 struct InspectorDiscoveryTests {
-  private let definitions = ["network", "tweaks", "sample"].map {
-    InspectorSocketDefinition(id: InspectorID(rawValue: $0), socketPrefix: "snapo_\($0)_")
-  }
-
-  @Test("discovers bundled and app-provided inspector kinds from one socket snapshot")
+  @Test("discovers app-provided inspector kinds from one socket snapshot")
   func parsesSharedSnapshot() {
     let output = """
     1: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42
@@ -18,11 +14,29 @@ struct InspectorDiscoveryTests {
     5: 00000002 00000000 00010000 0001 01 101 @snapo_unknown_42
     6: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_0
     """
-    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone", definitions: definitions)
+    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
     #expect(sockets.map(\.kind) == [.network, .tweaks, InspectorID(rawValue: "unknown")])
     #expect(sockets.map(\.reference.deviceId) == ["phone", "phone", "phone"])
     #expect(sockets.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42", "snapo_unknown_42"])
-    #expect(InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone") == sockets)
+  }
+
+  @Test("socket names follow the standard inspector ID and PID format")
+  func validatesSocketNames() {
+    for id in ["sample", "com.example.custom-inspector", "a" + String(repeating: "b", count: 99)] {
+      let output = "1: 00000002 00000000 00010000 0001 01 101 @snapo_\(id)_42"
+      let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
+      #expect(sockets.map(\.kind.rawValue) == [id])
+      #expect(sockets.map(\.pid) == [42])
+    }
+    for name in [
+      "custom_sample_42", "snapo__42", "snapo_Sample_42", "snapo_a_b_42", "snapo_../sample_42",
+      "snapo_sample_", "snapo_sample_0", "snapo_sample_01", "snapo_sample_-1", "snapo_sample_+1",
+      "snapo_sample_42extra", "snapo_sample_42_extra", "snapo_sample_999999999999999999999999",
+      "snapo_sample_10000000000", "snapo_sample_４２", "snapo_" + String(repeating: "a", count: 101) + "_42"
+    ] {
+      let output = "1: 00000002 00000000 00010000 0001 01 101 @\(name)"
+      #expect(InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone").isEmpty)
+    }
   }
 
   @Test("shared inspector types preserve the web bridge wire format")
@@ -45,11 +59,11 @@ struct InspectorDiscoveryTests {
       4: 00000002 00000000 00000000 0001 03 404 @snapo_network_43
       """
       for snapshot in [clients + "\n" + listener, listener + "\n" + clients] {
-        let sockets = InspectorDiscovery.sockets(inProcNetUnix: snapshot, deviceID: "phone", definitions: definitions)
+        let sockets = InspectorDiscovery.sockets(inProcNetUnix: snapshot, deviceID: "phone")
         #expect(sockets.count == 1)
         #expect(try #require(sockets.first).inode == "101")
       }
-      #expect(InspectorDiscovery.sockets(inProcNetUnix: clients, deviceID: "phone", definitions: definitions).isEmpty)
+      #expect(InspectorDiscovery.sockets(inProcNetUnix: clients, deviceID: "phone").isEmpty)
     }
   }
 
@@ -65,7 +79,7 @@ struct InspectorDiscoveryTests {
        42 com.example.demo:worker
        44 com.example.other
     """
-    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone", definitions: definitions)
+    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone")
     #expect(sockets.filter { $0.pid == 42 }.allSatisfy { $0.processName == "com.example.demo:worker" })
     #expect(sockets.first { $0.pid == 43 }?.processName == nil)
     #expect(sockets.map(\.inode) == ["101", "103", "102"])
@@ -172,17 +186,6 @@ struct InspectorDiscoveryTests {
     #expect(try InspectorManifestReader.decode(success).first?.processIdentity == "boot:42:1")
     let failure = Data(#"{"version":1,"pid":42,"error":"process exited"}"#.utf8)
     #expect(try InspectorManifestReader.decode(failure).first?.error == "process exited")
-  }
-
-  @Test("extracts only valid process IDs from both inspector sockets")
-  func parsesProcessIDs() {
-    #expect(definitions[0].pid(inSocketName: "snapo_network_42") == 42)
-    #expect(definitions[1].pid(inSocketName: "snapo_tweaks_42") == 42)
-    for suffix in ["", "0", "-1", "+1", "42_extra", "999999999999999999999999"] {
-      #expect(definitions[0].pid(inSocketName: "snapo_network_\(suffix)") == nil)
-      #expect(definitions[1].pid(inSocketName: "snapo_tweaks_\(suffix)") == nil)
-    }
-    #expect(definitions[0].pid(inSocketName: "snapo_tweaks_42") == nil)
   }
 
   @Test("merges inspector sockets before any app info is available")

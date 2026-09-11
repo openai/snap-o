@@ -19,8 +19,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \
   "$TEST_DIR/DeviceClient.o" Snap-O/Models/Device+Formatting.swift \
   Snap-O/ADB/DeviceTracker.swift \
   Snap-O/Inspectors/InspectorModels.swift \
-  Snap-O/Inspectors/InspectorPluginRegistry.swift \
-  Tests/InspectorSelection/InspectorTestPlugins.swift \
+  Tests/InspectorSelection/InspectorTestFixtures.swift \
   Snap-O/Inspectors/InspectorSelection.swift \
   Snap-O/Inspectors/AppInspectorModel.swift \
   Snap-O/Inspectors/InspectorHTTPService.swift \

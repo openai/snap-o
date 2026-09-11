@@ -9,6 +9,7 @@ on:
       - 'snapo-app-mac/**'
       - 'inspectors/**'
       - 'snapo-link-android/tweaks-core/frontend/**'
+      - 'snapo-link-android/network/frontend/**'
       - 'contracts/**'
       - 'scripts/snapo'
       - 'scripts/snapo-discovery.jar'
@@ -20,6 +21,7 @@ on:
       - 'snapo-app-mac/**'
       - 'inspectors/**'
       - 'snapo-link-android/tweaks-core/frontend/**'
+      - 'snapo-link-android/network/frontend/**'
       - 'contracts/**'
       - 'scripts/snapo'
       - 'scripts/snapo-discovery.jar'
@@ -43,8 +45,10 @@ jobs:
           cache: npm
           cache-dependency-path: inspectors/package-lock.json
       - name: Install dependencies
-        working-directory: inspectors
-        run: npm ci
+        run: |
+          npm ci --prefix inspectors
+          npm ci --prefix snapo-link-android/network/frontend
+          npm ci --prefix snapo-link-android/tweaks-core/frontend
       - name: Check formatting
         working-directory: inspectors
         run: npm run format:check
@@ -57,9 +61,6 @@ jobs:
       - name: Test
         working-directory: inspectors
         run: npm test
-      - name: Build
-        working-directory: inspectors
-        run: npm run build
 
   test:
     runs-on: macos-26
@@ -90,13 +91,15 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: inspectors/package-lock.json
-      - name: Build inspector test resources
-        working-directory: inspectors
+          cache-dependency-path: |
+            snapo-link-android/network/frontend/package-lock.json
+            snapo-link-android/tweaks-core/frontend/package-lock.json
+      - name: Build Network test resources
+        working-directory: snapo-link-android/network/frontend
         run: |
           npm ci
           npm run build
-      - name: Build app-provided inspector test resources
+      - name: Build Tweaks test resources
         working-directory: snapo-link-android/tweaks-core/frontend
         run: |
           npm ci
@@ -113,21 +116,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: inspectors/package-lock.json
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.1.1'
-      - name: Expose setup-node to the Xcode web UI build phase
-        run: |
-          set -euo pipefail
-          SNAPO_NODE_BIN_DIR=$(dirname "$(command -v node)")
-          echo "SNAPO_NODE_BIN_DIR=${SNAPO_NODE_BIN_DIR}" >> "$GITHUB_ENV"
       - name: Build Snap-O
         working-directory: snapo-app-mac
         run: |

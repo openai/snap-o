@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<inspector
-    version="1"
-    id="network"
-    name="Network"
-    icon="@drawable/snapo_network_inspector_icon"
-    protocolVersion="3" />

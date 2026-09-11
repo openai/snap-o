@@ -99,7 +99,6 @@
 				3234F44D2E2EC5030057AE77 /* Sources */,
 				3234F44E2E2EC5030057AE77 /* Frameworks */,
 				3234F44F2E2EC5030057AE77 /* Resources */,
-				32F7D8A12F5B123400C0FFEE /* Build Inspectors Web UI */,
 				A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */,
 			);
 			buildRules = (
@@ -167,23 +166,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		32F7D8A12F5B123400C0FFEE /* Build Inspectors Web UI */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Build Inspectors Web UI";
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Inspectors",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PROJECT_DIR}/scripts/build-inspectors.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 		A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

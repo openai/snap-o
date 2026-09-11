@@ -17,24 +17,6 @@ public struct InspectorID: RawRepresentable, Hashable, Codable, Sendable {
   }
 }
 
-public struct InspectorSocketDefinition: Sendable, Equatable {
-  public let id: InspectorID
-  public let socketPrefix: String
-
-  public init(id: InspectorID, socketPrefix: String) {
-    self.id = id
-    self.socketPrefix = socketPrefix
-  }
-
-  public func pid(inSocketName socketName: String) -> Int? {
-    guard socketName.hasPrefix(socketPrefix) else { return nil }
-    let suffix = socketName.dropFirst(socketPrefix.count)
-    guard !suffix.isEmpty, suffix.allSatisfy({ $0.isASCII && $0.isNumber }),
-          let pid = Int(suffix), pid > 0 else { return nil }
-    return pid
-  }
-}
-
 public struct InspectorAppMetadata: Sendable, Equatable {
   public let appName: String?
   public let processName: String?
@@ -138,8 +120,7 @@ public enum InspectorDiscovery {
 
   public static func sockets(
     inProcNetUnix output: String,
-    deviceID: String,
-    definitions: [InspectorSocketDefinition] = []
+    deviceID: String
   ) -> [DiscoveredInspectorSocket] {
     let sections = output.components(separatedBy: "\n\(processListMarker)\n")
     let processNames = sections.count == 2 ? DeviceDiscovery.processNames(inProcessList: sections[1]) : [:]
@@ -153,11 +134,13 @@ public enum InspectorDiscovery {
             let inode = UInt64(fields[6]), inode > 0,
             let token = fields.last, token.first == "@" else { return nil }
       let name = String(token.dropFirst())
-      let definition = definitions.first(where: { $0.pid(inSocketName: name) != nil }) ?? standardDefinition(for: name)
-      guard seen.insert(name).inserted, let definition,
-            let pid = definition.pid(inSocketName: name) else { return nil }
+      guard name.range(of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#, options: .regularExpression) != nil,
+            let separator = name.lastIndex(of: "_"),
+            let pid = Int(name[name.index(after: separator)...]),
+            seen.insert(name).inserted else { return nil }
+      let id = String(name.dropFirst("snapo_".count).prefix(upTo: separator))
       return DiscoveredInspectorSocket(
-        kind: definition.id,
+        kind: InspectorID(rawValue: id),
         pid: pid,
         reference: InspectorServerReference(deviceId: deviceID, socketName: name),
         inode: String(inode),
@@ -168,14 +151,13 @@ public enum InspectorDiscovery {
 
   public static func discover(
     on deviceIDs: [String],
-    using adb: ADBClient,
-    definitions: [InspectorSocketDefinition] = []
+    using adb: ADBClient
   ) async -> [DiscoveredInspectorSocket] {
     await withTaskGroup(of: [DiscoveredInspectorSocket].self) { group in
       for deviceID in deviceIDs {
         group.addTask {
           guard let output = try? await adb.runDiscoveryShellString(deviceID: deviceID, command: snapshotCommand) else { return [] }
-          return Self.sockets(inProcNetUnix: output, deviceID: deviceID, definitions: definitions)
+          return Self.sockets(inProcNetUnix: output, deviceID: deviceID)
         }
       }
       var sockets: [DiscoveredInspectorSocket] = []
@@ -203,12 +185,5 @@ public enum InspectorDiscovery {
         inspectors: ordered
       )
     }.sorted { $0.id < $1.id }
-  }
-
-  private static func standardDefinition(for socketName: String) -> InspectorSocketDefinition? {
-    guard socketName.range(of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#, options: .regularExpression) != nil,
-          let separator = socketName.lastIndex(of: "_") else { return nil }
-    let id = String(socketName.dropFirst("snapo_".count).prefix(upTo: separator))
-    return InspectorSocketDefinition(id: InspectorID(rawValue: id), socketPrefix: "snapo_\(id)_")
   }
 }

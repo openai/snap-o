@@ -333,13 +333,14 @@ struct CaptureWindow: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(nsColor: .textBackgroundColor))
                   } else if !inspectorModel.isPageReady {
-                    ProgressView("Loading inspector…")
+                    let inspectorName = inspectorModel.selectedInspectorApp?.inspectors.first {
+                      $0.kind == inspectorModel.selectedInspector?.kind
+                    }?.displayName ?? "inspector"
+                    ProgressView("Loading \(inspectorName)…")
                       .frame(maxWidth: .infinity, maxHeight: .infinity)
                       .background(Color(nsColor: .textBackgroundColor))
                   }
                 }
-            } else if let error = inspectorSession.error {
-              Text(error).foregroundStyle(.secondary)
             } else {
               ProgressView()
             }

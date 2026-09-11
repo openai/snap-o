@@ -7,7 +7,6 @@ struct AppInspectorOption: Equatable, Codable, Identifiable {
   let protocolVersion: Int?
   let isConnected: Bool
   var name = ""
-  var icon = "square"
   var iconBase64: String?
   var displayName: String {
     name.isEmpty ? kind.rawValue : name

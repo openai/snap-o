@@ -11,13 +11,13 @@ actor InspectorHTTPService {
 }
 
 actor InspectorService {
-  nonisolated let registry: InspectorPluginRegistry
+  private let invalidFrontend: Bool
   private var apps: [InspectableApp]
   private let updates = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
   let endpoint = InspectorHTTPService.Endpoint(id: UUID(), baseURL: URL(string: "http://127.0.0.1:1234/")!)
-  init(apps: [InspectableApp], registry: InspectorPluginRegistry) {
+  init(apps: [InspectableApp], invalidFrontend: Bool = false) {
+    self.invalidFrontend = invalidFrontend
     self.apps = apps
-    self.registry = registry
   }
 
   func discoverInspectors() async -> InspectorDiscoverySnapshot {
@@ -50,11 +50,15 @@ actor InspectorService {
   func inspectorFrontend(
     for reference: InspectorServerReference, manifest: InspectorProcessMetadata, inspector: InspectorDescriptor
   ) async throws -> InspectorFrontendBundle {
-    try Self.frontendFixture()
+    if invalidFrontend { return try InspectorFrontendBundle(files: ["index.html": Data([0xFF])]) }
+    return try Self.frontendFixture(inspector.id)
   }
 
-  private static func frontendFixture() throws -> InspectorFrontendBundle {
-    let directory = URL(fileURLWithPath: "../snapo-link-android/tweaks-core/frontend/dist")
+  private static func frontendFixture(_ kind: InspectorID) throws -> InspectorFrontendBundle {
+    let module = kind == .network ? "network" : "tweaks-core"
+    let directory = URL(fileURLWithPath: kind == .sample
+      ? "Tests/InspectorSelection/Fixtures/sample"
+      : "../snapo-link-android/\(module)/frontend/dist")
     let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey])!
     var files: [String: Data] = [:]
     for case let file as URL in enumerator where try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
@@ -75,7 +79,12 @@ struct InspectorWebViewTests {
     fatalError(message)
   }
 
-  static func app(_ pid: Int, connectedKinds: [InspectorID]? = nil, kinds: [InspectorID] = [.network, .tweaks, .sample]) -> InspectableApp {
+  static func app(
+    _ pid: Int,
+    connectedKinds: [InspectorID]? = nil,
+    kinds: [InspectorID] = [.network, .tweaks, .sample],
+    includeFrontend: Bool = true
+  ) -> InspectableApp {
     InspectableApp(
       id: "phone:pid:\(pid)", name: "Demo \(pid)", packageName: "com.example.demo\(pid)",
       processName: "com.example.demo\(pid)", androidUserId: 0, deviceId: "phone", deviceDisplayTitle: "Phone",
@@ -83,7 +92,7 @@ struct InspectorWebViewTests {
         AppInspectorOption(kind: kind, server: InspectorServerReference(
           deviceId: "phone", socketName: "snapo_\(kind.rawValue)_\(pid)"
         ), protocolVersion: 4, isConnected: connectedKinds?.contains(kind) ?? true)
-      }, manifest: testManifest(pid: pid, kinds: kinds)
+      }, manifest: testManifest(pid: pid, kinds: kinds, includeFrontend: includeFrontend)
     )
   }
 
@@ -95,22 +104,12 @@ struct InspectorWebViewTests {
     defer { preferences.removePersistentDomain(forName: suite) }
     let first = app(10)
     let second = app(20)
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.copyItem(at: URL(fileURLWithPath: "../inspectors/dist"), to: root)
-    defer { try? FileManager.default.removeItem(at: root) }
-    try FileManager.default.copyItem(
-      at: URL(fileURLWithPath: "Tests/InspectorSelection/Fixtures/sample"),
-      to: root.appendingPathComponent("sample")
-    )
-    let registry = try InspectorPluginRegistry(directory: root)
-    precondition(registry.plugins.count == 2 && registry.plugin(for: .tweaks) == nil)
     let sockets = InspectorDiscovery.sockets(
       inProcNetUnix: "1: 00000002 00000000 00010000 0001 01 101 @snapo_sample_10",
-      deviceID: "phone",
-      definitions: registry.socketDefinitions
+      deviceID: "phone"
     )
     precondition(sockets.first?.kind == .sample && sockets.first?.pid == 10)
-    let service = InspectorService(apps: [first, second], registry: registry)
+    let service = InspectorService(apps: [first, second])
     let model = InspectorHostModel(service: service, preferences: preferences)
     let hosting = NSHostingView(rootView: InspectorWebView(model: model))
     let window = NSWindow(
@@ -277,29 +276,28 @@ struct InspectorWebViewTests {
     try await eventually("Stopping the host should unmount the active page") { finalPage.superview == nil }
     print("Rapid selection and shutdown leave no obsolete page mounted")
     try await testSecurity()
-    try await testFrontendSources(registry: registry, preferences: preferences)
-    try await testInvalidBundledFrontend(registry: registry, root: root, preferences: preferences)
+    try await testFrontendSources(preferences: preferences)
+    try await testFrontendErrors(preferences: preferences)
   }
 
-  static func testInvalidBundledFrontend(registry: InspectorPluginRegistry, root: URL, preferences: UserDefaults) async throws {
-    let entry = root.appendingPathComponent("sample/index.html")
-    let original = try Data(contentsOf: entry)
-    defer { try? original.write(to: entry) }
-    try Data([0xFF]).write(to: entry)
-    let provider = app(50, kinds: [.sample])
-    let service = InspectorService(apps: [provider], registry: registry)
-    let model = InspectorHostModel(service: service, preferences: preferences)
-    defer { model.stop() }
-    try await eventually("The invalid frontend provider should be discovered") { model.inspectorApps.count == 1 }
-    model.selectInspector(provider, option: provider.inspectors[0])
-    try await eventually("Bundled frontend validation errors must reach the native UI") {
-      model.frontendError?.contains("invalid inspector frontend assets") == true
+  static func testFrontendErrors(preferences: UserDefaults) async throws {
+    for includeFrontend in [false, true] {
+      let provider = app(50, kinds: [.network], includeFrontend: includeFrontend)
+      let service = InspectorService(apps: [provider], invalidFrontend: true)
+      let model = InspectorHostModel(service: service, preferences: preferences)
+      defer { model.stop() }
+      try await eventually("The frontend provider should be discovered") { model.inspectorApps.count == 1 }
+      model.selectInspector(provider, option: provider.inspectors[0])
+      let message = includeFrontend ? "invalid inspector frontend assets" : "no compatible frontend"
+      try await eventually("Missing or invalid APK frontends must report a native error") {
+        model.frontendError?.contains(message) == true
+      }
+      precondition(!model.isPageReady)
     }
-    precondition(!model.isPageReady)
-    print("Invalid bundled HTML reports its validation error without loading a page")
+    print("Missing APK metadata and invalid frontend assets report errors without loading a page")
   }
 
-  static func testFrontendSources(registry: InspectorPluginRegistry, preferences: UserDefaults) async throws {
+  static func testFrontendSources(preferences: UserDefaults) async throws {
     let html = """
     <!doctype html><html lang="en"><head>
     <script>try { eval('window.earlyEval = true'); } catch { window.earlyEval = false; }</script>
@@ -348,7 +346,7 @@ struct InspectorWebViewTests {
     let devURL = URL(string: "http://127.0.0.1:\(ports["allowed"]!)/dev")!
     let first = app(30, kinds: [.tweaks])
     let second = app(40, kinds: [.tweaks])
-    let service = InspectorService(apps: [first, second], registry: registry)
+    let service = InspectorService(apps: [first, second])
     let model = InspectorHostModel(service: service, preferences: preferences)
     defer { model.stop() }
     try await eventually("Frontend providers should be discovered") { model.inspectorApps.count == 2 }
@@ -358,6 +356,8 @@ struct InspectorWebViewTests {
     }
     precondition(model.developmentURL == nil)
     model.useDevelopmentServer(devURL)
+    let preferenceKey = "inspectorDevelopmentServer." + InspectorWebPolicy.storageIdentifier(app: first, inspector: .tweaks)!.uuidString
+    precondition(preferences.string(forKey: preferenceKey) == devURL.absoluteString)
     try await eventually("Development modules and HMR WebSockets must load") {
       guard model.isPageReady, let web = model.webContainer?.webView else { return false }
       return await (try? web.evaluateJavaScript("window.devLoaded && window.hmr === 'ok'") as? Bool) == true
@@ -375,6 +375,7 @@ struct InspectorWebViewTests {
     precondition(model.developmentURL == devURL)
     try await eventually("Returning to the provider should restore its override") { model.isPageReady }
     model.useDevelopmentServer(nil)
+    precondition(preferences.object(forKey: preferenceKey) == nil, "Removing an override must remove its saved setting")
     precondition(model.developmentURL == nil)
     try await eventually("Removing an override should restore the packaged frontend") { model.isPageReady }
     print("APK assets load modules, CSS, and data; development overrides support HMR and stay scoped to their provider")

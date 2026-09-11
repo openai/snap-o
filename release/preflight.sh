@@ -226,9 +226,10 @@ print_protocol_declaration() {
 
 print_android_protocol_declarations() {
   print_protocol_declaration "$1" 'Android Network protocol version' \
-    'const val NetworkProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"' \
+    'const val NetworkProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"|protocolVersion[[:space:]]*=[[:space:]]*[0-9]+' \
     'snapo-link-android/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
-    'snapo-link-android/network/src/main/res/xml/snapo_network_inspector.xml'
+    'snapo-link-android/network/src/main/res/xml/snapo_network_inspector.xml' \
+    'snapo-link-android/network/build.gradle.kts'
   print_protocol_declaration "$1" 'Android Tweaks protocol version' \
     'const val TweaksProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"|protocolVersion[[:space:]]*=[[:space:]]*[0-9]+' \
     'snapo-link-android/tweaks/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
@@ -248,7 +249,8 @@ print_client_protocol_declarations() {
   print_protocol_declaration "$1" 'Web Network supported version' \
     'const supportedProtocolVersion[[:space:]:=]' \
     'snapo-network-inspector-web/src/features/network-inspector/lib/protocol.ts' \
-    'inspectors/network/src/features/network-inspector/lib/protocol.ts'
+    'inspectors/network/src/features/network-inspector/lib/protocol.ts' \
+    'snapo-link-android/network/frontend/src/features/network-inspector/lib/protocol.ts'
   if git -C "$SNAPO_DIR" cat-file -e "$1:inspectors/tweaks/src/features/tweaks-inspector/protocol.ts" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:snapo-link-android/tweaks-core/frontend/src/features/tweaks-inspector/protocol.ts" 2>/dev/null; then
     print_protocol_declaration "$1" 'Web Tweaks supported version' \
@@ -312,7 +314,7 @@ print_protocol_evidence 'Android servers' "$ANDROID_BASE" \
 print_protocol_evidence 'Mac/web/CLI clients' "$MAC_BASE" \
   print_client_protocol_declarations \
   contracts android-discovery snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
-  snapo-app-mac/Snap-O/Inspectors snapo-network-inspector-web inspectors snapo-link-android/tweaks-core/frontend scripts
+  snapo-app-mac/Snap-O/Inspectors snapo-network-inspector-web inspectors snapo-link-android/tweaks-core/frontend snapo-link-android/network/frontend scripts
 printf '%s\n' 'Protocol review must be recorded for this source SHA before the version bump; this report does not approve compatibility.'
 
 printf '%s\n' ''

@@ -2,7 +2,6 @@ import Foundation
 import SnapODeviceClient
 
 actor InspectorService {
-  nonisolated let registry: InspectorPluginRegistry
   private let adbService: ADBService
   private let deviceTracker: DeviceTracker
   private let httpService: InspectorHTTPService
@@ -11,8 +10,7 @@ actor InspectorService {
   private var isStopped = false
   private var frontends: [(key: [String], bundle: InspectorFrontendBundle)] = []
 
-  init(adbService: ADBService, deviceTracker: DeviceTracker, registry: InspectorPluginRegistry) {
-    self.registry = registry
+  init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
     self.deviceTracker = deviceTracker
     httpService = InspectorHTTPService(adbService: adbService)
@@ -68,9 +66,8 @@ actor InspectorService {
             server: endpoint.reference,
             protocolVersion: endpoint.protocolVersion,
             isConnected: connectedServers.contains(endpoint.reference),
-            name: manifests[endpoint.reference]?.descriptor?.name ?? registry.plugin(for: endpoint.kind)?.name ?? endpoint.kind.rawValue,
-            icon: registry.plugin(for: endpoint.kind)?.icon ?? "square",
-            iconBase64: manifests[endpoint.reference]?.descriptor?.iconBase64 ?? registry.plugin(for: endpoint.kind)?.iconBase64
+            name: manifests[endpoint.reference]?.descriptor?.name ?? endpoint.kind.rawValue,
+            iconBase64: manifests[endpoint.reference]?.descriptor?.iconBase64
           )
         },
         manifest: process.inspectors.compactMap { manifests[$0.reference]?.manifest }.first
@@ -146,7 +143,7 @@ actor InspectorService {
   private func refreshNow() async {
     let devices = await deviceTracker.latestDevices
     let adb = await adbService.exec()
-    let sockets = await InspectorDiscovery.discover(on: devices.map(\.id), using: adb, definitions: registry.socketDefinitions)
+    let sockets = await InspectorDiscovery.discover(on: devices.map(\.id), using: adb)
     guard !Task.isCancelled, !isStopped else { return }
     await httpService.refresh(devices: devices, sockets: sockets, using: adb)
   }

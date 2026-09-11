@@ -2,6 +2,7 @@ plugins {
     id("snapo.android.library")
     id("snapo.maven.publish")
     id("snapo.detekt")
+    id("com.openai.snapo.inspector")
     alias(libs.plugins.kotlinx.serialization)
 }
 
@@ -9,6 +10,13 @@ description = "Shared Android components used by Snap-O network inspection integ
 
 android {
     namespace = "com.openai.snapo.network"
+}
+
+snapoInspector {
+    id = "network"
+    displayName = "Network"
+    protocolVersion = 3
+    icon = "@drawable/snapo_network_inspector_icon"
 }
 
 dependencies {
