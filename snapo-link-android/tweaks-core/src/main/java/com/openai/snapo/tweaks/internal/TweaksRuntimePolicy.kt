@@ -1,6 +1,7 @@
 package com.openai.snapo.tweaks.internal
 
 import androidx.annotation.RestrictTo
+import com.openai.snapo.inspector.InspectorStartupPolicy
 
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 object TweaksRuntimePolicy {
@@ -12,8 +13,9 @@ object TweaksRuntimePolicy {
     fun configure(
         isDebuggable: Boolean,
         allowRelease: Boolean,
-    ): Boolean {
-        val allowed = isDebuggable || allowRelease
+    ): Boolean = configureAllowed(InspectorStartupPolicy.isAllowed(isDebuggable, allowRelease))
+
+    internal fun configureAllowed(allowed: Boolean): Boolean {
         isAllowed = allowed
         return allowed
     }

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Example</title>
+  </head>
+  <body>
+    <main>
+      <h1>Example</h1>
+      <p>Fake data for learning the tool APIs.</p>
+      <p id="status" role="status">Disconnected</p>
+      <section aria-labelledby="snapshot-title">
+        <h2 id="snapshot-title">Sample snapshot</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Fake value</th>
+            </tr>
+          </thead>
+          <tbody id="items"></tbody>
+        </table>
+        <button id="increment" disabled>Increment fake counter</button>
+      </section>
+      <section aria-labelledby="helpers-title">
+        <h2 id="helpers-title">Native helpers</h2>
+        <div class="actions">
+          <button id="copy" disabled>Copy fake data</button>
+          <button id="save" disabled>Save fake data</button>
+          <button id="color" disabled>Choose sample color</button>
+          <span id="swatch" aria-label="Sample color"></span>
+        </div>
+        <p id="feedback" role="status"></p>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -27,7 +27,7 @@ npm test
 npm run build
 ```
 
-Run the same checks from `inspectors/` for the host SDK, except `npm run build`. Install dependencies in both frontend directories before running the shared import checks. These checks resolve relative paths and TypeScript aliases. Inspectors cannot import one another or host SDK internals.
+Run the same checks from `inspectors/` for the host SDK, including `npm run build`. Install dependencies in both frontend directories before running the shared import checks. These checks resolve relative paths and TypeScript aliases. Inspectors cannot import one another or host SDK internals.
 
 ## App-provided frontends
 
@@ -56,3 +56,5 @@ Run `sh snapo-app-mac/scripts/test-inspector-selection.sh` and `sh snapo-app-mac
 These controls do not prevent WebKit vulnerabilities, resource exhaustion, or data sent through the explicitly allowed Android endpoint. An unresponsive page may delay endpoint cleanup; its port must not be released before it retires. App-provided frontends run JavaScript supplied by the inspected APK. These restrictions are not a guarantee that untrusted code is safe.
 
 Snap-O requires macOS 26 or later. Keep macOS updated: these safeguards depend on WebKit's security fixes. Older WebKit builds ignored content rules for DNS prefetch and preconnect; the [WebKit fix](https://github.com/WebKit/WebKit/commit/ce84da3fd2d634040f3197d526b4ac914e45d2e6) landed in 2025. Tests on macOS 26.6.2 verify HTTP delivery and TCP connection attempts, including preconnect. They do not measure DNS queries or establish coverage of every supported WebKit build.
+
+The standalone [Example tool](../snapo-link-android/example/README.md) demonstrates the authoring APIs with fake data and locally staged packages.

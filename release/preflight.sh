@@ -314,7 +314,7 @@ print_protocol_evidence 'Android servers' "$ANDROID_BASE" \
 print_protocol_evidence 'Mac/web/CLI clients' "$MAC_BASE" \
   print_client_protocol_declarations \
   contracts android-discovery snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
-  snapo-app-mac/Snap-O/Inspectors snapo-network-inspector-web inspectors snapo-link-android/tweaks-core/frontend snapo-link-android/network/frontend scripts
+  snapo-app-mac/Snap-O/Inspectors snapo-network-inspector-web inspectors snapo-link-android/tweaks-core/frontend snapo-link-android/network/frontend snapo-link-android/example scripts
 printf '%s\n' 'Protocol review must be recorded for this source SHA before the version bump; this report does not approve compatibility.'
 
 printf '%s\n' ''

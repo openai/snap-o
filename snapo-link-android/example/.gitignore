@@ -1,0 +1,9 @@
+.gradle/
+.kotlin/
+.idea/
+local.properties
+build/
+node_modules/
+dist/
+example-tool/frontend/vendor/
+.test-build/

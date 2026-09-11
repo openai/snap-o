@@ -2,12 +2,10 @@ package com.openai.snapo.tweaks
 
 import android.content.ContentProvider
 import android.content.ContentValues
-import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.util.Log
+import com.openai.snapo.inspector.InspectorStartupPolicy
 import com.openai.snapo.tweaks.internal.TweakHttpServer
 import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 import java.io.IOException
@@ -17,23 +15,12 @@ internal class SnapOTweaksInitProvider : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val applicationContext = context?.applicationContext ?: return false
-        val applicationInfo = applicationInfoWithMetadata(applicationContext)
-        val isDebuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        val allowRelease = applicationInfo.metaData?.getBoolean(AllowReleaseMetadata, false) == true
-
-        if (!TweaksRuntimePolicy.configure(isDebuggable, allowRelease)) {
+        val allowed = InspectorStartupPolicy.isAllowed(applicationContext, AllowReleaseMetadata)
+        if (!TweaksRuntimePolicy.configureAllowed(allowed)) {
             return false
         }
 
         return TweaksRuntime.start()
-    }
-
-    private fun applicationInfoWithMetadata(context: Context): ApplicationInfo = try {
-        context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-    } catch (_: PackageManager.NameNotFoundException) {
-        context.applicationInfo
-    } catch (_: SecurityException) {
-        context.applicationInfo
     }
 
     override fun query(

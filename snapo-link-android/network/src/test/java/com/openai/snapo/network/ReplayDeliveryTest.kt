@@ -7,7 +7,7 @@ import org.junit.Test
 class ReplayDeliveryTest {
     @Test
     fun `SSE subscribers close instead of dropping events when their queue fills`() {
-        val stream = NetworkEventStream {}
+        val stream = NetworkEventStream()
         repeat(512) { assertTrue(stream.offer(byteArrayOf(1))) }
         assertFalse(stream.offer(byteArrayOf(2)))
         assertTrue(stream.isClosed)
@@ -15,7 +15,7 @@ class ReplayDeliveryTest {
 
     @Test
     fun `SSE subscribers bound queued bytes as well as event count`() {
-        val stream = NetworkEventStream {}
+        val stream = NetworkEventStream()
         val event = ByteArray(1024 * 1024)
         repeat(32) { assertTrue(stream.offer(event)) }
         assertFalse(stream.offer(event))

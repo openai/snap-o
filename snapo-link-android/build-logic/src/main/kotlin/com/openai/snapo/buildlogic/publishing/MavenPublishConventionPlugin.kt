@@ -6,6 +6,8 @@ import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import com.vanniktech.maven.publish.SourcesJar
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.publish.PublishingExtension
+import org.gradle.plugins.signing.Sign
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.register
 
@@ -55,6 +57,21 @@ class MavenPublishConventionPlugin : Plugin<Project> {
                         connection.set("scm:git:https://github.com/openai/snap-o.git")
                         developerConnection.set("scm:git:ssh://git@github.com/openai/snap-o.git")
                     }
+                }
+            }
+
+            target.extensions.configure<PublishingExtension> {
+                repositories.maven {
+                    name = "Authoring"
+                    url = target.uri(target.providers.gradleProperty("snapo.authoringRepository").getOrElse(
+                        target.layout.buildDirectory.dir("authoring-repository").get().asFile.absolutePath,
+                    ))
+                    require(url.scheme == "file") { "Authoring publications require a local directory" }
+                }
+            }
+            target.tasks.withType(Sign::class.java).configureEach {
+                onlyIf {
+                    !target.providers.gradleProperty("snapo.localAuthoring").map(String::toBoolean).getOrElse(false)
                 }
             }
 

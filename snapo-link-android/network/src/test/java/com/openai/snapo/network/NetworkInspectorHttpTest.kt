@@ -1,5 +1,7 @@
 package com.openai.snapo.network
 
+import com.openai.snapo.inspector.InspectorConnection
+import com.openai.snapo.inspector.InspectorHttpRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
@@ -308,9 +310,9 @@ class NetworkInspectorHttpTest {
         method: String = "GET",
         accept: String = "*/*",
     ): Pair<String, String> = runBlocking {
-        val request = InspectorHttpRequest(method, path, mapOf("host" to "localhost", "accept" to accept))
+        val request = "$method $path HTTP/1.1\r\nHost: localhost\r\nAccept: $accept\r\n\r\n"
         val output = ByteArrayOutputStream()
-        NetworkInspectorHttp().respond(request, output)
+        NetworkInspectorHttp().serveConnection(ByteArrayInputStream(request.toByteArray()), output)
         val response = output.toString("UTF-8")
         response.substringBefore("\r\n") to response.substringAfter("\r\n\r\n")
     }
@@ -395,3 +397,15 @@ class NetworkInspectorHttpTest {
         }
     }
 }
+
+private suspend fun NetworkInspectorHttp.serveConnection(
+    input: java.io.InputStream,
+    output: java.io.OutputStream,
+    onRequestRead: () -> Unit = {},
+    closeConnection: () -> Unit = {},
+) = server.serve(object : InspectorConnection {
+    override val input = input
+    override val output = output
+    override fun setReadTimeout(millis: Int) { if (millis == 0) onRequestRead() }
+    override fun close() = closeConnection()
+})

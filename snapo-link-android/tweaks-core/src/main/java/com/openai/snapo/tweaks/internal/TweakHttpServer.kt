@@ -1,33 +1,33 @@
 package com.openai.snapo.tweaks.internal
 
-import android.net.LocalServerSocket
-import android.net.LocalSocket
 import android.os.Handler
 import android.os.Looper
-import android.os.Process
 import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
+import com.openai.snapo.inspector.InspectorCall
+import com.openai.snapo.inspector.InspectorHttpRequestPolicy
+import com.openai.snapo.inspector.InspectorServer
+import com.openai.snapo.inspector.InspectorSseSession
 import com.openai.snapo.tweaks.BezierCurve
 import com.openai.snapo.tweaks.TweakColorValue
+import com.openai.snapo.tweaks.core.SnapOInspector
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.runInterruptible
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
-import java.io.InputStream
 import java.io.InputStreamReader
-import java.io.OutputStream
 import java.io.StringWriter
 import java.net.SocketTimeoutException
-import java.net.URI
 import java.nio.charset.StandardCharsets
-import java.util.Locale
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
-import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import kotlin.concurrent.thread
+import com.openai.snapo.inspector.InspectorHttpException as HttpFailure
+import com.openai.snapo.inspector.InspectorHttpRequest as HttpRequest
+import com.openai.snapo.inspector.InspectorHttpResponse as HttpResponse
 
 internal data class TweakBatchError(
     val name: String,
@@ -59,20 +59,14 @@ internal fun applyTweakBatch(
     return TweakBatchResult(tweaks, errors)
 }
 
-private const val MaxHeaderBytes = 16 * 1024
 private const val MaxBodyBytes = 64 * 1024
-private const val SocketTimeoutMillis = 5_000
 private const val MainThreadTimeoutMillis = 5_000L
-private const val MaximumConcurrentConnections = 32
 private const val EventHeartbeatSeconds = 15L
 
 internal class TweakHttpServer(
-    private val socketName: String = "snapo_tweaks_${Process.myPid()}",
     private val mainHandler: Handler = Handler(Looper.getMainLooper()),
 ) : Closeable {
     private val lifecycleLock = Any()
-    private val connectionPermits = Semaphore(MaximumConcurrentConnections)
-    private val activeSockets = LinkedHashSet<LocalSocket>()
     private val changePublisher = TweakChangePublisher(
         schedule = mainHandler::post,
         snapshot = {
@@ -82,304 +76,100 @@ internal class TweakHttpServer(
         },
     )
 
-    @Volatile
-    private var running = false
-
-    private var server: LocalServerSocket? = null
-    private var acceptThread: Thread? = null
+    private val server = InspectorServer(SnapOInspector.ID) {
+        requestPolicy = RequestPolicy
+        preflightStatusCode = 200
+        cacheControl = "no-cache"
+        validateRequest { request ->
+            if ('?' in request.requestTarget &&
+                (request.requestTarget != "/tweaks?include=adjusted" || request.method != "GET")
+            ) {
+                invalidRequest("Unsupported query parameters.")
+            }
+        }
+        onError { error ->
+            when (error) {
+                is TweakUpdateException -> errorResponse(error.statusCode, error.message ?: "Invalid tweak update.")
+                is HttpFailure -> errorResponse(error.statusCode, error.message, error.allowedMethods)
+                is SocketTimeoutException -> errorResponse(408, "The request timed out.")
+                is IOException, is IllegalArgumentException -> errorResponse(400, "Malformed HTTP or JSON request.")
+                is IllegalStateException -> errorResponse(400, "Malformed JSON request.")
+                else -> errorResponse(500, "The request could not be completed.")
+            }
+        }
+        get("/tweaks") {
+            respond(
+                runInterruptible {
+                    tweaksResponse(
+                        snapshotForRequest(includeAdjusted = request.requestTarget != "/tweaks"),
+                        includeDescriptors = true,
+                    )
+                }
+            )
+        }
+        patch("/tweaks") {
+            requireJsonRequest(request)
+            val result = runInterruptible { updateOnMainThread(readPatchValues(request.body)) }
+            respond(tweaksResponse(result.tweaks, includeDescriptors = false, errors = result.errors))
+        }
+        post("/tweaks/action") {
+            requireJsonRequest(request)
+            val name = readActionName(request.body)
+            runInterruptible { invokeActionOnMainThread(name) }
+            respond(actionResponse(name))
+        }
+        get("/tweaks/events") { streamTweaks() }
+    }
     private var registryObserver: Closeable? = null
 
     fun start() {
         synchronized(lifecycleLock) {
-            if (running) return
-
-            val localServer = LocalServerSocket(socketName)
-            server = localServer
-            running = true
-            registryObserver = TweakRegistry.observeChanges(changePublisher::notifyChanged)
-            acceptThread = thread(
-                isDaemon = true,
-                name = "Snap-O Tweaks",
-            ) {
-                acceptConnections(localServer)
+            if (server.isRunning) return
+            val observer = TweakRegistry.observeChanges(changePublisher::notifyChanged)
+            try {
+                server.start()
+                registryObserver = observer
+            } catch (failure: IOException) {
+                observer.close()
+                throw failure
             }
         }
     }
 
     override fun close() {
-        val sockets = synchronized(lifecycleLock) {
-            running = false
-            runCatching { server?.close() }
-            server = null
-            acceptThread?.interrupt()
-            acceptThread = null
+        synchronized(lifecycleLock) {
+            server.close()
             registryObserver?.close()
             registryObserver = null
             changePublisher.close()
-            activeSockets.toList().also { activeSockets.clear() }
-        }
-        sockets.forEach { socket -> runCatching { socket.close() } }
-    }
-
-    private fun acceptConnections(localServer: LocalServerSocket) {
-        while (running) {
-            val socket = try {
-                localServer.accept()
-            } catch (_: IOException) {
-                if (!running) return
-                continue
-            }
-
-            handleAcceptedConnection(socket)
         }
     }
 
-    private fun handleAcceptedConnection(socket: LocalSocket) {
-        if (!connectionPermits.tryAcquire()) {
-            runCatching {
-                socket.use {
-                    writeResponse(
-                        it.outputStream,
-                        errorResponse(503, "Too many active tweak connections."),
-                    )
-                }
-            }
-            return
-        }
-
-        synchronized(lifecycleLock) { activeSockets.add(socket) }
-        thread(isDaemon = true, name = "Snap-O Tweaks connection") {
+    private suspend fun InspectorCall.streamTweaks() {
+        val subscription = runInterruptible {
             try {
-                runCatching { socket.use(::handleConnection) }
-            } finally {
-                synchronized(lifecycleLock) { activeSockets.remove(socket) }
-                connectionPermits.release()
+                changePublisher.subscribe()
+            } catch (_: UninitializedTweakSnapshotException) {
+                runOnMainThread("snapshot", "loaded", changePublisher::subscribe)
             }
         }
-    }
-
-    private fun handleConnection(socket: LocalSocket) {
-        socket.soTimeout = SocketTimeoutMillis
-
-        var origin: String? = null
-        val response = try {
-            val request = readRequest(socket.inputStream)
-            origin = browserOrigin(request.headers)
-            if (request.method == "OPTIONS") {
-                writeResponse(socket.outputStream, HttpResponse(200, byteArrayOf()), origin)
-                return
-            }
-            if (request.path == "/tweaks/events" && request.method == "GET") {
-                streamTweaks(socket.outputStream, origin)
-                return
-            }
-            route(request)
-        } catch (error: TweakUpdateException) {
-            errorResponse(error.statusCode, error.message ?: "Invalid tweak update.")
-        } catch (error: HttpFailure) {
-            errorResponse(error.statusCode, error.message, error.allowedMethods)
-        } catch (_: SocketTimeoutException) {
-            errorResponse(408, "The request timed out.")
-        } catch (_: IOException) {
-            errorResponse(400, "Malformed HTTP or JSON request.")
-        } catch (_: IllegalStateException) {
-            errorResponse(400, "Malformed JSON request.")
-        } catch (_: NumberFormatException) {
-            errorResponse(400, "Malformed JSON number.")
-        }
-
-        writeResponse(socket.outputStream, response, origin)
-    }
-
-    private fun route(request: HttpRequest): HttpResponse = when (request.path) {
-        "/tweaks", "/tweaks?include=adjusted" -> routeTweaks(request)
-        "/tweaks/action" -> routeTweakAction(request)
-        "/tweaks/events" -> throw HttpFailure(
-            statusCode = 405,
-            message = "Unsupported method: ${request.method}",
-            allowedMethods = "GET",
-        )
-        else -> throw HttpFailure(404, "Unknown endpoint: ${request.path}")
-    }
-
-    private fun streamTweaks(output: OutputStream, origin: String?) {
-        val subscription = try {
-            changePublisher.subscribe()
-        } catch (_: UninitializedTweakSnapshotException) {
-            runOnMainThread("snapshot", "loaded", changePublisher::subscribe)
-        }
-
         subscription.use {
-            output.write(
-                (
-                    "HTTP/1.1 200 OK\r\n" + corsHeaders(origin) +
-                        "Content-Type: text/event-stream; charset=utf-8\r\n" +
-                        "Cache-Control: no-cache\r\n" +
-                        "Connection: close\r\n\r\n"
-                    ).toByteArray(StandardCharsets.US_ASCII),
-            )
-            writeTweakEvent(output, subscription.initial)
-
-            while (running) {
-                val snapshot = try {
-                    subscription.events.poll(EventHeartbeatSeconds, TimeUnit.SECONDS)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    return
-                }
-
-                if (snapshot == null) {
-                    output.write(": keep-alive\n\n".toByteArray(StandardCharsets.US_ASCII))
-                    output.flush()
-                } else {
-                    writeTweakEvent(output, snapshot)
+            // Tweaks protocol 7 uses a close-delimited SSE response.
+            respondSse(chunked = false) {
+                sendTweaks(subscription.initial)
+                while (isActive) {
+                    val snapshot = runInterruptible {
+                        subscription.events.poll(EventHeartbeatSeconds, TimeUnit.SECONDS)
+                    }
+                    if (snapshot == null) heartbeat() else sendTweaks(snapshot)
                 }
             }
         }
     }
 
-    private fun writeTweakEvent(output: OutputStream, tweaks: List<TweakSnapshot>) {
-        output.write("event: tweaks\ndata: ".toByteArray(StandardCharsets.US_ASCII))
-        output.write(tweaksResponse(tweaks, includeDescriptors = true).body)
-        output.write("\n\n".toByteArray(StandardCharsets.US_ASCII))
-        output.flush()
-    }
-
-    private fun routeTweaks(request: HttpRequest): HttpResponse = when (request.method) {
-        "GET" -> tweaksResponse(
-            snapshotForRequest(includeAdjusted = request.path != "/tweaks"),
-            includeDescriptors = true,
-        )
-        "PATCH" -> {
-            requireJsonRequest(request)
-            val changes = readPatchValues(request.body)
-            val result = updateOnMainThread(changes)
-            tweaksResponse(
-                result.tweaks,
-                includeDescriptors = false,
-                errors = result.errors,
-            )
-        }
-
-        else -> throw HttpFailure(
-            statusCode = 405,
-            message = "Unsupported method: ${request.method}",
-            allowedMethods = "GET, PATCH",
-        )
-    }
-
-    private fun routeTweakAction(request: HttpRequest): HttpResponse {
-        if (request.method != "POST") {
-            throw HttpFailure(
-                statusCode = 405,
-                message = "Unsupported method: ${request.method}",
-                allowedMethods = "POST",
-            )
-        }
-
-        requireJsonRequest(request)
-        val name = readActionName(request.body)
-        invokeActionOnMainThread(name)
-        return actionResponse(name)
-    }
-
-    private fun readRequest(input: InputStream): HttpRequest {
-        val firstLine = readLine(input)
-        val parts = firstLine.split(' ')
-        if (parts.size != 3 || parts[2] !in listOf("HTTP/1.0", "HTTP/1.1")) {
-            throw HttpFailure(400, "Malformed HTTP request line.")
-        }
-
-        val headers = readHeaders(input, firstLine.length)
-        val contentLength = readContentLength(headers)
-        val body = readBody(input, contentLength)
-        val target = parts[1]
-        if ('?' in target && (target != "/tweaks?include=adjusted" || parts[0] != "GET")) {
-            invalidRequest("Unsupported query parameters.")
-        }
-
-        return HttpRequest(
-            method = parts[0],
-            path = target,
-            headers = headers,
-            body = body,
-        )
-    }
-
-    private fun readHeaders(input: InputStream, requestLineBytes: Int): Map<String, String> {
-        val headers = LinkedHashMap<String, String>()
-        var totalBytes = requestLineBytes
-
-        while (true) {
-            val line = readLine(input)
-            totalBytes += line.length + 2
-            if (totalBytes > MaxHeaderBytes) {
-                invalidRequest("HTTP headers are too large.")
-            }
-            if (line.isEmpty()) return headers
-
-            val separator = line.indexOf(':')
-            if (separator <= 0) {
-                invalidRequest("Malformed HTTP header.")
-            }
-
-            val name = line.substring(0, separator).trim().lowercase(Locale.ROOT)
-            val value = line.substring(separator + 1).trim()
-            if (headers.put(name, value) != null && name in listOf("content-length", "host", "origin")) {
-                invalidRequest("Duplicate HTTP header: $name")
-            }
-        }
-    }
-
-    private fun readLine(input: InputStream): String {
-        val buffer = ByteArrayOutputStream()
-
-        while (true) {
-            val next = input.read()
-            if (next == -1) {
-                throw HttpFailure(400, "Incomplete HTTP request.")
-            }
-            if (next == '\n'.code) break
-            if (buffer.size() >= MaxHeaderBytes) {
-                throw HttpFailure(400, "HTTP request line is too large.")
-            }
-            buffer.write(next)
-        }
-
-        return buffer.toString(StandardCharsets.ISO_8859_1.name()).removeSuffix("\r")
-    }
-
-    private fun readContentLength(headers: Map<String, String>): Int {
-        if (headers.containsKey("transfer-encoding")) {
-            invalidRequest("Transfer-Encoding is unsupported.")
-        }
-
-        val rawLength = headers["content-length"] ?: return 0
-        val contentLength = rawLength.toIntOrNull()
-            ?: invalidRequest("Invalid Content-Length header.")
-        if (contentLength < 0) {
-            invalidRequest("Content-Length cannot be negative.")
-        }
-        if (contentLength > MaxBodyBytes) {
-            throw HttpFailure(413, "The request body is too large.")
-        }
-
-        return contentLength
-    }
-
-    private fun readBody(input: InputStream, contentLength: Int): ByteArray {
-        val body = ByteArray(contentLength)
-        var position = 0
-
-        while (position < contentLength) {
-            val count = input.read(body, position, contentLength - position)
-            if (count < 0) {
-                throw HttpFailure(400, "Incomplete HTTP request body.")
-            }
-            position += count
-        }
-
-        return body
+    private fun InspectorSseSession.sendTweaks(tweaks: List<TweakSnapshot>) {
+        val json = tweaksResponse(tweaks, includeDescriptors = true).body.toString(StandardCharsets.UTF_8)
+        send(json, event = "tweaks")
     }
 
     private fun requireJsonRequest(request: HttpRequest) {
@@ -655,90 +445,12 @@ internal class TweakHttpServer(
         )
     }
 
-    private fun writeResponse(output: OutputStream, response: HttpResponse, origin: String? = null) {
-        val reason = reasonPhrase(response.statusCode)
-        val headers = buildString {
-            append("HTTP/1.1 ${response.statusCode} $reason\r\n")
-            append(corsHeaders(origin))
-            append("Content-Type: ${response.contentType}\r\n")
-            append("Content-Length: ${response.body.size}\r\n")
-            if (response.allowedMethods != null) {
-                append("Allow: ${response.allowedMethods}\r\n")
-            }
-            append("Connection: close\r\n\r\n")
-        }
-
-        output.write(headers.toByteArray(StandardCharsets.US_ASCII))
-        output.write(response.body)
-        output.flush()
-    }
-
-    private fun reasonPhrase(statusCode: Int): String = when (statusCode) {
-        200 -> "OK"
-        400 -> "Bad Request"
-        404 -> "Not Found"
-        405 -> "Method Not Allowed"
-        408 -> "Request Timeout"
-        409 -> "Conflict"
-        413 -> "Payload Too Large"
-        422 -> "Unprocessable Entity"
-        500 -> "Internal Server Error"
-        503 -> "Service Unavailable"
-        504 -> "Gateway Timeout"
-        else -> "Error"
-    }
-
-    private data class HttpRequest(
-        val method: String,
-        val path: String,
-        val headers: Map<String, String>,
-        val body: ByteArray,
-    )
-
-    private data class HttpResponse(
-        val statusCode: Int,
-        val body: ByteArray,
-        val allowedMethods: String? = null,
-        val contentType: String = "application/json; charset=utf-8",
-    )
-
-    private class HttpFailure(
-        val statusCode: Int,
-        override val message: String,
-        cause: Throwable? = null,
-        val allowedMethods: String? = null,
-    ) : Exception(message, cause)
-
     private fun invalidRequest(message: String): Nothing =
         throw HttpFailure(400, message)
 }
 
-internal fun browserOrigin(headers: Map<String, String>): String? {
-    // Origin can be absent on same-origin GETs. Check Host to prevent DNS rebinding.
-    val hosts = setOf("localhost", "127.0.0.1", "[::1]")
-    val host = headers["host"].orEmpty()
-    val authority = runCatching { URI("http://$host") }.getOrNull()
-    if (authority?.host?.lowercase() !in hosts || authority?.rawAuthority != host || authority.rawUserInfo != null) {
-        throw IOException("Invalid Host header.")
-    }
-    val value = headers["origin"] ?: return null
-    val origin = runCatching { URI(value) }.getOrNull()
-    val hasAuthority = inspectorOrigin.matches(value) ||
-        (origin?.scheme in listOf("http", "https") && origin?.host?.lowercase() in hosts)
-    val hasOnlyAuthority = origin?.rawUserInfo == null && origin?.rawQuery == null &&
-        origin?.rawFragment == null && origin?.rawPath.isNullOrEmpty()
-    if (!hasAuthority || !hasOnlyAuthority) {
-        throw IOException("Cross-origin requests are not allowed.")
-    }
-    return value
-}
-
-private fun corsHeaders(origin: String?): String = if (origin == null) {
-    "Vary: Origin\r\n"
-} else {
-    "Access-Control-Allow-Origin: $origin\r\n" +
-        "Access-Control-Allow-Methods: GET, PATCH, POST\r\n" +
-        "Access-Control-Allow-Headers: Content-Type\r\nVary: Origin\r\n"
-}
-
-private val inspectorOrigin = Regex("snapo-inspector://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+private val RequestPolicy = InspectorHttpRequestPolicy(
+    maxBodyBytes = MaxBodyBytes,
+    httpVersions = setOf("HTTP/1.0", "HTTP/1.1"),
+    requireJsonContentType = false,
+)

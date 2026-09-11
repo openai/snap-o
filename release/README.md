@@ -62,6 +62,8 @@ To test the release scripts:
 python3 -m unittest discover -s release/tests -p 'test_*.py' -v
 ```
 
+For changes to the authoring packages, also follow [authoring package preparation](authoring.md). This validates the Gradle plugin, host SDK tarball, and independent Example tool without uploading packages.
+
 ## Update the version and tag
 
 Use a clean checkout based on current `main`. Update `VERSION` and `.codex-plugin/plugin.json` together:
@@ -88,6 +90,8 @@ Open a temporary copy of the final app and confirm the changed flows work. Revie
 ## Publish Android libraries
 
 For each library in the tag's generated `publications.tsv`, check the staged POM, Gradle metadata, AAR, sources, javadocs, and signatures before publishing.
+
+Confirm `inspector-runtime` appears in the publication manifest and in the Network and Tweaks runtime dependencies. Its AAR must not contribute an inspector descriptor, frontend ZIP, or initialization provider. Runtime API changes must pass the independent Example build and HTTP routing/streaming tests, including client disconnect cancellation.
 
 For Network and Tweaks AARs, also verify the generated inspector descriptor and the frontend ZIP under `assets/snapo/inspectors/<id>/`. The ZIP must contain `index.html` and its referenced assets.
 

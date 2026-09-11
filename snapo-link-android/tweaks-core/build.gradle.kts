@@ -17,6 +17,7 @@ snapoInspector {
 }
 
 dependencies {
+    implementation(project(":inspector-runtime"))
     api(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.annotation)
@@ -39,3 +40,9 @@ val verifyNoComposeDependencies by tasks.registering {
 }
 
 tasks.named("check") { dependsOn(verifyNoComposeDependencies) }
+
+// These first-party frontends use the SDK checkout while external tools use an npm package.
+tasks.named("inspectorBuild") {
+    inputs.dir(rootProject.file("../inspectors/host-sdk/src"))
+    inputs.file(rootProject.file("../inspectors/host-sdk/tsconfig.build.json"))
+}
