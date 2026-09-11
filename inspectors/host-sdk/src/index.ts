@@ -1,4 +1,4 @@
-import { invokeNative, listenWebKitEvent } from "./bridge";
+import { invokeNative, listenWebKitEvent } from "./bridge.js";
 
 export type ToolbarIcon = "clear" | "sortAscending" | "sortDescending" | "search" | "export" | "reset";
 

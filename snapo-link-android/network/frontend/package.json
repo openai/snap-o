@@ -10,7 +10,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "lint": "eslint . && stylelint \"src/**/*.css\""
+    "lint": "eslint . && stylelint \"src/**/*.css\"",
+    "build:host": "tsc -p ../../../inspectors/host-sdk/tsconfig.build.json",
+    "postinstall": "npm run build:host",
+    "prebuild": "npm run build:host",
+    "predev": "npm run build:host"
   },
   "dependencies": {
     "@snap-o/host": "file:../../../inspectors/host-sdk",

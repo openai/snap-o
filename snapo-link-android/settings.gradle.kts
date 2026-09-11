@@ -13,24 +13,20 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+plugins {
+    id("com.openai.snapo.inspector-settings")
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
-        ivy {
-            name = "Node.js"
-            url = uri("https://nodejs.org/dist/")
-            patternLayout {
-                artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]")
-            }
-            metadataSources { artifact() }
-            content { includeModule("org.nodejs", "node") }
-        }
     }
 }
 
 rootProject.name = "snapo-link-android"
+include(":inspector-runtime")
 include(":tweaks-core")
 include(":tweaks-core-noop")
 include(":tweaks-views")

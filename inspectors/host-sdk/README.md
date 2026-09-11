@@ -4,28 +4,29 @@ Inspector code imports `host` from `@snap-o/host`. The host manages native windo
 app selection, ADB forwarding, and native helpers. Each inspector owns its HTTP
 requests, event streams, and domain state.
 
-## Connection
+## Connection and ownership
 
-`host.connected` indicates whether the selected inspector has an available
-endpoint. `host.baseURL` contains its forwarded HTTP base URL, or `null` while
-disconnected. Listen for `connection` events and close pending requests and event
-streams when the connection changes. Read app metadata and inspector descriptors
-from `host.manifest`. Successful metadata always includes `processIdentity`, which
-changes when the app process restarts. Each frontend validates its own protocol
-version before opening requests; the host does not interpret protocol versions.
+The native host owns process and inspector isolation. It creates a separate page for each inspector and replaces the page when its app/process identity changes. Before releasing an old forwarded port, it unloads every page authorized to use it. A frontend does not need to route requests between processes or protect another inspector's endpoint.
+
+`host.connected` indicates whether this page's selected inspector has an available endpoint. `host.baseURL` contains its forwarded HTTP base URL, or `null` while disconnected. Hidden inspector pages can remain alive and receive a disconnected connection state.
+
+Listen for `connection` events to stop polling, abort pending requests, and close event streams while inactive or disconnected. Resume work when connected again. Dispose listeners and resources when your frontend unmounts. These are page resource lifetimes, not a replacement for host isolation.
+
+Read app metadata from `host.manifest` and the selected descriptor from `host.inspector`. Each frontend validates its own `host.inspector.protocolVersion`; the host does not interpret domain protocol versions. Successful metadata includes `processIdentity`, which changes when the app process restarts.
 
 ```ts
-host.addEventListener("connection", (event) => {
-  if (event.connected && host.baseURL) {
-    const manifest = host.manifest;
-    // Connect using the inspector's HTTP protocol.
+host.addEventListener("connection", () => {
+  if (host.connected && host.baseURL) {
+    // Validate host.inspector.protocolVersion and start this tool's requests.
+  } else {
+    // Stop this page's requests, timers, and streams.
   }
 });
 ```
 
-The embedded page uses a stable `snapo-inspector` origin. Each inspector has its own
-persistent browser data store, scoped to the device, Android user, app, and inspector.
-Use ordinary web storage for preferences; windows for the same provider share it. The host does not proxy HTTP requests.
+The [Example tool](../../snapo-link-android/example/README.md) demonstrates this lifecycle using fake data, ordinary HTTP requests, and an event stream.
+
+The embedded page uses a stable `snapo-inspector` origin. Each inspector has its own persistent browser data store, scoped to the device, Android user, app, and inspector. Use ordinary web storage for preferences; windows for the same provider share it. The host does not proxy HTTP response bodies.
 
 ## Toolbar
 
@@ -58,3 +59,9 @@ unmounts with `setToolbar({ start: [] })`.
 
 Use ordinary HTTP or HTTPS anchors for external links. App launch and inspector
 selection belong to the native host, not this API.
+
+## Package development
+
+From `inspectors/`, run `npm ci`, `npm run build`, `npm test`, and `npm run typecheck`. `npm pack --workspace=@snap-o/host` builds and creates a local tarball. The package exposes compiled ES modules and TypeScript declarations under `dist/`; tests and TypeScript implementation sources are excluded.
+
+Package versions follow the SDK's `package.json`. Host bridge API compatibility is recorded separately by each inspector's `hostApiVersion`. No package has been published by this setup. Names remain provisional; see [authoring package validation](../../release/authoring.md) before publishing.

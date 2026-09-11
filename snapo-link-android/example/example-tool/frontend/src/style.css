@@ -1,0 +1,94 @@
+:root {
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+  color: #232323;
+  background: #fff;
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px;
+}
+h1 {
+  font-size: 26px;
+  margin: 0;
+  font-weight: 600;
+}
+h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+p {
+  color: #686868;
+  margin: 6px 0 20px;
+}
+section {
+  margin-top: 30px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+th {
+  font-weight: 500;
+  color: #686868;
+}
+th,
+td {
+  padding: 10px 0;
+  border-bottom: 1px solid #e6e6e6;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+button {
+  font: inherit;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 6px 12px;
+  background: #f5f5f5;
+  color: inherit;
+}
+button:disabled {
+  opacity: 0.45;
+}
+#increment {
+  margin-top: 16px;
+}
+#swatch {
+  width: 18px;
+  height: 18px;
+  background: #6688cc;
+  border-radius: 3px;
+}
+#feedback {
+  margin-top: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    background: #202020;
+    color: #eee;
+  }
+  p,
+  th {
+    color: #aaa;
+  }
+  th,
+  td {
+    border-color: #3b3b3b;
+  }
+  button {
+    background: #333;
+    border-color: #555;
+  }
+}

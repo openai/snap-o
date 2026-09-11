@@ -8,6 +8,8 @@ on:
     paths:
       - 'snapo-link-android/**'
       - 'inspectors/host-sdk/**'
+      - 'inspectors/package*.json'
+      - 'release/validate_authoring.py'
       - 'android-discovery/**'
       - 'scripts/snapo-discovery.jar'
       - 'contracts/**'
@@ -20,6 +22,8 @@ on:
     paths:
       - 'snapo-link-android/**'
       - 'inspectors/host-sdk/**'
+      - 'inspectors/package*.json'
+      - 'release/validate_authoring.py'
       - 'android-discovery/**'
       - 'scripts/snapo-discovery.jar'
       - 'contracts/**'
@@ -161,3 +165,28 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  authoring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Java
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+        with:
+          validate-wrappers: true
+      - name: Validate local authoring packages and independent Example tool
+        run: python3 release/validate_authoring.py --output "${RUNNER_TEMP}/snapo-authoring"
+      - name: Upload validation report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: authoring-validation
+          path: ${{ runner.temp }}/snapo-authoring/report.json

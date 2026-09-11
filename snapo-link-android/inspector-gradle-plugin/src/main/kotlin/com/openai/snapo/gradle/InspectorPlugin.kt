@@ -25,12 +25,14 @@ class InspectorPlugin : Plugin<Project> {
         val inspector = extensions.create<InspectorExtension>("snapoInspector")
         inspector.frontendDirectory.convention(layout.projectDirectory.dir("frontend"))
         inspector.hostApiVersion.convention(1)
+        inspector.downloadNode.convention(true)
+        inspector.nodeVersion.convention("22.23.2")
 
         pluginManager.apply(NodePlugin::class.java)
         extensions.getByType<NodeExtension>().apply {
-            download.set(true)
-            version.set("22.23.2")
-            // The build declares download repositories in settings.gradle.kts.
+            download.set(inspector.downloadNode)
+            version.set(inspector.nodeVersion)
+            // The settings plugin declares the repository, including in builds that forbid project repositories.
             distBaseUrl.set(null as String?)
             nodeProjectDir.set(inspector.frontendDirectory)
             npmInstallCommand.set("ci")
@@ -73,6 +75,7 @@ class InspectorPlugin : Plugin<Project> {
                         frontendArchive.set(archive.flatMap { it.archiveFile })
                     }
                     val metadata = tasks.register<InspectorMetadataTask>("generate${suffix}InspectorMetadata") {
+                        namespace.set(variant.namespace)
                         inspectorId.set(inspector.id)
                         displayName.set(inspector.displayName)
                         protocolVersion.set(inspector.protocolVersion)
@@ -81,6 +84,7 @@ class InspectorPlugin : Plugin<Project> {
                     }
                     variant.sources.assets?.addGeneratedSourceDirectory(assets, InspectorAssetsTask::outputDirectory)
                     variant.sources.res?.addGeneratedSourceDirectory(metadata, InspectorMetadataTask::resourceDirectory)
+                    variant.sources.java?.addGeneratedSourceDirectory(metadata, InspectorMetadataTask::sourceDirectory)
                     variant.sources.manifests.addGeneratedManifestFile(metadata, InspectorMetadataTask::manifestFile)
                 }
             }

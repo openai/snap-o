@@ -1,9 +1,8 @@
 package com.openai.snapo.network
 
 import android.app.Application
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.util.Log
+import com.openai.snapo.inspector.InspectorStartupPolicy
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
@@ -38,11 +37,7 @@ class NetworkInspectorServer internal constructor(
     )
 
     fun start(): Boolean {
-        val canStart = isNetworkInspectorStartAllowed(
-            isDebuggable = app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
-            configAllowsRelease = config.allowRelease,
-            applicationAllowsRelease = app.allowsNetworkInspectorInRelease(),
-        )
+        val canStart = InspectorStartupPolicy.isAllowed(app, NetworkAllowReleaseMetadataKey, config.allowRelease)
         if (!canStart) {
             Log.e(
                 TAG,
@@ -285,24 +280,6 @@ object NetworkInspector {
 
     /** Return the active server, or null if the network inspector is disabled. */
     fun getOrNull(): NetworkInspectorServer? = server
-}
-
-internal fun isNetworkInspectorStartAllowed(
-    isDebuggable: Boolean,
-    configAllowsRelease: Boolean,
-    applicationAllowsRelease: Boolean,
-): Boolean = isDebuggable || configAllowsRelease || applicationAllowsRelease
-
-private fun Application.allowsNetworkInspectorInRelease(): Boolean = try {
-    packageManager
-        .getApplicationInfo(packageName, PackageManager.GET_META_DATA)
-        .metaData
-        ?.getBoolean(NetworkAllowReleaseMetadataKey, false)
-        ?: false
-} catch (_: PackageManager.NameNotFoundException) {
-    false
-} catch (_: SecurityException) {
-    false
 }
 
 private const val NetworkAllowReleaseMetadataKey = "snapo.network.allow_release"

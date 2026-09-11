@@ -20,10 +20,17 @@ snapoInspector {
 }
 
 dependencies {
+    implementation(project(":inspector-runtime"))
     api(libs.kotlinx.coroutines.core)
     api(libs.serialization.core)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.serialization.json)
     testImplementation(libs.junit4)
+}
+
+// These first-party frontends use the SDK checkout while external tools use an npm package.
+tasks.named("inspectorBuild") {
+    inputs.dir(rootProject.file("../inspectors/host-sdk/src"))
+    inputs.file(rootProject.file("../inspectors/host-sdk/tsconfig.build.json"))
 }

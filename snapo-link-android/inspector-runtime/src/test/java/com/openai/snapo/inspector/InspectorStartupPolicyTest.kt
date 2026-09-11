@@ -1,17 +1,17 @@
-package com.openai.snapo.network
+package com.openai.snapo.inspector
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class NetworkInspectorReleasePolicyTest {
+class InspectorStartupPolicyTest {
 
     @Test
     fun `debuggable builds start without release opt in`() {
         assertTrue(
-            isNetworkInspectorStartAllowed(
+            InspectorStartupPolicy.isAllowed(
                 isDebuggable = true,
-                configAllowsRelease = false,
+                allowRelease = false,
                 applicationAllowsRelease = false,
             ),
         )
@@ -20,9 +20,9 @@ class NetworkInspectorReleasePolicyTest {
     @Test
     fun `release builds remain disabled without an opt in`() {
         assertFalse(
-            isNetworkInspectorStartAllowed(
+            InspectorStartupPolicy.isAllowed(
                 isDebuggable = false,
-                configAllowsRelease = false,
+                allowRelease = false,
                 applicationAllowsRelease = false,
             ),
         )
@@ -31,9 +31,9 @@ class NetworkInspectorReleasePolicyTest {
     @Test
     fun `application metadata enables release builds`() {
         assertTrue(
-            isNetworkInspectorStartAllowed(
+            InspectorStartupPolicy.isAllowed(
                 isDebuggable = false,
-                configAllowsRelease = false,
+                allowRelease = false,
                 applicationAllowsRelease = true,
             ),
         )
@@ -42,9 +42,9 @@ class NetworkInspectorReleasePolicyTest {
     @Test
     fun `explicit configuration enables release builds without metadata`() {
         assertTrue(
-            isNetworkInspectorStartAllowed(
+            InspectorStartupPolicy.isAllowed(
                 isDebuggable = false,
-                configAllowsRelease = true,
+                allowRelease = true,
                 applicationAllowsRelease = false,
             ),
         )

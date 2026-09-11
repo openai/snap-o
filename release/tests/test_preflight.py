@@ -159,6 +159,25 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("frontend/src/features/tweaks-inspector/protocol.ts", report)
         self.assertIn("const supportedProtocolVersion = 7", report)
 
+    def test_reports_extracted_android_runtime_for_protocol_review(self):
+        runtime = "snapo-link-android/inspector-runtime/src/main/java/com/openai/snapo/inspector/InspectorHttpRequest.kt"
+        self.write(runtime, "package com.openai.snapo.inspector\n")
+        self.commit()
+
+        report = self.report()
+        comparison = report.split("Android servers protocol comparison:", 1)[1]
+        comparison = comparison.split("Mac/web/CLI clients protocol comparison:", 1)[0]
+        self.assertIn(runtime, comparison)
+        self.assertIn("REVIEW REQUIRED", comparison)
+
+    def test_reports_example_frontend_for_client_protocol_review(self):
+        frontend = "snapo-link-android/example/example-tool/frontend/src/snapshot.ts"
+        self.write(frontend, "export const protocolVersion = 1;\n")
+        self.commit()
+        comparison = self.report().split("Mac/web/CLI clients protocol comparison:", 1)[1]
+        self.assertIn(frontend, comparison)
+        self.assertIn("REVIEW REQUIRED", comparison)
+
     def test_reports_structured_curve_protocol_transition(self):
         old_path = DECLARATIONS[1][1]
         (self.repo / old_path).unlink()
