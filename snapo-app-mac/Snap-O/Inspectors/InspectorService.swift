@@ -83,8 +83,15 @@ actor InspectorService {
     try await adb.openApp(deviceID: input.deviceId, packageName: input.packageName, androidUserID: input.androidUserId)
   }
 
-  func inspectorEndpoint(for reference: InspectorServerReference) async throws -> InspectorHTTPService.Endpoint {
-    try await httpService.endpoint(for: reference)
+  func inspectorEndpoint(
+    for reference: InspectorServerReference, ownerID: UUID? = nil,
+    invalidated: (@MainActor @Sendable () async -> Void)? = nil
+  ) async throws -> InspectorHTTPService.Endpoint {
+    try await httpService.endpoint(for: reference, ownerID: ownerID, invalidated: invalidated)
+  }
+
+  func releaseInspectorEndpoint(ownerID: UUID) async {
+    await httpService.releaseEndpoint(ownerID: ownerID)
   }
 
   func stop() async {

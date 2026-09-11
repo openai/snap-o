@@ -7,6 +7,7 @@ public struct ADBForwardHandle: Sendable {
 public final class ADBClient: @unchecked Sendable {
   private let lock = NSLock()
   private var forwards = 0
+  private var removedForwards: [UInt16] = []
   private var propertiesRecovered = false
   private var metadataAvailable = false
   private var metadataRequests: [[String]] = []
@@ -15,6 +16,10 @@ public final class ADBClient: @unchecked Sendable {
   private var socketGeneration = 0
   private let trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
   public init() {}
+  public var removedPorts: [UInt16] {
+    lock.withLock { removedForwards }
+  }
+
   public var forwardCount: Int {
     lock.withLock { forwards }
   }
@@ -84,6 +89,7 @@ public final class ADBClient: @unchecked Sendable {
 
   public func removeForward(_ handle: ADBForwardHandle) async {
     precondition(!Task.isCancelled)
+    lock.withLock { removedForwards.append(handle.port) }
   }
 
   public func setSocketNames(_ names: [String], deviceID: String) {

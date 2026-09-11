@@ -1,0 +1,54 @@
+<script>
+  const allowed = "__ALLOWED__";
+  const denied = "__DENIED__";
+  window.startup = Promise.allSettled([
+    fetch(allowed + "/startup"), fetch(denied + "/startup")
+  ]).then(() => true);
+
+  window.attack = async () => {
+    const result = {};
+    const attempt = async (name, operation) => {
+      try { const value = await operation(); result[name] = typeof value === "string" || typeof value === "number" ? value : "allowed"; } catch { result[name] = "blocked"; }
+    };
+    const stream = (origin) => new Promise((resolve, reject) => {
+      const source = new EventSource(origin + "/events");
+      setTimeout(() => { source.close(); reject(); }, 3000);
+      source.onmessage = (event) => { source.close(); resolve(event.data); };
+      source.onerror = () => { source.close(); reject(); };
+    });
+    const socket = (origin) => new Promise((resolve, reject) => {
+      const ws = new WebSocket(origin.replace("http:", "ws:") + "/socket");
+      setTimeout(() => { ws.close(); reject(); }, 3000);
+      ws.onmessage = (event) => { ws.close(); resolve(event.data); };
+      ws.onerror = reject;
+    });
+    await attempt("allowed", () => fetch(allowed + "/fetch", {signal: AbortSignal.timeout(3000)}).then(r => r.text()));
+    await attempt("denied", () => fetch(denied + "/fetch"));
+    await attempt("redirect", () => fetch(allowed + "/redirect"));
+    await attempt("allowedSSE", () => stream(allowed));
+    await attempt("deniedSSE", () => stream(denied));
+    await attempt("allowedSocket", () => socket(allowed));
+    await attempt("deniedSocket", () => socket(denied));
+    await attempt("worker", () => new Promise((resolve, reject) => {
+      const worker = new Worker(URL.createObjectURL(new Blob(["postMessage('ran')"], {type:"text/javascript"})));
+      worker.onmessage = () => { worker.terminate(); resolve("ran"); };
+      worker.onerror = () => { worker.terminate(); reject(); };
+    }));
+    await attempt("eval", () => eval("1 + 1"));
+    result.rtc = typeof RTCPeerConnection;
+    result.uuid = typeof crypto.randomUUID;
+    document.querySelector('meta[http-equiv="Content-Security-Policy"]').remove();
+    await attempt("removedPolicy", () => fetch(denied + "/removed-policy"));
+    const image = new Image(); image.src = denied + "/image";
+    const script = document.createElement("script"); script.src = denied + "/script"; document.head.append(script);
+    const stylesheet = document.createElement("link"); stylesheet.rel = "stylesheet"; stylesheet.href = denied + "/style"; document.head.append(stylesheet);
+    navigator.sendBeacon(denied + "/beacon", "synthetic");
+    const frame = document.createElement("iframe"); frame.src = denied + "/frame"; document.body.append(frame);
+    const form = document.createElement("form"); form.action = denied + "/form"; document.body.append(form); form.submit();
+    for (const rel of ["preconnect", "prefetch"]) {
+      const link = document.createElement("link"); link.rel = rel; link.href = denied + "/" + rel; document.head.append(link);
+    }
+    return result;
+  };
+</script>
+<p>Synthetic hostile inspector</p>

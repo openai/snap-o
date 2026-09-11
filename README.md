@@ -10,7 +10,7 @@ Snap-O is a handy macOS app for inspecting Android apps. Capture screenshots and
 
 ## Get started
 
-Requires macOS 15 or later and `adb` from Android Platform Tools.
+Requires macOS 26 or later and `adb` from Android Platform Tools.
 
 If you don't already have `adb`, install Android Platform Tools through Android Studio or `brew install android-platform-tools`.
 

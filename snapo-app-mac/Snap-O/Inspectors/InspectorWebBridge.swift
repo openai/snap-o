@@ -14,19 +14,27 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
 
   private weak static var colorPanelOwner: InspectorWebBridge?
 
+  weak var webView: WKWebView?
+  var acceptsMessage: ((WKScriptMessage) -> Bool)?
+  var isActiveHandler: (() -> Bool)?
+  private var presentedSheet: NSWindow?
+  private var nextPresentation = ContinuousClock.now
+  static let maximumFileBytes = 64 * 1024 * 1024
+
   var hostStateHandler: (() -> InspectorConnectionState)?
   var toolbarHandler: ((InspectorToolbar) throws -> Void)?
   var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
   var colorPanelClosedHandler: ((String) -> Void)?
 
   private var isStopped = false
+  private var hasNativeRequest = false
   private var requests: [UUID: Task<Void, Never>] = [:]
   private var activeColorPanelSessionID: String?
   private var colorPanelRevision = 0
 
   func invalidate() {
     isStopped = true
-    closeNativeColorPanel()
+    cancelPresentation()
     for task in requests.values {
       task.cancel()
     }
@@ -40,7 +48,40 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
   }
 
   func prepareForPageReload() async {
+    cancelPresentation()
+    for task in requests.values {
+      task.cancel()
+    }
+    await finishStopping()
+  }
+
+  func cancelPresentation() {
     closeNativeColorPanel()
+    if let sheet = presentedSheet { sheet.sheetParent?.endSheet(sheet, returnCode: .cancel) }
+  }
+
+  private var presentationWindow: NSWindow? {
+    guard !isStopped, isActiveHandler?() == true, NSApp.isActive,
+          let view = webView, !view.isHiddenOrHasHiddenAncestor,
+          let window = view.window, window.isVisible, window.isMainWindow || window.isKeyWindow else { return nil }
+    return window
+  }
+
+  func confirm(_ message: String, detail: String = "") async -> Bool {
+    guard let window = presentationWindow, window.attachedSheet == nil,
+          presentedSheet == nil, ContinuousClock.now >= nextPresentation else { return false }
+    nextPresentation = .now.advanced(by: .seconds(1))
+    let alert = NSAlert()
+    alert.messageText = message
+    alert.informativeText = String(detail.prefix(2048))
+    alert.addButton(withTitle: "Allow")
+    alert.addButton(withTitle: "Cancel")
+    alert.buttons.first?.keyEquivalent = ""
+    alert.buttons.last?.keyEquivalent = "\r"
+    presentedSheet = alert.window
+    let response = await alert.beginSheetModal(for: window)
+    presentedSheet = nil
+    return response == .alertFirstButtonReturn && !Task.isCancelled && presentationWindow != nil
   }
 
   func closeNativeColorPanel() {
@@ -61,13 +102,19 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
     _ userContentController: WKUserContentController,
     didReceive message: WKScriptMessage
   ) async -> (Any?, String?) {
-    guard !isStopped, message.frameInfo.isMainFrame,
+    guard !isStopped, requests.count < 8, acceptsMessage?(message) == true,
           let body = message.body as? [String: Any],
-          let command = body["command"] as? String
+          let command = body["command"] as? String, Self.validMessage(body, command: command)
     else {
       return (nil, InspectorError.invalidBridgeMessage.localizedDescription)
     }
 
+    let nativeRequest = ["saveFile", "copyText", "openNativeColorPanel"].contains(command)
+    guard !nativeRequest || !hasNativeRequest else {
+      return (nil, InspectorError.invalidBridgeMessage.localizedDescription)
+    }
+    if nativeRequest { hasNativeRequest = true }
+    defer { if nativeRequest { hasNativeRequest = false } }
     let payload = body["payload"]
     let id = UUID()
     var reply: (Any?, String?) = (nil, CancellationError().localizedDescription)
@@ -103,7 +150,13 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
       try toolbarHandler?(toolbar)
       return nil
     case "openNativeColorPanel":
-      try openNativeColorPanel(Self.decode(NativeColorPanelInput.self, from: payload))
+      let input = try Self.decode(NativeColorPanelInput.self, from: payload)
+      guard isActiveHandler?() == true else { throw InspectorError.invalidBridgeMessage }
+      if input.present != false {
+        guard await confirm("Allow this inspector to open the color picker?") else { throw CancellationError() }
+      }
+      try Task.checkCancellation()
+      try openNativeColorPanel(input)
       return nil
     case "closeNativeColorPanel":
       let input = try Self.decode(NativeColorPanelSessionInput.self, from: payload)
@@ -113,12 +166,16 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
       return nil
     case "copyText":
       let input = try Self.decode(ClipboardText.self, from: payload)
+      guard await confirm("Allow this inspector to copy text?", detail: "This replaces the current clipboard contents.") else {
+        throw CancellationError()
+      }
+      try Task.checkCancellation()
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
       pasteboard.setString(input.text, forType: .string)
       return nil
     case "saveFile":
-      return try Self.jsonObject(saveFile(Self.decode(InspectorSaveFileInput.self, from: payload)))
+      return try await Self.jsonObject(saveFile(Self.decode(InspectorSaveFileInput.self, from: payload)))
     default:
       throw InspectorError.invalidBridgeMessage
     }
@@ -128,7 +185,7 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
     guard input.color.count == 7 || input.color.count == 9,
           input.color.first == "#",
           let components = UInt32(input.color.dropFirst(), radix: 16),
-          !input.sessionId.isEmpty
+          !input.sessionId.isEmpty, input.sessionId.utf8.count <= 100, input.revision >= 0
     else {
       throw InspectorError.invalidBridgeMessage
     }
@@ -219,7 +276,10 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
     )
   }
 
-  private func saveFile(_ input: InspectorSaveFileInput) throws -> InspectorSaveFileResult {
+  private func saveFile(_ input: InspectorSaveFileInput) async throws -> InspectorSaveFileResult {
+    guard let window = presentationWindow, window.attachedSheet == nil, presentedSheet == nil,
+          ContinuousClock.now >= nextPresentation else { throw InspectorError.invalidBridgeMessage }
+    nextPresentation = .now.advanced(by: .seconds(1))
     let data: Data
     switch input.encoding {
     case nil, "utf8":
@@ -233,21 +293,58 @@ final class InspectorWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWin
       throw InspectorError.invalidBridgeMessage
     }
 
-    let isHAR = URL(fileURLWithPath: input.defaultPath).pathExtension.lowercased() == "har"
+    guard data.count <= Self.maximumFileBytes, input.defaultPath.utf8.count <= 1024 else {
+      throw InspectorError.invalidBridgeMessage
+    }
+    let filename = URL(fileURLWithPath: input.defaultPath).lastPathComponent
+    let isHAR = URL(fileURLWithPath: filename).pathExtension.lowercased() == "har"
     let panel = NSSavePanel()
     panel.canCreateDirectories = true
-    panel.nameFieldStringValue = input.defaultPath
+    panel.nameFieldStringValue = filename
     if isHAR {
       panel.directoryURL = SaveLocation.defaultHARExportDirectory()
     }
-    guard panel.runModal() == .OK, let url = panel.url else {
+    presentedSheet = panel
+    let response = await panel.beginSheetModal(for: window)
+    presentedSheet = nil
+    try Task.checkCancellation()
+    guard presentationWindow != nil, response == .OK, let url = panel.url else {
       return InspectorSaveFileResult(saved: false, path: nil)
     }
     try data.write(to: url, options: .atomic)
     if isHAR {
       SaveLocation.setLastHARExportDirectoryURL(url.deletingLastPathComponent())
     }
-    return InspectorSaveFileResult(saved: true, path: url.path)
+    return InspectorSaveFileResult(saved: true, path: nil)
+  }
+
+  static func validMessage(_ body: [String: Any], command: String) -> Bool {
+    let limit: Int
+    switch command {
+    case "saveFile": limit = maximumFileBytes * 4 / 3 + 4096
+    case "copyText": limit = 1_048_576
+    case "hostState", "setToolbar", "openNativeColorPanel", "closeNativeColorPanel": limit = 65536
+    default: return false
+    }
+    var bytes = limit
+    var nodes = 512
+    func visit(_ value: Any, depth: Int) -> Bool {
+      nodes -= 1
+      guard nodes >= 0, depth <= 8 else { return false }
+      if let text = value as? String {
+        bytes -= text.utf8.count
+        return bytes >= 0
+      }
+      if let object = value as? [String: Any] {
+        guard object.count <= 64 else { return false }
+        return object.allSatisfy { visit($0.key, depth: depth + 1) && visit($0.value, depth: depth + 1) }
+      }
+      if let array = value as? [Any] {
+        return array.count <= 64 && array.allSatisfy { visit($0, depth: depth + 1) }
+      }
+      return value is NSNumber || value is NSNull
+    }
+    return visit(body, depth: 0)
   }
 
   private static func decode<T: Decodable>(_ type: T.Type, from payload: Any?) throws -> T {
