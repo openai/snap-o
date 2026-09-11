@@ -19,6 +19,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -profile-generate \
   -I "$PRODUCTS" \
   "$PRODUCTS/ZIPFoundation.o" \
   Snap-O/Device/*.swift Snap-O/Device/ADB/*.swift \
+  Snap-O/Utilities/Logging.swift \
   Snap-O/Tools/ToolModels.swift \
   Snap-O/Tools/PluginMetadata.swift \
   Tests/ToolSelection/ToolTestFixtures.swift \
@@ -33,6 +34,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -profile-generate \
   -I "$PRODUCTS" \
   "$PRODUCTS/ZIPFoundation.o" \
   Snap-O/Device/*.swift Snap-O/Device/ADB/*.swift \
+  Snap-O/Utilities/Logging.swift \
   Snap-O/Tools/ToolModels.swift \
   Snap-O/Tools/PluginMetadata.swift \
   Tests/ToolSelection/ToolTestFixtures.swift \

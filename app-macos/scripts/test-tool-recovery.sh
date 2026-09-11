@@ -14,7 +14,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Device/LegacyPluginMetadata.swift \
   Snap-O/Device/DeviceDiscovery.swift \
   Tests/ToolRecovery/DeviceClientDouble.swift Snap-O/Models/Device+Formatting.swift \
-  Snap-O/ADB/DeviceTracker.swift \
+  Snap-O/Device/DeviceTracker.swift \
   Snap-O/Tools/ToolModels.swift \
   Snap-O/Tools/PluginMetadata.swift \
   Tests/ToolSelection/ToolTestFixtures.swift \
