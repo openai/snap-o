@@ -42,9 +42,33 @@ export class ConnectionEvent extends Event {
   }
 }
 
+export interface InspectorDescriptor {
+  id: string;
+  name: string;
+  protocolVersion: number;
+  iconBase64?: string;
+}
+
+export interface ProcessManifest {
+  version: number;
+  pid: number;
+  processName?: string;
+  androidUserId?: number;
+  processIdentity: string;
+  app: {
+    packageName: string;
+    name: string;
+    revision: string;
+    iconBase64?: string;
+    inspectors: InspectorDescriptor[];
+  };
+}
+
 export interface Host extends EventTarget {
   readonly connected: boolean;
   readonly baseURL: string | null;
+  readonly manifest: ProcessManifest | null;
+  readonly inspector: InspectorDescriptor | null;
   addEventListener(
     type: "connection",
     callback: (event: ConnectionEvent) => void,
@@ -75,6 +99,8 @@ interface HostState {
   revision: number;
   connected: boolean;
   baseURL?: string | null;
+  manifest?: ProcessManifest | null;
+  inspector?: InspectorDescriptor | null;
 }
 
 interface ToolbarEvent {
@@ -121,6 +147,16 @@ export class InspectorHost extends EventTarget implements Host {
   get baseURL(): string | null {
     void this.start().catch(() => {});
     return this.state.baseURL ?? null;
+  }
+
+  get manifest(): ProcessManifest | null {
+    void this.start().catch(() => {});
+    return this.state.manifest ?? null;
+  }
+
+  get inspector(): InspectorDescriptor | null {
+    void this.start().catch(() => {});
+    return this.state.inspector ?? null;
   }
 
   override addEventListener(
@@ -291,7 +327,12 @@ export class InspectorHost extends EventTarget implements Host {
   private updateState(state: HostState): void {
     if (state.revision <= this.state.revision) return;
     // A new connection may reuse the same forwarded port.
-    const changed = state.connected || state.connected !== this.state.connected || state.baseURL !== this.state.baseURL;
+    const changed =
+      state.connected ||
+      state.connected !== this.state.connected ||
+      state.baseURL !== this.state.baseURL ||
+      state.manifest !== this.state.manifest ||
+      state.inspector !== this.state.inspector;
     this.state = state;
     if (changed) this.dispatchEvent(new ConnectionEvent(state.connected));
   }

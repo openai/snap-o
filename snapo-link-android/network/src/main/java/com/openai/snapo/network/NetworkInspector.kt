@@ -19,9 +19,6 @@ data class NetworkInspectorConfig(
     val maxBufferedEvents: Int = 10_000,
     val maxBufferedBytes: Long = 16L * 1024 * 1024,
 
-    /** Label surfaced to clients with app metadata. */
-    val modeLabel: String = "safe",
-
     /** Whether the server is allowed to start in a non-debug build. */
     val allowRelease: Boolean = false,
 )
@@ -35,8 +32,6 @@ class NetworkInspectorServer internal constructor(
     private val publishLock = Mutex()
     private val eventBuffer = EventBuffer(config)
     private val transport = NetworkInspectorTransport(
-        app = app,
-        config = config,
         snapshotProvider = ::snapshotMessages,
         commandHandler = ::handleCommand,
         interception = interception,

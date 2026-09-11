@@ -8,13 +8,14 @@ on:
       - '.codex-plugin/plugin.json'
       - 'VERSION'
       - 'scripts/snapo'
+      - 'scripts/snapo-discovery.jar'
+      - 'android-discovery/**'
       - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
       - 'tests/snapo_cli/**'
-      - 'contracts/network/**'
-      - 'contracts/tweaks/**'
+      - 'contracts/**'
       - '.github/workflows/snapo-cli.yml'
   pull_request:
     branches: [main, master]
@@ -23,13 +24,14 @@ on:
       - '.codex-plugin/plugin.json'
       - 'VERSION'
       - 'scripts/snapo'
+      - 'scripts/snapo-discovery.jar'
+      - 'android-discovery/**'
       - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
       - 'tests/snapo_cli/**'
-      - 'contracts/network/**'
-      - 'contracts/tweaks/**'
+      - 'contracts/**'
       - '.github/workflows/snapo-cli.yml'
 
 permissions:

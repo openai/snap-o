@@ -18,12 +18,9 @@ import java.net.URI
 import java.net.URLDecoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.io.encoding.Base64
 
 /** HTTP reads and SSE subscriptions on the inspector's existing abstract socket. */
 internal class NetworkInspectorHttp(
-    val appInfo: SnapOAppInfoParams,
-    private val appName: String = appInfo.packageName,
     private val snapshotProvider: suspend () -> NetworkReplaySnapshot = { NetworkReplaySnapshot(emptyList(), 0) },
     private val commandHandler: suspend (CdpMessage) -> CdpMessage? = { null },
     private val interception: NetworkInterception = NetworkInterception(),
@@ -148,25 +145,7 @@ internal class NetworkInspectorHttp(
 
     private suspend fun read(request: InspectorHttpRequest, uri: URI, output: OutputStream, headers: String) {
         requireMethod(request, "GET")
-        when (uri.path) {
-            "/.snap-o/info" -> {
-                val metadata = ProtocolJson.encodeToJsonElement(SnapOAppInfoParams.serializer(), appInfo).jsonObject
-                json(
-                    output,
-                    JsonObject(
-                        metadata + mapOf(
-                            "name" to JsonPrimitive(appName),
-                        )
-                    ),
-                    headers = headers,
-                )
-            }
-            "/.snap-o/appicon" -> {
-                val icon = appInfo.icon ?: throw HttpFailure("404 Not Found", "No icon is available")
-                respond(output, "200 OK", "image/png", Base64.decode(icon.base64Data), headers)
-            }
-            else -> body(uri, output, headers)
-        }
+        body(uri, output, headers)
     }
 
     private suspend fun body(uri: URI, output: OutputStream, headers: String) {

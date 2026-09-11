@@ -30,7 +30,7 @@ Complete this review before updating the version, including for mac-only release
 
 - Record old and new Network and Tweaks protocol numbers, client-supported versions, and the versions that enable optional features. List changes to commands, events, fields, and behavior.
 - Classify changes as none, additive, or breaking. Record the required version bump, or explain why keeping the number is compatible and how clients detect new features. An unchanged constant does not prove the API is unchanged.
-- Check clients before bumping a server number. Network clients have used an exact supported version. Tweaks uses version checks to enable features. See the [Tweaks](../contracts/tweaks/README.md) and [interception](../contracts/network/interception.md) definitions.
+- Check clients before bumping a server number. Current Network and Tweaks frontends and the CLI require an exact supported version. Older Tweaks clients used version thresholds to enable features. See the [Tweaks](../contracts/tweaks/README.md) and [interception](../contracts/network/interception.md) definitions.
 - For changed protocols or version handling, test new clients with public servers, public clients with new servers, and the new pair. Check the changed feature and the error or fallback when it is unavailable. Use existing tests where they cover these cases.
 
 Record the decision and test results with the source SHA. Fix failures and merge required protocol, client, and test changes before the version update. Repeat the review if later source changes affect it.

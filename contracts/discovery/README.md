@@ -1,0 +1,48 @@
+# Inspector discovery
+
+Inspector identity comes from installed Android manifest resources. Running instances come from abstract Unix sockets. An HTTP response proves connection readiness; metadata alone does not.
+
+## Socket and manifest names
+
+Use `snapo_<id>_<pid>`, where `id` matches `[a-z][a-z0-9.-]{0,99}` and `pid` is a positive decimal process ID. An inspector library contributes one application-level manifest entry:
+
+```xml
+<meta-data
+    android:name="snapo.inspector.network"
+    android:resource="@xml/snapo_network_inspector" />
+```
+
+The key is derived from the socket ID. It does not depend on the library's Java package. Independent inspector libraries contribute separate entries through manifest merging.
+
+## Descriptor version 1
+
+```xml
+<inspector
+    version="1"
+    id="network"
+    name="Network"
+    icon="@drawable/snapo_network_inspector_icon"
+    protocolVersion="3" />
+```
+
+The descriptor ID must match the manifest key and socket ID. `name` is a nonempty string or string resource, limited to 200 characters. `icon` is an optional drawable resource. `protocolVersion` is a positive integer identifying the inspector's wire protocol. `version` identifies this descriptor schema, independently of the wire protocol.
+
+App labels and icons come from Android package information, not the inspector descriptor. PIDs, process names, Android users, and process lifetimes come from process metadata. Do not put runtime state, credentials, or captured traffic in manifest resources.
+
+## Reading metadata
+
+Use `PackageManager.getApplicationInfo` with `GET_META_DATA`, `ApplicationInfo.loadXmlMetaData`, and `PackageManager.getResourcesForApplication` in a separate reader process. Resolve the correct Android user and verify package ownership against the process UID. The [bundled reader](../../android-discovery/README.md) supports non-debuggable apps without invoking app code.
+
+Cache installed metadata separately from live connections. Invalidate it when the installed package or resource configuration changes. A missing or malformed descriptor is not evidence that the socket disappeared; show the app and an unsupported-inspector state. Never infer that a plugin is enabled merely because its descriptor is installed. When a new socket appears, refresh metadata for all visible inspector sockets in that process and update their cached records together.
+
+Clients can send `OPTIONS /` over a forwarded socket to check HTTP readiness without fetching app metadata. The Network and Tweaks servers return a successful empty response. They no longer serve `/.snap-o/info` or `/.snap-o/appicon`.
+
+### Reader output
+
+The reader emits one JSON line per process. Each record has `version: 1` and a positive `pid`. Successful records contain `app` and a nonempty `processIdentity`; clients must reject successful records without that identity. The identity combines boot identity, PID, and process start time, so clients can distinguish a replacement process that reuses a PID. Error records can omit `app` and `processIdentity`.
+
+The CLI runs the bundled reader through ADB in batches of at most 64 socket names per device. Listing apps does not forward or connect to inspector sockets. Commands validate the selected descriptor before sending inspector requests.
+
+## Protocol migration
+
+Network protocol 3 and Tweaks protocol 7 remove HTTP metadata and app-icon endpoints. This is a breaking discovery change. New clients require manifest descriptors; older servers without them need an Android library update. Older clients expecting HTTP metadata cannot use the new servers. Update clients and libraries together. Existing network history, SSE, interception, tweak values, and tweak actions are unchanged.

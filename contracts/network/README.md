@@ -6,8 +6,7 @@ Network Inspector serves HTTP on `snapo_network_<pid>`, an Android abstract Unix
 
 | Request | Response |
 | --- | --- |
-| `GET /.snap-o/info` | JSON app metadata, including `pid` and `protocolVersion`. |
-| `GET /.snap-o/appicon` | PNG app icon, or `404` when unavailable. |
+| `OPTIONS /` | Empty readiness response. |
 | `GET /network` | A finite NDJSON snapshot, or live Server-Sent Events (SSE), selected by `Accept`. |
 | `GET /network/requests/{requestId}/request-body` | JSON with `postData`. |
 | `GET /network/requests/{requestId}/response-body` | JSON with `body` and `base64Encoded`. |
@@ -17,7 +16,7 @@ Network Inspector serves HTTP on `snapo_network_<pid>`, an Android abstract Unix
 
 Percent-encode request ids as one path component. Body reads return `404` when the capture is unavailable. Successful updates return `{}`. HTTP errors use a JSON `error` string.
 
-Native clients check that `protocolVersion` is exactly **2** before using these endpoints.
+The Network frontend and CLI require `protocolVersion` **3** in the [manifest descriptor](../discovery/README.md). The native host transports descriptors without interpreting inspector protocol versions. Metadata and icons are not HTTP endpoints.
 
 `GET /network` uses the standard `Accept` header to select its response:
 
@@ -33,7 +32,7 @@ The snapshot responds with `application/x-ndjson`, chunked HTTP framing, and `Sn
 
 For a combined history and live view:
 
-1. Read `/.snap-o/info` and check its protocol version.
+1. Read the manifest descriptor and require Network protocol 3.
 2. Open `/network` with `Accept: text/event-stream` and buffer incoming events.
 3. After the SSE response headers arrive, fetch `/network` with `Accept: application/x-ndjson`.
 4. Read the complete snapshot and retain its watermark.
@@ -81,6 +80,8 @@ The desktop host provides the forwarded base URL. Browser clients connect direct
 
 ## Compatibility
 
+The version 3 API removes `NetworkInspectorConfig.modeLabel` and the `snapo.mode_label` manifest option. Remove these settings when updating the Android library. The label was descriptive and never changed capture behavior or release-build permissions.
+
 Version **2** is a breaking transport change. The newline command protocol and inspector WebSocket endpoint are removed. Updated clients require HTTP + SSE and do not fall back to older transports. Interception decisions are never retried automatically after an uncertain result.
 
-Shared [app metadata](v2/app.json) and [history](v2/history.jsonl) fixtures describe version 2. Compatibility checks cover version rejection, HTTP framing, history/live ordering, body reads, and interception ownership and decisions. Before release, test the updated pair on a device and check older-server failures as required by the [release checklist](../../release/README.md).
+The historical [app metadata](v2/app.json) fixture describes version 2. The [history](v2/history.jsonl) fixture is unchanged in version 3; current metadata follows the [discovery contract](../discovery/README.md). Compatibility checks cover version rejection, HTTP framing, history/live ordering, body reads, and interception ownership and decisions. Before release, test the updated pair on a device and check older-server failures as required by the [release checklist](../../release/README.md).

@@ -8,7 +8,11 @@ public final class ADBClient: @unchecked Sendable {
   private let lock = NSLock()
   private var forwards = 0
   private var propertiesRecovered = false
+  private var metadataAvailable = false
+  private var metadataRequests: [[String]] = []
   private var socketDevices: [String] = []
+  private var socketsByDevice: [String: [String]] = [:]
+  private var socketGeneration = 0
   private let trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
   public init() {}
   public var forwardCount: Int {
@@ -27,6 +31,40 @@ public final class ADBClient: @unchecked Sendable {
 
   public func recoverProperties() {
     lock.withLock { propertiesRecovered = true }
+  }
+
+  public func setMetadataAvailable(_ available: Bool) {
+    lock.withLock { metadataAvailable = available }
+  }
+
+  public var metadataSocketRequests: [[String]] {
+    lock.withLock { metadataRequests }
+  }
+
+  public func inspectorMetadata(deviceID: String, socketNames: [String], helperURL: URL) async throws -> [InspectorProcessMetadata] {
+    lock.withLock { metadataRequests.append(socketNames) }
+    while !lock.withLock({ metadataAvailable }) {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    let pids = Set(socketNames.compactMap { Int($0.split(separator: "_").last ?? "") })
+    let inspectors: [[String: Any]] = [
+      ["id": "network", "name": "Network", "protocolVersion": 3],
+      ["id": "tweaks", "name": "Tweaks", "protocolVersion": 7]
+    ].filter { descriptor in
+      socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }
+    }
+    return try pids.map { pid in
+      let record: [String: Any] = [
+        "version": 1, "pid": pid, "processName": "com.example.demo", "androidUserId": 0,
+        "processIdentity": "boot:\(pid):1",
+        "app": [
+          "name": "Demo", "packageName": "com.example.demo", "revision": "1",
+          "iconBase64": "icon-\(deviceID)",
+          "inspectors": inspectors
+        ]
+      ]
+      return try JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
+    }
   }
 
   public func emitDevices(_ payload: String) {
@@ -48,13 +86,34 @@ public final class ADBClient: @unchecked Sendable {
     precondition(!Task.isCancelled)
   }
 
+  public func setSocketNames(_ names: [String], deviceID: String) {
+    lock.withLock { socketsByDevice[deviceID] = names }
+  }
+
+  public func replaceListeners() {
+    lock.withLock { socketGeneration += 100 }
+  }
+
   public func listUnixSockets(deviceID: String) async throws -> String {
-    lock.withLock { socketDevices.append(deviceID) }
-    return "1: 0 @snapo_network_42\n2: 0 @snapo_tweaks_42"
+    let names = lock.withLock {
+      socketDevices.append(deviceID)
+      return socketsByDevice[deviceID] ?? ["snapo_network_42", "snapo_tweaks_42"]
+    }
+    let clientInode = lock.withLock { socketDevices.count + 1000 }
+    let listenerInode = lock.withLock { socketGeneration + 100 }
+    return names.enumerated().map { index, name in
+      """
+      0: 00000002 00000000 00000000 0001 03 \(clientInode) @\(name)
+      1: 00000002 00000000 00010000 0001 01 \(index + listenerInode) @\(name)
+      """
+    }.joined(separator: "\n")
   }
 
   public func runDiscoveryShellString(deviceID: String, command: String) async throws -> String {
-    command.contains("cmdline") ? "com.example.demo" : "Uid: 10000"
+    if command == InspectorDiscovery.snapshotCommand {
+      return try await listUnixSockets(deviceID: deviceID) + "\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n43 com.example.demo:worker\n"
+    }
+    return command.contains("cmdline") ? "com.example.demo" : "Uid: 10000"
   }
 }
 

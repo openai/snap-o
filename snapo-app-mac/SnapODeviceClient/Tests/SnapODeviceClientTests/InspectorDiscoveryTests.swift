@@ -11,12 +11,12 @@ struct InspectorDiscoveryTests {
   @Test("discovers both inspector kinds from one socket snapshot")
   func parsesSharedSnapshot() {
     let output = """
-    1: 0 @snapo_tweaks_42
-    2: 0 @snapo_network_42
-    3: 0 @snapo_tweaks_42
-    4: 0 @snapo_network_invalid
-    5: 0 @snapo_unknown_42
-    6: 0 @snapo_tweaks_0
+    1: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42
+    2: 00000002 00000000 00010000 0001 01 101 @snapo_network_42
+    3: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42
+    4: 00000002 00000000 00010000 0001 01 101 @snapo_network_invalid
+    5: 00000002 00000000 00010000 0001 01 101 @snapo_unknown_42
+    6: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_0
     """
     let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone", definitions: definitions)
     #expect(sockets.map(\.kind) == [.network, .tweaks])
@@ -32,6 +32,145 @@ struct InspectorDiscoveryTests {
     let server = InspectorServerReference(deviceId: "device", socketName: "snapo_tweaks_42")
     #expect(try String(bytes: encoder.encode(server), encoding: .utf8)
       == "{\"deviceId\":\"device\",\"socketName\":\"snapo_tweaks_42\"}")
+  }
+
+  @Test("client connections never replace the listening socket identity")
+  func ignoresClientSockets() throws {
+    let listener = "1: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42"
+    for inode in ["0", "202", "303"] {
+      let clients = """
+      2: 00000002 00000000 00000000 0001 02 0 @snapo_tweaks_42
+      3: 00000002 00000000 00000000 0001 03 \(inode) @snapo_tweaks_42
+      4: 00000002 00000000 00000000 0001 03 404 @snapo_network_43
+      """
+      for snapshot in [clients + "\n" + listener, listener + "\n" + clients] {
+        let sockets = InspectorDiscovery.sockets(inProcNetUnix: snapshot, deviceID: "phone", definitions: definitions)
+        #expect(sockets.count == 1)
+        #expect(try #require(sockets.first).inode == "101")
+      }
+      #expect(InspectorDiscovery.sockets(inProcNetUnix: clients, deviceID: "phone", definitions: definitions).isEmpty)
+    }
+  }
+
+  @Test("discovery includes process names before manifest resources load")
+  func includesInitialProcessNames() throws {
+    let output = """
+    1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42
+    2: 00000002 00000000 00010000 0001 01 102 @snapo_tweaks_42
+    3: 00000002 00000000 00010000 0001 01 103 @snapo_network_43
+
+    ---snapo-processes---
+      PID NAME
+       42 com.example.demo:worker
+       44 com.example.other
+    """
+    let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone", definitions: definitions)
+    #expect(sockets.filter { $0.pid == 42 }.allSatisfy { $0.processName == "com.example.demo:worker" })
+    #expect(sockets.first { $0.pid == 43 }?.processName == nil)
+    #expect(sockets.map(\.inode) == ["101", "103", "102"])
+    let socket = try #require(sockets.first)
+    let process = try #require(InspectorDiscovery.processes(from: [
+      endpoint(socket.kind, metadata: InspectorAppMetadata(processName: socket.processName))
+    ]).first)
+    #expect(process.name == "com.example.demo:worker")
+  }
+
+  @Test("process name lookup supports legacy ps columns and tolerates unavailable names")
+  func parsesLegacyProcessNames() {
+    #expect(DeviceDiscovery.processNames(inProcessList: """
+    USER PID PPID VSIZE RSS WCHAN PC NAME
+    u0_a42 42 1 1000 100 0 0 com.example.demo
+    u0_a43 invalid 1 1000 100 0 0 com.example.invalid
+    incomplete
+    """) == [42: "com.example.demo"])
+    #expect(DeviceDiscovery.processNames(inProcessList: "ps: permission denied").isEmpty)
+  }
+
+  @Test("removes the reader after successful and failed invocations")
+  func cleansUpManifestReader() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: "snapo-reader-\(UUID())")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let helper = Data("fixture reader".utf8)
+    let command = try InspectorManifestReader.command(helper: helper, socketNames: ["snapo_network_42"])
+      .replacingOccurrences(of: "/data/local/tmp", with: directory.path)
+    // Capture the file the runtime would open without requiring Android in the unit test.
+    for status: Int32 in [0, 7] {
+      let script = "app_process() { cat \"$CLASSPATH\"; return \(status); };\n" + command
+      let process = Process()
+      process.executableURL = URL(filePath: "/bin/sh")
+      process.arguments = ["-c", script]
+      let output = Pipe()
+      process.standardOutput = output
+      try process.run()
+      let bytes = output.fileHandleForReading.readDataToEndOfFile()
+      process.waitUntilExit()
+      #expect(process.terminationStatus == status)
+      #expect(bytes == helper)
+      #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+  }
+
+  @Test("overlapping readers execute their own helper even after another reader exits")
+  func isolatesManifestReaders() throws {
+    struct Reader {
+      let process: Process
+      let input: Pipe
+      let output: Pipe
+      let helper: Data
+    }
+    let directory = FileManager.default.temporaryDirectory.appending(path: "snapo-readers-\(UUID())")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var readers: [Reader] = []
+    defer {
+      for reader in readers where reader.process.isRunning {
+        reader.process.terminate()
+        reader.process.waitUntilExit()
+      }
+    }
+    for name in ["first reader", "second reader"] {
+      let helper = Data(name.utf8)
+      let command = try InspectorManifestReader.command(helper: helper, socketNames: ["snapo_network_42"])
+        .replacingOccurrences(of: "/data/local/tmp", with: directory.path)
+      // Hold both runtimes after upload. The timeout bounds a failed test.
+      let script = "app_process() { printf 'ready\\n'; read -r -t 5 proceed || return 1; cat \"$CLASSPATH\"; };\n" + command
+      let process = Process()
+      let input = Pipe()
+      let output = Pipe()
+      process.executableURL = URL(filePath: "/bin/sh")
+      process.arguments = ["-c", script]
+      process.standardInput = input
+      process.standardOutput = output
+      try process.run()
+      readers.append(Reader(process: process, input: input, output: output, helper: helper))
+      try #require(output.fileHandleForReading.readData(ofLength: 6) == Data("ready\n".utf8))
+    }
+    for reader in readers.reversed() {
+      try reader.input.fileHandleForWriting.write(contentsOf: Data("continue\n".utf8))
+      let bytes = reader.output.fileHandleForReading.readDataToEndOfFile()
+      reader.process.waitUntilExit()
+      #expect(reader.process.terminationStatus == 0)
+      #expect(bytes == reader.helper)
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+  }
+
+  @Test("successful metadata requires process identity, but error records do not")
+  func requiresProcessIdentity() throws {
+    let app: [String: Any] = ["name": "Example", "packageName": "com.example", "revision": "1", "inspectors": []]
+    for identity: Any in [NSNull(), "", " ", 42] {
+      let data = try JSONSerialization.data(withJSONObject: [
+        "version": 1, "pid": 42, "app": app, "processIdentity": identity
+      ])
+      #expect(throws: (any Error).self) { try InspectorManifestReader.decode(data) }
+    }
+    let success = try JSONSerialization.data(withJSONObject: [
+      "version": 1, "pid": 42, "app": app, "processIdentity": "boot:42:1"
+    ])
+    #expect(try InspectorManifestReader.decode(success).first?.processIdentity == "boot:42:1")
+    let failure = Data(#"{"version":1,"pid":42,"error":"process exited"}"#.utf8)
+    #expect(try InspectorManifestReader.decode(failure).first?.error == "process exited")
   }
 
   @Test("extracts only valid process IDs from both inspector sockets")

@@ -1,6 +1,21 @@
 import Foundation
 
 public enum DeviceDiscovery {
+  public static func processNames(inProcessList output: String) -> [Int: String] {
+    let lines = output.split(whereSeparator: \.isNewline)
+    guard let header = lines.first?.split(whereSeparator: \.isWhitespace),
+          let pidColumn = header.firstIndex(of: "PID"),
+          let nameColumn = header.firstIndex(of: "NAME") else { return [:] }
+    var names: [Int: String] = [:]
+    for line in lines.dropFirst() {
+      let fields = line.split(whereSeparator: \.isWhitespace)
+      guard fields.count > max(pidColumn, nameColumn),
+            let pid = Int(fields[pidColumn]), pid > 0 else { continue }
+      names[pid] = String(fields[nameColumn])
+    }
+    return names
+  }
+
   public static func processName(inCmdline output: String) -> String? {
     output
       .split { $0 == "\0" || $0 == "\n" || $0 == "\r" }

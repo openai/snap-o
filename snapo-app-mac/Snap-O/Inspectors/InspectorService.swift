@@ -6,7 +6,7 @@ actor InspectorService {
   private let adbService: ADBService
   private let deviceTracker: DeviceTracker
   private let httpService: InspectorHTTPService
-  private var inspectorServerOrder: [InspectorServerReference] = []
+  private var inspectorAppOrder: [String: Int] = [:]
   private var refreshTask: Task<Void, Never>?
   private var isStopped = false
 
@@ -19,7 +19,22 @@ actor InspectorService {
 
   func discoverInspectors() async -> InspectorDiscoverySnapshot {
     await refresh()
-    let applications = await httpService.currentApps()
+    return await currentInspectors()
+  }
+
+  func changes() async -> AsyncStream<Void> {
+    await httpService.changes()
+  }
+
+  func currentInspectors() async -> InspectorDiscoverySnapshot {
+    let snapshot = await httpService.currentApps()
+    let applications = snapshot.apps
+    let connectedServers = Set(applications.filter(\.isConnected).map {
+      InspectorServerReference(deviceId: $0.deviceID, socketName: $0.socketName)
+    })
+    let manifests = Dictionary(uniqueKeysWithValues: applications.map {
+      (InspectorServerReference(deviceId: $0.deviceID, socketName: $0.socketName), $0)
+    })
     let endpoints = applications.map { app in
       InspectorEndpoint(
         kind: app.kind,
@@ -51,13 +66,16 @@ actor InspectorService {
             kind: endpoint.kind,
             server: endpoint.reference,
             protocolVersion: endpoint.protocolVersion,
-            name: registry.plugin(for: endpoint.kind)?.name ?? endpoint.kind.rawValue,
-            icon: registry.plugin(for: endpoint.kind)?.icon ?? "square"
+            isConnected: connectedServers.contains(endpoint.reference),
+            name: manifests[endpoint.reference]?.descriptor?.name ?? registry.plugin(for: endpoint.kind)?.name ?? endpoint.kind.rawValue,
+            icon: registry.plugin(for: endpoint.kind)?.icon ?? "square",
+            iconBase64: manifests[endpoint.reference]?.descriptor?.iconBase64 ?? registry.plugin(for: endpoint.kind)?.iconBase64
           )
-        }
+        },
+        manifest: process.inspectors.compactMap { manifests[$0.reference]?.manifest }.first
       )
     }
-    return InspectorDiscoverySnapshot(apps: orderedInspectorApps(apps))
+    return InspectorDiscoverySnapshot(apps: orderedInspectorApps(apps), revision: snapshot.revision)
   }
 
   func openApp(_ input: OpenAppInput) async throws {
@@ -99,22 +117,11 @@ actor InspectorService {
   }
 
   private func orderedInspectorApps(_ apps: [InspectableApp]) -> [InspectableApp] {
-    let previousOrder = Dictionary(
-      uniqueKeysWithValues: inspectorServerOrder.enumerated().map { ($0.element, $0.offset) }
-    )
-    let orderedApps = apps.sorted { first, second in
-      let firstOrder = first.inspectors.compactMap { previousOrder[$0.server] }.min() ?? -1
-      let secondOrder = second.inspectors.compactMap { previousOrder[$0.server] }.min() ?? -1
-
-      if firstOrder != secondOrder {
-        return firstOrder < secondOrder
-      }
-      if first.deviceId != second.deviceId {
-        return first.deviceId < second.deviceId
-      }
-      return first.id < second.id
+    for app in apps where inspectorAppOrder[app.id] == nil {
+      inspectorAppOrder[app.id] = inspectorAppOrder.count
     }
-    inspectorServerOrder = orderedApps.flatMap { $0.inspectors.map(\.server) }
-    return orderedApps
+    return apps.sorted {
+      inspectorAppOrder[$0.id, default: Int.max] < inspectorAppOrder[$1.id, default: Int.max]
+    }
   }
 }

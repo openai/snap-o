@@ -9,13 +9,15 @@ requests, event streams, and domain state.
 `host.connected` indicates whether the selected inspector has an available
 endpoint. `host.baseURL` contains its forwarded HTTP base URL, or `null` while
 disconnected. Listen for `connection` events and close pending requests and event
-streams when the connection changes. Read metadata from `/.snap-o/info` and the
-optional app icon from `/.snap-o/appicon`.
+streams when the connection changes. Read app metadata and inspector descriptors
+from `host.manifest`. Successful metadata always includes `processIdentity`, which
+changes when the app process restarts. Each frontend validates its own protocol
+version before opening requests; the host does not interpret protocol versions.
 
 ```ts
 host.addEventListener("connection", (event) => {
   if (event.connected && host.baseURL) {
-    const infoURL = new URL(".snap-o/info", host.baseURL);
+    const manifest = host.manifest;
     // Connect using the inspector's HTTP protocol.
   }
 });

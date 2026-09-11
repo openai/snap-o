@@ -5,8 +5,10 @@ struct AppInspectorOption: Equatable, Codable, Identifiable {
   let kind: InspectorID
   let server: InspectorServerReference
   let protocolVersion: Int?
+  let isConnected: Bool
   var name = ""
   var icon = "square"
+  var iconBase64: String?
   var displayName: String {
     name.isEmpty ? kind.rawValue : name
   }
@@ -26,10 +28,12 @@ struct InspectableApp: Equatable, Codable, Identifiable {
   let deviceDisplayTitle: String
   let appIconBase64: String?
   let inspectors: [AppInspectorOption]
+  var manifest: InspectorProcessMetadata?
 }
 
 struct InspectorDiscoverySnapshot {
   let apps: [InspectableApp]
+  var revision: UInt64?
 }
 
 struct OpenAppInput: Codable {
@@ -91,6 +95,8 @@ struct InspectorConnectionState: Encodable {
   var revision = 0
   var baseURL: String?
   var connected = false
+  var manifest: InspectorProcessMetadata?
+  var inspector: InspectorDescriptor?
 }
 
 struct InspectorToolbar: Decodable {

@@ -293,7 +293,7 @@ If you intentionally include the real network dependency in a release build, add
 <details markdown="1">
 <summary>Provider configuration</summary>
 
-The provider supports automatic initialization, main-process filtering, a mode label, and replay limits. Manifest overrides must use Android manifest-merger directives because the library already declares these metadata entries.
+The provider supports automatic initialization, main-process filtering, and replay limits. Manifest overrides must use Android manifest-merger directives because the library already declares these metadata entries.
 
 ``` { .xml title="AndroidManifest.xml" }
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -317,7 +317,6 @@ The provider supports automatic initialization, main-process filtering, a mode l
 | --- | --- | --- |
 | `snapo.auto_init` | `true` | Starts the inspector during app initialization. |
 | `snapo.main_process_only` | `true` | Restricts automatic initialization to the app's main process. |
-| `snapo.mode_label` | `safe` | Reports a custom mode label to Snap-O clients. |
 | `snapo.buffer_window_ms` | `300000` | Sets the rolling replay window in milliseconds. |
 | `snapo.max_events` | `10000` | Caps the number of events retained for replay. |
 | `snapo.max_bytes` | `16777216` | Caps total retained event data at 16 MiB. |
@@ -340,7 +339,6 @@ NetworkInspector.initialize(
         bufferWindow = 10.minutes,
         maxBufferedEvents = 20_000,
         maxBufferedBytes = 32L * 1024 * 1024,
-        modeLabel = "debug",
     ),
 )
 ```

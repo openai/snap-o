@@ -19,16 +19,14 @@ import {
   TweakField,
   TweaksEmptyState,
   TweaksInspectorApp,
-  tweakColorWithPreservedAlpha,
-  tweakResetValue
+  tweakColorWithPreservedAlpha
 } from "./TweaksInspectorApp";
 
 describe("empty tweaks inspector", () => {
   const client = { openExternal: async () => {} } as unknown as TweaksClient;
-  const metadata = { name: "Demo", packageName: "com.example.demo", protocolVersion: 4 };
 
   it("waits for the initial tweak request before showing an empty state", () => {
-    const markup = renderToStaticMarkup(createElement(TweaksInspectorApp, { client, metadata, isConnected: true }));
+    const markup = renderToStaticMarkup(createElement(TweaksInspectorApp, { client, isConnected: true }));
 
     expect(markup).not.toContain('class="empty-detail"');
     expect(markup).not.toContain("No tweaks on screen");
@@ -278,26 +276,6 @@ describe("native reset toolbar state", () => {
     expect(canResetTweaks([fontSize])).toBe(false);
   });
 
-  it("infers modification status from legacy tweak values", () => {
-    const fontSize = tweak("Typography/Font size");
-
-    expect(canResetTweaks([{ ...fontSize, value: 2 }], 2)).toBe(true);
-    expect(canResetTweaks([{ ...fontSize, modified: true }], 2)).toBe(false);
-  });
-
-  it("resets legacy tweaks by restoring their descriptor defaults", () => {
-    const fontSize = { ...tweak("Typography/Font size"), value: 2 };
-
-    expect(tweakResetValue(fontSize, undefined)).toBe(fontSize.default);
-    expect(tweakResetValue(fontSize, 1)).toBe(fontSize.default);
-    expect(tweakResetValue(fontSize, 2)).toBe(fontSize.default);
-    expect(tweakResetValue(fontSize, 3)).toBe(fontSize.default);
-  });
-
-  it("resets current tweaks using the owner-aware null operation", () => {
-    expect(tweakResetValue(tweak("Typography/Font size"), 4)).toBeNull();
-  });
-
   it("does not treat an action without a value or default as resettable", () => {
     expect(canResetTweaks([action("Motion/Toggle animation")])).toBe(false);
   });
@@ -316,9 +294,7 @@ describe("native reset toolbar state", () => {
       value: true
     };
 
-    expect(canResetTweaks([upstreamSetting], 4)).toBe(false);
-    expect(canResetTweaks([upstreamSetting], 3)).toBe(true);
-    expect(canResetTweaks([upstreamSetting], 2)).toBe(true);
+    expect(canResetTweaks([upstreamSetting])).toBe(false);
   });
 });
 
@@ -413,17 +389,6 @@ describe("streamed tweak snapshots", () => {
 
     expect(applyTweakUpdates([current], [{ name: current.name, value: true }], new Map())).toEqual([
       { ...current, modified: false }
-    ]);
-  });
-
-  it("infers legacy modification status from an authoritative mutation response", () => {
-    const current = { ...tweak("Motion/Duration"), value: 2, modified: true };
-
-    expect(applyTweakUpdates([current], [{ name: current.name, value: current.default }], new Map(), 3)).toEqual([
-      { ...current, value: current.default, modified: false }
-    ]);
-    expect(applyTweakUpdates([current], [{ name: current.name, value: 3 }], new Map(), 3)).toEqual([
-      { ...current, value: 3, modified: true }
     ]);
   });
 

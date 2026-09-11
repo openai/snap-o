@@ -4,14 +4,17 @@ import SnapODeviceClient
 private func app(
   _ pid: Int = 10, kinds: [InspectorID] = [.network, .tweaks],
   process: String? = "com.example.demo", device: String = "phone", user: Int? = 0,
-  package: String? = "com.example.demo", version: Int? = 4
+  package: String? = "com.example.demo", version: Int? = 4, connectedKinds: [InspectorID]? = nil
 ) -> InspectableApp {
   InspectableApp(
     id: "\(device):pid:\(pid)", name: "Demo", packageName: package, processName: process,
     androidUserId: user, deviceId: device, deviceDisplayTitle: "Phone", appIconBase64: nil,
     inspectors: kinds.map {
-      AppInspectorOption(kind: $0, server: .init(deviceId: device, socketName: "snapo_\($0.rawValue)_\(pid)"), protocolVersion: version)
-    }
+      AppInspectorOption(
+        kind: $0, server: .init(deviceId: device, socketName: "snapo_\($0.rawValue)_\(pid)"), protocolVersion: version,
+        isConnected: connectedKinds?.contains($0) ?? true
+      )
+    }, manifest: testManifest(pid: pid, kinds: kinds, version: version ?? 4)
   )
 }
 
@@ -32,10 +35,12 @@ struct InspectorSelectionTests {
     try WorkspaceLayoutTests.run()
     try pluginManifests()
     restoration()
+    disconnectedInspectorMetadata()
     profilesAndIdentity()
     fallback()
     try await modelLifecycle()
     try await hostConnections()
+    await pushedDiscovery()
     await canceledDiscoveryRestart()
     print("Inspector selection, restoration, and launch tests passed")
   }
@@ -88,7 +93,7 @@ struct InspectorSelectionTests {
     let plugin = try InspectorPluginRegistry(directory: root).plugin(for: .sample)
     expect(plugin?.name == "Sample", "Load a third plugin with its index.html entry")
     let sockets = InspectorDiscovery.sockets(
-      inProcNetUnix: "1: 0 @snapo_sample_42",
+      inProcNetUnix: "1: 00000002 00000000 00010000 0001 01 101 @snapo_sample_42",
       deviceID: "phone",
       definitions: [plugin!.socketDefinition]
     )
@@ -98,6 +103,7 @@ struct InspectorSelectionTests {
 
   private static func restoration() {
     var owner = selected(.tweaks)
+    expect(owner.state.selectedApp?.manifest == app().manifest, "Selection retains the process manifest for the inspector page")
     let displayed = owner.state.displayed[.tweaks]
     owner.reconcile([])
     expect(owner.state.selection == nil && owner.state.displayed[.tweaks] == displayed, "Retain disconnected values")
@@ -133,6 +139,32 @@ struct InspectorSelectionTests {
     expect(owner.state.selection?.kind == .tweaks, "Restore other app's inspector")
     owner.reconcile([app(20, process: "com.example.other", version: 5)])
     expect(owner.state.selection?.protocolVersion == 5, "Update protocol metadata")
+    expect(owner.state.selectedApp?.manifest?.app?.inspectors.first?.protocolVersion == 5, "Refresh the selected process manifest")
+  }
+
+  private static func disconnectedInspectorMetadata() {
+    var owner = selected(.network)
+    let displayed = owner.state.displayed[.network]
+    let disconnected = app(connectedKinds: [.tweaks])
+    owner.reconcile([disconnected])
+    expect(owner.state.apps == [disconnected], "Keep disconnected inspectors in the picker")
+    expect(owner.state.selection == nil && owner.state.isRestoring, "Do not treat cached metadata as a live connection")
+    expect(owner.state.displayed[.network] == displayed, "Retain the disconnected inspector's page")
+    expect(owner.state.selectedApp?.inspectors.count == 2, "Preserve inspector shortcuts")
+    owner.selectInspector(disconnected, option: disconnected.inspectors[0])
+    expect(owner.state.selection == nil, "An explicit offline choice still waits for a connection")
+    owner.selectInspector(disconnected, option: disconnected.inspectors[1])
+    expect(owner.state.selection?.kind == .tweaks, "A sibling inspector remains usable")
+    owner.selectInspector(disconnected, option: disconnected.inspectors[0])
+    owner.reconcile([app()])
+    expect(owner.state.selection?.kind == .network, "Reconnect the same cached selection when it becomes available")
+
+    owner = InspectorSelection()
+    owner.reconcile([app(connectedKinds: []), app(20, connectedKinds: [.tweaks])])
+    expect(
+      owner.state.selection?.appId == app(20).id && owner.state.selection?.kind == .tweaks,
+      "Startup chooses a connected inspector, not the first cached row"
+    )
   }
 
   private static func profilesAndIdentity() {
@@ -419,6 +451,45 @@ struct InspectorSelectionTests {
     model.stop()
     clock.cancelAll()
     await settle()
+  }
+
+  @MainActor private static func pushedDiscovery() async {
+    let suite = "SnapOInspectorTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let clock = TestClock()
+    let (updates, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    defer { continuation.finish() }
+    var latest = InspectorDiscoverySnapshot(apps: [app()], revision: 2)
+    var scanReply: CheckedContinuation<InspectorDiscoverySnapshot, Never>?
+    var scans = 0
+    let model = AppInspectorModel(preferences: defaults, discover: {
+      scans += 1
+      return await withCheckedContinuation { scanReply = $0 }
+    }, changes: { updates }, currentDiscovery: { latest }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
+    model.start()
+    await settle()
+    continuation.yield(())
+    await settle()
+    expect(model.snapshot.state.selectedApp?.manifest == app().manifest, "Publish completed metadata before the polling scan returns")
+    expect(scans == 1, "A discovery update does not start another device scan")
+    scanReply?.resume(returning: InspectorDiscoverySnapshot(apps: [app(20)], revision: 1))
+    await settle()
+    expect(model.snapshot.state.selectedApp?.id == app().id, "An older scan cannot overwrite a newer discovery update")
+    latest = InspectorDiscoverySnapshot(apps: [app(connectedKinds: [])], revision: 3)
+    continuation.yield(())
+    await settle()
+    expect(model.snapshot.state.selection == nil, "Publish a failed health check without another poll")
+    expect(model.snapshot.state.selectedApp?.manifest == app().manifest, "Keep metadata when the health check disconnects")
+    expect(scans == 1, "Health updates do not start another device scan")
+    model.stop()
+    let stoppedRevision = model.snapshot.revision
+    latest = InspectorDiscoverySnapshot(apps: [app()], revision: 4)
+    continuation.yield(())
+    clock.cancelAll()
+    await settle()
+    expect(model.snapshot.revision == stoppedRevision, "Stop consuming discovery updates after shutdown")
+    print("Discovery updates publish immediately, ignore stale scans, and stop with the model")
   }
 
   @MainActor private static func canceledDiscoveryRestart() async {

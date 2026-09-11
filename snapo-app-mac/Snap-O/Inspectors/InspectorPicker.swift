@@ -111,11 +111,19 @@ struct AppInspectorViewPicker: View {
           Button {
             model.selectInspector(app, option: option)
           } label: {
-            Label(option.displayName, systemImage: option.icon)
-              .labelStyle(.iconOnly)
-              .font(.system(size: 15, weight: .medium))
-              .foregroundStyle(model.preferredInspectorID == option.kind ? Color.accentColor : Color.primary)
-              .frame(width: 34, height: 32)
+            Label {
+              Text(option.displayName)
+            } icon: {
+              if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+                Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
+              } else {
+                Image(systemName: option.icon)
+              }
+            }
+            .labelStyle(.iconOnly)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(model.preferredInspectorID == option.kind ? Color.accentColor : Color.primary)
+            .frame(width: 34, height: 32)
           }
           .help(option.displayName)
         }
@@ -150,7 +158,7 @@ private struct AppInspectorPickerPopover: View {
             ForEach(model.inspectorApps) { app in
               AppInspectorPickerAppRow(
                 app: app,
-                isSelected: model.selectedInspector?.appId == app.id,
+                isSelected: model.selectedInspectorApp?.id == app.id,
                 selectApp: {
                   model.selectApp(app)
                   dismiss()
@@ -255,18 +263,26 @@ private struct AppInspectorPickerShortcut: View {
 
   var body: some View {
     Button(action: select) {
-      Label(option.displayName, systemImage: option.icon)
-        .labelStyle(.iconOnly)
-        .font(.system(size: 13))
-        .foregroundStyle(.secondary)
-        .frame(width: AppInspectorPickerAppRow.shortcutWidth, height: 32)
-        .contentShape(Rectangle())
-        .background {
-          if isHovering {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-              .fill(Color.primary.opacity(0.08))
-          }
+      Label {
+        Text(option.displayName)
+      } icon: {
+        if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+          Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
+        } else {
+          Image(systemName: option.icon)
         }
+      }
+      .labelStyle(.iconOnly)
+      .font(.system(size: 13))
+      .foregroundStyle(.secondary)
+      .frame(width: AppInspectorPickerAppRow.shortcutWidth, height: 32)
+      .contentShape(Rectangle())
+      .background {
+        if isHovering {
+          RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(Color.primary.opacity(0.08))
+        }
+      }
     }
     .buttonStyle(.plain)
     .help("Open \(option.displayName)")

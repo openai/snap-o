@@ -7,7 +7,6 @@ import type { TweaksClient } from "./client";
 import { host, type ToolbarAction } from "@snap-o/host";
 import { TweaksInspectorApp } from "./TweaksInspectorApp";
 
-const metadata = { name: "Demo", packageName: "com.example.demo", protocolVersion: 4 };
 const response: TweakList = {
   tweaks: [{ name: "Demo title", type: "string", value: "Recovered", default: "Default" }]
 };
@@ -56,15 +55,10 @@ describe("Tweaks connection recovery", () => {
     vi.restoreAllMocks();
   });
 
-  async function render(selected = metadata, isConnected = true, revision = 0) {
+  async function render(isConnected = true, revision = 0) {
     await act(async () =>
       renderPreact(
-        <TweaksInspectorApp
-          client={client}
-          metadata={selected}
-          connectionRevision={revision}
-          isConnected={isConnected}
-        />,
+        <TweaksInspectorApp client={client} connectionRevision={revision} isConnected={isConnected} />,
         container
       )
     );
@@ -253,7 +247,7 @@ describe("Tweaks connection recovery", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Action failed");
-    await render(metadata, false);
+    await render(false);
     vi.mocked(client.listTweaks).mockResolvedValue({ tweaks: [] });
     await render();
     expect(container.querySelector('[role="alert"]')).toBeNull();
@@ -288,7 +282,7 @@ describe("Tweaks connection recovery", () => {
     await render();
     const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
     expect(input.value).toBe("Recovered");
-    await render(metadata, false);
+    await render(false);
     expect(container.querySelector('input[type="text"]')).toBe(input);
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
     expect(container.querySelector("fieldset")?.hasAttribute("inert")).toBe(true);
@@ -311,7 +305,7 @@ describe("Tweaks connection recovery", () => {
 
   it("keeps the old values disabled until the replacement process has loaded", async () => {
     await render();
-    await render(metadata, false);
+    await render(false);
     let finish!: (value: TweakList) => void;
     vi.mocked(client.listTweaks).mockImplementationOnce(
       () =>
@@ -319,11 +313,7 @@ describe("Tweaks connection recovery", () => {
           finish = resolve;
         })
     );
-    const replacement = {
-      ...metadata,
-      serverStartWallMs: 200
-    };
-    await render(replacement);
+    await render(true, 1);
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
     expect(container.querySelector('[role="status"]')).toBeNull();
@@ -396,11 +386,7 @@ describe("Tweaks connection recovery", () => {
         })
     );
     await render();
-    const other = {
-      ...metadata,
-      serverStartWallMs: 200
-    };
-    await render(other, true, 1);
+    await render(true, 1);
     await act(async () => finish({ streamId: "old-stream" }));
     expect(client.stopTweakStream).toHaveBeenCalledWith("old-stream");
     expect(client.startTweakStream).toHaveBeenCalledTimes(2);
@@ -408,7 +394,7 @@ describe("Tweaks connection recovery", () => {
 
   it("ignores a late old-stream event while reconnecting the same endpoint", async () => {
     await render();
-    await render(metadata, false);
+    await render(false);
     let finish!: (value: TweakList) => void;
     vi.mocked(client.listTweaks).mockImplementationOnce(
       () =>

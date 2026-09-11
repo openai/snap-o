@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.util.Log
-import com.openai.snapo.tweaks.internal.TweakAppInfoProvider
 import com.openai.snapo.tweaks.internal.TweakHttpServer
 import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 import java.io.IOException
@@ -26,7 +25,7 @@ internal class SnapOTweaksInitProvider : ContentProvider() {
             return false
         }
 
-        return TweaksRuntime.start(applicationContext)
+        return TweaksRuntime.start()
     }
 
     private fun applicationInfoWithMetadata(context: Context): ApplicationInfo = try {
@@ -72,15 +71,13 @@ private object TweaksRuntime {
     private var server: TweakHttpServer? = null
 
     @Synchronized
-    fun start(context: Context): Boolean {
+    fun start(): Boolean {
         if (server != null) {
             return true
         }
 
         return try {
-            val startedServer = TweakHttpServer(
-                appInfoProvider = TweakAppInfoProvider(context),
-            )
+            val startedServer = TweakHttpServer()
             startedServer.start()
             server = startedServer
             true

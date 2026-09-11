@@ -1,12 +1,9 @@
 package com.openai.snapo.network
 
-import android.app.ActivityManager
-import android.app.Application
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.os.Process
-import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,15 +21,10 @@ internal data class NetworkReplaySnapshot(
 )
 
 internal class NetworkInspectorTransport(
-    private val app: Application,
-    private val config: NetworkInspectorConfig,
     private val snapshotProvider: suspend () -> NetworkReplaySnapshot,
     private val commandHandler: suspend (CdpMessage) -> CdpMessage?,
     private val interception: NetworkInterception,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-    private val appIconProvider: AppIconProvider = AppIconProvider(app),
-    private val serverStartWallMs: Long = System.currentTimeMillis(),
-    private val serverStartMonoNs: Long = SystemClock.elapsedRealtimeNanos(),
 ) : Closeable {
     val socketName: String = "snapo_network_${Process.myPid()}"
 
@@ -45,14 +37,8 @@ internal class NetworkInspectorTransport(
     private val connections = ConcurrentHashMap.newKeySet<LocalSocket>()
     private val connectionSlots = Semaphore(128)
 
-    private val appIcon: SnapOAppIcon? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        appIconProvider.loadAppIcon()
-    }
-
     private val http by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         NetworkInspectorHttp(
-            buildAppInfo(),
-            runCatching { app.applicationInfo.loadLabel(app.packageManager).toString() }.getOrDefault(app.packageName),
             snapshotProvider,
             commandHandler,
             interception,
@@ -120,27 +106,6 @@ internal class NetworkInspectorTransport(
             connections.remove(socket)
             connectionSlots.release()
             runCatching { socket.close() }
-        }
-    }
-
-    private fun buildAppInfo(): SnapOAppInfoParams = SnapOAppInfoParams(
-        protocolVersion = NetworkProtocolVersion,
-        packageName = app.packageName,
-        processName = appProcessName(),
-        pid = Process.myPid(),
-        serverStartWallMs = serverStartWallMs,
-        serverStartMonoNs = serverStartMonoNs,
-        mode = config.modeLabel,
-        icon = appIcon,
-    )
-
-    private fun appProcessName(): String {
-        return try {
-            val am = app.getSystemService(Application.ACTIVITY_SERVICE) as ActivityManager
-            val pid = Process.myPid()
-            am.runningAppProcesses?.firstOrNull { it.pid == pid }?.processName ?: app.packageName
-        } catch (_: Throwable) {
-            app.packageName
         }
     }
 }

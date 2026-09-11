@@ -7,6 +7,9 @@ on:
       - master
     paths:
       - 'snapo-link-android/**'
+      - 'android-discovery/**'
+      - 'scripts/snapo-discovery.jar'
+      - 'contracts/**'
       - '.github/workflows/android-link.yml'
       - 'VERSION'
   pull_request:
@@ -15,6 +18,9 @@ on:
       - master
     paths:
       - 'snapo-link-android/**'
+      - 'android-discovery/**'
+      - 'scripts/snapo-discovery.jar'
+      - 'contracts/**'
       - '.github/workflows/android-link.yml'
       - 'VERSION'
 
@@ -72,6 +78,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Verify bundled Android discovery reader
+        run: |
+          "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          python3 android-discovery/build.py --check
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
