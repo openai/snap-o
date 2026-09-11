@@ -4,7 +4,9 @@ Snap-O reads inspector descriptors and icons from installed APK resources. The r
 
 Each socket uses `snapo_<id>_<pid>`. The reader resolves the PID's package and Android user, then reads the `snapo.inspector.<id>` manifest entry. See the [discovery contract](../contracts/discovery/README.md).
 
-Clients replace `/data/local/tmp/snapo-discovery.jar` before each metadata read. The fixed path keeps one copy on the device and recovers if it is deleted or replaced. Metadata caching avoids uploads during ordinary socket polling. Uploads use a temporary file, then rename it into place; the temporary file is cleaned up when the command exits.
+Each metadata read uploads the reader into a private temporary directory under `/data/local/tmp`. It runs from that directory, then removes the reader and directory on exit. Concurrent desktop and CLI reads cannot replace each other's helper. Metadata caching avoids uploads during ordinary socket polling.
+
+The desktop caches successful reads until a new or replaced socket requires a refresh. Failed reads retry after 30 seconds. A refresh includes every visible inspector in the affected process.
 
 Pass up to 64 socket names to `com.openai.snapo.discovery.Main` through `app_process`. The reader returns one JSON line per process. It reads up to four processes concurrently and shares each package's resources within the invocation. Each line contains either package and inspector metadata or an error for that PID. Icons are 96-pixel PNGs encoded as base64.
 

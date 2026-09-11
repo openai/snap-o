@@ -540,12 +540,11 @@ def manifest_command(helper, socket_names):
     ):
         raise SnapOError("Invalid inspector discovery request")
     encoded = base64.b64encode(helper).decode("ascii")
-    return f"""temp='/data/local/tmp/snapo-discovery.jar.tmp'
-trap 'rm -f "$temp"' EXIT
-rm -f "$temp" || exit 1
-(umask 077; printf '%s' '{encoded}' | base64 -d > "$temp") &&
-  chmod 444 "$temp" && mv -f "$temp" '/data/local/tmp/snapo-discovery.jar' || exit 1
-CLASSPATH='/data/local/tmp/snapo-discovery.jar' app_process / com.openai.snapo.discovery.Main {' '.join(socket_names)} 2>/dev/null
+    return f"""directory=$(mktemp -d /data/local/tmp/snapo-discovery.XXXXXX) || exit 1
+trap 'rm -f "$directory/reader.jar"; rmdir "$directory"' EXIT
+(umask 077; printf '%s' '{encoded}' | base64 -d > "$directory/reader.jar") &&
+  chmod 444 "$directory/reader.jar" || exit 1
+CLASSPATH="$directory/reader.jar" app_process / com.openai.snapo.discovery.Main {' '.join(socket_names)} 2>/dev/null
 """
 
 

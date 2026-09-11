@@ -41,6 +41,12 @@ actor InspectorHTTPService {
     var protocolVersion: Int? {
       manifest?.app == nil ? nil : descriptor?.protocolVersion ?? 0
     }
+
+    func needsManifestRead(lastAttempt: ContinuousClock.Instant?, now: ContinuousClock.Instant) -> Bool {
+      guard manifest == nil || awaitingManifest else { return false }
+      guard let lastAttempt else { return true }
+      return lastAttempt.duration(to: now) >= .seconds(30)
+    }
   }
 
   private struct ErrorResponse: Decodable {
@@ -275,8 +281,8 @@ actor InspectorHTTPService {
     for (deviceID, sockets) in Dictionary(grouping: sockets, by: { $0.reference.deviceId }) {
       guard metadataTasks[deviceID] == nil else { continue }
       let pendingPIDs = Set(sockets.filter {
-        guard let readAt = metadataReadAt[$0.reference.key] else { return true }
-        return readAt.duration(to: .now) >= .seconds(30)
+        guard let app = knownApps[$0.reference.key] else { return true }
+        return app.needsManifestRead(lastAttempt: metadataReadAt[$0.reference.key], now: .now)
       }.map(\.pid))
       let pending = sockets.filter { pendingPIDs.contains($0.pid) }
       guard !pending.isEmpty else { continue }

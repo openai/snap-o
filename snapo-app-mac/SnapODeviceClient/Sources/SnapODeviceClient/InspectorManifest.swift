@@ -35,15 +35,13 @@ enum InspectorManifestReader {
           helper.count <= 32768 else {
       throw ADBError.parseFailure("invalid inspector discovery request")
     }
-    let path = "/data/local/tmp/snapo-discovery.jar"
-    // Refresh before each metadata read; a fixed path never accumulates old versions.
+    // Keep uploads and execution separate from concurrent desktop or CLI readers.
     return """
-    temp='\(path).tmp'
-    trap 'rm -f "$temp"' EXIT
-    rm -f "$temp" || exit 1
-    (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$temp") &&
-      chmod 444 "$temp" && mv -f "$temp" '\(path)' || exit 1
-    CLASSPATH='\(path)' app_process / com.openai.snapo.discovery.Main \(socketNames.joined(separator: " ")) 2>/dev/null
+    directory=$(mktemp -d /data/local/tmp/snapo-discovery.XXXXXX) || exit 1
+    trap 'rm -f "$directory/reader.jar"; rmdir "$directory"' EXIT
+    (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/reader.jar") &&
+      chmod 444 "$directory/reader.jar" || exit 1
+    CLASSPATH="$directory/reader.jar" app_process / com.openai.snapo.discovery.Main \(socketNames.joined(separator: " ")) 2>/dev/null
     """
   }
 

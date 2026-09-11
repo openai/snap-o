@@ -297,6 +297,22 @@ struct InspectorRecoveryTests {
     precondition(adb.metadataSocketRequests.count == 1)
     precondition(Set(adb.metadataSocketRequests[0]) == ["snapo_network_42", "snapo_network_43"])
 
+    let now = ContinuousClock.now
+    var cachedApp = InspectorHTTPService.App(
+      kind: .network, pid: 42, deviceID: "healthy", deviceDisplayTitle: "Phone", socketName: "snapo_network_42"
+    )
+    precondition(cachedApp.needsManifestRead(lastAttempt: nil, now: now))
+    precondition(!cachedApp.needsManifestRead(lastAttempt: now, now: now.advanced(by: .seconds(29))))
+    precondition(cachedApp.needsManifestRead(lastAttempt: now, now: now.advanced(by: .seconds(30))))
+    cachedApp.manifest = await service.currentInspectors().apps.first!.manifest!
+    precondition(
+      !cachedApp.needsManifestRead(lastAttempt: now, now: now.advanced(by: .seconds(60))),
+      "Successful metadata stays cached after the failed-read retry window"
+    )
+    cachedApp.awaitingManifest = true
+    precondition(cachedApp.needsManifestRead(lastAttempt: nil, now: now), "A replacement socket invalidates cached metadata")
+    precondition(!cachedApp.needsManifestRead(lastAttempt: now, now: now), "Failed replacement reads still back off")
+
     adb.setSocketNames(["snapo_network_42", "snapo_network_43", "snapo_tweaks_42"], deviceID: "healthy")
     _ = await service.discoverInspectors()
     try await eventually {

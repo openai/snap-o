@@ -23,7 +23,6 @@ import kotlin.time.Duration.Companion.milliseconds
  * Manifest keys (all optional):
  *  - snapo.auto_init (boolean)        default: true
  *  - snapo.main_process_only (boolean)default: true
- *  - snapo.mode_label (string)        default: "safe"
  *  - snapo.buffer_window_ms (long)    default: 300000 (5 minutes)
  *  - snapo.max_events (int)           default: 10000
  *  - snapo.max_bytes (long)           default: 16777216 (16 MB)
@@ -48,12 +47,10 @@ class SnapONetworkInitProvider : ContentProvider() {
         val bufferMs = readLong(meta, "snapo.buffer_window_ms", 300_000L)
         val maxEvents = readInt(meta, "snapo.max_events", 10_000)
         val maxBytes = readLong(meta, "snapo.max_bytes", 16L * 1024 * 1024)
-        val modeLabel = meta?.getString("snapo.mode_label") ?: "safe"
         val networkConfig = NetworkInspectorConfig(
             bufferWindow = bufferMs.milliseconds,
             maxBufferedEvents = maxEvents,
             maxBufferedBytes = maxBytes,
-            modeLabel = modeLabel,
         )
 
         NetworkInspector.initialize(ctx.applicationContext as Application, networkConfig)

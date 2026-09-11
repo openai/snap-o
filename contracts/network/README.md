@@ -80,6 +80,8 @@ The desktop host provides the forwarded base URL. Browser clients connect direct
 
 ## Compatibility
 
+The version 3 API removes `NetworkInspectorConfig.modeLabel` and the `snapo.mode_label` manifest option. Remove these settings when updating the Android library. The label was descriptive and never changed capture behavior or release-build permissions.
+
 Version **2** is a breaking transport change. The newline command protocol and inspector WebSocket endpoint are removed. Updated clients require HTTP + SSE and do not fall back to older transports. Interception decisions are never retried automatically after an uncertain result.
 
 The historical [app metadata](v2/app.json) fixture describes version 2. The [history](v2/history.jsonl) fixture is unchanged in version 3; current metadata follows the [discovery contract](../discovery/README.md). Compatibility checks cover version rejection, HTTP framing, history/live ordering, body reads, and interception ownership and decisions. Before release, test the updated pair on a device and check older-server failures as required by the [release checklist](../../release/README.md).

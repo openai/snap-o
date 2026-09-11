@@ -1055,19 +1055,41 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(names=names), self.assertRaises(snapo.SnapOError):
                 snapo.manifest_command(b"reader", names)
 
-    def test_manifest_reader_refreshes_its_file(self):
+    def test_manifest_reader_cleans_up_after_success_and_failure(self):
         with tempfile.TemporaryDirectory() as directory:
-            destination = pathlib.Path(directory) / "snapo-discovery.jar"
             command = snapo.manifest_command(b"reader", ["snapo_network_42"]).replace("/data/local/tmp", directory)
-            script = 'app_process() { cat "$CLASSPATH"; };\n' + command
-            for contents in (None, b"old reader", None):
-                if destination.exists():
-                    destination.unlink()
-                if contents is not None:
-                    destination.write_bytes(contents)
-                result = subprocess.run(["/bin/sh", "-c", script], capture_output=True, check=True)
+            for status in (0, 7):
+                script = f'app_process() {{ cat "$CLASSPATH"; return {status}; }};\n' + command
+                result = subprocess.run(["/bin/sh", "-c", script], capture_output=True, timeout=5)
+                self.assertEqual(result.returncode, status)
                 self.assertEqual(result.stdout, b"reader")
-                self.assertEqual(list(pathlib.Path(directory).iterdir()), [destination])
+                self.assertEqual(list(pathlib.Path(directory).iterdir()), [])
+
+    def test_concurrent_manifest_readers_keep_their_own_helper_until_exit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            readers = []
+            try:
+                for helper in (b"first reader", b"second reader"):
+                    command = snapo.manifest_command(helper, ["snapo_network_42"]).replace("/data/local/tmp", directory)
+                    # Pause both runtimes after upload, before either opens its helper.
+                    script = 'app_process() { printf "ready\\n"; read -r proceed; cat "$CLASSPATH"; };\n' + command
+                    process = subprocess.Popen(
+                        ["/bin/sh", "-c", script], stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    )
+                    readers.append((process, helper))
+                    self.assertTrue(select.select([process.stdout], [], [], 5)[0], "Reader did not start")
+                    self.assertEqual(process.stdout.readline(), b"ready\n")
+                for process, helper in reversed(readers):
+                    output, error = process.communicate(b"continue\n", timeout=5)
+                    self.assertEqual(process.returncode, 0, error)
+                    self.assertEqual(output, helper)
+                self.assertEqual(list(pathlib.Path(directory).iterdir()), [])
+            finally:
+                for process, _ in readers:
+                    if process.poll() is None:
+                        process.kill()
+                    process.communicate(timeout=5)
 
     def test_manifest_reader_locations_and_missing_installation(self):
         with tempfile.TemporaryDirectory() as directory:
