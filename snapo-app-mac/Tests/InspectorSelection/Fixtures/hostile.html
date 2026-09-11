@@ -23,6 +23,11 @@
       ws.onerror = reject;
     });
     await attempt("allowed", () => fetch(allowed + "/fetch", {signal: AbortSignal.timeout(3000)}).then(r => r.text()));
+    await attempt("dataImage", async () => {
+      const response = await fetch("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=");
+      const blob = await response.blob();
+      return blob.type === "image/png" && blob.size > 0 ? "ok" : "invalid";
+    });
     await attempt("denied", () => fetch(denied + "/fetch"));
     await attempt("redirect", () => fetch(allowed + "/redirect"));
     await attempt("allowedSSE", () => stream(allowed));

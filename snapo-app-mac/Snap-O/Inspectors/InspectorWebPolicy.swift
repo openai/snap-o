@@ -44,7 +44,7 @@ enum InspectorWebPolicy {
   static func protectedHTML(_ html: String) -> String {
     // Content rules narrow loopback access to this page's exact endpoint, including redirects and network hints.
     let policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-      + "connect-src http://127.0.0.1:* ws://127.0.0.1:* blob:; "
+      + "connect-src http://127.0.0.1:* ws://127.0.0.1:* data: blob:; "
       + "img-src data: blob:; font-src data:; media-src blob:; worker-src 'none'; frame-src 'none'; "
       + "object-src 'none'; base-uri 'none'; form-action 'none'"
     return "<!doctype html><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"\(policy)\">" + html

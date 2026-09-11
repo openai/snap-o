@@ -293,7 +293,7 @@ struct InspectorWebViewTests {
     try await container.allowEndpoint(allowed)
     let result = try await web
       .callAsyncJavaScript("return await window.attack()", arguments: [:], in: nil, contentWorld: .page) as! [String: Any]
-    for key in ["allowed", "allowedSSE", "allowedSocket"] {
+    for key in ["allowed", "allowedSSE", "allowedSocket", "dataImage"] {
       precondition(result[key] as? String == "ok", key)
     }
     for key in ["denied", "redirect", "deniedSSE", "deniedSocket", "worker", "eval", "removedPolicy"] {

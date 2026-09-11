@@ -154,7 +154,8 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     lock.withLock { peers.count }
   }
 
-  func client(timeout: Duration = .milliseconds(100)) -> ADBClient {
+  func client(timeout: Duration = .milliseconds(500)) -> ADBClient {
+    // Leave room for worker scheduling on shared CI runners.
     ADBClient(discoveryTimeout: timeout) { try self.connect() }
   }
 
@@ -201,7 +202,8 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             if stall == .trickle {
               for _ in 0 ..< 50 {
                 if !Self.send("x", to: descriptor) { break }
-                Thread.sleep(forTimeInterval: 0.01)
+                // Keep the full stream longer than the client's idle timeout.
+                Thread.sleep(forTimeInterval: 0.03)
               }
               peer.close()
             }
