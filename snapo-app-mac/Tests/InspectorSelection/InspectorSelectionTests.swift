@@ -33,7 +33,6 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String, lin
 struct InspectorSelectionTests {
   @MainActor static func main() async throws {
     try WorkspaceLayoutTests.run()
-    try pluginManifests()
     restoration()
     disconnectedInspectorMetadata()
     profilesAndIdentity()
@@ -43,62 +42,6 @@ struct InspectorSelectionTests {
     await pushedDiscovery()
     await canceledDiscoveryRestart()
     print("Inspector selection, restoration, and launch tests passed")
-  }
-
-  private static func pluginManifests() throws {
-    let bundled = try testPluginRegistry()
-    expect(bundled.plugins.map(\.id) == [.network], "Only Network is bundled with the Mac app")
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: root) }
-    let directory = root.appendingPathComponent("sample")
-    try FileManager.default.copyItem(at: URL(fileURLWithPath: "Tests/InspectorSelection/Fixtures/sample"), to: directory)
-    let manifest = directory.appendingPathComponent("plugin.json")
-    let original = try Data(contentsOf: manifest)
-    let valid = try JSONSerialization.jsonObject(with: original) as! [String: Any]
-    func rejects(_ values: [String: Any]) throws {
-      try JSONSerialization.data(withJSONObject: values).write(to: manifest)
-      do {
-        _ = try InspectorPluginRegistry(directory: root)
-        preconditionFailure("Invalid plugin manifest should be rejected")
-      } catch {}
-    }
-    for (key, value) in [
-      ("manifestVersion", 2), ("hostApiVersion", 2), ("id", "other"),
-      ("id", "../sample"), ("name", " "), ("icon", ""),
-      ("discovery", ["socketPrefix": "snapo_"])
-    ] as [(String, Any)] {
-      var invalid = valid
-      invalid[key] = value
-      if key == "discovery" {
-        try FileManager.default.copyItem(at: bundled.plugins[0].resourceDirectory!, to: root.appendingPathComponent("network"))
-      }
-      try rejects(invalid)
-    }
-    try FileManager.default.removeItem(at: root.appendingPathComponent("network"))
-    let entry = directory.appendingPathComponent("index.html")
-    let alternate = directory.appendingPathComponent("sample.html")
-    try FileManager.default.moveItem(at: entry, to: alternate)
-    try rejects(valid)
-    try FileManager.default.createDirectory(at: entry, withIntermediateDirectories: false)
-    try rejects(valid)
-    try FileManager.default.removeItem(at: entry)
-    let outside = root.appendingPathComponent("outside.html")
-    try Data("outside".utf8).write(to: outside)
-    try FileManager.default.createSymbolicLink(at: entry, withDestinationURL: outside)
-    try rejects(valid)
-    try FileManager.default.removeItem(at: entry)
-    try FileManager.default.moveItem(at: alternate, to: entry)
-    try original.write(to: manifest)
-    let plugin = try InspectorPluginRegistry(directory: root).plugin(for: .sample)
-    expect(plugin?.name == "Sample", "Load a third plugin with its index.html entry")
-    let sockets = InspectorDiscovery.sockets(
-      inProcNetUnix: "1: 00000002 00000000 00010000 0001 01 101 @snapo_sample_42",
-      deviceID: "phone",
-      definitions: [plugin!.socketDefinition]
-    )
-    expect(sockets.first?.kind == .sample && sockets.first?.pid == 42, "Discover a custom socket prefix")
-    print("Plugin registry validates versions, identity, prefixes, and resource paths")
   }
 
   private static func restoration() {

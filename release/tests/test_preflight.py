@@ -144,12 +144,17 @@ class ProtocolReportTests(unittest.TestCase):
             self.assertIn(declaration, report)
 
     def test_reports_gradle_metadata_and_apk_frontend_versions(self):
+        (self.repo / DECLARATIONS[0][1]).unlink()
         (self.repo / DECLARATIONS[1][1]).unlink()
+        self.write("snapo-link-android/network/build.gradle.kts", "snapoInspector {\n    protocolVersion = 3\n}\n")
+        self.write("snapo-link-android/network/frontend/src/features/network-inspector/lib/protocol.ts", "export const supportedProtocolVersion = 3;\n")
         self.write("snapo-link-android/tweaks-core/build.gradle.kts", "snapoInspector {\n    protocolVersion = 7\n}\n")
         self.write("snapo-link-android/tweaks-core/frontend/src/features/tweaks-inspector/protocol.ts", "export const supportedProtocolVersion = 7;\n")
         self.commit()
         report = self.report()
         self.assertNotIn("UNRESOLVED:", report)
+        self.assertIn("protocolVersion = 3", report)
+        self.assertIn("network/frontend/src/features/network-inspector/lib/protocol.ts", report)
         self.assertIn("protocolVersion = 7", report)
         self.assertIn("frontend/src/features/tweaks-inspector/protocol.ts", report)
         self.assertIn("const supportedProtocolVersion = 7", report)
@@ -287,7 +292,7 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertEqual(report.count("    Web Network supported version:\n"), 2)
 
     def test_each_missing_declaration_is_unresolved_despite_other_matches(self):
-        debug = "inspectors/network/src/features/network-inspector/lib/debug.ts"
+        debug = "snapo-link-android/network/frontend/src/features/network-inspector/lib/debug.ts"
         for label, missing_path, declaration in DECLARATIONS:
             with self.subTest(label=label):
                 for path, content in self.baseline.items():

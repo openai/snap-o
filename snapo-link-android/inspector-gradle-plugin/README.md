@@ -42,9 +42,10 @@ Gradle follows that provider's task dependency. The directory must contain `inde
 
 ## Development
 
-For Tweaks, run this from `snapo-link-android/`:
+Run either command from `snapo-link-android/`, in separate terminals if needed:
 
 ```sh
+./gradlew :network:inspectorDev
 ./gradlew :tweaks-core:inspectorDev
 ```
 
@@ -52,4 +53,4 @@ In Snap-O, select the app and inspector, then choose Develop → Use Development
 
 Only use a trusted local server. Its code can contact the inspector's Android endpoint and request native host actions. HTTP, HTTPS, and HMR WebSocket traffic to that server are allowed while other endpoint restrictions remain in effect.
 
-The Tweaks frontend depends on `@snap-o/host` through a local npm file dependency. The SDK is not published to npm yet. Once published, inspector authors can use a versioned dependency; the compiled SDK remains inside the frontend ZIP, so consuming Android apps still need no npm setup.
+Both frontends depend on `@snap-o/host` through a local npm file dependency. The SDK is not published to npm yet. Once published, inspector authors can use a versioned dependency; the compiled SDK remains inside the frontend ZIP, so consuming Android apps still need no npm setup.

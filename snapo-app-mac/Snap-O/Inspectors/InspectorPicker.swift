@@ -117,7 +117,7 @@ struct AppInspectorViewPicker: View {
               if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
                 Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
               } else {
-                Image(systemName: option.icon)
+                Image(systemName: "square")
               }
             }
             .labelStyle(.iconOnly)
@@ -269,7 +269,7 @@ private struct AppInspectorPickerShortcut: View {
         if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
           Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
         } else {
-          Image(systemName: option.icon)
+          Image(systemName: "square")
         }
       }
       .labelStyle(.iconOnly)

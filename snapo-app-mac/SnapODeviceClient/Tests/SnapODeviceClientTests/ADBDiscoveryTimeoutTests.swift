@@ -14,8 +14,7 @@ struct ADBDiscoveryTimeoutTests {
     let start = ContinuousClock.now
     let sockets = await InspectorDiscovery.discover(
       on: ["stalled", "phone"],
-      using: adb,
-      definitions: ["network", "tweaks"].map { InspectorSocketDefinition(id: InspectorID(rawValue: $0), socketPrefix: "snapo_\($0)_") }
+      using: adb
     )
     #expect(sockets.map(\.reference.deviceId) == ["phone", "phone"])
     #expect(sockets.map(\.kind.rawValue) == ["network", "tweaks"])
@@ -25,8 +24,7 @@ struct ADBDiscoveryTimeoutTests {
 
     let recovered = await InspectorDiscovery.discover(
       on: ["phone"],
-      using: adb,
-      definitions: ["network", "tweaks"].map { InspectorSocketDefinition(id: InspectorID(rawValue: $0), socketPrefix: "snapo_\($0)_") }
+      using: adb
     )
     #expect(recovered == sockets)
   }

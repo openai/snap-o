@@ -38,7 +38,12 @@ final class InspectorHostModel {
   func useDevelopmentServer(_ url: URL?) {
     guard let scope = activePage?.identity.storageIdentifier,
           url == nil || InspectorWebPolicy.developmentURL(url?.absoluteString ?? "") != nil else { return }
-    preferences.set(url?.absoluteString ?? "", forKey: "inspectorDevelopmentServer." + scope.uuidString)
+    let key = "inspectorDevelopmentServer." + scope.uuidString
+    if let url {
+      preferences.set(url.absoluteString, forKey: key)
+    } else {
+      preferences.removeObject(forKey: key)
+    }
     apply(appInspector.snapshot)
   }
 
@@ -172,11 +177,9 @@ final class InspectorHostModel {
     let pageState = snapshot.pageState(for: kind)
     isWaiting = pageState.isWaiting
     let scope = InspectorWebPolicy.storageIdentifier(app: pageState.selectedApp, inspector: kind)
-    let developmentURL: URL? = if let saved = scope.flatMap({ preferences.string(forKey: "inspectorDevelopmentServer." + $0.uuidString) }) {
-      InspectorWebPolicy.developmentURL(saved)
-    } else {
-      InspectorWebContainer.developmentURL(pluginID: kind)
-    }
+    let developmentURL = scope
+      .flatMap { preferences.string(forKey: "inspectorDevelopmentServer." + $0.uuidString) }
+      .flatMap(InspectorWebPolicy.developmentURL)
     let identity = PageIdentity(
       appID: pageState.selectedApp?.id, server: pageState.selection?.server,
       processIdentity: pageState.selectedApp?.manifest?.processIdentity,
@@ -242,7 +245,6 @@ final class InspectorHostModel {
   }
 
   private func replacePage(kind: InspectorID, identity: PageIdentity) {
-    let plugin = service.registry.plugin(for: kind)
     let manifest = appInspector.snapshot.pageState(for: kind).selectedApp?.manifest
     let previous = pages[kind]?.container
     previous?.stop()
@@ -305,8 +307,6 @@ final class InspectorHostModel {
                 let inspector = manifest.app?.inspectors.first(where: { $0.id == kind }),
                 inspector.frontend?.hostApiVersion == 1 else { throw InspectorError.frontendUnavailable }
           frontend = try await service.inspectorFrontend(for: server, manifest: manifest, inspector: inspector)
-        } else if let directory = plugin?.resourceDirectory {
-          frontend = try InspectorFrontendBundle(files: ["index.html": Data(contentsOf: directory.appendingPathComponent("index.html"))])
         } else {
           throw InspectorError.frontendUnavailable
         }

@@ -107,7 +107,7 @@ struct InspectorRecoveryTests {
     let payload = "frozen device transport_id:1\nhealthy device transport_id:2\nstalled device transport_id:3"
     adb.emitDevices(payload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy"] }
-    let service = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
+    let service = InspectorService(adbService: adbService, deviceTracker: tracker)
     let suite = "SnapOHostRecoveryTests.\(UUID().uuidString)"
     let preferences = UserDefaults(suiteName: suite)!
     preferences.set(#"{"apps":[]}"#, forKey: "inspectorPreferences")
@@ -237,7 +237,7 @@ struct InspectorRecoveryTests {
     precondition(stoppedApps.isEmpty)
     adb.setSocketNames(["snapo_network_42", "snapo_tweaks_42"], deviceID: "frozen")
 
-    let restarted = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
+    let restarted = InspectorService(adbService: adbService, deviceTracker: tracker)
     try await eventually {
       await restarted.discoverInspectors().apps.first { $0.deviceId == "frozen" }?
         .inspectors.first { $0.kind == .tweaks }?.isConnected == true
@@ -272,14 +272,14 @@ struct InspectorRecoveryTests {
     adb.setMetadataAvailable(true)
     adb.recoverProperties()
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy", "stalled"] }
-    let recovered = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
+    let recovered = InspectorService(adbService: adbService, deviceTracker: tracker)
     _ = await recovered.discoverInspectors().apps
     precondition(adb.scannedDeviceIDs.contains("stalled"))
     await recovered.stop()
     let failingPayload = "forward-failure device transport_id:4"
     adb.emitDevices(failingPayload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["forward-failure"] }
-    let forwardFailure = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
+    let forwardFailure = InspectorService(adbService: adbService, deviceTracker: tracker)
     let beforeForwardFailure = adb.forwardCount
     for _ in 0 ..< 50 {
       _ = await forwardFailure.discoverInspectors().apps
@@ -307,7 +307,7 @@ struct InspectorRecoveryTests {
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
     try await eventually { await tracker.latestDevices.count == 1 }
-    let service = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
+    let service = InspectorService(adbService: adbService, deviceTracker: tracker)
     _ = await service.discoverInspectors()
     try await eventually {
       await service.currentInspectors().apps.first?.manifest?.app?.inspectors.map(\.id) == [.network]

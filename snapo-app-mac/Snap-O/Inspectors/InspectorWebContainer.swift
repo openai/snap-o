@@ -405,19 +405,6 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
     return components?.url == documentURL
   }
 
-  static func developmentURL(pluginID: InspectorID) -> URL? {
-    #if DEBUG
-    // Development overrides are local and scoped to one plugin.
-    let key = "SNAPO_INSPECTOR_DEV_URL_" + pluginID.rawValue.uppercased().replacingOccurrences(of: "-", with: "_").replacingOccurrences(
-      of: ".",
-      with: "_"
-    )
-    return ProcessInfo.processInfo.environment[key].flatMap(InspectorWebPolicy.developmentURL)
-    #else
-    return nil
-    #endif
-  }
-
   private static func hasSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
     lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
       && lhs.host?.lowercased() == rhs.host?.lowercased()
