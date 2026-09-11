@@ -108,5 +108,4 @@ internal class NetworkInspectorTransport(
             runCatching { socket.close() }
         }
     }
-
 }

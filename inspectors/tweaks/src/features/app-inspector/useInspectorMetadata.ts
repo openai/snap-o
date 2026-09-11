@@ -8,7 +8,7 @@ export interface InspectorMetadata {
   processName?: string;
   protocolVersion: number;
   pid?: number;
-  processIdentity?: string;
+  processIdentity: string;
 }
 
 export function useInspectorMetadata() {

@@ -1,6 +1,6 @@
 # Snap-O Tweaks protocol
 
-Status: phase one. The network inspector protocol is unchanged.
+Current protocol version: 7.
 
 Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless actions from registered Android application owners through an app-local socket, enabled by default only in debug builds. Agents and desktop tools can use HTTP to inspect those values, change them, and invoke app-owned callbacks while the app runs.
 
@@ -25,27 +25,15 @@ ADB prints the assigned localhost port:
 curl -fsS http://127.0.0.1:43817/tweaks
 ```
 
-Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `JsonReader`/`JsonWriter`. Use JSON for app and tweak responses, PNG for `/.snap-o/appicon`, and server-sent events for `/tweaks/events`. Ordinary responses include `Content-Length` and close their connection. Event streams keep their connection open. Bound request sizes and concurrent connections, and apply a read timeout while receiving each request. No server dependency, Android TCP port, or `INTERNET` permission is needed.
+Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `JsonReader`/`JsonWriter`. Use JSON for tweak responses and server-sent events for `/tweaks/events`. Ordinary responses include `Content-Length` and close their connection. Event streams keep their connection open. Bound request sizes and concurrent connections, and apply a read timeout while receiving each request. No server dependency, Android TCP port, or `INTERNET` permission is needed.
 
 ## REST API
 
-### GET /.snap-o/info
+### Discovery and readiness
 
-Return the app's user-facing Android label, package name, and Tweaks protocol version:
+Read app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The Tweaks frontend and CLI require protocol version **7** before sending HTTP requests. Missing, older, and newer versions produce an unsupported-protocol error. The native host does not interpret inspector protocol versions.
 
-```json
-{
-  "name": "Snap-O Tweaks Demo",
-  "packageName": "com.openai.snapo.demo.tweaks",
-  "protocolVersion": 6
-}
-```
-
-Resolve `name` from the actual Android app label. An absent `protocolVersion` identifies the original version 1, which exposes value tweaks only. Version 2 adds action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds Bézier curve descriptors. Version 6 moves metadata and icons from `/app` and `/app/icon` to `/.snap-o/info` and `/.snap-o/appicon`. This is a breaking discovery change: update clients and Android libraries together. The old routes are not served. The Tweaks protocol version is independent of the Network Inspector protocol version; hosts can use it to select compatible behavior.
-
-### GET /.snap-o/appicon
-
-Lazily return the app icon as a 96 × 96 PNG with `Content-Type: image/png`. Return `404` when the icon is unavailable.
+`OPTIONS /` returns an empty readiness response. The server does not serve HTTP metadata or icon endpoints. Version 7 removes those endpoints; update Snap-O and Android libraries together. Values, actions, curves, batch errors, modification flags, and null resets retain their existing behavior.
 
 ### GET /tweaks
 
@@ -148,7 +136,7 @@ A tweak name represents one shared value, not one composable. Multiple active co
 
 Registry-owned usages with the same name must agree on the tweak type, default, constraints, and ordered enum options. App-owned sources with the same name must use the same setting and value type.
 
-In protocol version 4, only modified value tweaks include `"modified": true`; otherwise the field is absent. A missing field always means false, even when `value` differs from `default`. Standard tweaks compare value and default. App-owned tweaks report whether their own override exists. Versions 1, 2, and 3 omit this field; determine their modification status by comparing `value` with `default`. Action descriptors never include `modified`.
+Only modified value tweaks include `"modified": true`; otherwise the field is absent. A missing field always means false, even when `value` differs from `default`. Standard tweaks compare value and default. App-owned tweaks report whether their own override exists. Action descriptors never include `modified`.
 
 Supported value types are `int`, `float`, `boolean`, `color`, `string`, `enum`, and `bezier`. The `action` type describes an explicitly registered parameterless app-owned callback. Actions do not have `value`, `default`, options, or numeric constraints; clients must not attempt to patch or reset them. Integer tweaks accept only whole numbers; float tweaks accept whole or fractional numbers. Numeric tweaks may include `min`, `max`, and `step`. Only include constraints actually supplied by the app. A `step` is relative to `min`, or to `default` if no `min` is supplied. Colors use `#RRGGBB`, or `#RRGGBBAA` when translucent.
 
@@ -196,7 +184,7 @@ and objects with more than four fields are rejected at the request level.
 Validate and replace the complete curve together; never apply individual coordinates separately.
 Reset uses `null` and restores the complete default or invokes the app-owned reset.
 
-Curve inspection requires clients that support protocol 5 structured values.
+Curve values use structured JSON objects.
 Earlier clients that accept only primitives cannot decode lists containing curves.
 New clients still support earlier servers. The Network Inspector protocol is unchanged.
 
@@ -224,7 +212,7 @@ The response uses the same `{"tweaks":[...]}` shape and complete tweak descripto
 
 An adjusted tweak remains in this history even after it is reset. An app-owned reset can leave an effective value different from the captured default while its modification status is false. An inactive tweak that was never adjusted, a no-op update that changes neither its value nor its modification status, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
 
-Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names. Versions 1 and 2 return `404` for an inactive name; later versions report a named per-item error. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
+Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names. Inactive names produce a named per-item error. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
 
 ### GET /tweaks/events
 
@@ -281,7 +269,7 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 }
 ```
 
-In protocol versions 3 and later, each value is applied separately on the Android main thread. A valid request returns HTTP 200 with successful changes in `tweaks` and any rejected changes in `errors`; earlier successful changes are not rolled back. Each error contains only its tweak `name` and `error` message. The `errors` field is omitted when every change succeeds:
+In the current protocol, each value is applied separately on the Android main thread. A valid request returns HTTP 200 with successful changes in `tweaks` and any rejected changes in `errors`; earlier successful changes are not rolled back. Each error contains only its tweak `name` and `error` message. The `errors` field is omitted when every change succeeds:
 
 ```json
 {
@@ -314,9 +302,9 @@ curl -fsS -X PATCH http://127.0.0.1:43817/tweaks \
 }
 ```
 
-For protocol version 4, use `null` to reset a tweak; a request can mix changes and resets. App-owned tweaks call their source's `reset()` method and return the current effective value. Reset all only active, non-action tweaks marked `"modified": true`. For versions 1, 2, and 3, reset each changed tweak by sending its `default` value instead.
+Use `null` to reset a tweak; a request can mix changes and resets. App-owned tweaks call their source's `reset()` method and return the current effective value. Reset all only active, non-action tweaks marked `"modified": true`.
 
-Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or unsupported structured values. In protocol versions 1 and 2, an unknown tweak returns `404`, an invalid value returns `422`, and the entire batch is rejected. In versions 3 and later, unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
+Return `400` for malformed requests, `404` when an endpoint does not exist, `405` for an unsupported method, `413` for an oversized body, and `422` for invalid numeric literals or unsupported structured values. Unknown tweaks, invalid values, and action targets are reported as per-item errors without preventing other changes. Request-level errors use a small JSON body:
 
 ```json
 {
@@ -324,7 +312,7 @@ Return `400` for malformed requests, `404` when an endpoint does not exist, `405
 }
 ```
 
-Actions are not valid patch or reset targets. For versions 3 and later, an action target produces a named per-item error while other valid changes are applied.
+Actions are not valid patch or reset targets. An action target produces a named per-item error while other valid changes are applied.
 
 ### POST /tweaks/action
 

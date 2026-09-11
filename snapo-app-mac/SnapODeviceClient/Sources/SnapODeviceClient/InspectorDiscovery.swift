@@ -124,8 +124,8 @@ public struct DiscoveredInspectorSocket: Sendable, Equatable {
   public let kind: InspectorID
   public let pid: Int
   public let reference: InspectorServerReference
-  public var inode: String? = nil
-  public var processName: String? = nil
+  public var inode: String?
+  public var processName: String?
 }
 
 public enum InspectorDiscovery {
@@ -148,7 +148,7 @@ public enum InspectorDiscovery {
       let fields = line.split(whereSeparator: \.isWhitespace)
       // Accepted and queued clients share the listener's name but have different inodes.
       guard fields.count == 8,
-            let flags = UInt32(fields[3], radix: 16), flags & 0x00010000 != 0,
+            let flags = UInt32(fields[3], radix: 16), flags & 0x0001_0000 != 0,
             fields[4] == "0001", fields[5] == "01",
             let inode = UInt64(fields[6]), inode > 0,
             let token = fields.last, token.first == "@" else { return nil }

@@ -208,13 +208,19 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
           }
           switch command {
           case "shell:" + InspectorDiscovery.snapshotCommand:
-            Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n", to: descriptor)
+            Self.send(
+              "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n",
+              to: descriptor
+            )
           case "shell:cat /proc/321/cmdline 2>/dev/null":
             Self.send("com.example.demo:worker\0ignored", to: descriptor)
           case "shell:cat /proc/321/status 2>/dev/null":
             Self.send("Uid: 1010234 1010234 1010234 1010234\n", to: descriptor)
           default:
-            Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n", to: descriptor)
+            Self.send(
+              "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n",
+              to: descriptor
+            )
           }
           peer.close()
         }

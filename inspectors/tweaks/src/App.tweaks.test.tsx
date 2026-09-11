@@ -38,6 +38,7 @@ describe("Tweaks frontend with the shared host", () => {
       manifest: {
         version: 1,
         pid: 20,
+        processIdentity: "boot:20:123",
         app: { name: "Demo", packageName: "com.example.demo", revision: "1", inspectors: [] }
       },
       inspector: { id: "tweaks", name: "Tweaks", protocolVersion: 7 }
@@ -86,6 +87,17 @@ describe("Tweaks frontend with the shared host", () => {
     await act(async () => receive({ ...state }));
     await flush();
   }
+  it.each([0, 1, 4, 6, 8])("rejects unsupported protocol v%s before reading or changing tweaks", async (version) => {
+    state.inspector.protocolVersion = version;
+    await mount();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(`App reports protocol v${version}`);
+    expect(mocks.client.listTweaks).not.toHaveBeenCalled();
+    expect(mocks.client.startTweakStream).not.toHaveBeenCalled();
+    expect(mocks.client.updateTweaks).not.toHaveBeenCalled();
+    state.inspector = { ...state.inspector, protocolVersion: 7 };
+    await publish(true);
+    expect(mocks.client.listTweaks).toHaveBeenCalledOnce();
+  });
   it("preserves values while disconnected and refreshes after reconnect", async () => {
     await mount();
     const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;

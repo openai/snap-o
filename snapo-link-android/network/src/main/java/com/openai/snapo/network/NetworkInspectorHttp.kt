@@ -18,7 +18,6 @@ import java.net.URI
 import java.net.URLDecoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.io.encoding.Base64
 
 /** HTTP reads and SSE subscriptions on the inspector's existing abstract socket. */
 internal class NetworkInspectorHttp(

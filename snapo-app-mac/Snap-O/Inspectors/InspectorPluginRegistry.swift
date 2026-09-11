@@ -54,7 +54,7 @@ struct InspectorPluginRegistry {
         let icon = directory.appendingPathComponent(plugin.icon).resolvingSymlinksInPath().standardizedFileURL
         guard icon.path.hasPrefix(directory.resolvingSymlinksInPath().standardizedFileURL.path + "/"),
               let data = try? Data(contentsOf: icon), data.count <= 1_048_576,
-              data.starts(with: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) else {
+              data.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) else {
           throw RegistryError.invalidManifest(directory.lastPathComponent)
         }
         plugin.iconBase64 = data.base64EncodedString()

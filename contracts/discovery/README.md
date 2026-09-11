@@ -37,6 +37,12 @@ Cache installed metadata separately from live connections. Invalidate it when th
 
 Clients can send `OPTIONS /` over a forwarded socket to check HTTP readiness without fetching app metadata. The Network and Tweaks servers return a successful empty response. They no longer serve `/.snap-o/info` or `/.snap-o/appicon`.
 
+### Reader output
+
+The reader emits one JSON line per process. Each record has `version: 1` and a positive `pid`. Successful records contain `app` and a nonempty `processIdentity`; clients must reject successful records without that identity. The identity combines boot identity, PID, and process start time, so clients can distinguish a replacement process that reuses a PID. Error records can omit `app` and `processIdentity`.
+
+The CLI runs the bundled reader through ADB in batches of at most 64 socket names per device. Listing apps does not forward or connect to inspector sockets. Commands validate the selected descriptor before sending inspector requests.
+
 ## Protocol migration
 
 Network protocol 3 and Tweaks protocol 7 remove HTTP metadata and app-icon endpoints. This is a breaking discovery change. New clients require manifest descriptors; older servers without them need an Android library update. Older clients expecting HTTP metadata cannot use the new servers. Update clients and libraries together. Existing network history, SSE, interception, tweak values, and tweak actions are unchanged.

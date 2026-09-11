@@ -37,7 +37,9 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   public func inspectorMetadata(deviceID: String, socketNames: [String], helperURL: URL) async throws -> [InspectorProcessMetadata] {
-    while !lock.withLock({ metadataAvailable }) { try await Task.sleep(for: .milliseconds(10)) }
+    while !lock.withLock({ metadataAvailable }) {
+      try await Task.sleep(for: .milliseconds(10))
+    }
     let pids = Set(socketNames.compactMap { Int($0.split(separator: "_").last ?? "") })
     return try pids.map { pid in
       let record: [String: Any] = [

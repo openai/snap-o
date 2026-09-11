@@ -32,25 +32,21 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 | Request | Result |
 | --- | --- |
-| `GET /.snap-o/info` | JSON app metadata: `{"name":"Example","packageName":"com.example","protocolVersion":6}`. |
-| `GET /.snap-o/appicon` | Optional application icon image; `404` if unavailable. Use its response `Content-Type` without assuming a particular format or size. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
 | `GET /tweaks?include=adjusted` | Active descriptors plus previously adjusted ordinary or app-owned value snapshots retained outside composition. |
-| `PATCH /tweaks` | One update containing one or more named values. Version 3 and later apply valid entries and report individual errors. |
+| `PATCH /tweaks` | One update containing one or more named values. Apply valid entries and report individual errors. |
 | `POST /tweaks/action` | Invoke one explicitly registered parameterless app-owned action by name. |
 | `GET /tweaks/events` | Server-sent events containing complete current tweak and action snapshots. |
 
 Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
 
-`protocolVersion` is specific to Tweaks and independent of the Network Inspector protocol. Version 1 predates this field and supports only value tweaks; treat a missing version as 1. Version 2 adds app-owned action descriptors and `POST /tweaks/action`. Version 3 adds best-effort batch updates with per-item errors. Version 4 adds explicit null resets and authoritative modification status. Version 5 adds `bezier` curves. Version 6 uses the generic `/.snap-o/info` and `/.snap-o/appicon` endpoints; older servers need an updated Android library. Use the reported version to select compatible update, status, and reset behavior.
+The CLI and Tweaks frontend require protocol 7 in the installed manifest descriptor. App identity and icons come from Android package resources, not HTTP. Missing, older, or newer versions are unsupported; update Snap-O and the Android library together. Use `snapo tweaks apps --json` to inspect app metadata without opening an inspector connection.
 
-### Read metadata and active values
+### Read active values
 
 ```bash
-curl -fsS "$base/.snap-o/info"
 curl -fsS "$base/tweaks"
 curl -fsS "$base/tweaks?include=adjusted"
-curl -fsS "$base/.snap-o/appicon" -o /tmp/snapo-tweak-app-icon
 ```
 
 The tweak response has this shape:
@@ -91,7 +87,7 @@ The tweak response has this shape:
 }
 ```
 
-In protocol version 4, only modified value tweaks include `"modified": true`. A missing `modified` field always means false, even when `value` differs from `default`; never infer version-4 status by comparing those fields. Registry-owned tweaks compare their current value with their default, while app-owned tweaks report whether their owner has an override. In versions 1, 2, and 3, `modified` is absent; compare `value` with `default` instead. Actions never include `modified`.
+Only modified value tweaks include `"modified": true`. A missing `modified` field always means false, even when `value` differs from `default`; never infer modification status by comparing those fields. Registry-owned tweaks compare their current value with their default, while app-owned tweaks report whether their owner has an override. Actions never include `modified`.
 
 The available value types are `int`, `float`, `boolean`, `color`, `string`, `enum`, and `bezier`. Preserve actual JSON types: booleans are not strings, integer values cannot be fractional, and floats accept whole or fractional finite numbers. Colors are strings in `#RRGGBB` or `#RRGGBBAA` format. Numeric descriptors may include `min`, `max`, and `step`; step alignment starts at `min`, or at `default` if there is no minimum. Actions use `"type":"action"` and have no `value`, `default`, or `options`.
 
@@ -117,13 +113,13 @@ The response contains the changed names and their resulting values:
 {"tweaks":[{"name":"Motion/Duration","value":550,"modified":true},{"name":"Motion/Enabled","value":false,"modified":true},{"name":"Appearance/Theme","value":"Dark","modified":true}]}
 ```
 
-Protocol versions 3 and later apply valid entries independently. Invalid, unknown, inactive, or action entries appear in `errors` with their tweak names and error messages, while successful changes remain applied:
+Batches apply valid entries independently. Invalid, unknown, inactive, or action entries appear in `errors` with their tweak names and error messages, while successful changes remain applied:
 
 ```json
 {"tweaks":[{"name":"Motion/Duration","value":550,"modified":true}],"errors":[{"name":"Motion/Enabled","error":"Invalid value for Motion/Enabled: Expected a boolean."}]}
 ```
 
-The `errors` field is absent when every entry succeeds. Versions 1 and 2 reject the entire batch if any entry is invalid. In version 4, reset a value by sending `null` instead of a replacement value:
+The `errors` field is absent when every entry succeeds. Reset a value by sending `null` instead of a replacement value:
 
 ```bash
 curl -fsS -X PATCH "$base/tweaks" \
@@ -131,7 +127,7 @@ curl -fsS -X PATCH "$base/tweaks" \
   -d '{"values":{"Motion/Enabled":null}}'
 ```
 
-A version-4 registry-owned reset restores its original default. An app-owned reset calls the source's `reset()` method and returns its current effective value, which may differ from the captured default. For version 4, reset all by sending `null` only for active, non-action descriptors with `"modified": true`. For versions 1, 2, and 3, compare each value with its default and reset changed values by sending their defaults. Actions cannot be patched or reset. There is no separate get-by-name, reset, delete, or grouping endpoint.
+A registry-owned reset restores its original default. An app-owned reset calls the source's `reset()` method and returns its current effective value, which may differ from the captured default. Reset all by sending `null` only for active, non-action descriptors with `"modified": true`. Actions cannot be patched or reset. There is no separate get-by-name, reset, delete, or grouping endpoint.
 
 ### Invoke an app-owned action
 
@@ -187,7 +183,7 @@ These relative URLs assume your host serves both the page and the proxy. The And
 
 ## Errors and security
 
-Request-level errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints, `405` for unsupported methods, `409` for conflicting action registrations, `413` for oversized bodies, and `422` for invalid numeric literals or unsupported structured values. Versions 1 and 2 also return `404` for inactive tweaks and `422` for invalid values. Versions 3 and later report unknown or invalid tweaks as named per-item errors in an HTTP 200 response.
+Request-level errors use `{"error":"description"}`. Expect `400` for malformed input, `404` for missing endpoints, `405` for unsupported methods, `409` for conflicting action registrations, `413` for oversized bodies, and `422` for invalid numeric literals or unsupported structured values. Report unknown or invalid tweaks as named per-item errors in an HTTP 200 response.
 
 The socket is app-local and normally enabled only when the Android app is debuggable. Release activation requires an explicit `snapo.tweaks.allow_release` manifest opt-in; release no-op artifacts are preferred. There is no HTTP bearer-token layer: access is controlled by the local socket and the connected ADB boundary. Do not expose a forwarded port or proxy publicly, and treat tweak names and values as potentially sensitive.
 
@@ -196,7 +192,7 @@ The socket is app-local and normally enabled only when the Android app is debugg
 A `bezier` descriptor carries objects with numeric `x1`, `y1`, `x2`, and `y2` fields in `default` and `value`.
 All four coordinates must be finite and in `[0, 1]`. Overshoot curves are not supported.
 Send all four coordinates as one value; reset the entire curve with `null`.
-Curve inspection requires a client that supports protocol 5 structured values.
+Curve values use structured JSON objects.
 
 ```bash
 snapo tweaks set 'Motion/Curve' '{"x1":0.4,"y1":0,"x2":0.2,"y2":1}' -s "$serial" -n "$socket"

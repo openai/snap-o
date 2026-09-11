@@ -125,6 +125,24 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
 
+    def test_reports_manifest_protocols_and_exact_client_versions(self):
+        for _, path, _ in DECLARATIONS:
+            candidate = self.repo / path
+            if candidate.exists():
+                candidate.unlink()
+        self.write("snapo-link-android/network/src/main/res/xml/snapo_network_inspector.xml", '<inspector protocolVersion="3" />\n')
+        self.write("snapo-link-android/tweaks-core/src/main/res/xml/snapo_tweaks_inspector.xml", '<inspector protocolVersion="7" />\n')
+        self.write("inspectors/network/src/features/network-inspector/lib/protocol.ts", 'export const supportedProtocolVersion = 3;\n')
+        self.write("inspectors/tweaks/src/features/tweaks-inspector/protocol.ts", 'export const supportedProtocolVersion = 7;\n')
+        self.write("scripts/snapo", "NETWORK_PROTOCOL_VERSION = 3\nTWEAKS_PROTOCOL_VERSION = 7\n")
+        self.commit()
+        report = self.report()
+        self.assertNotIn("UNRESOLVED:", report)
+        for declaration in ('protocolVersion="3"', 'protocolVersion="7"',
+                            'const supportedProtocolVersion = 7', 'NETWORK_PROTOCOL_VERSION = 3',
+                            'TWEAKS_PROTOCOL_VERSION = 7', 'modifiedTweakProtocolVersion = 4'):
+            self.assertIn(declaration, report)
+
     def test_reports_structured_curve_protocol_transition(self):
         old_path = DECLARATIONS[1][1]
         (self.repo / old_path).unlink()

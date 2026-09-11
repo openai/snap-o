@@ -315,7 +315,7 @@ public struct ADBClient: Sendable {
         try connection.sendTransport(to: deviceID)
         try connection.sendShell(command)
         var output = Data()
-        while let chunk = try connection.readChunk(maxLength: 16_384) {
+        while let chunk = try connection.readChunk(maxLength: 16384) {
           guard output.count + chunk.count <= 8_388_608 else {
             throw ADBError.parseFailure("inspector discovery output is too large")
           }

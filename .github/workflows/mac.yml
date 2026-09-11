@@ -8,16 +8,20 @@ on:
     paths:
       - 'snapo-app-mac/**'
       - 'inspectors/**'
-      - 'contracts/network/**'
+      - 'contracts/**'
       - 'scripts/snapo'
+      - 'scripts/snapo-discovery.jar'
+      - 'android-discovery/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
     paths:
       - 'snapo-app-mac/**'
       - 'inspectors/**'
-      - 'contracts/network/**'
+      - 'contracts/**'
       - 'scripts/snapo'
+      - 'scripts/snapo-discovery.jar'
+      - 'android-discovery/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
 

@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 
 SOCKET_PREFIX = "snapo_network_"
 TWEAK_SOCKET_PREFIX = "snapo_tweaks_"
+NETWORK_PROTOCOL_VERSION = 3
+TWEAKS_PROTOCOL_VERSION = 7
 MAX_RECORD_BYTES = 16 * 1024 * 1024
 REDACTED = "[REDACTED]"
 REQUEST_HEADERS = {"authorization", "cookie"}
@@ -132,19 +134,9 @@ class ADB:
         output = self.command("shell", "cat /proc/net/unix", serial=serial)
         return parse_sockets(output, prefix)
 
-    def package_hint(self, server):
-        if server.pid is None:
-            return None
-        try:
-            output = self.command(
-                "shell",
-                f"cat /proc/{server.pid}/cmdline 2>/dev/null",
-                serial=server.device_id,
-            )
-        except SnapOError:
-            return None
-        values = output.replace("\r", "\n").replace("\0", "\n").split("\n")
-        return next((value.strip() for value in values if value.strip()), None)
+    def inspector_metadata(self, serial, socket_names):
+        output = self.command("shell", manifest_command(discovery_helper().read_bytes(), socket_names), serial=serial)
+        return decode_manifests(output)
 
 
 def parse_devices(output):
@@ -160,13 +152,11 @@ def parse_sockets(output, prefix=SOCKET_PREFIX):
     sockets = set()
     for line in output.splitlines():
         fields = line.split()
-        if not fields:
+        if len(fields) < 8 or fields[3:6] != ["00010000", "0001", "01"]:
             continue
         name = fields[-1]
-        if name.startswith("@" + prefix):
-            socket_name = name[1:]
-            if prefix != TWEAK_SOCKET_PREFIX or socket_name[len(prefix) :].isdigit():
-                sockets.add(socket_name)
+        if re.fullmatch(re.escape("@" + prefix) + r"[1-9][0-9]{0,9}", name):
+            sockets.add(name[1:])
     return sorted(sockets)
 
 
@@ -533,15 +523,103 @@ class NetworkHTTPResponse:
         self.transport.socket.close()
 
 
-def read_network_metadata(open_socket):
-    request = NetworkHTTPResponse(open_socket, "/.snap-o/info")
-    try:
-        metadata = request.read_json(1024 * 1024)
-        if type(metadata.get("protocolVersion")) is not int or metadata["protocolVersion"] != 2:
-            raise SnapOError("Unsupported Network Inspector protocol; update Snap-O and the Android library")
-        return metadata
-    finally:
-        request.close()
+def discovery_helper():
+    script = pathlib.Path(__file__).resolve()
+    candidates = [script.with_name("snapo-discovery.jar"), script.parent.parent / "Resources/snapo-discovery.jar"]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise SnapOError("Android discovery reader is missing; reinstall Snap-O or place snapo-discovery.jar beside the CLI")
+
+
+def manifest_command(helper, socket_names):
+    if (
+        not 1 <= len(socket_names) <= 64
+        or any(not re.fullmatch(r"snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}", name) for name in socket_names)
+        or not 0 < len(helper) <= 32768
+    ):
+        raise SnapOError("Invalid inspector discovery request")
+    encoded = base64.b64encode(helper).decode("ascii")
+    return f"""temp='/data/local/tmp/snapo-discovery.jar.tmp'
+trap 'rm -f "$temp"' EXIT
+rm -f "$temp" || exit 1
+(umask 077; printf '%s' '{encoded}' | base64 -d > "$temp") &&
+  chmod 444 "$temp" && mv -f "$temp" '/data/local/tmp/snapo-discovery.jar' || exit 1
+CLASSPATH='/data/local/tmp/snapo-discovery.jar' app_process / com.openai.snapo.discovery.Main {' '.join(socket_names)} 2>/dev/null
+"""
+
+
+def decode_manifests(output):
+    if len(output.encode("utf-8")) > 8 * 1024 * 1024:
+        raise SnapOError("Inspector discovery output is too large")
+    records = []
+    for line in output.splitlines():
+        if len(line.encode("utf-8")) > 1024 * 1024:
+            raise SnapOError("Inspector metadata is too large")
+        try:
+            record = json.loads(line)
+        except ValueError as error:
+            raise SnapOError("Invalid inspector metadata") from error
+        if not isinstance(record, dict) or type(record.get("version")) is not int or record["version"] != 1:
+            raise SnapOError("Unsupported inspector discovery format")
+        if type(record.get("pid")) is not int or record["pid"] <= 0:
+            raise SnapOError("Invalid inspector process ID")
+        if record.get("app") is not None:
+            identity = record.get("processIdentity")
+            if not isinstance(identity, str) or not identity.strip():
+                raise SnapOError("Inspector metadata is missing process identity")
+        records.append(record)
+    return records
+
+
+def read_manifests(adb, servers):
+    by_device = {}
+    for server in servers:
+        by_device.setdefault(server.device_id, []).append(server)
+    manifests = {}
+    for device, entries in by_device.items():
+        for start in range(0, len(entries), 64):
+            batch = entries[start : start + 64]
+            try:
+                records = adb.inspector_metadata(device, [server.socket_name for server in batch])
+                by_pid = {record["pid"]: record for record in records}
+                for server in batch:
+                    manifests[server] = by_pid.get(server.pid, {"error": "Process metadata is unavailable"})
+            except (SnapOError, OSError) as error:
+                for server in batch:
+                    manifests[server] = {"error": str(error)}
+    return manifests
+
+
+def inspector_info(record, server, require_supported=True):
+    kind = "tweaks" if server.socket_name.startswith(TWEAK_SOCKET_PREFIX) else "network"
+    name = "Tweaks" if kind == "tweaks" else "Network"
+    supported = TWEAKS_PROTOCOL_VERSION if kind == "tweaks" else NETWORK_PROTOCOL_VERSION
+    app = record.get("app")
+    if not isinstance(app, dict):
+        raise SnapOError(f"Cannot read {server.identifier}: {record.get('error', 'app metadata is unavailable')}")
+    if not all(isinstance(app.get(key), str) and app[key] for key in ("name", "packageName")):
+        raise SnapOError("Invalid inspector app metadata")
+    descriptors = app.get("inspectors")
+    if not isinstance(descriptors, list):
+        raise SnapOError("Invalid inspector descriptors")
+    descriptor = next((entry for entry in descriptors if isinstance(entry, dict) and entry.get("id") == kind), None)
+    version = descriptor.get("protocolVersion") if descriptor else None
+    if type(version) is not int or version <= 0 or (require_supported and version != supported):
+        reported = f"protocol v{version}" if type(version) is int else "no valid manifest descriptor"
+        raise SnapOError(
+            f"Unsupported {name} Inspector protocol: app reports {reported}; this CLI supports v{supported}. "
+            "Update Snap-O and the Android library together."
+        )
+    return {
+        "name": app["name"], "packageName": app["packageName"],
+        "processName": record.get("processName"), "pid": record.get("pid"),
+        "processIdentity": record.get("processIdentity"), "protocolVersion": version,
+    }
+
+
+def read_inspector_metadata(adb, server):
+    return inspector_info(read_manifests(adb, [server])[server], server)
 
 
 class NetworkHistory(NetworkHTTPResponse):
@@ -678,7 +756,7 @@ class ConnectedSession:
     def __enter__(self):
         self.connection.__enter__()
         try:
-            read_network_metadata(self.connection.open_socket)
+            read_inspector_metadata(self.connection.adb, self.connection.server)
             self.session = Session(self.connection.open_socket)
         except BaseException:
             self.connection.__exit__(*sys.exc_info())
@@ -702,6 +780,7 @@ class TweakConnection:
         self.response = None
 
     def __enter__(self):
+        read_inspector_metadata(self.connection.adb, self.connection.server)
         self.connection.__enter__()
         return self
 
@@ -949,14 +1028,6 @@ def emit_event(message, as_json):
         print(event_line(message), flush=True)
 
 
-def app_info(adb, server):
-    try:
-        with ServerConnection(adb, server) as connection:
-            return read_network_metadata(connection.open_socket)
-    except SnapOError:
-        return {}
-
-
 def emit_app(server, name, package, as_json, current_device, details="", protocol_version=None):
     if as_json:
         app = {
@@ -981,10 +1052,16 @@ def run_list(adb, options):
     if not servers:
         raise SnapOError("No Snap-O network servers found")
     current_device = None
+    manifests = read_manifests(adb, servers) if options.include_app_info else {}
     for server in servers:
-        info = app_info(adb, server) if options.include_app_info else {}
-        package = info.get("packageName") or (adb.package_hint(server) if options.include_app_info else None)
-        app_name = info.get("processName")
+        info = {}
+        if options.include_app_info:
+            try:
+                info = inspector_info(manifests[server], server, require_supported=False)
+            except SnapOError as error:
+                print(str(error), file=sys.stderr)
+        package = info.get("packageName")
+        app_name = info.get("name")
         details = f"  pkg:{package or 'unknown'}" if options.include_app_info else ""
         current_device = emit_app(server, app_name, package, options.json, current_device, details)
     return 0
@@ -995,7 +1072,7 @@ def run_requests(adb, options):
     event_filter = EventFilter(options.filter)
     if options.no_stream:
         with ServerConnection(adb, server) as connection:
-            read_network_metadata(connection.open_socket)
+            read_inspector_metadata(adb, server)
             history = NetworkHistory(connection.open_socket)
             try:
                 while (message := history.read()) is not None:
@@ -1410,7 +1487,7 @@ def run_intercept(adb, options):
             return 0
         server = choose_server(discover(adb, options), options.socket)
         with ServerConnection(adb, server) as connection:
-            read_network_metadata(connection.open_socket)
+            read_inspector_metadata(adb, server)
             runner = Runner(connection.open_socket, path, routes, digest, options.timeout,
                             not options.no_watch, log=lambda line: print(line, file=sys.stderr, flush=True))
             asyncio.run(runner.run())
@@ -1736,36 +1813,19 @@ def run_tweak_apps(adb, options):
     servers = discover(adb, options, TWEAK_SOCKET_PREFIX)
     if not servers:
         raise SnapOError("No Snap-O tweaks servers found")
-    found = False
     current_device = None
+    manifests = read_manifests(adb, servers)
     for server in servers:
         try:
-            with TweakConnection(adb, server) as connection:
-                info = connection.request("GET", "/.snap-o/info")
-        except SnapOError:
-            continue
-        name = info.get("name")
-        package = info.get("packageName")
-        protocol_version = info.get("protocolVersion", 1)
-        if (
-            not isinstance(name, str)
-            or not isinstance(package, str)
-            or type(protocol_version) is not int
-            or protocol_version < 1
-        ):
-            continue
-        found = True
+            info = inspector_info(manifests[server], server, require_supported=False)
+        except SnapOError as error:
+            print(str(error), file=sys.stderr)
+            info = {}
+        name, package = info.get("name"), info.get("packageName")
         current_device = emit_app(
-            server,
-            name,
-            package,
-            options.json,
-            current_device,
-            f"  {name}  pkg:{package}",
-            protocol_version=protocol_version,
+            server, name, package, options.json, current_device,
+            f"  {name or 'unknown'}  pkg:{package or 'unknown'}", protocol_version=info.get("protocolVersion"),
         )
-    if not found:
-        raise SnapOError("No reachable Snap-O tweaks apps found")
     return 0
 
 
@@ -1845,26 +1905,9 @@ def run_tweak_reset(adb, options):
         if not selected:
             return 0
 
-        app = connection.request("GET", "/.snap-o/info")
-        protocol_version = app.get("protocolVersion", 1)
-        if type(protocol_version) is not int or protocol_version < 1:
-            raise SnapOError("Snap-O tweaks server returned an invalid protocol version")
-
-        explicit_resets = protocol_version >= 4
         if options.all:
-            selected = [
-                descriptor
-                for descriptor in selected
-                if (
-                    descriptor.get("modified") is True
-                    if explicit_resets
-                    else descriptor.get("value") != descriptor.get("default")
-                )
-            ]
-        values = {
-            descriptor["name"]: None if explicit_resets else descriptor["default"]
-            for descriptor in selected
-        }
+            selected = [descriptor for descriptor in selected if descriptor.get("modified") is True]
+        values = {descriptor["name"]: None for descriptor in selected}
         if values:
             require_successful_tweak_updates(connection.request("PATCH", "/tweaks", {"values": values}))
     return 0

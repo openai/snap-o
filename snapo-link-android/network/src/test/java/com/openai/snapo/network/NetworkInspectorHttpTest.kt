@@ -28,21 +28,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class NetworkInspectorHttpTest {
-    private val app = SnapOAppInfoParams(
-        protocolVersion = NetworkProtocolVersion,
-        packageName = "com.example.app",
-        processName = "com.example.app:worker",
-        pid = 42,
-        serverStartWallMs = 1000,
-        serverStartMonoNs = 2000,
-        mode = "debug",
-    )
-
     @Test
-    fun `metadata identifies protocol two and the process`() {
-        val (_, body) = request("/.snap-o/info")
-        assertEquals(app, ProtocolJson.decodeFromString(SnapOAppInfoParams.serializer(), body))
-        assertEquals(2, app.protocolVersion)
+    fun `readiness does not require HTTP metadata endpoints`() {
+        val (status, body) = request("/", method = "OPTIONS")
+        assertEquals("HTTP/1.1 204 No Content", status)
+        assertEquals("", body)
+        assertEquals("HTTP/1.1 404 Not Found", request("/.snap-o/info").first)
         assertEquals("HTTP/1.1 404 Not Found", request("/.snap-o/appicon").first)
         assertEquals("HTTP/1.1 404 Not Found", request("/unknown").first)
         assertEquals("HTTP/1.1 405 Method Not Allowed", request("/.snap-o/info", method = "POST").first)
@@ -52,7 +43,7 @@ class NetworkInspectorHttpTest {
     fun `HTTP history streams events and a snapshot cursor`() {
         val event = CdpMessage(method = "Network.loadingFinished", snapoSequence = 7)
         Fixture(
-            NetworkInspectorHttp(app, snapshotProvider = { NetworkReplaySnapshot(listOf(event), 9) })
+            NetworkInspectorHttp(snapshotProvider = { NetworkReplaySnapshot(listOf(event), 9) })
         ).use { server ->
             val response = server.request("/network")
             assertEquals(200, response.statusCode())
@@ -76,7 +67,7 @@ class NetworkInspectorHttpTest {
 
     @Test
     fun `body reads return HTTP JSON without command envelopes`() {
-        val http = NetworkInspectorHttp(app, commandHandler = { message ->
+        val http = NetworkInspectorHttp(commandHandler = { message ->
             assertEquals(CdpNetworkMethod.GetResponseBody, message.method)
             assertEquals("request+1", message.params?.jsonObject?.get("requestId")?.jsonPrimitive?.content)
             CdpMessage(id = 1, result = JsonObject(mapOf("body" to JsonPrimitive("hello"))))
@@ -90,7 +81,7 @@ class NetworkInspectorHttpTest {
 
     @Test
     fun `standard HTTP client receives live SSE without an upgrade`() {
-        val http = NetworkInspectorHttp(app)
+        val http = NetworkInspectorHttp()
         Fixture(http).use { server ->
             server.stream("/network").use { reader ->
                 http.broadcast(CdpMessage(method = "Network.loadingFinished", snapoSequence = 42))
@@ -108,7 +99,7 @@ class NetworkInspectorHttpTest {
     @Test
     fun `registration returns its location and Python decisions use HTTP with phase checks`() {
         val engine = NetworkInterception()
-        Fixture(NetworkInspectorHttp(app, interception = engine)).use { server ->
+        Fixture(NetworkInspectorHttp(interception = engine)).use { server ->
             server.stream("/interception", routes(), "POST").use { reader ->
                 val runner = server.runnerId(reader)
                 val exchange = requireNotNull(engine.open("GET", "/api/profile"))
@@ -145,7 +136,7 @@ class NetworkInspectorHttpTest {
     @Test
     fun `route replacement preserves existing exchanges and owners cannot resolve each other`() {
         val engine = NetworkInterception()
-        Fixture(NetworkInspectorHttp(app, interception = engine)).use { server ->
+        Fixture(NetworkInspectorHttp(interception = engine)).use { server ->
             val first = server.stream("/interception", routes(), "POST")
             try {
                 val owner = server.runnerId(first)
@@ -178,7 +169,7 @@ class NetworkInspectorHttpTest {
     @Test
     fun `closing the owning SSE socket fails all sixty four paused exchanges`() {
         val engine = NetworkInterception()
-        Fixture(NetworkInspectorHttp(app, interception = engine)).use { server ->
+        Fixture(NetworkInspectorHttp(interception = engine)).use { server ->
             val reader = server.stream("/interception", routes(), "POST")
             val runner = server.runnerId(reader)
             val exchanges = List(64) { requireNotNull(engine.open("GET", "/api/profile")) }
@@ -204,11 +195,11 @@ class NetworkInspectorHttpTest {
 
     @Test
     fun `multiple live subscriptions leave capacity for ordinary HTTP reads`() {
-        val http = NetworkInspectorHttp(app)
+        val http = NetworkInspectorHttp()
         Fixture(http).use { server ->
             val streams = List(8) { server.stream("/network") }
             try {
-                assertEquals(200, server.request("/.snap-o/info").statusCode())
+                assertEquals(204, server.request("/", "OPTIONS").statusCode())
                 assertEquals(200, server.request("/network").statusCode())
                 http.broadcast(CdpMessage(method = "Network.loadingFinished", snapoSequence = 1))
                 streams.forEach { reader ->
@@ -222,7 +213,7 @@ class NetworkInspectorHttpTest {
 
     @Test
     fun `invalid registration returns an HTTP error instead of starting an SSE response`() {
-        Fixture(NetworkInspectorHttp(app)).use { server ->
+        Fixture(NetworkInspectorHttp()).use { server ->
             val response = server.request("/interception", "POST", """{"routes":[],"timeoutMs":30000}""")
             assertEquals(400, response.statusCode())
             assertTrue(response.headers().firstValue("Content-Type").get().startsWith("application/json"))
@@ -251,8 +242,8 @@ class NetworkInspectorHttpTest {
         for (origin in listOf("", "Origin: http://attacker.example:1234\r\n", "Origin: http://localhost\r\n")) {
             for (method in listOf("GET", "POST", "OPTIONS")) {
                 val output = ByteArrayOutputStream()
-                val request = "$method /.snap-o/info HTTP/1.1\r\nHost: attacker.example:1234\r\n$origin\r\n"
-                NetworkInspectorHttp(app).serveConnection(ByteArrayInputStream(request.toByteArray()), output)
+                val request = "$method /network HTTP/1.1\r\nHost: attacker.example:1234\r\n$origin\r\n"
+                NetworkInspectorHttp().serveConnection(ByteArrayInputStream(request.toByteArray()), output)
                 assertTrue(output.toString("UTF-8").startsWith("HTTP/1.1 400"))
             }
         }
@@ -265,7 +256,7 @@ class NetworkInspectorHttpTest {
             val request = "OPTIONS /interception HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n" +
                 "Origin: $origin\r\nAccess-Control-Request-Method: PUT\r\n" +
                 "Access-Control-Request-Headers: content-type\r\n\r\n"
-            NetworkInspectorHttp(app).serveConnection(ByteArrayInputStream(request.toByteArray()), output)
+            NetworkInspectorHttp().serveConnection(ByteArrayInputStream(request.toByteArray()), output)
             val response = output.toString("UTF-8")
             assertTrue(response.startsWith("HTTP/1.1 204"))
             assertTrue(response.contains("Access-Control-Allow-Origin: $origin\r\n"))
@@ -279,7 +270,7 @@ class NetworkInspectorHttpTest {
         )) {
             val output = ByteArrayOutputStream()
             val request = "POST /interception HTTP/1.1\r\nHost: localhost\r\nOrigin: $origin\r\n\r\n"
-            NetworkInspectorHttp(app).serveConnection(ByteArrayInputStream(request.toByteArray()), output)
+            NetworkInspectorHttp().serveConnection(ByteArrayInputStream(request.toByteArray()), output)
             val response = output.toString("UTF-8")
             assertTrue(response.startsWith("HTTP/1.1 400"))
             assertTrue(!response.contains("Access-Control-Allow-Origin"))
@@ -308,7 +299,7 @@ class NetworkInspectorHttpTest {
     ): Pair<String, String> = runBlocking {
         val request = InspectorHttpRequest(method, path, mapOf("host" to "localhost", "accept" to accept))
         val output = ByteArrayOutputStream()
-        NetworkInspectorHttp(app).respond(request, output)
+        NetworkInspectorHttp().respond(request, output)
         val response = output.toString("UTF-8")
         response.substringBefore("\r\n") to response.substringAfter("\r\n\r\n")
     }

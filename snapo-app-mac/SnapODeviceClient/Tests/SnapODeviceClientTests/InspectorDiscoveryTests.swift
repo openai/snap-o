@@ -118,6 +118,23 @@ struct InspectorDiscoveryTests {
     }
   }
 
+  @Test("successful metadata requires process identity, but error records do not")
+  func requiresProcessIdentity() throws {
+    let app: [String: Any] = ["name": "Example", "packageName": "com.example", "revision": "1", "inspectors": []]
+    for identity: Any in [NSNull(), "", " ", 42] {
+      let data = try JSONSerialization.data(withJSONObject: [
+        "version": 1, "pid": 42, "app": app, "processIdentity": identity
+      ])
+      #expect(throws: (any Error).self) { try InspectorManifestReader.decode(data) }
+    }
+    let success = try JSONSerialization.data(withJSONObject: [
+      "version": 1, "pid": 42, "app": app, "processIdentity": "boot:42:1"
+    ])
+    #expect(try InspectorManifestReader.decode(success).first?.processIdentity == "boot:42:1")
+    let failure = Data(#"{"version":1,"pid":42,"error":"process exited"}"#.utf8)
+    #expect(try InspectorManifestReader.decode(failure).first?.error == "process exited")
+  }
+
   @Test("extracts only valid process IDs from both inspector sockets")
   func parsesProcessIDs() {
     #expect(definitions[0].pid(inSocketName: "snapo_network_42") == 42)

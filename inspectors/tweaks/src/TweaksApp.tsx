@@ -4,6 +4,7 @@ import { createTweaksClient } from "./features/tweaks-inspector/client";
 import { TweaksInspectorApp } from "./features/tweaks-inspector/TweaksInspectorApp";
 import { InspectorWaitingState } from "./features/app-inspector/components/InspectorWaitingState";
 import { useInspectorMetadata } from "./features/app-inspector/useInspectorMetadata";
+import { supportedProtocolVersion, unsupportedProtocolMessage } from "./features/tweaks-inspector/protocol";
 
 export function TweaksApp(): JSX.Element {
   const client = useMemo(() => createTweaksClient(), []);
@@ -12,7 +13,15 @@ export function TweaksApp(): JSX.Element {
   return (
     <div className="window-frame">
       {metadata ? (
-        <TweaksInspectorApp client={client} metadata={metadata} isConnected={connected} connectionRevision={revision} />
+        metadata.protocolVersion === supportedProtocolVersion ? (
+          <TweaksInspectorApp client={client} isConnected={connected} connectionRevision={revision} />
+        ) : (
+          <main className="inspector-loading-shell">
+            <p className="inspector-open-error" role="alert">
+              {unsupportedProtocolMessage(metadata.protocolVersion)}
+            </p>
+          </main>
+        )
       ) : (
         <main className="inspector-loading-shell">
           <InspectorWaitingState />

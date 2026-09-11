@@ -14,13 +14,33 @@ actor InspectorHTTPService {
     var awaitingManifest = false
     var isConnected = false
 
-    var name: String? { manifest?.app?.name }
-    var packageName: String? { manifest?.app?.packageName }
-    var processName: String? { manifest?.processName ?? processNameHint }
-    var androidUserID: Int? { manifest?.androidUserId }
-    var appIconBase64: String? { manifest?.app?.iconBase64 }
-    var descriptor: InspectorDescriptor? { manifest?.app?.inspectors.first { $0.id == kind } }
-    var protocolVersion: Int? { manifest?.app == nil ? nil : descriptor?.protocolVersion ?? 0 }
+    var name: String? {
+      manifest?.app?.name
+    }
+
+    var packageName: String? {
+      manifest?.app?.packageName
+    }
+
+    var processName: String? {
+      manifest?.processName ?? processNameHint
+    }
+
+    var androidUserID: Int? {
+      manifest?.androidUserId
+    }
+
+    var appIconBase64: String? {
+      manifest?.app?.iconBase64
+    }
+
+    var descriptor: InspectorDescriptor? {
+      manifest?.app?.inspectors.first { $0.id == kind }
+    }
+
+    var protocolVersion: Int? {
+      manifest?.app == nil ? nil : descriptor?.protocolVersion ?? 0
+    }
   }
 
   private struct ErrorResponse: Decodable {
@@ -96,7 +116,9 @@ actor InspectorHTTPService {
   }
 
   private func notifyChange() {
-    for observer in observers.values { observer.yield(()) }
+    for observer in observers.values {
+      observer.yield(())
+    }
   }
 
   func refresh(devices: [Device], sockets: [DiscoveredInspectorSocket], using adb: ADBClient) async {
@@ -182,9 +204,13 @@ actor InspectorHTTPService {
     guard !isStopped else { return }
     isStopped = true
     session.invalidateAndCancel()
-    for observer in observers.values { observer.finish() }
+    for observer in observers.values {
+      observer.finish()
+    }
     observers.removeAll()
-    for task in metadataTasks.values { task.cancel() }
+    for task in metadataTasks.values {
+      task.cancel()
+    }
     metadataTasks.removeAll()
     metadataReadAt.removeAll()
     for connection in connections.values {
@@ -264,7 +290,7 @@ actor InspectorHTTPService {
     for start in stride(from: 0, to: sockets.count, by: 64) {
       let batch = Array(sockets[start ..< min(start + 64, sockets.count)])
       let records = try? await adb.inspectorMetadata(
-        deviceID: deviceID, socketNames: batch.map { $0.reference.socketName }, helperURL: helperURL
+        deviceID: deviceID, socketNames: batch.map(\.reference.socketName), helperURL: helperURL
       )
       guard !Task.isCancelled, !isStopped else { return }
       var changed = false

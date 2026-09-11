@@ -226,12 +226,14 @@ print_protocol_declaration() {
 
 print_android_protocol_declarations() {
   print_protocol_declaration "$1" 'Android Network protocol version' \
-    'const val NetworkProtocolVersion[[:space:]:=]' \
-    'snapo-link-android/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt'
+    'const val NetworkProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"' \
+    'snapo-link-android/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
+    'snapo-link-android/network/src/main/res/xml/snapo_network_inspector.xml'
   print_protocol_declaration "$1" 'Android Tweaks protocol version' \
-    'const val TweaksProtocolVersion[[:space:]:=]' \
+    'const val TweaksProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"' \
     'snapo-link-android/tweaks/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
-    'snapo-link-android/tweaks-core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt'
+    'snapo-link-android/tweaks-core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
+    'snapo-link-android/tweaks-core/src/main/res/xml/snapo_tweaks_inspector.xml'
 }
 
 print_client_protocol_declarations() {
@@ -246,16 +248,29 @@ print_client_protocol_declarations() {
     'const supportedProtocolVersion[[:space:]:=]' \
     'snapo-network-inspector-web/src/features/network-inspector/lib/protocol.ts' \
     'inspectors/network/src/features/network-inspector/lib/protocol.ts'
-  print_protocol_declaration "$1" 'Web Tweaks modified-state/reset feature threshold' \
-    'const modifiedTweakProtocolVersion[[:space:]:=]' \
-    'snapo-network-inspector-web/src/features/tweaks-inspector/TweaksInspectorApp.tsx' \
-    'inspectors/tweaks/src/features/tweaks-inspector/TweaksInspectorApp.tsx'
-  print_protocol_declaration "$1" 'CLI Tweaks minimum-version checks' \
-    'protocol_version[[:space:]]*<[[:space:]]*[0-9]+' \
-    'scripts/snapo'
-  print_protocol_declaration "$1" 'CLI Tweaks explicit-reset feature threshold' \
-    'explicit_resets[[:space:]]*=[[:space:]]*protocol_version[[:space:]]*>=[[:space:]]*[0-9]+' \
-    'scripts/snapo'
+  if git -C "$SNAPO_DIR" cat-file -e "$1:inspectors/tweaks/src/features/tweaks-inspector/protocol.ts" 2>/dev/null; then
+    print_protocol_declaration "$1" 'Web Tweaks supported version' \
+      'const supportedProtocolVersion[[:space:]:=]' \
+      'inspectors/tweaks/src/features/tweaks-inspector/protocol.ts'
+  else
+    print_protocol_declaration "$1" 'Web Tweaks modified-state/reset feature threshold' \
+      'const modifiedTweakProtocolVersion[[:space:]:=]' \
+      'snapo-network-inspector-web/src/features/tweaks-inspector/TweaksInspectorApp.tsx' \
+      'inspectors/tweaks/src/features/tweaks-inspector/TweaksInspectorApp.tsx'
+  fi
+  if git -C "$SNAPO_DIR" grep -q -E '^TWEAKS_PROTOCOL_VERSION[[:space:]]*=' "$1" -- scripts/snapo; then
+    print_protocol_declaration "$1" 'CLI Network supported version' \
+      '^NETWORK_PROTOCOL_VERSION[[:space:]]*=' 'scripts/snapo'
+    print_protocol_declaration "$1" 'CLI Tweaks supported version' \
+      '^TWEAKS_PROTOCOL_VERSION[[:space:]]*=' 'scripts/snapo'
+  else
+    print_protocol_declaration "$1" 'CLI Tweaks minimum-version checks' \
+      'protocol_version[[:space:]]*<[[:space:]]*[0-9]+' \
+      'scripts/snapo'
+    print_protocol_declaration "$1" 'CLI Tweaks explicit-reset feature threshold' \
+      'explicit_resets[[:space:]]*=[[:space:]]*protocol_version[[:space:]]*>=[[:space:]]*[0-9]+' \
+      'scripts/snapo'
+  fi
 }
 
 print_protocol_evidence() {
@@ -290,10 +305,10 @@ print_protocol_evidence() {
 
 print_protocol_evidence 'Android servers' "$ANDROID_BASE" \
   print_android_protocol_declarations \
-  contracts snapo-link-android
+  contracts android-discovery scripts/snapo-discovery.jar snapo-link-android
 print_protocol_evidence 'Mac/web/CLI clients' "$MAC_BASE" \
   print_client_protocol_declarations \
-  contracts snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
+  contracts android-discovery snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
   snapo-app-mac/Snap-O/Inspectors snapo-network-inspector-web inspectors scripts
 printf '%s\n' 'Protocol review must be recorded for this source SHA before the version bump; this report does not approve compatibility.'
 

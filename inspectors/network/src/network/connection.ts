@@ -33,7 +33,7 @@ export class NetworkConnection {
       eventSource: (url) => new EventSource(url)
     }
   ) {
-    this.processId = metadata.processIdentity ?? `${metadata.packageName}:${metadata.pid}`;
+    this.processId = metadata.processIdentity;
   }
 
   async start(): Promise<void> {

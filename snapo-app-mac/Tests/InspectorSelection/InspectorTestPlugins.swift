@@ -9,6 +9,7 @@ extension InspectorID {
 
 func testManifest(pid: Int, kinds: [InspectorID], version: Int = 4) -> InspectorProcessMetadata {
   let record: [String: Any] = [
+    "processIdentity": "boot:\(pid):1",
     "version": 1, "pid": pid, "processName": "com.example.demo\(pid)", "androidUserId": 0,
     "app": [
       "packageName": "com.example.demo\(pid)", "name": "Demo \(pid)", "revision": "1",

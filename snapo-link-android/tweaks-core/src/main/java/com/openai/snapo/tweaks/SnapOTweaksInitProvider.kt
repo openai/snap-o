@@ -25,7 +25,7 @@ internal class SnapOTweaksInitProvider : ContentProvider() {
             return false
         }
 
-        return TweaksRuntime.start(applicationContext)
+        return TweaksRuntime.start()
     }
 
     private fun applicationInfoWithMetadata(context: Context): ApplicationInfo = try {
@@ -71,14 +71,13 @@ private object TweaksRuntime {
     private var server: TweakHttpServer? = null
 
     @Synchronized
-    fun start(context: Context): Boolean {
+    fun start(): Boolean {
         if (server != null) {
             return true
         }
 
         return try {
-            val startedServer = TweakHttpServer(
-            )
+            val startedServer = TweakHttpServer()
             startedServer.start()
             server = startedServer
             true

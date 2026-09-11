@@ -28,9 +28,11 @@ public struct InspectorProcessMetadata: Codable, Sendable, Equatable {
 enum InspectorManifestReader {
   static func command(helper: Data, socketNames: [String]) throws -> String {
     guard !socketNames.isEmpty, socketNames.count <= 64,
-          socketNames.allSatisfy({ $0.range(of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#,
-                                          options: .regularExpression) != nil }),
-          helper.count <= 32_768 else {
+          socketNames.allSatisfy({ $0.range(
+            of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#,
+            options: .regularExpression
+          ) != nil }),
+          helper.count <= 32768 else {
       throw ADBError.parseFailure("invalid inspector discovery request")
     }
     let path = "/data/local/tmp/snapo-discovery.jar"
@@ -50,6 +52,9 @@ enum InspectorManifestReader {
       guard line.count <= 1_048_576 else { throw ADBError.parseFailure("inspector metadata is too large") }
       let value = try JSONDecoder().decode(InspectorProcessMetadata.self, from: Data(line))
       guard value.version == 1 else { throw ADBError.parseFailure("unsupported inspector discovery format") }
+      if value.app != nil, value.processIdentity?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+        throw ADBError.parseFailure("inspector metadata is missing process identity")
+      }
       return value
     }
   }

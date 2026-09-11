@@ -28,7 +28,9 @@ actor InspectorService {
     InspectorDiscoverySnapshot(apps: apps)
   }
 
-  func changes() -> AsyncStream<Void> { updates.stream }
+  func changes() -> AsyncStream<Void> {
+    updates.stream
+  }
 
   func setApps(_ apps: [InspectableApp]) {
     self.apps = apps

@@ -54,8 +54,8 @@ export interface ProcessManifest {
   pid: number;
   processName?: string;
   androidUserId?: number;
-  processIdentity?: string;
-  app?: {
+  processIdentity: string;
+  app: {
     packageName: string;
     name: string;
     revision: string;

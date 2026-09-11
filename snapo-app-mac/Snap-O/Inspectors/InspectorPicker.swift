@@ -120,10 +120,10 @@ struct AppInspectorViewPicker: View {
                 Image(systemName: option.icon)
               }
             }
-              .labelStyle(.iconOnly)
-              .font(.system(size: 15, weight: .medium))
-              .foregroundStyle(model.preferredInspectorID == option.kind ? Color.accentColor : Color.primary)
-              .frame(width: 34, height: 32)
+            .labelStyle(.iconOnly)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(model.preferredInspectorID == option.kind ? Color.accentColor : Color.primary)
+            .frame(width: 34, height: 32)
           }
           .help(option.displayName)
         }
@@ -272,17 +272,17 @@ private struct AppInspectorPickerShortcut: View {
           Image(systemName: option.icon)
         }
       }
-        .labelStyle(.iconOnly)
-        .font(.system(size: 13))
-        .foregroundStyle(.secondary)
-        .frame(width: AppInspectorPickerAppRow.shortcutWidth, height: 32)
-        .contentShape(Rectangle())
-        .background {
-          if isHovering {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-              .fill(Color.primary.opacity(0.08))
-          }
+      .labelStyle(.iconOnly)
+      .font(.system(size: 13))
+      .foregroundStyle(.secondary)
+      .frame(width: AppInspectorPickerAppRow.shortcutWidth, height: 32)
+      .contentShape(Rectangle())
+      .background {
+        if isHovering {
+          RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(Color.primary.opacity(0.08))
         }
+      }
     }
     .buttonStyle(.plain)
     .help("Open \(option.displayName)")

@@ -1,4 +1,3 @@
-import type { InspectorMetadata } from "../app-inspector/useInspectorMetadata";
 import type { JSX } from "preact";
 import { BezierEditor } from "./BezierEditor";
 import { ChevronDown, RotateCcw } from "lucide-preact";
@@ -33,16 +32,13 @@ interface ActiveColorPanelSession {
 }
 
 const docsUrl = "https://openai.github.io/snap-o/tweaks.html#expose-values";
-const modifiedTweakProtocolVersion = 4;
 
 export function TweaksInspectorApp({
   client,
-  metadata,
   isConnected,
   connectionRevision = 0
 }: {
   client: TweaksClient;
-  metadata: InspectorMetadata;
   isConnected: boolean;
   connectionRevision?: number;
 }): JSX.Element {
@@ -64,12 +60,11 @@ export function TweaksInspectorApp({
   const canEdit = isConnected && currentConnection?.error === null;
   const connectionError = currentConnection?.error ?? null;
   const displayedError = connectionError ?? error;
-  const protocolVersion = metadata.protocolVersion;
   const queue = useMemo(
     () =>
       new TweakUpdateQueue(client, {
         onUpdate(updates, pending) {
-          setTweaks((current) => applyTweakUpdates(current, updates, pending, protocolVersion));
+          setTweaks((current) => applyTweakUpdates(current, updates, pending));
         },
         onRejected(_errors, pending, inFlight, isCurrent) {
           void client
@@ -91,7 +86,7 @@ export function TweaksInspectorApp({
         onError: setError,
         onSavingChange: setSaving
       }),
-    [client, protocolVersion]
+    [client]
   );
 
   useEffect(() => {
@@ -279,24 +274,24 @@ export function TweaksInspectorApp({
   const resetTweak = useCallback(
     (tweak: TweakValueDescriptor) => {
       if (!canEdit) return;
-      queue.enqueue(tweak.name, tweakResetValue(tweak, protocolVersion));
+      queue.enqueue(tweak.name, null);
       void queue.flush();
     },
-    [canEdit, protocolVersion, queue]
+    [canEdit, queue]
   );
 
   const resetAll = useCallback(() => {
     if (!canEdit) return;
     for (const tweak of tweaks) {
-      if (tweak.type !== "action" && isModified(tweak, protocolVersion)) {
-        queue.enqueue(tweak.name, tweakResetValue(tweak, protocolVersion));
+      if (tweak.type !== "action" && tweak.modified === true) {
+        queue.enqueue(tweak.name, null);
       }
     }
     void queue.flush();
-  }, [canEdit, protocolVersion, queue, tweaks]);
+  }, [canEdit, queue, tweaks]);
 
   const sections = useMemo(() => groupTweaks(tweaks, ordering), [ordering, tweaks]);
-  const hasChanges = canResetTweaks(tweaks, protocolVersion);
+  const hasChanges = canResetTweaks(tweaks);
 
   useEffect(() => {
     void host
@@ -379,7 +374,6 @@ export function TweaksInspectorApp({
                             <TweakControl
                               key={tweak.name}
                               tweak={tweak}
-                              protocolVersion={protocolVersion}
                               onChange={updateTweak}
                               onInvoke={invokeAction}
                               invoking={invokingActions.has(tweak.name)}
@@ -413,26 +407,14 @@ export function TweaksEmptyState({ onOpenDocs }: { onOpenDocs(): void }): JSX.El
   );
 }
 
-export function canResetTweaks(tweaks: TweakDescriptor[], protocolVersion = modifiedTweakProtocolVersion): boolean {
-  return tweaks.some((tweak) => tweak.type !== "action" && isModified(tweak, protocolVersion));
-}
-
-function isModified(tweak: TweakValueDescriptor, protocolVersion: number): boolean {
-  return protocolVersion < modifiedTweakProtocolVersion ? tweak.value !== tweak.default : tweak.modified === true;
-}
-
-export function tweakResetValue(
-  tweak: TweakValueDescriptor,
-  protocolVersion: number | null | undefined
-): TweakValue | null {
-  return (protocolVersion ?? 1) < modifiedTweakProtocolVersion ? tweak.default : null;
+export function canResetTweaks(tweaks: TweakDescriptor[]): boolean {
+  return tweaks.some((tweak) => tweak.type !== "action" && tweak.modified === true);
 }
 
 export function applyTweakUpdates(
   tweaks: TweakDescriptor[],
   updates: TweakUpdate[],
-  pending: ReadonlyMap<string, TweakValue | null>,
-  protocolVersion = modifiedTweakProtocolVersion
+  pending: ReadonlyMap<string, TweakValue | null>
 ): TweakDescriptor[] {
   return tweaks.map((tweak) => {
     if (tweak.type === "action") return tweak;
@@ -442,8 +424,7 @@ export function applyTweakUpdates(
       ? {
           ...tweak,
           value: update.value,
-          modified:
-            protocolVersion < modifiedTweakProtocolVersion ? update.value !== tweak.default : update.modified === true
+          modified: update.modified === true
         }
       : tweak;
   });
@@ -515,7 +496,6 @@ function tweakLabel(name: string): string {
 
 function TweakControl({
   tweak,
-  protocolVersion,
   onChange,
   onInvoke,
   invoking,
@@ -523,7 +503,6 @@ function TweakControl({
   onOpenColorPanel
 }: {
   tweak: TweakDescriptor;
-  protocolVersion: number;
   onChange(tweak: TweakValueDescriptor, value: TweakValue): void;
   onInvoke(action: TweakActionDescriptor): void;
   invoking: boolean;
@@ -535,7 +514,7 @@ function TweakControl({
   }
 
   const label = tweakLabel(tweak.name);
-  const changed = isModified(tweak, protocolVersion);
+  const changed = tweak.modified === true;
   const hasRange =
     (tweak.type === "int" || tweak.type === "float") && tweak.min !== undefined && tweak.max !== undefined;
 
