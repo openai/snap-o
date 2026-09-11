@@ -6,15 +6,28 @@ private func app(
   process: String? = "com.example.demo", device: String = "phone", user: Int? = 0,
   package: String? = "com.example.demo", version: Int? = 4, connectedKinds: [InspectorID]? = nil
 ) -> InspectableApp {
-  InspectableApp(
-    id: "\(device):pid:\(pid)", name: "Demo", packageName: package, processName: process,
-    androidUserId: user, deviceId: device, deviceDisplayTitle: "Phone", appIconBase64: nil,
+  let manifest = testManifest(pid: pid, kinds: kinds, version: version ?? 4)
+  var record = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(manifest)) as! [String: Any]
+  record["androidUserId"] = user as Any? ?? NSNull()
+  record["processName"] = process as Any? ?? NSNull()
+  var packageRecord = record["app"] as! [String: Any]
+  packageRecord["packageName"] = package ?? "com.example.demo"
+  record["app"] = packageRecord
+  let identity = InspectorProcessIdentity(metadata: try! JSONDecoder().decode(
+    InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record)
+  ))
+  let metadata = InspectorMetadata.Process(
+    name: "Demo", packageName: package, processName: process,
+    verifiedIdentity: identity, inspectors: manifest.app!.inspectors
+  )
+  return InspectableApp(
+    id: "\(device):pid:\(pid)", pid: pid, deviceId: device, deviceDisplayTitle: "Phone",
     inspectors: kinds.map {
       AppInspectorOption(
         kind: $0, server: .init(deviceId: device, socketName: "snapo_\($0.rawValue)_\(pid)"), protocolVersion: version,
-        isConnected: connectedKinds?.contains($0) ?? true
+        isConnected: connectedKinds?.contains($0) ?? true, compatibility: .supported
       )
-    }, manifest: testManifest(pid: pid, kinds: kinds, version: version ?? 4)
+    }, metadata: metadata
   )
 }
 
@@ -34,6 +47,8 @@ struct InspectorSelectionTests {
   @MainActor static func main() async throws {
     try WorkspaceLayoutTests.run()
     restoration()
+    metadataDisplay()
+    compatibilityTitles()
     disconnectedInspectorMetadata()
     profilesAndIdentity()
     fallback()
@@ -44,9 +59,47 @@ struct InspectorSelectionTests {
     print("Inspector selection, restoration, and launch tests passed")
   }
 
+  private static func metadataDisplay() {
+    var value = app()
+    value.metadata?.name = "Updated label"
+    value.metadata?.iconBase64 = "updated-icon"
+    expect(value.name == "Updated label" && value.appIconBase64 == "updated-icon", "Display the current metadata")
+    value.metadata?.name = nil
+    expect(value.name == "com.example.demo", "Fall back to the process name")
+    value.metadata?.processName = nil
+    value.metadata?.packageName = "com.example.package"
+    expect(value.name == "com.example.package", "Fall back to the package name")
+    value.metadata = nil
+    expect(value.name == "Process 10", "Keep a label before metadata arrives")
+    expect(value.androidUserId == nil && value.appIconBase64 == nil, "Do not retain details outside metadata")
+  }
+
+  private static func compatibilityTitles() {
+    expect(
+      InspectorCompatibility.legacy(protocolVersion: 1).title(for: .network) == "Unsupported Network version",
+      "Name the socket's tool"
+    )
+    expect(
+      InspectorCompatibility.missingDescriptor.title(for: .tweaks) == "Unsupported Tweaks version",
+      "Name tools without manifest metadata"
+    )
+    expect(
+      InspectorCompatibility.hostAPI(version: 2).title(for: InspectorID(rawValue: "sample")) == "Unsupported Sample version",
+      "Custom socket identifiers do not need a built-in tool mapping"
+    )
+    expect(
+      InspectorCompatibility.missingDescriptor.title(for: nil) == "Unsupported tool version",
+      "Keep a fallback without a selected tool"
+    )
+    expect(
+      InspectorCompatibility.metadataUnavailable.title(for: .network) == "Inspector unavailable",
+      "Do not confuse reachability with version support"
+    )
+  }
+
   private static func restoration() {
     var owner = selected(.tweaks)
-    expect(owner.state.selectedApp?.manifest == app().manifest, "Selection retains the process manifest for the inspector page")
+    expect(owner.state.selectedApp?.metadata == app().metadata, "Selection retains the process manifest for the inspector page")
     let displayed = owner.state.displayed[.tweaks]
     owner.reconcile([])
     expect(owner.state.selection == nil && owner.state.displayed[.tweaks] == displayed, "Retain disconnected values")
@@ -82,7 +135,7 @@ struct InspectorSelectionTests {
     expect(owner.state.selection?.kind == .tweaks, "Restore other app's inspector")
     owner.reconcile([app(20, process: "com.example.other", version: 5)])
     expect(owner.state.selection?.protocolVersion == 5, "Update protocol metadata")
-    expect(owner.state.selectedApp?.manifest?.app?.inspectors.first?.protocolVersion == 5, "Refresh the selected process manifest")
+    expect(owner.state.selectedApp?.metadata?.inspectors.first?.protocolVersion == 5, "Refresh the selected process manifest")
   }
 
   private static func disconnectedInspectorMetadata() {
@@ -414,7 +467,7 @@ struct InspectorSelectionTests {
     await settle()
     continuation.yield(())
     await settle()
-    expect(model.snapshot.state.selectedApp?.manifest == app().manifest, "Publish completed metadata before the polling scan returns")
+    expect(model.snapshot.state.selectedApp?.metadata == app().metadata, "Publish completed metadata before the polling scan returns")
     expect(scans == 1, "A discovery update does not start another device scan")
     scanReply?.resume(returning: InspectorDiscoverySnapshot(apps: [app(20)], revision: 1))
     await settle()
@@ -423,7 +476,7 @@ struct InspectorSelectionTests {
     continuation.yield(())
     await settle()
     expect(model.snapshot.state.selection == nil, "Publish a failed health check without another poll")
-    expect(model.snapshot.state.selectedApp?.manifest == app().manifest, "Keep metadata when the health check disconnects")
+    expect(model.snapshot.state.selectedApp?.metadata == app().metadata, "Keep metadata when the health check disconnects")
     expect(scans == 1, "Health updates do not start another device scan")
     model.stop()
     let stoppedRevision = model.snapshot.revision

@@ -7,12 +7,42 @@ public struct ADBForwardHandle: Sendable {
 public struct InspectorFrontendBundle: Sendable {}
 
 public final class ADBClient: @unchecked Sendable {
+  public enum MetadataFailure: Sendable {
+    case request, record
+  }
+
   private let lock = NSLock()
   private var forwards = 0
   private var removedForwards: [UInt16] = []
   private var propertiesRecovered = false
   private var metadataAvailable = false
   private var metadataRequests: [[String]] = []
+  private var metadataFailure: MetadataFailure?
+  private var legacyKinds: Set<InspectorID> = []
+  private var legacyRequests = 0
+  private var legacyBlocked = false
+  private var legacyCancellations = 0
+
+  public func setMetadataFailure(_ failure: MetadataFailure?) {
+    lock.withLock { metadataFailure = failure }
+  }
+
+  public func setLegacyBlocked(_ blocked: Bool) {
+    lock.withLock { legacyBlocked = blocked }
+  }
+
+  public var legacyCancellationCount: Int {
+    lock.withLock { legacyCancellations }
+  }
+
+  public func setLegacyKinds(_ kinds: Set<InspectorID>) {
+    lock.withLock { legacyKinds = kinds }
+  }
+
+  public var legacyRequestCount: Int {
+    lock.withLock { legacyRequests }
+  }
+
   private var socketDevices: [String] = []
   private var socketsByDevice: [String: [String]] = [:]
   private var socketGeneration = 0
@@ -53,12 +83,22 @@ public final class ADBClient: @unchecked Sendable {
     while !lock.withLock({ metadataAvailable }) {
       try await Task.sleep(for: .milliseconds(10))
     }
+    let failure = lock.withLock { metadataFailure }
+    if failure == .request { throw ADBError.requestTimedOut("Test metadata timeout") }
     let pids = Set(socketNames.compactMap { Int($0.split(separator: "_").last ?? "") })
+    if failure == .record {
+      return try pids.map { pid in
+        try JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: [
+          "version": 1, "pid": pid, "error": "Test metadata failure"
+        ]))
+      }
+    }
     let inspectors: [[String: Any]] = [
-      ["id": "network", "name": "Network", "protocolVersion": 3],
-      ["id": "tweaks", "name": "Tweaks", "protocolVersion": 7]
+      ["id": "network", "name": "Network", "protocolVersion": 3, "frontend": ["assetPath": "network.zip", "hostApiVersion": 1]],
+      ["id": "tweaks", "name": "Tweaks", "protocolVersion": 7, "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 1]]
     ].filter { descriptor in
-      socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }
+      !lock.withLock { legacyKinds.contains(InspectorID(rawValue: descriptor["id"] as! String)) }
+        && socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }
     }
     return try pids.map { pid in
       let record: [String: Any] = [
@@ -74,8 +114,30 @@ public final class ADBClient: @unchecked Sendable {
     }
   }
 
+  public func legacyInspectorMetadata(
+    reference: InspectorServerReference,
+    kind: InspectorID,
+    pid: Int
+  ) async throws -> LegacyInspectorMetadata? {
+    lock.withLock { legacyRequests += 1 }
+    do {
+      while lock.withLock({ legacyBlocked }) {
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      try Task.checkCancellation()
+    } catch {
+      if Task.isCancelled { lock.withLock { legacyCancellations += 1 } }
+      throw error
+    }
+    return lock.withLock {
+      legacyKinds.contains(kind) ? LegacyInspectorMetadata(
+        packageName: "com.example.demo", name: "Demo", processName: "com.example.demo", protocolVersion: 1
+      ) : nil
+    }
+  }
+
   public func inspectorFrontend(
-    deviceID: String, socketName: String, manifest: InspectorProcessMetadata,
+    deviceID: String, socketName: String, identity: InspectorProcessIdentity,
     inspector: InspectorDescriptor, helperURL: URL
   ) async throws -> InspectorFrontendBundle {
     InspectorFrontendBundle()

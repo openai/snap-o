@@ -28,10 +28,7 @@ actor InspectorService {
   func currentInspectors() async -> InspectorDiscoverySnapshot {
     let snapshot = await httpService.currentApps()
     let applications = snapshot.apps
-    let connectedServers = Set(applications.filter(\.isConnected).map {
-      InspectorServerReference(deviceId: $0.deviceID, socketName: $0.socketName)
-    })
-    let manifests = Dictionary(uniqueKeysWithValues: applications.map {
+    let appsByServer = Dictionary(uniqueKeysWithValues: applications.map {
       (InspectorServerReference(deviceId: $0.deviceID, socketName: $0.socketName), $0)
     })
     let endpoints = applications.map { app in
@@ -51,26 +48,29 @@ actor InspectorService {
       )
     }
     let apps = InspectorDiscovery.processes(from: endpoints).map { process in
-      InspectableApp(
+      let candidates = process.inspectors.compactMap { appsByServer[$0.reference]?.metadata.process }
+      var metadata = candidates.first { $0.verifiedIdentity != nil } ?? candidates.first ?? InspectorMetadata.Process()
+      metadata.name = process.metadata.appName
+      metadata.packageName = process.metadata.packageName
+      metadata.processName = process.metadata.processName ?? process.metadata.packageNameHint
+      metadata.iconBase64 = process.metadata.appIconBase64
+      return InspectableApp(
         id: process.id,
-        name: process.name,
-        packageName: process.metadata.packageName,
-        processName: process.metadata.processName ?? process.metadata.packageNameHint,
-        androidUserId: process.metadata.androidUserID,
+        pid: process.pid,
         deviceId: process.deviceId,
         deviceDisplayTitle: process.deviceDisplayTitle,
-        appIconBase64: process.metadata.appIconBase64,
         inspectors: process.inspectors.map { endpoint in
           AppInspectorOption(
             kind: endpoint.kind,
             server: endpoint.reference,
             protocolVersion: endpoint.protocolVersion,
-            isConnected: connectedServers.contains(endpoint.reference),
-            name: manifests[endpoint.reference]?.descriptor?.name ?? endpoint.kind.rawValue,
-            iconBase64: manifests[endpoint.reference]?.descriptor?.iconBase64
+            isConnected: appsByServer[endpoint.reference]?.isConnected == true,
+            name: appsByServer[endpoint.reference]?.descriptor?.name ?? endpoint.kind.rawValue,
+            iconBase64: appsByServer[endpoint.reference]?.descriptor?.iconBase64,
+            compatibility: appsByServer[endpoint.reference]?.compatibility ?? .unknown
           )
         },
-        manifest: process.inspectors.compactMap { manifests[$0.reference]?.manifest }.first
+        metadata: metadata
       )
     }
     return InspectorDiscoverySnapshot(apps: orderedInspectorApps(apps), revision: snapshot.revision)
@@ -93,11 +93,18 @@ actor InspectorService {
   }
 
   func inspectorFrontend(
-    for reference: InspectorServerReference, manifest: InspectorProcessMetadata, inspector: InspectorDescriptor
+    for reference: InspectorServerReference, identity: InspectorProcessIdentity, inspector: InspectorDescriptor
   ) async throws -> InspectorFrontendBundle {
-    guard let app = manifest.app, let user = manifest.androidUserId, let frontend = inspector.frontend,
+    guard let frontend = inspector.frontend,
           frontend.hostApiVersion == 1 else { throw InspectorError.frontendUnavailable }
-    let key = [reference.deviceId, String(user), app.packageName, app.revision, inspector.id.rawValue, frontend.assetPath]
+    let key = [
+      reference.deviceId,
+      String(identity.androidUserId),
+      identity.packageName,
+      identity.revision,
+      inspector.id.rawValue,
+      frontend.assetPath
+    ]
     if let index = frontends.firstIndex(where: { $0.key == key }) {
       let cached = frontends.remove(at: index)
       frontends.append(cached)
@@ -107,7 +114,7 @@ actor InspectorService {
     let helper = (Bundle.main.resourceURL ?? Bundle.main.bundleURL.appending(path: "Contents/Resources"))
       .appending(path: "snapo-discovery.jar")
     let bundle = try await adb.inspectorFrontend(
-      deviceID: reference.deviceId, socketName: reference.socketName, manifest: manifest, inspector: inspector, helperURL: helper
+      deviceID: reference.deviceId, socketName: reference.socketName, identity: identity, inspector: inspector, helperURL: helper
     )
     guard !Task.isCancelled, !isStopped else { throw CancellationError() }
     frontends.removeAll { $0.key == key }

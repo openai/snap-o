@@ -13,6 +13,8 @@ actor InspectorHTTPService {
 actor InspectorService {
   private let invalidFrontend: Bool
   private var apps: [InspectableApp]
+  private(set) var frontendRequests = 0
+  private(set) var endpointRequests = 0
   private let updates = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
   let endpoint = InspectorHTTPService.Endpoint(id: UUID(), baseURL: URL(string: "http://127.0.0.1:1234/")!)
   init(apps: [InspectableApp], invalidFrontend: Bool = false) {
@@ -42,14 +44,16 @@ actor InspectorService {
     for reference: InspectorServerReference, ownerID: UUID? = nil,
     invalidated: (@MainActor @Sendable () async -> Void)? = nil
   ) async throws -> InspectorHTTPService.Endpoint {
-    endpoint
+    endpointRequests += 1
+    return endpoint
   }
 
   func releaseInspectorEndpoint(ownerID: UUID) {}
 
   func inspectorFrontend(
-    for reference: InspectorServerReference, manifest: InspectorProcessMetadata, inspector: InspectorDescriptor
+    for reference: InspectorServerReference, identity: InspectorProcessIdentity, inspector: InspectorDescriptor
   ) async throws -> InspectorFrontendBundle {
+    frontendRequests += 1
     if invalidFrontend { return try InspectorFrontendBundle(files: ["index.html": Data([0xFF])]) }
     return try Self.frontendFixture(inspector.id)
   }
@@ -83,16 +87,22 @@ struct InspectorWebViewTests {
     _ pid: Int,
     connectedKinds: [InspectorID]? = nil,
     kinds: [InspectorID] = [.network, .tweaks, .sample],
-    includeFrontend: Bool = true
+    includeFrontend: Bool = true,
+    compatibility: [InspectorID: InspectorCompatibility] = [:]
   ) -> InspectableApp {
     InspectableApp(
-      id: "phone:pid:\(pid)", name: "Demo \(pid)", packageName: "com.example.demo\(pid)",
-      processName: "com.example.demo\(pid)", androidUserId: 0, deviceId: "phone", deviceDisplayTitle: "Phone",
-      appIconBase64: nil, inspectors: kinds.map { kind in
-        AppInspectorOption(kind: kind, server: InspectorServerReference(
-          deviceId: "phone", socketName: "snapo_\(kind.rawValue)_\(pid)"
-        ), protocolVersion: 4, isConnected: connectedKinds?.contains(kind) ?? true)
-      }, manifest: testManifest(pid: pid, kinds: kinds, includeFrontend: includeFrontend)
+      id: "phone:pid:\(pid)", pid: pid, deviceId: "phone", deviceDisplayTitle: "Phone",
+      inspectors: kinds.map { kind in
+        AppInspectorOption(
+          kind: kind,
+          server: InspectorServerReference(
+            deviceId: "phone", socketName: "snapo_\(kind.rawValue)_\(pid)"
+          ),
+          protocolVersion: 4,
+          isConnected: connectedKinds?.contains(kind) ?? true,
+          compatibility: compatibility[kind] ?? (includeFrontend ? .supported : .missingFrontend(protocolVersion: 4))
+        )
+      }, metadata: testProcessMetadata(pid: pid, kinds: kinds, includeFrontend: includeFrontend)
     )
   }
 
@@ -278,6 +288,40 @@ struct InspectorWebViewTests {
     try await testSecurity()
     try await testFrontendSources(preferences: preferences)
     try await testFrontendErrors(preferences: preferences)
+    try await testUnsupportedInspectors(preferences: preferences)
+  }
+
+  static func testUnsupportedInspectors(preferences: UserDefaults) async throws {
+    for compatibility: InspectorCompatibility in [
+      .legacy(protocolVersion: 1),
+      .missingDescriptor,
+      .invalidDescriptor,
+      .hostAPI(version: 2),
+      .metadataUnavailable
+    ] {
+      preferences.set(
+        #"{"apps":[],"last":{"deviceId":"phone","processName":"com.example.demo70","androidUserId":0,"kind":"network"}}"#,
+        forKey: "inspectorPreferences"
+      )
+      let provider = app(70, kinds: [.network, .sample], compatibility: [.network: compatibility])
+      let service = InspectorService(apps: [provider])
+      let model = InspectorHostModel(service: service, preferences: preferences)
+      defer { model.stop() }
+      try await eventually("Compatibility provider should be discovered") { model.inspectorApps.count == 1 }
+      model.selectInspector(provider, option: provider.inspectors[0])
+      try await eventually("Unsupported inspectors should show their native explanation") {
+        model.compatibilityExplanation == compatibility
+      }
+      try await Task.sleep(for: .milliseconds(50))
+      precondition(!model.isPageReady && model.toolbarActions.isEmpty)
+      let frontendRequests = await service.frontendRequests
+      let endpointRequests = await service.endpointRequests
+      precondition(frontendRequests == 0 && endpointRequests == 0, "Compatibility explanations must not load or authorize a frontend")
+      model.selectInspector(provider, option: provider.inspectors[1])
+      try await eventually("A compatible sibling should remain usable") { model.isPageReady }
+      precondition(model.compatibilityExplanation == nil)
+    }
+    print("Unsupported and unreachable inspectors show native explanations without authorizing a frontend; compatible siblings still load")
   }
 
   static func testFrontendErrors(preferences: UserDefaults) async throws {
@@ -288,9 +332,9 @@ struct InspectorWebViewTests {
       defer { model.stop() }
       try await eventually("The frontend provider should be discovered") { model.inspectorApps.count == 1 }
       model.selectInspector(provider, option: provider.inspectors[0])
-      let message = includeFrontend ? "invalid inspector frontend assets" : "no compatible frontend"
       try await eventually("Missing or invalid APK frontends must report a native error") {
-        model.frontendError?.contains(message) == true
+        includeFrontend ? model.frontendError?.contains("invalid inspector frontend assets") == true
+          : model.compatibilityExplanation == .missingFrontend(protocolVersion: 4)
       }
       precondition(!model.isPageReady)
     }
@@ -496,12 +540,12 @@ struct InspectorWebViewTests {
     precondition(scope != nil && scope != InspectorWebPolicy.storageIdentifier(app: app(20), inspector: .sample))
     precondition(scope != InspectorWebPolicy.storageIdentifier(app: first, inspector: .network))
     var restarted = app(11)
-    restarted.manifest = first.manifest
+    restarted.metadata = first.metadata
     precondition(
       scope == InspectorWebPolicy.storageIdentifier(app: restarted, inspector: .sample),
       "Process IDs do not partition a provider's preferences"
     )
-    restarted.manifest = nil
+    restarted.metadata = nil
     precondition(InspectorWebPolicy.storageIdentifier(app: restarted, inspector: .sample) == nil, "Unknown providers use ephemeral storage")
     var nested: Any = "value"
     for _ in 0 ..< 10 {

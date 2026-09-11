@@ -66,6 +66,12 @@ struct InspectorFrontendTests {
     let inspector = try #require(manifest.app?.inspectors.first)
     let request = try InspectorFrontendBundle.request(manifest: manifest, inspector: inspector)
     let fields = try #require(JSONSerialization.jsonObject(with: request) as? [String: Any])
+    let identity = try #require(InspectorProcessIdentity(metadata: manifest))
+    let normalizedRequest = try InspectorFrontendBundle.request(identity: identity, inspector: inspector)
+    let normalizedFields = try #require(JSONSerialization.jsonObject(with: normalizedRequest) as? NSDictionary)
+    #expect(normalizedFields == fields as NSDictionary)
+    #expect(fields["androidUserId"] as? Int == 0)
+    #expect(fields["packageName"] as? String == "com.example.demo")
     #expect(fields["revision"] as? String == "12:34")
     #expect(fields["processIdentity"] as? String == "boot:42:1")
     #expect(fields["assetPath"] as? String == "snapo/inspectors/sample/frontend.zip")
@@ -76,5 +82,13 @@ struct InspectorFrontendTests {
     )
     #expect(command.contains("com.openai.snapo.discovery.FrontendMain snapo_sample_42"))
     #expect(command.contains(request.base64EncodedString()))
+    let original = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(manifest)) as? [String: Any])
+    for (key, invalid) in [("androidUserId", NSNull()), ("androidUserId", -1), ("processIdentity", " "), ("pid", 0)] as [(String, Any)] {
+      var value = original
+      value[key] = invalid
+      let incomplete = try JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: value))
+      #expect(InspectorProcessIdentity(metadata: incomplete) == nil)
+      #expect(throws: (any Error).self) { try InspectorFrontendBundle.request(manifest: incomplete, inspector: inspector) }
+    }
   }
 }

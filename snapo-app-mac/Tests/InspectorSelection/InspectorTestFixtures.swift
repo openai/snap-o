@@ -24,3 +24,11 @@ func testManifest(pid: Int, kinds: [InspectorID], version: Int = 4, includeFront
   ]
   return try! JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
 }
+
+func testProcessMetadata(pid: Int, kinds: [InspectorID], version: Int = 4, includeFrontend: Bool = true) -> InspectorMetadata.Process {
+  var metadata = InspectorMetadata()
+  metadata.applyPackageMetadata(
+    testManifest(pid: pid, kinds: kinds, version: version, includeFrontend: includeFrontend), kind: kinds.first ?? .network
+  )
+  return metadata.process
+}

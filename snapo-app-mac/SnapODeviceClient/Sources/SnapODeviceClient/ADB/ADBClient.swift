@@ -321,10 +321,25 @@ public struct ADBClient: Sendable {
     inspector: InspectorDescriptor,
     helperURL: URL
   ) async throws -> InspectorFrontendBundle {
-    guard inspector.frontend != nil, socketName == "snapo_\(inspector.id.rawValue)_\(manifest.pid)" else {
+    guard let identity = InspectorProcessIdentity(metadata: manifest) else {
+      throw ADBError.parseFailure("invalid inspector process identity")
+    }
+    return try await inspectorFrontend(
+      deviceID: deviceID, socketName: socketName, identity: identity, inspector: inspector, helperURL: helperURL
+    )
+  }
+
+  public func inspectorFrontend(
+    deviceID: String,
+    socketName: String,
+    identity: InspectorProcessIdentity,
+    inspector: InspectorDescriptor,
+    helperURL: URL
+  ) async throws -> InspectorFrontendBundle {
+    guard inspector.frontend != nil, socketName == "snapo_\(inspector.id.rawValue)_\(identity.pid)" else {
       throw ADBError.parseFailure("invalid inspector frontend request")
     }
-    let expected = try InspectorFrontendBundle.request(manifest: manifest, inspector: inspector)
+    let expected = try InspectorFrontendBundle.request(identity: identity, inspector: inspector)
     let command = try InspectorManifestReader.command(
       helper: Data(contentsOf: helperURL),
       socketNames: [socketName],
@@ -332,6 +347,40 @@ public struct ADBClient: Sendable {
     )
     let data = try await runInspectorReader(deviceID: deviceID, command: command, maximumBytes: 16 * 1024 * 1024)
     return try InspectorFrontendBundle(archive: data)
+  }
+
+  public func legacyInspectorMetadata(
+    reference: InspectorServerReference, kind: InspectorID, pid: Int
+  ) async throws -> LegacyInspectorMetadata? {
+    guard pid > 0, reference.socketName == "snapo_\(kind.rawValue)_\(pid)" else { return nil }
+    for request in LegacyInspectorReader.requests(kind: kind) {
+      try Task.checkCancellation()
+      do {
+        let metadata = try await withConnection(maxAttempts: 1) { connection in
+          try connection.withRequestTimeout(.seconds(2)) {
+            try connection.sendTransport(to: reference.deviceId)
+            try connection.sendLocalAbstract(reference.socketName)
+            try connection.writeLine(String(request.dropLast()))
+            let http = request.hasPrefix("GET ")
+            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+            var bytes = Data()
+            while true {
+              let chunk = try connection.readChunk(maxLength: 16384, deadline: deadline)
+              if let chunk { bytes.append(chunk) }
+              if let payload = try LegacyInspectorReader.payload(bytes, http: http, ended: chunk == nil) {
+                return try LegacyInspectorReader.decode(payload, kind: kind, pid: pid, http: http)
+              }
+              if chunk == nil { return nil }
+            }
+          }
+        }
+        if let metadata { return metadata }
+      } catch {
+        try Task.checkCancellation()
+        // A failed probe is not evidence that the app uses an old library.
+      }
+    }
+    return nil
   }
 
   private func runInspectorReader(deviceID: String, command: String, maximumBytes: Int) async throws -> Data {

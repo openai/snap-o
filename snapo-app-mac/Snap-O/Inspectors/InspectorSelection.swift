@@ -69,7 +69,8 @@ struct InspectorSelection {
     }
     // Preserve saved choices while discovery returns partial results.
     if startupSelectionPending, saved.last == nil,
-       let first = apps.first(where: { Self.hasIdentity($0) && $0.inspectors.contains(where: \.isConnected) }) {
+       let first = apps.first(where: { Self.hasIdentity($0) && $0.inspectors.contains(where: \.isConnected) })
+       ?? apps.first(where: { Self.hasIdentity($0) && $0.inspectors.contains { $0.compatibility.isUnsupported } }) {
       selectApp(first)
       return
     }
@@ -99,7 +100,8 @@ struct InspectorSelection {
     }
     let preferredKind = saved.apps.first { $0.matches(app) }?.kind
       ?? app.inspectors.first { $0.kind == kind }?.kind
-      ?? app.inspectors.first(where: \.isConnected)?.kind ?? app.inspectors.first?.kind
+      ?? app.inspectors.first { $0.isConnected && !$0.compatibility.isUnsupported }?.kind
+      ?? app.inspectors.first?.kind
     if let preferredKind { selectKind(app, kind: preferredKind) }
   }
 
@@ -137,12 +139,8 @@ struct InspectorSelection {
     for option in app.inspectors {
       options[option.kind] = option
     }
-    target = InspectableApp(
-      id: app.id, name: app.name, packageName: app.packageName, processName: app.processName,
-      androidUserId: app.androidUserId, deviceId: app.deviceId, deviceDisplayTitle: app.deviceDisplayTitle,
-      appIconBase64: app.appIconBase64, inspectors: options.values.sorted { $0.kind.rawValue < $1.kind.rawValue },
-      manifest: app.manifest
-    )
+    target = app
+    target?.inspectors = options.values.sorted { $0.kind.rawValue < $1.kind.rawValue }
   }
 
   private mutating func setCurrent(_ app: InspectableApp, option: AppInspectorOption?) {

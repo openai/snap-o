@@ -13,6 +13,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   "$TEST_DIR/package/debug/SnapODeviceClient.build/"*.o \
   "$TEST_DIR/package/debug/ZIPFoundation.build/"*.o \
   Snap-O/Inspectors/InspectorModels.swift \
+  Snap-O/Inspectors/InspectorMetadata.swift \
   Tests/InspectorSelection/InspectorTestFixtures.swift \
   Snap-O/Inspectors/InspectorSelection.swift \
   Snap-O/Inspectors/AppInspectorModel.swift \
@@ -26,6 +27,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   "$TEST_DIR/package/debug/SnapODeviceClient.build/"*.o \
   "$TEST_DIR/package/debug/ZIPFoundation.build/"*.o \
   Snap-O/Inspectors/InspectorModels.swift \
+  Snap-O/Inspectors/InspectorMetadata.swift \
   Tests/InspectorSelection/InspectorTestFixtures.swift \
   Snap-O/Inspectors/InspectorSelection.swift \
   Snap-O/Inspectors/AppInspectorModel.swift \

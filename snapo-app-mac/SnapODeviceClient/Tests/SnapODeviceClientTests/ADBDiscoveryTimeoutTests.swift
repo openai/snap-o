@@ -124,6 +124,59 @@ struct ADBDiscoveryTimeoutTests {
     #expect(server.connectionCount == 3)
   }
 
+  @Test("legacy probes read identity without starting inspection")
+  func readsLegacyIdentity() async throws {
+    let raw = #"{"method":"SnapO.appInfo","params":{"protocolVersion":1,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}}"#
+    let http = #"{"protocolVersion":2,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}"#
+    for (reply, expectedVersion, expectedConnections) in [
+      (FakeDiscoveryADB.LegacyReply.raw(raw), 1, 1), (.http(http), 2, 2)
+    ] {
+      let server = FakeDiscoveryADB(stall: .output, legacyReply: reply)
+      defer { server.close() }
+      let metadata = try await server.client().legacyInspectorMetadata(
+        reference: InspectorServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: InspectorID(rawValue: "network"),
+        pid: 42
+      )
+      #expect(metadata?.protocolVersion == expectedVersion)
+      #expect(metadata?.packageName == "com.example.demo")
+      #expect(server.connectionCount == expectedConnections)
+    }
+  }
+
+  @Test("legacy probes have a total read deadline even when bytes keep arriving")
+  func boundsLegacyTrickle() async throws {
+    let server = FakeDiscoveryADB(stall: .output, legacyReply: .trickle)
+    defer { server.close() }
+    let start = ContinuousClock.now
+    let metadata = try await server.client().legacyInspectorMetadata(
+      reference: InspectorServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: InspectorID(rawValue: "network"),
+      pid: 42
+    )
+    #expect(metadata == nil)
+    #expect(start.duration(to: .now) < .seconds(6))
+    #expect(server.connectionCount == 2)
+  }
+
+  @Test("cancelling a legacy probe closes the socket without trying a fallback")
+  func cancelsLegacyProbe() async throws {
+    let server = FakeDiscoveryADB(stall: .output, legacyReply: .trickle)
+    defer { server.close() }
+    let task = Task {
+      try await server.client().legacyInspectorMetadata(
+        reference: InspectorServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: InspectorID(rawValue: "network"),
+        pid: 42
+      )
+    }
+    var requests = server.requests.stream.makeAsyncIterator()
+    _ = await requests.next()
+    task.cancel()
+    do {
+      _ = try await task.value
+      Issue.record("Expected cancellation")
+    } catch is CancellationError {}
+    #expect(server.connectionCount == 1)
+  }
+
   @Test("native timeouts allow output that continues making progress")
   func allowsContinuousOutput() async throws {
     let server = FakeDiscoveryADB(stall: .trickle)
@@ -138,14 +191,20 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     case transport, shell, output, partialStatus, partialOutput, trickle
   }
 
+  enum LegacyReply {
+    case raw(String), http(String), trickle
+  }
+
+  private let legacyReply: LegacyReply?
   let requests = AsyncStream<String>.makeStream()
   private let stall: Stall
   private let workers = DispatchGroup()
   private let lock = NSLock()
   private var peers: [ADBSocketConnection] = []
 
-  init(stall: Stall) {
+  init(stall: Stall, legacyReply: LegacyReply? = nil) {
     self.stall = stall
+    self.legacyReply = legacyReply
   }
 
   var connectionCount: Int {
@@ -174,7 +233,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
     lock.withLock { peers.append(peer) }
     workers.enter()
-    DispatchQueue.global().async { [stall, workers, requests] in
+    DispatchQueue.global().async { [stall, workers, requests, legacyReply] in
       defer { workers.leave() }
       do {
         try peer.withRequestTimeout(.seconds(2)) {
@@ -195,6 +254,25 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
           requests.continuation.yield(command)
           if stalled, stall == .shell { return }
           Self.send("OKAY", to: descriptor)
+          if command.hasPrefix("localabstract:"), let legacyReply {
+            defer { peer.close() }
+            guard let request = try peer.readLine() else { return }
+            switch legacyReply {
+            case .raw(let response):
+              guard request == "HelloSnapO" else { return }
+              Self.send(response + "\n", to: descriptor)
+            case .http(let body):
+              guard request == "GET /.snap-o/info HTTP/1.1" else { return }
+              while let header = try peer.readLine(), !header.isEmpty {}
+              Self.send("HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body, to: descriptor)
+            case .trickle:
+              for _ in 0 ..< 100 {
+                if !Self.send("x", to: descriptor) { break }
+                Thread.sleep(forTimeInterval: 0.03)
+              }
+            }
+            return
+          }
           if stalled {
             if stall == .partialOutput { Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_99\n", to: descriptor) }
             if stall == .trickle {

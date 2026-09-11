@@ -284,3 +284,46 @@ private extension InspectorID {
   static let network = Self(rawValue: "network")
   static let tweaks = Self(rawValue: "tweaks")
 }
+
+extension InspectorDiscoveryTests {
+  @Test("legacy metadata accepts only recognized protocols and matching process identity")
+  func legacyMetadataEvidence() throws {
+    let network = Data(
+      #"{"method":"SnapO.appInfo","params":{"protocolVersion":1,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}}"#
+        .utf8
+    )
+    #expect(try LegacyInspectorReader.decode(network, kind: .network, pid: 42, http: false)?.protocolVersion == 1)
+    #expect(try LegacyInspectorReader.decode(network, kind: .network, pid: 43, http: false) == nil)
+    let http = Data(#"{"protocolVersion":2,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}"#.utf8)
+    #expect(try LegacyInspectorReader.decode(http, kind: .network, pid: 42, http: true)?.protocolVersion == 2)
+    for version in [5, 6, 7, 100] {
+      let tweaks = Data("{\"protocolVersion\":\(version),\"packageName\":\"com.example.demo\",\"name\":\"Demo\"}".utf8)
+      #expect(try (LegacyInspectorReader.decode(tweaks, kind: .tweaks, pid: 42, http: true) != nil) == (version < 7))
+    }
+    #expect(LegacyInspectorReader.requests(kind: InspectorID(rawValue: "custom")).isEmpty)
+    #expect(LegacyInspectorReader.requests(kind: .network).first == "HelloSnapO\n")
+    #expect(LegacyInspectorReader.requests(kind: .tweaks).allSatisfy { $0.hasPrefix("GET ") })
+  }
+
+  @Test("legacy metadata responses are bounded and reject redirects and malformed framing")
+  func legacyMetadataFraming() throws {
+    #expect(try LegacyInspectorReader.payload(Data("{}\nextra".utf8), http: false) == Data("{}".utf8))
+    #expect(try LegacyInspectorReader.payload(Data("{".utf8), http: false) == nil)
+    let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"
+    #expect(try LegacyInspectorReader.payload(Data(response.utf8), http: true) == Data("{}".utf8))
+    #expect(try LegacyInspectorReader.payload(Data(response.dropLast().utf8), http: true) == nil)
+    #expect(try LegacyInspectorReader.payload(Data("HTTP/1.0 200 OK\r\n\r\n{}".utf8), http: true, ended: true) == Data("{}".utf8))
+    for invalid in [
+      "HTTP/1.1 302 Found\r\nLocation: https://example.com\r\n\r\n",
+      "HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n",
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n{}",
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n",
+      String(repeating: "x", count: 8193)
+    ] {
+      #expect(throws: (any Error).self) { try LegacyInspectorReader.payload(Data(invalid.utf8), http: true) }
+    }
+    #expect(throws: (any Error).self) {
+      try LegacyInspectorReader.payload(Data(repeating: 120, count: LegacyInspectorReader.maximumBytes + 1), http: false)
+    }
+  }
+}

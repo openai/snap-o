@@ -312,7 +312,24 @@ struct CaptureWindow: View {
             if let inspectorModel = inspectorSession.model {
               InspectorWebView(model: inspectorModel)
                 .overlay {
-                  if inspectorModel.isWaiting || inspectorModel.selectedInspector == nil {
+                  if let compatibility = inspectorModel.compatibilityExplanation {
+                    VStack(alignment: .leading, spacing: 12) {
+                      Image(systemName: compatibility.isUnsupported ? "exclamationmark.triangle" : "wifi.exclamationmark")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                      Text(compatibility.title(for: inspectorModel.preferredInspectorID) ?? "Inspector unavailable").font(.headline)
+                      Text(compatibility.explanation ?? "")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                      if let version = compatibility.versionDetail {
+                        Text(version).font(.caption).foregroundStyle(.tertiary)
+                      }
+                    }
+                    .frame(maxWidth: 440, alignment: .leading)
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .textBackgroundColor))
+                  } else if inspectorModel.isWaiting || inspectorModel.selectedInspector == nil {
                     VStack(spacing: 12) {
                       Text(inspectorModel.selectedInspectorApp.map { "Waiting for \($0.name)" } ?? "Select an app to inspect")
                         .foregroundStyle(.secondary)

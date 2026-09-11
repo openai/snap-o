@@ -19,6 +19,12 @@ public struct InspectorPackageMetadata: Codable, Sendable, Equatable {
   public let revision: String
   public let iconBase64: String?
   public let inspectors: [InspectorDescriptor]
+  public let errors: [InspectorDescriptorError]?
+}
+
+public struct InspectorDescriptorError: Codable, Sendable, Equatable {
+  public let key: String
+  public let error: String
 }
 
 public struct InspectorProcessMetadata: Codable, Sendable, Equatable {
@@ -29,6 +35,28 @@ public struct InspectorProcessMetadata: Codable, Sendable, Equatable {
   public let processIdentity: String?
   public let app: InspectorPackageMetadata?
   public let error: String?
+}
+
+public struct InspectorProcessIdentity: Codable, Sendable, Equatable {
+  public let pid: Int
+  public let processName: String?
+  public let androidUserId: Int
+  public let processIdentity: String
+  public let packageName: String
+  public let revision: String
+
+  public init?(metadata: InspectorProcessMetadata) {
+    guard metadata.version == 1, metadata.pid > 0,
+          let identity = metadata.processIdentity, !identity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          let user = metadata.androidUserId, user >= 0, let app = metadata.app,
+          !app.packageName.isEmpty, !app.revision.isEmpty else { return nil }
+    pid = metadata.pid
+    processName = metadata.processName
+    androidUserId = user
+    processIdentity = identity
+    packageName = app.packageName
+    revision = app.revision
+  }
 }
 
 enum InspectorManifestReader {
