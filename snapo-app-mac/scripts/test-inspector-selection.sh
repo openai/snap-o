@@ -11,6 +11,7 @@ swift build --package-path SnapODeviceClient --scratch-path "$TEST_DIR/package"
 xcrun swiftc -swift-version 6 -parse-as-library \
   -I "$TEST_DIR/package/debug/Modules" \
   "$TEST_DIR/package/debug/SnapODeviceClient.build/"*.o \
+  "$TEST_DIR/package/debug/ZIPFoundation.build/"*.o \
   Snap-O/Inspectors/InspectorModels.swift \
   Snap-O/Inspectors/InspectorPluginRegistry.swift \
   Tests/InspectorSelection/InspectorTestPlugins.swift \
@@ -24,6 +25,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
 xcrun swiftc -swift-version 6 -parse-as-library \
   -I "$TEST_DIR/package/debug/Modules" \
   "$TEST_DIR/package/debug/SnapODeviceClient.build/"*.o \
+  "$TEST_DIR/package/debug/ZIPFoundation.build/"*.o \
   Snap-O/Inspectors/InspectorModels.swift \
   Snap-O/Inspectors/InspectorPluginRegistry.swift \
   Tests/InspectorSelection/InspectorTestPlugins.swift \
@@ -34,6 +36,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Storage/SaveLocation.swift \
   Snap-O/Inspectors/InspectorWebBridge.swift \
   Snap-O/Inspectors/InspectorWebPolicy.swift \
+  Snap-O/Inspectors/InspectorAssetSchemeHandler.swift \
   Snap-O/Inspectors/InspectorWebContainer.swift \
   Snap-O/Inspectors/InspectorWebView.swift \
   Tests/InspectorSelection/InspectorWebViewTests.swift \

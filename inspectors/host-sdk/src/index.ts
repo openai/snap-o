@@ -47,6 +47,7 @@ export interface InspectorDescriptor {
   name: string;
   protocolVersion: number;
   iconBase64?: string;
+  frontend?: { assetPath: string; hostApiVersion: number };
 }
 
 export interface ProcessManifest {

@@ -8,7 +8,6 @@
   },
   "scripts": {
     "dev:network": "npm run dev -w @snap-o/network-inspector",
-    "dev:tweaks": "npm run dev -w @snap-o/tweaks-inspector",
     "build": "node scripts/build-plugins.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",

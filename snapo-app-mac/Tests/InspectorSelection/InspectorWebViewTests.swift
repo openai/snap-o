@@ -46,6 +46,22 @@ actor InspectorService {
   }
 
   func releaseInspectorEndpoint(ownerID: UUID) {}
+
+  func inspectorFrontend(
+    for reference: InspectorServerReference, manifest: InspectorProcessMetadata, inspector: InspectorDescriptor
+  ) async throws -> InspectorFrontendBundle {
+    try Self.frontendFixture()
+  }
+
+  private static func frontendFixture() throws -> InspectorFrontendBundle {
+    let directory = URL(fileURLWithPath: "../snapo-link-android/tweaks-core/frontend/dist")
+    let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey])!
+    var files: [String: Data] = [:]
+    for case let file as URL in enumerator where try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
+      files[String(file.path.dropFirst(directory.standardizedFileURL.path.count + 1))] = try Data(contentsOf: file)
+    }
+    return try InspectorFrontendBundle(files: files)
+  }
 }
 
 @main
@@ -87,7 +103,7 @@ struct InspectorWebViewTests {
       to: root.appendingPathComponent("sample")
     )
     let registry = try InspectorPluginRegistry(directory: root)
-    precondition(registry.plugins.count == 3)
+    precondition(registry.plugins.count == 2 && registry.plugin(for: .tweaks) == nil)
     let sockets = InspectorDiscovery.sockets(
       inProcNetUnix: "1: 00000002 00000000 00010000 0001 01 101 @snapo_sample_10",
       deviceID: "phone",
@@ -110,11 +126,12 @@ struct InspectorWebViewTests {
       model.inspectorApps.count == 2 && model.isPageReady && model.webContainer?.webView.superview != nil
     }
     let network = model.webContainer!.webView
+    let networkOrigin = network.url!.host
     try await eventually("Packaged Network JavaScript should render") {
       await (try? network.evaluateJavaScript("document.querySelector('#root').childElementCount > 0") as? Bool) == true
     }
     let canCreateSession = try await network.evaluateJavaScript("isSecureContext && typeof crypto.randomUUID === 'function'") as? Bool
-    precondition(canCreateSession == true, "The frontend needs a secure localhost origin for session IDs")
+    precondition(canCreateSession == true, "The frontend needs a secure origin for session IDs")
     _ = try await network.evaluateJavaScript("window.testState = 'network state'")
     let storageKey = "test-" + UUID().uuidString
     _ = try await network.evaluateJavaScript("localStorage.setItem('\(storageKey)', 'network value')")
@@ -228,6 +245,8 @@ struct InspectorWebViewTests {
     model.webContainer!.recoverFromEventOverflow()
     try await eventually("Page recovery should reload the inspector") { model.isPageReady }
     precondition(!model.toolbarActions.contains { $0.id == "test-clear" })
+    let reloadedStorage = try await network.evaluateJavaScript("localStorage.getItem('\(storageKey)')") as? String
+    precondition(reloadedStorage == "network value", "Recovery must preserve the storage origin")
     model.selectApp(second)
     let replacement = model.webContainer!.webView
     precondition(replacement !== network, "Changing the selected app replaces that inspector's view")
@@ -250,13 +269,118 @@ struct InspectorWebViewTests {
       model.isPageReady && model.selectedInspectorApp?.id == first.id && model.webContainer?.webView.superview != nil
     }
     let finalPage = model.webContainer!.webView
+    precondition(finalPage.url?.host == networkOrigin, "Recreated pages must use the same provider origin")
+    let restoredStorage = try await finalPage.evaluateJavaScript("localStorage.getItem('\(storageKey)')") as? String
+    precondition(restoredStorage == "network value", "Provider preferences must survive container replacement")
+    _ = try await finalPage.evaluateJavaScript("localStorage.removeItem('\(storageKey)')")
     model.stop()
     try await eventually("Stopping the host should unmount the active page") { finalPage.superview == nil }
     print("Rapid selection and shutdown leave no obsolete page mounted")
-    try await testSecurity(registry: registry, root: root)
+    try await testSecurity()
+    try await testFrontendSources(registry: registry, preferences: preferences)
+    try await testInvalidBundledFrontend(registry: registry, root: root, preferences: preferences)
   }
 
-  static func testSecurity(registry: InspectorPluginRegistry, root: URL) async throws {
+  static func testInvalidBundledFrontend(registry: InspectorPluginRegistry, root: URL, preferences: UserDefaults) async throws {
+    let entry = root.appendingPathComponent("sample/index.html")
+    let original = try Data(contentsOf: entry)
+    defer { try? original.write(to: entry) }
+    try Data([0xFF]).write(to: entry)
+    let provider = app(50, kinds: [.sample])
+    let service = InspectorService(apps: [provider], registry: registry)
+    let model = InspectorHostModel(service: service, preferences: preferences)
+    defer { model.stop() }
+    try await eventually("The invalid frontend provider should be discovered") { model.inspectorApps.count == 1 }
+    model.selectInspector(provider, option: provider.inspectors[0])
+    try await eventually("Bundled frontend validation errors must reach the native UI") {
+      model.frontendError?.contains("invalid inspector frontend assets") == true
+    }
+    precondition(!model.isPageReady)
+    print("Invalid bundled HTML reports its validation error without loading a page")
+  }
+
+  static func testFrontendSources(registry: InspectorPluginRegistry, preferences: UserDefaults) async throws {
+    let html = """
+    <!doctype html><html lang="en"><head>
+    <script>try { eval('window.earlyEval = true'); } catch { window.earlyEval = false; }</script>
+    <base href="https://example.test/">
+    <link rel="stylesheet" href="./style.css"><script type="module" src="./main.js"></script>
+    </head><body>Original HTML</body></html>
+    """
+    let bundle = try InspectorFrontendBundle(files: [
+      "index.html": Data(html.utf8),
+      "style.css": Data("body { color: rgb(1, 2, 3); }".utf8),
+      "main.js": Data(
+        "window.assetResult = (await import('./chunk.js')).value + await (await fetch(new URL('./data.txt', import.meta.url))).text();"
+          .utf8
+      ),
+      "chunk.js": Data("export const value = 'module:';".utf8),
+      "data.txt": Data("data".utf8)
+    ])
+    let container = InspectorWebContainer(bridge: InspectorWebBridge(), storageIdentifier: nil)
+    container.start(frontend: bundle)
+    let web = container.webView
+    defer { container.stop() }
+    try await eventually("APK assets must support module imports, CSS, and fetch") {
+      await (try? web
+        .evaluateJavaScript("window.assetResult === 'module:data' && getComputedStyle(document.body).color === 'rgb(1, 2, 3)'") as? Bool) ==
+        true
+    }
+    let secure = try await web.evaluateJavaScript("isSecureContext && typeof crypto.randomUUID === 'function'") as? Bool
+    precondition(secure == true)
+    precondition(web.url?.scheme == InspectorAssetSchemeHandler.scheme && web.url?.path == "/index.html")
+    let document = try await web.callAsyncJavaScript(
+      """
+      const response = await fetch(location.href);
+      return {html: await response.text(), policy: response.headers.get('Content-Security-Policy'),
+        earlyEval: window.earlyEval, baseURI: document.baseURI};
+      """, arguments: [:], in: nil, contentWorld: .page
+    ) as! [String: Any]
+    precondition(document["html"] as? String == html, "Serve the original HTML bytes without injecting markup")
+    precondition((document["policy"] as? String)?.contains("base-uri 'none'") == true)
+    precondition(document["earlyEval"] as? Bool == false, "Apply CSP before the first script executes")
+    precondition(document["baseURI"] as? String == web.url?.absoluteString, "CSP must reject an inspector-provided base URL")
+    for invalid in ["", "https://example.com/", "file:///tmp/index.html", "http://user@localhost:1234/", "http://localhost:0/"] {
+      precondition(InspectorWebPolicy.developmentURL(invalid) == nil)
+    }
+    let directory = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SNAPO_WEB_SECURITY_FIXTURE_DIR"]!)
+    let ports = try JSONDecoder().decode([String: Int].self, from: Data(contentsOf: directory.appendingPathComponent("ports.json")))
+    let devURL = URL(string: "http://127.0.0.1:\(ports["allowed"]!)/dev")!
+    let first = app(30, kinds: [.tweaks])
+    let second = app(40, kinds: [.tweaks])
+    let service = InspectorService(apps: [first, second], registry: registry)
+    let model = InspectorHostModel(service: service, preferences: preferences)
+    defer { model.stop() }
+    try await eventually("Frontend providers should be discovered") { model.inspectorApps.count == 2 }
+    model.selectInspector(first, option: first.inspectors[0])
+    try await eventually("APK frontend should start without an override") {
+      model.isPageReady && model.selectedInspectorApp?.id == first.id
+    }
+    precondition(model.developmentURL == nil)
+    model.useDevelopmentServer(devURL)
+    try await eventually("Development modules and HMR WebSockets must load") {
+      guard model.isPageReady, let web = model.webContainer?.webView else { return false }
+      return await (try? web.evaluateJavaScript("window.devLoaded && window.hmr === 'ok'") as? Bool) == true
+    }
+    let deniedURL = "http://127.0.0.1:\(ports["denied"]!)/dev-forbidden"
+    let blocked = try await model.webContainer!.webView.callAsyncJavaScript(
+      "try { await fetch(url); return false; } catch { return true; }",
+      arguments: ["url": deniedURL], in: nil, contentWorld: .page
+    ) as? Bool
+    precondition(blocked == true, "A development override must not open other loopback servers")
+    model.selectApp(second)
+    precondition(model.developmentURL == nil, "Overrides belong to one provider")
+    try await eventually("Another app should use its packaged frontend") { model.isPageReady }
+    model.selectApp(first)
+    precondition(model.developmentURL == devURL)
+    try await eventually("Returning to the provider should restore its override") { model.isPageReady }
+    model.useDevelopmentServer(nil)
+    precondition(model.developmentURL == nil)
+    try await eventually("Removing an override should restore the packaged frontend") { model.isPageReady }
+    print("APK assets load modules, CSS, and data; development overrides support HMR and stay scoped to their provider")
+  }
+
+  static func testSecurity() async throws {
     let directory = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SNAPO_WEB_SECURITY_FIXTURE_DIR"]!)
     let portsFile = directory.appendingPathComponent("ports.json")
     try await eventually("Security fixture should start") { FileManager.default.fileExists(atPath: portsFile.path) }
@@ -268,11 +392,10 @@ struct InspectorWebViewTests {
     let fixture = try String(contentsOfFile: "Tests/InspectorSelection/Fixtures/hostile.html", encoding: .utf8)
       .replacingOccurrences(of: "__ALLOWED__", with: String(allowed.absoluteString.dropLast()))
       .replacingOccurrences(of: "__DENIED__", with: String(denied.absoluteString.dropLast()))
-    try fixture.write(to: root.appendingPathComponent("sample/index.html"), atomically: true, encoding: .utf8)
     let bridge = InspectorWebBridge()
     bridge.hostStateHandler = { InspectorConnectionState() }
     bridge.isActiveHandler = { false }
-    let container = InspectorWebContainer(bridge: bridge, plugin: registry.plugin(for: .sample)!, storageIdentifier: nil)
+    let container = InspectorWebContainer(bridge: bridge, storageIdentifier: nil)
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
       styleMask: [.borderless],
@@ -285,7 +408,7 @@ struct InspectorWebViewTests {
     defer { container.stop()
       window.orderOut(nil)
     }
-    container.start()
+    try container.start(frontend: InspectorFrontendBundle(files: ["index.html": Data(fixture.utf8)]))
     try await eventually("Hostile fixture should execute only after the initial policy is installed") {
       await (try? web.evaluateJavaScript("typeof window.attack === 'function'") as? Bool) == true
     }
@@ -352,8 +475,11 @@ struct InspectorWebViewTests {
       contentWorld: .page,
       name: InspectorWebBridge.messageHandlerName
     )
+    let otherAssets = InspectorAssetSchemeHandler(storageIdentifier: UUID(uuidString: web.url!.host!))
+    otherAssets.bundle = try InspectorFrontendBundle(files: ["index.html": Data("<p>Other page</p>".utf8)])
+    otherConfiguration.setURLSchemeHandler(otherAssets, forURLScheme: InspectorAssetSchemeHandler.scheme)
     let other = WKWebView(frame: .zero, configuration: otherConfiguration)
-    other.loadHTMLString("<p>Other page</p>", baseURL: web.url)
+    other.load(URLRequest(url: web.url!))
     try await eventually("Other page should load") { !other.isLoading && other.url != nil }
     let foreign = try await other.callAsyncJavaScript(
       "try {await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});return false;}catch{return true;}",
@@ -387,6 +513,18 @@ struct InspectorWebViewTests {
     let oldURL = web.url
     container.recoverFromEventOverflow()
     try await eventually("Recovery must replace the document identity") { web.url != oldURL && !web.isLoading }
+    let stale = try await web.callAsyncJavaScript(
+      """
+      const current = location.href;
+      history.replaceState(null, '', oldURL);
+      try {
+        await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});
+        return false;
+      } catch { return true; }
+      finally { history.replaceState(null, '', current); }
+      """, arguments: ["oldURL": oldURL!.absoluteString], in: nil, contentWorld: .page
+    ) as? Bool
+    precondition(stale == true, "A previous document URL must not regain bridge access on the same origin")
     container.stop()
     await container.finishStopping()
     precondition(web.url?.absoluteString == "about:blank", "A retired page must unload before releasing its endpoint")

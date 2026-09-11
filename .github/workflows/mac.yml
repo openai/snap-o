@@ -8,6 +8,7 @@ on:
     paths:
       - 'snapo-app-mac/**'
       - 'inspectors/**'
+      - 'snapo-link-android/tweaks-core/frontend/**'
       - 'contracts/**'
       - 'scripts/snapo'
       - 'scripts/snapo-discovery.jar'
@@ -18,6 +19,7 @@ on:
     paths:
       - 'snapo-app-mac/**'
       - 'inspectors/**'
+      - 'snapo-link-android/tweaks-core/frontend/**'
       - 'contracts/**'
       - 'scripts/snapo'
       - 'scripts/snapo-discovery.jar'
@@ -91,6 +93,11 @@ jobs:
           cache-dependency-path: inspectors/package-lock.json
       - name: Build inspector test resources
         working-directory: inspectors
+        run: |
+          npm ci
+          npm run build
+      - name: Build app-provided inspector test resources
+        working-directory: snapo-link-android/tweaks-core/frontend
         run: |
           npm ci
           npm run build

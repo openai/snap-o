@@ -9,6 +9,7 @@ actor InspectorService {
   private var inspectorAppOrder: [String: Int] = [:]
   private var refreshTask: Task<Void, Never>?
   private var isStopped = false
+  private var frontends: [(key: [String], bundle: InspectorFrontendBundle)] = []
 
   init(adbService: ADBService, deviceTracker: DeviceTracker, registry: InspectorPluginRegistry) {
     self.registry = registry
@@ -94,9 +95,36 @@ actor InspectorService {
     await httpService.releaseEndpoint(ownerID: ownerID)
   }
 
+  func inspectorFrontend(
+    for reference: InspectorServerReference, manifest: InspectorProcessMetadata, inspector: InspectorDescriptor
+  ) async throws -> InspectorFrontendBundle {
+    guard let app = manifest.app, let user = manifest.androidUserId, let frontend = inspector.frontend,
+          frontend.hostApiVersion == 1 else { throw InspectorError.frontendUnavailable }
+    let key = [reference.deviceId, String(user), app.packageName, app.revision, inspector.id.rawValue, frontend.assetPath]
+    if let index = frontends.firstIndex(where: { $0.key == key }) {
+      let cached = frontends.remove(at: index)
+      frontends.append(cached)
+      return cached.bundle
+    }
+    let adb = await adbService.exec()
+    let helper = (Bundle.main.resourceURL ?? Bundle.main.bundleURL.appending(path: "Contents/Resources"))
+      .appending(path: "snapo-discovery.jar")
+    let bundle = try await adb.inspectorFrontend(
+      deviceID: reference.deviceId, socketName: reference.socketName, manifest: manifest, inspector: inspector, helperURL: helper
+    )
+    guard !Task.isCancelled, !isStopped else { throw CancellationError() }
+    frontends.removeAll { $0.key == key }
+    while frontends.count >= 4 {
+      frontends.removeFirst()
+    }
+    frontends.append((key, bundle))
+    return bundle
+  }
+
   func stop() async {
     guard !isStopped else { return }
     isStopped = true
+    frontends.removeAll()
     refreshTask?.cancel()
     await refreshTask?.value
     refreshTask = nil

@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+import zipfile
 from PIL import Image, ImageDraw
 
 
@@ -49,6 +50,15 @@ def main():
                 (resources / kind).mkdir(parents=True, exist_ok=True)
                 for source in (original / kind).glob("snapo_*inspector*.xml"):
                     shutil.copyfile(source, resources / kind / (module + "_" + source.name).replace("-", "_")) if kind == "values" else shutil.copyfile(source, resources / kind / source.name)
+        (resources / "xml/snapo_tweaks_inspector.xml").write_text('''<inspector version="1" id="tweaks" name="Tweaks"
+            protocolVersion="7" icon="@drawable/snapo_tweaks_inspector_icon"
+            frontendAssets="snapo/inspectors/tweaks/frontend.zip" hostApiVersion="1" />''')
+        assets = temporary / "assets"
+        archive = assets / "snapo/inspectors/tweaks/frontend.zip"
+        archive.parent.mkdir(parents=True)
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as frontend:
+            frontend.writestr("index.html", '<script type="module" src="./assets/main.js"></script>')
+            frontend.writestr("assets/main.js", 'document.body.dataset.fixture = "loaded";')
         Image.new("RGBA", (96, 96), "red").save(resources / "drawable/fixture_icon.png")
         round_icon = Image.new("RGBA", (96, 96))
         ImageDraw.Draw(round_icon).ellipse((0, 0, 95, 95), fill="#00ff00")
@@ -79,7 +89,7 @@ def main():
         apk = temporary / "fixture.apk"
         key = temporary / "key.p12"
         run(build / "aapt2", "compile", "--dir", resources, "-o", compiled)
-        run(build / "aapt2", "link", "--manifest", manifest, "-I", android, "-o", unsigned, compiled)
+        run(build / "aapt2", "link", "--manifest", manifest, "-I", android, "-A", assets, "-o", unsigned, compiled)
         run(build / "zipalign", "-f", "4", unsigned, apk)
         run(java / "keytool", "-genkeypair", "-keystore", key, "-storepass", "android", "-alias", "fixture", "-keypass", "android", "-keyalg", "RSA", "-validity", "2", "-dname", "CN=Snap-O test")
         run(build / "apksigner", "sign", "--ks", key, "--ks-pass", "pass:android", apk)
@@ -122,12 +132,26 @@ def main():
             for kind, protocol in [("network", 3), ("tweaks", 7)]:
                 assert descriptors[kind]["protocolVersion"] == protocol, descriptors
                 assert base64.b64decode(descriptors[kind]["iconBase64"]).startswith(b"\x89PNG\r\n\x1a\n")
+            frontend = descriptors["tweaks"]["frontend"]
+            assert frontend == {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 1}
+            expected = dict(frontend, processIdentity=info["processIdentity"], androidUserId=info["androidUserId"],
+                            packageName=package, revision=info["app"]["revision"], inspectorId="tweaks")
+            encoded = base64.b64encode(json.dumps(expected).encode()).decode()
+            # exec-out merges stderr into stdout; match the desktop's binary reader command.
+            exported = subprocess.run([*adb, "exec-out", f"CLASSPATH={remote} app_process / com.openai.snapo.discovery.FrontendMain snapo_tweaks_{pid} {encoded} 2>/dev/null"],
+                                      capture_output=True, timeout=30, check=True).stdout
+            assert exported == archive.read_bytes(), "The reader changed the frontend ZIP"
+            expected["revision"] = "stale"
+            encoded = base64.b64encode(json.dumps(expected).encode()).decode()
+            rejected = subprocess.run([*adb, "exec-out", f"CLASSPATH={remote} app_process / com.openai.snapo.discovery.FrontendMain snapo_tweaks_{pid} {encoded} 2>/dev/null"],
+                                      capture_output=True, timeout=30)
+            assert not rejected.stdout, f"Unexpected stale-package output: {rejected.stdout[:300]!r}"
             assert int(run(*adb, "shell", "pidof", package)) == pid
             if options.freeze:
                 processes = run(*adb, "shell", "dumpsys", "activity", "processes", package)
                 if "isFrozen=true" not in processes and "frozen=true" not in processes:
                     raise AssertionError("Fixture was not still frozen after discovery:\n" + processes)
-            print(f"PASS: non-debuggable {'frozen' if options.freeze else 'background'} app, {options.icon} icon, both descriptors, {elapsed} ms", flush=True)
+            print(f"PASS: non-debuggable {'frozen' if options.freeze else 'background'} app, {options.icon} icon, descriptors and frontend ZIP, {elapsed} ms", flush=True)
         finally:
             if installed:
                 run(*adb, "uninstall", package)

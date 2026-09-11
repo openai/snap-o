@@ -67,7 +67,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         with lock:
             requests.append({"port": self.server.server_port, "path": self.path})
-        if self.path == "/redirect":
+        if self.path == "/dev":
+            self.respond(200, b'<script type="module" src="/dev.js"></script>', "text/html")
+        elif self.path == "/dev.js":
+            self.respond(200, b'window.devLoaded = true; const ws = new WebSocket(location.origin.replace("http", "ws") + "/hmr"); ws.onmessage = e => { window.hmr = e.data; ws.close(); };', "text/javascript")
+        elif self.path == "/redirect":
             self.respond(302, b"", extra={"Location": f"http://127.0.0.1:{denied.server_port}/redirected"})
         elif self.headers.get("Upgrade", "").lower() == "websocket":
             digest = hashlib.sha1((self.headers["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()

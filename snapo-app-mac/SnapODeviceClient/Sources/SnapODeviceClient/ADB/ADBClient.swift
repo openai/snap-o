@@ -310,21 +310,45 @@ public struct ADBClient: Sendable {
     helperURL: URL
   ) async throws -> [InspectorProcessMetadata] {
     let command = try InspectorManifestReader.command(helper: Data(contentsOf: helperURL), socketNames: socketNames)
-    let data = try await withConnection(maxAttempts: 1) { connection in
+    let data = try await runInspectorReader(deviceID: deviceID, command: command, maximumBytes: 8_388_608)
+    return try InspectorManifestReader.decode(data)
+  }
+
+  public func inspectorFrontend(
+    deviceID: String,
+    socketName: String,
+    manifest: InspectorProcessMetadata,
+    inspector: InspectorDescriptor,
+    helperURL: URL
+  ) async throws -> InspectorFrontendBundle {
+    guard inspector.frontend != nil, socketName == "snapo_\(inspector.id.rawValue)_\(manifest.pid)" else {
+      throw ADBError.parseFailure("invalid inspector frontend request")
+    }
+    let expected = try InspectorFrontendBundle.request(manifest: manifest, inspector: inspector)
+    let command = try InspectorManifestReader.command(
+      helper: Data(contentsOf: helperURL),
+      socketNames: [socketName],
+      frontendRequest: expected
+    )
+    let data = try await runInspectorReader(deviceID: deviceID, command: command, maximumBytes: 16 * 1024 * 1024)
+    return try InspectorFrontendBundle(archive: data)
+  }
+
+  private func runInspectorReader(deviceID: String, command: String, maximumBytes: Int) async throws -> Data {
+    try await withConnection(maxAttempts: 1) { connection in
       try connection.withRequestTimeout(.seconds(10)) {
         try connection.sendTransport(to: deviceID)
         try connection.sendShell(command)
         var output = Data()
         while let chunk = try connection.readChunk(maxLength: 16384) {
-          guard output.count + chunk.count <= 8_388_608 else {
-            throw ADBError.parseFailure("inspector discovery output is too large")
+          guard output.count + chunk.count <= maximumBytes else {
+            throw ADBError.parseFailure("inspector resource output is too large")
           }
           output.append(chunk)
         }
         return output
       }
     }
-    return try InspectorManifestReader.decode(data)
   }
 
   public func forwardLocalAbstract(

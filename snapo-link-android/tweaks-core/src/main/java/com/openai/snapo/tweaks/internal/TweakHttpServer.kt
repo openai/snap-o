@@ -723,7 +723,8 @@ internal fun browserOrigin(headers: Map<String, String>): String? {
     }
     val value = headers["origin"] ?: return null
     val origin = runCatching { URI(value) }.getOrNull()
-    val hasAuthority = origin?.scheme in listOf("http", "https") && origin?.host?.lowercase() in hosts
+    val hasAuthority = inspectorOrigin.matches(value) ||
+        (origin?.scheme in listOf("http", "https") && origin?.host?.lowercase() in hosts)
     val hasOnlyAuthority = origin?.rawUserInfo == null && origin?.rawQuery == null &&
         origin?.rawFragment == null && origin?.rawPath.isNullOrEmpty()
     if (!hasAuthority || !hasOnlyAuthority) {
@@ -739,3 +740,5 @@ private fun corsHeaders(origin: String?): String = if (origin == null) {
         "Access-Control-Allow-Methods: GET, PATCH, POST\r\n" +
         "Access-Control-Allow-Headers: Content-Type\r\nVary: Origin\r\n"
 }
+
+private val inspectorOrigin = Regex("snapo-inspector://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")

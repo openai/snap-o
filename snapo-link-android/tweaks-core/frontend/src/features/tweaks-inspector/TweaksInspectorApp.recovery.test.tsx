@@ -135,7 +135,7 @@ describe("Tweaks connection recovery", () => {
     expect(client.updateTweaks).not.toHaveBeenCalled();
   });
 
-  it("shows status text while loading", async () => {
+  it("shows status only after loading has lasted 300 ms", async () => {
     let finish!: (value: TweakList) => void;
     vi.mocked(client.listTweaks).mockImplementationOnce(
       () =>
@@ -144,6 +144,13 @@ describe("Tweaks connection recovery", () => {
         })
     );
     await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     const status = container.querySelector('[role="status"]');
     expect(status?.textContent).toBe("Waiting for inspector");
     expect(status?.querySelector("svg")).not.toBeNull();
@@ -152,6 +159,27 @@ describe("Tweaks connection recovery", () => {
     await act(async () => finish(response));
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+  });
+
+  it("does not flash a waiting indicator when loading finishes quickly", async () => {
+    let finish!: (value: TweakList) => void;
+    vi.mocked(client.listTweaks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    await render();
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+      finish(response);
+    });
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
   it("sends text input before blur and preserves focus during live updates", async () => {

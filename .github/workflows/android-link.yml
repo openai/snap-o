@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - 'snapo-link-android/**'
+      - 'inspectors/host-sdk/**'
       - 'android-discovery/**'
       - 'scripts/snapo-discovery.jar'
       - 'contracts/**'
@@ -18,6 +19,7 @@ on:
       - master
     paths:
       - 'snapo-link-android/**'
+      - 'inspectors/host-sdk/**'
       - 'android-discovery/**'
       - 'scripts/snapo-discovery.jar'
       - 'contracts/**'
@@ -35,6 +37,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Node for inspector frontends
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: snapo-link-android/tweaks-core/frontend/package-lock.json
       - name: Set up Java
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
         with:
@@ -73,6 +81,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Node for inspector frontends
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: snapo-link-android/tweaks-core/frontend/package-lock.json
       - name: Set up Java
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
         with:
@@ -115,6 +129,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Node for inspector frontends
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: snapo-link-android/tweaks-core/frontend/package-lock.json
       - name: Set up Java
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0
         with:
@@ -136,3 +156,23 @@ jobs:
       - name: Run Detekt
         working-directory: snapo-link-android
         run: ./gradlew --no-daemon detekt
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: snapo-link-android/tweaks-core/frontend
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Node for inspector frontends
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: snapo-link-android/tweaks-core/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

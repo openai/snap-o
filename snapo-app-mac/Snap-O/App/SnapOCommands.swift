@@ -9,6 +9,8 @@ struct SnapOCommands: Commands {
   var captureController: CaptureWindowController?
   @FocusedValue(\.workspaceController)
   var workspaceController: WorkspaceLayoutController?
+  @FocusedValue(\.inspectorHost)
+  var inspectorHost: InspectorHostModel?
 
   let settings: AppSettings
   let adbService: ADBService
@@ -136,6 +138,16 @@ struct SnapOCommands: Commands {
       }
       Toggle("Show Touches During Capture", isOn: $settings.showTouchesDuringCapture)
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
+    }
+    CommandMenu("Develop") {
+      Button("Inspect Current WebView in Safari…") { inspectorHost?.webContainer?.inspectInSafari() }
+        .disabled(inspectorHost?.isPageReady != true)
+      Divider()
+      Button("Use Development Server…") { inspectorHost?.isDevelopmentServerPresented = true }
+        .disabled(inspectorHost?.canConfigureDevelopmentServer != true)
+      Button("Use Packaged Frontend") { inspectorHost?.useDevelopmentServer(nil) }
+        .disabled(inspectorHost?.developmentURL == nil)
+      if let url = inspectorHost?.developmentURL { Text(url.absoluteString) }
     }
     CommandMenu("Tools") {
       Button(workspaceController?.showsInspector == true ? "Hide App Inspector" : "Show App Inspector") {

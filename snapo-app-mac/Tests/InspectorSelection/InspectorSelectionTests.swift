@@ -47,7 +47,7 @@ struct InspectorSelectionTests {
 
   private static func pluginManifests() throws {
     let bundled = try testPluginRegistry()
-    expect(bundled.plugins.map(\.id) == [.network, .tweaks], "Load the built-in package manifests")
+    expect(bundled.plugins.map(\.id) == [.network], "Only Network is bundled with the Mac app")
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }

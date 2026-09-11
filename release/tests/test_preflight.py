@@ -143,6 +143,17 @@ class ProtocolReportTests(unittest.TestCase):
                             'TWEAKS_PROTOCOL_VERSION = 7', 'modifiedTweakProtocolVersion = 4'):
             self.assertIn(declaration, report)
 
+    def test_reports_gradle_metadata_and_apk_frontend_versions(self):
+        (self.repo / DECLARATIONS[1][1]).unlink()
+        self.write("snapo-link-android/tweaks-core/build.gradle.kts", "snapoInspector {\n    protocolVersion = 7\n}\n")
+        self.write("snapo-link-android/tweaks-core/frontend/src/features/tweaks-inspector/protocol.ts", "export const supportedProtocolVersion = 7;\n")
+        self.commit()
+        report = self.report()
+        self.assertNotIn("UNRESOLVED:", report)
+        self.assertIn("protocolVersion = 7", report)
+        self.assertIn("frontend/src/features/tweaks-inspector/protocol.ts", report)
+        self.assertIn("const supportedProtocolVersion = 7", report)
+
     def test_reports_structured_curve_protocol_transition(self):
         old_path = DECLARATIONS[1][1]
         (self.repo / old_path).unlink()

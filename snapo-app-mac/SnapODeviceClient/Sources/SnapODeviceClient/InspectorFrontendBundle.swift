@@ -1,0 +1,79 @@
+import Foundation
+import ZIPFoundation
+
+public struct InspectorFrontendBundle: Sendable {
+  public let entryPoint = "index.html"
+  public let files: [String: Data]
+
+  public var byteCount: Int {
+    files.values.reduce(0) { $0 + $1.count }
+  }
+
+  public init(archive data: Data) throws {
+    let maximumBytes = 16 * 1024 * 1024
+    guard data.count <= maximumBytes else { throw ADBError.parseFailure("inspector archive is too large") }
+    let archive = try Archive(data: data, accessMode: .read)
+    var files: [String: Data] = [:]
+    var seen: Set<String> = []
+    var total = 0
+    for entry in archive {
+      try Task.checkCancellation()
+      let path = entry.type == .directory && entry.path.hasSuffix("/") ? String(entry.path.dropLast()) : entry.path
+      guard seen.count < 1024, Self.validPath(path), seen.insert(path).inserted,
+            entry.type != .symlink, entry.uncompressedSize <= UInt64(maximumBytes - total) else {
+        throw ADBError.parseFailure("invalid inspector archive entry")
+      }
+      if entry.type == .directory { continue }
+      var content = Data()
+      let checksum = try archive.extract(entry, bufferSize: 16384) { chunk in
+        try Task.checkCancellation()
+        guard content.count + chunk.count <= maximumBytes - total else {
+          throw ADBError.parseFailure("expanded inspector assets are too large")
+        }
+        content.append(chunk)
+      }
+      guard checksum == entry.checksum, content.count == entry.uncompressedSize else {
+        throw ADBError.parseFailure("inspector archive checksum or size mismatch")
+      }
+      total += content.count
+      files[path] = content
+    }
+    try self.init(files: files)
+  }
+
+  public init(files: [String: Data]) throws {
+    guard !files.isEmpty, files.count <= 1024, files.keys.allSatisfy(Self.validPath),
+          files.values.reduce(0, { $0 + $1.count }) <= 16 * 1024 * 1024,
+          let html = files["index.html"], html.count <= 4 * 1024 * 1024,
+          String(data: html, encoding: .utf8) != nil else {
+      throw ADBError.parseFailure("invalid inspector frontend assets")
+    }
+    self.files = files
+  }
+
+  static func validPath(_ path: String) -> Bool {
+    !path.isEmpty && path.utf16.count <= 1024 && !path.contains("\\")
+      && !path.unicodeScalars.contains { $0.value < 32 || $0.value == 127 }
+      && !path.split(separator: "/", omittingEmptySubsequences: false).contains { $0.isEmpty || $0 == "." || $0 == ".." }
+  }
+
+  static func request(manifest: InspectorProcessMetadata, inspector: InspectorDescriptor) throws -> Data {
+    struct Request: Encodable {
+      let processIdentity: String
+      let androidUserId: Int
+      let packageName: String
+      let revision: String
+      let inspectorId: InspectorID
+      let assetPath: String
+      let hostApiVersion: Int
+    }
+    guard let processIdentity = manifest.processIdentity, let user = manifest.androidUserId, let app = manifest.app,
+          let frontend = inspector.frontend, validPath(frontend.assetPath), frontend.assetPath.hasSuffix(".zip") else {
+      throw ADBError.parseFailure("inspector frontend metadata is missing or invalid")
+    }
+    return try JSONEncoder().encode(Request(
+      processIdentity: processIdentity, androidUserId: user, packageName: app.packageName, revision: app.revision,
+      inspectorId: inspector.id, assetPath: frontend.assetPath, hostApiVersion: frontend.hostApiVersion
+    ))
+  }
+}
