@@ -76,6 +76,7 @@ extension InspectorSaveFileResult: Sendable {}
 
 enum InspectorError: LocalizedError {
   case invalidBridgeMessage
+  case frontendUnavailable
   case serverNotConnected(InspectorServerReference)
   case requestFailed(statusCode: Int, message: String)
 
@@ -83,6 +84,8 @@ enum InspectorError: LocalizedError {
     switch self {
     case .invalidBridgeMessage:
       "Invalid inspector bridge message."
+    case .frontendUnavailable:
+      "This inspector has no compatible frontend. Update its Android library or select a development server."
     case .serverNotConnected(let server):
       "Snap-O server is not connected: \(server.deviceId)/\(server.socketName)"
     case .requestFailed(_, let message):

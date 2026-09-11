@@ -85,6 +85,13 @@ struct CaptureWindow: View {
       }
       .focusedSceneValue(\.captureController, controller)
       .focusedSceneValue(\.workspaceController, workspace)
+      .focusedSceneValue(\.inspectorHost, workspace.showsInspector ? inspectorSession.model : nil)
+      .sheet(isPresented: Binding(
+        get: { inspectorSession.model?.isDevelopmentServerPresented == true },
+        set: { inspectorSession.model?.isDevelopmentServerPresented = $0 }
+      )) {
+        if let model = inspectorSession.model { InspectorDevelopmentServerSettings(model: model) }
+      }
       .background(
         WindowSizingController(
           displayInfo: controller.displayInfoForSizing,
@@ -317,6 +324,18 @@ struct CaptureWindow: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(nsColor: .textBackgroundColor))
+                  } else if let error = inspectorModel.frontendError {
+                    VStack(spacing: 12) {
+                      Text(error).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                      Button("Retry") { inspectorModel.retryFrontend() }
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .textBackgroundColor))
+                  } else if !inspectorModel.isPageReady {
+                    ProgressView("Loading inspector…")
+                      .frame(maxWidth: .infinity, maxHeight: .infinity)
+                      .background(Color(nsColor: .textBackgroundColor))
                   }
                 }
             } else if let error = inspectorSession.error {

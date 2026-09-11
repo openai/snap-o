@@ -251,7 +251,12 @@ class NetworkInspectorHttpTest {
 
     @Test
     fun `browser preflight allows loopback origins and rejects remote or opaque origins`() = runBlocking {
-        for (origin in listOf("http://localhost", "http://127.0.0.1:5173", "http://[::1]:5173")) {
+        for (origin in listOf(
+            "http://localhost",
+            "http://127.0.0.1:5173",
+            "http://[::1]:5173",
+            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef"
+        )) {
             val output = ByteArrayOutputStream()
             val request = "OPTIONS /interception HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n" +
                 "Origin: $origin\r\nAccess-Control-Request-Method: PUT\r\n" +
@@ -266,7 +271,13 @@ class NetworkInspectorHttpTest {
             "null",
             "https://example.test",
             "http://localhost.example.test",
-            "http://user@localhost"
+            "http://user@localhost",
+            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef:1234",
+            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef/",
+            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef?q=1",
+            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef#fragment",
+            "snapo-inspector://user@01234567-89ab-cdef-0123-456789abcdef",
+            "snapo-inspector://attacker.example"
         )) {
             val output = ByteArrayOutputStream()
             val request = "POST /interception HTTP/1.1\r\nHost: localhost\r\nOrigin: $origin\r\n\r\n"

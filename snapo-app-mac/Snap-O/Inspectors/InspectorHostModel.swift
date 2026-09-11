@@ -13,6 +13,7 @@ final class InspectorHostModel {
   private(set) var isRestoringInspector = false
   private(set) var appLaunch: AppLaunchState?
   private(set) var isWaiting = true
+  var isDevelopmentServerPresented = false
 
   var isPageReady: Bool {
     activePage?.isReady ?? false
@@ -20,6 +21,30 @@ final class InspectorHostModel {
 
   var webContainer: InspectorWebContainer? {
     activePage?.container
+  }
+
+  var frontendError: String? {
+    activePage?.error
+  }
+
+  var developmentURL: URL? {
+    activePage?.identity.developmentURL
+  }
+
+  var canConfigureDevelopmentServer: Bool {
+    activePage?.identity.storageIdentifier != nil
+  }
+
+  func useDevelopmentServer(_ url: URL?) {
+    guard let scope = activePage?.identity.storageIdentifier,
+          url == nil || InspectorWebPolicy.developmentURL(url?.absoluteString ?? "") != nil else { return }
+    preferences.set(url?.absoluteString ?? "", forKey: "inspectorDevelopmentServer." + scope.uuidString)
+    apply(appInspector.snapshot)
+  }
+
+  func retryFrontend() {
+    guard let kind = preferredInspectorID, let identity = pages[kind]?.identity else { return }
+    replacePage(kind: kind, identity: identity)
   }
 
   var toolbarActions: [InspectorToolbarAction] {
@@ -35,12 +60,16 @@ final class InspectorHostModel {
     let server: InspectorServerReference?
     let processIdentity: String?
     let storageIdentifier: UUID?
+    let packageRevision: String?
+    let frontend: InspectorFrontend?
+    let developmentURL: URL?
   }
 
   private struct Page {
     let identity: PageIdentity
     let container: InspectorWebContainer
     var isReady = false
+    var error: String?
     var endpointID: UUID?
     var connection = InspectorConnectionState()
     var toolbar = InspectorToolbar(revision: 0, actions: [])
@@ -52,9 +81,11 @@ final class InspectorHostModel {
   @ObservationIgnored private var bindings: [InspectorID: Task<Void, Never>] = [:]
   @ObservationIgnored private var isStopped = false
   @ObservationIgnored private let appInspector: AppInspectorModel
+  @ObservationIgnored private let preferences: UserDefaults
 
   init(service: InspectorService, preferences: UserDefaults = .standard) {
     self.service = service
+    self.preferences = preferences
     appInspector = AppInspectorModel(
       preferences: preferences,
       discover: { await service.discoverInspectors() },
@@ -71,6 +102,9 @@ final class InspectorHostModel {
     guard !isStopped else { return }
     isStopped = true
     appInspector.stop()
+    for task in pageTransitions.values {
+      task.cancel()
+    }
     for task in bindings.values {
       task.cancel()
     }
@@ -137,10 +171,18 @@ final class InspectorHostModel {
     guard let kind = state.preferredKind else { return }
     let pageState = snapshot.pageState(for: kind)
     isWaiting = pageState.isWaiting
+    let scope = InspectorWebPolicy.storageIdentifier(app: pageState.selectedApp, inspector: kind)
+    let developmentURL: URL? = if let saved = scope.flatMap({ preferences.string(forKey: "inspectorDevelopmentServer." + $0.uuidString) }) {
+      InspectorWebPolicy.developmentURL(saved)
+    } else {
+      InspectorWebContainer.developmentURL(pluginID: kind)
+    }
     let identity = PageIdentity(
       appID: pageState.selectedApp?.id, server: pageState.selection?.server,
       processIdentity: pageState.selectedApp?.manifest?.processIdentity,
-      storageIdentifier: InspectorWebPolicy.storageIdentifier(app: pageState.selectedApp, inspector: kind)
+      storageIdentifier: scope, packageRevision: pageState.selectedApp?.manifest?.app?.revision,
+      frontend: pageState.selectedApp?.manifest?.app?.inspectors.first { $0.id == kind }?.frontend,
+      developmentURL: developmentURL
     )
     if pages[kind]?.identity != identity { replacePage(kind: kind, identity: identity) }
     for kind in pages.keys {
@@ -200,12 +242,16 @@ final class InspectorHostModel {
   }
 
   private func replacePage(kind: InspectorID, identity: PageIdentity) {
-    guard let plugin = service.registry.plugin(for: kind) else { return }
+    let plugin = service.registry.plugin(for: kind)
+    let manifest = appInspector.snapshot.pageState(for: kind).selectedApp?.manifest
     let previous = pages[kind]?.container
     previous?.stop()
     bindings[kind]?.cancel()
     let bridge = InspectorWebBridge()
-    let container = InspectorWebContainer(bridge: bridge, plugin: plugin, storageIdentifier: identity.storageIdentifier)
+    let container = InspectorWebContainer(
+      bridge: bridge,
+      storageIdentifier: identity.storageIdentifier, developmentURL: identity.developmentURL
+    )
     bridge.isActiveHandler = { [weak self, weak container] in
       guard let self, let container else { return false }
       return !isStopped && preferredInspectorID == kind && pages[kind]?.container === container
@@ -231,18 +277,45 @@ final class InspectorHostModel {
     container.pageReadinessChangedHandler = { [weak self, weak container] isReady in
       guard let self, let container, pages[kind]?.container === container else { return }
       pages[kind]?.isReady = isReady
+      if isReady { pages[kind]?.error = nil }
       if !isReady { pages[kind]?.toolbar = InspectorToolbar(revision: 0, actions: []) }
       synchronizeConnection(kind: kind)
     }
+    container.pageLoadFailedHandler = { [weak self, weak container] message in
+      guard let self, let container, pages[kind]?.container === container else { return }
+      pages[kind]?.error = message
+    }
     pages[kind] = Page(identity: identity, container: container)
     let transition = pageTransitions[kind]
+    transition?.cancel()
     pageTransitions[kind] = Task { [weak self] in
       await transition?.value
       await previous?.finishStopping()
       if let previous { await self?.service.releaseInspectorEndpoint(ownerID: previous.id) }
-      guard let self, !isStopped, pages[kind]?.container === container else { return }
-      container.start()
-      pageTransitions[kind] = nil
+      guard let self, !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
+      defer {
+        if pages[kind]?.container === container { pageTransitions[kind] = nil }
+      }
+      do {
+        let frontend: InspectorFrontendBundle?
+        if identity.developmentURL != nil {
+          frontend = nil
+        } else if identity.frontend != nil {
+          guard let server = identity.server, let manifest,
+                let inspector = manifest.app?.inspectors.first(where: { $0.id == kind }),
+                inspector.frontend?.hostApiVersion == 1 else { throw InspectorError.frontendUnavailable }
+          frontend = try await service.inspectorFrontend(for: server, manifest: manifest, inspector: inspector)
+        } else if let directory = plugin?.resourceDirectory {
+          frontend = try InspectorFrontendBundle(files: ["index.html": Data(contentsOf: directory.appendingPathComponent("index.html"))])
+        } else {
+          throw InspectorError.frontendUnavailable
+        }
+        guard !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
+        container.start(frontend: frontend)
+      } catch {
+        guard !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
+        pages[kind]?.error = error.localizedDescription
+      }
     }
   }
 }

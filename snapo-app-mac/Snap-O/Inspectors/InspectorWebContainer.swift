@@ -16,10 +16,10 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
   let id = UUID()
   let webView: WKWebView
   var pageReadinessChangedHandler: ((Bool) -> Void)?
+  var pageLoadFailedHandler: ((String) -> Void)?
 
-  private let embeddedHTML: String?
+  private let assets: InspectorAssetSchemeHandler
   private let developmentURL: URL?
-  static let pageOrigin = URL(string: "http://localhost/")
   private let bridge: InspectorWebBridge
   private var isStopped = false
   private var policyTask: Task<Void, Never>?
@@ -28,7 +28,7 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
   private var policyInstalled = false
   private var currentRuleList: WKContentRuleList?
   private var unloadNavigation: WKNavigation?
-  private var documentURL = InspectorWebContainer.pageOrigin?.appendingPathComponent(UUID().uuidString)
+  private var documentURL: URL?
   private var stopContinuation: CheckedContinuation<Void, Never>?
   private var unloadTask: Task<Void, Never>?
   private let ruleListIdentifier = "snapo.inspector." + UUID().uuidString
@@ -44,12 +44,13 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
     }
   }
 
-  init(bridge: InspectorWebBridge, plugin: InspectorPlugin, storageIdentifier: UUID?) {
+  init(
+    bridge: InspectorWebBridge,
+    storageIdentifier: UUID?, developmentURL: URL? = nil
+  ) {
     let configuration = WKWebViewConfiguration()
-    embeddedHTML = plugin.resourceDirectory.flatMap {
-      try? String(contentsOf: $0.appendingPathComponent("index.html"), encoding: .utf8)
-    }
-    developmentURL = Self.developmentURL(pluginID: plugin.id)
+    assets = InspectorAssetSchemeHandler(storageIdentifier: storageIdentifier)
+    self.developmentURL = developmentURL
     self.bridge = bridge
     configuration.websiteDataStore = storageIdentifier.map { WKWebsiteDataStore(forIdentifier: $0) } ?? .nonPersistent()
     configuration.defaultWebpagePreferences.isLockdownModeEnabled = true
@@ -57,6 +58,7 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
     configuration.preferences.isElementFullscreenEnabled = false
     configuration.allowsAirPlayForMediaPlayback = false
     configuration.mediaTypesRequiringUserActionForPlayback = .all
+    configuration.setURLSchemeHandler(assets, forURLScheme: InspectorAssetSchemeHandler.scheme)
     configuration.userContentController.addScriptMessageHandler(
       bridge,
       contentWorld: .page,
@@ -72,7 +74,7 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
       guard let self, !isStopped, policyInstalled, message.webView === webView,
             message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, ownsPage(url) else { return false }
       let origin = message.frameInfo.securityOrigin
-      guard let expected = developmentURL ?? Self.pageOrigin else { return false }
+      let expected = developmentURL ?? assets.baseURL
       return origin.protocol == expected.scheme && origin.host == expected.host
         && origin.port == (expected.port ?? 0)
     }
@@ -84,8 +86,9 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
     }
   }
 
-  func start() {
+  func start(frontend: InspectorFrontendBundle?) {
     guard !isStopped else { return }
+    assets.bundle = frontend
     policyTask = Task { [weak self] in
       guard let self else { return }
       do {
@@ -95,7 +98,7 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
       } catch {
         // Never execute inspector code without an installed network policy.
         guard !isStopped else { return }
-        webView.loadHTMLString("<p>Inspector security policy could not be loaded.</p>", baseURL: documentURL)
+        pageLoadFailedHandler?("Inspector security policy could not be loaded.")
       }
     }
   }
@@ -105,7 +108,9 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
     if policyInstalled, self.endpoint == endpoint { return }
     policyGeneration += 1
     let generation = policyGeneration
-    let encoded = try InspectorWebPolicy.contentRules(endpoint: endpoint, developmentURL: developmentURL)
+    let encoded = try InspectorWebPolicy.contentRules(
+      endpoint: endpoint, developmentURL: developmentURL, assetURL: assets.bundle == nil ? nil : assets.baseURL
+    )
     let identifier = ruleListIdentifier + "." + String(generation)
     let list = try await WKContentRuleListStore.default().compileContentRuleList(
       forIdentifier: identifier, encodedContentRuleList: encoded
@@ -128,6 +133,7 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
   func stop() {
     guard !isStopped else { return }
     isStopped = true
+    webView.isInspectable = false
     isPageReady = false
     bridge.invalidate()
     policyTask?.cancel()
@@ -163,6 +169,23 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
 
   func closeNativeColorPanel() {
     bridge.cancelPresentation()
+  }
+
+  func inspectInSafari() {
+    guard !isStopped else { return }
+    webView.isInspectable = true
+    let alert = NSAlert()
+    alert.messageText = "Inspect in Safari"
+    alert.informativeText = "In Safari’s Develop menu, select this Mac, then Snap-O and this inspector page. "
+      + "If Develop is hidden, enable web developer features in Safari Settings → Advanced."
+    alert.addButton(withTitle: "Open Safari")
+    alert.addButton(withTitle: "Cancel")
+    guard let window = webView.window else { return }
+    alert.beginSheetModal(for: window) { response in
+      guard response == .alertFirstButtonReturn,
+            let safari = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") else { return }
+      NSWorkspace.shared.openApplication(at: safari, configuration: NSWorkspace.OpenConfiguration())
+    }
   }
 
   func recoverFromEventOverflow() {
@@ -201,6 +224,14 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
     } else {
       recoverPage()
     }
+  }
+
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    if !isStopped { pageLoadFailedHandler?(error.localizedDescription) }
+  }
+
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    if !isStopped { pageLoadFailedHandler?(error.localizedDescription) }
   }
 
   private func recoverPage() {
@@ -352,20 +383,19 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
   }
 
   private func loadInspector() {
-    documentURL = Self.pageOrigin?.appendingPathComponent(UUID().uuidString)
     if let developmentURL {
       webView.load(URLRequest(url: developmentURL))
       return
     }
-
-    guard let embeddedHTML else {
-      webView.loadHTMLString(
-        "<p style='font: 13px -apple-system; padding: 16px'>Inspector resources are unavailable.</p>",
-        baseURL: documentURL
-      )
+    guard let bundle = assets.bundle else {
+      pageLoadFailedHandler?("Inspector resources are unavailable.")
       return
     }
-    webView.loadHTMLString(InspectorWebPolicy.protectedHTML(embeddedHTML), baseURL: documentURL)
+    // Keep the storage origin stable, but reject bridge messages from previous documents.
+    let url = assets.baseURL.appendingPathComponent(bundle.entryPoint)
+      .appending(queryItems: [URLQueryItem(name: "document", value: UUID().uuidString)])
+    documentURL = url
+    webView.load(URLRequest(url: url))
   }
 
   private func ownsPage(_ url: URL) -> Bool {
@@ -375,20 +405,14 @@ final class InspectorWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate 
     return components?.url == documentURL
   }
 
-  private static func developmentURL(pluginID: InspectorID) -> URL? {
+  static func developmentURL(pluginID: InspectorID) -> URL? {
     #if DEBUG
     // Development overrides are local and scoped to one plugin.
     let key = "SNAPO_INSPECTOR_DEV_URL_" + pluginID.rawValue.uppercased().replacingOccurrences(of: "-", with: "_").replacingOccurrences(
       of: ".",
       with: "_"
     )
-    guard let rawURL = ProcessInfo.processInfo.environment[key],
-          let url = URL(string: rawURL),
-          ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
-          let host = url.host?.lowercased(),
-          ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host),
-          url.user == nil, url.password == nil else { return nil }
-    return url
+    return ProcessInfo.processInfo.environment[key].flatMap(InspectorWebPolicy.developmentURL)
     #else
     return nil
     #endif

@@ -23,9 +23,9 @@ host.addEventListener("connection", (event) => {
 });
 ```
 
-The embedded page uses a stable localhost origin. Each inspector has its own
-persistent browser data store. Use ordinary web storage for preferences; windows
-of the same inspector share that storage. The host does not proxy HTTP requests.
+The embedded page uses a stable `snapo-inspector` origin. Each inspector has its own
+persistent browser data store, scoped to the device, Android user, app, and inspector.
+Use ordinary web storage for preferences; windows for the same provider share it. The host does not proxy HTTP requests.
 
 ## Toolbar
 

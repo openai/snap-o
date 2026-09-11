@@ -2,11 +2,19 @@ plugins {
     id("snapo.android.library")
     id("snapo.maven.publish")
     id("snapo.detekt")
+    id("com.openai.snapo.inspector")
 }
 
 description = "Compose-free live tweaks for Snap-O."
 
 android { namespace = "com.openai.snapo.tweaks.core" }
+
+snapoInspector {
+    id = "tweaks"
+    displayName = "Tweaks"
+    protocolVersion = 7
+    icon = "@drawable/snapo_tweaks_inspector_icon"
+}
 
 dependencies {
     api(libs.kotlinx.coroutines.core)

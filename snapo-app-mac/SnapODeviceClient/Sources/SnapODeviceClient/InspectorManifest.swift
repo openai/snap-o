@@ -5,6 +5,12 @@ public struct InspectorDescriptor: Codable, Sendable, Equatable {
   public let name: String
   public let protocolVersion: Int
   public let iconBase64: String?
+  public let frontend: InspectorFrontend?
+}
+
+public struct InspectorFrontend: Codable, Sendable, Equatable {
+  public let assetPath: String
+  public let hostApiVersion: Int
 }
 
 public struct InspectorPackageMetadata: Codable, Sendable, Equatable {
@@ -26,13 +32,14 @@ public struct InspectorProcessMetadata: Codable, Sendable, Equatable {
 }
 
 enum InspectorManifestReader {
-  static func command(helper: Data, socketNames: [String]) throws -> String {
+  static func command(helper: Data, socketNames: [String], frontendRequest: Data? = nil) throws -> String {
     guard !socketNames.isEmpty, socketNames.count <= 64,
           socketNames.allSatisfy({ $0.range(
             of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#,
             options: .regularExpression
           ) != nil }),
-          helper.count <= 32768 else {
+          helper.count <= 32768, frontendRequest == nil || socketNames.count == 1,
+          (frontendRequest?.count ?? 0) <= 8192 else {
       throw ADBError.parseFailure("invalid inspector discovery request")
     }
     // Keep uploads and execution separate from concurrent desktop or CLI readers.
@@ -41,7 +48,8 @@ enum InspectorManifestReader {
     trap 'rm -f "$directory/reader.jar"; rmdir "$directory"' EXIT
     (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/reader.jar") &&
       chmod 444 "$directory/reader.jar" || exit 1
-    CLASSPATH="$directory/reader.jar" app_process / com.openai.snapo.discovery.Main \(socketNames.joined(separator: " ")) 2>/dev/null
+      CLASSPATH="$directory/reader.jar" app_process / com.openai.snapo.discovery.\(frontendRequest == nil ? "Main" :
+      "FrontendMain") \(socketNames.joined(separator: " ")) \(frontendRequest?.base64EncodedString() ?? "") 2>/dev/null
     """
   }
 

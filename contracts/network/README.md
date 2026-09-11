@@ -74,7 +74,7 @@ HTTP request bodies are limited to 2 MiB. Individual event JSON payloads and his
 
 Android accepts at most 128 simultaneous inspector connections, including at most 16 SSE streams. Clients should bound concurrent HTTP operations. Each HTTP request uses one connection; SSE and history responses stream without buffering their full contents.
 
-Every request must use a loopback `Host` (`localhost`, `127.0.0.1`, or `[::1]`, with an optional port). This blocks DNS rebinding through attacker-owned names. Browser requests must also use an HTTP or HTTPS loopback `Origin`. Other origins, including `null`, are rejected. Native clients may omit `Origin`.
+Every request must use a loopback `Host` (`localhost`, `127.0.0.1`, or `[::1]`, with an optional port). This blocks DNS rebinding through attacker-owned names. Browser requests must use an HTTP or HTTPS loopback `Origin`, or the desktop origin `snapo-inspector://<uuid>` (a lowercase canonical UUID, without a port, path, query, or fragment). Other origins, including `null`, are rejected. Native clients may omit `Origin`.
 
 The desktop host provides the forwarded base URL. Browser clients connect directly with `fetch` and `EventSource`. CORS responses allow the validated origin and expose `SnapO-Sequence` and `Location`. `OPTIONS` permits `GET`, `POST`, and `PUT` with `Content-Type`; credentials are not required.
 

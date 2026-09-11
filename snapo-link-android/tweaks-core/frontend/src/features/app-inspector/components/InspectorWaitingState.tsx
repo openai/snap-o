@@ -1,7 +1,15 @@
 import type { JSX } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import { LoadingSpinner } from "../../../components/LoadingSpinner";
 
-export function InspectorWaitingState({ error }: { error?: string | null }): JSX.Element {
+export function InspectorWaitingState({ error }: { error?: string | null }): JSX.Element | null {
+  const [showIndicator, setShowIndicator] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShowIndicator(true), 300);
+    return () => clearTimeout(timer);
+  }, []);
+  if (!showIndicator && !error) return null;
+
   const label = "Waiting for inspector";
   return (
     <div className="inspector-loading">

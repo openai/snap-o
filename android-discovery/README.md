@@ -12,6 +12,12 @@ Pass up to 64 socket names to `com.openai.snapo.discovery.Main` through `app_pro
 
 App icons prefer the manifest's `android:roundIcon`. Adaptive app icons use a circular mask; legacy icons keep their original shape. Inspector descriptor icons are unchanged. Round-icon selection reads Android's optional `ApplicationInfo.roundIconRes` field and falls back to the normal package icon if that field or resource cannot be read.
 
+## Frontend asset reader
+
+`com.openai.snapo.discovery.FrontendMain` is a separate entry point in the same JAR. It accepts one inspector socket name and a base64-encoded JSON object identifying the expected process, package revision, and frontend descriptor. It reads the ZIP named by the descriptor through Android's asset API and returns the unchanged ZIP bytes on standard output. Diagnostics go to standard error.
+
+The tool verifies the selection before reading and checks process identity and package revision again afterward. It rejects compressed archives larger than 16 MiB. The desktop validates ZIP entries and expanded size before loading the frontend. Discovery does not fetch ZIPs, and the Android inspector HTTP server does not serve frontend assets.
+
 ## Build
 
 Install JDK 17, Android SDK platform 36, and build-tools 36.0.0. Set `JAVA_HOME` and `ANDROID_HOME` as needed, then run:

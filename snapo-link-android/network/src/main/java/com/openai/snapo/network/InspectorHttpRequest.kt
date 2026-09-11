@@ -83,8 +83,10 @@ internal data class InspectorHttpRequest(
             headers["origin"]?.let { value ->
                 val origin = runCatching { URI(value) }.getOrNull()
                 require(
-                    origin?.scheme in listOf("http", "https") &&
-                        origin?.host?.lowercase() in BrowserHosts &&
+                    (
+                        InspectorOrigin.matches(value) ||
+                            (origin?.scheme in listOf("http", "https") && origin?.host?.lowercase() in BrowserHosts)
+                        ) &&
                         origin?.rawUserInfo == null && origin?.rawQuery == null && origin?.rawFragment == null &&
                         origin?.rawPath.isNullOrEmpty()
                 ) { "Cross-origin requests are not allowed" }
@@ -114,3 +116,5 @@ private const val MaxHttpBodyBytes = 2 * 1024 * 1024
 private val HeaderName = Regex("[!#$%&'*+.^_`|~0-9a-z-]+")
 
 private val BrowserHosts = setOf("localhost", "127.0.0.1", "[::1]")
+
+private val InspectorOrigin = Regex("snapo-inspector://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")

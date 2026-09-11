@@ -8,7 +8,7 @@ struct InspectorDiscoveryTests {
     InspectorSocketDefinition(id: InspectorID(rawValue: $0), socketPrefix: "snapo_\($0)_")
   }
 
-  @Test("discovers both inspector kinds from one socket snapshot")
+  @Test("discovers bundled and app-provided inspector kinds from one socket snapshot")
   func parsesSharedSnapshot() {
     let output = """
     1: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42
@@ -19,9 +19,10 @@ struct InspectorDiscoveryTests {
     6: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_0
     """
     let sockets = InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone", definitions: definitions)
-    #expect(sockets.map(\.kind) == [.network, .tweaks])
-    #expect(sockets.map(\.reference.deviceId) == ["phone", "phone"])
-    #expect(sockets.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42"])
+    #expect(sockets.map(\.kind) == [.network, .tweaks, InspectorID(rawValue: "unknown")])
+    #expect(sockets.map(\.reference.deviceId) == ["phone", "phone", "phone"])
+    #expect(sockets.map(\.reference.socketName) == ["snapo_network_42", "snapo_tweaks_42", "snapo_unknown_42"])
+    #expect(InspectorDiscovery.sockets(inProcNetUnix: output, deviceID: "phone") == sockets)
   }
 
   @Test("shared inspector types preserve the web bridge wire format")

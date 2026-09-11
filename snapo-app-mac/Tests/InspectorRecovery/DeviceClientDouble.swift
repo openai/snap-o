@@ -4,6 +4,8 @@ public struct ADBForwardHandle: Sendable {
   public let port: UInt16
 }
 
+public struct InspectorFrontendBundle: Sendable {}
+
 public final class ADBClient: @unchecked Sendable {
   private let lock = NSLock()
   private var forwards = 0
@@ -70,6 +72,13 @@ public final class ADBClient: @unchecked Sendable {
       ]
       return try JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
     }
+  }
+
+  public func inspectorFrontend(
+    deviceID: String, socketName: String, manifest: InspectorProcessMetadata,
+    inspector: InspectorDescriptor, helperURL: URL
+  ) async throws -> InspectorFrontendBundle {
+    InspectorFrontendBundle()
   }
 
   public func emitDevices(_ payload: String) {

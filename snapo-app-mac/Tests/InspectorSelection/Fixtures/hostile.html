@@ -42,7 +42,9 @@
     await attempt("eval", () => eval("1 + 1"));
     result.rtc = typeof RTCPeerConnection;
     result.uuid = typeof crypto.randomUUID;
-    document.querySelector('meta[http-equiv="Content-Security-Policy"]').remove();
+    const policy = document.createElement('meta');
+    policy.httpEquiv = 'Content-Security-Policy'; policy.content = "default-src * 'unsafe-eval' 'unsafe-inline' blob: data:";
+    document.head.append(policy); policy.remove();
     await attempt("removedPolicy", () => fetch(denied + "/removed-policy"));
     const image = new Image(); image.src = denied + "/image";
     const script = document.createElement("script"); script.src = denied + "/script"; document.head.append(script);

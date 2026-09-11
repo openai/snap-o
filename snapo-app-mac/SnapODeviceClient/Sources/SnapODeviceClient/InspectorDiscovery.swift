@@ -139,7 +139,7 @@ public enum InspectorDiscovery {
   public static func sockets(
     inProcNetUnix output: String,
     deviceID: String,
-    definitions: [InspectorSocketDefinition]
+    definitions: [InspectorSocketDefinition] = []
   ) -> [DiscoveredInspectorSocket] {
     let sections = output.components(separatedBy: "\n\(processListMarker)\n")
     let processNames = sections.count == 2 ? DeviceDiscovery.processNames(inProcessList: sections[1]) : [:]
@@ -153,8 +153,8 @@ public enum InspectorDiscovery {
             let inode = UInt64(fields[6]), inode > 0,
             let token = fields.last, token.first == "@" else { return nil }
       let name = String(token.dropFirst())
-      guard seen.insert(name).inserted,
-            let definition = definitions.first(where: { $0.pid(inSocketName: name) != nil }),
+      let definition = definitions.first(where: { $0.pid(inSocketName: name) != nil }) ?? standardDefinition(for: name)
+      guard seen.insert(name).inserted, let definition,
             let pid = definition.pid(inSocketName: name) else { return nil }
       return DiscoveredInspectorSocket(
         kind: definition.id,
@@ -169,7 +169,7 @@ public enum InspectorDiscovery {
   public static func discover(
     on deviceIDs: [String],
     using adb: ADBClient,
-    definitions: [InspectorSocketDefinition]
+    definitions: [InspectorSocketDefinition] = []
   ) async -> [DiscoveredInspectorSocket] {
     await withTaskGroup(of: [DiscoveredInspectorSocket].self) { group in
       for deviceID in deviceIDs {
@@ -203,5 +203,12 @@ public enum InspectorDiscovery {
         inspectors: ordered
       )
     }.sorted { $0.id < $1.id }
+  }
+
+  private static func standardDefinition(for socketName: String) -> InspectorSocketDefinition? {
+    guard socketName.range(of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#, options: .regularExpression) != nil,
+          let separator = socketName.lastIndex(of: "_") else { return nil }
+    let id = String(socketName.dropFirst("snapo_".count).prefix(upTo: separator))
+    return InspectorSocketDefinition(id: InspectorID(rawValue: id), socketPrefix: "snapo_\(id)_")
   }
 }
