@@ -124,11 +124,14 @@ struct InspectorWebViewTests {
     let sample = model.webContainer!.webView
     let marker = try await sample.evaluateJavaScript("document.querySelector('#sample-inspector').textContent") as? String
     precondition(marker == "Sample inspector", "Load the plugin HTML without assuming a root element")
-    let sampleState = try await sample.callAsyncJavaScript(
-      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? [String: Any]
-    precondition(sampleState?["connected"] as? Bool == true)
+    var sampleState: [String: Any]?
+    try await eventually("The sample plugin should connect after its endpoint policy is installed") {
+      sampleState = try? await sample.callAsyncJavaScript(
+        "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
+        arguments: [:], in: nil, contentWorld: .page
+      ) as? [String: Any]
+      return sampleState?["connected"] as? Bool == true
+    }
     precondition((sampleState?["manifest"] as? [String: Any])?["pid"] as? Int == 10)
     precondition((sampleState?["inspector"] as? [String: Any])?["id"] as? String == "sample")
     let sampleStorage = try await sample.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
@@ -187,10 +190,14 @@ struct InspectorWebViewTests {
 
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
     try await eventually("Network should remount") { network.superview != nil }
-    let activeState = try await network.callAsyncJavaScript(
-      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
-      arguments: [:], in: nil, contentWorld: .page
-    ) as? [String: Any]
+    var activeState: [String: Any]?
+    try await eventually("Network should reconnect after remounting") {
+      activeState = try? await network.callAsyncJavaScript(
+        "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
+        arguments: [:], in: nil, contentWorld: .page
+      ) as? [String: Any]
+      return activeState?["connected"] as? Bool == true
+    }
     precondition(activeState?["baseURL"] as? String == "http://127.0.0.1:1234/")
     precondition((activeState?["inspector"] as? [String: Any])?["id"] as? String == "network")
     await service.setApps([app(10, connectedKinds: [.tweaks, .sample]), second])
