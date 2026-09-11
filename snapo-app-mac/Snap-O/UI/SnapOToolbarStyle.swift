@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Shared metrics for capture and network controls in the window toolbar.
+/// Shared metrics for capture and inspector controls in the window toolbar.
 enum SnapOToolbarStyle {
   static let iconFont = Font.system(size: 17, weight: .medium)
   static let singleControlSize: CGFloat = 36

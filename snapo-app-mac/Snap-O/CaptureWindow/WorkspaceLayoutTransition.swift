@@ -3,7 +3,7 @@ import CoreGraphics
 struct WorkspaceLayoutTransition: Equatable {
   enum Pane: Equatable {
     case capture
-    case network
+    case inspector
   }
 
   let pane: Pane
@@ -13,8 +13,8 @@ struct WorkspaceLayoutTransition: Equatable {
   let finalWindowWidth: CGFloat
   let initialCapturePaneWidth: CGFloat
   let finalCapturePaneWidth: CGFloat
-  let initialNetworkPaneWidth: CGFloat
-  let finalNetworkPaneWidth: CGFloat
+  let initialInspectorPaneWidth: CGFloat
+  let finalInspectorPaneWidth: CGFloat
 
   func progress(windowWidth: CGFloat) -> CGFloat {
     let distance = finalWindowWidth - initialWindowWidth
@@ -28,10 +28,10 @@ struct WorkspaceLayoutTransition: Equatable {
       + ((finalCapturePaneWidth - initialCapturePaneWidth) * progress)
   }
 
-  func networkPaneWidth(windowWidth: CGFloat) -> CGFloat {
+  func inspectorPaneWidth(windowWidth: CGFloat) -> CGFloat {
     let progress = progress(windowWidth: windowWidth)
-    return initialNetworkPaneWidth
-      + ((finalNetworkPaneWidth - initialNetworkPaneWidth) * progress)
+    return initialInspectorPaneWidth
+      + ((finalInspectorPaneWidth - initialInspectorPaneWidth) * progress)
   }
 }
 

@@ -3,33 +3,57 @@ import Observation
 
 enum WorkspaceLayout: String {
   case capture
-  case network
+  case inspector
   case both
 
   var showsCapture: Bool {
-    self != .network
+    self != .inspector
   }
 
-  var showsNetwork: Bool {
+  var showsInspector: Bool {
     self != .capture
   }
 }
 
 struct WorkspaceLayoutSnapshot: Codable, Hashable {
   let showsCapture: Bool
-  let showsNetwork: Bool
+  let showsInspector: Bool
   let capturePaneWidth: CGFloat
 
+  private enum CodingKeys: String, CodingKey {
+    case showsCapture
+    case showsInspector
+    case capturePaneWidth
+  }
+
+  private enum LegacyCodingKeys: String, CodingKey {
+    case showsNetwork
+  }
+
+  init(showsCapture: Bool, showsInspector: Bool, capturePaneWidth: CGFloat) {
+    self.showsCapture = showsCapture
+    self.showsInspector = showsInspector
+    self.capturePaneWidth = capturePaneWidth
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    showsCapture = try container.decode(Bool.self, forKey: .showsCapture)
+    showsInspector = try container.decodeIfPresent(Bool.self, forKey: .showsInspector)
+      ?? decoder.container(keyedBy: LegacyCodingKeys.self).decode(Bool.self, forKey: .showsNetwork)
+    capturePaneWidth = try container.decode(CGFloat.self, forKey: .capturePaneWidth)
+  }
+
   @MainActor
-  static func persisted() -> Self {
-    let defaults = UserDefaults.standard
-    let hasStoredVisibility = defaults.object(forKey: "workspace.showsCapture") != nil
-      || defaults.object(forKey: "workspace.showsNetwork") != nil
-    let storedWidth = defaults.double(forKey: "workspace.capturePaneWidth")
+  static func persisted(defaults: UserDefaults = .standard) -> Self {
+    WorkspacePreferences.migrate(defaults: defaults)
+    let hasStoredVisibility = defaults.object(forKey: WorkspacePreferences.showsCapture) != nil
+      || defaults.object(forKey: WorkspacePreferences.showsInspector) != nil
+    let storedWidth = defaults.double(forKey: WorkspacePreferences.capturePaneWidth)
 
     return Self(
-      showsCapture: hasStoredVisibility ? defaults.bool(forKey: "workspace.showsCapture") : true,
-      showsNetwork: hasStoredVisibility ? defaults.bool(forKey: "workspace.showsNetwork") : false,
+      showsCapture: hasStoredVisibility ? defaults.bool(forKey: WorkspacePreferences.showsCapture) : true,
+      showsInspector: hasStoredVisibility ? defaults.bool(forKey: WorkspacePreferences.showsInspector) : false,
       capturePaneWidth: storedWidth > 0
         ? max(260, storedWidth)
         : WorkspaceLayoutController.defaultCapturePaneWidth
@@ -56,40 +80,38 @@ enum WorkspaceWindowID {
 final class WorkspaceLayoutController {
   static let defaultCapturePaneWidth: CGFloat = 360
 
-  private enum Keys {
-    static let showsCapture = "workspace.showsCapture"
-    static let showsNetwork = "workspace.showsNetwork"
-    static let capturePaneWidth = "workspace.capturePaneWidth"
-  }
+  private let defaults: UserDefaults
 
   private(set) var showsCapture: Bool
-  private(set) var showsNetwork: Bool
+  private(set) var showsInspector: Bool
   private(set) var capturePaneWidth: CGFloat
 
   var layout: WorkspaceLayout {
-    if showsCapture, showsNetwork { return .both }
-    return showsNetwork ? .network : .capture
+    if showsCapture, showsInspector { return .both }
+    return showsInspector ? .inspector : .capture
   }
 
   var canToggleCapture: Bool {
-    !showsCapture || showsNetwork
+    !showsCapture || showsInspector
   }
 
-  var canToggleNetwork: Bool {
-    !showsNetwork || showsCapture
+  var canToggleInspector: Bool {
+    !showsInspector || showsCapture
   }
 
-  init(snapshot: WorkspaceLayoutSnapshot? = nil) {
-    let snapshot = snapshot ?? .persisted()
-    showsCapture = snapshot.showsCapture || !snapshot.showsNetwork
-    showsNetwork = snapshot.showsNetwork
+  init(snapshot: WorkspaceLayoutSnapshot? = nil, defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+    WorkspacePreferences.migrate(defaults: defaults)
+    let snapshot = snapshot ?? .persisted(defaults: defaults)
+    showsCapture = snapshot.showsCapture || !snapshot.showsInspector
+    showsInspector = snapshot.showsInspector
     capturePaneWidth = max(260, snapshot.capturePaneWidth)
   }
 
   var snapshot: WorkspaceLayoutSnapshot {
     WorkspaceLayoutSnapshot(
       showsCapture: showsCapture,
-      showsNetwork: showsNetwork,
+      showsInspector: showsInspector,
       capturePaneWidth: capturePaneWidth
     )
   }
@@ -99,15 +121,15 @@ final class WorkspaceLayoutController {
   }
 
   func persistCapturePaneWidth() {
-    UserDefaults.standard.set(capturePaneWidth, forKey: Keys.capturePaneWidth)
+    defaults.set(capturePaneWidth, forKey: WorkspacePreferences.capturePaneWidth)
   }
 
   func toggleCapture() {
     setCaptureVisible(!showsCapture)
   }
 
-  func toggleNetwork() {
-    setNetworkVisible(!showsNetwork)
+  func toggleInspector() {
+    setInspectorVisible(!showsInspector)
   }
 
   func revealCapture() {
@@ -115,19 +137,38 @@ final class WorkspaceLayoutController {
   }
 
   func setCaptureVisible(_ visible: Bool) {
-    guard visible || showsNetwork else { return }
+    guard visible || showsInspector else { return }
     showsCapture = visible
     persistVisibility()
   }
 
-  func setNetworkVisible(_ visible: Bool) {
+  func setInspectorVisible(_ visible: Bool) {
     guard visible || showsCapture else { return }
-    showsNetwork = visible
+    showsInspector = visible
     persistVisibility()
   }
 
   private func persistVisibility() {
-    UserDefaults.standard.set(showsCapture, forKey: Keys.showsCapture)
-    UserDefaults.standard.set(showsNetwork, forKey: Keys.showsNetwork)
+    defaults.set(showsCapture, forKey: WorkspacePreferences.showsCapture)
+    defaults.set(showsInspector, forKey: WorkspacePreferences.showsInspector)
+  }
+}
+
+private enum WorkspacePreferences {
+  static let showsCapture = "workspace.showsCapture"
+  static let showsInspector = "workspace.showsInspector"
+  static let capturePaneWidth = "workspace.capturePaneWidth"
+
+  static func migrate(defaults: UserDefaults) {
+    for (oldKey, newKey) in [
+      ("workspace.showsNetwork", showsInspector),
+      ("workspace.windowFrame.network", "workspace.windowFrame.inspector")
+    ] {
+      guard let value = defaults.object(forKey: oldKey) else { continue }
+      if defaults.object(forKey: newKey) == nil {
+        defaults.set(value, forKey: newKey)
+      }
+      defaults.removeObject(forKey: oldKey)
+    }
   }
 }

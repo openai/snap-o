@@ -15,6 +15,8 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Tests/InspectorSelection/InspectorTestPlugins.swift \
   Snap-O/Inspectors/InspectorSelection.swift \
   Snap-O/Inspectors/AppInspectorModel.swift \
+  Snap-O/CaptureWindow/WorkspaceLayoutController.swift \
+  Tests/InspectorSelection/WorkspaceLayoutTests.swift \
   Tests/InspectorSelection/InspectorSelectionTests.swift \
   -o "$TEST_DIR/inspector-tests"
 "$TEST_DIR/inspector-tests"

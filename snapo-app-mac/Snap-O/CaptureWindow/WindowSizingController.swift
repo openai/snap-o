@@ -77,11 +77,11 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     private enum Constants {
-      static let networkContentSize = CGSize(width: 1100, height: 720)
+      static let inspectorContentSize = CGSize(width: 1100, height: 720)
       static let bothContentSize = CGSize(width: 1300, height: 760)
-      static let minimumNetworkContentSize = CGSize(width: 720, height: 480)
+      static let minimumInspectorContentSize = CGSize(width: 720, height: 480)
       static let minimumBothContentSize = CGSize(width: 980, height: 480)
-      static let defaultNetworkPaneWidth: CGFloat = 940
+      static let defaultInspectorPaneWidth: CGFloat = 940
       static let dividerWidth: CGFloat = 1
     }
 
@@ -96,7 +96,7 @@ struct WindowSizingController: NSViewRepresentable {
     private var currentLayout: WorkspaceLayout?
     private var currentDisplayInfo: DisplayInfo?
     private var currentCapturePaneWidth = WorkspaceLayoutController.defaultCapturePaneWidth
-    private var rememberedNetworkPaneWidth = Constants.defaultNetworkPaneWidth
+    private var rememberedInspectorPaneWidth = Constants.defaultInspectorPaneWidth
     private var pendingLayout: WorkspaceLayout = .capture
     private var pendingDisplayInfo: DisplayInfo?
     private var pendingCapturePaneWidth = WorkspaceLayoutController.defaultCapturePaneWidth
@@ -278,8 +278,8 @@ struct WindowSizingController: NSViewRepresentable {
         if let displayInfo {
           sizeCaptureWindow(for: displayInfo, window: window, anchor: .center)
         }
-      case .network:
-        setContentSize(Constants.networkContentSize, for: window, anchor: .center)
+      case .inspector:
+        setContentSize(Constants.inspectorContentSize, for: window, anchor: .center)
       case .both:
         setContentSize(Constants.bothContentSize, for: window, anchor: .center)
       }
@@ -303,7 +303,7 @@ struct WindowSizingController: NSViewRepresentable {
         let captureWidth = currentContentSize.width
         synchronizeCapturePaneWidth(captureWidth)
         targetFrame = captureRevealTargetFrame(
-          networkWidth: rememberedNetworkPaneWidth,
+          inspectorWidth: rememberedInspectorPaneWidth,
           relativeTo: snapshot.frame,
           window: window
         )
@@ -327,41 +327,41 @@ struct WindowSizingController: NSViewRepresentable {
           )
         } else {
           let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
-          let networkWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
+          let inspectorWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
           synchronizeCapturePaneWidth(captureWidth)
           targetFrame = frameByAdjustingWorkspaceEdges(
-            trailingBy: -(Constants.dividerWidth + networkWidth),
+            trailingBy: -(Constants.dividerWidth + inspectorWidth),
             relativeTo: snapshot.frame
           )
         }
 
-      case (.network, .both):
+      case (.inspector, .both):
         let captureWidth = max(
           currentCapturePaneWidth,
           WindowSizingController.minimumCapturePaneWidth(
             aspectRatio: displayInfo?.aspectRatio
           )
         )
-        targetFrame = networkRevealTargetFrame(
+        targetFrame = inspectorRevealTargetFrame(
           captureWidth: captureWidth,
           relativeTo: snapshot.frame,
           window: window
         )
 
-      case (.both, .network):
+      case (.both, .inspector):
         let captureWidth = actualCapturePaneWidth(totalWidth: currentContentSize.width)
-        let networkWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
-        rememberedNetworkPaneWidth = networkWidth
+        let inspectorWidth = currentContentSize.width - captureWidth - Constants.dividerWidth
+        rememberedInspectorPaneWidth = inspectorWidth
         targetFrame = frameByAdjustingWorkspaceEdges(
           leadingBy: captureWidth + Constants.dividerWidth,
           relativeTo: snapshot.frame
         )
 
-      case (.capture, .network):
+      case (.capture, .inspector):
         targetFrame = constrained(
           frameFor(
             contentSize: CGSize(
-              width: rememberedNetworkPaneWidth,
+              width: rememberedInspectorPaneWidth,
               height: currentContentSize.height
             ),
             anchor: .leading,
@@ -370,7 +370,7 @@ struct WindowSizingController: NSViewRepresentable {
           for: window
         )
 
-      case (.network, .capture):
+      case (.inspector, .capture):
         if let displayInfo {
           updateAspect(for: displayInfo)
         }
@@ -413,18 +413,18 @@ struct WindowSizingController: NSViewRepresentable {
       let workspaceSize = snapshot.workspaceSize
       let initialCaptureWidth: CGFloat
       let finalCaptureWidth: CGFloat
-      let initialNetworkWidth: CGFloat
-      let finalNetworkWidth: CGFloat
+      let initialInspectorWidth: CGFloat
+      let finalInspectorWidth: CGFloat
       let finalWindowWidth: CGFloat
       let pane: WorkspaceLayoutTransition.Pane
 
       switch (previousLayout, layout) {
       case (.capture, .both):
-        pane = .network
+        pane = .inspector
         initialCaptureWidth = workspaceSize.width
-        initialNetworkWidth = rememberedNetworkPaneWidth
+        initialInspectorWidth = rememberedInspectorPaneWidth
         finalWindowWidth = captureRevealTargetFrame(
-          networkWidth: initialNetworkWidth,
+          inspectorWidth: initialInspectorWidth,
           relativeTo: snapshot.frame,
           window: window
         ).width
@@ -433,21 +433,21 @@ struct WindowSizingController: NSViewRepresentable {
           totalWidth: finalWindowWidth,
           displayInfo: displayInfo
         )
-        finalNetworkWidth = max(
+        finalInspectorWidth = max(
           finalWindowWidth - finalCaptureWidth - Constants.dividerWidth,
           0
         )
       case (.both, .capture):
-        pane = .network
+        pane = .inspector
         initialCaptureWidth = actualCapturePaneWidth(totalWidth: workspaceSize.width)
         finalCaptureWidth = standaloneCaptureContentSize(
           workspaceSize: workspaceSize,
           displayInfo: displayInfo
         )?.width ?? initialCaptureWidth
-        initialNetworkWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
-        finalNetworkWidth = initialNetworkWidth
+        initialInspectorWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
+        finalInspectorWidth = initialInspectorWidth
         finalWindowWidth = finalCaptureWidth
-      case (.network, .both):
+      case (.inspector, .both):
         pane = .capture
         initialCaptureWidth = max(
           currentCapturePaneWidth,
@@ -455,8 +455,8 @@ struct WindowSizingController: NSViewRepresentable {
             aspectRatio: displayInfo?.aspectRatio
           )
         )
-        initialNetworkWidth = workspaceSize.width
-        finalWindowWidth = networkRevealTargetFrame(
+        initialInspectorWidth = workspaceSize.width
+        finalWindowWidth = inspectorRevealTargetFrame(
           captureWidth: initialCaptureWidth,
           relativeTo: snapshot.frame,
           window: window
@@ -466,17 +466,17 @@ struct WindowSizingController: NSViewRepresentable {
           totalWidth: finalWindowWidth,
           displayInfo: displayInfo
         )
-        finalNetworkWidth = max(
+        finalInspectorWidth = max(
           finalWindowWidth - finalCaptureWidth - Constants.dividerWidth,
           0
         )
-      case (.both, .network):
+      case (.both, .inspector):
         pane = .capture
         initialCaptureWidth = actualCapturePaneWidth(totalWidth: workspaceSize.width)
         finalCaptureWidth = initialCaptureWidth
-        initialNetworkWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
-        finalNetworkWidth = initialNetworkWidth
-        finalWindowWidth = finalNetworkWidth
+        initialInspectorWidth = workspaceSize.width - initialCaptureWidth - Constants.dividerWidth
+        finalInspectorWidth = initialInspectorWidth
+        finalWindowWidth = finalInspectorWidth
       default:
         return nil
       }
@@ -489,8 +489,8 @@ struct WindowSizingController: NSViewRepresentable {
         finalWindowWidth: finalWindowWidth,
         initialCapturePaneWidth: initialCaptureWidth,
         finalCapturePaneWidth: finalCaptureWidth,
-        initialNetworkPaneWidth: initialNetworkWidth,
-        finalNetworkPaneWidth: finalNetworkWidth
+        initialInspectorPaneWidth: initialInspectorWidth,
+        finalInspectorPaneWidth: finalInspectorWidth
       )
     }
 
@@ -523,7 +523,7 @@ struct WindowSizingController: NSViewRepresentable {
       )
     }
 
-    private func networkRevealTargetFrame(
+    private func inspectorRevealTargetFrame(
       captureWidth: CGFloat,
       relativeTo frame: NSRect,
       window: NSWindow
@@ -538,13 +538,13 @@ struct WindowSizingController: NSViewRepresentable {
     }
 
     private func captureRevealTargetFrame(
-      networkWidth: CGFloat,
+      inspectorWidth: CGFloat,
       relativeTo frame: NSRect,
       window: NSWindow
     ) -> NSRect {
       constrained(
         frameByAdjustingWorkspaceEdges(
-          trailingBy: Constants.dividerWidth + networkWidth,
+          trailingBy: Constants.dividerWidth + inspectorWidth,
           relativeTo: frame
         ),
         for: window
@@ -561,7 +561,7 @@ struct WindowSizingController: NSViewRepresentable {
       )
       return min(
         max(width, minimumWidth),
-        max(totalWidth - Constants.minimumNetworkContentSize.width, minimumWidth)
+        max(totalWidth - Constants.minimumInspectorContentSize.width, minimumWidth)
       )
     }
 
@@ -599,8 +599,8 @@ struct WindowSizingController: NSViewRepresentable {
             aspectRatio: displayInfo?.aspectRatio
           )
         )
-      case .network:
-        window.contentMinSize = sizeIncludingWindowChrome(Constants.minimumNetworkContentSize)
+      case .inspector:
+        window.contentMinSize = sizeIncludingWindowChrome(Constants.minimumInspectorContentSize)
       case .both:
         window.contentMinSize = sizeIncludingWindowChrome(
           minimumBothContentSize(displayInfo: displayInfo)
@@ -618,7 +618,7 @@ struct WindowSizingController: NSViewRepresentable {
       return CGSize(
         width: max(
           Constants.minimumBothContentSize.width,
-          captureWidth + Constants.dividerWidth + Constants.minimumNetworkContentSize.width
+          captureWidth + Constants.dividerWidth + Constants.minimumInspectorContentSize.width
         ),
         height: max(Constants.minimumBothContentSize.height, captureSize.height)
       )
@@ -744,7 +744,7 @@ struct WindowSizingController: NSViewRepresentable {
       )
       return min(
         max(currentCapturePaneWidth, minimumWidth),
-        max(totalWidth - Constants.minimumNetworkContentSize.width, minimumWidth)
+        max(totalWidth - Constants.minimumInspectorContentSize.width, minimumWidth)
       )
     }
 
@@ -768,13 +768,13 @@ struct WindowSizingController: NSViewRepresentable {
       switch layout {
       case .capture:
         currentCapturePaneWidth = contentWidth
-      case .network:
-        rememberedNetworkPaneWidth = max(contentWidth, Constants.minimumNetworkContentSize.width)
+      case .inspector:
+        rememberedInspectorPaneWidth = max(contentWidth, Constants.minimumInspectorContentSize.width)
       case .both:
         let captureWidth = actualCapturePaneWidth(totalWidth: contentWidth)
-        rememberedNetworkPaneWidth = max(
+        rememberedInspectorPaneWidth = max(
           contentWidth - captureWidth - Constants.dividerWidth,
-          Constants.minimumNetworkContentSize.width
+          Constants.minimumInspectorContentSize.width
         )
       }
     }

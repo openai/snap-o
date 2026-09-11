@@ -138,11 +138,11 @@ struct SnapOCommands: Commands {
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }
     CommandMenu("Tools") {
-      Button(workspaceController?.showsNetwork == true ? "Hide App Inspector" : "Show App Inspector") {
-        workspaceController?.toggleNetwork()
+      Button(workspaceController?.showsInspector == true ? "Hide App Inspector" : "Show App Inspector") {
+        workspaceController?.toggleInspector()
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
-      .disabled(workspaceController?.canToggleNetwork != true)
+      .disabled(workspaceController?.canToggleInspector != true)
 
       Button(workspaceController?.showsCapture == true ? "Hide Capture" : "Show Capture") {
         workspaceController?.toggleCapture()

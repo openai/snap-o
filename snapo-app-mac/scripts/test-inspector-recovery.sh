@@ -9,9 +9,9 @@ cd "$APP_DIR"
 xcrun swiftc -swift-version 6 -parse-as-library -whole-module-optimization \
   -module-name SnapODeviceClient -emit-module -emit-object \
   SnapODeviceClient/Sources/SnapODeviceClient/Device.swift \
-  SnapODeviceClient/Sources/SnapODeviceClient/NetworkProtocol.swift \
+  SnapODeviceClient/Sources/SnapODeviceClient/InspectorServerReference.swift \
   SnapODeviceClient/Sources/SnapODeviceClient/InspectorDiscovery.swift \
-  SnapODeviceClient/Sources/SnapODeviceClient/NetworkServerDiscovery.swift \
+  SnapODeviceClient/Sources/SnapODeviceClient/DeviceDiscovery.swift \
   Tests/InspectorRecovery/DeviceClientDouble.swift \
   -emit-module-path "$TEST_DIR/SnapODeviceClient.swiftmodule" -o "$TEST_DIR/DeviceClient.o"
 xcrun swiftc -swift-version 6 -parse-as-library -I "$TEST_DIR" \

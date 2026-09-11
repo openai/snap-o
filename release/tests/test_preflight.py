@@ -245,6 +245,18 @@ class ProtocolReportTests(unittest.TestCase):
             self.assertIn(f"{new_path}:1:{declaration}", comparison)
         self.assertIn(native, comparison)
 
+    def test_reports_removed_swift_network_client(self):
+        label, path, declaration = DECLARATIONS[2]
+        (self.repo / path).unlink()
+        self.commit()
+
+        report = self.report()
+        self.assertNotIn("UNRESOLVED", report)
+        self.assertEqual(report.count(f"    {label}:\n"), 1)
+        self.assertEqual(report.count(declaration), 1)
+        self.assertIn("Swift Network client: absent; review the Web Network client below.", report)
+        self.assertEqual(report.count("    Web Network supported version:\n"), 2)
+
     def test_each_missing_declaration_is_unresolved_despite_other_matches(self):
         debug = "inspectors/network/src/features/network-inspector/lib/debug.ts"
         for label, missing_path, declaration in DECLARATIONS:

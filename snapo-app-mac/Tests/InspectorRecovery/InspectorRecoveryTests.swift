@@ -126,8 +126,8 @@ struct InspectorRecoveryTests {
     precondition(host.snapshot.state.selection?.server.deviceId == "healthy")
     host.stop()
     print("Native discovery publishes and selects healthy apps beside stalled devices")
-    let frozen = NetworkServerReference(deviceId: "frozen", socketName: "snapo_tweaks_42")
-    let healthy = NetworkServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
+    let frozen = InspectorServerReference(deviceId: "frozen", socketName: "snapo_tweaks_42")
+    let healthy = InspectorServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
     _ = await service.discoverInspectors().apps
     try await eventually {
       let apps = await service.discoverInspectors().apps

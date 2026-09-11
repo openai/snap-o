@@ -29,6 +29,7 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String, lin
 @main
 struct InspectorSelectionTests {
   @MainActor static func main() async throws {
+    try WorkspaceLayoutTests.run()
     try pluginManifests()
     restoration()
     profilesAndIdentity()

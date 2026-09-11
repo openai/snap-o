@@ -297,7 +297,7 @@ public struct ADBClient: Sendable {
   }
 
   public func connectedDeviceIDs() async throws -> [String] {
-    try await NetworkServerDiscovery.connectedDeviceIDs(inDevicesList: devicesList())
+    try await DeviceDiscovery.connectedDeviceIDs(inDevicesList: devicesList())
   }
 
   public func listUnixSockets(deviceID: String) async throws -> String {

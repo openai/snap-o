@@ -73,14 +73,6 @@ struct ADBDiscoveryTimeoutTests {
     #expect(try connection.readLine() == "record")
   }
 
-  @Test("legacy network discovery also returns healthy devices")
-  func discoversLegacyNetwork() async {
-    let server = FakeDiscoveryADB(stall: .output)
-    defer { server.close() }
-    let references = await NetworkServerDiscovery.discover(on: ["stalled", "phone"], using: server.client())
-    #expect(references == [NetworkServerReference(deviceId: "phone", socketName: "snapo_network_42")])
-  }
-
   @Test("device properties and process metadata have bounded requests")
   func boundsMetadata() async throws {
     let server = FakeDiscoveryADB(stall: .output)
@@ -92,10 +84,30 @@ struct ADBDiscoveryTimeoutTests {
     } catch ADBError.requestTimedOut {
       // A device timeout must not trigger the ADB server retry path.
     }
-    let reference = NetworkServerReference(deviceId: "stalled", socketName: "snapo_network_42")
-    #expect(await NetworkServerDiscovery.packageNameHint(for: reference, using: adb) == nil)
-    #expect(await NetworkServerDiscovery.androidUserID(for: reference, using: adb) == nil)
+    let reference = InspectorServerReference(deviceId: "stalled", socketName: "snapo_network_42")
+    #expect(await DeviceDiscovery.processName(deviceID: reference.deviceId, using: adb, pid: 42) == nil)
+    #expect(await DeviceDiscovery.androidUserID(deviceID: reference.deviceId, using: adb, pid: 42) == nil)
     #expect(server.connectionCount == 3)
+  }
+
+  @Test("process metadata uses the explicit PID without an inspector socket")
+  func readsProcessMetadata() async {
+    let server = FakeDiscoveryADB(stall: .output)
+    defer { server.close() }
+    let adb = server.client()
+    #expect(await DeviceDiscovery.processName(deviceID: "phone", using: adb, pid: 321) == "com.example.demo:worker")
+    #expect(await DeviceDiscovery.androidUserID(deviceID: "phone", using: adb, pid: 321) == 10)
+    #expect(server.connectionCount == 2)
+  }
+
+  @Test("invalid process IDs do not issue ADB requests", arguments: [0, -1])
+  func rejectsInvalidProcessID(pid: Int) async {
+    let server = FakeDiscoveryADB(stall: .output)
+    defer { server.close() }
+    let adb = server.client()
+    #expect(await DeviceDiscovery.processName(deviceID: "phone", using: adb, pid: pid) == nil)
+    #expect(await DeviceDiscovery.androidUserID(deviceID: "phone", using: adb, pid: pid) == nil)
+    #expect(server.connectionCount == 0)
   }
 
   @Test("port forward setup and cleanup time out without retrying")
@@ -193,7 +205,14 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             }
             return
           }
-          Self.send("1: 0 @snapo_network_42\n2: 0 @snapo_tweaks_42\n", to: descriptor)
+          switch command {
+          case "shell:cat /proc/321/cmdline 2>/dev/null":
+            Self.send("com.example.demo:worker\0ignored", to: descriptor)
+          case "shell:cat /proc/321/status 2>/dev/null":
+            Self.send("Uid: 1010234 1010234 1010234 1010234\n", to: descriptor)
+          default:
+            Self.send("1: 0 @snapo_network_42\n2: 0 @snapo_tweaks_42\n", to: descriptor)
+          }
           peer.close()
         }
       } catch {
