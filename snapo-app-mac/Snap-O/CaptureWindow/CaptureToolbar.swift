@@ -30,7 +30,7 @@ struct CaptureToolbar: View {
   @Bindable var controller: CaptureWindowController
   @Bindable var workspace: WorkspaceLayoutController
   let presentedLayout: WorkspaceLayout
-  let networkModel: NetworkInspectorHostModel?
+  let networkModel: InspectorHostModel?
   let capturePaneWidth: CGFloat
   let networkPaneWidth: CGFloat
   let capturePaneVisibleWidth: CGFloat
@@ -138,7 +138,7 @@ struct CaptureToolbar: View {
 
         if let networkModel {
           HStack(spacing: 8) {
-            NetworkInspectorToolbarControls(
+            InspectorToolbarControls(
               model: networkModel,
               isSearchPresented: $isNetworkSearchPresented
             )
@@ -153,7 +153,7 @@ struct CaptureToolbar: View {
         Spacer()
 
         if let networkModel {
-          NetworkInspectorToolbarControls(
+          InspectorToolbarControls(
             model: networkModel,
             isSearchPresented: $isNetworkSearchPresented,
             placement: .end

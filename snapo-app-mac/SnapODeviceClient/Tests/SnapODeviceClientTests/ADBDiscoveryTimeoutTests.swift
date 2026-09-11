@@ -11,13 +11,21 @@ struct ADBDiscoveryTimeoutTests {
     defer { server.close() }
     let adb = server.client()
     let start = ContinuousClock.now
-    let sockets = await InspectorDiscovery.discover(on: ["stalled", "phone"], using: adb)
+    let sockets = await InspectorDiscovery.discover(
+      on: ["stalled", "phone"],
+      using: adb,
+      definitions: ["network", "tweaks"].map { InspectorSocketDefinition(id: InspectorID(rawValue: $0), socketPrefix: "snapo_\($0)_") }
+    )
     #expect(sockets.map(\.reference.deviceId) == ["phone", "phone"])
-    #expect(sockets.map(\.kind) == [.network, .tweaks])
+    #expect(sockets.map(\.kind.rawValue) == ["network", "tweaks"])
     #expect(start.duration(to: .now) < .seconds(2))
     #expect(server.connectionCount == 2)
 
-    let recovered = await InspectorDiscovery.discover(on: ["phone"], using: adb)
+    let recovered = await InspectorDiscovery.discover(
+      on: ["phone"],
+      using: adb,
+      definitions: ["network", "tweaks"].map { InspectorSocketDefinition(id: InspectorID(rawValue: $0), socketPrefix: "snapo_\($0)_") }
+    )
     #expect(recovered == sockets)
   }
 

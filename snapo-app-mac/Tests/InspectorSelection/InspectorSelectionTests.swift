@@ -2,7 +2,7 @@ import Foundation
 import SnapODeviceClient
 
 private func app(
-  _ pid: Int = 10, kinds: [AppInspectorKind] = [.network, .tweaks],
+  _ pid: Int = 10, kinds: [InspectorID] = [.network, .tweaks],
   process: String? = "com.example.demo", device: String = "phone", user: Int? = 0,
   package: String? = "com.example.demo", version: Int? = 4
 ) -> InspectableApp {
@@ -15,7 +15,7 @@ private func app(
   )
 }
 
-private func selected(_ kind: AppInspectorKind = .network) -> InspectorSelection {
+private func selected(_ kind: InspectorID = .network) -> InspectorSelection {
   var owner = InspectorSelection()
   owner.reconcile([app()])
   owner.selectInspector(app(), option: app().inspectors.first { $0.kind == kind }!)
@@ -29,6 +29,7 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String, lin
 @main
 struct InspectorSelectionTests {
   @MainActor static func main() async throws {
+    try pluginManifests()
     restoration()
     profilesAndIdentity()
     fallback()
@@ -38,16 +39,72 @@ struct InspectorSelectionTests {
     print("Inspector selection, restoration, and launch tests passed")
   }
 
+  private static func pluginManifests() throws {
+    let bundled = try testPluginRegistry()
+    expect(bundled.plugins.map(\.id) == [.network, .tweaks], "Load the built-in package manifests")
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let directory = root.appendingPathComponent("sample")
+    try FileManager.default.copyItem(at: URL(fileURLWithPath: "Tests/InspectorSelection/Fixtures/sample"), to: directory)
+    let manifest = directory.appendingPathComponent("plugin.json")
+    let original = try Data(contentsOf: manifest)
+    let valid = try JSONSerialization.jsonObject(with: original) as! [String: Any]
+    func rejects(_ values: [String: Any]) throws {
+      try JSONSerialization.data(withJSONObject: values).write(to: manifest)
+      do {
+        _ = try InspectorPluginRegistry(directory: root)
+        preconditionFailure("Invalid plugin manifest should be rejected")
+      } catch {}
+    }
+    for (key, value) in [
+      ("manifestVersion", 2), ("hostApiVersion", 2), ("id", "other"),
+      ("id", "../sample"), ("name", " "), ("icon", ""),
+      ("discovery", ["socketPrefix": "snapo_"])
+    ] as [(String, Any)] {
+      var invalid = valid
+      invalid[key] = value
+      if key == "discovery" {
+        try FileManager.default.copyItem(at: bundled.plugins[0].resourceDirectory!, to: root.appendingPathComponent("network"))
+      }
+      try rejects(invalid)
+    }
+    try FileManager.default.removeItem(at: root.appendingPathComponent("network"))
+    let entry = directory.appendingPathComponent("index.html")
+    let alternate = directory.appendingPathComponent("sample.html")
+    try FileManager.default.moveItem(at: entry, to: alternate)
+    try rejects(valid)
+    try FileManager.default.createDirectory(at: entry, withIntermediateDirectories: false)
+    try rejects(valid)
+    try FileManager.default.removeItem(at: entry)
+    let outside = root.appendingPathComponent("outside.html")
+    try Data("outside".utf8).write(to: outside)
+    try FileManager.default.createSymbolicLink(at: entry, withDestinationURL: outside)
+    try rejects(valid)
+    try FileManager.default.removeItem(at: entry)
+    try FileManager.default.moveItem(at: alternate, to: entry)
+    try original.write(to: manifest)
+    let plugin = try InspectorPluginRegistry(directory: root).plugin(for: .sample)
+    expect(plugin?.name == "Sample", "Load a third plugin with its index.html entry")
+    let sockets = InspectorDiscovery.sockets(
+      inProcNetUnix: "1: 0 @snapo_sample_42",
+      deviceID: "phone",
+      definitions: [plugin!.socketDefinition]
+    )
+    expect(sockets.first?.kind == .sample && sockets.first?.pid == 42, "Discover a custom socket prefix")
+    print("Plugin registry validates versions, identity, prefixes, and resource paths")
+  }
+
   private static func restoration() {
     var owner = selected(.tweaks)
-    let displayed = owner.state.displayedTweaks
+    let displayed = owner.state.displayed[.tweaks]
     owner.reconcile([])
-    expect(owner.state.selection == nil && owner.state.displayedTweaks == displayed, "Retain disconnected values")
+    expect(owner.state.selection == nil && owner.state.displayed[.tweaks] == displayed, "Retain disconnected values")
     owner.reconcile([app()])
     expect(owner.state.selection?.kind == .tweaks, "Reconnect the same process")
     owner.reconcile([app(20)])
     expect(owner.state.selection == nil && owner.state.replacementApp?.id == app(20).id, "Require a new-process choice")
-    expect(owner.state.displayedTweaks == displayed, "Do not switch displayed values on discovery")
+    expect(owner.state.displayed[.tweaks] == displayed, "Do not switch displayed values on discovery")
     owner.selectApp(app(20))
     expect(owner.state.selection?.appId == app(20).id, "Accept an explicit replacement")
     var restored = InspectorSelection(saved: owner.serialized)
@@ -106,7 +163,7 @@ struct InspectorSelectionTests {
     owner.reconcile([app(), app(30, user: 10)])
     expect(owner.state.replacementApp?.androidUserId == 10, "Find a replacement in the same profile")
     owner.selectApp(app())
-    expect(owner.state.displayedTweaks == nil, "Clear values from another profile")
+    expect(owner.state.displayed[.tweaks] == nil, "Clear values from another profile")
 
     owner = selected()
     owner.reconcile([app(user: nil, package: nil)])
@@ -149,10 +206,10 @@ struct InspectorSelectionTests {
       restored.reconcile([app(), other])
       expect(restored.state.selection?.appId == other.id, "Save the startup choice")
     }
-    for kind in [AppInspectorKind.network, .tweaks] {
+    for kind in [InspectorID.network, .tweaks] {
       let saved = selected(kind).serialized
       var owner = InspectorSelection(saved: saved)
-      let otherKind: AppInspectorKind = kind == .network ? .tweaks : .network
+      let otherKind: InspectorID = kind == .network ? .tweaks : .network
       let other = app(30, kinds: [kind], process: "com.example.other")
       let before = owner.serialized
       for _ in 0 ..< 12 {
@@ -215,11 +272,10 @@ struct InspectorSelectionTests {
     let model = AppInspectorModel(preferences: defaults, discover: {
       scans += 1
       if delayScan { return try await InspectorDiscoverySnapshot(
-        apps: withCheckedThrowingContinuation { scanReply = $0 },
-        networkServers: []
+        apps: withCheckedThrowingContinuation { scanReply = $0 }
       ) }
       if failScan { throw TestError.failed }
-      return InspectorDiscoverySnapshot(apps: apps, networkServers: [])
+      return InspectorDiscoverySnapshot(apps: apps)
     }, openApp: { input in
       launched.append(input)
       try await withCheckedThrowingContinuation { launchReply = $0 }
@@ -319,38 +375,35 @@ struct InspectorSelectionTests {
     defer { defaults.removePersistentDomain(forName: suite) }
     let clock = TestClock()
     var apps = [app()]
-    var servers = [networkServer()]
     let model = AppInspectorModel(preferences: defaults, discover: {
-      InspectorDiscoverySnapshot(apps: apps, networkServers: servers)
+      InspectorDiscoverySnapshot(apps: apps)
     }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
     expect(model.snapshot.pageState(for: .network).isWaiting, "Wait for initial native discovery")
     model.start()
     await settle()
     var page = model.snapshot.pageState(for: .network)
     expect(page.isActive && page.isConnected && !page.isWaiting, "Publish the active Network connection")
-    expect(page.networkServer?.instanceId == "original", "Publish native session metadata")
+    expect(page.selection?.protocolVersion == 4, "Publish connection protocol metadata")
     let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as! [String: Any]
     expect(json["state"] == nil && json["apps"] == nil, "Do not send native selection internals to pages")
     expect(model.snapshot.pageState(for: .tweaks).selection == nil, "Send only this page's connection")
     apps = []
-    servers = []
     model.refresh()
     await settle()
     page = model.snapshot.pageState(for: .network)
-    expect(!page.isConnected && page.networkServer?.isConnected == false, "Disconnect retained data")
-    expect(page.networkServer?.instanceId == "original", "Retain metadata for captured data")
+    expect(!page.isConnected && !page.isConnected, "Disconnect retained data")
+    expect(page.selection?.protocolVersion == 4, "Retain connection metadata for captured data")
     apps = [app(20)]
-    servers = [networkServer(20)]
     model.refresh()
     await settle()
     page = model.snapshot.pageState(for: .network)
-    expect(!page.isConnected && page.networkServer?.socketName == "snapo_network_10", "Do not follow replacement discovery")
+    expect(!page.isConnected && page.selection?.server.socketName == "snapo_network_10", "Do not follow replacement discovery")
     model.reconnectToNewProcess()
     page = model.snapshot.pageState(for: .network)
-    expect(page.isConnected && page.networkServer?.socketName == "snapo_network_20", "Connect only after native approval")
+    expect(page.isConnected && page.selection?.server.socketName == "snapo_network_20", "Connect only after native approval")
     model.selectInspector(app(20), option: app(20).inspectors[1])
     page = model.snapshot.pageState(for: .network)
-    expect(!page.isActive && page.networkServer?.isConnected == false, "Deactivate the hidden Network page")
+    expect(!page.isActive && !page.isConnected, "Deactivate the hidden Network page")
     expect(page.selection?.server.socketName == "snapo_network_20", "Keep the hidden page mounted with its data")
     expect(model.snapshot.pageState(for: .tweaks).isConnected, "Activate Tweaks from the native choice")
     apps = [app(20, version: nil)]
@@ -365,15 +418,6 @@ struct InspectorSelectionTests {
     model.stop()
     clock.cancelAll()
     await settle()
-  }
-
-  private static func networkServer(_ pid: Int = 10) -> NetworkInspectorServer {
-    NetworkInspectorServer(
-      server: "phone:pid:\(pid)", deviceId: "phone", socketName: "snapo_network_\(pid)",
-      deviceDisplayTitle: "Phone", displayName: "Demo", isConnected: true, hasAppInfo: true,
-      pid: pid, protocolVersion: 1, isProtocolNewerThanSupported: false, isProtocolOlderThanSupported: false,
-      appIconBase64: nil, packageName: "com.example.demo", appName: "Demo", instanceId: "original"
-    )
   }
 
   @MainActor private static func canceledDiscoveryRestart() async {
@@ -391,13 +435,13 @@ struct InspectorSelectionTests {
     model.start()
     await settle()
     expect(replies.count == 2, "Start a new scan after cancellation")
-    replies[0].resume(returning: InspectorDiscoverySnapshot(apps: [app()], networkServers: []))
+    replies[0].resume(returning: InspectorDiscoverySnapshot(apps: [app()]))
     await settle()
     expect(model.snapshot.loading, "Ignore the canceled scan's result")
     model.refresh()
     await settle()
     expect(replies.count == 2, "The canceled scan must not clear the new scan")
-    replies[1].resume(returning: InspectorDiscoverySnapshot(apps: [app(20)], networkServers: [networkServer(20)]))
+    replies[1].resume(returning: InspectorDiscoverySnapshot(apps: [app(20)]))
     await settle()
     expect(model.snapshot.state.selectedApp?.id == app(20).id, "Publish only the restarted scan")
     model.stop()

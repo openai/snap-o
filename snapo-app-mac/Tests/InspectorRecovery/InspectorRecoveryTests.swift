@@ -107,7 +107,7 @@ struct InspectorRecoveryTests {
     let payload = "frozen device transport_id:1\nhealthy device transport_id:2\nstalled device transport_id:3"
     adb.emitDevices(payload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy"] }
-    let service = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
+    let service = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
     let suite = "SnapOHostRecoveryTests.\(UUID().uuidString)"
     let preferences = UserDefaults(suiteName: suite)!
     preferences.set(#"{"apps":[]}"#, forKey: "inspectorPreferences")
@@ -139,7 +139,7 @@ struct InspectorRecoveryTests {
       do {
         _ = try await service.inspectorEndpoint(for: frozen)
         fatalError("Frozen inspector should remain disconnected during cooldown")
-      } catch NetworkInspectorError.serverNotConnected {}
+      } catch InspectorError.serverNotConnected {}
     }
     precondition(adb.forwardCount == count)
     precondition(InspectorHTTP.state.count == 2)
@@ -169,7 +169,7 @@ struct InspectorRecoveryTests {
     print("A lost network connection enters cooldown without delaying tweaks in the same process")
     await service.stop()
 
-    let restarted = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
+    let restarted = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
     try await eventually { await restarted.discoverInspectors().apps.count == 2 }
     _ = try await restarted.inspectorEndpoint(for: frozen)
     await restarted.stop()
@@ -177,14 +177,14 @@ struct InspectorRecoveryTests {
 
     adb.recoverProperties()
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy", "stalled"] }
-    let recovered = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
+    let recovered = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
     _ = await recovered.discoverInspectors().apps
     precondition(adb.scannedDeviceIDs.contains("stalled"))
     await recovered.stop()
     let failingPayload = "forward-failure device transport_id:4"
     adb.emitDevices(failingPayload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["forward-failure"] }
-    let forwardFailure = NetworkInspectorService(adbService: adbService, deviceTracker: tracker)
+    let forwardFailure = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
     let beforeForwardFailure = adb.forwardCount
     for _ in 0 ..< 50 {
       _ = await forwardFailure.discoverInspectors().apps

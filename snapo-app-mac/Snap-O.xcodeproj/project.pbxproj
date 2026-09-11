@@ -99,7 +99,7 @@
 				3234F44D2E2EC5030057AE77 /* Sources */,
 				3234F44E2E2EC5030057AE77 /* Frameworks */,
 				3234F44F2E2EC5030057AE77 /* Resources */,
-				32F7D8A12F5B123400C0FFEE /* Build Network Inspector Web UI */,
+				32F7D8A12F5B123400C0FFEE /* Build Inspectors Web UI */,
 				A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */,
 			);
 			buildRules = (
@@ -167,28 +167,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		32F7D8A12F5B123400C0FFEE /* Build Network Inspector Web UI */ = {
+		32F7D8A12F5B123400C0FFEE /* Build Inspectors Web UI */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputPaths = (
-				"$(PROJECT_DIR)/../snapo-network-inspector-web/index.html",
-				"$(PROJECT_DIR)/../snapo-network-inspector-web/package.json",
-				"$(PROJECT_DIR)/../snapo-network-inspector-web/package-lock.json",
-				"$(PROJECT_DIR)/../snapo-network-inspector-web/src",
-				"$(PROJECT_DIR)/../snapo-network-inspector-web/tsconfig.json",
-				"$(PROJECT_DIR)/../snapo-network-inspector-web/vite.config.ts",
 			);
-			name = "Build Network Inspector Web UI";
+			name = "Build Inspectors Web UI";
 			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/NetworkInspector",
-				"$(DERIVED_FILE_DIR)/snapo-network-inspector.sha256",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Inspectors",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PROJECT_DIR}/scripts/build-network-inspector.sh\"\n";
+			shellScript = "\"${PROJECT_DIR}/scripts/build-inspectors.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */ = {

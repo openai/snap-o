@@ -7,7 +7,7 @@ on:
       - master
     paths:
       - 'snapo-app-mac/**'
-      - 'snapo-network-inspector-web/**'
+      - 'inspectors/**'
       - 'contracts/network/**'
       - 'scripts/snapo'
       - '.github/workflows/mac.yml'
@@ -15,7 +15,7 @@ on:
   pull_request:
     paths:
       - 'snapo-app-mac/**'
-      - 'snapo-network-inspector-web/**'
+      - 'inspectors/**'
       - 'contracts/network/**'
       - 'scripts/snapo'
       - '.github/workflows/mac.yml'
@@ -35,24 +35,24 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: snapo-network-inspector-web/package-lock.json
+          cache-dependency-path: inspectors/package-lock.json
       - name: Install dependencies
-        working-directory: snapo-network-inspector-web
+        working-directory: inspectors
         run: npm ci
       - name: Check formatting
-        working-directory: snapo-network-inspector-web
+        working-directory: inspectors
         run: npm run format:check
       - name: Lint
-        working-directory: snapo-network-inspector-web
+        working-directory: inspectors
         run: npm run lint
       - name: Typecheck
-        working-directory: snapo-network-inspector-web
+        working-directory: inspectors
         run: npm run typecheck
       - name: Test
-        working-directory: snapo-network-inspector-web
+        working-directory: inspectors
         run: npm test
       - name: Build
-        working-directory: snapo-network-inspector-web
+        working-directory: inspectors
         run: npm run build
 
   test:
@@ -79,6 +79,17 @@ jobs:
       - name: Test capture startup
         working-directory: snapo-app-mac
         run: sh scripts/test-startup-capture.sh
+      - name: Set up Node for inspector lifecycle tests
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: inspectors/package-lock.json
+      - name: Build inspector test resources
+        working-directory: inspectors
+        run: |
+          npm ci
+          npm run build
       - name: Test inspector recovery
         working-directory: snapo-app-mac
         run: sh scripts/test-inspector-recovery.sh
@@ -96,7 +107,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: snapo-network-inspector-web/package-lock.json
+          cache-dependency-path: inspectors/package-lock.json
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:

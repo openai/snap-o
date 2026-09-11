@@ -1,0 +1,40 @@
+{
+  "name": "snapo-inspectors",
+  "version": "2.1.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev:network": "npm run dev -w @snap-o/network-inspector",
+    "dev:tweaks": "npm run dev -w @snap-o/tweaks-inspector",
+    "build": "node scripts/build-plugins.mjs",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint": "eslint . && npm run lint:css && npm run check:boundaries",
+    "lint:css": "stylelint \"*/src/**/*.css\"",
+    "test": "node --test scripts/*.test.mjs && npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "check:boundaries": "node scripts/check-boundaries.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.5.0",
+    "jsdom": "^27.4.0",
+    "prettier": "^3.8.3",
+    "stylelint": "^16.26.0",
+    "stylelint-config-standard": "^39.0.1",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.59.1",
+    "vite": "^8.0.9",
+    "vitest": "^4.1.9"
+  },
+  "workspaces": [
+    "*"
+  ]
+}

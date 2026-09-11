@@ -32,7 +32,7 @@ struct CaptureWindow: View {
 
   @State private var controller: CaptureWindowController
   @State private var workspace: WorkspaceLayoutController
-  @State private var networkSession: NetworkInspectorSession
+  @State private var networkSession: InspectorSession
   @State private var presentedLayout: WorkspaceLayout
   @State private var layoutTransition: WorkspaceLayoutTransition?
   @State private var splitDragOrigin: CGFloat?
@@ -54,7 +54,7 @@ struct CaptureWindow: View {
     _controller = State(initialValue: captureController)
     _workspace = State(initialValue: workspace)
     _networkSession = State(
-      initialValue: NetworkInspectorSession(
+      initialValue: InspectorSession(
         adbService: adbService,
         deviceTracker: deviceTracker
       )
@@ -303,7 +303,7 @@ struct CaptureWindow: View {
         if presentation.layout.showsNetwork {
           Group {
             if let networkModel = networkSession.model {
-              NetworkInspectorWebView(model: networkModel)
+              InspectorWebView(model: networkModel)
                 .overlay {
                   if networkModel.isWaiting || networkModel.selectedInspector == nil {
                     VStack(spacing: 12) {
@@ -319,6 +319,8 @@ struct CaptureWindow: View {
                     .background(Color(nsColor: .textBackgroundColor))
                   }
                 }
+            } else if let error = networkSession.error {
+              Text(error).foregroundStyle(.secondary)
             } else {
               ProgressView()
             }
