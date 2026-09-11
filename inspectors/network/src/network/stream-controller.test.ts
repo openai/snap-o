@@ -99,7 +99,7 @@ describe("NetworkStreamController", () => {
   });
 });
 
-const metadata: InspectorMetadata = { name: "Demo", packageName: "example.demo", protocolVersion: 2 };
+const metadata: InspectorMetadata = { name: "Demo", packageName: "example.demo", protocolVersion: 3 };
 
 class TestStreamClient {
   readonly startResults: Array<StreamStarted | Error | Promise<StreamStarted>> = [];

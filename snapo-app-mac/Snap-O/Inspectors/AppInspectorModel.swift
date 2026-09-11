@@ -40,6 +40,8 @@ final class AppInspectorModel {
   var stateChanged: ((AppInspectorSnapshot) -> Void)?
 
   private let discover: () async throws -> InspectorDiscoverySnapshot
+  private let changes: (() async -> AsyncStream<Void>)?
+  private let currentDiscovery: (() async -> InspectorDiscoverySnapshot)?
   private let openApp: (OpenAppInput) async throws -> Void
   private let sleep: (Duration) async throws -> Void
   private let preferences: UserDefaults
@@ -50,6 +52,8 @@ final class AppInspectorModel {
   private var running = false
   private var refreshTask: Task<Void, Never>?
   private var pollingTask: Task<Void, Never>?
+  private var updatesTask: Task<Void, Never>?
+  private var discoveryRevision: UInt64?
   private var launchTask: Task<Void, Never>?
   private var launchPollingTask: Task<Void, Never>?
   private var launchID: UUID?
@@ -60,11 +64,15 @@ final class AppInspectorModel {
   init(
     preferences: UserDefaults = .standard,
     discover: @escaping () async throws -> InspectorDiscoverySnapshot,
+    changes: (() async -> AsyncStream<Void>)? = nil,
+    currentDiscovery: (() async -> InspectorDiscoverySnapshot)? = nil,
     openApp: @escaping (OpenAppInput) async throws -> Void,
     sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   ) {
     self.preferences = preferences
     self.discover = discover
+    self.changes = changes
+    self.currentDiscovery = currentDiscovery
     self.openApp = openApp
     self.sleep = sleep
     savedPreferences = preferences.string(forKey: "inspectorPreferences")
@@ -84,6 +92,16 @@ final class AppInspectorModel {
     guard !running else { return }
     running = true
     refresh()
+    if let changes, let currentDiscovery {
+      updatesTask = Task { [weak self] in
+        for await _ in await changes() {
+          guard !Task.isCancelled else { return }
+          let discovery = await currentDiscovery()
+          guard !Task.isCancelled else { return }
+          self?.applyDiscovery(discovery)
+        }
+      }
+    }
     let sleep = sleep
     pollingTask = Task { [weak self] in
       while !Task.isCancelled {
@@ -100,6 +118,8 @@ final class AppInspectorModel {
     pollingTask = nil
     refreshTask?.cancel()
     refreshTask = nil
+    updatesTask?.cancel()
+    updatesTask = nil
     cancelLaunch()
   }
 
@@ -111,15 +131,24 @@ final class AppInspectorModel {
       do {
         let discovery = try await discover()
         guard !Task.isCancelled, running else { return }
-        let previous = launchKey
-        selection.reconcile(discovery.apps)
-        if previous != launchKey { cancelLaunch() }
-        loading = false
-        publish()
+        applyDiscovery(discovery)
       } catch {
         // A failed scan does not prove the selected app has disconnected.
       }
     }
+  }
+
+  private func applyDiscovery(_ discovery: InspectorDiscoverySnapshot) {
+    guard running else { return }
+    if let revision = discovery.revision {
+      guard discoveryRevision.map({ revision > $0 }) ?? true else { return }
+      discoveryRevision = revision
+    }
+    let previous = launchKey
+    selection.reconcile(discovery.apps)
+    if previous != launchKey { cancelLaunch() }
+    loading = false
+    publish()
   }
 
   func selectApp(_ app: InspectableApp) {

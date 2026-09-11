@@ -80,9 +80,9 @@ private final class InspectorHTTP: @unchecked Sendable {
         return
       }
       if Self.state.shouldFail(port: Int(port)) { return }
-      let icon = String(decoding: request, as: UTF8.self).contains("/.snap-o/appicon ")
-      let status = icon ? "404 Not Found" : "200 OK"
-      let body = #"{"name":"Demo","packageName":"com.example.demo","protocolVersion":2}"#
+      precondition(String(decoding: request, as: UTF8.self).hasPrefix("OPTIONS / HTTP/1.1"))
+      let status = "204 No Content"
+      let body = ""
       let response = "HTTP/1.1 \(status)\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
       connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
     }
@@ -115,23 +115,30 @@ struct InspectorRecoveryTests {
     let host = AppInspectorModel(
       preferences: preferences,
       discover: { await service.discoverInspectors() },
-      openApp: { try await service.openApp($0) }
+      changes: { await service.changes() },
+      currentDiscovery: { await service.currentInspectors() },
+      openApp: { try await service.openApp($0) },
+      sleep: { _ in try await Task.sleep(for: .seconds(3600)) }
     )
     host.start()
     try await eventually {
       let apps = host.snapshot.state.apps
-      return apps.count == 1 && apps.first?.deviceId == "healthy" && apps.first?.inspectors.count == 2
+      return apps.count == 2 && apps.first(where: { $0.deviceId == "healthy" })?.inspectors.allSatisfy(\.isConnected) == true
     }
-    host.selectApp(host.snapshot.state.apps[0])
+    precondition(host.snapshot.state.apps.allSatisfy { $0.name == "com.example.demo" && $0.appIconBase64 == nil })
+    print("Initial app labels use process names while manifest reads are still pending")
+    let initialOrder = host.snapshot.state.apps.map(\.id)
+    host.selectApp(host.snapshot.state.apps.first { $0.deviceId == "healthy" }!)
     precondition(host.snapshot.state.selection?.server.deviceId == "healthy")
-    host.stop()
+    precondition(adb.scannedDeviceIDs.count == 2, "HTTP readiness reaches the UI without another device scan")
     print("Native discovery publishes and selects healthy apps beside stalled devices")
     let frozen = InspectorServerReference(deviceId: "frozen", socketName: "snapo_tweaks_42")
     let healthy = InspectorServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
     _ = await service.discoverInspectors().apps
     try await eventually {
       let apps = await service.discoverInspectors().apps
-      return InspectorHTTP.state.count == 2 && apps.count == 1 && apps.first?.inspectors.count == 2
+      return InspectorHTTP.state.count == 2 && apps.count == 2
+        && apps.first(where: { $0.deviceId == "frozen" })?.inspectors.allSatisfy { !$0.isConnected } == true
     }
     let count = adb.forwardCount
     for _ in 0 ..< 50 {
@@ -148,9 +155,25 @@ struct InspectorRecoveryTests {
     _ = try await service.inspectorEndpoint(for: healthy)
     print("Both inspector kinds suppress repeated failed connections while healthy inspectors remain usable")
 
+    adb.setMetadataAvailable(true)
+    let scansBeforeMetadata = adb.scannedDeviceIDs.count
+    try await eventually {
+      let app = host.snapshot.state.apps.first { $0.deviceId == "frozen" }
+      return app?.name == "Demo" && app?.appIconBase64 == "icon-frozen"
+    }
+    precondition(adb.scannedDeviceIDs.count == scansBeforeMetadata, "Completed metadata reaches the UI without another device scan")
+    host.stop()
+    let frozenMetadata = await service.discoverInspectors().apps.first { $0.deviceId == "frozen" }!
+    precondition(frozenMetadata.inspectors.allSatisfy { !$0.isConnected })
+    print("App metadata loads while inspector HTTP servers remain frozen")
     InspectorHTTP.state.unfreeze()
     try await Task.sleep(for: .milliseconds(3200))
-    try await eventually { await service.discoverInspectors().apps.count == 2 }
+    try await eventually {
+      let app = await service.discoverInspectors().apps.first { $0.deviceId == "frozen" }
+      return app?.inspectors.allSatisfy(\.isConnected) == true && app?.appIconBase64 != nil
+    }
+    let discovered = await service.discoverInspectors().apps.first { $0.deviceId == "frozen" }!
+    precondition(discovered.name == "Demo" && discovered.inspectors.allSatisfy { $0.protocolVersion == ($0.kind == .network ? 3 : 7) })
     _ = try await service.inspectorEndpoint(for: frozen)
     precondition(adb.forwardCount == count + 2)
     print("Both inspector kinds reconnect automatically after cooldown")
@@ -158,23 +181,77 @@ struct InspectorRecoveryTests {
     InspectorHTTP.state.disconnectNetwork()
     try await eventually {
       let apps = await service.discoverInspectors().apps
-      return apps.first(where: { $0.deviceId == "frozen" })?.inspectors.map(\.kind) == [.tweaks]
+      let options = apps.first(where: { $0.deviceId == "frozen" })?.inspectors
+      return options?.first(where: { $0.kind == .network })?.isConnected == false
+        && options?.first(where: { $0.kind == .tweaks })?.isConnected == true
     }
     let disconnectedCount = adb.forwardCount
     for _ in 0 ..< 50 {
-      _ = await service.discoverInspectors().apps
+      let apps = await service.discoverInspectors().apps
+      precondition(apps.map(\.id) == initialOrder)
+      let cached = apps.first { $0.deviceId == "frozen" }!
+      precondition(cached.name == discovered.name && cached.appIconBase64 == discovered.appIconBase64)
+      precondition(cached.packageName == discovered.packageName && cached.androidUserId == discovered.androidUserId)
+      precondition(cached.inspectors.map(\.kind) == [.network, .tweaks])
+      precondition(cached.inspectors.allSatisfy { $0.protocolVersion == ($0.kind == .network ? 3 : 7) })
     }
     precondition(adb.forwardCount == disconnectedCount)
     _ = try await service.inspectorEndpoint(for: frozen)
-    print("A lost network connection enters cooldown without delaying tweaks in the same process")
+    print("A connection failure retains app metadata, inspector options, and row order")
+
+    adb.setMetadataAvailable(false)
+    adb.replaceListeners()
+    let replaced = await service.discoverInspectors().apps.first { $0.deviceId == "frozen" }!
+    precondition(replaced.name == discovered.name && replaced.appIconBase64 == discovered.appIconBase64)
+    precondition(replaced.inspectors.allSatisfy { !$0.isConnected })
+    do {
+      _ = try await service.inspectorEndpoint(for: frozen)
+      fatalError("A replacement listener needs fresh process metadata before connecting")
+    } catch InspectorError.serverNotConnected {}
+    adb.setMetadataAvailable(true)
+    try await eventually {
+      await service.discoverInspectors().apps.first { $0.deviceId == "frozen" }?
+        .inspectors.first { $0.kind == .tweaks }?.isConnected == true
+    }
+    print("A replacement listener keeps cached metadata while its process identity is verified")
+
+    adb.setSocketNames([], deviceID: "frozen")
+    let remainingApps = await service.discoverInspectors().apps
+    precondition(remainingApps.map(\.deviceId) == ["healthy"])
+    adb.setSocketNames(["snapo_network_42"], deviceID: "frozen")
+    let returnedApps = await service.discoverInspectors().apps
+    precondition(returnedApps.map(\.id) == initialOrder)
+    let returned = returnedApps.first { $0.deviceId == "frozen" }!
+    precondition(returned.name == discovered.name && returned.appIconBase64 == discovered.appIconBase64)
+    precondition(returned.inspectors.count == 1 && returned.inspectors[0].protocolVersion == 3)
+    precondition(!returned.inspectors[0].isConnected, "Cached metadata does not authorize an unverified connection")
+
+    adb.setMetadataAvailable(false)
+    adb.setSocketNames(["snapo_network_43"], deviceID: "frozen")
+    let replacement = await service.discoverInspectors().apps.first { $0.deviceId == "frozen" }!
+    precondition(replacement.id != discovered.id && replacement.name == "com.example.demo:worker")
+    precondition(replacement.appIconBase64 == nil && replacement.inspectors[0].protocolVersion == nil)
+    print("Socket rediscovery reuses metadata, but a different socket starts without cached information")
     await service.stop()
+    let stoppedApps = await service.discoverInspectors().apps
+    precondition(stoppedApps.isEmpty)
+    adb.setSocketNames(["snapo_network_42", "snapo_tweaks_42"], deviceID: "frozen")
 
     let restarted = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
-    try await eventually { await restarted.discoverInspectors().apps.count == 2 }
+    try await eventually {
+      await restarted.discoverInspectors().apps.first { $0.deviceId == "frozen" }?
+        .inspectors.first { $0.kind == .tweaks }?.isConnected == true
+    }
+    let restartedApp = await restarted.discoverInspectors().apps.first { $0.deviceId == "frozen" }!
+    precondition(
+      restartedApp.inspectors.first { $0.kind == .network }?.protocolVersion == nil,
+      "Metadata is not shared across service instances"
+    )
     _ = try await restarted.inspectorEndpoint(for: frozen)
     await restarted.stop()
     print("A new service instance can reconnect immediately")
 
+    adb.setMetadataAvailable(true)
     adb.recoverProperties()
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy", "stalled"] }
     let recovered = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
@@ -190,6 +267,12 @@ struct InspectorRecoveryTests {
       _ = await forwardFailure.discoverInspectors().apps
     }
     precondition(adb.forwardCount == beforeForwardFailure + 2)
+    let failedApps = await forwardFailure.discoverInspectors().apps
+    precondition(failedApps.count == 1 && failedApps[0].inspectors.count == 2)
+    precondition(failedApps[0].inspectors.allSatisfy { !$0.isConnected })
+    try await eventually {
+      await forwardFailure.discoverInspectors().apps.first?.appIconBase64 == "icon-forward-failure"
+    }
     await forwardFailure.stop()
     print("Port forwarding failures enter the same cooldown as failed inspector requests")
     await tracker.stopTracking()

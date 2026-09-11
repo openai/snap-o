@@ -6,7 +6,7 @@ import type { CdpMessage, StreamEvent } from "./network/bridge-types";
 import type { NetworkClient } from "./network/client";
 import { recordId } from "./network/cdp";
 import type { NetworkInspectorModel } from "./features/network-inspector/hooks/useNetworkInspectorModel";
-import { InspectorHost, type Host } from "@snap-o/host";
+import { InspectorHost, type Host, type ProcessManifest, type InspectorDescriptor } from "@snap-o/host";
 import { App } from "./App";
 
 const mocks = vi.hoisted(() => ({
@@ -31,9 +31,8 @@ const metadata = {
   name: "Demo",
   packageName: "com.example.demo",
   pid: 20,
-  protocolVersion: 2,
-  serverStartWallMs: 1000,
-  serverStartMonoNs: 2000
+  protocolVersion: 3,
+  processIdentity: "boot:20:123"
 };
 const replayMessages: CdpMessage[] = [
   {
@@ -65,7 +64,13 @@ const replayMessages: CdpMessage[] = [
 
 describe("Network frontend with the shared host", () => {
   let container: HTMLDivElement;
-  let state: { revision: number; connected: boolean; baseURL?: string };
+  let state: {
+    revision: number;
+    connected: boolean;
+    baseURL?: string;
+    manifest?: ProcessManifest;
+    inspector?: InspectorDescriptor;
+  };
   let listeners: Map<string, (value: unknown) => void>;
   let requests: ReturnType<typeof vi.fn<(command: string, payload?: unknown) => Promise<unknown>>>;
   let events: Set<(event: StreamEvent) => void>;
@@ -73,7 +78,18 @@ describe("Network frontend with the shared host", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    state = { revision: 1, connected: true, baseURL: "http://127.0.0.1:1234/" };
+    state = {
+      revision: 1,
+      connected: true,
+      baseURL: "http://127.0.0.1:1234/",
+      manifest: {
+        version: 1,
+        pid: metadata.pid,
+        processIdentity: metadata.processIdentity,
+        app: { name: metadata.name, packageName: metadata.packageName, revision: "1", inspectors: [] }
+      },
+      inspector: { id: "network", name: "Network", protocolVersion: 3 }
+    };
     listeners = new Map();
     requests = vi.fn(async (command) => (command === "hostState" ? { ...state } : undefined));
     mocks.host = new InspectorHost({
@@ -149,7 +165,7 @@ describe("Network frontend with the shared host", () => {
     await act(async () => {
       for (const message of replayMessages)
         for (const receive of events) {
-          receive({ streamId: "network-stream", processId: "1000:2000", message });
+          receive({ streamId: "network-stream", processId: "boot:20:123", message });
         }
     });
     expect(mocks.model?.allRecords).toHaveLength(1);
@@ -190,7 +206,7 @@ describe("Network frontend with the shared host", () => {
         for (const receive of events)
           receive({
             streamId: "network-stream",
-            processId: "1000:2000",
+            processId: "boot:20:123",
             message: {
               ...original,
               snapoSequence: original.snapoSequence! + 10,
@@ -218,7 +234,7 @@ describe("Network frontend with the shared host", () => {
     expect(fetchMetadata).not.toHaveBeenCalled();
     expect(mocks.client.startStream).not.toHaveBeenCalled();
     await publish(true);
-    expect(fetchMetadata).toHaveBeenCalledWith(new URL("http://127.0.0.1:1234/.snap-o/info"), expect.anything());
+    expect(fetchMetadata).not.toHaveBeenCalled();
     expect(mocks.client.startStream).toHaveBeenCalledWith(metadata);
   });
 
@@ -241,37 +257,27 @@ describe("Network frontend with the shared host", () => {
     await captureTraffic();
     const starts = vi.mocked(mocks.client.startStream).mock.calls.length;
     await act(async () => {
-      listeners.get("host:connection")?.({ revision: ++state.revision, connected: false });
-      listeners.get("host:connection")?.({ revision: ++state.revision, connected: true, baseURL: state.baseURL });
+      listeners.get("host:connection")?.({ ...state, revision: ++state.revision, connected: false });
+      listeners.get("host:connection")?.({ ...state, revision: ++state.revision, connected: true });
     });
     await flush();
     expect(mocks.client.startStream).toHaveBeenCalledTimes(starts + 1);
     expect(mocks.model?.allRecords).toHaveLength(1);
   });
 
-  it("ignores a metadata reply from a disconnected target and retries transient failures", async () => {
-    let finish!: (value: Response) => void;
-    fetchMetadata.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
+  it("waits for manifest metadata before starting a connected inspector", async () => {
+    const manifest = state.manifest;
+    state.manifest = undefined;
     await act(async () => render(<App />, container));
     await flush();
-    await publish(false);
-    await act(async () => finish(Response.json(metadata)));
     expect(mocks.client.startStream).not.toHaveBeenCalled();
-    fetchMetadata.mockRejectedValueOnce(new Error("Connection failed"));
+    state.manifest = manifest;
     await publish(true);
-    expect(mocks.client.startStream).not.toHaveBeenCalled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-    expect(mocks.client.startStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.startStream).toHaveBeenCalledWith(metadata);
+    expect(fetchMetadata).not.toHaveBeenCalled();
   });
 
-  it("shares one metadata read with the real Network connection on each reconnect", async () => {
+  it("uses host metadata with the real Network connection on each reconnect", async () => {
     const { createNetworkClient } = await vi.importActual<typeof import("./network/client")>("./network/client");
     class Events extends EventTarget {
       constructor() {
@@ -282,7 +288,6 @@ describe("Network frontend with the shared host", () => {
     }
     vi.stubGlobal("EventSource", Events);
     fetchMetadata.mockImplementation(async (url) => {
-      if (String(url).endsWith("/.snap-o/info")) return Response.json(metadata);
       if (String(url).endsWith("/network"))
         return new Response("", {
           headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": "0" }
@@ -293,25 +298,17 @@ describe("Network frontend with the shared host", () => {
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() =>
-      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
-        "/.snap-o/info",
-        "/network"
-      ])
+      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network"])
     );
     await publish(false);
     await publish(true);
     await vi.waitFor(() =>
-      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
-        "/.snap-o/info",
-        "/network",
-        "/.snap-o/info",
-        "/network"
-      ])
+      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network", "/network"])
     );
   });
 
-  it.each([1, 3])("does not start a Network stream for unsupported protocol v%s", async (protocolVersion) => {
-    fetchMetadata.mockResolvedValue(Response.json({ ...metadata, protocolVersion }));
+  it.each([0, 2, 4])("does not start a Network stream for unsupported protocol v%s", async (protocolVersion) => {
+    state.inspector = { ...state.inspector!, protocolVersion };
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() => expect(mocks.model?.metadata?.protocolVersion).toBe(protocolVersion));

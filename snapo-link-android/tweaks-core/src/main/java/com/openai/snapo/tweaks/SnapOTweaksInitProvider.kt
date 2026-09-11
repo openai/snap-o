@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.util.Log
-import com.openai.snapo.tweaks.internal.TweakAppInfoProvider
 import com.openai.snapo.tweaks.internal.TweakHttpServer
 import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
 import java.io.IOException
@@ -79,7 +78,6 @@ private object TweaksRuntime {
 
         return try {
             val startedServer = TweakHttpServer(
-                appInfoProvider = TweakAppInfoProvider(context),
             )
             startedServer.start()
             server = startedServer

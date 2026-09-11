@@ -6,9 +6,8 @@ const baseURL = "http://127.0.0.1:1234/";
 const metadata = {
   name: "Demo",
   packageName: "example.demo",
-  protocolVersion: 2,
-  serverStartWallMs: 100,
-  serverStartMonoNs: 200
+  protocolVersion: 3,
+  processIdentity: "boot:20:123"
 };
 const event = (sequence: number, name = "request") => ({
   method: "Network.loadingFinished",
@@ -72,7 +71,7 @@ describe("direct Network HTTP and SSE connection", () => {
     events.send(4);
     expect(received.map((value) => value.message.snapoSequence)).toEqual([2, 3, 4]);
     expect(received[0].message.params?.requestId).toBe("café");
-    expect(received[0].processId).toBe("100:200");
+    expect(received[0].processId).toBe("boot:20:123");
   });
   it.each([
     [JSON.stringify(event(1)), "1"],
@@ -97,13 +96,13 @@ describe("direct Network HTTP and SSE connection", () => {
     events.dispatchEvent(new Event("error"));
     expect(events.close).toHaveBeenCalledTimes(1);
     expect(status).toHaveBeenCalledWith(expect.objectContaining({ state: "exit" }));
-    await expect(connection.loadBodies({ processId: "100:200", requestId: "one" })).rejects.toThrow("disconnected");
+    await expect(connection.loadBodies({ processId: "boot:20:123", requestId: "one" })).rejects.toThrow("disconnected");
   });
   it("uses the bound endpoint for body reads and encodes request IDs", async () => {
     const { connection, fetchRequest } = setup(() => snapshot());
     await connection.start();
     const bodies = await connection.loadBodies({
-      processId: "100:200",
+      processId: "boot:20:123",
       requestId: "one/two+three",
       includeRequestBody: false
     });

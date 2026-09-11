@@ -29,7 +29,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.concurrent.thread
 
-internal const val TweaksProtocolVersion: Int = 6
 
 internal data class TweakBatchError(
     val name: String,
@@ -69,7 +68,6 @@ private const val MaximumConcurrentConnections = 32
 private const val EventHeartbeatSeconds = 15L
 
 internal class TweakHttpServer(
-    private val appInfoProvider: TweakAppInfoProvider,
     private val socketName: String = "snapo_tweaks_${Process.myPid()}",
     private val mainHandler: Handler = Handler(Looper.getMainLooper()),
 ) : Closeable {
@@ -195,8 +193,6 @@ internal class TweakHttpServer(
     }
 
     private fun route(request: HttpRequest): HttpResponse = when (request.path) {
-        "/.snap-o/info" -> routeApp(request)
-        "/.snap-o/appicon" -> routeAppIcon(request)
         "/tweaks", "/tweaks?include=adjusted" -> routeTweaks(request)
         "/tweaks/action" -> routeTweakAction(request)
         "/tweaks/events" -> throw HttpFailure(
@@ -248,37 +244,6 @@ internal class TweakHttpServer(
         output.write(tweaksResponse(tweaks, includeDescriptors = true).body)
         output.write("\n\n".toByteArray(StandardCharsets.US_ASCII))
         output.flush()
-    }
-
-    private fun routeApp(request: HttpRequest): HttpResponse {
-        if (request.method != "GET") {
-            throw HttpFailure(
-                statusCode = 405,
-                message = "Unsupported method: ${request.method}",
-                allowedMethods = "GET",
-            )
-        }
-
-        return appInfoResponse(appInfoProvider.load())
-    }
-
-    private fun routeAppIcon(request: HttpRequest): HttpResponse {
-        if (request.method != "GET") {
-            throw HttpFailure(
-                statusCode = 405,
-                message = "Unsupported method: ${request.method}",
-                allowedMethods = "GET",
-            )
-        }
-
-        val icon = appInfoProvider.loadIcon()
-            ?: throw HttpFailure(404, "Application icon is unavailable.")
-
-        return HttpResponse(
-            statusCode = 200,
-            body = icon,
-            contentType = "image/png",
-        )
     }
 
     private fun routeTweaks(request: HttpRequest): HttpResponse = when (request.method) {
@@ -560,19 +525,6 @@ internal class TweakHttpServer(
         }
 
         throw failure
-    }
-
-    private fun appInfoResponse(appInfo: TweakAppInfo): HttpResponse {
-        val output = StringWriter()
-        JsonWriter(output).use { writer ->
-            writer.beginObject()
-            writer.name("name").value(appInfo.name)
-            writer.name("packageName").value(appInfo.packageName)
-            writer.name("protocolVersion").value(TweaksProtocolVersion)
-            writer.endObject()
-        }
-
-        return HttpResponse(200, output.toString().toByteArray(StandardCharsets.UTF_8))
     }
 
     private fun tweaksResponse(

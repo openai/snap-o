@@ -304,6 +304,29 @@ public struct ADBClient: Sendable {
     try await runDiscoveryShellString(deviceID: deviceID, command: "cat /proc/net/unix")
   }
 
+  public func inspectorMetadata(
+    deviceID: String,
+    socketNames: [String],
+    helperURL: URL
+  ) async throws -> [InspectorProcessMetadata] {
+    let command = try InspectorManifestReader.command(helper: Data(contentsOf: helperURL), socketNames: socketNames)
+    let data = try await withConnection(maxAttempts: 1) { connection in
+      try connection.withRequestTimeout(.seconds(10)) {
+        try connection.sendTransport(to: deviceID)
+        try connection.sendShell(command)
+        var output = Data()
+        while let chunk = try connection.readChunk(maxLength: 16_384) {
+          guard output.count + chunk.count <= 8_388_608 else {
+            throw ADBError.parseFailure("inspector discovery output is too large")
+          }
+          output.append(chunk)
+        }
+        return output
+      }
+    }
+    return try InspectorManifestReader.decode(data)
+  }
+
   public func forwardLocalAbstract(
     deviceID: String,
     abstractSocket: String

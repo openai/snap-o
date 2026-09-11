@@ -4,7 +4,7 @@ import type { NetworkClient } from "../../../network/client";
 import { useInspectorUiState } from "../hooks/useInspectorUiState";
 import { DetailContent } from "./DetailPane";
 
-function render(isConnected = true, totalItems = 0, streamIsRetrying = false, protocolVersion = 2) {
+function render(isConnected = true, totalItems = 0, streamIsRetrying = false, protocolVersion = 3) {
   function View() {
     return (
       <DetailContent
@@ -38,7 +38,7 @@ describe("network empty state", () => {
   it("keeps retained records browsable while disconnected", () => {
     expect(render(false, 1, true)).toContain("Select a record");
   });
-  it.each([1, 3])("explains an unsupported protocol v%s", (version) => {
+  it.each([0, 2, 4])("explains an unsupported protocol v%s", (version) => {
     const markup = render(true, 0, false, version);
     expect(markup).toContain(`App reports protocol v${version}`);
     expect(markup).toContain("Update Snap-O and the Android library together.");

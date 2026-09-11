@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "tweaks",
   "name": "Tweaks",
-  "icon": "slider.horizontal.3",
+  "icon": "icon.png",
   "hostApiVersion": 1,
   "discovery": {
     "socketPrefix": "snapo_tweaks_"

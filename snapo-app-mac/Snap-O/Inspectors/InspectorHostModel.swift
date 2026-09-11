@@ -56,6 +56,8 @@ final class InspectorHostModel {
     appInspector = AppInspectorModel(
       preferences: preferences,
       discover: { await service.discoverInspectors() },
+      changes: { await service.changes() },
+      currentDiscovery: { await service.currentInspectors() },
       openApp: { try await service.openApp($0) }
     )
     appInspector.stateChanged = { [weak self] snapshot in self?.apply(snapshot) }
@@ -161,7 +163,16 @@ final class InspectorHostModel {
   }
 
   private func setEndpoint(_ endpoint: InspectorHTTPService.Endpoint?, kind: InspectorID) {
-    guard var page = pages[kind], page.endpointID != endpoint?.id else { return }
+    guard var page = pages[kind] else { return }
+    let state = appInspector.snapshot.pageState(for: kind)
+    let app = state.selectedApp?.id == page.identity.appID
+      ? state.selectedApp : inspectorApps.first { $0.id == page.identity.appID }
+    // Hidden pages retain their own app's metadata when another app is selected.
+    let manifest = app?.manifest ?? page.connection.manifest
+    let inspector = manifest?.app?.inspectors.first { $0.id == kind }
+    guard page.endpointID != endpoint?.id || page.connection.manifest != manifest || page.connection.inspector != inspector else { return }
+    page.connection.manifest = manifest
+    page.connection.inspector = inspector
     page.endpointID = endpoint?.id
     page.connection.revision += 1
     page.connection.baseURL = endpoint?.baseURL.absoluteString

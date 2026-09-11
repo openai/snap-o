@@ -124,28 +124,46 @@ public struct DiscoveredInspectorSocket: Sendable, Equatable {
   public let kind: InspectorID
   public let pid: Int
   public let reference: InspectorServerReference
+  public var inode: String? = nil
+  public var processName: String? = nil
 }
 
 public enum InspectorDiscovery {
+  static let processListMarker = "---snapo-processes---"
+  static let snapshotCommand = """
+  cat /proc/net/unix
+  printf '\\n\(processListMarker)\\n'
+  ps -A -o PID,NAME 2>/dev/null || ps
+  """
+
   public static func sockets(
     inProcNetUnix output: String,
     deviceID: String,
     definitions: [InspectorSocketDefinition]
   ) -> [DiscoveredInspectorSocket] {
-    Set(output.split(separator: "\n").compactMap { $0.split(whereSeparator: \.isWhitespace).last })
-      .sorted().compactMap { token in
-        guard token.first == "@" else { return nil }
-        let name = String(token.dropFirst())
-        guard let definition = definitions.first(where: { $0.pid(inSocketName: name) != nil }),
-              let pid = definition.pid(inSocketName: name) else {
-          return nil
-        }
-        return DiscoveredInspectorSocket(
-          kind: definition.id,
-          pid: pid,
-          reference: InspectorServerReference(deviceId: deviceID, socketName: name)
-        )
-      }
+    let sections = output.components(separatedBy: "\n\(processListMarker)\n")
+    let processNames = sections.count == 2 ? DeviceDiscovery.processNames(inProcessList: sections[1]) : [:]
+    var seen: Set<String> = []
+    return sections[0].split(separator: "\n").compactMap { line in
+      let fields = line.split(whereSeparator: \.isWhitespace)
+      // Accepted and queued clients share the listener's name but have different inodes.
+      guard fields.count == 8,
+            let flags = UInt32(fields[3], radix: 16), flags & 0x00010000 != 0,
+            fields[4] == "0001", fields[5] == "01",
+            let inode = UInt64(fields[6]), inode > 0,
+            let token = fields.last, token.first == "@" else { return nil }
+      let name = String(token.dropFirst())
+      guard seen.insert(name).inserted,
+            let definition = definitions.first(where: { $0.pid(inSocketName: name) != nil }),
+            let pid = definition.pid(inSocketName: name) else { return nil }
+      return DiscoveredInspectorSocket(
+        kind: definition.id,
+        pid: pid,
+        reference: InspectorServerReference(deviceId: deviceID, socketName: name),
+        inode: String(inode),
+        processName: processNames[pid]
+      )
+    }.sorted { $0.reference.identifier < $1.reference.identifier }
   }
 
   public static func discover(
@@ -156,7 +174,7 @@ public enum InspectorDiscovery {
     await withTaskGroup(of: [DiscoveredInspectorSocket].self) { group in
       for deviceID in deviceIDs {
         group.addTask {
-          guard let output = try? await adb.listUnixSockets(deviceID: deviceID) else { return [] }
+          guard let output = try? await adb.runDiscoveryShellString(deviceID: deviceID, command: snapshotCommand) else { return [] }
           return Self.sockets(inProcNetUnix: output, deviceID: deviceID, definitions: definitions)
         }
       }

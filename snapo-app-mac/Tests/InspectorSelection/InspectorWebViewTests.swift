@@ -12,7 +12,8 @@ actor InspectorHTTPService {
 
 actor InspectorService {
   nonisolated let registry: InspectorPluginRegistry
-  let apps: [InspectableApp]
+  private var apps: [InspectableApp]
+  private let updates = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
   let endpoint = InspectorHTTPService.Endpoint(id: UUID(), baseURL: URL(string: "http://127.0.0.1:1234/")!)
   init(apps: [InspectableApp], registry: InspectorPluginRegistry) {
     self.apps = apps
@@ -21,6 +22,17 @@ actor InspectorService {
 
   func discoverInspectors() async -> InspectorDiscoverySnapshot {
     InspectorDiscoverySnapshot(apps: apps)
+  }
+
+  func currentInspectors() -> InspectorDiscoverySnapshot {
+    InspectorDiscoverySnapshot(apps: apps)
+  }
+
+  func changes() -> AsyncStream<Void> { updates.stream }
+
+  func setApps(_ apps: [InspectableApp]) {
+    self.apps = apps
+    updates.continuation.yield(())
   }
 
   func openApp(_ input: OpenAppInput) async throws {}
@@ -40,15 +52,15 @@ struct InspectorWebViewTests {
     fatalError(message)
   }
 
-  static func app(_ pid: Int) -> InspectableApp {
+  static func app(_ pid: Int, connectedKinds: [InspectorID]? = nil, kinds: [InspectorID] = [.network, .tweaks, .sample]) -> InspectableApp {
     InspectableApp(
       id: "phone:pid:\(pid)", name: "Demo \(pid)", packageName: "com.example.demo\(pid)",
       processName: "com.example.demo\(pid)", androidUserId: 0, deviceId: "phone", deviceDisplayTitle: "Phone",
-      appIconBase64: nil, inspectors: [InspectorID.network, .tweaks, .sample].map { kind in
+      appIconBase64: nil, inspectors: kinds.map { kind in
         AppInspectorOption(kind: kind, server: InspectorServerReference(
           deviceId: "phone", socketName: "snapo_\(kind.rawValue)_\(pid)"
-        ), protocolVersion: 4)
-      }
+        ), protocolVersion: 4, isConnected: connectedKinds?.contains(kind) ?? true)
+      }, manifest: testManifest(pid: pid, kinds: kinds)
     )
   }
 
@@ -70,7 +82,7 @@ struct InspectorWebViewTests {
     let registry = try InspectorPluginRegistry(directory: root)
     precondition(registry.plugins.count == 3)
     let sockets = InspectorDiscovery.sockets(
-      inProcNetUnix: "1: 0 @snapo_sample_10",
+      inProcNetUnix: "1: 00000002 00000000 00010000 0001 01 101 @snapo_sample_10",
       deviceID: "phone",
       definitions: registry.socketDefinitions
     )
@@ -110,6 +122,8 @@ struct InspectorWebViewTests {
       arguments: [:], in: nil, contentWorld: .page
     ) as? [String: Any]
     precondition(sampleState?["connected"] as? Bool == true)
+    precondition((sampleState?["manifest"] as? [String: Any])?["pid"] as? Int == 10)
+    precondition((sampleState?["inspector"] as? [String: Any])?["id"] as? String == "sample")
     let sampleStorage = try await sample.evaluateJavaScript("localStorage.getItem('\(storageKey)')")
     precondition(sampleStorage is NSNull)
     _ = try await sample.evaluateJavaScript("window.testState = 'sample state'")
@@ -149,6 +163,19 @@ struct InspectorWebViewTests {
     precondition(hiddenNetworkState?["connected"] as? Bool == false)
     print("Inspector types reuse their own view and receive inactive connection state")
 
+    let tweaksOnly = app(30, kinds: [.tweaks])
+    await service.setApps([first, second, tweaksOnly])
+    try await eventually("Discover an app that only provides Tweaks") { model.inspectorApps.count == 3 }
+    model.selectApp(tweaksOnly)
+    let inactiveState = try await network.callAsyncJavaScript(
+      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
+      arguments: [:], in: nil, contentWorld: .page
+    ) as? [String: Any]
+    precondition(inactiveState?["connected"] as? Bool == false)
+    precondition((inactiveState?["manifest"] as? [String: Any])?["pid"] as? Int == 10)
+    precondition((inactiveState?["inspector"] as? [String: Any])?["protocolVersion"] as? Int == 4)
+    print("Hidden Network pages keep their protocol metadata when a different Tweaks app is selected")
+
     model.selectInspector(first, option: first.inspectors.first { $0.kind == .network }!)
     try await eventually("Network should remount") { network.superview != nil }
     let activeState = try await network.callAsyncJavaScript(
@@ -156,6 +183,25 @@ struct InspectorWebViewTests {
       arguments: [:], in: nil, contentWorld: .page
     ) as? [String: Any]
     precondition(activeState?["baseURL"] as? String == "http://127.0.0.1:1234/")
+    precondition((activeState?["inspector"] as? [String: Any])?["id"] as? String == "network")
+    await service.setApps([app(10, connectedKinds: [.tweaks, .sample]), second])
+    try await eventually("Cached metadata should remain visible while the selected inspector is disconnected") {
+      model.isWaiting && model.inspectorApps.count == 2 && model.selectedInspectorApp?.id == first.id
+    }
+    precondition(model.webContainer?.webView === network && model.selectedInspectorApp?.inspectors.count == 3)
+    let disconnectedState = try await network.callAsyncJavaScript(
+      "return await window.webkit.messageHandlers.snapoHost.postMessage({command:'hostState'});",
+      arguments: [:], in: nil, contentWorld: .page
+    ) as? [String: Any]
+    precondition(disconnectedState?["connected"] as? Bool == false && disconnectedState?["baseURL"] as? String == nil)
+    precondition((disconnectedState?["manifest"] as? [String: Any])?["pid"] as? Int == 10)
+    let retainedState = try await network.evaluateJavaScript("window.testState") as? String
+    precondition(retainedState == "network state")
+    await service.setApps([first, second])
+    try await eventually("The same cached page should reconnect without reloading") {
+      !model.isWaiting && model.webContainer?.webView === network
+    }
+    print("Disconnected inspector metadata keeps its row and page without retaining a live connection")
     _ = try await network.callAsyncJavaScript(
       """
       return await window.webkit.messageHandlers.snapoHost.postMessage({command:'setToolbar',payload:{revision:1000000,

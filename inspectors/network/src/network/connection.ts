@@ -33,7 +33,7 @@ export class NetworkConnection {
       eventSource: (url) => new EventSource(url)
     }
   ) {
-    this.processId = `${metadata.serverStartWallMs}:${metadata.serverStartMonoNs}`;
+    this.processId = metadata.processIdentity ?? `${metadata.packageName}:${metadata.pid}`;
   }
 
   async start(): Promise<void> {

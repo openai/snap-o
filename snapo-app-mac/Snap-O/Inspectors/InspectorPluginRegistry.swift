@@ -13,6 +13,7 @@ struct InspectorPlugin: Decodable, Identifiable {
   let hostApiVersion: Int
   let discovery: Discovery
   var resourceDirectory: URL?
+  var iconBase64: String?
 
   private enum CodingKeys: String, CodingKey {
     case manifestVersion, id, name, icon, hostApiVersion, discovery
@@ -49,6 +50,15 @@ struct InspectorPluginRegistry {
                 || plugin.discovery.socketPrefix.hasPrefix($0.discovery.socketPrefix)
             }) else { throw RegistryError.invalidManifest(directory.lastPathComponent) }
       plugin.resourceDirectory = directory
+      if plugin.icon.hasSuffix(".png") {
+        let icon = directory.appendingPathComponent(plugin.icon).resolvingSymlinksInPath().standardizedFileURL
+        guard icon.path.hasPrefix(directory.resolvingSymlinksInPath().standardizedFileURL.path + "/"),
+              let data = try? Data(contentsOf: icon), data.count <= 1_048_576,
+              data.starts(with: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) else {
+          throw RegistryError.invalidManifest(directory.lastPathComponent)
+        }
+        plugin.iconBase64 = data.base64EncodedString()
+      }
       plugins.append(plugin)
     }
     self.plugins = plugins

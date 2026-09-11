@@ -4,7 +4,7 @@ import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TweakList } from "./types";
 import type { TweaksClient } from "./features/tweaks-inspector/client";
-import { InspectorHost, type Host } from "@snap-o/host";
+import { InspectorHost, type Host, type ProcessManifest, type InspectorDescriptor } from "@snap-o/host";
 import { TweaksApp } from "./TweaksApp";
 
 const mocks = vi.hoisted(() => ({ client: null as unknown as TweaksClient, host: null as unknown as Host }));
@@ -21,11 +21,27 @@ const list = (value: string): TweakList => ({
 
 describe("Tweaks frontend with the shared host", () => {
   let container: HTMLDivElement;
-  let state: { revision: number; connected: boolean; baseURL: string };
+  let state: {
+    revision: number;
+    connected: boolean;
+    baseURL: string;
+    manifest: ProcessManifest;
+    inspector: InspectorDescriptor;
+  };
   let receive: (value: typeof state) => void;
   beforeEach(() => {
     vi.useFakeTimers();
-    state = { revision: 1, connected: true, baseURL: "http://127.0.0.1:1234/" };
+    state = {
+      revision: 1,
+      connected: true,
+      baseURL: "http://127.0.0.1:1234/",
+      manifest: {
+        version: 1,
+        pid: 20,
+        app: { name: "Demo", packageName: "com.example.demo", revision: "1", inspectors: [] }
+      },
+      inspector: { id: "tweaks", name: "Tweaks", protocolVersion: 7 }
+    };
     mocks.host = new InspectorHost({
       request: async <T,>(command: string) => (command === "hostState" ? { ...state } : undefined) as T,
       listen: <T,>(name: string, callback: (value: T) => void) => {
@@ -66,7 +82,7 @@ describe("Tweaks frontend with the shared host", () => {
     await flush();
   }
   async function publish(connected: boolean, baseURL = state.baseURL) {
-    state = { revision: state.revision + 1, connected, baseURL };
+    state = { ...state, revision: state.revision + 1, connected, baseURL };
     await act(async () => receive({ ...state }));
     await flush();
   }
@@ -112,7 +128,7 @@ describe("Tweaks frontend with the shared host", () => {
     await mount();
     await publish(true, "http://127.0.0.1:4321/");
     expect(mocks.client.listTweaks).toHaveBeenCalledTimes(2);
-    expect(fetch).toHaveBeenLastCalledWith(new URL("http://127.0.0.1:4321/.snap-o/info"), expect.anything());
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("retains an empty snapshot while disconnected", async () => {
     vi.mocked(mocks.client.listTweaks).mockResolvedValue({ tweaks: [] });

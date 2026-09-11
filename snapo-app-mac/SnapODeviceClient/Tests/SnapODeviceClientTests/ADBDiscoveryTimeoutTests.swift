@@ -18,6 +18,7 @@ struct ADBDiscoveryTimeoutTests {
     )
     #expect(sockets.map(\.reference.deviceId) == ["phone", "phone"])
     #expect(sockets.map(\.kind.rawValue) == ["network", "tweaks"])
+    #expect(sockets.allSatisfy { $0.processName == "com.example.demo" })
     #expect(start.duration(to: .now) < .seconds(2))
     #expect(server.connectionCount == 2)
 
@@ -195,7 +196,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
           if stalled, stall == .shell { return }
           Self.send("OKAY", to: descriptor)
           if stalled {
-            if stall == .partialOutput { Self.send("1: 0 @snapo_network_99\n", to: descriptor) }
+            if stall == .partialOutput { Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_99\n", to: descriptor) }
             if stall == .trickle {
               for _ in 0 ..< 50 {
                 if !Self.send("x", to: descriptor) { break }
@@ -206,12 +207,14 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             return
           }
           switch command {
+          case "shell:" + InspectorDiscovery.snapshotCommand:
+            Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n", to: descriptor)
           case "shell:cat /proc/321/cmdline 2>/dev/null":
             Self.send("com.example.demo:worker\0ignored", to: descriptor)
           case "shell:cat /proc/321/status 2>/dev/null":
             Self.send("Uid: 1010234 1010234 1010234 1010234\n", to: descriptor)
           default:
-            Self.send("1: 0 @snapo_network_42\n2: 0 @snapo_tweaks_42\n", to: descriptor)
+            Self.send("1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n", to: descriptor)
           }
           peer.close()
         }

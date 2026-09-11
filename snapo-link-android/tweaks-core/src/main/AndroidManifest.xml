@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application>
+        <meta-data
+            android:name="snapo.inspector.tweaks"
+            android:resource="@xml/snapo_tweaks_inspector" />
         <provider
             android:name="com.openai.snapo.tweaks.SnapOTweaksInitProvider"
             android:authorities="${applicationId}.snapo-tweaks-init"

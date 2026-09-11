@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inspector
+    version="1"
+    id="tweaks"
+    name="Tweaks"
+    icon="@drawable/snapo_tweaks_inspector_icon"
+    protocolVersion="7" />

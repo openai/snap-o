@@ -19,6 +19,21 @@ function setup() {
 }
 
 describe("shared inspector host", () => {
+  it("publishes metadata that arrives while the process remains disconnected", async () => {
+    const { host, emit } = setup();
+    await host.setToolbar({ start: [] });
+    emit("connection", { revision: 2, connected: false });
+    const changed = vi.fn();
+    host.addEventListener("connection", changed);
+    const inspector = { id: "sample", name: "Sample", protocolVersion: 4 };
+    const manifest = { version: 1, pid: 10 };
+    emit("connection", { revision: 3, connected: false, manifest, inspector });
+    expect(changed).toHaveBeenCalledOnce();
+    expect(host.connected).toBe(false);
+    expect(host.manifest).toEqual(manifest);
+    expect(host.inspector).toEqual(inspector);
+  });
+
   it("publishes endpoint changes and ignores old state replies", async () => {
     const { host, emit } = setup();
     const changed = vi.fn();

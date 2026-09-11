@@ -35,8 +35,6 @@ class NetworkInspectorServer internal constructor(
     private val publishLock = Mutex()
     private val eventBuffer = EventBuffer(config)
     private val transport = NetworkInspectorTransport(
-        app = app,
-        config = config,
         snapshotProvider = ::snapshotMessages,
         commandHandler = ::handleCommand,
         interception = interception,
