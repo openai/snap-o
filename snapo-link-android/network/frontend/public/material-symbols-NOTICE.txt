@@ -1,4 +1,0 @@
-Google Material Symbols: cloud (Outlined).
-Source: https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/cloud/default/24px.svg
-Licensed under Apache License 2.0.
-Snap-O converts the SVG to a gray PNG and Android VectorDrawable.

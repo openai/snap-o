@@ -91,6 +91,8 @@ For each library in the tag's generated `publications.tsv`, check the staged POM
 
 For Network and Tweaks AARs, also verify the generated inspector descriptor and the frontend ZIP under `assets/snapo/inspectors/<id>/`. The ZIP must contain `index.html` and its referenced assets.
 
+Keep unused icons, preview data, tests, and source maps out of frontend ZIPs. Verify that the Material Symbols license and notice remain in each AAR's Android assets.
+
 After Maven Central finishes publishing, fetch each library's POM, Gradle metadata, AAR, sources, and javadocs directly from Maven Central. Also resolve all modules from a clean Android Gradle project using the Android plugin, `google()`, and `mavenCentral()`. Direct Central-only checks must skip transitive dependencies because AndroidX and Compose may require Google's repository.
 
 ## Release notes and website
