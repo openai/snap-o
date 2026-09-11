@@ -1,10 +1,12 @@
 """Synthetic loopback endpoints for the native WebView security tests."""
 
 import base64
+import faulthandler
 import hashlib
 import http.server
 import json
 import pathlib
+import socketserver
 import sys
 import threading
 
@@ -15,6 +17,11 @@ connections = []
 
 
 class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # These endpoints use IP literals; startup must not wait for reverse DNS.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
     def get_request(self):
         connection, address = super().get_request()
         with lock:
@@ -77,6 +84,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.respond(200, b"ok")
 
 
+faulthandler.dump_traceback_later(10, exit=True)
 allowed = Server(("127.0.0.1", 0), Handler)
 denied = Server(("127.0.0.1", 0), Handler)
 for server in (allowed, denied):
@@ -85,4 +93,5 @@ ports = root / "ports.json"
 temporary = root / "ports.tmp"
 temporary.write_text(json.dumps({"allowed": allowed.server_port, "denied": denied.server_port}))
 temporary.replace(ports)
+faulthandler.cancel_dump_traceback_later()
 threading.Event().wait()
