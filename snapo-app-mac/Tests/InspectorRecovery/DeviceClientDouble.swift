@@ -9,6 +9,7 @@ public final class ADBClient: @unchecked Sendable {
   private var forwards = 0
   private var propertiesRecovered = false
   private var metadataAvailable = false
+  private var metadataRequests: [[String]] = []
   private var socketDevices: [String] = []
   private var socketsByDevice: [String: [String]] = [:]
   private var socketGeneration = 0
@@ -36,11 +37,22 @@ public final class ADBClient: @unchecked Sendable {
     lock.withLock { metadataAvailable = available }
   }
 
+  public var metadataSocketRequests: [[String]] {
+    lock.withLock { metadataRequests }
+  }
+
   public func inspectorMetadata(deviceID: String, socketNames: [String], helperURL: URL) async throws -> [InspectorProcessMetadata] {
+    lock.withLock { metadataRequests.append(socketNames) }
     while !lock.withLock({ metadataAvailable }) {
       try await Task.sleep(for: .milliseconds(10))
     }
     let pids = Set(socketNames.compactMap { Int($0.split(separator: "_").last ?? "") })
+    let inspectors: [[String: Any]] = [
+      ["id": "network", "name": "Network", "protocolVersion": 3],
+      ["id": "tweaks", "name": "Tweaks", "protocolVersion": 7]
+    ].filter { descriptor in
+      socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }
+    }
     return try pids.map { pid in
       let record: [String: Any] = [
         "version": 1, "pid": pid, "processName": "com.example.demo", "androidUserId": 0,
@@ -48,10 +60,7 @@ public final class ADBClient: @unchecked Sendable {
         "app": [
           "name": "Demo", "packageName": "com.example.demo", "revision": "1",
           "iconBase64": "icon-\(deviceID)",
-          "inspectors": [
-            ["id": "network", "name": "Network", "protocolVersion": 3],
-            ["id": "tweaks", "name": "Tweaks", "protocolVersion": 7]
-          ]
+          "inspectors": inspectors
         ]
       ]
       return try JSONDecoder().decode(InspectorProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))

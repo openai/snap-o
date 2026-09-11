@@ -5,7 +5,8 @@ import Testing
 
 @Suite("ADB discovery timeouts")
 struct ADBDiscoveryTimeoutTests {
-  @Test("a stalled device cannot hide healthy inspectors", arguments: FakeDiscoveryADB.Stall.allCases)
+  // Continuous output is tested separately because it has no total response deadline.
+  @Test("a stalled device cannot hide healthy inspectors", arguments: FakeDiscoveryADB.Stall.allCases.filter { $0 != .trickle })
   private func discoversHealthyDevice(stall: FakeDiscoveryADB.Stall) async {
     let server = FakeDiscoveryADB(stall: stall)
     defer { server.close() }

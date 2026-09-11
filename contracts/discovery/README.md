@@ -33,7 +33,7 @@ App labels and icons come from Android package information, not the inspector de
 
 Use `PackageManager.getApplicationInfo` with `GET_META_DATA`, `ApplicationInfo.loadXmlMetaData`, and `PackageManager.getResourcesForApplication` in a separate reader process. Resolve the correct Android user and verify package ownership against the process UID. The [bundled reader](../../android-discovery/README.md) supports non-debuggable apps without invoking app code.
 
-Cache installed metadata separately from live connections. Invalidate it when the installed package or resource configuration changes. A missing or malformed descriptor is not evidence that the socket disappeared; show the app and an unsupported-inspector state. Never infer that a plugin is enabled merely because its descriptor is installed.
+Cache installed metadata separately from live connections. Invalidate it when the installed package or resource configuration changes. A missing or malformed descriptor is not evidence that the socket disappeared; show the app and an unsupported-inspector state. Never infer that a plugin is enabled merely because its descriptor is installed. When a new socket appears, refresh metadata for all visible inspector sockets in that process and update their cached records together.
 
 Clients can send `OPTIONS /` over a forwarded socket to check HTTP readiness without fetching app metadata. The Network and Tweaks servers return a successful empty response. They no longer serve `/.snap-o/info` or `/.snap-o/appicon`.
 

@@ -274,10 +274,11 @@ actor InspectorHTTPService {
   private func populateManifests(sockets: [DiscoveredInspectorSocket], using adb: ADBClient) {
     for (deviceID, sockets) in Dictionary(grouping: sockets, by: { $0.reference.deviceId }) {
       guard metadataTasks[deviceID] == nil else { continue }
-      let pending = sockets.filter {
+      let pendingPIDs = Set(sockets.filter {
         guard let readAt = metadataReadAt[$0.reference.key] else { return true }
         return readAt.duration(to: .now) >= .seconds(30)
-      }
+      }.map(\.pid))
+      let pending = sockets.filter { pendingPIDs.contains($0.pid) }
       guard !pending.isEmpty else { continue }
       metadataTasks[deviceID] = Task { [weak self] in
         await self?.loadManifests(deviceID: deviceID, sockets: pending, using: adb)
@@ -287,8 +288,16 @@ actor InspectorHTTPService {
 
   private func loadManifests(deviceID: String, sockets: [DiscoveredInspectorSocket], using adb: ADBClient) async {
     defer { metadataTasks[deviceID] = nil }
-    for start in stride(from: 0, to: sockets.count, by: 64) {
-      let batch = Array(sockets[start ..< min(start + 64, sockets.count)])
+    var batches: [[DiscoveredInspectorSocket]] = []
+    // Keep a process's visible inspectors together so every socket receives the same manifest.
+    for process in Dictionary(grouping: sockets, by: \.pid).values {
+      if let last = batches.indices.last, batches[last].count + process.count <= 64 {
+        batches[last].append(contentsOf: process)
+      } else {
+        batches.append(process)
+      }
+    }
+    for batch in batches {
       let records = try? await adb.inspectorMetadata(
         deviceID: deviceID, socketNames: batch.map(\.reference.socketName), helperURL: helperURL
       )

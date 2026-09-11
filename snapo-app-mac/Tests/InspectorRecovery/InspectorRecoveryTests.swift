@@ -277,6 +277,45 @@ struct InspectorRecoveryTests {
     print("Port forwarding failures enter the same cooldown as failed inspector requests")
     await tracker.stopTracking()
     print("Property failures recover without another device tracking event")
+    try await refreshesSiblingDescriptors()
+  }
+
+  static func refreshesSiblingDescriptors() async throws {
+    let adbService = ADBService()
+    let adb = await adbService.exec()
+    adb.setMetadataAvailable(true)
+    adb.setSocketNames(["snapo_network_42", "snapo_network_43"], deviceID: "healthy")
+    let tracker = DeviceTracker(adbService: adbService)
+    await tracker.startTracking()
+    adb.emitDevices("healthy device transport_id:1")
+    try await eventually { await tracker.latestDevices.count == 1 }
+    let service = try InspectorService(adbService: adbService, deviceTracker: tracker, registry: testPluginRegistry())
+    _ = await service.discoverInspectors()
+    try await eventually {
+      await service.currentInspectors().apps.first?.manifest?.app?.inspectors.map(\.id) == [.network]
+    }
+    precondition(adb.metadataSocketRequests.count == 1)
+    precondition(Set(adb.metadataSocketRequests[0]) == ["snapo_network_42", "snapo_network_43"])
+
+    adb.setSocketNames(["snapo_network_42", "snapo_network_43", "snapo_tweaks_42"], deviceID: "healthy")
+    _ = await service.discoverInspectors()
+    try await eventually {
+      let app = await service.currentInspectors().apps.first
+      return app?.manifest?.app?.inspectors.map(\.id) == [.network, .tweaks]
+        && app?.inspectors.map(\.protocolVersion) == [3, 7]
+    }
+    precondition(adb.metadataSocketRequests.count == 2)
+    precondition(Set(adb.metadataSocketRequests[1]) == ["snapo_network_42", "snapo_tweaks_42"])
+    _ = await service.discoverInspectors()
+    precondition(adb.metadataSocketRequests.count == 2, "An unchanged socket set keeps cached metadata")
+
+    adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
+    let remaining = await service.discoverInspectors().apps.first!
+    precondition(remaining.manifest?.app?.inspectors.map(\.id) == [.network, .tweaks])
+    precondition(remaining.inspectors.map(\.kind) == [.network], "A cached descriptor cannot make an absent server available")
+    await service.stop()
+    await tracker.stopTracking()
+    print("A new socket refreshes sibling metadata; only live sockets determine inspector availability")
   }
 
   static func eventually(line: Int = #line, _ condition: () async -> Bool) async throws {
