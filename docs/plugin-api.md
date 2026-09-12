@@ -84,15 +84,7 @@ You can assign these Gradle properties as shown above, or use `.set(...)` with a
 
 ### Advanced: independently shipped clients {#independent-clients}
 
-Only set `protocolVersion` if a client ships separately from your Android tool, such as a CLI. It is an optional `Property<Int>` with no default; an explicit value must be positive. It identifies your HTTP API, not the SDK package version.
-
-``` { .kotlin title="Version an API used by an independent client" }
-snapoTool {
-    protocolVersion = 3
-}
-```
-
-This adds the version to discovery metadata and generates `SnapOTool.PROTOCOL_VERSION`. Independent clients can check that version before sending requests. Network and Tweaks use this for the Snap-O CLI. Without this setting, neither the descriptor field nor the constant is generated.
+Your tool owns its HTTP API and compatibility rules. If clients ship independently, expose any version or capability information through your own endpoints. The SDK does not define a tool protocol version or negotiate compatibility for you.
 
 ### Advanced: Node installation {#node-installation}
 
@@ -334,7 +326,6 @@ interface Host extends EventTarget {
 ``` { .typescript title="Connection subscription" }
 interface ToolConnection {
   readonly baseURL: string;
-  readonly protocolVersion?: number;
   readonly processIdentity: string;
   readonly signal: AbortSignal;
 }
@@ -345,7 +336,7 @@ const unsubscribe = host.onConnection(connection => {
 });
 ```
 
-`baseURL` is the forwarded Android server address. `protocolVersion` is present only for tools that explicitly version an API for independently shipped clients. Bundled frontends do not need a version check. `processIdentity` is an opaque token that changes when the Android process restarts; use it to scope state you retain across reconnects.
+`baseURL` is the forwarded Android server address. `processIdentity` is an opaque token that changes when the Android process restarts; use it to scope state you retain across reconnects.
 
 The callback runs immediately and whenever the host reports a connection change. Its previous cleanup runs before the next callback and when unsubscribing. A new connection can reuse the same URL. Its `signal` aborts when that connection ends; use it with `fetch` for requests tied to the connection. Unsubscribing one UI does not abort another UI's requests.
 
@@ -415,10 +406,9 @@ These versions describe different things:
 | Version | Who sets it | What it means |
 | --- | --- | --- |
 | Maven/npm package version | SDK or tool author | Which release of a library or Gradle plugin you depend on. |
-| `protocolVersion` | Tool author, only for independent clients | Optional HTTP API version advertised in discovery metadata. |
-| `hostApiVersion` | Snap-O build tooling | Generated compatibility metadata for the host bridge. Currently version 1; not an author setting. |
+| `hostApiVersion` | Snap-O build tooling | Generated compatibility metadata for the host bridge. Currently version 2; not an author setting. |
 
-The frontend and Android server ship together, so bundled tools do not need a protocol version. Validate incoming data for the shape your UI expects. Tools with independent clients can opt into [explicit HTTP API versioning](#independent-clients). The desktop checks generated host API metadata before loading a frontend because Snap-O and Android tools ship independently.
+The frontend and Android server ship together, so bundled tools do not need a protocol version. Validate incoming data for the shape your UI expects. Tools with independent clients define their [own compatibility rules](#independent-clients). The desktop checks generated host API metadata before loading a frontend because Snap-O and Android tools ship independently.
 
 | Setting | Current default or limit |
 | --- | --- |

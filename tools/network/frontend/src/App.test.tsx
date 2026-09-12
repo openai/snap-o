@@ -7,7 +7,7 @@ import type { NetworkClient } from "./network/client";
 import { recordId } from "./network/cdp";
 import type { NetworkToolModel } from "./features/network-tool/hooks/useNetworkToolModel";
 import { ToolHost, type Host } from "@snap-o/tool-host";
-type ToolDescriptor = { id: string; name: string; protocolVersion: number };
+type ToolDescriptor = { id: string; name: string };
 type ProcessManifest = {
   version: number;
   pid: number;
@@ -38,7 +38,7 @@ const metadata = {
   name: "Demo",
   packageName: "com.example.demo",
   pid: 20,
-  protocolVersion: 3,
+  protocolVersion: 4,
   processIdentity: "boot:20:123"
 };
 const replayMessages: CdpMessage[] = [
@@ -95,7 +95,7 @@ describe("Network frontend with the shared host", () => {
         processIdentity: metadata.processIdentity,
         app: { name: metadata.name, packageName: metadata.packageName, revision: "1", inspectors: [] }
       },
-      inspector: { id: "network", name: "Network", protocolVersion: 3 }
+      inspector: { id: "network", name: "Network" }
     };
     listeners = new Map();
     requests = vi.fn(async (command) => (command === "hostState" ? { ...state } : undefined));
@@ -106,7 +106,7 @@ describe("Network frontend with the shared host", () => {
         return () => listeners.delete(name);
       }
     });
-    fetchMetadata = vi.fn<typeof fetch>(async () => Response.json(metadata));
+    fetchMetadata = vi.fn<typeof fetch>(async () => Response.json({ version: 4 }));
     vi.stubGlobal("fetch", fetchMetadata);
     events = new Set();
     mocks.model = null;
@@ -241,7 +241,7 @@ describe("Network frontend with the shared host", () => {
     expect(fetchMetadata).not.toHaveBeenCalled();
     expect(mocks.client.startStream).not.toHaveBeenCalled();
     await publish(true);
-    expect(fetchMetadata).not.toHaveBeenCalled();
+    expect(fetchMetadata).toHaveBeenCalledOnce();
     expect(mocks.client.startStream).toHaveBeenCalledWith(
       expect.objectContaining({ protocolVersion: metadata.protocolVersion, processIdentity: metadata.processIdentity })
     );
@@ -285,7 +285,7 @@ describe("Network frontend with the shared host", () => {
     expect(mocks.client.startStream).toHaveBeenCalledWith(
       expect.objectContaining({ protocolVersion: metadata.protocolVersion, processIdentity: metadata.processIdentity })
     );
-    expect(fetchMetadata).not.toHaveBeenCalled();
+    expect(fetchMetadata).toHaveBeenCalledOnce();
   });
 
   it("uses host metadata with the real Network connection on each reconnect", async () => {
@@ -299,6 +299,7 @@ describe("Network frontend with the shared host", () => {
     }
     vi.stubGlobal("EventSource", Events);
     fetchMetadata.mockImplementation(async (url) => {
+      if (String(url).endsWith("/network/protocol")) return Response.json({ version: 4 });
       if (String(url).endsWith("/network"))
         return new Response("", {
           headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": "0" }
@@ -309,17 +310,25 @@ describe("Network frontend with the shared host", () => {
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() =>
-      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network"])
+      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+        "/network/protocol",
+        "/network"
+      ])
     );
     await publish(false);
     await publish(true);
     await vi.waitFor(() =>
-      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network", "/network"])
+      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+        "/network/protocol",
+        "/network",
+        "/network/protocol",
+        "/network"
+      ])
     );
   });
 
-  it.each([0, 2, 4])("does not start a Network stream for unsupported protocol v%s", async (protocolVersion) => {
-    state.inspector = { ...state.inspector!, protocolVersion };
+  it.each([1, 3, 5])("does not start a Network stream for unsupported protocol v%s", async (protocolVersion) => {
+    fetchMetadata.mockResolvedValue(Response.json({ version: protocolVersion }));
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() => expect(mocks.model?.metadata?.protocolVersion).toBe(protocolVersion));

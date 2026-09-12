@@ -60,6 +60,7 @@ internal fun applyTweakBatch(
     return TweakBatchResult(tweaks, errors)
 }
 
+internal const val TweaksProtocolVersion = 8
 private const val MaxBodyBytes = 64 * 1024
 private const val MainThreadTimeoutMillis = 5_000L
 
@@ -97,6 +98,7 @@ internal class TweakHttpServer(
                 else -> errorResponse(500, "The request could not be completed.")
             }
         }
+        get("/tweaks/protocol") { respondJson("""{"version":$TweaksProtocolVersion}""") }
         get("/tweaks") {
             respond(
                 runInterruptible {

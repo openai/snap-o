@@ -7,14 +7,13 @@ import { useHostConnection } from "./useHostConnection";
 
 const connection: ToolConnection = {
   baseURL: "http://127.0.0.1:1234/",
-  protocolVersion: 1,
   processIdentity: "boot:42:1",
   signal: new AbortController().signal
 };
 
 function createHost(): Host {
   const host = Object.assign(new EventTarget(), {
-    connection,
+    connection: connection as ToolConnection | null,
     onConnection(callback: (connection: ToolConnection | null) => void) {
       const update = () => callback(host.connection);
       host.addEventListener("connection", update);
@@ -25,107 +24,122 @@ function createHost(): Host {
   return host;
 }
 
-describe("host connection snapshots", () => {
+describe("tool protocol connection", () => {
   let container: HTMLDivElement;
-  let latest: ReturnType<typeof useHostConnection> & Pick<Host, "connection">;
-
+  let latest: ReturnType<typeof useHostConnection>;
+  let request: ReturnType<typeof vi.fn<typeof fetch>>;
   function Probe({ host }: { host: Host }) {
-    const connection = useHostConnection(host);
-    latest = { ...connection, connection: host.connection };
-    return <output>{latest.connection?.baseURL}</output>;
+    latest = useHostConnection(host);
+    return <output>{latest.metadata?.protocolVersion}</output>;
   }
-
+  async function mount(host = createHost()) {
+    await act(() => render(<Probe host={host} />, container));
+    return host;
+  }
+  async function publish(host: Host, value: ToolConnection | null) {
+    await act(() => {
+      Object.assign(host, { connection: value });
+      host.dispatchEvent(new Event("connection"));
+    });
+  }
   beforeEach(() => {
     container = document.createElement("div");
+    request = vi.fn<typeof fetch>(async () => Response.json({ version: 8 }));
+    vi.stubGlobal("fetch", request);
   });
   afterEach(async () => {
     await act(() => render(null, container));
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
-
-  it.each(["baseURL", "processIdentity", "protocolVersion"] as const)(
-    "observes a %s change between rendering and subscribing",
-    async (property) => {
-      const host = createHost();
-      const replacement = {
-        baseURL: "http://127.0.0.1:5678/",
-        processIdentity: "boot:42:2",
-        protocolVersion: 2
-      };
-      const subscribe = host.addEventListener.bind(host);
-      vi.spyOn(host, "addEventListener").mockImplementationOnce((type, listener, options) => {
-        Object.assign(host, { connection: { ...connection, [property]: replacement[property] } });
-        subscribe(type, listener, options);
-      });
-      await act(() => render(<Probe host={host} />, container));
-      expect(latest.connected).toBe(true);
-      expect(latest.connection?.[property]).toBe(replacement[property]);
-      expect(latest.revision).toBeGreaterThan(0);
+  it("reads the tool protocol before connecting", async () => {
+    let resolve!: (response: Response) => void;
+    request.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    await mount();
+    expect(latest.connected).toBe(false);
+    expect(request).toHaveBeenCalledWith(new URL("http://127.0.0.1:1234/tweaks/protocol"), {
+      signal: expect.any(AbortSignal)
+    });
+    await act(async () => resolve(Response.json({ version: 8 })));
+    await vi.waitFor(() => expect(latest.connected).toBe(true));
+    expect(latest.metadata).toEqual({ protocolVersion: 8, processIdentity: "boot:42:1" });
+  });
+  it.each(["baseURL", "processIdentity"] as const)("observes a %s change while subscribing", async (property) => {
+    const host = createHost();
+    const replacement = { baseURL: "http://127.0.0.1:5678/", processIdentity: "boot:42:2" };
+    const subscribe = host.addEventListener.bind(host);
+    vi.spyOn(host, "addEventListener").mockImplementationOnce((type, listener, options) => {
+      Object.assign(host, { connection: { ...connection, [property]: replacement[property] } });
+      subscribe(type, listener, options);
+    });
+    await mount(host);
+    await vi.waitFor(() => expect(latest.connected).toBe(true));
+    expect(String(request.mock.calls[0][0])).toBe(new URL("tweaks/protocol", host.connection!.baseURL).href);
+    expect(latest.metadata?.processIdentity).toBe(host.connection?.processIdentity);
+  });
+  it("preserves cached metadata offline and checks each reconnect", async () => {
+    const host = await mount();
+    await vi.waitFor(() => expect(latest.connected).toBe(true));
+    const metadata = latest.metadata;
+    await publish(host, null);
+    expect(latest.connected).toBe(false);
+    expect(latest.metadata).toEqual(metadata);
+    request.mockResolvedValueOnce(Response.json({ version: 8 + 1 }));
+    await publish(host, connection);
+    await vi.waitFor(() => expect(latest.metadata?.protocolVersion).toBe(8 + 1));
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+  it("ignores a late reply from a replaced connection", async () => {
+    let resolve!: (response: Response) => void;
+    request.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const host = await mount();
+    const signal = request.mock.calls[0][1]!.signal!;
+    await publish(host, { ...connection, processIdentity: "boot:42:2" });
+    await vi.waitFor(() => expect(latest.connected).toBe(true));
+    expect(signal.aborted).toBe(true);
+    await act(async () => resolve(Response.json({ version: 8 + 1 })));
+    expect(latest.metadata).toEqual({ protocolVersion: 8, processIdentity: "boot:42:2" });
+  });
+  it.each([{}, { version: "8" }, { version: true }, { version: 0 }, { version: 1.5 }])(
+    "rejects invalid protocol data %j",
+    async (payload) => {
+      request.mockResolvedValueOnce(Response.json(payload));
+      await mount();
+      await vi.waitFor(() => expect(latest.error).toContain("invalid"));
+      expect(latest.connected).toBe(false);
     }
   );
-
-  it("updates on address and metadata changes", async () => {
-    const host = createHost();
-    await act(() => render(<Probe host={host} />, container));
-    const initial = latest;
-
-    await act(() => {
-      Object.assign(host, {
-        connection: {
-          ...connection,
-          baseURL: "http://127.0.0.1:5678/",
-          processIdentity: "boot:42:2",
-          protocolVersion: 2
-        }
-      });
-      host.dispatchEvent(new Event("connection"));
-    });
-    expect(latest.connected).toBe(true);
-    expect(latest.connection?.baseURL).toBe("http://127.0.0.1:5678/");
-    expect(latest.connection?.processIdentity).toBe("boot:42:2");
-    expect(latest.connection?.protocolVersion).toBe(2);
-    expect(latest.revision).toBe(initial.revision + 1);
+  it("reports an unavailable endpoint without starting tool operations", async () => {
+    request.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    await mount();
+    await vi.waitFor(() => expect(latest.error).toContain("404"));
+    expect(latest.connected).toBe(false);
   });
-
-  it("preserves a new connection event when the host fields are unchanged", async () => {
-    const host = createHost();
-    await act(() => render(<Probe host={host} />, container));
-    const initialRevision = latest.revision;
-    await act(() => {
-      host.dispatchEvent(new Event("connection"));
-    });
-    expect(latest.revision).toBe(initialRevision + 1);
-  });
-
-  it("observes disconnect and reconnect at the same address", async () => {
-    const host = createHost();
-    await act(() => render(<Probe host={host} />, container));
-    const initialRevision = latest.revision;
-    for (const connected of [false, true]) {
-      await act(() => {
-        Object.assign(host, { connection: connected ? connection : null });
-        host.dispatchEvent(new Event("connection"));
-      });
-      expect(latest.connected).toBe(connected);
-    }
-    expect(latest.revision).toBe(initialRevision + 2);
-  });
-
-  it("unsubscribes when the host changes and when the component unmounts", async () => {
-    const oldHost = createHost();
-    const newHost = createHost();
+  it("cancels requests and unsubscribes when the host changes or unmounts", async () => {
+    request.mockImplementation(() => new Promise(() => {}));
+    const oldHost = await mount();
     const oldRemove = vi.spyOn(oldHost, "removeEventListener");
-    const newRemove = vi.spyOn(newHost, "removeEventListener");
-    await act(() => render(<Probe host={oldHost} />, container));
-    await act(() => render(<Probe host={newHost} />, container));
+    const oldSignal = request.mock.calls[0][1]!.signal!;
+    const next = createHost();
+    const remove = vi.spyOn(next, "removeEventListener");
+    await mount(next);
+    expect(oldSignal.aborted).toBe(true);
     expect(oldRemove).toHaveBeenCalledWith("connection", expect.any(Function));
     const current = latest;
-    await act(() => {
-      Object.assign(oldHost, { connection: null });
-      oldHost.dispatchEvent(new Event("connection"));
-    });
+    await publish(oldHost, null);
     expect(latest).toBe(current);
     await act(() => render(null, container));
-    expect(newRemove).toHaveBeenCalledWith("connection", expect.any(Function));
+    expect(request.mock.calls[1][1]!.signal!.aborted).toBe(true);
+    expect(remove).toHaveBeenCalledWith("connection", expect.any(Function));
   });
 });

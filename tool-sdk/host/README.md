@@ -12,7 +12,7 @@ The native host owns process and tool isolation. It creates a separate page for 
 
 `host.onConnection(callback)` delivers the current `ToolConnection` or `null` immediately. Return a cleanup function to close that connection's stream before replacement or disconnection. Unsubscribe when the UI unmounts; this also runs its cleanup. Use `connection.signal` with requests that should abort on disconnection.
 
-Use `connection.baseURL` for HTTP requests. Bundled frontends do not need protocol-version checks. `connection.protocolVersion` is optional and appears only when the tool explicitly versions an API for independent clients. `connection.processIdentity` is an opaque token that changes when the Android process restarts. Raw discovery metadata stays internal.
+Use `connection.baseURL` for HTTP requests. Protocol compatibility belongs to the tool and its clients; the host does not expose a protocol version. `connection.processIdentity` is an opaque token that changes when the Android process restarts. Raw discovery metadata stays internal.
 
 ```ts
 const unsubscribe = host.onConnection((connection) => {

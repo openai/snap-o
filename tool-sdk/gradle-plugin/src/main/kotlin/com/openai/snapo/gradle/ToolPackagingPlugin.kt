@@ -77,7 +77,6 @@ class ToolPackagingPlugin : Plugin<Project> {
                         namespace.set(variant.namespace)
                         toolId.set(tool.id)
                         displayName.set(tool.displayName)
-                        protocolVersion.set(tool.protocolVersion)
                         icon.set(tool.icon)
                     }
                     variant.sources.assets?.addGeneratedSourceDirectory(assets, ToolAssetsTask::outputDirectory)

@@ -13,7 +13,6 @@ snapoTool {
     frontendDirectory = layout.projectDirectory.dir("../../frontend")
     id = "tweaks"
     displayName = "Tweaks"
-    protocolVersion = 7
     icon = "@drawable/snapo_tweaks_inspector_icon"
 }
 

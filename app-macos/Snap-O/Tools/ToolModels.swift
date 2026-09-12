@@ -3,7 +3,6 @@ import Foundation
 struct AppToolOption: Equatable, Codable, Identifiable {
   let kind: ToolID
   let server: ToolServerReference
-  let protocolVersion: Int?
   let isConnected: Bool
   var name = ""
   var iconBase64: String?
@@ -23,7 +22,7 @@ enum ToolCompatibility: Equatable, Codable {
   case legacy(protocolVersion: Int)
   case missingDescriptor
   case invalidDescriptor
-  case missingFrontend(protocolVersion: Int?)
+  case missingFrontend
   case hostAPI(version: Int)
   case metadataUnavailable
 
@@ -56,8 +55,8 @@ enum ToolCompatibility: Equatable, Codable {
     case .missingFrontend:
       "This app’s Snap-O library does not include a tool interface for this version of Snap-O." + Self.libraryGuidance
     case .hostAPI(let version):
-      version > 1
-        ? "This tool requires host API \(version). This version of Snap-O supports host API 1. Update Snap-O to open it."
+      version > 2
+        ? "This tool requires host API \(version). This version of Snap-O supports host API 2. Update Snap-O to open it."
         : "This tool uses unsupported host API \(version)." + Self.libraryGuidance
     case .metadataUnavailable:
       "Snap-O could not reach this tool or check its library version. Open the app on your device. Snap-O will retry automatically."
@@ -70,7 +69,6 @@ enum ToolCompatibility: Equatable, Codable {
   var versionDetail: String? {
     switch self {
     case .legacy(let version): "Tool protocol \(version)"
-    case .missingFrontend(let version): version.map { "Tool protocol \($0)" }
     default: nil
     }
   }
@@ -121,7 +119,6 @@ struct SelectedAppTool: Equatable, Codable {
   let appId: String
   let kind: ToolID
   let server: ToolServerReference
-  let protocolVersion: Int?
 }
 
 struct AppToolState: Equatable, Codable {

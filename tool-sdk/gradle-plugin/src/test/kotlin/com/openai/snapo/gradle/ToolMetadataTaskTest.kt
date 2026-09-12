@@ -26,19 +26,16 @@ class ToolMetadataTaskTest {
             .readText().contains("PROTOCOL_VERSION"))
         val oldResource = task.resourceDirectory.get().asFile.resolve("xml").listFiles()!!.single()
         task.toolId.set("renamed-plugin")
-        task.protocolVersion.set(9)
         task.generate()
 
         val resource = task.resourceDirectory.get().asFile.resolve("xml").listFiles()!!.single()
         val descriptor = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(resource).documentElement
         assertFalse(oldResource.exists())
         assertEquals("renamed-plugin", descriptor.getAttribute("id"))
-        assertEquals("9", descriptor.getAttribute("protocolVersion"))
         assertTrue(task.manifestFile.get().asFile.readText().contains("snapo.inspector.renamed-plugin"))
         val source = task.sourceDirectory.file("com/example/plugin/SnapOTool.java").get().asFile.readText()
         assertTrue(source.contains("public static final String ID = \"renamed-plugin\";"))
-        assertTrue(source.contains("public static final int PROTOCOL_VERSION = 9;"))
-        assertEquals("1", descriptor.getAttribute("hostApiVersion"))
+        assertEquals("2", descriptor.getAttribute("hostApiVersion"))
     }
 
     @Test
@@ -56,15 +53,6 @@ class ToolMetadataTaskTest {
             val resource = task.resourceDirectory.get().asFile.resolve("xml").listFiles()!!.single()
             val descriptor = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(resource).documentElement
             assertEquals(valid, descriptor.getAttribute("icon"))
-        }
-    }
-
-    @Test
-    fun `explicit protocol versions must be positive`() {
-        val task = metadataTask()
-        for (invalid in listOf(0, -1)) {
-            task.protocolVersion.set(invalid)
-            assertThrows(IllegalArgumentException::class.java) { task.generate() }
         }
     }
 

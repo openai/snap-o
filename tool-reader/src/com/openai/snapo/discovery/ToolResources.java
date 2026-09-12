@@ -120,11 +120,7 @@ final class ToolResources {
                 throw new IllegalArgumentException("Invalid tool descriptor fields.");
             }
             JSONObject result = new JSONObject().put("id", id).put("name", name);
-            if (xml.getAttributeValue(null, "protocolVersion") != null) {
-                int protocol = integer(xml, resources, "protocolVersion");
-                if (protocol < 1) throw new IllegalArgumentException("Invalid tool protocol version.");
-                result.put("protocolVersion", protocol);
-            }
+
             if (xml.getAttributeValue(null, "frontendAssets") != null) {
                 String assetPath = text(xml, resources, "frontendAssets");
                 int hostApiVersion = integer(xml, resources, "hostApiVersion");

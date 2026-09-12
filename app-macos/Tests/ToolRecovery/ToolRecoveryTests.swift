@@ -175,7 +175,7 @@ struct ToolRecoveryTests {
       return app?.tools.allSatisfy(\.isConnected) == true && app?.appIconBase64 != nil
     }
     let discovered = await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }!
-    precondition(discovered.name == "Demo" && discovered.tools.allSatisfy { $0.protocolVersion == ($0.kind == .network ? 3 : 7) })
+    precondition(discovered.name == "Demo" && discovered.tools.allSatisfy { $0.compatibility == .supported })
     _ = try await service.pluginEndpoint(for: frozen)
     precondition(adb.forwardCount == count + 2)
     print("Both tool kinds reconnect automatically after cooldown")
@@ -195,7 +195,7 @@ struct ToolRecoveryTests {
       precondition(cached.name == discovered.name && cached.appIconBase64 == discovered.appIconBase64)
       precondition(cached.packageName == discovered.packageName && cached.androidUserId == discovered.androidUserId)
       precondition(cached.tools.map(\.kind) == [.network, .tweaks])
-      precondition(cached.tools.allSatisfy { $0.protocolVersion == ($0.kind == .network ? 3 : 7) })
+      precondition(cached.tools.allSatisfy { $0.compatibility == .supported })
     }
     precondition(adb.forwardCount == disconnectedCount)
     _ = try await service.pluginEndpoint(for: frozen)
@@ -225,14 +225,14 @@ struct ToolRecoveryTests {
     precondition(returnedApps.map(\.id) == initialOrder)
     let returned = returnedApps.first { $0.deviceId == "frozen" }!
     precondition(returned.name == discovered.name && returned.appIconBase64 == discovered.appIconBase64)
-    precondition(returned.tools.count == 1 && returned.tools[0].protocolVersion == 3)
+    precondition(returned.tools.count == 1 && returned.tools[0].compatibility == .supported)
     precondition(!returned.tools[0].isConnected, "Cached metadata does not authorize an unverified connection")
 
     adb.setMetadataAvailable(false)
     adb.setSocketNames(["snapo_network_43"], deviceID: "frozen")
     let replacement = await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }!
     precondition(replacement.id != discovered.id && replacement.name == "com.example.demo:worker")
-    precondition(replacement.appIconBase64 == nil && replacement.tools[0].protocolVersion == nil)
+    precondition(replacement.appIconBase64 == nil && replacement.tools[0].compatibility != .supported)
     print("Socket rediscovery reuses metadata, but a different socket starts without cached information")
     await service.stop()
     let stoppedApps = await service.discoverPlugins().apps
@@ -246,7 +246,7 @@ struct ToolRecoveryTests {
     }
     let restartedApp = await restarted.discoverPlugins().apps.first { $0.deviceId == "frozen" }!
     precondition(
-      restartedApp.tools.first { $0.kind == .network }?.protocolVersion == nil,
+      restartedApp.metadata?.tools.isEmpty != false,
       "Metadata is not shared across service instances"
     )
     adb.setMetadataAvailable(true)
@@ -348,7 +348,7 @@ struct ToolRecoveryTests {
     try await eventually {
       let app = await service.currentPlugins().apps.first
       return app?.metadata?.tools.map(\.id) == [.network, .tweaks]
-        && app?.tools.map(\.protocolVersion) == [3, 7]
+        && app?.tools.allSatisfy { $0.compatibility == .supported } == true
     }
     precondition(adb.metadataSocketRequests.count == 2)
     precondition(Set(adb.metadataSocketRequests[1]) == ["snapo_network_42", "snapo_tweaks_42"])
@@ -377,20 +377,20 @@ struct ToolRecoveryTests {
         kind: .network, pid: 42, deviceID: "phone", deviceDisplayTitle: "Phone", socketName: "snapo_network_42", metadata: metadata
       ).compatibility
     }
-    let descriptor: [String: Any] = ["id": "network", "name": "Network", "protocolVersion": 3]
+    let descriptor: [String: Any] = ["id": "network", "name": "Network"]
     let missingFrontend = try status(tools: [descriptor])
-    precondition(missingFrontend == .missingFrontend(protocolVersion: 3))
+    precondition(missingFrontend == .missingFrontend)
     let missingDescriptor = try status(tools: [])
     precondition(missingDescriptor == .missingDescriptor)
     let invalidDescriptor = try status(tools: [], errors: [["key": "snapo.inspector.network", "error": "Invalid XML"]])
     precondition(invalidDescriptor == .invalidDescriptor)
     let siblingError = try status(tools: [], errors: [["key": "snapo.inspector.tweaks", "error": "Invalid XML"]])
     precondition(siblingError == .missingDescriptor)
-    for version in [0, 1, 2] {
+    for version in [0, 1, 2, 3] {
       var value = descriptor
       value["frontend"] = ["assetPath": "frontend.zip", "hostApiVersion": version]
       let actual = try status(tools: [value])
-      precondition(actual == (version == 1 ? .supported : .hostAPI(version: version)))
+      precondition(actual == (version == 2 ? .supported : .hostAPI(version: version)))
     }
     var pending = ToolHTTPService.App(
       kind: .network,
@@ -427,8 +427,7 @@ struct ToolRecoveryTests {
             [
               "id": kind.rawValue,
               "name": kind.rawValue,
-              "protocolVersion": 4,
-              "frontend": ["assetPath": "frontend.zip", "hostApiVersion": 1]
+              "frontend": ["assetPath": "frontend.zip", "hostApiVersion": 2]
             ] as [String: Any]
           }
         ]
@@ -448,7 +447,7 @@ struct ToolRecoveryTests {
     let modern = try record(kinds: [.network])
     precondition(metadata.applyPackageMetadata(modern, kind: .network))
     precondition(metadata.process.name == "Package label" && metadata.process.verifiedIdentity != nil)
-    precondition(metadata.compatibility == .supported && metadata.protocolVersion == 4)
+    precondition(metadata.compatibility == .supported)
     precondition(!metadata.applyLegacyMetadata(legacy, kind: .network))
 
     let withoutDescriptor = try record()
@@ -460,7 +459,7 @@ struct ToolRecoveryTests {
     precondition(metadata.compatibility == .legacy(protocolVersion: 1))
     let replacement = try record(revision: "2")
     metadata.applyPackageMetadata(replacement, kind: .network)
-    precondition(metadata.compatibility == .missingDescriptor && metadata.protocolVersion == nil)
+    precondition(metadata.compatibility == .missingDescriptor)
 
     for mismatch in try [record(package: "com.example.other"), record(processName: "com.example.demo:other")] {
       metadata.applyPackageMetadata(mismatch, kind: .network)

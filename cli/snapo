@@ -31,8 +31,8 @@ from dataclasses import dataclass, field
 
 SOCKET_PREFIX = "snapo_network_"
 TWEAK_SOCKET_PREFIX = "snapo_tweaks_"
-NETWORK_PROTOCOL_VERSION = 3
-TWEAKS_PROTOCOL_VERSION = 7
+NETWORK_PROTOCOL_VERSION = 4
+TWEAKS_PROTOCOL_VERSION = 8
 MAX_RECORD_BYTES = 16 * 1024 * 1024
 REDACTED = "[REDACTED]"
 REQUEST_HEADERS = {"authorization", "cookie"}
@@ -594,10 +594,9 @@ def read_manifests(adb, servers):
     return manifests
 
 
-def tool_info(record, server, require_supported=True):
+def tool_info(record, server):
     kind = "tweaks" if server.socket_name.startswith(TWEAK_SOCKET_PREFIX) else "network"
     name = "Tweaks" if kind == "tweaks" else "Network"
-    supported = TWEAKS_PROTOCOL_VERSION if kind == "tweaks" else NETWORK_PROTOCOL_VERSION
     app = record.get("app")
     if not isinstance(app, dict):
         raise SnapOError(f"Cannot read {server.identifier}: {record.get('error', 'app metadata is unavailable')}")
@@ -607,22 +606,34 @@ def tool_info(record, server, require_supported=True):
     if not isinstance(descriptors, list):
         raise SnapOError("Invalid tool descriptors")
     descriptor = next((entry for entry in descriptors if isinstance(entry, dict) and entry.get("id") == kind), None)
-    version = descriptor.get("protocolVersion") if descriptor else None
-    if type(version) is not int or version <= 0 or (require_supported and version != supported):
-        reported = f"protocol v{version}" if type(version) is int else "no valid manifest descriptor"
-        raise SnapOError(
-            f"Unsupported {name} Tool protocol: app reports {reported}; this CLI supports v{supported}. "
-            "Update Snap-O and the Android library together."
-        )
+    if descriptor is None:
+        raise SnapOError(f"Missing {name} Tool descriptor")
     return {
         "name": app["name"], "packageName": app["packageName"],
         "processName": record.get("processName"), "pid": record.get("pid"),
-        "processIdentity": record.get("processIdentity"), "protocolVersion": version,
+        "processIdentity": record.get("processIdentity"),
     }
 
 
-def read_tool_metadata(adb, server):
-    return tool_info(read_manifests(adb, [server])[server], server)
+def read_tool_metadata(adb, server, open_socket):
+    info = tool_info(read_manifests(adb, [server])[server], server)
+    kind = "tweaks" if server.socket_name.startswith(TWEAK_SOCKET_PREFIX) else "network"
+    supported = TWEAKS_PROTOCOL_VERSION if kind == "tweaks" else NETWORK_PROTOCOL_VERSION
+    try:
+        response = NetworkHTTPResponse(open_socket, f"/{kind}/protocol")
+        try:
+            version = response.read_json(limit=4096).get("version")
+        finally:
+            response.close()
+    except SnapOError as error:
+        raise SnapOError(f"Cannot check {kind.title()} Tool protocol: {error}") from error
+    if type(version) is not int or version != supported:
+        reported = f"protocol v{version}" if type(version) is int else "no valid protocol version"
+        raise SnapOError(
+            f"Unsupported {kind.title()} Tool protocol: app reports {reported}; this CLI supports v{supported}. "
+            "Update Snap-O and the Android library together."
+        )
+    return info
 
 
 class NetworkHistory(NetworkHTTPResponse):
@@ -760,7 +771,7 @@ class ConnectedSession:
     def __enter__(self):
         self.connection.__enter__()
         try:
-            read_tool_metadata(self.connection.adb, self.connection.server)
+            read_tool_metadata(self.connection.adb, self.connection.server, self.connection.open_socket)
             self.session = Session(self.connection.open_socket)
         except BaseException:
             self.connection.__exit__(*sys.exc_info())
@@ -784,8 +795,12 @@ class TweakConnection:
         self.response = None
 
     def __enter__(self):
-        read_tool_metadata(self.connection.adb, self.connection.server)
         self.connection.__enter__()
+        try:
+            read_tool_metadata(self.connection.adb, self.connection.server, self.connection.open_socket)
+        except BaseException:
+            self.connection.__exit__(*sys.exc_info())
+            raise
         return self
 
     def __exit__(self, error_type, error, traceback):
@@ -1032,7 +1047,7 @@ def emit_event(message, as_json):
         print(event_line(message), flush=True)
 
 
-def emit_app(server, name, package, as_json, current_device, details="", protocol_version=None):
+def emit_app(server, name, package, as_json, current_device, details=""):
     if as_json:
         app = {
             "server": server.identifier,
@@ -1041,8 +1056,6 @@ def emit_app(server, name, package, as_json, current_device, details="", protoco
             "packageName": package,
             "appName": name,
         }
-        if protocol_version is not None:
-            app["protocolVersion"] = protocol_version
         print_json(app)
     else:
         if current_device != server.device_id:
@@ -1061,7 +1074,7 @@ def run_list(adb, options):
         info = {}
         if options.include_app_info:
             try:
-                info = tool_info(manifests[server], server, require_supported=False)
+                info = tool_info(manifests[server], server)
             except SnapOError as error:
                 print(str(error), file=sys.stderr)
         package = info.get("packageName")
@@ -1076,7 +1089,7 @@ def run_requests(adb, options):
     event_filter = EventFilter(options.filter)
     if options.no_stream:
         with ServerConnection(adb, server) as connection:
-            read_tool_metadata(adb, server)
+            read_tool_metadata(adb, server, connection.open_socket)
             history = NetworkHistory(connection.open_socket)
             try:
                 while (message := history.read()) is not None:
@@ -1491,7 +1504,7 @@ def run_intercept(adb, options):
             return 0
         server = choose_server(discover(adb, options), options.socket)
         with ServerConnection(adb, server) as connection:
-            read_tool_metadata(adb, server)
+            read_tool_metadata(adb, server, connection.open_socket)
             runner = Runner(connection.open_socket, path, routes, digest, options.timeout,
                             not options.no_watch, log=lambda line: print(line, file=sys.stderr, flush=True))
             asyncio.run(runner.run())
@@ -1821,14 +1834,14 @@ def run_tweak_apps(adb, options):
     manifests = read_manifests(adb, servers)
     for server in servers:
         try:
-            info = tool_info(manifests[server], server, require_supported=False)
+            info = tool_info(manifests[server], server)
         except SnapOError as error:
             print(str(error), file=sys.stderr)
             info = {}
         name, package = info.get("name"), info.get("packageName")
         current_device = emit_app(
             server, name, package, options.json, current_device,
-            f"  {name or 'unknown'}  pkg:{package or 'unknown'}", protocol_version=info.get("protocolVersion"),
+            f"  {name or 'unknown'}  pkg:{package or 'unknown'}",
         )
     return 0
 

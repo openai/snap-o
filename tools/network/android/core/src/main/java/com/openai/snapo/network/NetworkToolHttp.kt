@@ -42,6 +42,7 @@ internal class NetworkToolHttp(
         requestPolicy = RequestPolicy
         exposedHeaders = "SnapO-Sequence, Location"
         vary = "Accept, Origin"
+        get("/network/protocol") { respondJson("""{"version":$NetworkProtocolVersion}""") }
         get("/network") {
             if (eventStreamRequested(request)) stream(null) else history()
         }
@@ -193,4 +194,5 @@ private val RequestPolicy = ToolHttpRequestPolicy(
     maxBodyBytes = 2 * 1024 * 1024,
     bodyMethods = setOf("POST", "PUT"),
 )
+internal const val NetworkProtocolVersion = 4
 internal const val MaxNetworkRecordBytes = 16 * 1024 * 1024

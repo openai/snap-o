@@ -32,6 +32,7 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 | Request | Result |
 | --- | --- |
+| `GET /tweaks/protocol` | Tweaks compatibility metadata: `{"version":8}`. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
 | `GET /tweaks?include=adjusted` | Active descriptors plus previously adjusted ordinary or app-owned value snapshots retained outside composition. |
 | `PATCH /tweaks` | One update containing one or more named values. Apply valid entries and report individual errors. |
@@ -40,7 +41,7 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
 
-The CLI and Tweaks frontend require protocol 7 in the installed manifest descriptor. App identity and icons come from Android package resources, not HTTP. Missing, older, or newer versions are unsupported; update Snap-O and the Android library together. Use `snapo tweaks apps --json` to inspect app metadata without opening a tool connection.
+The CLI and Tweaks frontend call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. App identity and icons come from Android package resources, not HTTP. Missing, older, or newer versions are unsupported; update Snap-O and the Android library together. Use `snapo tweaks apps --json` to inspect app metadata without opening a tool connection.
 
 ### Read active values
 

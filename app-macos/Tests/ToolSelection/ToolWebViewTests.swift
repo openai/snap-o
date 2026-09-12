@@ -97,9 +97,8 @@ struct ToolWebViewTests {
           server: ToolServerReference(
             deviceId: "phone", socketName: "snapo_\(kind.rawValue)_\(pid)"
           ),
-          protocolVersion: 4,
           isConnected: connectedKinds?.contains(kind) ?? true,
-          compatibility: compatibility[kind] ?? (includeFrontend ? .supported : .missingFrontend(protocolVersion: 4))
+          compatibility: compatibility[kind] ?? (includeFrontend ? .supported : .missingFrontend)
         )
       }, metadata: testProcessMetadata(pid: pid, kinds: kinds, includeFrontend: includeFrontend)
     )
@@ -210,8 +209,9 @@ struct ToolWebViewTests {
     ) as? [String: Any]
     precondition(inactiveState?["connected"] as? Bool == false)
     precondition((inactiveState?["manifest"] as? [String: Any])?["pid"] as? Int == 10)
-    precondition((inactiveState?["inspector"] as? [String: Any])?["protocolVersion"] as? Int == 4)
-    print("Hidden Network pages keep their protocol metadata when a different Tweaks app is selected")
+    precondition((inactiveState?["inspector"] as? [String: Any])?["id"] as? String == "network")
+    precondition((inactiveState?["inspector"] as? [String: Any])?["protocolVersion"] == nil)
+    print("Hidden Network pages keep their descriptor when a different Tweaks app is selected")
 
     model.selectTool(first, option: first.tools.first { $0.kind == .network }!)
     try await eventually("Network should remount") { network.superview != nil }
@@ -295,7 +295,8 @@ struct ToolWebViewTests {
       .legacy(protocolVersion: 1),
       .missingDescriptor,
       .invalidDescriptor,
-      .hostAPI(version: 2),
+      .hostAPI(version: 1),
+      .hostAPI(version: 3),
       .metadataUnavailable
     ] {
       preferences.set(
@@ -333,7 +334,7 @@ struct ToolWebViewTests {
       model.selectTool(provider, option: provider.tools[0])
       try await eventually("Missing or invalid APK frontends must report a native error") {
         includeFrontend ? model.frontendError?.contains("invalid tool frontend assets") == true
-          : model.compatibilityExplanation == .missingFrontend(protocolVersion: 4)
+          : model.compatibilityExplanation == .missingFrontend
       }
       precondition(!model.isPageReady)
     }

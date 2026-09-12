@@ -94,8 +94,8 @@ public final class ADBClient: @unchecked Sendable {
       }
     }
     let tools: [[String: Any]] = [
-      ["id": "network", "name": "Network", "protocolVersion": 3, "frontend": ["assetPath": "network.zip", "hostApiVersion": 1]],
-      ["id": "tweaks", "name": "Tweaks", "protocolVersion": 7, "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 1]]
+      ["id": "network", "name": "Network", "frontend": ["assetPath": "network.zip", "hostApiVersion": 2]],
+      ["id": "tweaks", "name": "Tweaks", "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 2]]
     ].filter { descriptor in
       !lock.withLock { legacyKinds.contains(ToolID(rawValue: descriptor["id"] as! String)) }
         && socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }

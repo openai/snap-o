@@ -36,7 +36,6 @@ actor ToolService {
         reference: ToolServerReference(deviceId: app.deviceID, socketName: app.socketName),
         deviceDisplayTitle: app.deviceDisplayTitle,
         pid: app.pid,
-        protocolVersion: app.protocolVersion,
         metadata: ToolAppMetadata(
           appName: app.name,
           processName: app.processName,
@@ -62,7 +61,6 @@ actor ToolService {
           AppToolOption(
             kind: endpoint.kind,
             server: endpoint.reference,
-            protocolVersion: endpoint.protocolVersion,
             isConnected: appsByServer[endpoint.reference]?.isConnected == true,
             name: appsByServer[endpoint.reference]?.descriptor?.name ?? endpoint.kind.rawValue,
             iconBase64: appsByServer[endpoint.reference]?.descriptor?.iconBase64,
@@ -95,7 +93,7 @@ actor ToolService {
     for reference: ToolServerReference, identity: ToolProcessIdentity, tool: ToolDescriptor
   ) async throws -> ToolFrontendBundle {
     guard let frontend = tool.frontend,
-          frontend.hostApiVersion == 1 else { throw ToolError.frontendUnavailable }
+          frontend.hostApiVersion == 2 else { throw ToolError.frontendUnavailable }
     let key = [
       reference.deviceId,
       String(identity.androidUserId),

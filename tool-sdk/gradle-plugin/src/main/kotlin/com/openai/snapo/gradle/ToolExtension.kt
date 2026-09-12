@@ -8,8 +8,6 @@ abstract class ToolExtension {
     abstract val displayName: Property<String>
     abstract val icon: Property<String>
 
-    /** Set only when clients ship independently of this tool's frontend. */
-    abstract val protocolVersion: Property<Int>
     abstract val frontendDirectory: DirectoryProperty
     abstract val downloadNode: Property<Boolean>
     abstract val nodeVersion: Property<String>

@@ -76,6 +76,8 @@ class WireServer:
         self.history = history
         self.watermark = watermark
         self.complete_history = complete_history
+        self.protocol_requests = []
+        self.protocol_version = 4
         self.http_requests = []
         self.peers = []
         self.adb_handshake = adb_handshake
@@ -139,7 +141,11 @@ class WireServer:
                     head += line
                 path = request.decode("ascii").split()[1]
                 self.received.extend(commands)
-                if path == "/network" and b"Accept: application/x-ndjson\r\n" in head:
+                if path == "/network/protocol":
+                    self.protocol_requests.append(path)
+                    payload = json.dumps({"version": self.protocol_version}).encode()
+                    stream.write(f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(payload)}\r\n\r\n".encode() + payload)
+                elif path == "/network" and b"Accept: application/x-ndjson\r\n" in head:
                     self.http_requests.append(path)
                     stream.write((f"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\nSnapO-Sequence: {self.watermark}\r\n\r\n").encode())
                     for message in self.history:
@@ -234,8 +240,8 @@ def process_manifest():
         "app": {
             "name": "Example", "packageName": "com.example",
             "inspectors": [
-                {"id": "network", "protocolVersion": 3},
-                {"id": "tweaks", "protocolVersion": 7},
+                {"id": "network"},
+                {"id": "tweaks"},
             ],
         },
     }
@@ -352,12 +358,18 @@ class TweakHTTPServer:
         self.update_errors = update_errors or {}
         self.stream_events = stream_events
         self.requests = []
+        self.protocol_requests = []
+        self.protocol_version = 8
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
             def do_GET(self):
+                if self.path == "/tweaks/protocol":
+                    owner.protocol_requests.append(self.path)
+                    self.send_json(200, {"version": owner.protocol_version})
+                    return
                 owner.requests.append(("GET", self.path, None))
                 if self.path == "/tweaks":
                     self.send_json(200, {"tweaks": owner.descriptors})
@@ -495,7 +507,7 @@ class TweakSmartSocketServer:
                 while stream.readline().strip():
                     pass
 
-                body = json.dumps(owner.payload).encode("utf-8")
+                body = json.dumps({"version": 8} if request_line == "GET /tweaks/protocol HTTP/1.1" else owner.payload).encode("utf-8")
                 response = (
                     b"HTTP/1.1 200 OK\r\n"
                     b"Content-Type: application/json\r\n"
@@ -1016,7 +1028,7 @@ except KeyboardInterrupt:
         with mock.patch.object(snapo.ServerConnection, "open_socket", return_value=transport):
             session = mock.Mock()
             session.close.side_effect = RuntimeError("close failed")
-            with mock.patch.object(snapo, "Session", return_value=session):
+            with mock.patch.object(snapo, "Session", return_value=session), mock.patch.object(snapo, "read_tool_metadata"):
                 with self.assertRaisesRegex(RuntimeError, "close failed"):
                     with snapo.ConnectedSession(adb, server):
                         pass
@@ -1027,7 +1039,7 @@ except KeyboardInterrupt:
         adb = FakeADB()
         server = snapo.Server("emulator-5554", "snapo_tweaks_42")
         connection = snapo.TweakConnection(adb, server)
-        with mock.patch.object(connection, "close", side_effect=RuntimeError("close failed")):
+        with mock.patch.object(connection, "close", side_effect=RuntimeError("close failed")), mock.patch.object(snapo, "read_tool_metadata"):
             with self.assertRaisesRegex(RuntimeError, "close failed"):
                 with connection:
                     pass
@@ -1040,7 +1052,8 @@ class ProtocolTests(unittest.TestCase):
         completed = subprocess.CompletedProcess([], 0, json.dumps(process_manifest()), "")
         with mock.patch.object(snapo.subprocess, "run", return_value=completed) as run:
             adb = snapo.ADB("/configured/adb", run=run)
-            info = snapo.read_tool_metadata(adb, snapo.Server("phone", "snapo_network_42"))
+            server = snapo.Server("phone", "snapo_network_42")
+            info = snapo.tool_info(snapo.read_manifests(adb, [server])[server], server)
         self.assertEqual(info["processIdentity"], "boot:42:1")
         command = run.call_args.args[0]
         self.assertEqual(command[:4], ["/configured/adb", "-s", "phone", "shell"])
@@ -1128,23 +1141,39 @@ class ProtocolTests(unittest.TestCase):
                 standalone.write_bytes(b"reader")
                 self.assertEqual(snapo.discovery_helper(), standalone.resolve())
 
-    def test_commands_reject_old_future_and_missing_versions_before_http(self):
-        for kind, index, supported, connection_type in (
-            ("network", 0, 3, snapo.ConnectedSession),
-            ("tweaks", 1, 7, snapo.TweakConnection),
+    def test_commands_check_tool_protocol_before_data_requests(self):
+        for kind, supported, connection_type in (
+            ("network", 4, snapo.ConnectedSession), ("tweaks", 8, snapo.TweakConnection),
         ):
-            for version in (None, True, "3", 0, 1, supported - 1, supported + 1):
-                adb = FakeADB()
-                adb.manifest["app"]["inspectors"][index]["protocolVersion"] = version
-                with self.subTest(kind=kind, version=version):
-                    with mock.patch.object(snapo.ServerConnection, "open_socket") as open_socket:
-                        with self.assertRaisesRegex(snapo.SnapOError, "Unsupported .* Tool protocol"):
-                            with connection_type(adb, snapo.Server("phone", f"snapo_{kind}_42")):
-                                self.fail("unsupported connection opened")
-                        open_socket.assert_not_called()
+            for version in (None, True, "4", 0, 1, supported - 1, supported + 1):
+                wire = WireServer(lambda *_: self.fail("No stream expected")) if kind == "network" else TweakHTTPServer()
+                wire.protocol_version = version
+                with self.subTest(kind=kind, version=version), wire:
+                    adb = FakeADB(forward_port=wire.port)
+                    with self.assertRaisesRegex(snapo.SnapOError, "Unsupported .* Tool protocol"):
+                        with connection_type(adb, snapo.Server("phone", f"snapo_{kind}_42")):
+                            self.fail("unsupported connection opened")
+                    self.assertEqual(wire.protocol_requests, [f"/{kind}/protocol"])
+                    self.assertEqual(wire.http_requests if kind == "network" else wire.requests, [])
+                    self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", f"tcp:{wire.port}")))
             adb.manifest["app"]["inspectors"] = []
-            with self.assertRaisesRegex(snapo.SnapOError, "no valid manifest descriptor"):
-                snapo.read_tool_metadata(adb, snapo.Server("phone", f"snapo_{kind}_42"))
+            with self.assertRaisesRegex(snapo.SnapOError, "Missing .* Tool descriptor"):
+                snapo.read_tool_metadata(adb, snapo.Server("phone", f"snapo_{kind}_42"), mock.Mock())
+
+    def test_missing_protocol_endpoint_does_not_fall_back_to_manifest_version(self):
+        for kind, version, connection_type in (
+            ("network", 4, snapo.ConnectedSession), ("tweaks", 8, snapo.TweakConnection),
+        ):
+            adb = FakeADB()
+            for descriptor in adb.manifest["app"]["inspectors"]:
+                descriptor["protocolVersion"] = version
+            with self.subTest(kind=kind), mock.patch.object(
+                snapo, "NetworkHTTPResponse", side_effect=snapo.NetworkHTTPError(404, "Unknown endpoint")
+            ):
+                with self.assertRaisesRegex(snapo.SnapOError, "Cannot check .* Tool protocol"):
+                    with connection_type(adb, snapo.Server("phone", f"snapo_{kind}_42")):
+                        self.fail("missing endpoint accepted")
+                self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", "tcp:27185")))
 
     def test_shared_history_fixture_contains_only_sequenced_network_events(self):
         root = REPOSITORY / "contracts" / "network" / "v2"
@@ -1178,10 +1207,13 @@ class ProtocolTests(unittest.TestCase):
     def test_metadata_does_not_open_an_event_stream(self):
         with WireServer(lambda *_: self.fail("Metadata must not use HTTP")) as wire:
             adb = FakeADB(forward_port=str(wire.port))
-            info = snapo.read_tool_metadata(adb, snapo.Server("emulator-5554", "snapo_network_42"))
+            server = snapo.Server("emulator-5554", "snapo_network_42")
+            with snapo.ServerConnection(adb, server) as connection:
+                info = snapo.read_tool_metadata(adb, server, connection.open_socket)
         self.assertEqual(info["packageName"], "com.example")
         self.assertEqual(wire.http_requests, [])
         self.assertEqual(wire.received, [])
+        self.assertEqual(wire.protocol_requests, ["/network/protocol"])
 
     def test_http_history_joins_live_events_without_duplicates(self):
         history = {**request_event(), "snapoSequence": 1}
@@ -1208,7 +1240,7 @@ class ProtocolTests(unittest.TestCase):
             with snapo.ConnectedSession(adb, snapo.Server("emulator-5554", "snapo_network_42")) as session:
                 session.start_stream()
                 self.assertIsNone(session.read(1))
-        self.assertEqual(wire.received, ["host:transport:emulator-5554", "localabstract:snapo_network_42"] * 2)
+        self.assertEqual(wire.received, ["host:transport:emulator-5554", "localabstract:snapo_network_42"] * 3)
 
     def test_invalid_live_records_fail_visibly(self):
         for message in (None, [], 42, {"method": "Network.loadingFinished", "params": []}):
@@ -1389,6 +1421,9 @@ class TweakTransportTests(unittest.TestCase):
             [
                 "host:transport:emulator-5554",
                 "localabstract:snapo_tweaks_42",
+                "GET /tweaks/protocol HTTP/1.1",
+                "host:transport:emulator-5554",
+                "localabstract:snapo_tweaks_42",
                 "GET /tweaks HTTP/1.1",
             ],
         )
@@ -1443,7 +1478,7 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(app["socketName"], "snapo_tweaks_42")
         self.assertEqual(app["appName"], "Snap-O Tweaks Demo")
         self.assertEqual(app["packageName"], "com.example.tweaks")
-        self.assertEqual(app["protocolVersion"], 7)
+        self.assertNotIn("protocolVersion", app)
         self.assertEqual(wire.requests, [])
         self.assertEqual(adb.calls, [])
         self.assertEqual(adb.metadata_calls, [("emulator-5554", ["snapo_tweaks_42"])])
@@ -1464,15 +1499,12 @@ class TweakCommandTests(unittest.TestCase):
         self.assertEqual(wire.requests, [])
         self.assertEqual(adb.calls, [])
 
-    def test_apps_preserves_future_tweak_protocol_versions(self):
-        adb = FakeTweakADB()
-        adb.manifest["app"]["inspectors"][1]["protocolVersion"] = 8
+    def test_apps_does_not_probe_tool_protocols(self):
         with TweakHTTPServer() as wire:
-            result, output, errors, _ = self.run_command(["apps", "--json"], wire, adb)
+            result, output, errors, _ = self.run_command(["apps", "--json"], wire)
         self.assertEqual(result, 0, errors)
-        self.assertEqual(json.loads(output)["protocolVersion"], 8)
-        self.assertEqual(wire.requests, [])
-
+        self.assertNotIn("protocolVersion", json.loads(output))
+        self.assertEqual(wire.protocol_requests, [])
 
     def test_apps_preserves_existing_human_readable_output(self):
         with TweakHTTPServer() as wire:
@@ -2038,7 +2070,7 @@ class OutputTests(unittest.TestCase):
         options = snapo.parser().parse_args(["network", "requests", "--no-stream", "--json"])
         with mock.patch.object(snapo.time, "monotonic", side_effect=lambda: clock["now"]):
             with mock.patch.object(snapo, "discover", return_value=[server]):
-                with mock.patch.object(snapo, "NetworkHistory", return_value=history):
+                with mock.patch.object(snapo, "NetworkHistory", return_value=history), mock.patch.object(snapo, "read_tool_metadata"):
                     with contextlib.redirect_stdout(io.StringIO()):
                         result = snapo.run_requests(FakeADB(), options)
         self.assertEqual(result, 0)

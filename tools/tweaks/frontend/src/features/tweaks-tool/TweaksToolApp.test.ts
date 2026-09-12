@@ -356,7 +356,6 @@ describe("registered tweak actions", () => {
   it("invokes actions through the forwarded HTTP endpoint", async () => {
     vi.spyOn(host, "connection", "get").mockReturnValue({
       baseURL: "http://127.0.0.1:1234/",
-      protocolVersion: 7,
       processIdentity: "boot:20:123",
       signal: new AbortController().signal
     });
@@ -622,7 +621,6 @@ describe("Tweaks event stream transport", () => {
     vi.useFakeTimers();
     vi.spyOn(host, "connection", "get").mockReturnValue({
       baseURL: "http://127.0.0.1:1234/",
-      protocolVersion: 7,
       processIdentity: "boot:20:123",
       signal: new AbortController().signal
     });

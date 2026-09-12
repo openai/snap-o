@@ -10,10 +10,16 @@ import { supportedProtocolVersion, unsupportedProtocolMessage } from "./features
 export function TweaksApp(): JSX.Element {
   const client = useMemo(() => createTweaksClient(), []);
   useEffect(() => () => client.dispose(), [client]);
-  const { connected, revision, metadata } = useHostConnection(host);
+  const { connected, revision, metadata, error } = useHostConnection(host);
   return (
     <div className="window-frame">
-      {metadata ? (
+      {error ? (
+        <main className="tool-loading-shell">
+          <p className="tool-open-error" role="alert">
+            {error}
+          </p>
+        </main>
+      ) : metadata ? (
         metadata.protocolVersion === supportedProtocolVersion ? (
           <TweaksToolApp client={client} isConnected={connected} connectionRevision={revision} />
         ) : (

@@ -86,9 +86,9 @@ def verify_example(example):
     assert descriptors, "Example tool descriptor was not generated"
     for path in descriptors:
         descriptor = ET.parse(path).getroot()
-        assert "protocolVersion" not in descriptor.attrib, "Bundled tools must not receive a synthetic protocol version"
+        assert "protocolVersion" not in descriptor.attrib, "Tool discovery must not define protocol versions"
         assert descriptor.get("icon") == "@drawable/example_tool_icon"
-        assert descriptor.get("hostApiVersion") == "1"
+        assert descriptor.get("hostApiVersion") == "2"
     android = "{http://schemas.android.com/apk/res/android}"
     for variant in ("debug", "release"):
         manifest = example / f"app/build/intermediates/merged_manifests/{variant}/process{variant.title()}Manifest/AndroidManifest.xml"
