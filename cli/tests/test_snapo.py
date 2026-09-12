@@ -196,6 +196,26 @@ class SSETests(unittest.TestCase):
         self.assertEqual(event["id"], "9")
         self.assertEqual(event["event"], "ready")
 
+    def test_idle_stream_survives_a_delayed_heartbeat(self):
+        message = {"method": "Network.loadingFinished", "snapoSequence": 1}
+
+        def handler(stream, _):
+            # Allow one second of scheduling delay beyond the server's 30-second heartbeat.
+            if wire.stopping.wait(31):
+                return
+            heartbeat = b": keep-alive\n\n"
+            stream.write(f"{len(heartbeat):x}\r\n".encode() + heartbeat + b"\r\n")
+            write_message(stream, message)
+
+        with WireServer(handler) as wire:
+            stream = snapo.NetworkSSE(
+                lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout), "/network"
+            )
+            try:
+                self.assertEqual(stream.read_event()["data"], message)
+            finally:
+                stream.close()
+
     def test_partial_and_invalid_events_fail(self):
         for payload in (b'data: {}\n', b'data: "\xff"\n\n', b'data: nope\n\n'):
             with self.subTest(payload=payload), self.assertRaises(snapo.SnapOError):

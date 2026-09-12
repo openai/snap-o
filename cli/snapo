@@ -661,7 +661,8 @@ class NetworkSSE(NetworkHTTPResponse):
         if self.response.getheader("Content-Type", "").split(";")[0].strip() != "text/event-stream":
             self.close()
             raise SnapOError("Expected a network SSE response")
-        self.transport.socket.settimeout(30)
+        # Allow headroom beyond the server's 30-second heartbeat.
+        self.transport.socket.settimeout(60)
 
     def read_event(self):
         data = bytearray()
