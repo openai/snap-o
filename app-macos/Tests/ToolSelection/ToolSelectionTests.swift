@@ -3,9 +3,9 @@ import Foundation
 private func app(
   _ pid: Int = 10, kinds: [ToolID] = [.network, .tweaks],
   process: String? = "com.example.demo", device: String = "phone", user: Int? = 0,
-  package: String? = "com.example.demo", version: Int? = 4, connectedKinds: [ToolID]? = nil
+  package: String? = "com.example.demo", connectedKinds: [ToolID]? = nil
 ) -> InspectableApp {
-  let manifest = testManifest(pid: pid, kinds: kinds, version: version ?? 4)
+  let manifest = testManifest(pid: pid, kinds: kinds)
   var record = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(manifest)) as! [String: Any]
   record["androidUserId"] = user as Any? ?? NSNull()
   record["processName"] = process as Any? ?? NSNull()
@@ -23,7 +23,7 @@ private func app(
     id: "\(device):pid:\(pid)", pid: pid, deviceId: device, deviceDisplayTitle: "Phone",
     tools: kinds.map {
       AppToolOption(
-        kind: $0, server: .init(deviceId: device, socketName: "snapo_\($0.rawValue)_\(pid)"), protocolVersion: version,
+        kind: $0, server: .init(deviceId: device, socketName: "snapo_\($0.rawValue)_\(pid)"),
         isConnected: connectedKinds?.contains($0) ?? true, compatibility: .supported
       )
     }, metadata: metadata
@@ -44,6 +44,12 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String, lin
 @main
 struct ToolSelectionTests {
   @MainActor static func main() async throws {
+    var unversioned = ToolMetadata()
+    expect(
+      unversioned.applyPackageMetadata(testManifest(pid: 10, kinds: [.sample]), kind: .sample),
+      "Accept bundled tool metadata without a protocol version"
+    )
+    expect(unversioned.compatibility == .supported, "Open bundled tools without a protocol version")
     try WorkspaceLayoutTests.run()
     restoration()
     metadataDisplay()
@@ -83,7 +89,7 @@ struct ToolSelectionTests {
       "Name tools without manifest metadata"
     )
     expect(
-      ToolCompatibility.hostAPI(version: 2).title(for: ToolID(rawValue: "sample")) == "Unsupported Sample version",
+      ToolCompatibility.hostAPI(version: 3).title(for: ToolID(rawValue: "sample")) == "Unsupported Sample version",
       "Custom socket identifiers do not need a built-in tool mapping"
     )
     expect(
@@ -132,9 +138,10 @@ struct ToolSelectionTests {
     expect(owner.state.selection?.kind == .network, "Remember each app's tool")
     owner.selectApp(other)
     expect(owner.state.selection?.kind == .tweaks, "Restore other app's tool")
-    owner.reconcile([app(20, process: "com.example.other", version: 5)])
-    expect(owner.state.selection?.protocolVersion == 5, "Update protocol metadata")
-    expect(owner.state.selectedApp?.metadata?.tools.first?.protocolVersion == 5, "Refresh the selected process manifest")
+    var updated = app(20, process: "com.example.other")
+    updated.metadata?.name = "Updated app"
+    owner.reconcile([updated])
+    expect(owner.state.selectedApp?.metadata?.name == "Updated app", "Refresh selected app metadata")
   }
 
   private static func disconnectedPluginMetadata() {
@@ -411,8 +418,8 @@ struct ToolSelectionTests {
     await settle()
     var page = model.snapshot.pageState(for: .network)
     expect(page.isActive && page.isConnected && !page.isWaiting, "Publish the active Network connection")
-    expect(page.selection?.protocolVersion == 4, "Publish connection protocol metadata")
     let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as! [String: Any]
+    expect((json["selection"] as? [String: Any])?["protocolVersion"] == nil, "Keep tool protocols out of host selection")
     expect(json["state"] == nil && json["apps"] == nil, "Do not send native selection internals to pages")
     expect(model.snapshot.pageState(for: .tweaks).selection == nil, "Send only this page's connection")
     apps = []
@@ -420,7 +427,6 @@ struct ToolSelectionTests {
     await settle()
     page = model.snapshot.pageState(for: .network)
     expect(!page.isConnected && !page.isConnected, "Disconnect retained data")
-    expect(page.selection?.protocolVersion == 4, "Retain connection metadata for captured data")
     apps = [app(20)]
     model.refresh()
     await settle()
@@ -434,15 +440,7 @@ struct ToolSelectionTests {
     expect(!page.isActive && !page.isConnected, "Deactivate the hidden Network page")
     expect(page.selection?.server.socketName == "snapo_network_20", "Keep the hidden page mounted with its data")
     expect(model.snapshot.pageState(for: .tweaks).isConnected, "Activate Tweaks from the native choice")
-    apps = [app(20, version: nil)]
-    model.refresh()
-    await settle()
-    page = model.snapshot.pageState(for: .tweaks)
-    expect(!page.isConnected && page.isWaiting, "Wait for Tweaks protocol metadata in the host")
-    apps = [app(20, version: 1)]
-    model.refresh()
-    await settle()
-    expect(model.snapshot.pageState(for: .tweaks).isConnected, "Allow known older Tweaks protocols")
+
     model.stop()
     clock.cancelAll()
     await settle()

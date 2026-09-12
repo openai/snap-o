@@ -44,7 +44,6 @@ export class ConnectionEvent extends Event {
 
 export interface ToolConnection {
   readonly baseURL: string;
-  readonly protocolVersion: number;
   readonly processIdentity: string;
   readonly signal: AbortSignal;
 }
@@ -83,7 +82,6 @@ interface HostState {
   connected: boolean;
   baseURL?: string | null;
   manifest?: { processIdentity: string } | null;
-  inspector?: { protocolVersion: number } | null;
 }
 
 interface ToolbarEvent {
@@ -319,17 +317,19 @@ export class ToolHost extends EventTarget implements Host {
       state.connected ||
       state.connected !== this.state.connected ||
       state.baseURL !== this.state.baseURL ||
-      state.manifest !== this.state.manifest ||
-      state.inspector !== this.state.inspector;
+      state.manifest !== this.state.manifest;
     this.state = state;
     this.connectionController?.abort();
-    const protocolVersion = state.inspector?.protocolVersion;
     const processIdentity = state.manifest?.processIdentity;
-    const ready = state.connected && state.baseURL && protocolVersion != null && processIdentity;
+    const ready = state.connected && state.baseURL && processIdentity;
     this.connectionController = ready ? new AbortController() : undefined;
     this.currentConnection =
       ready && this.connectionController
-        ? { baseURL: state.baseURL!, protocolVersion, processIdentity, signal: this.connectionController.signal }
+        ? {
+            baseURL: state.baseURL!,
+            processIdentity,
+            signal: this.connectionController.signal
+          }
         : null;
     if (changed) this.dispatchEvent(new ConnectionEvent(this.currentConnection !== null));
   }

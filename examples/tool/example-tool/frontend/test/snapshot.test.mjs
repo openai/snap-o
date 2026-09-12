@@ -6,7 +6,6 @@ import { observeExample } from "../.test-build/snapshot.js";
 class FakeHost extends EventTarget {
   connection = {
     baseURL: "http://127.0.0.1:12345/",
-    protocolVersion: 1,
     processIdentity: "boot:42:1",
     signal: new AbortController().signal,
   };
@@ -18,7 +17,6 @@ class FakeHost extends EventTarget {
 }
 
 const sample = (revision = 0) => ({
-  protocolVersion: 1,
   revision,
   items: [{ id: "fake-1", name: "Fake counter", value: revision }],
 });
@@ -96,7 +94,6 @@ test("activation resumes requests and disposal removes the listener", async () =
   assert.equal(fetch.mock.calls.length, 0);
   host.connection = {
     baseURL: "http://127.0.0.1:12345/",
-    protocolVersion: 1,
     processIdentity: "boot:42:2",
     signal: new AbortController().signal,
   };
@@ -108,20 +105,6 @@ test("activation resumes requests and disposal removes the listener", async () =
   assert.equal(streams[0].closed, true);
   assert.equal(streams.length, 1);
   assert.equal(fetch.mock.calls.length, 1);
-});
-
-test("the tool validates its own protocol before making requests", () => {
-  const fetch = mock.method(globalThis, "fetch", async () => new Response());
-  const host = new FakeHost();
-  host.connection.protocolVersion = 2;
-  let state;
-  const observer = observeExample(host, (next) => {
-    state = next;
-  });
-  assert.equal(fetch.mock.calls.length, 0);
-  assert.equal(streams.length, 0);
-  assert.match(state.message, /requires protocol 1/);
-  observer.dispose();
 });
 
 test("fake mutation uses POST and applies its snapshot", async () => {

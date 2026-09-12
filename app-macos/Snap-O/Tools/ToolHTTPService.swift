@@ -45,10 +45,6 @@ actor ToolHTTPService {
       metadata.descriptor(for: kind)
     }
 
-    var protocolVersion: Int? {
-      metadata.protocolVersion
-    }
-
     func needsMetadataRead(lastAttempt: ContinuousClock.Instant?, now: ContinuousClock.Instant) -> Bool {
       guard metadata.process.verifiedIdentity == nil || awaitingMetadata || metadataReadFailed || metadata.needsLegacyProbe
       else { return false }
@@ -149,7 +145,7 @@ actor ToolHTTPService {
       if var previous = knownApps[reference.key], previous.socketInode != socket.inode {
         metadataReadAt[reference.key] = nil
         legacyTasks.removeValue(forKey: reference.key)?.cancel()
-        previous.metadata.invalidateVersion()
+        previous.metadata.invalidateCompatibility()
         previous.checkingLegacy = false
         previous.metadataReadFailed = false
         if let connection = connections.removeValue(forKey: reference.key) {
@@ -413,7 +409,7 @@ actor ToolHTTPService {
   private func connection(for reference: ToolServerReference) throws -> Connection {
     guard let connection = connections[reference.key], connection.isReady,
           let app = knownApps[reference.key], !app.awaitingMetadata, let descriptor = app.descriptor,
-          descriptor.frontend == nil || descriptor.frontend?.hostApiVersion == 1 else {
+          descriptor.frontend == nil || descriptor.frontend?.hostApiVersion == 2 else {
       throw ToolError.serverNotConnected(reference)
     }
     return connection

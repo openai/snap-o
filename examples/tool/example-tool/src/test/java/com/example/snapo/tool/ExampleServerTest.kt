@@ -30,7 +30,6 @@ class ExampleServerTest {
     fun `snapshot contains only fixed sample values`() {
         val first = request("GET", "/example")
         assertTrue(first.startsWith("HTTP/1.1 200 OK\r\n"))
-        assertTrue(first.contains("\"protocolVersion\":1"))
         assertTrue(first.contains("Hello from Example"))
         assertEquals(first, request("GET", "/example"))
     }

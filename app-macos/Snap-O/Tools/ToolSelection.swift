@@ -147,7 +147,7 @@ struct ToolSelection {
       return
     }
     current = SelectedAppTool(
-      appId: app.id, kind: option.kind, server: option.server, protocolVersion: option.protocolVersion
+      appId: app.id, kind: option.kind, server: option.server
     )
     retained[option.kind] = current
   }

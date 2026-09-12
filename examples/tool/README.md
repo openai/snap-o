@@ -6,45 +6,28 @@ This is an independent Android build. It has its own Gradle wrapper and does not
 
 See the [tool plugin authoring guide](../../docs/plugins.md) for a walkthrough and the [API reference](../../docs/plugin-api.md) for the SDK surface.
 
-## Run before the packages are published
+## Run the example
 
-The runtime, Tool Gradle Plugin, and host SDK do not need to be published to try this example.
+Copy this directory to your own project location. Use JDK 17, Android SDK 36, and Node.js 22.12 or later. Set `ANDROID_HOME` to your Android SDK directory if needed.
 
-From a Snap-O checkout, with JDK 17, Android SDK 36, Python 3, and Node.js 22.12 or later:
-
-```sh
-python3 release/validate_authoring.py --output /tmp/snapo-example
-```
-
-Use a new or empty output directory. Set `ANDROID_HOME` to your Android SDK directory if needed. The command:
-
-1. Stages the runtime and Tool Gradle Plugin in `/tmp/snapo-example/maven`.
-2. Builds and packs the host SDK under `/tmp/snapo-example/npm`.
-3. Copies this entire project to `/tmp/snapo-example/example`.
-4. Installs the packed SDK and builds/tests the copied project.
-5. Checks that the debug APK includes Example and the release APK excludes it.
-
-It does not upload packages or use signing credentials. The copied project is the working starter. No source links to the Snap-O checkout are needed after staging.
-
-Install the debug app:
+The example resolves the runtime and Tool Gradle Plugin from Maven Central. Its `gradle.properties` selects the package version. Install the host SDK from npm, replacing the local tarball dependency used by the repository's validation workflow:
 
 ```sh
-adb install -r /tmp/snapo-example/example/app/build/outputs/apk/debug/app-debug.apk
+cd example-tool/frontend
+npm install @snap-o/tool-host@1.0.0
+cd ../..
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.example.snapo/.MainActivity
 ```
 
-Open a development build of Snap-O with app-bundled tool support. Select **Example app → Example**. You should see three fake values, an incrementable fake counter, and controls that exercise the native helpers. The validation command builds the app; it does not install it or perform this device smoke test.
+Open Snap-O and select **Example app → Example**. You should see three fake values, an incrementable fake counter, and controls that exercise the native helpers.
 
-## Edit the copied project
+## Edit your tool
 
-For subsequent Android builds, point Gradle at the staged repository:
+Run `./gradlew :app:assembleDebug` to rebuild the Android app and its frontend. Reinstall the APK to try the updated tool.
 
-```sh
-cd /tmp/snapo-example/example
-./gradlew -PsnapoRepository=/tmp/snapo-example/maven :app:assembleDebug
-```
-
-The validation command writes the staged package version and group into the copied `gradle.properties`. The settings tool plugin configures Node downloads; the packaging tool plugin builds the frontend automatically. Set `downloadNode = false` in `snapoTool` to use Node/npm on `PATH`. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. Frontend-only commands are available in `example-tool/frontend`:
+The settings tool plugin configures Node downloads; the packaging tool plugin builds the frontend automatically. Set `downloadNode = false` in `snapoTool` to use Node/npm on `PATH`. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. Frontend-only commands are available in `example-tool/frontend`:
 
 ```sh
 npm ci
@@ -55,7 +38,32 @@ npm run dev
 
 For live development in Snap-O, choose Develop → Use Development Server and enter the URL from `npm run dev`.
 
-After publication, replace the frontend's `file:vendor/host.tgz` dependency with the chosen npm package/version and regenerate its lockfile. Remove the `snapoRepository` option to resolve the runtime and tool plugin from Central. Keep `mavenCentral()` in both repository lists in `settings.gradle.kts`.
+## Validate local SDK changes
+
+Contributors can build the example against local package artifacts. From a Snap-O checkout, with the requirements above and Python 3:
+
+```sh
+python3 release/validate_authoring.py --output /tmp/snapo-example
+```
+
+Use a new or empty output directory. The command:
+
+1. Stages the runtime and Tool Gradle Plugin in `/tmp/snapo-example/maven`.
+2. Builds and packs the host SDK under `/tmp/snapo-example/npm`.
+3. Copies this entire project to `/tmp/snapo-example/example`.
+4. Installs the packed SDK and builds/tests the copied project.
+5. Checks that the debug APK includes Example and the release APK excludes it.
+
+It does not upload packages or use signing credentials. The validation command writes the staged package version and group into the copied `gradle.properties`. No source links to the Snap-O checkout are needed after staging.
+
+For subsequent builds of that copy, point Gradle at the staged repository:
+
+```sh
+cd /tmp/snapo-example/example
+./gradlew -PsnapoRepository=/tmp/snapo-example/maven :app:assembleDebug
+```
+
+Install and launch the debug APK using the commands in **Run the example** from this directory. The validation command does not install the app or perform a device smoke test.
 
 ## What to copy or replace
 
@@ -63,15 +71,15 @@ After publication, replace the frontend's `file:vendor/host.tgz` dependency with
 - `example-tool/build.gradle.kts`: runtime dependency and tool plugin configuration. The tool plugin generates the descriptor and frontend ZIP.
 - `ExampleInitializer.kt`: AndroidX Startup retains the server for the process. `startIfAllowed` checks the release opt-in and logs socket failures.
 - `ExampleServer.kt`: GET returns a synthetic snapshot, POST increments a fake counter, and SSE streams snapshots from a `StateFlow`. The runtime handles HTTP preflight, browser access, errors, and cleanup. The counter resets when the app process restarts. The runtime automatically sends heartbeat comments every 30 seconds while waiting for changes.
-- `frontend/src/snapshot.ts`: protocol validation, snapshot requests, the increment command, and event-stream cleanup on connection changes. Revisions prevent a late GET response from replacing newer streamed data.
+- `frontend/src/snapshot.ts`: snapshot validation, snapshot requests, the increment command, and event-stream cleanup on connection changes. Revisions prevent a late GET response from replacing newer streamed data.
 - `frontend/src/main.ts`: native toolbar search/refresh, copy, save, and color-picker APIs.
 
-Replace the package names, tool ID, display name, endpoint, and fake values for your own tool. The Gradle definition generates `SnapOTool.ID` and `SnapOTool.PROTOCOL_VERSION`, used by the server and its payload. Choose a protocol version for your own payload. `hostApiVersion` describes compatibility with the native bridge; it is separate from your protocol and package versions.
+Replace the package names, tool ID, display name, required icon, endpoint, and fake values for your own tool. The Gradle definition generates `SnapOTool.ID` for the server. The frontend ships with that server, so Example does not declare or check a protocol version. Host bridge compatibility metadata is generated by the plugin.
 
 ## Connection behavior
 
 The macOS host isolates tools and app processes. A process identity change replaces the page. Before reusing a forwarded port, the host unloads pages that could access the old endpoint.
 
-The frontend only manages its own resources. When it receives a disconnected state, it aborts pending snapshot and mutation requests, closes its event stream and sample color picker, and clears the displayed snapshot. Hidden pages can remain alive, so this cleanup also avoids keeping an inactive subscription alive. On activation, the frontend validates protocol 1 and fetches a new fake snapshot and subscribes to events.
+The frontend only manages its own resources. When it receives a disconnected state, it aborts pending snapshot and mutation requests, closes its event stream and sample color picker, and clears the displayed snapshot. Hidden pages can remain alive, so this cleanup also avoids keeping an inactive subscription alive. On activation, the frontend fetches a new fake snapshot and subscribes to events.
 
 To check manually, switch between tools, disconnect/reconnect the device, and force-stop/relaunch the Example app. Increment the fake counter and confirm it updates through the event stream. Example should resume after reconnection; a new app process starts the counter at zero. There is no additional process-routing or connection-session API in the frontend.

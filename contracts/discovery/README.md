@@ -4,7 +4,7 @@ Tool identity comes from installed Android manifest resources. Running instances
 
 ## Naming compatibility
 
-Apps bundle plugins that provide tools. A plugin’s optional frontend appears in the Tool pane when its tool is selected. Discovery version 1 retains the `snapo.inspector.<id>` manifest key, `<inspector>` XML element, `inspectors` JSON field, and `pluginId` asset-request field. Asset paths and the `snapo-inspector` browser origin also remain unchanged. This terminology change does not change discovery, Network, Tweaks, or host API protocol versions.
+Apps bundle plugins that provide tools. A plugin’s optional frontend appears in the Tool pane when its tool is selected. Discovery version 1 retains the `snapo.inspector.<id>` manifest key, `<inspector>` XML element, `inspectors` JSON field, and `pluginId` asset-request field. Asset paths and the `snapo-inspector` browser origin also remain unchanged. These names identify the discovery format, not tool-specific protocols.
 
 ## Socket and manifest names
 
@@ -25,19 +25,18 @@ The key is derived from the socket ID. It does not depend on the library's Java 
     version="1"
     id="network"
     name="Network"
-    icon="@drawable/snapo_network_inspector_icon"
-    protocolVersion="3" />
+    icon="@drawable/snapo_network_inspector_icon" />
 ```
 
-The descriptor ID must match the manifest key and socket ID. `name` is a nonempty string or string resource, limited to 200 characters. `icon` is an optional drawable resource. `protocolVersion` is a positive integer identifying the tool's wire protocol. `version` identifies this descriptor schema, independently of the wire protocol.
+The descriptor ID must match the manifest key and socket ID. `name` is a nonempty string or string resource, limited to 200 characters. `icon` references a drawable or mipmap resource and is required by the authoring plugin. Tool protocol versions are not part of discovery. Tools define their own HTTP compatibility rules. `version` identifies this descriptor schema, independently of the wire protocol.
 
 App labels and icons come from Android package information, not the tool descriptor. PIDs, process names, Android users, and process lifetimes come from process metadata. Do not put runtime state, credentials, or captured traffic in manifest resources.
 
 ## Optional frontend
 
-A descriptor can include `frontendAssets="snapo/inspectors/tweaks/frontend.zip"` and `hostApiVersion="1"`. These fields appear together. `frontendAssets` is a relative APK asset path to a ZIP, not a URL or resource name. Its path must not contain empty segments, `.` or `..`, backslashes, or control characters. The ZIP contains `index.html` at its root and any relative scripts, styles, and other assets.
+A descriptor can include `frontendAssets="snapo/inspectors/tweaks/frontend.zip"` and `hostApiVersion="2"`. These fields appear together. `frontendAssets` is a relative APK asset path to a ZIP, not a URL or resource name. Its path must not contain empty segments, `.` or `..`, backslashes, or control characters. The ZIP contains `index.html` at its root and any relative scripts, styles, and other assets.
 
-Reader output represents these fields as `frontend: {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 1}`. The host API version identifies the JavaScript bridge contract, independently of the Android wire protocol. Hosts reject unsupported host API versions before executing the frontend. Clients that do not display frontends can ignore this optional object. Network and Tweaks both package frontends through the Gradle packaging plugin. The Mac host requires this metadata unless a development server is selected; it has no bundled frontend fallback. This packaging change leaves Network protocol 3 and Tweaks protocol 7 unchanged.
+Reader output represents these fields as `frontend: {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 2}`. The host API version identifies the JavaScript bridge contract, independently of the Android wire protocol. The authoring plugin generates this host API version; it is not an author setting. Hosts reject unsupported host API versions before executing the frontend. Clients that do not display frontends can ignore this optional object. Network and Tweaks both package frontends through the Gradle packaging plugin. The Mac host requires this metadata unless a development server is selected; it has no bundled frontend fallback.
 
 Manifest entries point to compiled XML resource IDs. Loading does not depend on the XML resource's source filename surviving resource optimization. APK assets use literal paths and must retain the descriptor's path.
 
@@ -59,6 +58,8 @@ The CLI runs the bundled reader through ADB in batches of at most 64 socket name
 
 ## Protocol migration
 
-The optional frontend descriptor and ZIP loading are additive to descriptor version 1. They do not change Network protocol 3 or Tweaks protocol 7. Command-line clients can continue using these protocols without downloading or executing frontend assets.
+Host bridge API 2 removes tool protocol versions from connection metadata. The Gradle plugin generates this compatibility marker. Hosts and frontends must use the same host API; older frontends are rejected before loading.
 
-Network protocol 3 and Tweaks protocol 7 remove HTTP metadata and app-icon endpoints. This is a breaking discovery change. New clients require manifest descriptors; older servers without them need an Android library update. Older clients expecting HTTP metadata cannot use the new servers. Update clients and libraries together. Existing network history, SSE, interception, tweak values, and tweak actions are unchanged.
+Discovery does not carry tool protocol versions. Network protocol 4 and Tweaks protocol 8 provide their own HTTP version endpoints. Their clients check those endpoints before using the tools; they do not fall back to descriptor versions. Update the clients and Android libraries together.
+
+The optional frontend descriptor and ZIP loading remain in descriptor version 1. Command-line clients do not need to download or execute frontend assets. App identity and icons come from Android resources. Network history, SSE, interception, tweak values, and tweak actions keep their existing payload formats.

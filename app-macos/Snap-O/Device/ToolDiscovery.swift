@@ -63,7 +63,6 @@ public struct ToolEndpoint: Sendable {
   public let pid: Int?
   public let reference: ToolServerReference
   public let deviceDisplayTitle: String
-  public let protocolVersion: Int?
   public let metadata: ToolAppMetadata
 
   public init(
@@ -71,14 +70,12 @@ public struct ToolEndpoint: Sendable {
     reference: ToolServerReference,
     deviceDisplayTitle: String,
     pid: Int? = nil,
-    protocolVersion: Int? = nil,
     metadata: ToolAppMetadata = ToolAppMetadata()
   ) {
     self.kind = kind
     self.pid = pid
     self.reference = reference
     self.deviceDisplayTitle = deviceDisplayTitle
-    self.protocolVersion = protocolVersion
     self.metadata = metadata
   }
 

@@ -100,7 +100,7 @@ describe("NetworkStreamController", () => {
 });
 
 const metadata: ToolMetadata = {
-  protocolVersion: 3,
+  protocolVersion: 4,
   processIdentity: "boot:20:123"
 };
 

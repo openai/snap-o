@@ -229,6 +229,7 @@ print_android_protocol_declarations() {
     'const val NetworkProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"|protocolVersion[[:space:]]*=[[:space:]]*[0-9]+' \
     'snapo-link-android/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
     'tools/network/android/core/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
+    'tools/network/android/core/src/main/java/com/openai/snapo/network/NetworkToolHttp.kt' \
     'plugins/network/android/core/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
     'plugins/implementations/network/core/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
     'plugins/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \

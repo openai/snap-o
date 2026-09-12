@@ -377,11 +377,11 @@ class ProtocolReportTests(unittest.TestCase):
         for _, path, _ in DECLARATIONS:
             (self.repo / path).unlink(missing_ok=True)
         declarations = {
-            "tools/network/android/core/build.gradle.kts": "protocolVersion = 3",
-            "tools/tweaks/android/core/build.gradle.kts": "protocolVersion = 7",
-            "tools/network/frontend/src/features/network-tool/lib/protocol.ts": "const supportedProtocolVersion = 3;",
-            "tools/tweaks/frontend/src/features/tweaks-tool/protocol.ts": "const supportedProtocolVersion = 7;",
-            "cli/snapo": "NETWORK_PROTOCOL_VERSION = 3\nTWEAKS_PROTOCOL_VERSION = 7",
+            "tools/network/android/core/src/main/java/com/openai/snapo/network/NetworkToolHttp.kt": "internal const val NetworkProtocolVersion = 4",
+            "tools/tweaks/android/core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt": "internal const val TweaksProtocolVersion = 8",
+            "tools/network/frontend/src/features/network-tool/lib/protocol.ts": "const supportedProtocolVersion = 4;",
+            "tools/tweaks/frontend/src/features/tweaks-tool/protocol.ts": "const supportedProtocolVersion = 8;",
+            "cli/snapo": "NETWORK_PROTOCOL_VERSION = 4\nTWEAKS_PROTOCOL_VERSION = 8",
         }
         for path, content in declarations.items():
             self.write(path, content + "\n")

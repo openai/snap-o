@@ -51,6 +51,7 @@ When its optional dependency is installed and its developer setting is enabled, 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `OPTIONS` | `/` | Check connection readiness. |
+| `GET` | `/tweaks/protocol` | Check the Tweaks API version: `{"version":8}`. |
 | `GET` | `/tweaks` | List value tweaks and actions with active owners. |
 | `GET` | `/tweaks?include=adjusted` | Include inactive, previously adjusted value tweaks. |
 | `PATCH` | `/tweaks` | Update or reset one or more live values. |
@@ -62,13 +63,13 @@ When its optional dependency is installed and its developer setting is enabled, 
 
 ## Manifest discovery {#get-app data-step="2"}
 
-Read app identity and the Tweaks descriptor from installed Android manifest resources before opening a tool connection. The Tweaks frontend and CLI require protocol **7**. Missing, older, and newer versions are unsupported; update Snap-O and the Android library together.
+Read app identity and the Tweaks descriptor from installed Android manifest resources before opening a tool connection. The Tweaks frontend and CLI then call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are unsupported; update Snap-O and the Android library together.
 
 ``` { .shell title="Terminal · inspect app metadata" }
 snapo tweaks apps --json
 ```
 
-Protocol 7 removes HTTP metadata and icon endpoints. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can use the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md) and bundled reader.
+Protocol 8 moves version checks from discovery into the tool’s HTTP API. App metadata and icons still come from Android resources. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can use the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md) and bundled reader.
 
 ## App icons {#get-app-icon data-step="3"}
 

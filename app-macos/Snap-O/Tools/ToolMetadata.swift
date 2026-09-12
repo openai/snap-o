@@ -11,7 +11,6 @@ struct ToolMetadata: Equatable {
   }
 
   var process = Process()
-  private(set) var protocolVersion: Int?
   private(set) var compatibility: ToolCompatibility = .unknown
 
   var needsLegacyProbe: Bool {
@@ -31,8 +30,7 @@ struct ToolMetadata: Equatable {
     process.processName = process.verifiedIdentity?.processName ?? name
   }
 
-  mutating func invalidateVersion() {
-    protocolVersion = nil
+  mutating func invalidateCompatibility() {
     compatibility = .unknown
   }
 
@@ -45,15 +43,12 @@ struct ToolMetadata: Equatable {
       iconBase64: app.iconBase64, verifiedIdentity: identity, tools: app.tools
     )
     if let descriptor = descriptor(for: kind) {
-      protocolVersion = descriptor.protocolVersion
       compatibility = descriptor.frontend.map {
-        $0.hostApiVersion == 1 ? .supported : .hostAPI(version: $0.hostApiVersion)
-      } ?? .missingFrontend(protocolVersion: descriptor.protocolVersion)
+        $0.hostApiVersion == 2 ? .supported : .hostAPI(version: $0.hostApiVersion)
+      } ?? .missingFrontend
     } else if app.errors?.contains(where: { $0.key == "snapo.inspector." + kind.rawValue }) == true {
-      protocolVersion = nil
       compatibility = .invalidDescriptor
     } else if !sameProcess || !isLegacy {
-      protocolVersion = nil
       compatibility = .missingDescriptor
     }
     return true
@@ -67,7 +62,6 @@ struct ToolMetadata: Equatable {
     process.name = process.name ?? value.name
     process.packageName = process.packageName ?? value.packageName
     process.processName = process.processName ?? value.processName
-    protocolVersion = value.protocolVersion
     compatibility = .legacy(protocolVersion: value.protocolVersion)
     return true
   }

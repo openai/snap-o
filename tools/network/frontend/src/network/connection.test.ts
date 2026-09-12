@@ -6,7 +6,7 @@ const baseURL = "http://127.0.0.1:1234/";
 const metadata = {
   name: "Demo",
   packageName: "example.demo",
-  protocolVersion: 3,
+  protocolVersion: 4,
   processIdentity: "boot:20:123"
 };
 const event = (sequence: number, name = "request") => ({

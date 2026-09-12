@@ -45,7 +45,7 @@ describe("browser network client", () => {
     vi.spyOn(host, "connection", "get").mockReturnValue(null);
     await expect(
       client.startStream({
-        protocolVersion: 3,
+        protocolVersion: 4,
         processIdentity: "boot:20:123"
       })
     ).rejects.toThrow("disconnected");

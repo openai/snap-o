@@ -66,25 +66,25 @@ Configure your tool in the Android module:
 snapoTool {
     id = "example"
     displayName = "Example"
-    protocolVersion = 1
-    hostApiVersion = 1
     icon = "@drawable/example_tool_icon"
 }
 ```
 
-Set `id`, `displayName`, and `protocolVersion` for every tool. `hostApiVersion` defaults to 1. If you set `icon`, include the named drawable in your Android resources.
+Set `id`, `displayName`, and `icon` for every tool. Include the named drawable or mipmap resource in your Android resources. The plugin generates host compatibility metadata; bundled frontends do not need protocol-version configuration.
 
 | Property | Type | Required or default | Meaning |
 | --- | --- | --- | --- |
 | `id` | `Property<String>` | Required | ID to keep across releases. Use up to 100 lowercase letters, digits, dots, or hyphens, starting with a letter. |
 | `displayName` | `Property<String>` | Required | Name shown in Snap-O. Must not be blank; up to 200 characters. |
-| `protocolVersion` | `Property<Int>` | Required | Version of the data format your server and UI use. Must be greater than zero. |
-| `hostApiVersion` | `Property<Int>` | `1` | Version of the Snap-O host API your UI needs. Must be greater than zero. |
-| `icon` | `Property<String>` | Optional | Android drawable or mipmap resource reference |
+| `icon` | `Property<String>` | Required | Android drawable or mipmap resource reference, such as `@drawable/tool_icon`. |
 | `frontendDirectory` | `DirectoryProperty` | `frontend/` | Folder with your UI source, `package.json`, and `package-lock.json`. |
 | `frontendAssets` | `DirectoryProperty` | Output of `toolBuild` | Folder of built UI files to include in the APK. Must contain `index.html`. |
 
 You can assign these Gradle properties as shown above, or use `.set(...)` with a Gradle provider. `toolBuild` runs the frontend's npm `build` script, which must write to `frontendDirectory/dist/`. `toolDev` runs the npm `dev` script. When you build the Android module, Gradle includes the frontend ZIP and tool metadata automatically.
+
+### Advanced: independently shipped clients {#independent-clients}
+
+Your tool owns its HTTP API and compatibility rules. If clients ship independently, expose any version or capability information through your own endpoints. The SDK does not define a tool protocol version or negotiate compatibility for you.
 
 ### Advanced: Node installation {#node-installation}
 
@@ -125,8 +125,6 @@ The Tool Gradle Plugin generates a Java class in the Android module's namespace:
 
 ``` { .kotlin title="Constants available to Kotlin" }
 SnapOTool.ID               // String: "example"
-SnapOTool.PROTOCOL_VERSION // Int: 1
-SnapOTool.HOST_API_VERSION // Int: 1
 ```
 
 Each module defines one `snapoTool` and gets one generated `SnapOTool` class. Give each tool module its own Android namespace.
@@ -328,7 +326,6 @@ interface Host extends EventTarget {
 ``` { .typescript title="Connection subscription" }
 interface ToolConnection {
   readonly baseURL: string;
-  readonly protocolVersion: number;
   readonly processIdentity: string;
   readonly signal: AbortSignal;
 }
@@ -339,7 +336,7 @@ const unsubscribe = host.onConnection(connection => {
 });
 ```
 
-`baseURL` is the forwarded Android server address. Check `protocolVersion` against the API versions your frontend supports. `processIdentity` is an opaque token that changes when the Android process restarts; use it to scope state you retain across reconnects.
+`baseURL` is the forwarded Android server address. `processIdentity` is an opaque token that changes when the Android process restarts; use it to scope state you retain across reconnects.
 
 The callback runs immediately and whenever the host reports a connection change. Its previous cleanup runs before the next callback and when unsubscribing. A new connection can reuse the same URL. Its `signal` aborts when that connection ends; use it with `fetch` for requests tied to the connection. Unsubscribing one UI does not abort another UI's requests.
 
@@ -409,10 +406,9 @@ These versions describe different things:
 | Version | Who sets it | What it means |
 | --- | --- | --- |
 | Maven/npm package version | SDK or tool author | Which release of a library or Gradle plugin you depend on. |
-| `protocolVersion` | Your tool | Which data format the Android server uses. Your frontend checks whether it supports it. |
-| `hostApiVersion` | Snap-O | Which Snap-O host API the frontend needs. Currently version 1. |
+| `hostApiVersion` | Snap-O build tooling | Generated compatibility metadata for the host bridge. Currently version 2; not an author setting. |
 
-Your frontend must check the server's protocol version; Snap-O cannot check your data format for you. Example accepts only protocol 1. Choose whether your frontend supports one version or several, and check incoming data too. A change to your data format does not require a change to `hostApiVersion`.
+The frontend and Android server ship together, so bundled tools do not need a protocol version. Validate incoming data for the shape your UI expects. Tools with independent clients define their [own compatibility rules](#independent-clients). The desktop checks generated host API metadata before loading a frontend because Snap-O and Android tools ship independently.
 
 | Setting | Current default or limit |
 | --- | --- |

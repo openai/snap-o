@@ -83,4 +83,4 @@ This output can contain URL query values and request or response bodies.
 - `network requests` emits Chrome DevTools Protocol-style records with top-level `method` and `params` fields.
 - Use `--no-stream` for a one-shot buffered snapshot.
 - `network intercept` writes runner logs to stderr and does not accept `--json`, `--filter`, or `--no-stream`.
-- Network protocol 3 uses manifest metadata, HTTP history and body reads, and SSE for live events. Interception registers routes with a POST that returns its own SSE connection. The CLI requires an updated Android Network library.
+- Network protocol 4 uses manifest app metadata, a tool-owned `/network/protocol` version check, HTTP history and body reads, and SSE for live events. Interception registers routes with a POST that returns its own SSE connection. The CLI requires an updated Android Network library.

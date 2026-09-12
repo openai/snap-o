@@ -16,7 +16,6 @@ snapoTool {
     frontendDirectory = layout.projectDirectory.dir("../../frontend")
     id = "network"
     displayName = "Network"
-    protocolVersion = 3
     icon = "@drawable/snapo_network_inspector_icon"
 }
 

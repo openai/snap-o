@@ -1,6 +1,6 @@
 # Snap-O Tweaks protocol
 
-Current protocol version: 7.
+Current protocol version: 8.
 
 Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless actions from registered Android application owners through an app-local socket, enabled by default only in debug builds. Agents and desktop tools can use HTTP to inspect those values, change them, and invoke app-owned callbacks while the app runs.
 
@@ -31,9 +31,11 @@ Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `
 
 ### Discovery and readiness
 
-Read app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The Tweaks frontend and CLI require protocol version **7** before sending HTTP requests. Missing, older, and newer versions produce an unsupported-protocol error. The native host does not interpret tool protocol versions.
+Read app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The Tweaks frontend and CLI call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are rejected. This endpoint belongs to Tweaks, not the shared tool SDK.
 
-`OPTIONS /` returns an empty readiness response. The server does not serve HTTP metadata or icon endpoints. Version 7 removes those endpoints; update Snap-O and Android libraries together. Values, actions, curves, batch errors, modification flags, and null resets retain their existing behavior.
+Protocol 8 moves the compatibility check out of discovery; data, mutation, and SSE payloads are unchanged from protocol 7. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
+
+`OPTIONS /` returns an empty readiness response. App metadata and icons are not HTTP endpoints. Values, actions, curves, batch errors, modification flags, and null resets retain their existing behavior.
 
 ### GET /tweaks
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TweakList } from "./types";
 import type { TweaksClient } from "./features/tweaks-tool/client";
 import { ToolHost, type Host } from "@snap-o/tool-host";
-type ToolDescriptor = { id: string; name: string; protocolVersion: number };
+type ToolDescriptor = { id: string; name: string };
 type ProcessManifest = {
   version: number;
   pid: number;
@@ -48,7 +48,7 @@ describe("Tweaks frontend with the shared host", () => {
         processIdentity: "boot:20:123",
         app: { name: "Demo", packageName: "com.example.demo", revision: "1", inspectors: [] }
       },
-      inspector: { id: "tweaks", name: "Tweaks", protocolVersion: 7 }
+      inspector: { id: "tweaks", name: "Tweaks" }
     };
     mocks.host = new ToolHost({
       request: async <T,>(command: string) => (command === "hostState" ? { ...state } : undefined) as T,
@@ -59,7 +59,7 @@ describe("Tweaks frontend with the shared host", () => {
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => Response.json({ name: "Demo", packageName: "com.example.demo", protocolVersion: 5 }))
+      vi.fn(async () => Response.json({ version: 8 }))
     );
     mocks.client = {
       listTweaks: vi.fn(async () => list("Cached value")),
@@ -94,14 +94,14 @@ describe("Tweaks frontend with the shared host", () => {
     await act(async () => receive({ ...state }));
     await flush();
   }
-  it.each([0, 1, 4, 6, 8])("rejects unsupported protocol v%s before reading or changing tweaks", async (version) => {
-    state.inspector.protocolVersion = version;
+  it.each([1, 4, 6, 7, 9])("rejects unsupported protocol v%s before reading or changing tweaks", async (version) => {
+    vi.mocked(fetch).mockResolvedValue(Response.json({ version }));
     await mount();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(`App reports protocol v${version}`);
     expect(mocks.client.listTweaks).not.toHaveBeenCalled();
     expect(mocks.client.startTweakStream).not.toHaveBeenCalled();
     expect(mocks.client.updateTweaks).not.toHaveBeenCalled();
-    state.inspector = { ...state.inspector, protocolVersion: 7 };
+    vi.mocked(fetch).mockResolvedValue(Response.json({ version: 8 }));
     await publish(true);
     expect(mocks.client.listTweaks).toHaveBeenCalledOnce();
   });
@@ -147,7 +147,7 @@ describe("Tweaks frontend with the shared host", () => {
     await mount();
     await publish(true, "http://127.0.0.1:4321/");
     expect(mocks.client.listTweaks).toHaveBeenCalledTimes(2);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
   it("retains an empty snapshot while disconnected", async () => {
     vi.mocked(mocks.client.listTweaks).mockResolvedValue({ tweaks: [] });

@@ -3,7 +3,6 @@ import Foundation
 public struct ToolDescriptor: Codable, Sendable, Equatable {
   public let id: ToolID
   public let name: String
-  public let protocolVersion: Int
   public let iconBase64: String?
   public let frontend: ToolFrontend?
 }

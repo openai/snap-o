@@ -320,7 +320,7 @@ final class ToolHostModel {
         } else if identity.frontend != nil {
           guard let server = identity.server, let processIdentity = metadata?.verifiedIdentity,
                 let tool = metadata?.tools.first(where: { $0.id == kind }),
-                tool.frontend?.hostApiVersion == 1 else { throw ToolError.frontendUnavailable }
+                tool.frontend?.hostApiVersion == 2 else { throw ToolError.frontendUnavailable }
           frontend = try await service.pluginFrontend(for: server, identity: processIdentity, tool: tool)
         } else {
           throw ToolError.frontendUnavailable

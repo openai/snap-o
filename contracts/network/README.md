@@ -7,6 +7,7 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 | Request | Response |
 | --- | --- |
 | `OPTIONS /` | Empty readiness response. |
+| `GET /network/protocol` | Network compatibility metadata: `{"version":4}`. |
 | `GET /network` | A finite NDJSON snapshot, or live Server-Sent Events (SSE), selected by `Accept`. |
 | `GET /network/requests/{requestId}/request-body` | JSON with `postData`. |
 | `GET /network/requests/{requestId}/response-body` | JSON with `body` and `base64Encoded`. |
@@ -16,7 +17,9 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 
 Percent-encode request ids as one path component. Body reads return `404` when the capture is unavailable. Successful updates return `{}`. HTTP errors use a JSON `error` string.
 
-The Network frontend and CLI require `protocolVersion` **3** in the [manifest descriptor](../discovery/README.md). The native host transports descriptors without interpreting tool protocol versions. Metadata and icons are not HTTP endpoints.
+The Network frontend and CLI call `GET /network/protocol` and require `{"version":4}` before reading data or opening a stream. This endpoint belongs to Network, not the shared tool SDK. App metadata and icons still come from [manifest discovery](../discovery/README.md).
+
+Protocol 4 moves the compatibility check out of discovery; Network data and interception payloads are unchanged from protocol 3. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
 
 `GET /network` uses the standard `Accept` header to select its response:
 
@@ -32,7 +35,7 @@ The snapshot responds with `application/x-ndjson`, chunked HTTP framing, and `Sn
 
 For a combined history and live view:
 
-1. Read the manifest descriptor and require Network protocol 3.
+1. Read app identity from discovery, then request `/network/protocol` and require version 4.
 2. Open `/network` with `Accept: text/event-stream` and buffer incoming events.
 3. After the SSE response headers arrive, fetch `/network` with `Accept: application/x-ndjson`.
 4. Read the complete snapshot and retain its watermark.

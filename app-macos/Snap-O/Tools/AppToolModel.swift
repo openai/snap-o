@@ -23,7 +23,7 @@ struct AppToolSnapshot {
 
   func pageState(for kind: ToolID) -> ToolHostState {
     let displayed = state.displayed[kind]
-    let waiting = loading || state.isRestoring || state.selection?.protocolVersion == nil
+    let waiting = loading || state.isRestoring || state.selection == nil
     let active = state.preferredKind == kind
     let connected = active && !waiting && state.selection?.kind == kind
     return ToolHostState(

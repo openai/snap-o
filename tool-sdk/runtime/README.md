@@ -21,7 +21,7 @@ dependencies {
 }
 ```
 
-Apply the [Tool Gradle Plugin](../gradle-plugin/README.md) separately to package the frontend and discovery metadata. The Tool Gradle Plugin generates `SnapOTool` in the Android namespace. Use `SnapOTool.ID` for the socket server and `SnapOTool.PROTOCOL_VERSION` for versioned payloads.
+Apply the [Tool Gradle Plugin](../gradle-plugin/README.md) separately to package the frontend and discovery metadata. The Tool Gradle Plugin generates `SnapOTool` in the Android namespace. Use `SnapOTool.ID` for the socket server. Each tool defines its own HTTP API and any compatibility checks needed by independent clients.
 
 This module uses the repository's Maven publishing convention. Consumers of Network or Tweaks receive it transitively. A new release must publish the runtime alongside the tool libraries that depend on it.
 
