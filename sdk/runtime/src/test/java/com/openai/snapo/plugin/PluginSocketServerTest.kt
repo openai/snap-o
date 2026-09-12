@@ -14,6 +14,46 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class PluginSocketServerTest {
     @Test
+    fun `disallowed startup never binds or reports a socket failure`() {
+        PluginSocketServer(1, { error("Must not bind") }) {}.use { server ->
+            assertFalse(server.startIfAllowed(false) { error("Must not report a failure") })
+            assertFalse(server.isRunning)
+        }
+    }
+
+    @Test
+    fun `guarded startup reports bind failures and permits retry without duplicate listeners`() {
+        val binds = AtomicInteger()
+        val failure = IOException("Synthetic bind failure")
+        val failures = mutableListOf<IOException>()
+        val listener = TcpListener()
+        PluginSocketServer(1, {
+            if (binds.incrementAndGet() == 1) throw failure
+            listener
+        }) {}.use { server ->
+            assertFalse(server.startIfAllowed(true, failures::add))
+            assertFalse(server.isRunning)
+            assertEquals(listOf(failure), failures)
+            assertTrue(server.startIfAllowed(true, failures::add))
+            assertTrue(server.startIfAllowed(true, failures::add))
+            assertTrue(server.isRunning)
+            assertEquals(2, binds.get())
+            server.close()
+            assertTrue(listener.isClosed)
+            assertFalse(server.isRunning)
+        }
+    }
+
+    @Test
+    fun `guarded startup does not hide programming errors`() {
+        PluginSocketServer(1, { throw IllegalArgumentException("Invalid socket configuration") }) {}.use { server ->
+            assertThrows(IllegalArgumentException::class.java) {
+                server.startIfAllowed(true) { error("Must not report a socket failure") }
+            }
+        }
+    }
+
+    @Test
     fun `start is idempotent and close releases a blocked reader and listener`() {
         val listener = TcpListener()
         val entered = CountDownLatch(1)

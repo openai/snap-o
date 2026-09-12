@@ -1,8 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application>
         <provider
-            android:name=".ExampleInitProvider"
-            android:authorities="${applicationId}.snapo.example"
-            android:exported="false" />
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="com.example.snapo.tool.ExampleInitializer"
+                android:value="androidx.startup" />
+        </provider>
     </application>
 </manifest>

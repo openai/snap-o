@@ -57,6 +57,18 @@ class PluginSocketServer internal constructor(
         }
     }
 
+    internal fun startIfAllowed(allowed: Boolean, onFailure: (IOException) -> Unit): Boolean {
+        if (!allowed) return false
+        return try {
+            start()
+            true
+        } catch (failure: IOException) {
+            // start() publishes a session only after binding succeeds, so a failed bind owns no session.
+            onFailure(failure)
+            false
+        }
+    }
+
     override fun close() {
         synchronized(lock) {
             val closing = session ?: return

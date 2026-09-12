@@ -21,7 +21,7 @@ dependencies {
 }
 ```
 
-Apply the [tool Gradle plugin](../gradle-plugin/README.md) separately to package the frontend and discovery metadata. The plugin generates `SnapOPlugin` in the Android namespace. Use `SnapOPlugin.ID` for the socket server and `SnapOPlugin.PROTOCOL_VERSION` for versioned payloads.
+Apply the [Gradle packaging plugin](../gradle-plugin/README.md) separately to package the frontend and discovery metadata. The plugin generates `SnapOPlugin` in the Android namespace. Use `SnapOPlugin.ID` for the socket server and `SnapOPlugin.PROTOCOL_VERSION` for versioned payloads.
 
 This module uses the repository's Maven publishing convention. Consumers of Network or Tweaks receive it transitively. A new release must publish the runtime alongside the tool libraries that depend on it.
 
@@ -98,7 +98,7 @@ Connections use a five-second request read timeout, a thirty-second finite-reque
 
 `PluginServer.serve(connection)` handles and closes an externally supplied `PluginConnection`. This lets tests exercise the real parser, router, and response writer using memory or loopback TCP streams. Normal tools only call `start()` and `close()`.
 
-`PluginSocketServer`, `PluginHttpRequest`, `PluginHttpResponse`, and `PluginSse` remain available for custom transports. Apply `PluginStartupPolicy` from the tool's initializer. The HTTP API does not add a provider or change process startup.
+`PluginSocketServer`, `PluginHttpRequest`, `PluginHttpResponse`, and `PluginSse` remain available for custom transports. Use `PluginServer.startIfAllowed(context)` from the tool's initializer to check startup policy and log socket binding failures. Its default release metadata key is `snapo.<plugin-id>.allow_release`; pass an existing key when needed. The runtime does not add a provider or depend on AndroidX Startup. See the [startup guide](../../docs/plugins.md#startup) for a complete initializer.
 
 ## Compatibility
 

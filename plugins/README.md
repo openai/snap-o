@@ -7,6 +7,8 @@ The shared [plugin host SDK](../sdk/host/README.md) provides connection state, t
 - Network: `plugins/network/frontend`
 - Tweaks: `plugins/tweaks/frontend`
 
+For an end-to-end example, read [Build a plugin](../docs/plugins.md) and the [Plugin API reference](../docs/plugin-api.md).
+
 ## Directory layout
 
 - `network/android/`: Network core, HTTP client integrations, and no-op variants.

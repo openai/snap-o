@@ -82,6 +82,21 @@ def verify_example(example):
     with zipfile.ZipFile(release) as apk:
         assert not any(name.startswith("assets/snapo/inspectors/") for name in apk.namelist()), \
             "Release app must not contain the debug-only Example tool"
+    android = "{http://schemas.android.com/apk/res/android}"
+    for variant in ("debug", "release"):
+        manifest = example / f"app/build/intermediates/merged_manifests/{variant}/process{variant.title()}Manifest/AndroidManifest.xml"
+        providers = ET.parse(manifest).findall("./application/provider")
+        initializers = [(provider, metadata) for provider in providers
+                        for metadata in provider.findall("meta-data")
+                        if metadata.get(android + "name") == "com.example.snapo.tool.ExampleInitializer"]
+        if variant == "debug":
+            assert len(initializers) == 1, "Debug app must register the Example initializer exactly once"
+            provider, metadata = initializers[0]
+            assert provider.get(android + "name") == "androidx.startup.InitializationProvider"
+            assert provider.get(android + "exported") == "false"
+            assert metadata.get(android + "value") == "androidx.startup"
+        else:
+            assert not initializers, "Release app must not initialize the debug-only Example tool"
     return debug
 
 

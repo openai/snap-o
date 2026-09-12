@@ -54,3 +54,10 @@ Adjust values from Compose, Views, and other Kotlin code. Change app-owned setti
 {.product-copy}
 
 [Set up Tweaks (Alpha)](tweaks.md){.section-link}
+
+## Your own plugins {.product-title}
+
+Bundle app-specific debugging tools with your Android app. Define HTTP routes and live events, then display a web frontend in Snap-O's Tool pane.
+{.product-copy}
+
+[Build a plugin](plugins.md){.section-link} · [Explore the API](plugin-api.md){.section-link}

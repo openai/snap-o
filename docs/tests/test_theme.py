@@ -32,7 +32,7 @@ class DocumentationThemeTests(unittest.TestCase):
         cls.directory.cleanup()
 
     def test_public_urls_and_excluded_sources(self):
-        expected = {"index", "network-inspector", "network-intercept", "tweaks", "tweaks-protocol", "cli", "usage"}
+        expected = {"index", "network-inspector", "network-intercept", "tweaks", "tweaks-protocol", "cli", "usage", "plugins", "plugin-api"}
         self.assertEqual(expected, {Path(name).stem for name in self.pages})
         self.assertTrue((self.output / ".nojekyll").is_file())
         for name in ("appcast.xml", "hooks.py", "requirements.txt", "README.html", "tests", ".venv"):
