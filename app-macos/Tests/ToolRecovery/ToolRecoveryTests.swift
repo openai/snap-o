@@ -106,7 +106,7 @@ struct ToolRecoveryTests {
     let payload = "frozen device transport_id:1\nhealthy device transport_id:2\nstalled device transport_id:3"
     adb.emitDevices(payload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy"] }
-    let service = PluginService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceTracker: tracker)
     let suite = "SnapOHostRecoveryTests.\(UUID().uuidString)"
     let preferences = UserDefaults(suiteName: suite)!
     preferences.set(#"{"apps":[]}"#, forKey: "inspectorPreferences")
@@ -131,8 +131,8 @@ struct ToolRecoveryTests {
     precondition(host.snapshot.state.selection?.server.deviceId == "healthy")
     precondition(adb.scannedDeviceIDs.count == 2, "HTTP readiness reaches the UI without another device scan")
     print("Native discovery publishes and selects healthy apps beside stalled devices")
-    let frozen = PluginServerReference(deviceId: "frozen", socketName: "snapo_tweaks_42")
-    let healthy = PluginServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
+    let frozen = ToolServerReference(deviceId: "frozen", socketName: "snapo_tweaks_42")
+    let healthy = ToolServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
     _ = await service.discoverPlugins().apps
     try await eventually {
       let apps = await service.discoverPlugins().apps
@@ -145,7 +145,7 @@ struct ToolRecoveryTests {
       do {
         _ = try await service.pluginEndpoint(for: frozen)
         fatalError("Frozen tool should remain disconnected during cooldown")
-      } catch PluginError.serverNotConnected {}
+      } catch ToolError.serverNotConnected {}
     }
     precondition(adb.forwardCount == count)
     precondition(ToolHTTP.state.count == 2)
@@ -154,7 +154,7 @@ struct ToolRecoveryTests {
     do {
       _ = try await service.pluginEndpoint(for: healthy)
       fatalError("Metadata must be verified before authorizing an endpoint")
-    } catch PluginError.serverNotConnected {}
+    } catch ToolError.serverNotConnected {}
     print("Both tool kinds suppress repeated failed connections while healthy tools remain usable")
 
     adb.setMetadataAvailable(true)
@@ -209,7 +209,7 @@ struct ToolRecoveryTests {
     do {
       _ = try await service.pluginEndpoint(for: frozen)
       fatalError("A replacement listener needs fresh process metadata before connecting")
-    } catch PluginError.serverNotConnected {}
+    } catch ToolError.serverNotConnected {}
     adb.setMetadataAvailable(true)
     try await eventually {
       await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }?
@@ -239,7 +239,7 @@ struct ToolRecoveryTests {
     precondition(stoppedApps.isEmpty)
     adb.setSocketNames(["snapo_network_42", "snapo_tweaks_42"], deviceID: "frozen")
 
-    let restarted = PluginService(adbService: adbService, deviceTracker: tracker)
+    let restarted = ToolService(adbService: adbService, deviceTracker: tracker)
     try await eventually {
       await restarted.discoverPlugins().apps.first { $0.deviceId == "frozen" }?
         .tools.first { $0.kind == .tweaks }?.isConnected == true
@@ -279,14 +279,14 @@ struct ToolRecoveryTests {
     adb.setMetadataAvailable(true)
     adb.recoverProperties()
     try await eventually { await tracker.latestDevices.map(\.id) == ["frozen", "healthy", "stalled"] }
-    let recovered = PluginService(adbService: adbService, deviceTracker: tracker)
+    let recovered = ToolService(adbService: adbService, deviceTracker: tracker)
     _ = await recovered.discoverPlugins().apps
     precondition(adb.scannedDeviceIDs.contains("stalled"))
     await recovered.stop()
     let failingPayload = "forward-failure device transport_id:4"
     adb.emitDevices(failingPayload)
     try await eventually { await tracker.latestDevices.map(\.id) == ["forward-failure"] }
-    let forwardFailure = PluginService(adbService: adbService, deviceTracker: tracker)
+    let forwardFailure = ToolService(adbService: adbService, deviceTracker: tracker)
     let beforeForwardFailure = adb.forwardCount
     for _ in 0 ..< 50 {
       _ = await forwardFailure.discoverPlugins().apps
@@ -319,7 +319,7 @@ struct ToolRecoveryTests {
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
     try await eventually { await tracker.latestDevices.count == 1 }
-    let service = PluginService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceTracker: tracker)
     _ = await service.discoverPlugins()
     try await eventually {
       await service.currentPlugins().apps.first?.metadata?.tools.map(\.id) == [.network]
@@ -328,7 +328,7 @@ struct ToolRecoveryTests {
     precondition(Set(adb.metadataSocketRequests[0]) == ["snapo_network_42", "snapo_network_43"])
 
     let now = ContinuousClock.now
-    var cachedApp = PluginHTTPService.App(
+    var cachedApp = ToolHTTPService.App(
       kind: .network, pid: 42, deviceID: "healthy", deviceDisplayTitle: "Phone", socketName: "snapo_network_42"
     )
     precondition(cachedApp.needsMetadataRead(lastAttempt: nil, now: now))
@@ -365,15 +365,15 @@ struct ToolRecoveryTests {
   }
 
   static func compatibilityStates() throws {
-    func status(tools: [[String: Any]], errors: [[String: String]] = []) throws -> PluginCompatibility {
+    func status(tools: [[String: Any]], errors: [[String: String]] = []) throws -> ToolCompatibility {
       let record: [String: Any] = [
         "version": 1, "pid": 42, "processIdentity": "boot:42:1", "androidUserId": 0,
         "app": ["name": "Demo", "packageName": "com.example.demo", "revision": "1", "inspectors": tools, "errors": errors]
       ]
-      let manifest = try JSONDecoder().decode(PluginProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
-      var metadata = PluginMetadata()
+      let manifest = try JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
+      var metadata = ToolMetadata()
       metadata.applyPackageMetadata(manifest, kind: .network)
-      return PluginHTTPService.App(
+      return ToolHTTPService.App(
         kind: .network, pid: 42, deviceID: "phone", deviceDisplayTitle: "Phone", socketName: "snapo_network_42", metadata: metadata
       ).compatibility
     }
@@ -392,7 +392,7 @@ struct ToolRecoveryTests {
       let actual = try status(tools: [value])
       precondition(actual == (version == 1 ? .supported : .hostAPI(version: version)))
     }
-    var pending = PluginHTTPService.App(
+    var pending = ToolHTTPService.App(
       kind: .network,
       pid: 42,
       deviceID: "phone",
@@ -409,14 +409,14 @@ struct ToolRecoveryTests {
     let adb = ADBClient()
     adb.setLegacyKinds([.network])
     let legacy = try await adb.legacyPluginMetadata(
-      reference: PluginServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: .network, pid: 42
+      reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: .network, pid: 42
     )!
     func record(
       package: String = "com.example.demo",
       processName: String = "com.example.demo",
       revision: String = "1",
-      kinds: [PluginID] = []
-    ) throws -> PluginProcessMetadata {
+      kinds: [ToolID] = []
+    ) throws -> ToolProcessMetadata {
       let value: [String: Any] = [
         "version": 1, "pid": 42, "processIdentity": "boot:42:1", "androidUserId": 0, "processName": processName,
         "app": [
@@ -433,15 +433,15 @@ struct ToolRecoveryTests {
           }
         ]
       ]
-      return try JSONDecoder().decode(PluginProcessMetadata.self, from: JSONSerialization.data(withJSONObject: value))
+      return try JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: value))
     }
-    var metadata = PluginMetadata()
+    var metadata = ToolMetadata()
     precondition(metadata.applyLegacyMetadata(legacy, kind: .network))
     precondition(metadata.process.name == "Demo" && metadata.process.packageName == "com.example.demo")
     precondition(metadata.process.verifiedIdentity == nil && metadata.process.tools.isEmpty)
     precondition(metadata.compatibility == .legacy(protocolVersion: 1))
     let legacyConnection = try JSONSerialization.jsonObject(with: JSONEncoder().encode(
-      PluginConnectionState(metadata: metadata.process)
+      ToolConnectionState(metadata: metadata.process)
     )) as! [String: Any]
     precondition(legacyConnection["manifest"] == nil)
 
@@ -479,7 +479,7 @@ struct ToolRecoveryTests {
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
     try await eventually { await tracker.latestDevices.count == 1 }
-    let service = PluginService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceTracker: tracker)
     try await eventually {
       let options = await service.discoverPlugins().apps.first?.tools
       return options?.first { $0.kind == .network }?.compatibility == .legacy(protocolVersion: 1)
@@ -496,7 +496,7 @@ struct ToolRecoveryTests {
     do {
       _ = try await service.pluginEndpoint(for: app.tools[0].server)
       fatalError("Legacy metadata must not authorize a tool endpoint")
-    } catch PluginError.serverNotConnected {}
+    } catch ToolError.serverNotConnected {}
     _ = try await service.pluginEndpoint(for: app.tools[1].server)
     for _ in 0 ..< 5 {
       _ = await service.discoverPlugins()
@@ -513,9 +513,9 @@ struct ToolRecoveryTests {
     print("Unsupported tools remain visible and selectable beside usable siblings; listener replacement clears compatibility")
   }
 
-  private static func refresh(_ service: PluginHTTPService, using adb: ADBClient) async {
+  private static func refresh(_ service: ToolHTTPService, using adb: ADBClient) async {
     let device = Device(id: "healthy", model: "Phone", androidVersion: "Test", vendorModel: nil, manufacturer: nil, avdName: nil)
-    let sockets = await PluginDiscovery.discover(on: [device.id], using: adb)
+    let sockets = await ToolDiscovery.discover(on: [device.id], using: adb)
     await service.refresh(devices: [device], sockets: sockets, using: adb)
   }
 
@@ -525,15 +525,15 @@ struct ToolRecoveryTests {
       let adb = await adbService.exec()
       adb.setMetadataAvailable(true)
       adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
-      let service = PluginHTTPService(adbService: adbService)
+      let service = ToolHTTPService(adbService: adbService)
       await refresh(service, using: adb)
       try await eventually {
         let app = await service.currentApps().apps.first
         return app?.compatibility == .supported && app?.isConnected == true
       }
       let original = await service.currentApps().apps.first!
-      let network = PluginServerReference(deviceId: "healthy", socketName: "snapo_network_42")
-      let tweaks = PluginServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
+      let network = ToolServerReference(deviceId: "healthy", socketName: "snapo_network_42")
+      let tweaks = ToolServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
       adb.setMetadataFailure(failure)
       adb.setSocketNames([network.socketName, tweaks.socketName], deviceID: "healthy")
       await refresh(service, using: adb)
@@ -549,7 +549,7 @@ struct ToolRecoveryTests {
       do {
         _ = try await service.endpoint(for: tweaks)
         fatalError("A new sibling cannot use another socket's cached descriptor")
-      } catch PluginError.serverNotConnected {}
+      } catch ToolError.serverNotConnected {}
       let now = ContinuousClock.now
       precondition(!failed[0].needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(29))))
       precondition(failed[0].needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(30))))
@@ -568,7 +568,7 @@ struct ToolRecoveryTests {
       do {
         _ = try await service.endpoint(for: network)
         fatalError("Preserved metadata cannot authorize a replacement listener after a failed read")
-      } catch PluginError.serverNotConnected {}
+      } catch ToolError.serverNotConnected {}
 
       adb.setMetadataFailure(nil)
       adb.replaceListeners()
@@ -590,7 +590,7 @@ struct ToolRecoveryTests {
     adb.setLegacyKinds([.network])
     adb.setLegacyBlocked(true)
     adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
-    let service = PluginHTTPService(adbService: adbService)
+    let service = ToolHTTPService(adbService: adbService)
     await refresh(service, using: adb)
     try await eventually {
       await service.currentApps().apps.first?.checkingLegacy == true && adb.legacyRequestCount == 1

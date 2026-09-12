@@ -1,6 +1,6 @@
 pluginManagement {
     includeBuild("build-logic")
-    includeBuild("sdk/gradle-plugin")
+    includeBuild("tool-sdk/gradle-plugin")
     repositories {
         google {
             content {
@@ -14,7 +14,7 @@ pluginManagement {
     }
 }
 plugins {
-    id("com.openai.snapo.plugin-settings")
+    id("com.openai.snapo.tool-settings")
 }
 
 dependencyResolutionManagement {
@@ -26,7 +26,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "snap-o"
-include(":plugin-runtime")
+include(":tool-runtime")
 include(":tweaks-core")
 include(":tweaks-core-noop")
 include(":tweaks-views")
@@ -47,19 +47,19 @@ include(":samples:demo-httpurlconnection")
 include(":samples:demo-shared")
 
 // Group implementations without changing published Android artifact names.
-project(":network").projectDir = file("plugins/network/android/core")
-project(":network-okhttp3").projectDir = file("plugins/network/android/okhttp3")
-project(":network-okhttp3-noop").projectDir = file("plugins/network/android/okhttp3-noop")
-project(":network-httpurlconnection").projectDir = file("plugins/network/android/httpurlconnection")
-project(":network-httpurlconnection-noop").projectDir = file("plugins/network/android/httpurlconnection-noop")
-project(":tweaks").projectDir = file("plugins/tweaks/android/compose")
-project(":tweaks-core").projectDir = file("plugins/tweaks/android/core")
-project(":tweaks-core-noop").projectDir = file("plugins/tweaks/android/core-noop")
-project(":tweaks-noop").projectDir = file("plugins/tweaks/android/noop")
-project(":tweaks-overlay").projectDir = file("plugins/tweaks/android/overlay")
-project(":tweaks-overlay-noop").projectDir = file("plugins/tweaks/android/overlay-noop")
-project(":tweaks-views").projectDir = file("plugins/tweaks/android/views")
-project(":plugin-runtime").projectDir = file("sdk/runtime")
+project(":network").projectDir = file("tools/network/android/core")
+project(":network-okhttp3").projectDir = file("tools/network/android/okhttp3")
+project(":network-okhttp3-noop").projectDir = file("tools/network/android/okhttp3-noop")
+project(":network-httpurlconnection").projectDir = file("tools/network/android/httpurlconnection")
+project(":network-httpurlconnection-noop").projectDir = file("tools/network/android/httpurlconnection-noop")
+project(":tweaks").projectDir = file("tools/tweaks/android/compose")
+project(":tweaks-core").projectDir = file("tools/tweaks/android/core")
+project(":tweaks-core-noop").projectDir = file("tools/tweaks/android/core-noop")
+project(":tweaks-noop").projectDir = file("tools/tweaks/android/noop")
+project(":tweaks-overlay").projectDir = file("tools/tweaks/android/overlay")
+project(":tweaks-overlay-noop").projectDir = file("tools/tweaks/android/overlay-noop")
+project(":tweaks-views").projectDir = file("tools/tweaks/android/views")
+project(":tool-runtime").projectDir = file("tool-sdk/runtime")
 
 project(":samples").projectDir = file("examples/android")
 

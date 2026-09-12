@@ -90,7 +90,7 @@ Open a temporary copy of the final app and confirm the changed flows work. Revie
 
 For each library in the tag's generated `publications.tsv`, check the staged POM, Gradle metadata, AAR, sources, javadocs, and signatures before publishing.
 
-Confirm `plugin-runtime` appears in the publication manifest and in the Network and Tweaks runtime dependencies. Its AAR must not contribute a tool descriptor, frontend ZIP, or initialization provider. Runtime API changes must pass the independent Example build and HTTP routing/streaming tests, including client disconnect cancellation.
+Confirm `tool-runtime` appears in the publication manifest and in the Network and Tweaks runtime dependencies. Its AAR must not contribute a tool descriptor, frontend ZIP, or initialization provider. Runtime API changes must pass the independent Example build and HTTP routing/streaming tests, including client disconnect cancellation.
 
 For Network and Tweaks AARs, also verify the generated tool descriptor and the frontend ZIP under `assets/snapo/inspectors/<id>/`. The ZIP must contain `index.html` and its referenced assets.
 

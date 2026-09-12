@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 
 struct ToolToolbarControls: View {
-  @Bindable var model: PluginHostModel
+  @Bindable var model: ToolHostModel
   @Binding var isSearchPresented: Bool
 
   var placement: ToolToolbarAction.Placement = .start

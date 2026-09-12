@@ -1,0 +1,45 @@
+{
+  "name": "@snap-o/network-tool",
+  "version": "2.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint": "eslint . && stylelint \"src/**/*.css\"",
+    "build:host": "tsc -p ../../../tool-sdk/host/tsconfig.build.json",
+    "postinstall": "npm run build:host",
+    "prebuild": "npm run build:host",
+    "predev": "npm run build:host"
+  },
+  "dependencies": {
+    "@snap-o/tool-host": "file:../../../tool-sdk/host",
+    "preact": "^10.29.8",
+    "lucide-preact": "^0.468.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "preact-render-to-string": "^6.7.0",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.5.0",
+    "jsdom": "^27.4.0",
+    "prettier": "^3.8.3",
+    "stylelint": "^16.26.0",
+    "stylelint-config-standard": "^39.0.1",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.59.1",
+    "vite": "^8.0.9",
+    "vitest": "^4.1.9",
+    "devtools-protocol": "^0.0.1617982"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

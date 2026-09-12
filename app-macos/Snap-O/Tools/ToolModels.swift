@@ -1,13 +1,13 @@
 import Foundation
 
 struct AppToolOption: Equatable, Codable, Identifiable {
-  let kind: PluginID
-  let server: PluginServerReference
+  let kind: ToolID
+  let server: ToolServerReference
   let protocolVersion: Int?
   let isConnected: Bool
   var name = ""
   var iconBase64: String?
-  var compatibility: PluginCompatibility = .unknown
+  var compatibility: ToolCompatibility = .unknown
   var displayName: String {
     name.isEmpty ? kind.rawValue : name
   }
@@ -17,7 +17,7 @@ struct AppToolOption: Equatable, Codable, Identifiable {
   }
 }
 
-enum PluginCompatibility: Equatable, Codable {
+enum ToolCompatibility: Equatable, Codable {
   case unknown
   case supported
   case legacy(protocolVersion: Int)
@@ -34,7 +34,7 @@ enum PluginCompatibility: Equatable, Codable {
     }
   }
 
-  func title(for kind: PluginID?) -> String? {
+  func title(for kind: ToolID?) -> String? {
     let toolName = kind.map { $0.rawValue.prefix(1).uppercased() + $0.rawValue.dropFirst() } ?? "tool"
     return switch self {
     case .unknown, .supported: nil
@@ -81,7 +81,7 @@ struct InspectableApp: Equatable, Codable, Identifiable {
   let deviceId: String
   let deviceDisplayTitle: String
   var tools: [AppToolOption]
-  var metadata: PluginMetadata.Process?
+  var metadata: ToolMetadata.Process?
 
   var name: String {
     metadata?.name ?? processName ?? packageName ?? pid.map { "Process \($0)" }
@@ -105,7 +105,7 @@ struct InspectableApp: Equatable, Codable, Identifiable {
   }
 }
 
-struct PluginDiscoverySnapshot {
+struct ToolDiscoverySnapshot {
   let apps: [InspectableApp]
   var revision: UInt64?
 }
@@ -118,18 +118,18 @@ struct OpenAppInput: Codable {
 
 struct SelectedAppTool: Equatable, Codable {
   let appId: String
-  let kind: PluginID
-  let server: PluginServerReference
+  let kind: ToolID
+  let server: ToolServerReference
   let protocolVersion: Int?
 }
 
 struct AppToolState: Equatable, Codable {
   let apps: [InspectableApp]
   let selection: SelectedAppTool?
-  let displayed: [PluginID: SelectedAppTool]
+  let displayed: [ToolID: SelectedAppTool]
   let selectedApp: InspectableApp?
   let replacementApp: InspectableApp?
-  let preferredKind: PluginID?
+  let preferredKind: ToolID?
   let isRestoring: Bool
 }
 
@@ -148,10 +148,10 @@ struct ToolSaveFileResult: Codable {
 extension ToolSaveFileInput: Sendable {}
 extension ToolSaveFileResult: Sendable {}
 
-enum PluginError: LocalizedError {
+enum ToolError: LocalizedError {
   case invalidBridgeMessage
   case frontendUnavailable
-  case serverNotConnected(PluginServerReference)
+  case serverNotConnected(ToolServerReference)
   case requestFailed(statusCode: Int, message: String)
 
   var errorDescription: String? {
@@ -168,12 +168,12 @@ enum PluginError: LocalizedError {
   }
 }
 
-struct PluginConnectionState: Encodable {
+struct ToolConnectionState: Encodable {
   var revision = 0
   var baseURL: String?
   var connected = false
-  var metadata: PluginMetadata.Process?
-  var tool: PluginDescriptor?
+  var metadata: ToolMetadata.Process?
+  var tool: ToolDescriptor?
 
   private enum CodingKeys: String, CodingKey {
     case revision, baseURL, connected, manifest
@@ -196,7 +196,7 @@ struct PluginConnectionState: Encodable {
       let name: String
       let revision: String
       let iconBase64: String?
-      let tools: [PluginDescriptor]
+      let tools: [ToolDescriptor]
 
       private enum CodingKeys: String, CodingKey {
         case packageName, name, revision, iconBase64
@@ -211,7 +211,7 @@ struct PluginConnectionState: Encodable {
     let processIdentity: String
     let app: Package
 
-    init?(metadata: PluginMetadata.Process) {
+    init?(metadata: ToolMetadata.Process) {
       guard let identity = metadata.verifiedIdentity else { return nil }
       pid = identity.pid
       processName = identity.processName ?? metadata.processName
@@ -240,7 +240,7 @@ struct ToolToolbar: Decodable {
             !$0.id.isEmpty && !$0.label.isEmpty && $0.id.count <= 100 && $0.label.count <= 200 && ($0.value?.utf8.count ?? 0) <= 4096
               && (0 ... Int(UInt32.max)).contains($0.inputRevision ?? 0)
               && ($0.type != .button || $0.icon != nil) }) else {
-      throw PluginError.invalidBridgeMessage
+      throw ToolError.invalidBridgeMessage
     }
   }
 }

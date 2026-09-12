@@ -10,7 +10,7 @@ enum ToolWebPolicy {
     return url
   }
 
-  static func storageIdentifier(app: InspectableApp?, tool: PluginID) -> UUID? {
+  static func storageIdentifier(app: InspectableApp?, tool: ToolID) -> UUID? {
     guard let app, let identity = app.metadata?.verifiedIdentity else { return nil }
     let scope = ["snapo.inspector.v2", app.deviceId, String(identity.androidUserId), identity.packageName, tool.rawValue]
     guard let data = try? JSONEncoder().encode(scope) else { return nil }
@@ -27,18 +27,18 @@ enum ToolWebPolicy {
   }
 
   static func contentRules(endpoint: URL?, developmentURL: URL?, assetURL: URL? = nil) throws -> String {
-    if let endpoint, !isPluginEndpoint(endpoint) { throw PluginError.invalidBridgeMessage }
+    if let endpoint, !isPluginEndpoint(endpoint) { throw ToolError.invalidBridgeMessage }
     var allowed = ["^data:", "^blob:"]
     if let assetURL {
       guard assetURL.scheme == "snapo-inspector", let host = assetURL.host, UUID(uuidString: host) != nil,
             assetURL.port == nil, assetURL.user == nil, assetURL.password == nil,
             assetURL.path == "/", assetURL.query == nil, assetURL.fragment == nil else {
-        throw PluginError.invalidBridgeMessage
+        throw ToolError.invalidBridgeMessage
       }
       allowed.append("^" + NSRegularExpression.escapedPattern(for: assetURL.absoluteString))
     }
     for url in [endpoint, developmentURL].compactMap(\.self) {
-      guard let origin = origin(of: url) else { throw PluginError.invalidBridgeMessage }
+      guard let origin = origin(of: url) else { throw ToolError.invalidBridgeMessage }
       allowed.append("^" + NSRegularExpression.escapedPattern(for: origin) + "/")
       let socket = origin.replacingOccurrences(of: "https://", with: "wss://")
         .replacingOccurrences(of: "http://", with: "ws://")
@@ -50,7 +50,7 @@ enum ToolWebPolicy {
       ["trigger": ["url-filter": $0], "action": ["type": "ignore-previous-rules"]]
     }
     guard let encoded = try String(data: JSONSerialization.data(withJSONObject: rules), encoding: .utf8) else {
-      throw PluginError.invalidBridgeMessage
+      throw ToolError.invalidBridgeMessage
     }
     return encoded
   }

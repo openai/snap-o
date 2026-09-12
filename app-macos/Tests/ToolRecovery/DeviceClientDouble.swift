@@ -4,7 +4,7 @@ public struct ADBForwardHandle: Sendable {
   public let port: UInt16
 }
 
-public struct PluginFrontendBundle: Sendable {}
+public struct ToolFrontendBundle: Sendable {}
 
 public final class ADBClient: @unchecked Sendable {
   public enum MetadataFailure: Sendable {
@@ -18,7 +18,7 @@ public final class ADBClient: @unchecked Sendable {
   private var metadataAvailable = false
   private var metadataRequests: [[String]] = []
   private var metadataFailure: MetadataFailure?
-  private var legacyKinds: Set<PluginID> = []
+  private var legacyKinds: Set<ToolID> = []
   private var legacyRequests = 0
   private var legacyBlocked = false
   private var legacyCancellations = 0
@@ -35,7 +35,7 @@ public final class ADBClient: @unchecked Sendable {
     lock.withLock { legacyCancellations }
   }
 
-  public func setLegacyKinds(_ kinds: Set<PluginID>) {
+  public func setLegacyKinds(_ kinds: Set<ToolID>) {
     lock.withLock { legacyKinds = kinds }
   }
 
@@ -78,7 +78,7 @@ public final class ADBClient: @unchecked Sendable {
     lock.withLock { metadataRequests }
   }
 
-  public func pluginMetadata(deviceID: String, socketNames: [String], helperURL: URL) async throws -> [PluginProcessMetadata] {
+  public func pluginMetadata(deviceID: String, socketNames: [String], helperURL: URL) async throws -> [ToolProcessMetadata] {
     lock.withLock { metadataRequests.append(socketNames) }
     while !lock.withLock({ metadataAvailable }) {
       try await Task.sleep(for: .milliseconds(10))
@@ -88,7 +88,7 @@ public final class ADBClient: @unchecked Sendable {
     let pids = Set(socketNames.compactMap { Int($0.split(separator: "_").last ?? "") })
     if failure == .record {
       return try pids.map { pid in
-        try JSONDecoder().decode(PluginProcessMetadata.self, from: JSONSerialization.data(withJSONObject: [
+        try JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: [
           "version": 1, "pid": pid, "error": "Test metadata failure"
         ]))
       }
@@ -97,7 +97,7 @@ public final class ADBClient: @unchecked Sendable {
       ["id": "network", "name": "Network", "protocolVersion": 3, "frontend": ["assetPath": "network.zip", "hostApiVersion": 1]],
       ["id": "tweaks", "name": "Tweaks", "protocolVersion": 7, "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 1]]
     ].filter { descriptor in
-      !lock.withLock { legacyKinds.contains(PluginID(rawValue: descriptor["id"] as! String)) }
+      !lock.withLock { legacyKinds.contains(ToolID(rawValue: descriptor["id"] as! String)) }
         && socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }
     }
     return try pids.map { pid in
@@ -110,13 +110,13 @@ public final class ADBClient: @unchecked Sendable {
           "inspectors": tools
         ]
       ]
-      return try JSONDecoder().decode(PluginProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
+      return try JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
     }
   }
 
   public func legacyPluginMetadata(
-    reference: PluginServerReference,
-    kind: PluginID,
+    reference: ToolServerReference,
+    kind: ToolID,
     pid: Int
   ) async throws -> LegacyPluginMetadata? {
     lock.withLock { legacyRequests += 1 }
@@ -137,10 +137,10 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   public func pluginFrontend(
-    deviceID: String, socketName: String, identity: PluginProcessIdentity,
-    tool: PluginDescriptor, helperURL: URL
-  ) async throws -> PluginFrontendBundle {
-    PluginFrontendBundle()
+    deviceID: String, socketName: String, identity: ToolProcessIdentity,
+    tool: ToolDescriptor, helperURL: URL
+  ) async throws -> ToolFrontendBundle {
+    ToolFrontendBundle()
   }
 
   public func emitDevices(_ payload: String) {
@@ -187,7 +187,7 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   public func runDiscoveryShellString(deviceID: String, command: String) async throws -> String {
-    if command == PluginDiscovery.snapshotCommand {
+    if command == ToolDiscovery.snapshotCommand {
       return try await listUnixSockets(deviceID: deviceID) + "\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n43 com.example.demo:worker\n"
     }
     return command.contains("cmdline") ? "com.example.demo" : "Uid: 10000"

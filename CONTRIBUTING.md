@@ -21,9 +21,9 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 | --- | --- |
 | `app-macos/` | Native app, device transport, and Xcode tests |
 | `cli/` | Python CLI and tests |
-| `plugins/` | Network and Tweaks implementations, each with `android/` and `frontend/` |
-| `sdk/` | Plugin authoring APIs, runtime, and Gradle integration |
-| `plugin-reader/` | Android APK metadata and frontend asset reader |
+| `tools/` | Network and Tweaks implementations, each with `android/` and `frontend/` |
+| `tool-sdk/` | Plugin authoring APIs, runtime, and Gradle integration |
+| `tool-reader/` | Android APK metadata and frontend asset reader |
 | `examples/` | Demo apps, an independent plugin, and CLI examples |
 | `contracts/` | Protocol definitions and shared fixtures |
 | `docs/` | Documentation sources, theme, and tests |

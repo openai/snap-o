@@ -104,17 +104,17 @@ def verify_frontend_modes(example, overrides):
     init = example / "frontend-mode.gradle"
     init.write_text('''
 gradle.beforeProject { project ->
-    project.pluginManager.withPlugin("com.openai.snapo.plugin") {
-        project.extensions.getByName("snapoPlugin").downloadNode.set(false)
+    project.pluginManager.withPlugin("com.openai.snapo.tool") {
+        project.extensions.getByName("snapoTool").downloadNode.set(false)
     }
 }
 ''')
     run([str(example / "gradlew"), "--no-daemon", *overrides, "--init-script", str(init),
-         ":example-tool:pluginBuild", "--rerun-tasks"], example)
+         ":example-tool:toolBuild", "--rerun-tasks"], example)
     init.write_text('''
 gradle.beforeProject { project ->
-    project.pluginManager.withPlugin("com.openai.snapo.plugin") {
-        project.extensions.getByName("snapoPlugin").frontendAssets.set(
+    project.pluginManager.withPlugin("com.openai.snapo.tool") {
+        project.extensions.getByName("snapoTool").frontendAssets.set(
             project.layout.projectDirectory.dir("frontend/dist"))
     }
 }
@@ -122,7 +122,7 @@ gradle.beforeProject { project ->
     command = [str(example / "gradlew"), "--no-daemon", *overrides, "--init-script", str(init),
                ":app:assembleDebug"]
     graph = run([*command, "--dry-run"], example, capture=True)
-    for task in ("nodeSetup", "npmSetup", "npmInstall", "pluginBuild"):
+    for task in ("nodeSetup", "npmSetup", "npmInstall", "toolBuild"):
         assert f":example-tool:{task} " not in graph, f"Prebuilt assets unexpectedly schedule {task}"
     run(command, example)
     init.unlink()
@@ -144,21 +144,21 @@ def main():
     npm_output.mkdir()
     gradle = str(android / "gradlew")
     local = [f"-Psnapo.authoringRepository={repository}", "-Psnapo.localAuthoring=true"]
-    run([gradle, "--no-daemon", ":plugin-runtime:publishAllPublicationsToAuthoringRepository", *local], android)
+    run([gradle, "--no-daemon", ":tool-runtime:publishAllPublicationsToAuthoringRepository", *local], android)
     run([gradle, "--no-daemon", "test", "validatePlugins", "publishAllPublicationsToAuthoringRepository", *local],
-        ROOT / "sdk/gradle-plugin")
+        ROOT / "tool-sdk/gradle-plugin")
     coordinates = verify_maven(repository)
 
-    sdk = json.loads((ROOT / "sdk/host/package.json").read_text())
-    run(["npm", "ci", f"--registry={REGISTRY}"], ROOT / "sdk/host")
-    run(["npm", "run", "build"], ROOT / "sdk/host")
+    sdk = json.loads((ROOT / "tool-sdk/host/package.json").read_text())
+    run(["npm", "ci", f"--registry={REGISTRY}"], ROOT / "tool-sdk/host")
+    run(["npm", "run", "build"], ROOT / "tool-sdk/host")
     packed = json.loads(run(["npm", "pack", "--ignore-scripts",
-                             "--json", "--pack-destination", str(npm_output)], ROOT / "sdk/host", capture=True))
+                             "--json", "--pack-destination", str(npm_output)], ROOT / "tool-sdk/host", capture=True))
     archive = npm_output / packed[0]["filename"]
     verify_sdk(archive)
 
     example = output / "example"
-    shutil.copytree(ROOT / "examples/plugin", example,
+    shutil.copytree(ROOT / "examples/tool", example,
                     ignore=shutil.ignore_patterns(".gradle", ".kotlin", ".idea", "build", "node_modules",
                                                   "dist", ".test-build", "vendor", "local.properties"))
     frontend = example / "example-tool/frontend"

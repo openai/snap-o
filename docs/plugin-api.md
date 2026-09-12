@@ -1,7 +1,7 @@
 ---
 layout: guide
-title: Plugin API reference · Snap-O
-description: Configuration, Android HTTP and streaming APIs, and the TypeScript host API for Snap-O plugin authors.
+title: Tool API reference · Snap-O
+description: Configuration, Android HTTP and streaming APIs, and the TypeScript host API for Snap-O tool authors.
 styles:
 - guide.css
 languages:
@@ -11,52 +11,59 @@ languages:
 breadcrumbs:
 - label: Snap-O
   href: index.html
-- label: Build a plugin
+- label: Build a tool
   href: plugins.html
 ---
 
-# Plugin API reference
+# Tool API reference
 
-Use the Android library to handle requests inside your app. Use the frontend library to connect your web UI to Snap-O. Use the Gradle plugin to build and include that UI in your Android app.
+Use the Android library to handle requests inside your app. Use the frontend library to connect your web UI to Snap-O. Use the Tool Gradle Plugin to build and include that UI in your Android app.
 {.lead}
 
-Start with [Build a plugin](plugins.md) to add a tool to your Android project.
+Start with [Build a tool](plugins.md) to add a tool to your Android project.
 {.note}
 
 ## Packaging {#packaging}
 
-The Gradle plugin generates the descriptor, Android manifest entry, and frontend ZIP. Follow the [plugin configuration](plugins.md#manifest) and [frontend packaging](plugins.md#assets) steps in the guide.
+The Tool Gradle Plugin generates the descriptor, Android manifest entry, and frontend ZIP. Follow the [tool configuration](plugins.md#manifest) and [frontend packaging](plugins.md#assets) steps in the guide.
 
-Add the build plugin to your version catalog:
+The default setup uses two Gradle plugins:
+
+- `com.openai.snapo.tool` goes in your Android module and builds and packages the tool.
+- `com.openai.snapo.tool-settings` goes in `settings.gradle.kts` and enables Node downloads for the build.
+
+Gradle downloads and caches Node and npm automatically. You do not need to configure a Node installation for Gradle builds.
+
+Add the module plugin to your version catalog:
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
 snapo = "8.0.0"
 
 [plugins]
-snapo-plugin = { id = "com.openai.snapo.plugin", version.ref = "snapo" }
+snapo-tool = { id = "com.openai.snapo.tool", version.ref = "snapo" }
 ```
 
 ``` { .kotlin title="Your Android module's build.gradle.kts" }
 plugins {
-    alias(libs.plugins.snapo.plugin)
+    alias(libs.plugins.snapo.tool)
 }
 ```
 
-Apply the settings plugin in `settings.gradle.kts` with the same version:
+Apply the companion settings plugin once per Android project, using the same Snap-O version:
 
 ``` { .kotlin title="settings.gradle.kts" }
 plugins {
-    id("com.openai.snapo.plugin-settings") version "8.0.0"
+    id("com.openai.snapo.tool-settings") version "8.0.0"
 }
 ```
 
-Gradle does not support catalog aliases in settings files. Both plugins resolve from Maven Central; include `mavenCentral()` in `pluginManagement.repositories`.
+Gradle does not support catalog aliases in settings files. Both Gradle components resolve from Maven Central; include `mavenCentral()` in `pluginManagement.repositories`.
 
-The settings plugin lets Gradle download Node for the frontend build. The module plugin builds and packages the frontend using the settings below.
+Configure your tool in the Android module:
 
-``` { .kotlin title="Plugin definition" }
-snapoPlugin {
+``` { .kotlin title="Tool definition" }
+snapoTool {
     id = "example"
     displayName = "Example"
     protocolVersion = 1
@@ -65,7 +72,7 @@ snapoPlugin {
 }
 ```
 
-Set `id`, `displayName`, and `protocolVersion` for every plugin. `hostApiVersion` defaults to 1. If you set `icon`, include the named drawable in your Android resources.
+Set `id`, `displayName`, and `protocolVersion` for every tool. `hostApiVersion` defaults to 1. If you set `icon`, include the named drawable in your Android resources.
 
 | Property | Type | Required or default | Meaning |
 | --- | --- | --- | --- |
@@ -75,63 +82,76 @@ Set `id`, `displayName`, and `protocolVersion` for every plugin. `hostApiVersion
 | `hostApiVersion` | `Property<Int>` | `1` | Version of the Snap-O host API your UI needs. Must be greater than zero. |
 | `icon` | `Property<String>` | Optional | Android drawable or mipmap resource reference |
 | `frontendDirectory` | `DirectoryProperty` | `frontend/` | Folder with your UI source, `package.json`, and `package-lock.json`. |
-| `frontendAssets` | `DirectoryProperty` | Output of `pluginBuild` | Folder of built UI files to include in the APK. Must contain `index.html`. |
-| `downloadNode` | `Property<Boolean>` | `true` | Whether Gradle downloads Node. Set to `false` to use Node on `PATH`. |
-| `nodeVersion` | `Property<String>` | `22.23.2` | Node version that Gradle downloads. |
+| `frontendAssets` | `DirectoryProperty` | Output of `toolBuild` | Folder of built UI files to include in the APK. Must contain `index.html`. |
 
-You can assign these Gradle properties as shown above, or use `.set(...)` with a Gradle provider. `pluginBuild` runs the frontend's npm `build` script, which must write to `frontendDirectory/dist/`. `pluginDev` runs the npm `dev` script. When you build the Android module, Gradle includes the frontend ZIP and plugin details automatically.
+You can assign these Gradle properties as shown above, or use `.set(...)` with a Gradle provider. `toolBuild` runs the frontend's npm `build` script, which must write to `frontendDirectory/dist/`. `toolDev` runs the npm `dev` script. When you build the Android module, Gradle includes the frontend ZIP and tool metadata automatically.
 
-To use an existing Node installation:
+### Advanced: Node installation {#node-installation}
 
-``` { .kotlin title="Use Node and npm on PATH" }
-snapoPlugin {
+The default build uses its own cached Node installation, including when launched from Android Studio. Running `npm` commands directly in a terminal uses your local Node installation instead.
+
+Override these settings only if your build needs a different Node version or your team already manages Node:
+
+| Property | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `downloadNode` | `Property<Boolean>` | `true` | Use Gradle's managed Node and npm. Set to `false` to use the installation available to Gradle on `PATH`. |
+| `nodeVersion` | `Property<String>` | `22.23.2` | Version of the managed Node installation. Ignored when `downloadNode` is `false`. |
+
+``` { .kotlin title="Use your team's Node installation" }
+snapoTool {
     downloadNode = false
 }
 ```
 
-With `downloadNode = false`, you can omit `com.openai.snapo.plugin-settings`. To include UI files you have already built, set `frontendAssets`. Gradle then skips the default npm build:
+In this mode, Node and npm must be available to Gradle, including builds launched from Android Studio or CI. You can omit `com.openai.snapo.tool-settings`.
+
+The settings plugin registers the Node download repository. Keeping that repository in settings supports builds that use `FAIL_ON_PROJECT_REPOS`.
+
+### Custom frontend builds
+
+To include UI files you have already built, set `frontendAssets`. Gradle then skips the default npm build, so the settings plugin is unnecessary:
 
 ``` { .kotlin title="Package existing frontend files" }
-snapoPlugin {
+snapoTool {
     frontendAssets = layout.projectDirectory.dir("prebuilt-frontend")
 }
 ```
 
-You can also set `frontendAssets` from a Gradle provider for another task's output directory. Gradle will run that task before packaging the files. See the [packaging source and contributor notes](https://github.com/openai/snap-o/tree/main/sdk/gradle-plugin).
+You can also set `frontendAssets` from a Gradle provider for another task's output directory. Gradle will run that task before packaging the files. See the [packaging source and contributor notes](https://github.com/openai/snap-o/tree/main/tool-sdk/gradle-plugin).
 
 ### Generated constants
 
-The plugin generates a Java class in the Android module's namespace:
+The Tool Gradle Plugin generates a Java class in the Android module's namespace:
 
 ``` { .kotlin title="Constants available to Kotlin" }
-SnapOPlugin.ID               // String: "example"
-SnapOPlugin.PROTOCOL_VERSION // Int: 1
-SnapOPlugin.HOST_API_VERSION // Int: 1
+SnapOTool.ID               // String: "example"
+SnapOTool.PROTOCOL_VERSION // Int: 1
+SnapOTool.HOST_API_VERSION // Int: 1
 ```
 
-Each module defines one `snapoPlugin` and gets one generated `SnapOPlugin` class. Give each plugin module its own Android namespace.
+Each module defines one `snapoTool` and gets one generated `SnapOTool` class. Give each tool module its own Android namespace.
 
 ## Server and startup {#server}
 
-Add `com.openai.snapo:plugin-runtime` from Maven Central. Use the same version as the Snap-O Gradle plugins. Import its classes from `com.openai.snapo.plugin`.
+Add `com.openai.snapo:tool-runtime` from Maven Central. Use the same version as the Snap-O Tool Gradle Plugins. Import its classes from `com.openai.snapo.tool`.
 
-Create a `PluginServer` to receive HTTP requests in your Android app:
+Create a `ToolServer` to receive HTTP requests in your Android app:
 
-``` { .kotlin title="PluginServer signatures" }
-class PluginServer(
-    pluginId: String,
+``` { .kotlin title="ToolServer signatures" }
+class ToolServer(
+    toolId: String,
     maxConnections: Int = 32,
-    configure: PluginRoutes.() -> Unit,
+    configure: ToolRoutes.() -> Unit,
 ) : Closeable {
     val isRunning: Boolean
     fun start()
     fun startIfAllowed(
         context: Context,
-        releaseMetadataKey: String = "snapo.$pluginId.allow_release",
+        releaseMetadataKey: String = "snapo.$toolId.allow_release",
         allowRelease: Boolean = false,
     ): Boolean
     override fun close()
-    suspend fun serve(connection: PluginConnection)
+    suspend fun serve(connection: ToolConnection)
 }
 ```
 
@@ -141,18 +161,18 @@ Tests can use `serve` to pass in a connection directly. The server handles the r
 
 Use `startIfAllowed(context)` from an AndroidX Startup initializer, as shown in the [startup guide](plugins.md#startup). It checks the policy below, returns `true` when the server starts or is already running, and returns `false` when the policy denies startup or binding throws an `IOException`. Socket failures are logged and can be retried. A denied call does not stop a running server. Configuration errors still throw.
 
-The default release metadata key is `snapo.<plugin-id>.allow_release`. Supply `releaseMetadataKey` to keep an existing key, or `allowRelease = true` for an explicit release opt-in.
+The default release metadata key is `snapo.<tool-id>.allow_release`. Supply `releaseMetadataKey` to keep an existing key, or `allowRelease = true` for an explicit release opt-in.
 
-The lower-level `start()` does not check policy or catch startup failures. For custom startup code, call `PluginStartupPolicy.isAllowed` before it:
+The lower-level `start()` does not check policy or catch startup failures. For custom startup code, call `ToolStartupPolicy.isAllowed` before it:
 
 ``` { .kotlin title="Startup policy signatures" }
-PluginStartupPolicy.isAllowed(
+ToolStartupPolicy.isAllowed(
     context: Context,
     releaseMetadataKey: String,
     allowRelease: Boolean = false,
 ): Boolean
 
-PluginStartupPolicy.isAllowed(
+ToolStartupPolicy.isAllowed(
     isDebuggable: Boolean,
     allowRelease: Boolean,
     applicationAllowsRelease: Boolean = false,
@@ -165,25 +185,27 @@ The check allows startup when at least one of these is true:
 - You pass `allowRelease = true`.
 - The app sets the manifest metadata flag named by `releaseMetadataKey` to `true`.
 
-Keep the plugin dependency in debug builds unless you intend to inspect release builds. See the [startup guidance](plugins.md#startup).
+Keep the tool dependency in debug builds unless you intend to inspect release builds. See the [startup guidance](plugins.md#startup).
 
 ## Requests and responses {#requests}
 
-Inside `PluginServer { ... }`, use these `PluginRoutes` members:
+Inside `ToolServer { ... }`, use these `ToolRoutes` members:
 
 | Route API | Argument or value | What it does |
 | --- | --- | --- |
-| `get`, `post`, `put`, `patch`, `delete` | `(path, suspend PluginCall.() -> Unit)` | Choose the code to run for an HTTP method and path. |
+| `get`, `post`, `put`, `patch`, `delete` | `(path, suspend ToolCall.() -> Unit)` | Choose the code to run for an HTTP method and path. |
 | `route` | `(method, path, handler)` | Handle another HTTP method, written in uppercase. The server handles `OPTIONS` automatically. |
-| `sse` | `(path, heartbeatInterval = 30.seconds, handler)` | Handle a GET request by sending events. The block receives a `PluginSseSession`. |
-| `validateRequest` | `(PluginHttpRequest) -> Unit` | Check the request before choosing a route or sending a response. |
-| `onError` | `(Exception) -> PluginHttpResponse` | Choose the error response when a request fails before sending a response. |
-| `notFound` | `suspend PluginCall.() -> Unit` | Choose what happens when no route matches the path. |
-| `requestPolicy` | `PluginHttpRequestPolicy` | Set which requests to accept and how large their bodies can be. |
+| `sse` | `(path, heartbeatInterval = 30.seconds, handler)` | Handle a GET request by sending events. The block receives a `ToolSseSession`. |
+| `validateRequest` | `(ToolHttpRequest) -> Unit` | Check the request before choosing a route or sending a response. |
+| `onError` | `(Exception) -> ToolHttpResponse` | Choose the error response when a request fails before sending a response. |
+| `notFound` | `suspend ToolCall.() -> Unit` | Choose what happens when no route matches the path. |
+| `requestPolicy` | `ToolHttpRequestPolicy` | Set which requests to accept and how large their bodies can be. |
 | `preflightStatusCode` | `Int`, default `204` | Status for the browser's automatic preflight request. |
 | `exposedHeaders` | `String?`, default `null` | Name the response headers your frontend can read. |
 | `vary` | `String`, default `"Origin"` | `Vary` response header |
 | `cacheControl` | `String`, default `"no-store"` | `Cache-Control` response header |
+
+Malformed HTTP requests return 400; request-read timeouts return 408. Unexpected handler failures are logged and return a generic 500. Throw `ToolHttpException` for an intentional HTTP error, or use `onError` to map domain exceptions.
 
 A route matches the URL path, without its query parameters. You can name a variable path segment, such as `{id}` in `/items/{id}`.
 
@@ -191,7 +213,7 @@ The first matching route for the HTTP method handles the request. Put fixed path
 
 ### Request data
 
-| `PluginCall` member | Type | Meaning |
+| `ToolCall` member | Type | Meaning |
 | --- | --- | --- |
 | `pathParameters` | `Map<String, String>` | Values from variable path segments, with URL escapes decoded. `+` stays a plus sign. |
 | `request.method` | `String` | HTTP method |
@@ -204,19 +226,19 @@ The first matching route for the HTTP method handles the request. Put fixed path
 
 ### Response helpers
 
-``` { .kotlin title="PluginCall response signatures" }
+``` { .kotlin title="ToolCall response signatures" }
 fun respondJson(json: String, statusCode: Int = 200)
 fun respondText(text: String, statusCode: Int = 200)
 fun respondNoContent()
-fun respond(response: PluginHttpResponse, headers: Map<String, String> = emptyMap())
+fun respond(response: ToolHttpResponse, headers: Map<String, String> = emptyMap())
 ```
 
 A route handler sends one response. If it returns without sending one, the server sends 204. Pass a JSON string to `respondJson`; use your preferred JSON library to convert objects first. Once a response starts, the server cannot replace it with an error response.
 
 For custom bodies or content types, construct a response:
 
-``` { .kotlin title="PluginHttpResponse constructor" }
-data class PluginHttpResponse(
+``` { .kotlin title="ToolHttpResponse constructor" }
+data class ToolHttpResponse(
     val statusCode: Int,
     val body: ByteArray,
     val allowedMethods: String? = null,
@@ -226,16 +248,16 @@ data class PluginHttpResponse(
 
 You can also create responses with these methods:
 
-- `PluginHttpResponse.json(json, statusCode)` for JSON.
-- `PluginHttpResponse.text(text, statusCode)` for plain text.
-- `PluginHttpResponse.error(statusCode, message, allowedMethods)` for an error.
+- `ToolHttpResponse.json(json, statusCode)` for JSON.
+- `ToolHttpResponse.text(text, statusCode)` for plain text.
+- `ToolHttpResponse.error(statusCode, message, allowedMethods)` for an error.
 
-Throw `PluginHttpException(statusCode, message)` to return that HTTP error status. By default, invalid arguments and I/O errors return 400, and socket timeouts return 408. Other unexpected exceptions return 500 with a general error message.
+Throw `ToolHttpException(statusCode, message)` for an intentional HTTP error, or configure `onError` to map domain exceptions. Other handler exceptions, including `IllegalArgumentException`, `IOException`, and `SocketTimeoutException`, are logged and return a generic 500. The default 400/408 mapping applies to failures while reading the HTTP request.
 
 ### Request policy
 
 ``` { .kotlin title="Default request policy" }
-PluginHttpRequestPolicy(
+ToolHttpRequestPolicy(
     maxBodyBytes = 64 * 1024,
     bodyMethods = setOf("POST", "PUT", "PATCH"),
     httpVersions = setOf("HTTP/1.1"),
@@ -251,28 +273,28 @@ The server checks the browser's Host and Origin headers and adds CORS response h
 
 Use `sse` to keep an HTTP connection open and send events as they happen. If you need to check the request first, use `respondSse` inside a normal route.
 
-``` { .kotlin title="Streaming response signatures on PluginCall" }
+``` { .kotlin title="Streaming response signatures on ToolCall" }
 suspend fun respondSse(
     statusCode: Int = 200,
     headers: Map<String, String> = emptyMap(),
     chunked: Boolean = true,
     heartbeatInterval: Duration? = 30.seconds,
-    block: suspend PluginSseSession.() -> Unit,
+    block: suspend ToolSseSession.() -> Unit,
 )
 
 suspend fun respondStream(
     contentType: String,
     statusCode: Int = 200,
     headers: Map<String, String> = emptyMap(),
-    block: suspend PluginResponseStream.() -> Unit,
+    block: suspend ToolResponseStream.() -> Unit,
 )
 ```
 
-`PluginSseSession` is a `CoroutineScope`. Its public operations include:
+`ToolSseSession` is a `CoroutineScope`. Its public operations include:
 
 | Member | Behavior |
 | --- | --- |
-| `call` | Read the request through its `PluginCall`. |
+| `call` | Read the request through its `ToolCall`. |
 | `send(data: String, event: String? = null, id: String? = null)` | Format the data as an SSE event and send it. |
 | `heartbeat()` | Send one heartbeat comment to keep the stream active. |
 | `write(bytes: ByteArray)` | Send bytes that you have already formatted as an SSE event. |
@@ -282,18 +304,16 @@ The server sends heartbeat comments at the interval you choose. Use a positive, 
 
 The coroutine sending events ends when the client disconnects, the handler returns, or the server closes. Its heartbeat job and child coroutines end too. Use suspending calls, or `runInterruptible` around blocking calls, so this work can be cancelled.
 
-`PluginResponseStream.write(bytes)` writes one chunk of a response, such as a line of NDJSON. The runtime ends the response when the block returns. Your plugin decides how to queue events, identify them, and replay missed events.
+`ToolResponseStream.write(bytes)` writes one chunk of a response, such as a line of NDJSON. The runtime ends the response when the block returns. Your tool decides how to queue events, identify them, and replay missed events.
 
 ## Frontend host {#host}
 
-Import `host` from `@snap-o/plugin-host`. This object provides the current connection details and methods for using Snap-O's toolbar and macOS dialogs. The interface below lists its properties and methods; connection listeners are described later.
+Import `host` from `@snap-o/tool-host`. This object provides the current connection details and methods for using Snap-O's toolbar and macOS dialogs. The interface below lists its properties and methods; connection listeners are described later.
 
 ``` { .typescript title="Host interface" }
 interface Host extends EventTarget {
-  readonly connected: boolean;
-  readonly baseURL: string | null;
-  readonly manifest: ProcessManifest | null;
-  readonly plugin: PluginDescriptor | null;
+  readonly connection: ToolConnection | null;
+  onConnection(callback: (connection: ToolConnection | null) => void | (() => void)): () => void;
   setToolbar(toolbar: Toolbar): Promise<void>;
   openColorPicker(options: ColorPickerOptions): Promise<ColorPicker>;
   copyText(text: string): Promise<void>;
@@ -301,61 +321,33 @@ interface Host extends EventTarget {
 }
 ```
 
-`connected` means Snap-O has a server address for the current page. Requests to it can still fail. Read `baseURL` after every `connection` event because the address can change. Reading these properties starts setup with Snap-O, so the first read may show no connection.
+`host.connection` is `null` until Snap-O provides the server address and connection details. Requests can still fail while connected.
 
-### Metadata
+### Connection lifetime
 
-``` { .typescript title="Plugin and app metadata" }
-interface PluginDescriptor {
-  id: string;
-  name: string;
-  protocolVersion: number;
-  iconBase64?: string;
-  frontend?: { assetPath: string; hostApiVersion: number };
+``` { .typescript title="Connection subscription" }
+interface ToolConnection {
+  readonly baseURL: string;
+  readonly protocolVersion: number;
+  readonly processIdentity: string;
+  readonly signal: AbortSignal;
 }
 
-interface ProcessManifest {
-  version: number;
-  pid: number;
-  processName?: string;
-  androidUserId?: number;
-  processIdentity: string;
-  app: {
-    packageName: string;
-    name: string;
-    revision: string;
-    iconBase64?: string;
-    inspectors: PluginDescriptor[];
-  };
-}
+const unsubscribe = host.onConnection(connection => {
+  // Update the UI; null means disconnected.
+  // Return a cleanup function for any stream or UI work started here.
+});
 ```
 
-`host.plugin` contains details about the plugin shown in this page. `host.manifest` contains details about the Android app process. `processIdentity` changes when that process restarts. `app.revision` identifies the installed version of the app package.
+`baseURL` is the forwarded Android server address. Check `protocolVersion` against the API versions your frontend supports. `processIdentity` is an opaque token that changes when the Android process restarts; use it to scope state you retain across reconnects.
 
-`app.inspectors` lists the app's plugins. It keeps its old name so existing clients can still read it. Messages between Snap-O and the SDK also keep the internal `inspector` key. Use `host.plugin` to read the selected plugin's details; the SDK handles these messages for you.
+The callback runs immediately and whenever the host reports a connection change. Its previous cleanup runs before the next callback and when unsubscribing. A new connection can reuse the same URL. Its `signal` aborts when that connection ends; use it with `fetch` for requests tied to the connection. Unsubscribing one UI does not abort another UI's requests.
 
-### Connection events and disposal
+Snap-O unloads pages before releasing their forwarded ports. Hidden pages may stay loaded and receive a disconnected state. In a loaded page, close an old `EventSource` before replacing it, or when removing its UI, to stop retries at its old URL. See the [connection example](plugins.md#frontend).
 
-``` { .typescript title="Listen for connection changes" }
-import { host } from "@snap-o/plugin-host";
+The lower-level `connection` event remains available through `addEventListener`. It reports a boolean `connected` property; read `host.connection` after subscribing and on each event.
 
-const onConnection = () => {
-  // Read host.connected, host.baseURL, and host.plugin here.
-};
-host.addEventListener("connection", onConnection);
-onConnection();
-
-// During component or page disposal:
-host.removeEventListener("connection", onConnection);
-```
-
-A connection listener receives a `ConnectionEvent` with a boolean `connected` property. The event can also mean that the app details or server address changed. Read the current host properties on each event, even if `connected` has not changed.
-
-Snap-O replaces a page when the app or process it belongs to changes. It closes old pages before releasing the ADB connection they used.
-
-Your frontend must still cancel unfinished requests, close event streams and color pickers, and remove listeners. A hidden page can stay loaded after you switch tools, and can receive a disconnected state. See the [connection example](plugins.md#frontend).
-
-The package also exports `Host`, `PluginHost`, and the related types. Most frontends use the `host` object. Tests can supply a fake with just the properties and methods their code uses. `PluginHost` accepts a custom transport for testing messages to and from Snap-O.
+The package also exports `Host`, `ToolHost`, and the related types. Most frontends use the `host` object. Tests can supply a fake with just the properties and methods their code uses. `ToolHost` accepts a custom transport for testing messages to and from Snap-O.
 
 The SDK reports connection changes. Your frontend makes HTTP requests, reads JSON, checks protocol versions, and reconnects its event streams.
 
@@ -365,21 +357,31 @@ The SDK reports connection changes. Your frontend makes HTTP requests, reads JSO
 type ToolbarIcon = "clear" | "sortAscending" | "sortDescending"
   | "search" | "export" | "reset";
 
-type ToolbarAction =
-  | { type: "button"; id: string; icon: ToolbarIcon; label: string;
-      enabled?: boolean; onClick: () => void }
-  | { type: "search"; id: string; label: string; value: string;
-      enabled?: boolean; onChange: (value: string) => void };
+interface ToolbarAction {
+  id: string;
+  icon: ToolbarIcon;
+  label: string;
+  enabled?: boolean;
+  onClick: () => void;
+}
+
+interface ToolbarSearch {
+  label: string;
+  value: string;
+  enabled?: boolean;
+  onChange: (value: string) => void;
+}
 
 interface Toolbar {
-  start: readonly ToolbarAction[];
-  end?: readonly ToolbarAction[];
+  actions?: readonly ToolbarAction[];
+  search?: ToolbarSearch;
+  endActions?: readonly ToolbarAction[];
 }
 ```
 
-`setToolbar` replaces the toolbar. The `start` group accepts up to three controls, with at most one search field. The `end` group accepts buttons only. Give each control a unique ID across both groups.
+`setToolbar` replaces the toolbar. The main area accepts at most three controls: up to three actions, or two actions plus search. `endActions` places buttons in the separate trailing area, such as Network's export action. There are at most eleven controls across both areas. Action IDs must be unique; `search` is reserved when the search field is present.
 
-Clear the toolbar with `setToolbar({ start: [] })` when removing the UI. Callbacks return `void`, so catch errors from async work inside each callback.
+Clear the toolbar with `setToolbar({})` when removing the UI. Catch errors from asynchronous work inside callbacks.
 
 ``` { .typescript title="Native color picker types" }
 interface ColorPickerOptions {
@@ -406,8 +408,8 @@ These versions describe different things:
 
 | Version | Who sets it | What it means |
 | --- | --- | --- |
-| Maven/npm package version | SDK or plugin author | Which release of a library or build plugin you depend on. |
-| `protocolVersion` | Your plugin | Which data format the Android server uses. Your frontend checks whether it supports it. |
+| Maven/npm package version | SDK or tool author | Which release of a library or Gradle plugin you depend on. |
+| `protocolVersion` | Your tool | Which data format the Android server uses. Your frontend checks whether it supports it. |
 | `hostApiVersion` | Snap-O | Which Snap-O host API the frontend needs. Currently version 1. |
 
 Your frontend must check the server's protocol version; Snap-O cannot check your data format for you. Example accepts only protocol 1. Choose whether your frontend supports one version or several, and check incoming data too. A change to your data format does not require a change to `hostApiVersion`.
@@ -415,7 +417,7 @@ Your frontend must check the server's protocol version; Snap-O cannot check your
 | Setting | Current default or limit |
 | --- | --- |
 | Runtime request body | 64 KiB; configurable with `requestPolicy` |
-| Runtime connections | 32 per plugin/process; constructor override available |
+| Runtime connections | 32 per tool/process; constructor override available |
 | Request read / finite request / blocked write | 5 seconds / 30 seconds / 5 seconds; write checks run once per second |
 | SSE heartbeat | 30 seconds; configurable or disabled per stream |
 | Frontend ZIP | 16 MiB compressed and expanded; at most 1,024 entries |
@@ -423,8 +425,8 @@ Your frontend must check the server's protocol version; Snap-O cannot check your
 
 SSE connections can stay open beyond the 30-second request limit.
 
-Include all files your frontend needs in its build. Snap-O blocks remote scripts, frames, workers, forms, and requests to servers other than your plugin's Android server. It also blocks WebAssembly and running JavaScript from strings. If you select a local development server, Snap-O allows that server and its hot-reload connection.
+Include all files your frontend needs in its build. Snap-O blocks remote scripts, frames, workers, forms, and requests to servers other than your tool's Android server. It also blocks WebAssembly and running JavaScript from strings. If you select a local development server, Snap-O allows that server and its hot-reload connection.
 
-These checks do not make JavaScript from an untrusted APK safe to run. See [WebView safeguards](https://github.com/openai/snap-o/blob/main/plugins/README.md#webview-safeguards) for details.
+These checks do not make JavaScript from an untrusted APK safe to run. See [WebView safeguards](https://github.com/openai/snap-o/blob/main/tools/README.md#webview-safeguards) for details.
 
-The [runtime source](https://github.com/openai/snap-o/tree/main/sdk/runtime/src/main/java/com/openai/snapo/plugin) also provides APIs for working directly with sockets, HTTP parsing, and event formatting. Most plugins can use `PluginServer` and its routes. Plugin discovery also supports plugins without a frontend; this guide covers tools with a web UI.
+The [runtime source](https://github.com/openai/snap-o/tree/main/tool-sdk/runtime/src/main/java/com/openai/snapo/tool) contains the HTTP and SSE implementation. Most tools can use `ToolServer` and its routes. Tool plugin discovery also supports tool plugins without a frontend; this guide covers tools with a web UI.

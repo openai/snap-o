@@ -5,7 +5,7 @@ struct AppLaunchState: Encodable {
   let error: String?
 }
 
-struct PluginHostState: Encodable {
+struct ToolHostState: Encodable {
   let revision: Int
   let selection: SelectedAppTool?
   let selectedApp: InspectableApp?
@@ -21,12 +21,12 @@ struct AppToolSnapshot {
   let loading: Bool
   let appLaunch: AppLaunchState?
 
-  func pageState(for kind: PluginID) -> PluginHostState {
+  func pageState(for kind: ToolID) -> ToolHostState {
     let displayed = state.displayed[kind]
     let waiting = loading || state.isRestoring || state.selection?.protocolVersion == nil
     let active = state.preferredKind == kind
     let connected = active && !waiting && state.selection?.kind == kind
-    return PluginHostState(
+    return ToolHostState(
       revision: revision, selection: displayed, selectedApp: state.selectedApp,
       isActive: active, isConnected: connected,
       isWaiting: waiting, appLaunch: appLaunch
@@ -38,9 +38,9 @@ struct AppToolSnapshot {
 final class AppToolModel {
   var stateChanged: ((AppToolSnapshot) -> Void)?
 
-  private let discover: () async throws -> PluginDiscoverySnapshot
+  private let discover: () async throws -> ToolDiscoverySnapshot
   private let changes: (() async -> AsyncStream<Void>)?
-  private let currentDiscovery: (() async -> PluginDiscoverySnapshot)?
+  private let currentDiscovery: (() async -> ToolDiscoverySnapshot)?
   private let openApp: (OpenAppInput) async throws -> Void
   private let sleep: (Duration) async throws -> Void
   private let preferences: UserDefaults
@@ -62,9 +62,9 @@ final class AppToolModel {
 
   init(
     preferences: UserDefaults = .standard,
-    discover: @escaping () async throws -> PluginDiscoverySnapshot,
+    discover: @escaping () async throws -> ToolDiscoverySnapshot,
     changes: (() async -> AsyncStream<Void>)? = nil,
-    currentDiscovery: (() async -> PluginDiscoverySnapshot)? = nil,
+    currentDiscovery: (() async -> ToolDiscoverySnapshot)? = nil,
     openApp: @escaping (OpenAppInput) async throws -> Void,
     sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   ) {
@@ -137,7 +137,7 @@ final class AppToolModel {
     }
   }
 
-  private func applyDiscovery(_ discovery: PluginDiscoverySnapshot) {
+  private func applyDiscovery(_ discovery: ToolDiscoverySnapshot) {
     guard running else { return }
     if let revision = discovery.revision {
       guard discoveryRevision.map({ revision > $0 }) ?? true else { return }

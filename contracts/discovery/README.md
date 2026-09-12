@@ -45,7 +45,7 @@ Clients that do not display a frontend can omit asset loading. The desktop reads
 
 ## Reading metadata
 
-Use `PackageManager.getApplicationInfo` with `GET_META_DATA`, `ApplicationInfo.loadXmlMetaData`, and `PackageManager.getResourcesForApplication` in a separate reader process. Resolve the correct Android user and verify package ownership against the process UID. The [bundled reader](../../plugin-reader/README.md) supports non-debuggable apps without invoking app code.
+Use `PackageManager.getApplicationInfo` with `GET_META_DATA`, `ApplicationInfo.loadXmlMetaData`, and `PackageManager.getResourcesForApplication` in a separate reader process. Resolve the correct Android user and verify package ownership against the process UID. The [bundled reader](../../tool-reader/README.md) supports non-debuggable apps without invoking app code.
 
 Cache installed metadata separately from live connections. Invalidate it when the installed package or resource configuration changes. A missing or malformed descriptor is not evidence that the socket disappeared; show the app and an unsupported-tool state. Never infer that a plugin is enabled merely because its descriptor is installed. When a new socket appears, refresh metadata for all visible tool sockets in that process and update their cached records together.
 

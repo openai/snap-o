@@ -6,19 +6,21 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXContainerItemProxy section */
-		E30000032F70000100C0FFEE = {isa = PBXContainerItemProxy; containerPortal = 3234F4492E2EC5030057AE77; proxyType = 1; remoteGlobalIDString = 3234F4502E2EC5030057AE77; remoteInfo = "Snap-O"; };
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXTargetDependency section */
-		E30000042F70000100C0FFEE = {isa = PBXTargetDependency; target = 3234F4502E2EC5030057AE77; targetProxy = E30000032F70000100C0FFEE; };
-/* End PBXTargetDependency section */
-
 /* Begin PBXBuildFile section */
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
 		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E30000032F70000100C0FFEE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3234F4492E2EC5030057AE77 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3234F4502E2EC5030057AE77;
+			remoteInfo = "Snap-O";
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		3234F4512E2EC5030057AE77 /* Snap-O.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Snap-O.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -47,7 +49,11 @@
 			path = "Snap-O";
 			sourceTree = "<group>";
 		};
-		E30000022F70000100C0FFEE /* Snap-OTests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = "Snap-OTests"; sourceTree = "<group>"; };
+		E30000022F70000100C0FFEE /* Snap-OTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Snap-OTests";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,7 +67,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E30000062F70000100C0FFEE = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E30000062F70000100C0FFEE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -132,14 +144,23 @@
 		};
 		E30000082F70000100C0FFEE /* Snap-OTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E30000092F70000100C0FFEE;
-			buildPhases = (E30000052F70000100C0FFEE, E30000062F70000100C0FFEE, E30000072F70000100C0FFEE);
-			buildRules = ();
-			dependencies = (E30000042F70000100C0FFEE);
-			fileSystemSynchronizedGroups = (E30000022F70000100C0FFEE);
+			buildConfigurationList = E30000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OTests" */;
+			buildPhases = (
+				E30000052F70000100C0FFEE /* Sources */,
+				E30000062F70000100C0FFEE /* Frameworks */,
+				E30000072F70000100C0FFEE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E30000042F70000100C0FFEE /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E30000022F70000100C0FFEE /* Snap-OTests */,
+			);
 			name = "Snap-OTests";
 			productName = "Snap-OTests";
-			productReference = E30000012F70000100C0FFEE;
+			productReference = E30000012F70000100C0FFEE /* Snap-OTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -189,7 +210,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E30000072F70000100C0FFEE = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E30000072F70000100C0FFEE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -201,16 +228,16 @@
 			);
 			inputPaths = (
 				"$(PROJECT_DIR)/../cli/snapo",
-				"$(PROJECT_DIR)/../plugin-reader/snapo-discovery.jar",
+				"$(PROJECT_DIR)/../tool-reader/snapo-tool-reader.jar",
 			);
 			name = "Embed Snap-O CLI";
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/snapo",
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/snapo-discovery.jar",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/snapo-tool-reader.jar",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../cli/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n/bin/mkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n/usr/bin/ditto \"${PROJECT_DIR}/../plugin-reader/snapo-discovery.jar\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/snapo-discovery.jar\"\n# Remove the old executable-directory copy from incremental builds.\n/bin/rm -f \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo-discovery.jar\"\n\nif [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\nfi\n";
+			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../cli/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n/bin/mkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n/usr/bin/ditto \"${PROJECT_DIR}/../tool-reader/snapo-tool-reader.jar\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/snapo-tool-reader.jar\"\n# Remove old reader copies from incremental builds.\n/bin/rm -f \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo-discovery.jar\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/snapo-discovery.jar\"\n\nif [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -223,8 +250,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E30000052F70000100C0FFEE = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E30000052F70000100C0FFEE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E30000042F70000100C0FFEE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3234F4502E2EC5030057AE77 /* Snap-O */;
+			targetProxy = E30000032F70000100C0FFEE /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3234F45B2E2EC5040057AE77 /* Debug */ = {
@@ -437,13 +478,17 @@
 			};
 			name = Release;
 		};
-		E300000A2F70000100C0FFEE = {
+		E300000A2F70000100C0FFEE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@loader_path/../Frameworks", "@executable_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+					"@executable_path/../Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 6.0;
@@ -451,13 +496,17 @@
 			};
 			name = Debug;
 		};
-		E300000B2F70000100C0FFEE = {
+		E300000B2F70000100C0FFEE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@loader_path/../Frameworks", "@executable_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+					"@executable_path/../Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 6.0;
@@ -486,10 +535,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E30000092F70000100C0FFEE = {isa = XCConfigurationList; buildConfigurations = (E300000A2F70000100C0FFEE, E300000B2F70000100C0FFEE); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		E30000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E300000A2F70000100C0FFEE /* Debug */,
+				E300000B2F70000100C0FFEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
-
-
 
 /* Begin XCRemoteSwiftPackageReference section */
 		32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */ = {
@@ -500,11 +555,13 @@
 				minimumVersion = 2.9.1;
 			};
 		};
-
 		D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
-			requirement = {kind = upToNextMajorVersion; minimumVersion = 0.9.20; };
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.20;
+			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 

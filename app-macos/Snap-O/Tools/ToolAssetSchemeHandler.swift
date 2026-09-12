@@ -6,7 +6,7 @@ import WebKit
 final class ToolAssetSchemeHandler: NSObject, WKURLSchemeHandler {
   static let scheme = "snapo-inspector"
   let baseURL: URL
-  var bundle: PluginFrontendBundle?
+  var bundle: ToolFrontendBundle?
 
   init(storageIdentifier: UUID?) {
     guard let url = URL(string: "\(Self.scheme)://\((storageIdentifier ?? UUID()).uuidString.lowercased())/") else {

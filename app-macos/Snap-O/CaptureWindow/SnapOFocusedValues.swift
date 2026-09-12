@@ -8,14 +8,14 @@ private struct WorkspaceControllerKey: FocusedValueKey {
   typealias Value = WorkspaceLayoutController
 }
 
-private struct PluginHostKey: FocusedValueKey {
-  typealias Value = PluginHostModel
+private struct ToolHostKey: FocusedValueKey {
+  typealias Value = ToolHostModel
 }
 
 extension FocusedValues {
-  var toolHost: PluginHostModel? {
-    get { self[PluginHostKey.self] }
-    set { self[PluginHostKey.self] = newValue }
+  var toolHost: ToolHostModel? {
+    get { self[ToolHostKey.self] }
+    set { self[ToolHostKey.self] = newValue }
   }
 
   var captureController: CaptureWindowController? {

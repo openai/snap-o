@@ -9,7 +9,7 @@ From the repository root:
 python3 -m unittest discover -s cli/tests -p 'test_*.py'
 ```
 
-The CLI uses its own ADB transport. It shares the Android [`plugin-reader/`](../plugin-reader/README.md) helper with the macOS app.
-For standalone distribution, place `snapo-discovery.jar` beside `snapo`. The macOS app bundles both files automatically.
+The CLI uses its own ADB transport. It shares the Android [`tool-reader/`](../tool-reader/README.md) helper with the macOS app.
+For standalone distribution, place `snapo-tool-reader.jar` beside `snapo`. The macOS app bundles both files automatically.
 
 See the [CLI guide](../docs/cli.md) for installation and usage.

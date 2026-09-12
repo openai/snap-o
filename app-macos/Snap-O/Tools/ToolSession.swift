@@ -3,11 +3,11 @@ import Observation
 @Observable
 @MainActor
 final class ToolSession {
-  private(set) var model: PluginHostModel?
+  private(set) var model: ToolHostModel?
 
   @ObservationIgnored private let adbService: ADBService
   @ObservationIgnored private let deviceTracker: DeviceTracker
-  @ObservationIgnored private var service: PluginService?
+  @ObservationIgnored private var service: ToolService?
 
   init(adbService: ADBService, deviceTracker: DeviceTracker) {
     self.adbService = adbService
@@ -16,9 +16,9 @@ final class ToolSession {
 
   func startIfNeeded() {
     guard model == nil else { return }
-    let service = PluginService(adbService: adbService, deviceTracker: deviceTracker)
+    let service = ToolService(adbService: adbService, deviceTracker: deviceTracker)
     self.service = service
-    model = PluginHostModel(service: service)
+    model = ToolHostModel(service: service)
   }
 
   func stop() async {
