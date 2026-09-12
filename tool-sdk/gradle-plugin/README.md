@@ -6,7 +6,11 @@ For Android socket serving and HTTP handling, use [tool-runtime](../runtime/READ
 
 ## Configuration
 
-The Snap-O build includes this build integration through `pluginManagement.includeBuild("tool-sdk/gradle-plugin")`. Independent projects resolve its versioned Gradle marker from Maven Central or a local staging repository. Apply it alongside an Android library or application Gradle plugin:
+The Snap-O build includes this build integration through `pluginManagement.includeBuild("tool-sdk/gradle-plugin")`. Independent projects resolve its versioned Gradle marker from Maven Central or a local staging repository.
+
+The default setup uses `com.openai.snapo.tool` in the Android module and `com.openai.snapo.tool-settings` in the project settings. The module plugin builds and packages the tool; the settings plugin enables managed Node downloads.
+
+Apply the module plugin alongside an Android library or application Gradle plugin:
 
 ```kotlin
 plugins {
@@ -36,7 +40,6 @@ plugins {
 
 It declares the Node download repository and works with `FAIL_ON_PROJECT_REPOS`. No Ivy artifact patterns are needed in the consuming build. Declare `mavenCentral()` in `pluginManagement.repositories`, or use the local staging repository before publication. The settings integration has a separate artifact so loading it does not move Android Gradle plugin classes into the settings classloader.
 
-To use Node and npm already on `PATH`, set `downloadNode = false` in `snapoTool`. In that mode the settings integration is optional. To download a different supported Node version, set `nodeVersion`; its default is `22.23.2`. Node must satisfy the frontend package's `engines` requirement.
 
 The Tool Gradle Plugin generates a Java `SnapOTool` class in the module's Android namespace, accessible from Java or Kotlin. Its `ID`, `PROTOCOL_VERSION`, and `HOST_API_VERSION` constants come from the same definition as the discovery descriptor. For example:
 
@@ -49,6 +52,15 @@ val server = ToolServer(SnapOTool.ID) {
 Frontend code still declares the domain protocol versions it supports. That compatibility check is independent of the backend's advertised version.
 
 Each variant receives generated resources and assets through Android Gradle plugin source APIs. No source manifest edit is needed. The metadata references `snapo/inspectors/<id>/frontend.zip`. `index.html` is implicit. The ZIP uses reproducible file order and timestamps.
+
+## Advanced: Node installation
+
+Gradle manages Node and npm by default. Override this only if your build needs a different version or your team already manages Node.
+
+- Set `nodeVersion` in `snapoTool` to select a different managed version.
+- Set `downloadNode = false` to use Node and npm available to Gradle on `PATH`. In this mode, `nodeVersion` is ignored and the settings plugin is optional. The installation must also be available to Android Studio and CI builds.
+
+Node must satisfy the frontend package's `engines` requirement. These settings affect Gradle tasks; direct terminal commands use your local installation.
 
 ## Custom frontend build
 

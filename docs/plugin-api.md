@@ -27,7 +27,14 @@ Start with [Build a tool](plugins.md) to add a tool to your Android project.
 
 The Tool Gradle Plugin generates the descriptor, Android manifest entry, and frontend ZIP. Follow the [tool configuration](plugins.md#manifest) and [frontend packaging](plugins.md#assets) steps in the guide.
 
-Add the Tool Gradle Plugin to your version catalog:
+The default setup uses two Gradle plugins:
+
+- `com.openai.snapo.tool` goes in your Android module and builds and packages the tool.
+- `com.openai.snapo.tool-settings` goes in `settings.gradle.kts` and enables Node downloads for the build.
+
+Gradle downloads and caches Node and npm automatically. You do not need to configure a Node installation for Gradle builds.
+
+Add the module plugin to your version catalog:
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
@@ -43,7 +50,7 @@ plugins {
 }
 ```
 
-Apply the Tool settings integration in `settings.gradle.kts` with the same version:
+Apply the companion settings plugin once per Android project, using the same Snap-O version:
 
 ``` { .kotlin title="settings.gradle.kts" }
 plugins {
@@ -53,9 +60,9 @@ plugins {
 
 Gradle does not support catalog aliases in settings files. Both Gradle components resolve from Maven Central; include `mavenCentral()` in `pluginManagement.repositories`.
 
-The Tool settings integration lets Gradle download Node for the frontend build. The Tool Gradle Plugin builds and packages the frontend using the settings below.
+Configure your tool in the Android module:
 
-``` { .kotlin title="Plugin definition" }
+``` { .kotlin title="Tool definition" }
 snapoTool {
     id = "example"
     displayName = "Example"
@@ -76,20 +83,33 @@ Set `id`, `displayName`, and `protocolVersion` for every tool. `hostApiVersion` 
 | `icon` | `Property<String>` | Optional | Android drawable or mipmap resource reference |
 | `frontendDirectory` | `DirectoryProperty` | `frontend/` | Folder with your UI source, `package.json`, and `package-lock.json`. |
 | `frontendAssets` | `DirectoryProperty` | Output of `toolBuild` | Folder of built UI files to include in the APK. Must contain `index.html`. |
-| `downloadNode` | `Property<Boolean>` | `true` | Whether Gradle downloads Node. Set to `false` to use Node on `PATH`. |
-| `nodeVersion` | `Property<String>` | `22.23.2` | Node version that Gradle downloads. |
 
 You can assign these Gradle properties as shown above, or use `.set(...)` with a Gradle provider. `toolBuild` runs the frontend's npm `build` script, which must write to `frontendDirectory/dist/`. `toolDev` runs the npm `dev` script. When you build the Android module, Gradle includes the frontend ZIP and tool metadata automatically.
 
-To use an existing Node installation:
+### Advanced: Node installation {#node-installation}
 
-``` { .kotlin title="Use Node and npm on PATH" }
+The default build uses its own cached Node installation, including when launched from Android Studio. Running `npm` commands directly in a terminal uses your local Node installation instead.
+
+Override these settings only if your build needs a different Node version or your team already manages Node:
+
+| Property | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `downloadNode` | `Property<Boolean>` | `true` | Use Gradle's managed Node and npm. Set to `false` to use the installation available to Gradle on `PATH`. |
+| `nodeVersion` | `Property<String>` | `22.23.2` | Version of the managed Node installation. Ignored when `downloadNode` is `false`. |
+
+``` { .kotlin title="Use your team's Node installation" }
 snapoTool {
     downloadNode = false
 }
 ```
 
-With `downloadNode = false`, you can omit `com.openai.snapo.tool-settings`. To include UI files you have already built, set `frontendAssets`. Gradle then skips the default npm build:
+In this mode, Node and npm must be available to Gradle, including builds launched from Android Studio or CI. You can omit `com.openai.snapo.tool-settings`.
+
+The settings plugin registers the Node download repository. Keeping that repository in settings supports builds that use `FAIL_ON_PROJECT_REPOS`.
+
+### Custom frontend builds
+
+To include UI files you have already built, set `frontendAssets`. Gradle then skips the default npm build, so the settings plugin is unnecessary:
 
 ``` { .kotlin title="Package existing frontend files" }
 snapoTool {

@@ -45,6 +45,8 @@ Snap-O's Tool Gradle Plugin builds your web frontend, packages it into a ZIP, an
 
 ### Add the Tool Gradle Plugin {#the-build-plugin-comopenaisnapoplugin}
 
+This setup has a module plugin that builds your tool and a companion settings plugin that enables Node downloads. Gradle manages Node and npm for frontend builds automatically.
+
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
 snapo = "8.0.0"
@@ -53,7 +55,7 @@ snapo = "8.0.0"
 snapo-tool = { id = "com.openai.snapo.tool", version.ref = "snapo" }
 ```
 
-Apply the Tool settings integration so Gradle can download Node for the frontend build:
+Apply the companion `com.openai.snapo.tool-settings` plugin once in your Android project’s `settings.gradle.kts`:
 
 ``` { .kotlin title="settings.gradle.kts" }
 plugins {
