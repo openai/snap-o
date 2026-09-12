@@ -6,9 +6,9 @@ import com.openai.snapo.tool.ToolHttpRequest
 import com.openai.snapo.tool.ToolHttpRequestPolicy
 import com.openai.snapo.tool.ToolServer
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import java.net.URI
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -84,14 +84,10 @@ internal class NetworkToolHttp(
                     else -> return@mapNotNull null
                 }
                 val weight = parts.drop(1).firstOrNull { it.startsWith("q=") }?.removePrefix("q=")
-                val quality = if (weight == null) {
-                    1.0
-                } else {
-                    requireNotNull(weight.toDoubleOrNull()) {
-                        "Invalid Accept quality"
-                    }
+                val quality = if (weight == null) 1.0 else weight.toDoubleOrNull()
+                if (quality == null || quality !in 0.0..1.0) {
+                    throw ToolHttpException(400, "Invalid Accept quality")
                 }
-                require(quality in 0.0..1.0) { "Invalid Accept quality" }
                 specificity to quality
             }.maxByOrNull { it.first }?.second ?: 0.0
         }
@@ -103,7 +99,9 @@ internal class NetworkToolHttp(
 
     private suspend fun ToolCall.body(method: String) {
         val requestId = pathParameters.getValue("requestId")
-        require(requestId.isNotEmpty() && requestId.length <= 512) { "Invalid request id" }
+        if (requestId.isEmpty() || requestId.length > 512) {
+            throw ToolHttpException(400, "Invalid request id")
+        }
         val reply = commandHandler(
             CdpMessage(
                 id = 1,
@@ -180,8 +178,15 @@ internal class NetworkToolHttp(
         if (request.method != method) throw ToolHttpException(405, "Use $method")
     }
 
-    private fun ToolHttpRequest.json(): JsonObject =
-        ProtocolJson.parseToJsonElement(bodyText()).jsonObject
+    private fun ToolHttpRequest.json(): JsonObject {
+        val body = bodyText()
+        val value = try {
+            ProtocolJson.parseToJsonElement(body)
+        } catch (error: SerializationException) {
+            throw ToolHttpException(400, "Invalid JSON object", error)
+        }
+        return value as? JsonObject ?: throw ToolHttpException(400, "Expected a JSON object")
+    }
 }
 
 private val RequestPolicy = ToolHttpRequestPolicy(

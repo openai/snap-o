@@ -68,6 +68,55 @@ class NetworkToolHttpTest {
     }
 
     @Test
+    fun `invalid Accept quality returns a client error`() {
+        for (quality in listOf("invalid", "", "-0.1", "1.1", "NaN", "Infinity")) {
+            val (status, _) = request("/network", accept = "text/event-stream;q=$quality")
+            assertEquals(quality, "HTTP/1.1 400 Bad Request", status)
+        }
+    }
+
+    @Test
+    fun `oversized body request ids return a client error`() {
+        for (body in listOf("request-body", "response-body")) {
+            assertEquals(
+                "HTTP/1.1 400 Bad Request",
+                request("/network/requests/${"x".repeat(513)}/$body").first
+            )
+        }
+    }
+
+    @Test
+    fun `unexpected body handler failures remain server errors`() {
+        Fixture(
+            NetworkToolHttp(commandHandler = { throw IllegalArgumentException("Internal failure") })
+        ).use { server ->
+            val response = server.request("/network/requests/example/response-body")
+            assertEquals(500, response.statusCode())
+            assertTrue(response.body().contains("Internal server error"))
+            assertTrue(!response.body().contains("Internal failure"))
+        }
+    }
+
+    @Test
+    fun `interception endpoints reject malformed and non-object JSON`() {
+        Fixture(NetworkToolHttp()).use { server ->
+            val reader = server.stream("/interception", routes(), "POST")
+            val runner = server.runnerId(reader)
+            val endpoints = listOf(
+                "POST" to "/interception",
+                "PUT" to "/interception/$runner/routes",
+                "POST" to "/interception/$runner/exchanges/example"
+            )
+            for (body in listOf("{", "", "[]", "null", "42", "true", "\"text\"")) {
+                for ((method, path) in endpoints) {
+                    assertEquals("$method $path: $body", 400, server.request(path, method, body).statusCode())
+                }
+            }
+            assertEquals(200, server.request("/interception/$runner/routes", "PUT", routes()).statusCode())
+        }
+    }
+
+    @Test
     fun `body reads return HTTP JSON without command envelopes`() {
         val http = NetworkToolHttp(commandHandler = { message ->
             assertEquals(CdpNetworkMethod.GetResponseBody, message.method)
