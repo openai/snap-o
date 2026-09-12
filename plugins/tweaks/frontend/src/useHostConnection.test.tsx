@@ -89,7 +89,9 @@ describe("host connection snapshots", () => {
     const host = createHost();
     await act(() => render(<Probe host={host} />, container));
     const initialRevision = latest.revision;
-    await act(() => host.dispatchEvent(new Event("connection")));
+    await act(() => {
+      host.dispatchEvent(new Event("connection"));
+    });
     expect(latest.revision).toBe(initialRevision + 1);
   });
 
