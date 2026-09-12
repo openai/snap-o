@@ -6,9 +6,7 @@ export function useHostConnection(host: Host): { connected: boolean; revision: n
   useEffect(() => {
     const update = () => setState((current) => ({ connected: host.connected, revision: current.revision + 1 }));
     host.addEventListener("connection", update);
-    setState((current) =>
-      current.connected === host.connected ? current : { connected: host.connected, revision: current.revision + 1 }
-    );
+    update();
     return () => host.removeEventListener("connection", update);
   }, [host]);
   return state;

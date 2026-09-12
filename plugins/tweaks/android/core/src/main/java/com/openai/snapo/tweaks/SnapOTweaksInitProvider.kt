@@ -2,13 +2,12 @@ package com.openai.snapo.tweaks
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
 import android.database.Cursor
 import android.net.Uri
-import android.util.Log
 import com.openai.snapo.plugin.PluginStartupPolicy
 import com.openai.snapo.tweaks.internal.TweakHttpServer
 import com.openai.snapo.tweaks.internal.TweaksRuntimePolicy
-import java.io.IOException
 
 /** Enables live tweaks for debuggable apps or explicitly opted-in release apps. */
 internal class SnapOTweaksInitProvider : ContentProvider() {
@@ -20,7 +19,7 @@ internal class SnapOTweaksInitProvider : ContentProvider() {
             return false
         }
 
-        return TweaksRuntime.start()
+        return TweaksRuntime.start(applicationContext)
     }
 
     override fun query(
@@ -58,19 +57,14 @@ private object TweaksRuntime {
     private var server: TweakHttpServer? = null
 
     @Synchronized
-    fun start(): Boolean {
+    fun start(context: Context): Boolean {
         if (server != null) {
             return true
         }
 
-        return try {
-            val startedServer = TweakHttpServer()
-            startedServer.start()
-            server = startedServer
-            true
-        } catch (error: IOException) {
-            Log.e("SnapOTweaks", "Could not start the Snap-O Tweaks server.", error)
-            false
+        val candidate = TweakHttpServer()
+        return candidate.start(context).also { started ->
+            if (started) server = candidate
         }
     }
 }

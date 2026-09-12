@@ -1,5 +1,6 @@
 package com.openai.snapo.tweaks.internal
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.JsonReader
@@ -121,18 +122,13 @@ internal class TweakHttpServer(
     }
     private var registryObserver: Closeable? = null
 
-    fun start() {
-        synchronized(lifecycleLock) {
-            if (server.isRunning) return
-            val observer = TweakRegistry.observeChanges(changePublisher::notifyChanged)
-            try {
-                server.start()
-                registryObserver = observer
-            } catch (failure: IOException) {
-                observer.close()
-                throw failure
-            }
-        }
+    fun start(context: Context): Boolean = synchronized(lifecycleLock) {
+        if (server.isRunning) return true
+        if (!server.startIfAllowed(context, releaseMetadataKey = "snapo.tweaks.allow_release")) return false
+        registryObserver = TweakRegistry.observeChanges(changePublisher::notifyChanged)
+        // Refresh streams that connected before the observer was installed.
+        changePublisher.notifyChanged()
+        true
     }
 
     override fun close() {

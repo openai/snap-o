@@ -29,6 +29,29 @@ class TweakChangePublisherTest {
     }
 
     @Test
+    fun `refresh catches changes before the registry observer is installed`() {
+        TweakRegistry.register(descriptor("Motion/Duration", 400))
+        val scheduled = mutableListOf<Runnable>()
+        val publisher = TweakChangePublisher { runnable -> scheduled.add(runnable) }
+
+        publisher.subscribe().use { subscription ->
+            TweakRegistry.update(mapOf("Motion/Duration" to 550))
+            assertTrue(scheduled.isEmpty())
+
+            TweakRegistry.observeChanges(publisher::notifyChanged).use {
+                publisher.notifyChanged()
+                scheduled.removeAt(0).run()
+                assertEquals(550, subscription.events.poll()?.single()?.value)
+
+                TweakRegistry.update(mapOf("Motion/Duration" to 600))
+                scheduled.removeAt(0).run()
+                assertEquals(600, subscription.events.poll()?.single()?.value)
+            }
+        }
+        publisher.close()
+    }
+
+    @Test
     fun `cold cached subscriptions fail without retaining a subscriber or reading owners`() {
         var reads = 0
         val owner = object : TweakState<Any> {

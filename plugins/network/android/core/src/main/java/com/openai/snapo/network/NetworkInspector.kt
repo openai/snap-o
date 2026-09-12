@@ -1,8 +1,6 @@
 package com.openai.snapo.network
 
 import android.app.Application
-import android.util.Log
-import com.openai.snapo.plugin.PluginStartupPolicy
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
@@ -36,19 +34,7 @@ class NetworkInspectorServer internal constructor(
         interception = interception,
     )
 
-    fun start(): Boolean {
-        val canStart = PluginStartupPolicy.isAllowed(app, NetworkAllowReleaseMetadataKey, config.allowRelease)
-        if (!canStart) {
-            Log.e(
-                TAG,
-                "Snap-O Network Tool detected in a release build. Server will NOT start. " +
-                    "Release builds should use a noop artifact instead, " +
-                    "or set snapo.network.allow_release=\"true\" if intentional."
-            )
-            return false
-        }
-        return transport.start()
-    }
+    fun start(): Boolean = transport.start(app, config.allowRelease)
 
     suspend fun publish(record: NetworkEventRecord) {
         publishLock.withLock {
@@ -281,6 +267,3 @@ object NetworkInspector {
     /** Return the active server, or null if the network tool is disabled. */
     fun getOrNull(): NetworkInspectorServer? = server
 }
-
-private const val NetworkAllowReleaseMetadataKey = "snapo.network.allow_release"
-private const val TAG = "SnapONetwork"
