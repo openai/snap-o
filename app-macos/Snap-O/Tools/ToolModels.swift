@@ -23,7 +23,7 @@ enum ToolCompatibility: Equatable, Codable {
   case legacy(protocolVersion: Int)
   case missingDescriptor
   case invalidDescriptor
-  case missingFrontend(protocolVersion: Int)
+  case missingFrontend(protocolVersion: Int?)
   case hostAPI(version: Int)
   case metadataUnavailable
 
@@ -69,7 +69,8 @@ enum ToolCompatibility: Equatable, Codable {
 
   var versionDetail: String? {
     switch self {
-    case .legacy(let version), .missingFrontend(let version): "Tool protocol \(version)"
+    case .legacy(let version): "Tool protocol \(version)"
+    case .missingFrontend(let version): version.map { "Tool protocol \($0)" }
     default: nil
     }
   }

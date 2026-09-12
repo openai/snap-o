@@ -29,7 +29,7 @@ The key is derived from the socket ID. It does not depend on the library's Java 
     protocolVersion="3" />
 ```
 
-The descriptor ID must match the manifest key and socket ID. `name` is a nonempty string or string resource, limited to 200 characters. `icon` is an optional drawable resource. `protocolVersion` is a positive integer identifying the tool's wire protocol. `version` identifies this descriptor schema, independently of the wire protocol.
+The descriptor ID must match the manifest key and socket ID. `name` is a nonempty string or string resource, limited to 200 characters. `icon` references a drawable or mipmap resource and is required by the authoring plugin. `protocolVersion` is optional. When present, it is a positive integer identifying the tool's HTTP API for independently shipped clients. Bundled tools omit it; readers and hosts must not invent a default. `version` identifies this descriptor schema, independently of the wire protocol.
 
 App labels and icons come from Android package information, not the tool descriptor. PIDs, process names, Android users, and process lifetimes come from process metadata. Do not put runtime state, credentials, or captured traffic in manifest resources.
 
@@ -37,7 +37,7 @@ App labels and icons come from Android package information, not the tool descrip
 
 A descriptor can include `frontendAssets="snapo/inspectors/tweaks/frontend.zip"` and `hostApiVersion="1"`. These fields appear together. `frontendAssets` is a relative APK asset path to a ZIP, not a URL or resource name. Its path must not contain empty segments, `.` or `..`, backslashes, or control characters. The ZIP contains `index.html` at its root and any relative scripts, styles, and other assets.
 
-Reader output represents these fields as `frontend: {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 1}`. The host API version identifies the JavaScript bridge contract, independently of the Android wire protocol. Hosts reject unsupported host API versions before executing the frontend. Clients that do not display frontends can ignore this optional object. Network and Tweaks both package frontends through the Gradle packaging plugin. The Mac host requires this metadata unless a development server is selected; it has no bundled frontend fallback. This packaging change leaves Network protocol 3 and Tweaks protocol 7 unchanged.
+Reader output represents these fields as `frontend: {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 1}`. The host API version identifies the JavaScript bridge contract, independently of the Android wire protocol. The authoring plugin generates this host API version; it is not an author setting. Hosts reject unsupported host API versions before executing the frontend. Clients that do not display frontends can ignore this optional object. Network and Tweaks both package frontends through the Gradle packaging plugin. The Mac host requires this metadata unless a development server is selected; it has no bundled frontend fallback. This packaging change leaves Network protocol 3 and Tweaks protocol 7 unchanged.
 
 Manifest entries point to compiled XML resource IDs. Loading does not depend on the XML resource's source filename surviving resource optimization. APK assets use literal paths and must retain the descriptor's path.
 

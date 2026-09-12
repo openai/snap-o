@@ -24,7 +24,6 @@ class ToolPackagingPlugin : Plugin<Project> {
     override fun apply(project: Project) = with(project) {
         val tool = extensions.create<ToolExtension>("snapoTool")
         tool.frontendDirectory.convention(layout.projectDirectory.dir("frontend"))
-        tool.hostApiVersion.convention(1)
         tool.downloadNode.convention(true)
         tool.nodeVersion.convention("22.23.2")
 
@@ -80,7 +79,6 @@ class ToolPackagingPlugin : Plugin<Project> {
                         displayName.set(tool.displayName)
                         protocolVersion.set(tool.protocolVersion)
                         icon.set(tool.icon)
-                        hostApiVersion.set(tool.hostApiVersion)
                     }
                     variant.sources.assets?.addGeneratedSourceDirectory(assets, ToolAssetsTask::outputDirectory)
                     variant.sources.res?.addGeneratedSourceDirectory(metadata, ToolMetadataTask::resourceDirectory)

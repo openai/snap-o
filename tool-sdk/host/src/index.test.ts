@@ -59,6 +59,19 @@ describe("shared tool host", () => {
     expect(host).not.toHaveProperty("baseURL");
   });
 
+  it("connects bundled tools without protocol metadata", async () => {
+    const { host, emit } = setup();
+    await host.setToolbar({});
+    emit("connection", {
+      revision: 2,
+      connected: true,
+      baseURL: "http://127.0.0.1:4321/",
+      inspector: {}
+    });
+    expect(host.connection?.baseURL).toBe("http://127.0.0.1:4321/");
+    expect(host.connection).not.toHaveProperty("protocolVersion");
+  });
+
   it("publishes endpoint changes and ignores old state replies", async () => {
     const { host, emit } = setup();
     const changed = vi.fn();

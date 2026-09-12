@@ -20,7 +20,7 @@ internal fun exampleServer(): ToolServer {
 
 // The counter is process-local sample state; no app data is collected or persisted.
 private fun fakeSnapshot(counter: Long) = """
-    {"protocolVersion":${SnapOTool.PROTOCOL_VERSION},"revision":$counter,"items":[
+    {"revision":$counter,"items":[
       {"id":"sample-1","name":"Sample string","value":"Hello from Example"},
       {"id":"sample-2","name":"Fake counter","value":$counter},
       {"id":"sample-3","name":"Sample boolean","value":true}

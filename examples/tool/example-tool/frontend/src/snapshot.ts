@@ -27,7 +27,7 @@ export function observeExample(
   let items: SampleItem[] = [];
 
   function available() {
-    return !stopped && host.connection?.protocolVersion === 1;
+    return !stopped && host.connection !== null;
   }
 
   function accept(payload: unknown) {
@@ -112,10 +112,6 @@ export function observeExample(
       message: connected ? "Loading fake data…" : "Disconnected",
     });
     if (!connection) return;
-    if (connection.protocolVersion !== 1) {
-      failed(new Error("This Example frontend requires protocol 1."));
-      return;
-    }
     if (!available()) return;
     void refresh();
     const stream = new EventSource(
@@ -154,8 +150,6 @@ function readSnapshot(payload: unknown): {
   if (
     typeof payload !== "object" ||
     payload === null ||
-    !("protocolVersion" in payload) ||
-    payload.protocolVersion !== 1 ||
     !("revision" in payload) ||
     typeof payload.revision !== "number" ||
     !Number.isSafeInteger(payload.revision) ||

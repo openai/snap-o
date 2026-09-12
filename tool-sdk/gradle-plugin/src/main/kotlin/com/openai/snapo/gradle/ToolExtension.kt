@@ -6,9 +6,10 @@ import org.gradle.api.provider.Property
 abstract class ToolExtension {
     abstract val id: Property<String>
     abstract val displayName: Property<String>
-    abstract val protocolVersion: Property<Int>
     abstract val icon: Property<String>
-    abstract val hostApiVersion: Property<Int>
+
+    /** Set only when clients ship independently of this tool's frontend. */
+    abstract val protocolVersion: Property<Int>
     abstract val frontendDirectory: DirectoryProperty
     abstract val downloadNode: Property<Boolean>
     abstract val nodeVersion: Property<String>

@@ -12,7 +12,7 @@ The native host owns process and tool isolation. It creates a separate page for 
 
 `host.onConnection(callback)` delivers the current `ToolConnection` or `null` immediately. Return a cleanup function to close that connection's stream before replacement or disconnection. Unsubscribe when the UI unmounts; this also runs its cleanup. Use `connection.signal` with requests that should abort on disconnection.
 
-Use `connection.baseURL` for HTTP requests and check `connection.protocolVersion` against the API versions your frontend supports. `connection.processIdentity` is an opaque token that changes when the Android process restarts. Raw discovery metadata stays internal.
+Use `connection.baseURL` for HTTP requests. Bundled frontends do not need protocol-version checks. `connection.protocolVersion` is optional and appears only when the tool explicitly versions an API for independent clients. `connection.processIdentity` is an opaque token that changes when the Android process restarts. Raw discovery metadata stays internal.
 
 ```ts
 const unsubscribe = host.onConnection((connection) => {
@@ -59,4 +59,4 @@ selection belong to the native host, not this API.
 
 From `tool-sdk/host/`, run `npm ci`, `npm run build`, `npm test`, and `npm run typecheck`. `npm pack` builds and creates a local tarball. The package exposes compiled ES modules and TypeScript declarations under `dist/`; tests and TypeScript implementation sources are excluded.
 
-Package versions follow the SDK's `package.json`. Host bridge API compatibility is recorded separately by each tool's `hostApiVersion`. No package has been published by this setup. See [authoring package validation](../../release/authoring.md) before publishing.
+Package versions follow the SDK's `package.json`. Host bridge API compatibility is recorded separately in generated `hostApiVersion` metadata. Install released versions from npm. See [authoring package validation](../../release/authoring.md) when developing SDK changes.

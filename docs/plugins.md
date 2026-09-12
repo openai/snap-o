@@ -19,7 +19,7 @@ breadcrumbs:
 
 # Build a tool
 
-Build a debugging tool for your Android app and use it from Snap-O on your Mac.
+Build a debugging tool for your Android app and use it from Snap-O on your Mac. Start with a tool that displays **Tool ready**, then add your app's data and controls.
 {.lead}
 
 ## About tools {#model data-nav="About tools"}
@@ -77,14 +77,15 @@ plugins {
 snapoTool {
     id = "your-tool"
     displayName = "Your tool"
-    protocolVersion = 1
     icon = "@drawable/tool_icon"
 }
 ```
 
-Set `id` and `displayName` to your tool's ID and name. The ID must be unique within the app and stay stable across releases. Use lowercase letters, digits, dots, or hyphens, starting with a letter. `protocolVersion` identifies your HTTP API; your frontend checks whether it supports that version.
+Set `id`, `displayName`, and `icon` for your tool. The ID must be unique within the app and stay stable across releases. Use lowercase letters, digits, dots, or hyphens, starting with a letter.
 
-Set `icon` to a drawable resource in your Android module. The names above are examples; use your tool's name and icon resource.
+Set `icon` to a drawable or mipmap resource in your tool module. You can use Android Studio's **New → Vector Asset** action to create `res/drawable/tool_icon.xml`, or copy the [Example icon](https://github.com/openai/snap-o/blob/main/examples/tool/example-tool/src/main/res/drawable/example_tool_icon.xml) and rename it. Android checks that the resource exists when linking the app.
+
+The frontend ships with its Android server, so you do not need to configure or check a protocol version.
 
 The frontend directory defaults to `frontend/` inside your tool module. Set `frontendDirectory` only if your web project is elsewhere. See the [Gradle API reference](plugin-api.md#packaging) for other options.
 
@@ -144,46 +145,19 @@ dependencies {
 
 The library comes from Maven Central. Most Android projects already include `mavenCentral()` in their dependency repositories.
 
-The following example handles GET and POST requests and streams Server-Sent Events (SSE):
+Start with one route that confirms your Android server is running:
 
-``` { .kotlin title="Handle HTTP requests" }
-import com.openai.snapo.tool.ToolHttpRequestPolicy
+``` { .kotlin title="Handle a status request" }
 import com.openai.snapo.tool.ToolServer
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
-fun createToolServer(toolId: String): ToolServer {
-    return ToolServer(toolId) {
-        requestPolicy = ToolHttpRequestPolicy(requireJsonContentType = false)
-
-        get("/status") {
-            respondJson("""{"ready":true}""")
-        }
-
-        post("/echo") {
-            val text = request.bodyText()
-            if (text.isBlank()) {
-                respondText("A text body is required.", statusCode = 400)
-            } else {
-                respondText(text)
-            }
-        }
-
-        sse("/events") {
-            var sequence = 0L
-            while (isActive) {
-                send(sequence.toString(), event = "tick")
-                sequence += 1
-                delay(1000)
-            }
-        }
+fun createToolServer(toolId: String): ToolServer = ToolServer(toolId) {
+    get("/status") {
+        respondJson("""{"ready":true}""")
     }
 }
 ```
 
-`requestPolicy` allows the plain-text body used by `/echo`. `GET /status` returns JSON. `POST /echo` reads the request body and returns it as text, or returns HTTP 400 when it is blank. These routes demonstrate request handling; replace them with routes that read your app's data or perform actions. `respondJson` accepts a JSON string, so use your app's serializer for real objects.
-
-`GET /events` keeps the connection open and sends a `tick` event every second. Each event contains an increasing number, starting at zero for each connection. The SDK formats the events and cancels the handler's coroutine when the client disconnects, stopping the loop. For app updates, replace the loop with a collection from your app's `Flow` and call `send` for each value.
+`GET /status` returns a JSON object. Keep this route while connecting the frontend; you can add routes for your app's data afterward. `respondJson` accepts a JSON string, so use your app's serializer for real objects.
 
 ### Start the server with AndroidX Startup {#startup}
 
@@ -243,7 +217,15 @@ Register the initializer under AndroidX Startup's shared provider in your tool l
 </manifest>
 ```
 
-Use a debug-only app dependency on the tool library. `startIfAllowed` also checks the app's debuggable flag. A release app must explicitly opt in through `snapo.<tool-id>.allow_release` application metadata or the helper's `allowRelease` argument.
+Add the tool library to your app's debug build, replacing `:your-tool` with your library module's path:
+
+``` { .kotlin title="app/build.gradle.kts" }
+dependencies {
+    debugImplementation(project(":your-tool"))
+}
+```
+
+`startIfAllowed` also checks the app's debuggable flag. A release app must explicitly opt in through `snapo.<tool-id>.allow_release` application metadata or the helper's `allowRelease` argument.
 
 For AndroidX Startup configuration and behavior, see the [AndroidX Startup documentation](https://developer.android.com/topic/libraries/app-startup).
 
@@ -279,7 +261,75 @@ The host SDK connects your frontend to the Snap-O Mac app. It provides the forwa
 
 Use `host.onConnection` to receive the current connection immediately and respond when it changes. The callback can return a cleanup function for that connection's work.
 
-Replace the starter's `src/app.tsx` with this component to monitor the Android example's `/events` route:
+Replace the starter's `src/app.tsx` with this component to fetch the Android example's `/status` route:
+
+``` { .tsx title="frontend/src/app.tsx" }
+import { useEffect, useState } from "preact/hooks";
+import { host } from "@snap-o/tool-host";
+
+export function App() {
+  const [message, setMessage] = useState("Disconnected");
+
+  useEffect(() => host.onConnection(connection => {
+    setMessage(connection ? "Connecting…" : "Disconnected");
+    if (!connection) return;
+    const request = new AbortController();
+    fetch(new URL("status", connection.baseURL), { signal: request.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(status => {
+        if (!request.signal.aborted) {
+          setMessage(status.ready === true ? "Tool ready" : "Tool not ready");
+        }
+      })
+      .catch(error => {
+        if (!request.signal.aborted) setMessage(`Request failed: ${error.message}`);
+      });
+    return () => request.abort();
+  }), []);
+
+  return <output>{message}</output>;
+}
+```
+
+The SDK runs the previous cleanup before delivering another connection. Preact also unsubscribes when the component unmounts. The cleanup aborts the old request so it cannot update a disconnected or replaced UI.
+
+## Try your tool in Snap-O {#development data-step="4"}
+
+Build and run your Android app with the tool library included, using your usual workflow. Its build includes the frontend automatically.
+
+<span id="verification"></span>In Snap-O, select your device, app, and tool. The Tool pane should display **Tool ready**. You now have a working connection from your frontend to your Android app.
+
+If the tool is missing, check that you installed a debug build containing the tool library. If the page shows a request error, check Logcat for server startup failures and confirm the `/status` route matches the example.
+
+## Add functionality {#add-functionality}
+
+Keep the working status route and add the features your tool needs. The following examples are optional.
+
+### Stream live updates {#live-updates}
+
+Add the imports at the top of your server file and the SSE route inside the existing `ToolServer` block:
+
+``` { .kotlin title="Add a live event route" }
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+
+// Inside ToolServer(toolId) { ... }
+sse("/events") {
+    var sequence = 0L
+    while (isActive) {
+        send(sequence.toString(), event = "tick")
+        sequence += 1
+        delay(1000)
+    }
+}
+```
+
+`GET /events` sends a `tick` event every second, starting at zero for each connection. The SDK formats the events and cancels the handler's coroutine when the client disconnects. For app updates, collect your app's `Flow` and call `send` for each value.
+
+Replace `frontend/src/app.tsx` with this component to display the stream:
 
 ``` { .tsx title="frontend/src/app.tsx" }
 import { useEffect, useState } from "preact/hooks";
@@ -291,10 +341,6 @@ export function App() {
   useEffect(() => host.onConnection(connection => {
     setMessage(connection ? "Waiting for events…" : "Disconnected");
     if (!connection) return;
-    if (connection.protocolVersion !== 1) {
-      setMessage("Unsupported tool API version");
-      return;
-    }
     const events = new EventSource(new URL("events", connection.baseURL));
     events.addEventListener("tick", event => setMessage(`Tick: ${event.data}`));
     events.onerror = () => setMessage("Connection lost. Retrying…");
@@ -305,9 +351,47 @@ export function App() {
 }
 ```
 
-The SDK runs the previous cleanup before delivering another connection, even when its URL is unchanged. Preact unsubscribes when the component unmounts. Unloading the page closes its streams automatically; while a page remains loaded, `EventSource` retries interrupted connections until closed.
+Rebuild and run the Android app. The Tool pane now displays a new tick each second.
 
-Use `fetch` with the same base URL for HTTP requests. For a complete request and stream client, see the [Example frontend](https://github.com/openai/snap-o/blob/main/examples/tool/example-tool/frontend/src/snapshot.ts).
+The cleanup closes the previous stream before a connection changes or the component unmounts. Unloading the page also closes its streams; while a page remains loaded, `EventSource` retries interrupted connections until closed.
+
+### Handle actions {#actions}
+
+Use a POST route for actions. This example echoes text to demonstrate reading a request body and returning an error. Add the import at the top of your server file, then add the policy and route inside the existing `ToolServer` block:
+
+``` { .kotlin title="Add a POST route" }
+import com.openai.snapo.tool.ToolHttpRequestPolicy
+
+// Inside ToolServer(toolId) { ... }
+requestPolicy = ToolHttpRequestPolicy(requireJsonContentType = false)
+
+post("/echo") {
+    val text = request.bodyText()
+    if (text.isBlank()) {
+        respondText("A text body is required.", statusCode = 400)
+    } else {
+        respondText(text)
+    }
+}
+```
+
+The default request policy requires JSON bodies. This example allows plain text; keep the default for JSON APIs. Call `/echo` from a frontend event handler:
+
+``` { .typescript title="Send an action request" }
+const connection = host.connection;
+if (connection) {
+  const response = await fetch(new URL("echo", connection.baseURL), {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: "Hello from the frontend",
+    signal: connection.signal,
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  console.log(await response.text());
+}
+```
+
+Catch request errors in your UI. For a complete request and stream client, see the [Example frontend](https://github.com/openai/snap-o/blob/main/examples/tool/example-tool/frontend/src/snapshot.ts).
 
 ### Toolbar settings {#native}
 
@@ -348,12 +432,6 @@ Snap-O asks the user to confirm before copying text. `saveFile` opens a save dia
 ### Color picker {#color-picker}
 
 If your tool edits colors, use `host.openColorPicker({ value, onChange })`. It returns an object with `setValue` and `close` methods. Keep it so you can close the picker when the device disconnects or the UI is removed.
-
-## Try your tool in Snap-O {#development data-step="4"}
-
-Run your Android app with the tool library included, using your usual workflow. Its build includes the updated frontend automatically.
-
-<span id="verification"></span>In Snap-O, select your device, app, and tool. With the example above, the Tool pane displays a new tick each second. Try the native **Reload tool** button to reload the frontend and start a new stream.
 
 ## Develop the frontend {#develop-the-frontend data-step="5"}
 

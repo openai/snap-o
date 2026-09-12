@@ -12,7 +12,7 @@ android {
 snapoTool {
     id = "example"
     displayName = "Example"
-    protocolVersion = 1
+    icon = "@drawable/example_tool_icon"
 }
 
 dependencies {

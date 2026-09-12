@@ -16,9 +16,8 @@ abstract class ToolMetadataTask : DefaultTask() {
     @get:Input abstract val namespace: Property<String>
     @get:Input abstract val toolId: Property<String>
     @get:Input abstract val displayName: Property<String>
-    @get:Input abstract val protocolVersion: Property<Int>
-    @get:Input @get:Optional abstract val icon: Property<String>
-    @get:Input abstract val hostApiVersion: Property<Int>
+    @get:Input @get:Optional abstract val protocolVersion: Property<Int>
+    @get:Input abstract val icon: Property<String>
     @get:OutputDirectory abstract val resourceDirectory: DirectoryProperty
     @get:OutputDirectory abstract val sourceDirectory: DirectoryProperty
     @get:OutputFile abstract val manifestFile: RegularFileProperty
@@ -30,8 +29,14 @@ abstract class ToolMetadataTask : DefaultTask() {
         require(displayName.get().isNotBlank() && displayName.get().length <= 200) {
             "Tool display name must contain between 1 and 200 characters"
         }
-        require(protocolVersion.get() > 0) { "Tool protocol version must be positive" }
-        require(hostApiVersion.get() > 0) { "Tool host API version must be positive" }
+        val protocol = protocolVersion.orNull
+        require(protocol == null || protocol > 0) { "Tool protocol version must be positive" }
+        val protocolConstant = protocol?.let { "public static final int PROTOCOL_VERSION = $it;" } ?: ""
+        val protocolAttribute = protocol?.let { " protocolVersion=\"$it\"" } ?: ""
+        val iconReference = icon.orNull
+        require(iconReference != null && ICON_REFERENCE.matches(iconReference)) {
+            "Tool icon must reference a drawable or mipmap resource, such as @drawable/tool_icon"
+        }
         val source = sourceDirectory.file("${namespace.get().replace('.', '/')}/SnapOTool.java").get().asFile
         sourceDirectory.get().asFile.deleteRecursively()
         source.parentFile.mkdirs()
@@ -41,8 +46,7 @@ abstract class ToolMetadataTask : DefaultTask() {
             /** Generated from snapoTool. */
             public final class SnapOTool {
                 public static final String ID = "$id";
-                public static final int PROTOCOL_VERSION = ${protocolVersion.get()};
-                public static final int HOST_API_VERSION = ${hostApiVersion.get()};
+                $protocolConstant
 
                 private SnapOTool() {}
             }
@@ -52,13 +56,12 @@ abstract class ToolMetadataTask : DefaultTask() {
         val resource = resourceDirectory.file("xml/$resourceName.xml").get().asFile
         resourceDirectory.get().asFile.deleteRecursively()
         resource.parentFile.mkdirs()
-        val iconAttribute = icon.orNull?.let { " icon=\"${xml(it)}\"" } ?: ""
         resource.writeText("""
             <?xml version="1.0" encoding="utf-8"?>
             <inspector version="1" id="$id" name="${xml(displayName.get())}"
-                protocolVersion="${protocolVersion.get()}"$iconAttribute
+                icon="${xml(iconReference)}"$protocolAttribute
                 frontendAssets="snapo/inspectors/$id/frontend.zip"
-                hostApiVersion="${hostApiVersion.get()}" />
+                hostApiVersion="$HOST_API_VERSION" />
         """.trimIndent() + "\n")
         val manifest = manifestFile.get().asFile
         manifest.parentFile.mkdirs()
@@ -74,4 +77,9 @@ abstract class ToolMetadataTask : DefaultTask() {
 
     private fun xml(value: String): String = value.replace("&", "&amp;")
         .replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+    private companion object {
+        const val HOST_API_VERSION = 1
+        val ICON_REFERENCE = Regex("@(?:[a-zA-Z_][a-zA-Z0-9_.]*:)?(?:drawable|mipmap)/[a-z_][a-z0-9_]*")
+    }
 }

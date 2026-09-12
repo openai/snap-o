@@ -44,6 +44,13 @@ private func expect(_ condition: @autoclosure () -> Bool, _ message: String, lin
 @main
 struct ToolSelectionTests {
   @MainActor static func main() async throws {
+    var unversioned = ToolMetadata()
+    expect(
+      unversioned.applyPackageMetadata(testManifest(pid: 10, kinds: [.sample], version: nil), kind: .sample),
+      "Accept bundled tool metadata without a protocol version"
+    )
+    expect(unversioned.compatibility == .supported, "Open bundled tools without a protocol version")
+    expect(unversioned.protocolVersion == nil, "Do not invent a protocol version")
     try WorkspaceLayoutTests.run()
     restoration()
     metadataDisplay()

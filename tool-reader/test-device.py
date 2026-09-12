@@ -52,6 +52,9 @@ def main():
             (resources / f"xml/snapo_{plugin}_inspector.xml").write_text(f'''<inspector version="1" id="{plugin}" name="{plugin.title()}"
                 protocolVersion="{protocol}" icon="@drawable/snapo_{plugin}_inspector_icon"
                 frontendAssets="snapo/inspectors/{plugin}/frontend.zip" hostApiVersion="1" />''')
+        (resources / "xml/snapo_sample.xml").write_text('''<inspector version="1" id="sample" name="Sample"
+            icon="@drawable/snapo_network_inspector_icon"
+            frontendAssets="snapo/inspectors/sample/frontend.zip" hostApiVersion="1" />''')
         assets = temporary / "assets"
         archive = assets / "snapo/inspectors/tweaks/frontend.zip"
         archive.parent.mkdir(parents=True)
@@ -81,6 +84,7 @@ def main():
   <application android:label="Manifest fixture" android:icon="@drawable/fixture_icon" {round_attribute} android:debuggable="false" android:hasCode="false">
     <meta-data android:name="snapo.inspector.network" android:resource="@xml/snapo_network_inspector" />
     <meta-data android:name="snapo.inspector.tweaks" android:resource="@xml/snapo_tweaks_inspector" />
+    <meta-data android:name="snapo.inspector.sample" android:resource="@xml/snapo_sample" />
     <activity android:name="android.app.Activity" android:exported="true" />
   </application>
 </manifest>''')
@@ -128,10 +132,12 @@ def main():
                 assert icon.getpixel((48, 48)) == (255, 0, 0, 255)
                 assert icon.getpixel((0, 0)) == (255, 0, 0, 255), "Legacy icon was cropped"
             descriptors = {entry["id"]: entry for entry in info["app"]["inspectors"]}
-            assert set(descriptors) == {"network", "tweaks"}, descriptors
+            assert set(descriptors) == {"network", "tweaks", "sample"}, descriptors
             for kind, protocol in [("network", 3), ("tweaks", 7)]:
                 assert descriptors[kind]["protocolVersion"] == protocol, descriptors
                 assert base64.b64decode(descriptors[kind]["iconBase64"]).startswith(b"\x89PNG\r\n\x1a\n")
+            assert "protocolVersion" not in descriptors["sample"], descriptors
+            assert "iconBase64" in descriptors["sample"], descriptors
             frontend = descriptors["tweaks"]["frontend"]
             assert frontend == {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 1}
             expected = dict(frontend, processIdentity=info["processIdentity"], androidUserId=info["androidUserId"],

@@ -1,6 +1,6 @@
 export const supportedProtocolVersion = 3;
 
-export function hasProtocolWarning(protocolVersion: number | undefined): boolean {
+export function hasProtocolWarning(protocolVersion: number | undefined): protocolVersion is number {
   return protocolVersion != null && protocolVersion !== supportedProtocolVersion;
 }
 
