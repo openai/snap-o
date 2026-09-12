@@ -126,7 +126,7 @@ snapo-tool-runtime = { module = "com.openai.snapo:tool-runtime", version.ref = "
 
 ``` { .kotlin title="Your Android module's build.gradle.kts" }
 dependencies {
-    implementation(libs.snapo.plugin.runtime)
+    implementation(libs.snapo.tool.runtime)
 }
 ```
 

@@ -252,7 +252,7 @@ You can also create responses with these methods:
 - `ToolHttpResponse.text(text, statusCode)` for plain text.
 - `ToolHttpResponse.error(statusCode, message, allowedMethods)` for an error.
 
-Throw `ToolHttpException(statusCode, message)` to return that HTTP error status. By default, invalid arguments and I/O errors return 400, and socket timeouts return 408. Other unexpected exceptions return 500 with a general error message.
+Throw `ToolHttpException(statusCode, message)` for an intentional HTTP error, or configure `onError` to map domain exceptions. Other handler exceptions, including `IllegalArgumentException`, `IOException`, and `SocketTimeoutException`, are logged and return a generic 500. The default 400/408 mapping applies to failures while reading the HTTP request.
 
 ### Request policy
 
