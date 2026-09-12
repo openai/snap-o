@@ -1,5 +1,7 @@
 package com.openai.snapo.plugin
 
+import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -12,7 +14,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** An HTTP server on the plugin's process-local abstract socket. No Android startup is performed. */
 class PluginServer(
-    pluginId: String,
+    private val pluginId: String,
     maxConnections: Int = 32,
     configure: PluginRoutes.() -> Unit,
 ) : Closeable {
@@ -21,6 +23,18 @@ class PluginServer(
     val isRunning: Boolean get() = socket.isRunning
 
     fun start() = socket.start()
+
+    /** Returns false when startup is disallowed or the socket cannot be opened. */
+    fun startIfAllowed(
+        context: Context,
+        releaseMetadataKey: String = "snapo.$pluginId.allow_release",
+        allowRelease: Boolean = false,
+    ): Boolean = socket.startIfAllowed(
+        PluginStartupPolicy.isAllowed(context.applicationContext, releaseMetadataKey, allowRelease),
+    ) { failure ->
+        Log.e("SnapOPlugin", "Could not start plugin $pluginId.", failure)
+    }
+
     override fun close() = socket.close()
 
     /** Serves and closes one supplied connection. Useful for tests and alternate socket transports. */

@@ -69,7 +69,7 @@ Start a new Codex session after installation.
 
 Apps bundle plugins that provide tools for inspecting data, changing settings, and running actions. A plugin includes its Android implementation and an optional frontend. Snap-O displays the selected tool’s frontend in the Tool pane. Network and Tweaks use the same extension model as custom tools.
 
-See [plugin development](plugins/README.md) and the [Gradle packaging plugin](sdk/gradle-plugin/README.md).
+Start with [Build a plugin](docs/plugins.md) and the [Plugin API reference](docs/plugin-api.md). See [plugin development](plugins/README.md) for repository commands and host behavior.
 
 ## Build from source
 

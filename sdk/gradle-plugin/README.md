@@ -64,7 +64,7 @@ Gradle follows that provider's task dependency. The directory must contain `inde
 
 ## Development
 
-Run either command from `plugins/`, in separate terminals if needed:
+Run either command from the repository root, in separate terminals if needed:
 
 ```sh
 ./gradlew :network:pluginDev
