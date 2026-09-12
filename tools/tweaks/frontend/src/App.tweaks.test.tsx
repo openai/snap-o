@@ -4,7 +4,14 @@ import { render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TweakList } from "./types";
 import type { TweaksClient } from "./features/tweaks-tool/client";
-import { ToolHost, type Host, type ProcessManifest, type ToolDescriptor } from "@snap-o/tool-host";
+import { ToolHost, type Host } from "@snap-o/tool-host";
+type ToolDescriptor = { id: string; name: string; protocolVersion: number };
+type ProcessManifest = {
+  version: number;
+  pid: number;
+  processIdentity: string;
+  app: { name: string; packageName: string; revision: string; inspectors: ToolDescriptor[] };
+};
 import { TweaksApp } from "./TweaksApp";
 
 const mocks = vi.hoisted(() => ({ client: null as unknown as TweaksClient, host: null as unknown as Host }));

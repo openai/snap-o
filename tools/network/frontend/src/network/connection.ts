@@ -1,4 +1,4 @@
-import type { ToolMetadata } from "../features/app-tool/usePluginMetadata";
+import type { ToolMetadata } from "../useHostConnection";
 import { readText } from "../http";
 import type { CdpMessage, LoadBodiesInput, RequestBodies, StreamEvent, StreamStatus } from "./bridge-types";
 import { supportedProtocolVersion } from "../features/network-tool/lib/protocol";

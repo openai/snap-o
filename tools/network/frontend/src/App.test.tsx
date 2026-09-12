@@ -6,7 +6,14 @@ import type { CdpMessage, StreamEvent } from "./network/bridge-types";
 import type { NetworkClient } from "./network/client";
 import { recordId } from "./network/cdp";
 import type { NetworkToolModel } from "./features/network-tool/hooks/useNetworkToolModel";
-import { ToolHost, type Host, type ProcessManifest, type ToolDescriptor } from "@snap-o/tool-host";
+import { ToolHost, type Host } from "@snap-o/tool-host";
+type ToolDescriptor = { id: string; name: string; protocolVersion: number };
+type ProcessManifest = {
+  version: number;
+  pid: number;
+  processIdentity: string;
+  app: { name: string; packageName: string; revision: string; inspectors: ToolDescriptor[] };
+};
 import { App } from "./App";
 
 const mocks = vi.hoisted(() => ({
@@ -235,7 +242,9 @@ describe("Network frontend with the shared host", () => {
     expect(mocks.client.startStream).not.toHaveBeenCalled();
     await publish(true);
     expect(fetchMetadata).not.toHaveBeenCalled();
-    expect(mocks.client.startStream).toHaveBeenCalledWith(metadata);
+    expect(mocks.client.startStream).toHaveBeenCalledWith(
+      expect.objectContaining({ protocolVersion: metadata.protocolVersion, processIdentity: metadata.processIdentity })
+    );
   });
 
   it("does not restart an unchanged connection after a repeated host update", async () => {
@@ -273,7 +282,9 @@ describe("Network frontend with the shared host", () => {
     expect(mocks.client.startStream).not.toHaveBeenCalled();
     state.manifest = manifest;
     await publish(true);
-    expect(mocks.client.startStream).toHaveBeenCalledWith(metadata);
+    expect(mocks.client.startStream).toHaveBeenCalledWith(
+      expect.objectContaining({ protocolVersion: metadata.protocolVersion, processIdentity: metadata.processIdentity })
+    );
     expect(fetchMetadata).not.toHaveBeenCalled();
   });
 

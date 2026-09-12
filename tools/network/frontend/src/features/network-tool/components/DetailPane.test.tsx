@@ -10,7 +10,7 @@ function render(isConnected = true, totalItems = 0, streamIsRetrying = false, pr
       <DetailContent
         client={{} as NetworkClient}
         record={null}
-        metadata={{ name: "Demo", packageName: "com.example.demo", protocolVersion, processIdentity: "boot:20:123" }}
+        metadata={{ protocolVersion, processIdentity: "boot:20:123" }}
         isConnected={isConnected}
         totalItems={totalItems}
         streamIsRetrying={streamIsRetrying}

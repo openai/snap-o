@@ -1,13 +1,13 @@
-# Tool plugins
+# Tools
 
 Apps bundle **tool plugins** that provide **tools**, such as Network, Tweaks, or a custom feature. A tool plugin includes its Android implementation and an optional **frontend**, the tool’s UI implementation. Snap-O discovers tool plugins and displays the selected tool’s frontend in the **Tool pane**.
 
-The shared [tool plugin host SDK](../tool-sdk/host/README.md) provides connection state, toolbar controls, and native helpers. Tool plugin frontends live beside their Android implementations:
+The shared [tool host SDK](../tool-sdk/host/README.md) provides connection state, toolbar controls, and native helpers. Tool frontends live beside their Android implementations:
 
 - Network: `tools/network/frontend`
 - Tweaks: `tools/tweaks/frontend`
 
-For an end-to-end example, read [Build a tool plugin](../docs/plugins.md) and the [Tool plugin API reference](../docs/plugin-api.md).
+For an end-to-end example, read [Build a tool](../docs/plugins.md) and the [Tool API reference](../docs/plugin-api.md).
 
 ## Directory layout
 
@@ -44,7 +44,7 @@ npm test
 npm run build
 ```
 
-Run the same checks from `tool-sdk/host/` for the host SDK, including `npm run build`. Install dependencies in both frontend directories before running the shared import checks. These checks resolve relative paths and TypeScript aliases. Tool plugin frontends cannot import one another or host SDK internals.
+Run the same checks from `tool-sdk/host/` for the host SDK, including `npm run build`. Install dependencies in both frontend directories before running the shared import checks. These checks resolve relative paths and TypeScript aliases. Tool frontends cannot import one another or host SDK internals.
 
 ## App-provided frontends
 
@@ -58,7 +58,7 @@ Develop → Inspect Current WebView in Safari enables WebKit's public inspection
 
 ## WebView safeguards
 
-The macOS host installs WebKit content rules before running packaged HTML. A page can reach only its own forwarded tool endpoint. CSP response headers block remote scripts, frames, workers, forms, and other resources outside the self-contained frontend. WebKit Lockdown Mode disables WebRTC and reduces the browser's exposed features. Tool plugin frontends must not depend on WebAssembly or JavaScript evaluation from strings.
+The macOS host installs WebKit content rules before running packaged HTML. A page can reach only its own forwarded tool endpoint. CSP response headers block remote scripts, frames, workers, forms, and other resources outside the self-contained frontend. WebKit Lockdown Mode disables WebRTC and reduces the browser's exposed features. Tool frontends must not depend on WebAssembly or JavaScript evaluation from strings.
 
 Storage is separate for each device, Android user, package, and tool. Pages without verified package metadata use temporary storage. Preferences from the former localhost origin or shared tool storage are not imported.
 

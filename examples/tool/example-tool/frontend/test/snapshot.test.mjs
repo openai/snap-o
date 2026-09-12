@@ -4,9 +4,12 @@ import { setImmediate } from "node:timers/promises";
 import { observeExample } from "../.test-build/snapshot.js";
 
 class FakeHost extends EventTarget {
-  connected = true;
-  baseURL = "http://127.0.0.1:12345/";
-  tool = { id: "example", name: "Example", protocolVersion: 1 };
+  connection = {
+    baseURL: "http://127.0.0.1:12345/",
+    protocolVersion: 1,
+    processIdentity: "boot:42:1",
+    signal: new AbortController().signal,
+  };
   onConnection(callback) {
     this.addEventListener("connection", callback);
     callback();
@@ -63,7 +66,7 @@ test("inactive pages abort pending work and close their event stream", async () 
   });
   const signal = fetch.mock.calls[0].arguments[1].signal;
   assert.equal(streams.length, 1);
-  host.connected = false;
+  host.connection = null;
   host.dispatchEvent(new Event("connection"));
   assert.equal(signal.aborted, true);
   assert.equal(streams[0].closed, true);
@@ -85,13 +88,18 @@ test("activation resumes requests and disposal removes the listener", async () =
     async () => new Response(JSON.stringify(sample())),
   );
   const host = new FakeHost();
-  host.connected = false;
+  host.connection = null;
   let state;
   const observer = observeExample(host, (next) => {
     state = next;
   });
   assert.equal(fetch.mock.calls.length, 0);
-  host.connected = true;
+  host.connection = {
+    baseURL: "http://127.0.0.1:12345/",
+    protocolVersion: 1,
+    processIdentity: "boot:42:2",
+    signal: new AbortController().signal,
+  };
   host.dispatchEvent(new Event("connection"));
   await setImmediate();
   assert.deepEqual(state.items, sample().items);
@@ -105,7 +113,7 @@ test("activation resumes requests and disposal removes the listener", async () =
 test("the tool validates its own protocol before making requests", () => {
   const fetch = mock.method(globalThis, "fetch", async () => new Response());
   const host = new FakeHost();
-  host.tool.protocolVersion = 2;
+  host.connection.protocolVersion = 2;
   let state;
   const observer = observeExample(host, (next) => {
     state = next;
@@ -174,7 +182,7 @@ test("disconnect aborts an in-flight mutation and suppresses its late result", a
   });
   await setImmediate();
   const command = observer.increment();
-  host.connected = false;
+  host.connection = null;
   host.dispatchEvent(new Event("connection"));
   assert.equal(fetch.mock.calls[1].arguments[1].signal.aborted, true);
   complete(new Response(JSON.stringify(sample(1))));

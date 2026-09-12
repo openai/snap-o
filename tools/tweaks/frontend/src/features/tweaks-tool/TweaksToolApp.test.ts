@@ -354,8 +354,12 @@ describe("registered tweak actions", () => {
   });
 
   it("invokes actions through the forwarded HTTP endpoint", async () => {
-    vi.spyOn(host, "connected", "get").mockReturnValue(true);
-    vi.spyOn(host, "baseURL", "get").mockReturnValue("http://127.0.0.1:1234/");
+    vi.spyOn(host, "connection", "get").mockReturnValue({
+      baseURL: "http://127.0.0.1:1234/",
+      protocolVersion: 7,
+      processIdentity: "boot:20:123",
+      signal: new AbortController().signal
+    });
     vi.spyOn(host, "addEventListener").mockImplementation(() => {});
     const fetchRequest = vi.fn(async () => Response.json({ name: "Motion/Toggle animation" }));
     vi.stubGlobal("fetch", fetchRequest);
@@ -616,8 +620,12 @@ describe("Tweaks event stream transport", () => {
   beforeEach(() => {
     streams = [];
     vi.useFakeTimers();
-    vi.spyOn(host, "connected", "get").mockReturnValue(true);
-    vi.spyOn(host, "baseURL", "get").mockReturnValue("http://127.0.0.1:1234/");
+    vi.spyOn(host, "connection", "get").mockReturnValue({
+      baseURL: "http://127.0.0.1:1234/",
+      protocolVersion: 7,
+      processIdentity: "boot:20:123",
+      signal: new AbortController().signal
+    });
     vi.stubGlobal("EventSource", FakeEventSource);
     client = createTweaksClient();
   });

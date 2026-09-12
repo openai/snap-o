@@ -60,4 +60,4 @@ Adjust values from Compose, Views, and other Kotlin code. Change app-owned setti
 Bundle app-specific debugging tools with your Android app. Define HTTP routes and live events, then display a web frontend in Snap-O's Tool pane.
 {.product-copy}
 
-[Build a tool plugin](plugins.md){.section-link} · [Explore the API](plugin-api.md){.section-link}
+[Build a tool](plugins.md){.section-link} · [Explore the API](plugin-api.md){.section-link}

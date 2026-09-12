@@ -42,11 +42,9 @@ describe("browser network client", () => {
     expect(save).toHaveBeenCalledWith({ name: "capture.har", data: expect.any(Blob) });
   });
   it("rejects requests while disconnected", async () => {
-    vi.spyOn(host, "connected", "get").mockReturnValue(false);
+    vi.spyOn(host, "connection", "get").mockReturnValue(null);
     await expect(
       client.startStream({
-        name: "Demo",
-        packageName: "example.demo",
         protocolVersion: 3,
         processIdentity: "boot:20:123"
       })

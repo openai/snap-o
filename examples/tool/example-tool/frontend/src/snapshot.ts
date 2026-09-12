@@ -12,17 +12,11 @@ export interface ExampleState {
   message: string;
 }
 
-type ConnectionHost = Pick<
-  Host,
-  | "connected"
-  | "baseURL"
-  | "tool"
-  | "onConnection"
->;
+type ConnectionHost = Pick<Host, "connection" | "onConnection">;
 
 /** Stops this page's requests and stream while inactive. The native host owns process/tool isolation. */
 export function observeExample(
-  connection: ConnectionHost,
+  host: ConnectionHost,
   changed: (state: ExampleState) => void,
 ) {
   let request: AbortController | undefined;
@@ -33,12 +27,7 @@ export function observeExample(
   let items: SampleItem[] = [];
 
   function available() {
-    return (
-      !stopped &&
-      connection.connected &&
-      connection.baseURL &&
-      connection.tool?.protocolVersion === 1
-    );
+    return !stopped && host.connection?.protocolVersion === 1;
   }
 
   function accept(payload: unknown) {
@@ -64,7 +53,9 @@ export function observeExample(
     method: string,
     controller: AbortController,
   ) {
-    const response = await fetch(new URL(path, connection.baseURL!), {
+    const connection = host.connection;
+    if (!connection) return;
+    const response = await fetch(new URL(path, connection.baseURL), {
       method,
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
       cache: "no-store",
@@ -113,21 +104,22 @@ export function observeExample(
     disconnect();
     revision = -1;
     items = [];
-    const connected = connection.connected;
+    const connection = host.connection;
+    const connected = connection !== null;
     changed({
       connected,
       items,
       message: connected ? "Loading fake data…" : "Disconnected",
     });
-    if (!connected) return;
-    if (connection.tool?.protocolVersion !== 1) {
+    if (!connection) return;
+    if (connection.protocolVersion !== 1) {
       failed(new Error("This Example frontend requires protocol 1."));
       return;
     }
     if (!available()) return;
     void refresh();
     const stream = new EventSource(
-      new URL("example/events", connection.baseURL!),
+      new URL("example/events", connection.baseURL),
     );
     events = stream;
     stream.addEventListener("snapshot", (event) => {
@@ -143,7 +135,7 @@ export function observeExample(
     };
   }
 
-  const unsubscribe = connection.onConnection(connectionChanged);
+  const unsubscribe = host.onConnection(connectionChanged);
   return {
     refresh,
     increment,

@@ -2,11 +2,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { ToolHost } from "./index";
 
+const metadata = { manifest: { processIdentity: "boot:42:1" }, inspector: { protocolVersion: 1 } };
+
 function setup() {
   const listeners = new Map<string, (value: unknown) => void>();
   const request = vi.fn(async (command: string, _payload?: unknown): Promise<unknown> => {
     void _payload;
-    return command === "hostState" ? { revision: 1, connected: true, baseURL: "http://127.0.0.1:1234/" } : undefined;
+    return command === "hostState"
+      ? { ...metadata, revision: 1, connected: true, baseURL: "http://127.0.0.1:1234/" }
+      : undefined;
   });
   const host = new ToolHost({
     request: async <T>(command: string, payload?: unknown) => (await request(command, payload)) as T,
@@ -15,11 +19,16 @@ function setup() {
       return () => listeners.delete(name);
     }
   });
-  return { host, request, emit: (name: string, value: unknown) => listeners.get(`host:${name}`)?.(value) };
+  return {
+    host,
+    request,
+    emit: (name: string, value: unknown) =>
+      listeners.get(`host:${name}`)?.(name === "connection" ? { ...metadata, ...(value as object) } : value)
+  };
 }
 
 describe("shared tool host", () => {
-  it("publishes metadata that arrives while the process remains disconnected", async () => {
+  it("keeps discovery objects internal while disconnected", async () => {
     const { host, emit } = setup();
     await host.setToolbar({ actions: [] });
     emit("connection", { revision: 2, connected: false });
@@ -29,9 +38,25 @@ describe("shared tool host", () => {
     const manifest = { version: 1, pid: 10 };
     emit("connection", { revision: 3, connected: false, manifest, inspector: tool });
     expect(changed).toHaveBeenCalledOnce();
-    expect(host.connected).toBe(false);
-    expect(host.manifest).toEqual(manifest);
-    expect(host.tool).toEqual(tool);
+    expect(host.connection).toBeNull();
+    expect(host).not.toHaveProperty("manifest");
+    expect(host).not.toHaveProperty("tool");
+  });
+
+  it("waits for connection details and exposes only the fields tools need", async () => {
+    const { host, emit } = setup();
+    await host.setToolbar({});
+    emit("connection", { revision: 2, connected: true, baseURL: "http://127.0.0.1:4321/", manifest: null });
+    expect(host.connection).toBeNull();
+    emit("connection", { revision: 3, connected: true, baseURL: "http://127.0.0.1:4321/" });
+    expect(host.connection).toEqual({
+      baseURL: "http://127.0.0.1:4321/",
+      protocolVersion: 1,
+      processIdentity: "boot:42:1",
+      signal: expect.any(AbortSignal)
+    });
+    expect(host).not.toHaveProperty("connected");
+    expect(host).not.toHaveProperty("baseURL");
   });
 
   it("publishes endpoint changes and ignores old state replies", async () => {
@@ -39,11 +64,11 @@ describe("shared tool host", () => {
     const changed = vi.fn();
     host.addEventListener("connection", changed);
     await host.setToolbar({ actions: [] });
-    expect(host.baseURL).toBe("http://127.0.0.1:1234/");
+    expect(host.connection?.baseURL).toBe("http://127.0.0.1:1234/");
     emit("connection", { revision: 2, connected: true, baseURL: "http://127.0.0.1:4321/" });
     emit("connection", { revision: 1, connected: false });
-    expect(host.connected).toBe(true);
-    expect(host.baseURL).toBe("http://127.0.0.1:4321/");
+    expect(host.connection).not.toBeNull();
+    expect(host.connection?.baseURL).toBe("http://127.0.0.1:4321/");
     expect(changed).toHaveBeenCalledTimes(2);
     emit("connection", { revision: 3, connected: true, baseURL: "http://127.0.0.1:4321/" });
     expect(changed).toHaveBeenCalledTimes(3);

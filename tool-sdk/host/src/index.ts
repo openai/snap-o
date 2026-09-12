@@ -42,43 +42,16 @@ export class ConnectionEvent extends Event {
   }
 }
 
-export interface ToolDescriptor {
-  id: string;
-  name: string;
-  protocolVersion: number;
-  iconBase64?: string;
-  frontend?: { assetPath: string; hostApiVersion: number };
-}
-
-export interface ProcessManifest {
-  version: number;
-  pid: number;
-  processName?: string;
-  androidUserId?: number;
-  processIdentity: string;
-  app: {
-    packageName: string;
-    name: string;
-    revision: string;
-    iconBase64?: string;
-    inspectors: ToolDescriptor[];
-  };
-}
-
 export interface ToolConnection {
   readonly baseURL: string;
-  readonly tool: ToolDescriptor | null;
-  readonly manifest: ProcessManifest | null;
+  readonly protocolVersion: number;
+  readonly processIdentity: string;
   readonly signal: AbortSignal;
 }
 
 export interface Host extends EventTarget {
   readonly connection: ToolConnection | null;
   onConnection(callback: (connection: ToolConnection | null) => void | (() => void)): () => void;
-  readonly connected: boolean;
-  readonly baseURL: string | null;
-  readonly manifest: ProcessManifest | null;
-  readonly tool: ToolDescriptor | null;
   addEventListener(
     type: "connection",
     callback: (event: ConnectionEvent) => void,
@@ -109,8 +82,8 @@ interface HostState {
   revision: number;
   connected: boolean;
   baseURL?: string | null;
-  manifest?: ProcessManifest | null;
-  inspector?: ToolDescriptor | null;
+  manifest?: { processIdentity: string } | null;
+  inspector?: { protocolVersion: number } | null;
 }
 
 interface ToolbarEvent {
@@ -170,26 +143,6 @@ export class ToolHost extends EventTarget implements Host {
       cleanup?.();
       cleanup = undefined;
     };
-  }
-
-  get connected(): boolean {
-    void this.start().catch(() => {});
-    return this.state.connected;
-  }
-
-  get baseURL(): string | null {
-    void this.start().catch(() => {});
-    return this.state.baseURL ?? null;
-  }
-
-  get manifest(): ProcessManifest | null {
-    void this.start().catch(() => {});
-    return this.state.manifest ?? null;
-  }
-
-  get tool(): ToolDescriptor | null {
-    void this.start().catch(() => {});
-    return this.state.inspector ?? null;
   }
 
   override addEventListener(
@@ -370,17 +323,15 @@ export class ToolHost extends EventTarget implements Host {
       state.inspector !== this.state.inspector;
     this.state = state;
     this.connectionController?.abort();
-    this.connectionController = state.connected && state.baseURL ? new AbortController() : undefined;
+    const protocolVersion = state.inspector?.protocolVersion;
+    const processIdentity = state.manifest?.processIdentity;
+    const ready = state.connected && state.baseURL && protocolVersion != null && processIdentity;
+    this.connectionController = ready ? new AbortController() : undefined;
     this.currentConnection =
-      this.connectionController && state.baseURL
-        ? {
-            baseURL: state.baseURL,
-            tool: state.inspector ?? null,
-            manifest: state.manifest ?? null,
-            signal: this.connectionController.signal
-          }
+      ready && this.connectionController
+        ? { baseURL: state.baseURL!, protocolVersion, processIdentity, signal: this.connectionController.signal }
         : null;
-    if (changed) this.dispatchEvent(new ConnectionEvent(state.connected));
+    if (changed) this.dispatchEvent(new ConnectionEvent(this.currentConnection !== null));
   }
 
   private toolbarEvent(event: ToolbarEvent): void {

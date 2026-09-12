@@ -1,4 +1,4 @@
-import type { ToolMetadata } from "../features/app-tool/usePluginMetadata";
+import type { ToolMetadata } from "../useHostConnection";
 import type {
   LoadBodiesInput,
   RequestBodies,
@@ -77,11 +77,12 @@ class BrowserNetworkClient implements NetworkClient {
     return connection.loadBodies(input);
   }
   async startStream(input: ToolMetadata): Promise<StreamStarted> {
-    if (!host.connected || !host.baseURL) throw new Error("Tool is disconnected.");
+    const current = host.connection;
+    if (!current) throw new Error("Tool is disconnected.");
     for (const connection of this.connections.values()) connection.close();
     this.connections.clear();
     const connection = new NetworkConnection(
-      host.baseURL,
+      current.baseURL,
       input,
       (event) => {
         for (const listener of this.events) listener(event);

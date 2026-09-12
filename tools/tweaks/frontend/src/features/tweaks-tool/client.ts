@@ -38,11 +38,12 @@ class BrowserTweaksClient implements TweaksClient {
   }
 
   private async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-    if (!host.connected || !host.baseURL) throw new Error("Tool is disconnected.");
+    const current = host.connection;
+    if (!current) throw new Error("Tool is disconnected.");
     const controller = new AbortController();
     this.requests.add(controller);
     try {
-      const response = await fetch(new URL(path, host.baseURL), {
+      const response = await fetch(new URL(path, current.baseURL), {
         method,
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
         headers: body === undefined ? undefined : { "Content-Type": "application/json" },
@@ -77,9 +78,10 @@ class BrowserTweaksClient implements TweaksClient {
   }
 
   async startTweakStream(onError?: (error: Error) => void): Promise<StreamStarted> {
-    if (!host.connected || !host.baseURL) throw new Error("Tool is disconnected.");
+    const current = host.connection;
+    if (!current) throw new Error("Tool is disconnected.");
     const streamId = crypto.randomUUID();
-    const stream = new EventSource(new URL("tweaks/events", host.baseURL));
+    const stream = new EventSource(new URL("tweaks/events", current.baseURL));
     return new Promise((resolve, reject) => {
       let opened = false;
       const close = (error?: Error) => {

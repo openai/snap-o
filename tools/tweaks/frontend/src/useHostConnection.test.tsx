@@ -2,27 +2,24 @@
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Host, ToolDescriptor, ProcessManifest } from "@snap-o/tool-host";
+import type { Host, ToolConnection } from "@snap-o/tool-host";
 import { useHostConnection } from "./useHostConnection";
 
-const tool: ToolDescriptor = { id: "example", name: "Example", protocolVersion: 1 };
-const manifest: ProcessManifest = {
-  version: 1,
-  pid: 42,
+const connection: ToolConnection = {
+  baseURL: "http://127.0.0.1:1234/",
+  protocolVersion: 1,
   processIdentity: "boot:42:1",
-  app: { packageName: "com.example.app", name: "Example", revision: "1", inspectors: [tool] }
+  signal: new AbortController().signal
 };
 
 function createHost(): Host {
   const host = Object.assign(new EventTarget(), {
-    connected: true,
-    baseURL: "http://127.0.0.1:1234/",
-    manifest,
-    tool,
-    onConnection(callback: () => void) {
-      host.addEventListener("connection", callback);
-      callback();
-      return () => host.removeEventListener("connection", callback);
+    connection,
+    onConnection(callback: (connection: ToolConnection | null) => void) {
+      const update = () => callback(host.connection);
+      host.addEventListener("connection", update);
+      update();
+      return () => host.removeEventListener("connection", update);
     }
   }) as Host;
   return host;
@@ -30,16 +27,12 @@ function createHost(): Host {
 
 describe("host connection snapshots", () => {
   let container: HTMLDivElement;
-  let latest: ReturnType<typeof useHostConnection> & Pick<Host, "baseURL" | "manifest" | "tool">;
+  let latest: ReturnType<typeof useHostConnection> & Pick<Host, "connection">;
 
   function Probe({ host }: { host: Host }) {
     const connection = useHostConnection(host);
-    latest = { ...connection, baseURL: host.baseURL, manifest: host.manifest, tool: host.tool };
-    return (
-      <output>
-        {latest.baseURL} {latest.manifest?.app.name} {latest.tool?.name}
-      </output>
-    );
+    latest = { ...connection, connection: host.connection };
+    return <output>{latest.connection?.baseURL}</output>;
   }
 
   beforeEach(() => {
@@ -50,23 +43,23 @@ describe("host connection snapshots", () => {
     vi.restoreAllMocks();
   });
 
-  it.each(["baseURL", "manifest", "tool"] as const)(
+  it.each(["baseURL", "processIdentity", "protocolVersion"] as const)(
     "observes a %s change between rendering and subscribing",
     async (property) => {
       const host = createHost();
       const replacement = {
         baseURL: "http://127.0.0.1:5678/",
-        manifest: { ...manifest, app: { ...manifest.app, name: "Updated app" } },
-        tool: { ...tool, name: "Updated tool" }
+        processIdentity: "boot:42:2",
+        protocolVersion: 2
       };
       const subscribe = host.addEventListener.bind(host);
       vi.spyOn(host, "addEventListener").mockImplementationOnce((type, listener, options) => {
-        Object.assign(host, { [property]: replacement[property] });
+        Object.assign(host, { connection: { ...connection, [property]: replacement[property] } });
         subscribe(type, listener, options);
       });
       await act(() => render(<Probe host={host} />, container));
       expect(latest.connected).toBe(true);
-      expect(latest[property]).toBe(replacement[property]);
+      expect(latest.connection?.[property]).toBe(replacement[property]);
       expect(latest.revision).toBeGreaterThan(0);
     }
   );
@@ -78,16 +71,19 @@ describe("host connection snapshots", () => {
 
     await act(() => {
       Object.assign(host, {
-        baseURL: "http://127.0.0.1:5678/",
-        manifest: { ...manifest, processIdentity: "boot:42:2" },
-        tool: { ...tool, protocolVersion: 2 }
+        connection: {
+          ...connection,
+          baseURL: "http://127.0.0.1:5678/",
+          processIdentity: "boot:42:2",
+          protocolVersion: 2
+        }
       });
       host.dispatchEvent(new Event("connection"));
     });
     expect(latest.connected).toBe(true);
-    expect(latest.baseURL).toBe("http://127.0.0.1:5678/");
-    expect(latest.manifest?.processIdentity).toBe("boot:42:2");
-    expect(latest.tool?.protocolVersion).toBe(2);
+    expect(latest.connection?.baseURL).toBe("http://127.0.0.1:5678/");
+    expect(latest.connection?.processIdentity).toBe("boot:42:2");
+    expect(latest.connection?.protocolVersion).toBe(2);
     expect(latest.revision).toBe(initial.revision + 1);
   });
 
@@ -107,7 +103,7 @@ describe("host connection snapshots", () => {
     const initialRevision = latest.revision;
     for (const connected of [false, true]) {
       await act(() => {
-        Object.assign(host, { connected });
+        Object.assign(host, { connection: connected ? connection : null });
         host.dispatchEvent(new Event("connection"));
       });
       expect(latest.connected).toBe(connected);
@@ -125,7 +121,7 @@ describe("host connection snapshots", () => {
     expect(oldRemove).toHaveBeenCalledWith("connection", expect.any(Function));
     const current = latest;
     await act(() => {
-      Object.assign(oldHost, { connected: false });
+      Object.assign(oldHost, { connection: null });
       oldHost.dispatchEvent(new Event("connection"));
     });
     expect(latest).toBe(current);

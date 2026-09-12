@@ -1,4 +1,4 @@
-import type { ToolMetadata } from "../features/app-tool/usePluginMetadata";
+import type { ToolMetadata } from "../useHostConnection";
 import type { StreamStarted, StreamStatus } from "./bridge-types";
 
 export type StreamLifecycleState = "starting" | "streaming" | "retrying";

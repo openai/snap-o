@@ -8,11 +8,11 @@ requests, event streams, and domain state.
 
 The native host owns process and tool isolation. It creates a separate page for each tool and replaces the page when its app/process identity changes. Before releasing an old forwarded port, it unloads every page authorized to use it. A frontend does not need to route requests between processes or protect another tool's endpoint.
 
-`host.connected` indicates whether this page's selected tool has an available endpoint. `host.baseURL` contains its forwarded HTTP base URL, or `null` while disconnected. Hidden tool pages can remain alive and receive a disconnected connection state.
+`host.connection` contains the selected tool's connection details, or `null` while disconnected. Hidden tool pages can remain alive and receive a disconnected connection state.
 
 `host.onConnection(callback)` delivers the current `ToolConnection` or `null` immediately. Return a cleanup function to close that connection's stream before replacement or disconnection. Unsubscribe when the UI unmounts; this also runs its cleanup. Use `connection.signal` with requests that should abort on disconnection.
 
-Read app metadata from `host.manifest` and the selected descriptor from `host.tool`. Each frontend checks its tool's `protocolVersion`; the host does not interpret domain API versions.
+Use `connection.baseURL` for HTTP requests and check `connection.protocolVersion` against the API versions your frontend supports. `connection.processIdentity` is an opaque token that changes when the Android process restarts. Raw discovery metadata stays internal.
 
 ```ts
 const unsubscribe = host.onConnection((connection) => {

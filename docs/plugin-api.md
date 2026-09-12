@@ -1,7 +1,7 @@
 ---
 layout: guide
-title: Tool plugin API reference · Snap-O
-description: Configuration, Android HTTP and streaming APIs, and the TypeScript host API for Snap-O tool plugin authors.
+title: Tool API reference · Snap-O
+description: Configuration, Android HTTP and streaming APIs, and the TypeScript host API for Snap-O tool authors.
 styles:
 - guide.css
 languages:
@@ -11,21 +11,21 @@ languages:
 breadcrumbs:
 - label: Snap-O
   href: index.html
-- label: Build a tool plugin
+- label: Build a tool
   href: plugins.html
 ---
 
-# Tool plugin API reference
+# Tool API reference
 
 Use the Android library to handle requests inside your app. Use the frontend library to connect your web UI to Snap-O. Use the Tool Gradle Plugin to build and include that UI in your Android app.
 {.lead}
 
-Start with [Build a tool plugin](plugins.md) to add a tool to your Android project.
+Start with [Build a tool](plugins.md) to add a tool to your Android project.
 {.note}
 
 ## Packaging {#packaging}
 
-The Tool Gradle Plugin generates the descriptor, Android manifest entry, and frontend ZIP. Follow the [tool plugin configuration](plugins.md#manifest) and [frontend packaging](plugins.md#assets) steps in the guide.
+The Tool Gradle Plugin generates the descriptor, Android manifest entry, and frontend ZIP. Follow the [tool configuration](plugins.md#manifest) and [frontend packaging](plugins.md#assets) steps in the guide.
 
 Add the Tool Gradle Plugin to your version catalog:
 
@@ -65,7 +65,7 @@ snapoTool {
 }
 ```
 
-Set `id`, `displayName`, and `protocolVersion` for every tool plugin. `hostApiVersion` defaults to 1. If you set `icon`, include the named drawable in your Android resources.
+Set `id`, `displayName`, and `protocolVersion` for every tool. `hostApiVersion` defaults to 1. If you set `icon`, include the named drawable in your Android resources.
 
 | Property | Type | Required or default | Meaning |
 | --- | --- | --- | --- |
@@ -79,7 +79,7 @@ Set `id`, `displayName`, and `protocolVersion` for every tool plugin. `hostApiVe
 | `downloadNode` | `Property<Boolean>` | `true` | Whether Gradle downloads Node. Set to `false` to use Node on `PATH`. |
 | `nodeVersion` | `Property<String>` | `22.23.2` | Node version that Gradle downloads. |
 
-You can assign these Gradle properties as shown above, or use `.set(...)` with a Gradle provider. `toolBuild` runs the frontend's npm `build` script, which must write to `frontendDirectory/dist/`. `toolDev` runs the npm `dev` script. When you build the Android module, Gradle includes the frontend ZIP and tool plugin details automatically.
+You can assign these Gradle properties as shown above, or use `.set(...)` with a Gradle provider. `toolBuild` runs the frontend's npm `build` script, which must write to `frontendDirectory/dist/`. `toolDev` runs the npm `dev` script. When you build the Android module, Gradle includes the frontend ZIP and tool metadata automatically.
 
 To use an existing Node installation:
 
@@ -109,7 +109,7 @@ SnapOTool.PROTOCOL_VERSION // Int: 1
 SnapOTool.HOST_API_VERSION // Int: 1
 ```
 
-Each module defines one `snapoTool` and gets one generated `SnapOTool` class. Give each tool plugin module its own Android namespace.
+Each module defines one `snapoTool` and gets one generated `SnapOTool` class. Give each tool module its own Android namespace.
 
 ## Server and startup {#server}
 
@@ -165,7 +165,7 @@ The check allows startup when at least one of these is true:
 - You pass `allowRelease = true`.
 - The app sets the manifest metadata flag named by `releaseMetadataKey` to `true`.
 
-Keep the tool plugin dependency in debug builds unless you intend to inspect release builds. See the [startup guidance](plugins.md#startup).
+Keep the tool dependency in debug builds unless you intend to inspect release builds. See the [startup guidance](plugins.md#startup).
 
 ## Requests and responses {#requests}
 
@@ -284,7 +284,7 @@ The server sends heartbeat comments at the interval you choose. Use a positive, 
 
 The coroutine sending events ends when the client disconnects, the handler returns, or the server closes. Its heartbeat job and child coroutines end too. Use suspending calls, or `runInterruptible` around blocking calls, so this work can be cancelled.
 
-`ToolResponseStream.write(bytes)` writes one chunk of a response, such as a line of NDJSON. The runtime ends the response when the block returns. Your tool plugin decides how to queue events, identify them, and replay missed events.
+`ToolResponseStream.write(bytes)` writes one chunk of a response, such as a line of NDJSON. The runtime ends the response when the block returns. Your tool decides how to queue events, identify them, and replay missed events.
 
 ## Frontend host {#host}
 
@@ -294,10 +294,6 @@ Import `host` from `@snap-o/tool-host`. This object provides the current connect
 interface Host extends EventTarget {
   readonly connection: ToolConnection | null;
   onConnection(callback: (connection: ToolConnection | null) => void | (() => void)): () => void;
-  readonly connected: boolean;
-  readonly baseURL: string | null;
-  readonly manifest: ProcessManifest | null;
-  readonly tool: ToolDescriptor | null;
   setToolbar(toolbar: Toolbar): Promise<void>;
   openColorPicker(options: ColorPickerOptions): Promise<ColorPicker>;
   copyText(text: string): Promise<void>;
@@ -305,46 +301,15 @@ interface Host extends EventTarget {
 }
 ```
 
-`connected` means Snap-O has a server address for the current page. Requests to it can still fail. Read `baseURL` after every `connection` event because the address can change. Reading these properties starts setup with Snap-O, so the first read may show no connection.
-
-### Metadata
-
-``` { .typescript title="Plugin and app metadata" }
-interface ToolDescriptor {
-  id: string;
-  name: string;
-  protocolVersion: number;
-  iconBase64?: string;
-  frontend?: { assetPath: string; hostApiVersion: number };
-}
-
-interface ProcessManifest {
-  version: number;
-  pid: number;
-  processName?: string;
-  androidUserId?: number;
-  processIdentity: string;
-  app: {
-    packageName: string;
-    name: string;
-    revision: string;
-    iconBase64?: string;
-    inspectors: ToolDescriptor[];
-  };
-}
-```
-
-`host.tool` contains details about the tool plugin shown in this page. `host.manifest` contains details about the Android app process. `processIdentity` changes when that process restarts. `app.revision` identifies the installed version of the app package.
-
-`app.inspectors` and the bridge's `inspector` field are internal discovery names. Use `host.tool` for the selected tool's descriptor.
+`host.connection` is `null` until Snap-O provides the server address and connection details. Requests can still fail while connected.
 
 ### Connection lifetime
 
 ``` { .typescript title="Connection subscription" }
 interface ToolConnection {
   readonly baseURL: string;
-  readonly tool: ToolDescriptor | null;
-  readonly manifest: ProcessManifest | null;
+  readonly protocolVersion: number;
+  readonly processIdentity: string;
   readonly signal: AbortSignal;
 }
 
@@ -354,11 +319,13 @@ const unsubscribe = host.onConnection(connection => {
 });
 ```
 
+`baseURL` is the forwarded Android server address. Check `protocolVersion` against the API versions your frontend supports. `processIdentity` is an opaque token that changes when the Android process restarts; use it to scope state you retain across reconnects.
+
 The callback runs immediately and whenever the host reports a connection change. Its previous cleanup runs before the next callback and when unsubscribing. A new connection can reuse the same URL. Its `signal` aborts when that connection ends; use it with `fetch` for requests tied to the connection. Unsubscribing one UI does not abort another UI's requests.
 
 Snap-O unloads pages before releasing their forwarded ports. Hidden pages may stay loaded and receive a disconnected state. In a loaded page, close an old `EventSource` before replacing it, or when removing its UI, to stop retries at its old URL. See the [connection example](plugins.md#frontend).
 
-The lower-level `connection` event remains available through `addEventListener`. It reports a boolean `connected` property; read the current host properties after subscribing and on each event.
+The lower-level `connection` event remains available through `addEventListener`. It reports a boolean `connected` property; read `host.connection` after subscribing and on each event.
 
 The package also exports `Host`, `ToolHost`, and the related types. Most frontends use the `host` object. Tests can supply a fake with just the properties and methods their code uses. `ToolHost` accepts a custom transport for testing messages to and from Snap-O.
 
@@ -421,8 +388,8 @@ These versions describe different things:
 
 | Version | Who sets it | What it means |
 | --- | --- | --- |
-| Maven/npm package version | SDK or tool plugin author | Which release of a library or build tool plugin you depend on. |
-| `protocolVersion` | Your tool plugin | Which data format the Android server uses. Your frontend checks whether it supports it. |
+| Maven/npm package version | SDK or tool author | Which release of a library or Gradle plugin you depend on. |
+| `protocolVersion` | Your tool | Which data format the Android server uses. Your frontend checks whether it supports it. |
 | `hostApiVersion` | Snap-O | Which Snap-O host API the frontend needs. Currently version 1. |
 
 Your frontend must check the server's protocol version; Snap-O cannot check your data format for you. Example accepts only protocol 1. Choose whether your frontend supports one version or several, and check incoming data too. A change to your data format does not require a change to `hostApiVersion`.
@@ -430,7 +397,7 @@ Your frontend must check the server's protocol version; Snap-O cannot check your
 | Setting | Current default or limit |
 | --- | --- |
 | Runtime request body | 64 KiB; configurable with `requestPolicy` |
-| Runtime connections | 32 per tool plugin/process; constructor override available |
+| Runtime connections | 32 per tool/process; constructor override available |
 | Request read / finite request / blocked write | 5 seconds / 30 seconds / 5 seconds; write checks run once per second |
 | SSE heartbeat | 30 seconds; configurable or disabled per stream |
 | Frontend ZIP | 16 MiB compressed and expanded; at most 1,024 entries |
@@ -438,8 +405,8 @@ Your frontend must check the server's protocol version; Snap-O cannot check your
 
 SSE connections can stay open beyond the 30-second request limit.
 
-Include all files your frontend needs in its build. Snap-O blocks remote scripts, frames, workers, forms, and requests to servers other than your tool plugin's Android server. It also blocks WebAssembly and running JavaScript from strings. If you select a local development server, Snap-O allows that server and its hot-reload connection.
+Include all files your frontend needs in its build. Snap-O blocks remote scripts, frames, workers, forms, and requests to servers other than your tool's Android server. It also blocks WebAssembly and running JavaScript from strings. If you select a local development server, Snap-O allows that server and its hot-reload connection.
 
 These checks do not make JavaScript from an untrusted APK safe to run. See [WebView safeguards](https://github.com/openai/snap-o/blob/main/tools/README.md#webview-safeguards) for details.
 
-The [runtime source](https://github.com/openai/snap-o/tree/main/tool-sdk/runtime/src/main/java/com/openai/snapo/tool) contains the HTTP and SSE implementation. Most tool plugins can use `ToolServer` and its routes. Tool plugin discovery also supports tool plugins without a frontend; this guide covers tools with a web UI.
+The [runtime source](https://github.com/openai/snap-o/tree/main/tool-sdk/runtime/src/main/java/com/openai/snapo/tool) contains the HTTP and SSE implementation. Most tools can use `ToolServer` and its routes. Tool plugin discovery also supports tool plugins without a frontend; this guide covers tools with a web UI.

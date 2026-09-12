@@ -108,7 +108,7 @@ color.addEventListener("click", () => {
       },
     })
     .then((opened) => {
-      if (disposed || !host.connected) opened.close();
+      if (disposed || !host.connection) opened.close();
       else picker = opened;
     })
     .catch(report);

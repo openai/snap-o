@@ -1,7 +1,7 @@
 ---
 layout: guide
-title: Build a tool plugin · Snap-O
-description: Build an Android tool plugin with HTTP routes, live events, and a frontend in Snap-O's Tool pane.
+title: Build a tool · Snap-O
+description: Build an Android tool with HTTP routes, live events, and a frontend in Snap-O's Tool pane.
 styles:
 - guide.css
 languages:
@@ -17,29 +17,29 @@ breadcrumbs:
   href: index.html
 ---
 
-# Build a tool plugin
+# Build a tool
 
 Build a debugging tool for your Android app and use it from Snap-O on your Mac.
 {.lead}
 
-## About tool plugins {#model data-nav="About tool plugins"}
+## About tools {#model data-nav="About tools"}
 
-A tool plugin connects code in your Android app to a tool in Snap-O. A tool plugin with a frontend needs three things:
+A tool plugin connects your tool to Snap-O. For a tool with a web frontend, that integration has three parts:
 
 - **An Android socket serving HTTP.** Your app opens a named socket. Snap-O forwards HTTP requests from the frontend to that socket over ADB.
-- **A tool plugin manifest.** Android resources describe the tool plugin's ID, display name, API version, and frontend asset path.
+- **A tool plugin manifest.** Android resources describe the tool's ID, display name, API version, and frontend asset path.
 - **A frontend ZIP.** Your app's APK contains a ZIP of web assets. Snap-O opens it in a WebView. The frontend uses the host SDK to interact with the Mac app and HTTP requests to communicate with the Android app.
 
-### How Snap-O uses a tool plugin {#how-the-ui-talks-to-your-app}
+### How Snap-O uses a tool {#how-the-ui-talks-to-your-app}
 
-1. **The Android app starts the server.** Your app's initialization code opens the tool plugin's named socket and starts serving HTTP.
-2. **Snap-O discovers the tool plugin.** Snap-O scans the device for tool plugin sockets to find running apps. It reads their tool plugin manifests to identify the available tools.
+1. **The Android app starts the server.** Your app's initialization code opens the tool's named socket and starts serving HTTP.
+2. **Snap-O discovers the tool.** Snap-O scans the device for tool sockets to find running apps. It reads their tool manifests to identify the available tools.
 3. **Snap-O loads the frontend.** When you select a tool, Snap-O opens its frontend ZIP from the APK in the Tool pane.
 4. **The frontend communicates with the app.** It sends HTTP requests, which Snap-O forwards to the app over ADB. Your server handles the requests and can stream updates.
 
-## Define the tool plugin's identity {#definition data-step="1"}
+## Define the tool's identity {#definition data-step="1"}
 
-Use Snap-O's Tool Gradle Plugin in the Android library module that contains your tool plugin.
+Use Snap-O's Tool Gradle Plugin in the Android library module that contains your tool.
 
 Snap-O's Tool Gradle Plugin builds your web frontend, packages it into a ZIP, and includes it in the Android build. It also generates the descriptor and manifest entry that Snap-O uses to identify your tool and find its frontend.
 
@@ -63,36 +63,36 @@ plugins {
 
 Both Gradle components resolve from Maven Central. Most projects already have `mavenCentral()` in `pluginManagement.repositories`; add it if needed. Keep your existing Android Gradle configuration.
 
-### Configure your tool plugin {#manifest}
+### Configure your tool {#manifest}
 
 Apply the Tool Gradle Plugin to your Android library module and set its identity:
 
-``` { .kotlin title="Your plugin module's build.gradle.kts" }
+``` { .kotlin title="Your tool module's build.gradle.kts" }
 plugins {
     alias(libs.plugins.snapo.tool)
 }
 
 snapoTool {
-    id = "your-plugin"
-    displayName = "Your plugin"
+    id = "your-tool"
+    displayName = "Your tool"
     protocolVersion = 1
-    icon = "@drawable/plugin_icon"
+    icon = "@drawable/tool_icon"
 }
 ```
 
-Set `id` and `displayName` to your tool plugin's ID and name. The ID must be unique within the app and stay stable across releases. Use lowercase letters, digits, dots, or hyphens, starting with a letter. `protocolVersion` identifies your HTTP API; your frontend checks whether it supports that version.
+Set `id` and `displayName` to your tool's ID and name. The ID must be unique within the app and stay stable across releases. Use lowercase letters, digits, dots, or hyphens, starting with a letter. `protocolVersion` identifies your HTTP API; your frontend checks whether it supports that version.
 
-Set `icon` to a drawable resource in your Android module. The names above are examples; use your tool plugin's name and icon resource.
+Set `icon` to a drawable resource in your Android module. The names above are examples; use your tool's name and icon resource.
 
-The frontend directory defaults to `frontend/` inside your tool plugin module. Set `frontendDirectory` only if your web project is elsewhere. See the [Gradle API reference](plugin-api.md#packaging) for other options.
+The frontend directory defaults to `frontend/` inside your tool module. Set `frontendDirectory` only if your web project is elsewhere. See the [Gradle API reference](plugin-api.md#packaging) for other options.
 
 ## Serve HTTP on Android {#the-android-library-tool-runtime data-step="2"}
 
 ### How the socket connects to Snap-O {#android}
 
-The tool plugin serves HTTP over an Android abstract Unix socket named `snapo_<tool-id>_<pid>`. The name combines the tool plugin ID from your Gradle configuration with the running app's process ID. Snap-O finds this socket and forwards the frontend's HTTP requests to it over ADB.
+The tool serves HTTP over an Android abstract Unix socket named `snapo_<tool-id>_<pid>`. The name combines the tool ID from your Gradle configuration with the running app's process ID. Snap-O finds this socket and forwards the frontend's HTTP requests to it over ADB.
 
-### Use the Android Tool plugin SDK {#starter}
+### Use the Android Tool SDK {#starter}
 
 Add `tool-runtime` to your Android module. Its `ToolServer` opens the socket, handles HTTP requests, and calls your route handlers. You define the routes and choose when to start the server.
 
@@ -111,7 +111,7 @@ See the [browser access rules](https://github.com/openai/snap-o/blob/main/contra
 
 </details>
 
-<div class="dependency-tabs" data-label="Android Tool plugin SDK dependency format" markdown="1">
+<div class="dependency-tabs" data-label="Android Tool SDK dependency format" markdown="1">
 <div id="tool-sdk-catalog-panel" data-tab="Version catalog" markdown="1">
 
 ``` { .toml title="gradle/libs.versions.toml" }
@@ -185,9 +185,9 @@ fun createToolServer(toolId: String): ToolServer {
 
 ### Start the server with AndroidX Startup {#startup}
 
-Usually, you want the tool plugin server to start when the Android app starts. One way to do this is with [AndroidX Startup](https://developer.android.com/topic/libraries/app-startup). With the setup below, adding your tool plugin library as an app dependency starts the server automatically.
+Usually, you want the tool server to start when the Android app starts. One way to do this is with [AndroidX Startup](https://developer.android.com/topic/libraries/app-startup). With the setup below, adding your tool library as an app dependency starts the server automatically.
 
-Add the AndroidX Startup dependency to your tool plugin library:
+Add the AndroidX Startup dependency to your tool library:
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
@@ -197,22 +197,22 @@ androidx-startup = "1.2.0"
 androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "androidx-startup" }
 ```
 
-``` { .kotlin title="Your plugin module's build.gradle.kts" }
+``` { .kotlin title="Your tool module's build.gradle.kts" }
 dependencies {
     implementation(libs.androidx.startup)
 }
 ```
 
-Create an initializer using `createToolServer` from the example above. Put both in your module's namespace; `com.example.plugin` below is an example:
+Create an initializer using `createToolServer` from the example above. Put both in your module's namespace; `com.example.tool` below is an example:
 
-``` { .kotlin title="ToolInitializer.kt" }
-package com.example.plugin
+``` { .kotlin title="ExampleToolInitializer.kt" }
+package com.example.tool
 
 import android.content.Context
 import androidx.startup.Initializer
 import com.openai.snapo.tool.ToolServer
 
-class ToolInitializer : Initializer<ToolServer> {
+class ExampleToolInitializer : Initializer<ToolServer> {
     override fun create(context: Context): ToolServer =
         createToolServer(SnapOTool.ID).apply { startIfAllowed(context) }
 
@@ -222,9 +222,9 @@ class ToolInitializer : Initializer<ToolServer> {
 
 `startIfAllowed` checks whether the app allows inspection and starts the server. It returns `false` if startup is disallowed or the socket cannot be opened, logging socket failures. Repeated calls on a running server do not open another socket.
 
-Register the initializer under AndroidX Startup's shared provider in your tool plugin library's manifest. Set `android:name` on the metadata entry to your initializer's full class name:
+Register the initializer under AndroidX Startup's shared provider in your tool library's manifest. Set `android:name` on the metadata entry to your initializer's full class name:
 
-``` { .xml title="Your plugin library's AndroidManifest.xml" }
+``` { .xml title="Your tool library's AndroidManifest.xml" }
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application>
@@ -234,14 +234,14 @@ Register the initializer under AndroidX Startup's shared provider in your tool p
             android:exported="false"
             tools:node="merge">
             <meta-data
-                android:name="com.example.plugin.ToolInitializer"
+                android:name="com.example.tool.ExampleToolInitializer"
                 android:value="androidx.startup" />
         </provider>
     </application>
 </manifest>
 ```
 
-Use a debug-only app dependency on the tool plugin library. `startIfAllowed` also checks the app's debuggable flag. A release app must explicitly opt in through `snapo.<tool-id>.allow_release` application metadata or the helper's `allowRelease` argument.
+Use a debug-only app dependency on the tool library. `startIfAllowed` also checks the app's debuggable flag. A release app must explicitly opt in through `snapo.<tool-id>.allow_release` application metadata or the helper's `allowRelease` argument.
 
 For AndroidX Startup configuration and behavior, see the [AndroidX Startup documentation](https://developer.android.com/topic/libraries/app-startup).
 
@@ -251,7 +251,7 @@ See the [complete Example initializer](https://github.com/openai/snap-o/blob/mai
 
 ### Create your UI {#frontend}
 
-For a new frontend, use [Preact with Vite](https://preactjs.com/guide/v10/getting-started/#create-a-vite-powered-preact-app). Open a terminal in your tool plugin's Android library module directory—the directory containing its `build.gradle.kts`. Then run:
+For a new frontend, use [Preact with Vite](https://preactjs.com/guide/v10/getting-started/#create-a-vite-powered-preact-app). Open a terminal in your tool's Android library module directory—the directory containing its `build.gradle.kts`. Then run:
 
 ``` { .bash title="From your Android library module directory" }
 # Start in the library module directory containing build.gradle.kts.
@@ -273,16 +273,7 @@ Snap-O blocks remote scripts and requests to other servers. It also blocks WebAs
 
 ### Connect to the Snap-O Mac app {#connect-to-android}
 
-The host SDK connects your frontend to the Snap-O Mac app. It provides the forwarded Android server address and native controls. Read the current Android connection through `host`:
-
-``` { .typescript title="Read the connection" }
-import { host } from "@snap-o/tool-host";
-
-host.connected;
-host.baseURL;
-host.tool?.id;
-host.tool?.protocolVersion;
-```
+The host SDK connects your frontend to the Snap-O Mac app. It provides the forwarded Android server address and native controls.
 
 Use `host.onConnection` to receive the current connection immediately and respond when it changes. The callback can return a cleanup function for that connection's work.
 
@@ -298,7 +289,7 @@ export function App() {
   useEffect(() => host.onConnection(connection => {
     setMessage(connection ? "Waiting for events…" : "Disconnected");
     if (!connection) return;
-    if (connection.tool?.protocolVersion !== 1) {
+    if (connection.protocolVersion !== 1) {
       setMessage("Unsupported tool API version");
       return;
     }
@@ -358,7 +349,7 @@ If your tool edits colors, use `host.openColorPicker({ value, onChange })`. It r
 
 ## Try your tool in Snap-O {#development data-step="4"}
 
-Run your Android app with the tool plugin library included, using your usual workflow. Its build includes the updated frontend automatically.
+Run your Android app with the tool library included, using your usual workflow. Its build includes the updated frontend automatically.
 
 <span id="verification"></span>In Snap-O, select your device, app, and tool. With the example above, the Tool pane displays a new tick each second. Try the native **Reload tool** button to reload the frontend and start a new stream.
 
@@ -376,4 +367,4 @@ The Tool Gradle Plugin's `toolDev` task can also run the frontend's npm `dev` sc
 
 Choose **Develop → Use Packaged Frontend** to return to the version bundled in the APK. Rebuild and reinstall through your usual Android workflow to update that version.
 
-For a complete tool plugin implementation, see the [Example project](https://github.com/openai/snap-o/tree/main/examples/tool). For SDK methods, see the [Tool plugin API reference](plugin-api.md).
+For a complete tool implementation, see the [Example project](https://github.com/openai/snap-o/tree/main/examples/tool). For SDK methods, see the [Tool API reference](plugin-api.md).

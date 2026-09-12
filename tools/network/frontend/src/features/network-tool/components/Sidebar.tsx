@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import type { NetworkClient } from "../../../network/client";
 import type { ToolRecord } from "../../../network/cdp";
-import type { ToolMetadata } from "../../app-tool/usePluginMetadata";
+import type { ToolMetadata } from "../../../useHostConnection";
 import { hasProtocolWarning, supportedProtocolVersion } from "../lib/protocol";
 import { ExclusionFilterControl } from "./ExclusionFilterControl";
 import { RecordList } from "./RecordList";

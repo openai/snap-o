@@ -12,7 +12,7 @@ import {
   type ToolDataState,
   type ToolRecord
 } from "../../../network/cdp";
-import type { ToolMetadata } from "../../app-tool/usePluginMetadata";
+import type { ToolMetadata } from "../../../useHostConnection";
 import { supportedProtocolVersion } from "../lib/protocol";
 import { NetworkStreamController, type StreamLifecycleState } from "../../../network/stream-controller";
 import { useToolUiState } from "./useToolUiState";

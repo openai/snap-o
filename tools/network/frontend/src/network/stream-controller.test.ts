@@ -1,4 +1,4 @@
-import type { ToolMetadata } from "../features/app-tool/usePluginMetadata";
+import type { ToolMetadata } from "../useHostConnection";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StreamStarted, StreamStatus } from "./bridge-types";
 import { NetworkStreamController, type StreamLifecycleState } from "./stream-controller";
@@ -100,8 +100,6 @@ describe("NetworkStreamController", () => {
 });
 
 const metadata: ToolMetadata = {
-  name: "Demo",
-  packageName: "example.demo",
   protocolVersion: 3,
   processIdentity: "boot:20:123"
 };
