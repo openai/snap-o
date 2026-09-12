@@ -1121,10 +1121,10 @@ class ProtocolTests(unittest.TestCase):
             with mock.patch.object(snapo, "__file__", str(script)):
                 with self.assertRaisesRegex(snapo.SnapOError, "reinstall"):
                     snapo.discovery_helper()
-                bundled = resources / "snapo-discovery.jar"
+                bundled = resources / "snapo-tool-reader.jar"
                 bundled.write_bytes(b"reader")
                 self.assertEqual(snapo.discovery_helper(), bundled.resolve())
-                standalone = script.with_name("snapo-discovery.jar")
+                standalone = script.with_name("snapo-tool-reader.jar")
                 standalone.write_bytes(b"reader")
                 self.assertEqual(snapo.discovery_helper(), standalone.resolve())
 

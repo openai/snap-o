@@ -2,31 +2,31 @@ import Foundation
 import SwiftUI
 import WebKit
 
-actor PluginHTTPService {
+actor ToolHTTPService {
   struct Endpoint {
     let id: UUID
     let baseURL: URL
   }
 }
 
-actor PluginService {
+actor ToolService {
   private let invalidFrontend: Bool
   private var apps: [InspectableApp]
   private(set) var frontendRequests = 0
   private(set) var endpointRequests = 0
   private let updates = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
-  let endpoint = PluginHTTPService.Endpoint(id: UUID(), baseURL: URL(string: "http://127.0.0.1:1234/")!)
+  let endpoint = ToolHTTPService.Endpoint(id: UUID(), baseURL: URL(string: "http://127.0.0.1:1234/")!)
   init(apps: [InspectableApp], invalidFrontend: Bool = false) {
     self.invalidFrontend = invalidFrontend
     self.apps = apps
   }
 
-  func discoverPlugins() async -> PluginDiscoverySnapshot {
-    PluginDiscoverySnapshot(apps: apps)
+  func discoverPlugins() async -> ToolDiscoverySnapshot {
+    ToolDiscoverySnapshot(apps: apps)
   }
 
-  func currentPlugins() -> PluginDiscoverySnapshot {
-    PluginDiscoverySnapshot(apps: apps)
+  func currentPlugins() -> ToolDiscoverySnapshot {
+    ToolDiscoverySnapshot(apps: apps)
   }
 
   func changes() -> AsyncStream<Void> {
@@ -40,9 +40,9 @@ actor PluginService {
 
   func openApp(_ input: OpenAppInput) async throws {}
   func pluginEndpoint(
-    for reference: PluginServerReference, ownerID: UUID? = nil,
+    for reference: ToolServerReference, ownerID: UUID? = nil,
     invalidated: (@MainActor @Sendable () async -> Void)? = nil
-  ) async throws -> PluginHTTPService.Endpoint {
+  ) async throws -> ToolHTTPService.Endpoint {
     endpointRequests += 1
     return endpoint
   }
@@ -50,24 +50,24 @@ actor PluginService {
   func releasePluginEndpoint(ownerID: UUID) {}
 
   func pluginFrontend(
-    for reference: PluginServerReference, identity: PluginProcessIdentity, tool: PluginDescriptor
-  ) async throws -> PluginFrontendBundle {
+    for reference: ToolServerReference, identity: ToolProcessIdentity, tool: ToolDescriptor
+  ) async throws -> ToolFrontendBundle {
     frontendRequests += 1
-    if invalidFrontend { return try PluginFrontendBundle(files: ["index.html": Data([0xFF])]) }
+    if invalidFrontend { return try ToolFrontendBundle(files: ["index.html": Data([0xFF])]) }
     return try Self.frontendFixture(tool.id)
   }
 
-  private static func frontendFixture(_ kind: PluginID) throws -> PluginFrontendBundle {
+  private static func frontendFixture(_ kind: ToolID) throws -> ToolFrontendBundle {
     let module = kind == .network ? "network" : "tweaks"
     let directory = URL(fileURLWithPath: kind == .sample
       ? "Tests/ToolSelection/Fixtures/sample"
-      : "../plugins/\(module)/frontend/dist")
+      : "../tools/\(module)/frontend/dist")
     let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey])!
     var files: [String: Data] = [:]
     for case let file as URL in enumerator where try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
       files[String(file.path.dropFirst(directory.standardizedFileURL.path.count + 1))] = try Data(contentsOf: file)
     }
-    return try PluginFrontendBundle(files: files)
+    return try ToolFrontendBundle(files: files)
   }
 }
 
@@ -84,17 +84,17 @@ struct ToolWebViewTests {
 
   static func app(
     _ pid: Int,
-    connectedKinds: [PluginID]? = nil,
-    kinds: [PluginID] = [.network, .tweaks, .sample],
+    connectedKinds: [ToolID]? = nil,
+    kinds: [ToolID] = [.network, .tweaks, .sample],
     includeFrontend: Bool = true,
-    compatibility: [PluginID: PluginCompatibility] = [:]
+    compatibility: [ToolID: ToolCompatibility] = [:]
   ) -> InspectableApp {
     InspectableApp(
       id: "phone:pid:\(pid)", pid: pid, deviceId: "phone", deviceDisplayTitle: "Phone",
       tools: kinds.map { kind in
         AppToolOption(
           kind: kind,
-          server: PluginServerReference(
+          server: ToolServerReference(
             deviceId: "phone", socketName: "snapo_\(kind.rawValue)_\(pid)"
           ),
           protocolVersion: 4,
@@ -113,13 +113,13 @@ struct ToolWebViewTests {
     defer { preferences.removePersistentDomain(forName: suite) }
     let first = app(10)
     let second = app(20)
-    let sockets = PluginDiscovery.sockets(
+    let sockets = ToolDiscovery.sockets(
       inProcNetUnix: "1: 00000002 00000000 00010000 0001 01 101 @snapo_sample_10",
       deviceID: "phone"
     )
     precondition(sockets.first?.kind == .sample && sockets.first?.pid == 10)
-    let service = PluginService(apps: [first, second])
-    let model = PluginHostModel(service: service, preferences: preferences)
+    let service = ToolService(apps: [first, second])
+    let model = ToolHostModel(service: service, preferences: preferences)
     let hosting = NSHostingView(rootView: ToolWebView(model: model))
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -291,7 +291,7 @@ struct ToolWebViewTests {
   }
 
   static func testUnsupportedTools(preferences: UserDefaults) async throws {
-    for compatibility: PluginCompatibility in [
+    for compatibility: ToolCompatibility in [
       .legacy(protocolVersion: 1),
       .missingDescriptor,
       .invalidDescriptor,
@@ -303,8 +303,8 @@ struct ToolWebViewTests {
         forKey: "inspectorPreferences"
       )
       let provider = app(70, kinds: [.network, .sample], compatibility: [.network: compatibility])
-      let service = PluginService(apps: [provider])
-      let model = PluginHostModel(service: service, preferences: preferences)
+      let service = ToolService(apps: [provider])
+      let model = ToolHostModel(service: service, preferences: preferences)
       defer { model.stop() }
       try await eventually("Compatibility provider should be discovered") { model.toolApps.count == 1 }
       model.selectTool(provider, option: provider.tools[0])
@@ -326,8 +326,8 @@ struct ToolWebViewTests {
   static func testFrontendErrors(preferences: UserDefaults) async throws {
     for includeFrontend in [false, true] {
       let provider = app(50, kinds: [.network], includeFrontend: includeFrontend)
-      let service = PluginService(apps: [provider], invalidFrontend: true)
-      let model = PluginHostModel(service: service, preferences: preferences)
+      let service = ToolService(apps: [provider], invalidFrontend: true)
+      let model = ToolHostModel(service: service, preferences: preferences)
       defer { model.stop() }
       try await eventually("The frontend provider should be discovered") { model.toolApps.count == 1 }
       model.selectTool(provider, option: provider.tools[0])
@@ -348,7 +348,7 @@ struct ToolWebViewTests {
     <link rel="stylesheet" href="./style.css"><script type="module" src="./main.js"></script>
     </head><body>Original HTML</body></html>
     """
-    let bundle = try PluginFrontendBundle(files: [
+    let bundle = try ToolFrontendBundle(files: [
       "index.html": Data(html.utf8),
       "style.css": Data("body { color: rgb(1, 2, 3); }".utf8),
       "main.js": Data(
@@ -389,8 +389,8 @@ struct ToolWebViewTests {
     let devURL = URL(string: "http://127.0.0.1:\(ports["allowed"]!)/dev")!
     let first = app(30, kinds: [.tweaks])
     let second = app(40, kinds: [.tweaks])
-    let service = PluginService(apps: [first, second])
-    let model = PluginHostModel(service: service, preferences: preferences)
+    let service = ToolService(apps: [first, second])
+    let model = ToolHostModel(service: service, preferences: preferences)
     defer { model.stop() }
     try await eventually("Frontend providers should be discovered") { model.toolApps.count == 2 }
     model.selectTool(first, option: first.tools[0])
@@ -437,7 +437,7 @@ struct ToolWebViewTests {
       .replacingOccurrences(of: "__ALLOWED__", with: String(allowed.absoluteString.dropLast()))
       .replacingOccurrences(of: "__DENIED__", with: String(denied.absoluteString.dropLast()))
     let bridge = ToolWebBridge()
-    bridge.hostStateHandler = { PluginConnectionState() }
+    bridge.hostStateHandler = { ToolConnectionState() }
     bridge.isActiveHandler = { false }
     let container = ToolWebContainer(bridge: bridge, storageIdentifier: nil)
     let window = NSWindow(
@@ -452,7 +452,7 @@ struct ToolWebViewTests {
     defer { container.stop()
       window.orderOut(nil)
     }
-    try container.start(frontend: PluginFrontendBundle(files: ["index.html": Data(fixture.utf8)]))
+    try container.start(frontend: ToolFrontendBundle(files: ["index.html": Data(fixture.utf8)]))
     try await eventually("Hostile fixture should execute only after the initial policy is installed") {
       await (try? web.evaluateJavaScript("typeof window.attack === 'function'") as? Bool) == true
     }
@@ -520,7 +520,7 @@ struct ToolWebViewTests {
       name: ToolWebBridge.messageHandlerName
     )
     let otherAssets = ToolAssetSchemeHandler(storageIdentifier: UUID(uuidString: web.url!.host!))
-    otherAssets.bundle = try PluginFrontendBundle(files: ["index.html": Data("<p>Other page</p>".utf8)])
+    otherAssets.bundle = try ToolFrontendBundle(files: ["index.html": Data("<p>Other page</p>".utf8)])
     otherConfiguration.setURLSchemeHandler(otherAssets, forURLScheme: ToolAssetSchemeHandler.scheme)
     let other = WKWebView(frame: .zero, configuration: otherConfiguration)
     other.load(URLRequest(url: web.url!))

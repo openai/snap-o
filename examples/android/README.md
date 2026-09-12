@@ -64,4 +64,4 @@ The existing network buttons remain available while the task routes are active. 
 
 `demo-tweaks` exercises the Compose API. `demo-tweaks-views` uses a ViewModel and custom Canvas drawing without Compose. Its package is `com.openai.snapo.demo.tweaks.views`; adjust the shape's radius, blur, and color in Snap-O. Both support the `snapo.samples.noop` build property.
 
-See [Tweaks without Compose](../../plugins/tweaks/android/core/README.md) for API and lifecycle details.
+See [Tweaks without Compose](../../tools/tweaks/android/core/README.md) for API and lifecycle details.

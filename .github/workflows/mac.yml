@@ -7,23 +7,23 @@ on:
       - master
     paths:
       - 'app-macos/**'
-      - 'sdk/host/**'
-      - 'plugins/tweaks/frontend/**'
-      - 'plugins/network/frontend/**'
+      - 'tool-sdk/host/**'
+      - 'tools/tweaks/frontend/**'
+      - 'tools/network/frontend/**'
       - 'contracts/**'
       - 'cli/snapo'
-      - 'plugin-reader/**'
+      - 'tool-reader/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
   pull_request:
     paths:
       - 'app-macos/**'
-      - 'sdk/host/**'
-      - 'plugins/tweaks/frontend/**'
-      - 'plugins/network/frontend/**'
+      - 'tool-sdk/host/**'
+      - 'tools/tweaks/frontend/**'
+      - 'tools/network/frontend/**'
       - 'contracts/**'
       - 'cli/snapo'
-      - 'plugin-reader/**'
+      - 'tool-reader/**'
       - '.github/workflows/mac.yml'
       - 'VERSION'
 
@@ -41,23 +41,23 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: sdk/host/package-lock.json
+          cache-dependency-path: tool-sdk/host/package-lock.json
       - name: Install dependencies
         run: |
-          npm ci --prefix sdk/host
-          npm ci --prefix plugins/network/frontend
-          npm ci --prefix plugins/tweaks/frontend
+          npm ci --prefix tool-sdk/host
+          npm ci --prefix tools/network/frontend
+          npm ci --prefix tools/tweaks/frontend
       - name: Check formatting
-        working-directory: sdk/host
+        working-directory: tool-sdk/host
         run: npm run format:check
       - name: Lint
-        working-directory: sdk/host
+        working-directory: tool-sdk/host
         run: npm run lint
       - name: Typecheck
-        working-directory: sdk/host
+        working-directory: tool-sdk/host
         run: npm run typecheck
       - name: Test
-        working-directory: sdk/host
+        working-directory: tool-sdk/host
         run: npm test
 
   test:
@@ -90,15 +90,15 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
-            plugins/network/frontend/package-lock.json
-            plugins/tweaks/frontend/package-lock.json
+            tools/network/frontend/package-lock.json
+            tools/tweaks/frontend/package-lock.json
       - name: Build Network test resources
-        working-directory: plugins/network/frontend
+        working-directory: tools/network/frontend
         run: |
           npm ci
           npm run build
       - name: Build Tweaks test resources
-        working-directory: plugins/tweaks/frontend
+        working-directory: tools/tweaks/frontend
         run: |
           npm ci
           npm run build

@@ -5,7 +5,7 @@ struct ToolSelection {
     let deviceId: String
     let processName: String
     let androidUserId: Int?
-    let kind: PluginID
+    let kind: ToolID
 
     func matches(_ app: InspectableApp) -> Bool {
       deviceId == app.deviceId && androidUserId == app.androidUserId && processName == app.processName
@@ -19,9 +19,9 @@ struct ToolSelection {
 
   private var saved = Preferences()
   private var target: InspectableApp?
-  private var kind: PluginID?
+  private var kind: ToolID?
   private var current: SelectedAppTool?
-  private var retained: [PluginID: SelectedAppTool] = [:]
+  private var retained: [ToolID: SelectedAppTool] = [:]
   private var apps: [InspectableApp] = []
   private var awaitingAppIdentity = false
   private var startupSelectionPending = true
@@ -115,7 +115,7 @@ struct ToolSelection {
     }
   }
 
-  private mutating func selectKind(_ app: InspectableApp, kind: PluginID) {
+  private mutating func selectKind(_ app: InspectableApp, kind: ToolID) {
     startupSelectionPending = false
     if !Self.sameApp(target, app) { retained = [:] }
     awaitingAppIdentity = false
@@ -129,7 +129,7 @@ struct ToolSelection {
   }
 
   private mutating func updateTarget(_ app: InspectableApp) {
-    var options: [PluginID: AppToolOption] = [:]
+    var options: [ToolID: AppToolOption] = [:]
     if let target, Self.sameApp(target, app) {
       for option in target.tools {
         options[option.kind] = option
@@ -152,7 +152,7 @@ struct ToolSelection {
     retained[option.kind] = current
   }
 
-  private mutating func remember(_ app: InspectableApp, kind: PluginID) {
+  private mutating func remember(_ app: InspectableApp, kind: ToolID) {
     guard let processName = app.processName, !processName.isEmpty else { return }
     let preference = Preference(
       deviceId: app.deviceId, processName: processName, androidUserId: app.androidUserId, kind: kind

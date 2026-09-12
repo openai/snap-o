@@ -85,7 +85,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
   }
 
-  func start(frontend: PluginFrontendBundle?) {
+  func start(frontend: ToolFrontendBundle?) {
     guard !isStopped else { return }
     assets.bundle = frontend
     policyTask = Task { [weak self] in

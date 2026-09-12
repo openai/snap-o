@@ -2,7 +2,7 @@ import SwiftUI
 import WebKit
 
 struct ToolWebView: NSViewRepresentable {
-  let model: PluginHostModel
+  let model: ToolHostModel
 
   func makeNSView(context: Context) -> NSView {
     NSView()

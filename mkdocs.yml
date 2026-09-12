@@ -18,8 +18,8 @@ nav:
   - Network Interception: network-intercept.md
   - Tweaks: tweaks.md
   - Tweaks Protocol: tweaks-protocol.md
-  - Build a plugin: plugins.md
-  - Plugin API reference: plugin-api.md
+  - Build a tool plugin: plugins.md
+  - Tool plugin API reference: plugin-api.md
   - Command-line inspection: cli.md
   - Using the macOS app: usage.md
 

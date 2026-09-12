@@ -12,7 +12,7 @@ struct ADBDiscoveryTimeoutTests {
     defer { server.close() }
     let adb = server.client()
     let start = ContinuousClock.now
-    let sockets = await PluginDiscovery.discover(
+    let sockets = await ToolDiscovery.discover(
       on: ["stalled", "phone"],
       using: adb
     )
@@ -22,7 +22,7 @@ struct ADBDiscoveryTimeoutTests {
     #expect(start.duration(to: .now) < .seconds(2))
     #expect(server.connectionCount == 2)
 
-    let recovered = await PluginDiscovery.discover(
+    let recovered = await ToolDiscovery.discover(
       on: ["phone"],
       using: adb
     )
@@ -84,7 +84,7 @@ struct ADBDiscoveryTimeoutTests {
     } catch ADBError.requestTimedOut {
       // A device timeout must not trigger the ADB server retry path.
     }
-    let reference = PluginServerReference(deviceId: "stalled", socketName: "snapo_network_42")
+    let reference = ToolServerReference(deviceId: "stalled", socketName: "snapo_network_42")
     #expect(await DeviceDiscovery.processName(deviceID: reference.deviceId, using: adb, pid: 42) == nil)
     #expect(await DeviceDiscovery.androidUserID(deviceID: reference.deviceId, using: adb, pid: 42) == nil)
     #expect(server.connectionCount == 3)
@@ -134,7 +134,7 @@ struct ADBDiscoveryTimeoutTests {
       let server = FakeDiscoveryADB(stall: .output, legacyReply: reply)
       defer { server.close() }
       let metadata = try await server.client().legacyPluginMetadata(
-        reference: PluginServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: PluginID(rawValue: "network"),
+        reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"),
         pid: 42
       )
       #expect(metadata?.protocolVersion == expectedVersion)
@@ -149,7 +149,7 @@ struct ADBDiscoveryTimeoutTests {
     defer { server.close() }
     let start = ContinuousClock.now
     let metadata = try await server.client().legacyPluginMetadata(
-      reference: PluginServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: PluginID(rawValue: "network"),
+      reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"),
       pid: 42
     )
     #expect(metadata == nil)
@@ -163,7 +163,7 @@ struct ADBDiscoveryTimeoutTests {
     defer { server.close() }
     let task = Task {
       try await server.client().legacyPluginMetadata(
-        reference: PluginServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: PluginID(rawValue: "network"),
+        reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"),
         pid: 42
       )
     }
@@ -286,7 +286,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             return
           }
           switch command {
-          case "shell:" + PluginDiscovery.snapshotCommand:
+          case "shell:" + ToolDiscovery.snapshotCommand:
             Self.send(
               "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n",
               to: descriptor

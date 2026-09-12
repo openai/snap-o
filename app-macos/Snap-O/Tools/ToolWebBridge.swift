@@ -20,7 +20,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
   private var nextPresentation = ContinuousClock.now
   static let maximumFileBytes = 64 * 1024 * 1024
 
-  var hostStateHandler: (() -> PluginConnectionState)?
+  var hostStateHandler: (() -> ToolConnectionState)?
   var toolbarHandler: ((ToolToolbar) throws -> Void)?
   var colorPanelChangedHandler: ((NativeColorPanelChange) -> Void)?
   var colorPanelClosedHandler: ((String) -> Void)?
@@ -105,12 +105,12 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
           let body = message.body as? [String: Any],
           let command = body["command"] as? String, Self.validMessage(body, command: command)
     else {
-      return (nil, PluginError.invalidBridgeMessage.localizedDescription)
+      return (nil, ToolError.invalidBridgeMessage.localizedDescription)
     }
 
     let nativeRequest = ["saveFile", "copyText", "openNativeColorPanel"].contains(command)
     guard !nativeRequest || !hasNativeRequest else {
-      return (nil, PluginError.invalidBridgeMessage.localizedDescription)
+      return (nil, ToolError.invalidBridgeMessage.localizedDescription)
     }
     if nativeRequest { hasNativeRequest = true }
     defer { if nativeRequest { hasNativeRequest = false } }
@@ -141,7 +141,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
   private func handle(command: String, payload: Any?) async throws -> Any? {
     switch command {
     case "hostState":
-      guard let state = hostStateHandler?() else { throw PluginError.invalidBridgeMessage }
+      guard let state = hostStateHandler?() else { throw ToolError.invalidBridgeMessage }
       return try Self.jsonObject(state)
     case "setToolbar":
       let toolbar = try Self.decode(ToolToolbar.self, from: payload)
@@ -150,7 +150,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
       return nil
     case "openNativeColorPanel":
       let input = try Self.decode(NativeColorPanelInput.self, from: payload)
-      guard isActiveHandler?() == true else { throw PluginError.invalidBridgeMessage }
+      guard isActiveHandler?() == true else { throw ToolError.invalidBridgeMessage }
       if input.present != false {
         guard await confirm("Allow this tool to open the color picker?") else { throw CancellationError() }
       }
@@ -176,7 +176,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
     case "saveFile":
       return try await Self.jsonObject(saveFile(Self.decode(ToolSaveFileInput.self, from: payload)))
     default:
-      throw PluginError.invalidBridgeMessage
+      throw ToolError.invalidBridgeMessage
     }
   }
 
@@ -186,7 +186,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
           let components = UInt32(input.color.dropFirst(), radix: 16),
           !input.sessionId.isEmpty, input.sessionId.utf8.count <= 100, input.revision >= 0
     else {
-      throw PluginError.invalidBridgeMessage
+      throw ToolError.invalidBridgeMessage
     }
 
     let hasAlpha = input.color.count == 9
@@ -277,7 +277,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
 
   private func saveFile(_ input: ToolSaveFileInput) async throws -> ToolSaveFileResult {
     guard let window = presentationWindow, window.attachedSheet == nil, presentedSheet == nil,
-          ContinuousClock.now >= nextPresentation else { throw PluginError.invalidBridgeMessage }
+          ContinuousClock.now >= nextPresentation else { throw ToolError.invalidBridgeMessage }
     nextPresentation = .now.advanced(by: .seconds(1))
     let data: Data
     switch input.encoding {
@@ -285,15 +285,15 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
       data = Data(input.data.utf8)
     case "base64":
       guard let decoded = Data(base64Encoded: input.data) else {
-        throw PluginError.invalidBridgeMessage
+        throw ToolError.invalidBridgeMessage
       }
       data = decoded
     default:
-      throw PluginError.invalidBridgeMessage
+      throw ToolError.invalidBridgeMessage
     }
 
     guard data.count <= Self.maximumFileBytes, input.defaultPath.utf8.count <= 1024 else {
-      throw PluginError.invalidBridgeMessage
+      throw ToolError.invalidBridgeMessage
     }
     let filename = URL(fileURLWithPath: input.defaultPath).lastPathComponent
     let isHAR = URL(fileURLWithPath: filename).pathExtension.lowercased() == "har"
@@ -348,7 +348,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
 
   private static func decode<T: Decodable>(_ type: T.Type, from payload: Any?) throws -> T {
     guard let payload, JSONSerialization.isValidJSONObject(payload) else {
-      throw PluginError.invalidBridgeMessage
+      throw ToolError.invalidBridgeMessage
     }
     let data = try JSONSerialization.data(withJSONObject: payload)
     return try JSONDecoder().decode(type, from: data)

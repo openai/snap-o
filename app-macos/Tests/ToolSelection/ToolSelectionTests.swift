@@ -1,9 +1,9 @@
 import Foundation
 
 private func app(
-  _ pid: Int = 10, kinds: [PluginID] = [.network, .tweaks],
+  _ pid: Int = 10, kinds: [ToolID] = [.network, .tweaks],
   process: String? = "com.example.demo", device: String = "phone", user: Int? = 0,
-  package: String? = "com.example.demo", version: Int? = 4, connectedKinds: [PluginID]? = nil
+  package: String? = "com.example.demo", version: Int? = 4, connectedKinds: [ToolID]? = nil
 ) -> InspectableApp {
   let manifest = testManifest(pid: pid, kinds: kinds, version: version ?? 4)
   var record = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(manifest)) as! [String: Any]
@@ -12,10 +12,10 @@ private func app(
   var packageRecord = record["app"] as! [String: Any]
   packageRecord["packageName"] = package ?? "com.example.demo"
   record["app"] = packageRecord
-  let identity = PluginProcessIdentity(metadata: try! JSONDecoder().decode(
-    PluginProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record)
+  let identity = ToolProcessIdentity(metadata: try! JSONDecoder().decode(
+    ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record)
   ))
-  let metadata = PluginMetadata.Process(
+  let metadata = ToolMetadata.Process(
     name: "Demo", packageName: package, processName: process,
     verifiedIdentity: identity, tools: manifest.app!.tools
   )
@@ -30,7 +30,7 @@ private func app(
   )
 }
 
-private func selected(_ kind: PluginID = .network) -> ToolSelection {
+private func selected(_ kind: ToolID = .network) -> ToolSelection {
   var owner = ToolSelection()
   owner.reconcile([app()])
   owner.selectTool(app(), option: app().tools.first { $0.kind == kind }!)
@@ -75,23 +75,23 @@ struct ToolSelectionTests {
 
   private static func compatibilityTitles() {
     expect(
-      PluginCompatibility.legacy(protocolVersion: 1).title(for: .network) == "Unsupported Network version",
+      ToolCompatibility.legacy(protocolVersion: 1).title(for: .network) == "Unsupported Network version",
       "Name the socket's tool"
     )
     expect(
-      PluginCompatibility.missingDescriptor.title(for: .tweaks) == "Unsupported Tweaks version",
+      ToolCompatibility.missingDescriptor.title(for: .tweaks) == "Unsupported Tweaks version",
       "Name tools without manifest metadata"
     )
     expect(
-      PluginCompatibility.hostAPI(version: 2).title(for: PluginID(rawValue: "sample")) == "Unsupported Sample version",
+      ToolCompatibility.hostAPI(version: 2).title(for: ToolID(rawValue: "sample")) == "Unsupported Sample version",
       "Custom socket identifiers do not need a built-in tool mapping"
     )
     expect(
-      PluginCompatibility.missingDescriptor.title(for: nil) == "Unsupported tool version",
+      ToolCompatibility.missingDescriptor.title(for: nil) == "Unsupported tool version",
       "Keep a fallback without a selected tool"
     )
     expect(
-      PluginCompatibility.metadataUnavailable.title(for: .network) == "Tool unavailable",
+      ToolCompatibility.metadataUnavailable.title(for: .network) == "Tool unavailable",
       "Do not confuse reachability with version support"
     )
   }
@@ -234,10 +234,10 @@ struct ToolSelectionTests {
       restored.reconcile([app(), other])
       expect(restored.state.selection?.appId == other.id, "Save the startup choice")
     }
-    for kind in [PluginID.network, .tweaks] {
+    for kind in [ToolID.network, .tweaks] {
       let saved = selected(kind).serialized
       var owner = ToolSelection(saved: saved)
-      let otherKind: PluginID = kind == .network ? .tweaks : .network
+      let otherKind: ToolID = kind == .network ? .tweaks : .network
       let other = app(30, kinds: [kind], process: "com.example.other")
       let before = owner.serialized
       for _ in 0 ..< 12 {
@@ -299,11 +299,11 @@ struct ToolSelectionTests {
     var launched: [OpenAppInput] = []
     let model = AppToolModel(preferences: defaults, discover: {
       scans += 1
-      if delayScan { return try await PluginDiscoverySnapshot(
+      if delayScan { return try await ToolDiscoverySnapshot(
         apps: withCheckedThrowingContinuation { scanReply = $0 }
       ) }
       if failScan { throw TestError.failed }
-      return PluginDiscoverySnapshot(apps: apps)
+      return ToolDiscoverySnapshot(apps: apps)
     }, openApp: { input in
       launched.append(input)
       try await withCheckedThrowingContinuation { launchReply = $0 }
@@ -404,7 +404,7 @@ struct ToolSelectionTests {
     let clock = TestClock()
     var apps = [app()]
     let model = AppToolModel(preferences: defaults, discover: {
-      PluginDiscoverySnapshot(apps: apps)
+      ToolDiscoverySnapshot(apps: apps)
     }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
     expect(model.snapshot.pageState(for: .network).isWaiting, "Wait for initial native discovery")
     model.start()
@@ -455,8 +455,8 @@ struct ToolSelectionTests {
     let clock = TestClock()
     let (updates, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
     defer { continuation.finish() }
-    var latest = PluginDiscoverySnapshot(apps: [app()], revision: 2)
-    var scanReply: CheckedContinuation<PluginDiscoverySnapshot, Never>?
+    var latest = ToolDiscoverySnapshot(apps: [app()], revision: 2)
+    var scanReply: CheckedContinuation<ToolDiscoverySnapshot, Never>?
     var scans = 0
     let model = AppToolModel(preferences: defaults, discover: {
       scans += 1
@@ -468,10 +468,10 @@ struct ToolSelectionTests {
     await settle()
     expect(model.snapshot.state.selectedApp?.metadata == app().metadata, "Publish completed metadata before the polling scan returns")
     expect(scans == 1, "A discovery update does not start another device scan")
-    scanReply?.resume(returning: PluginDiscoverySnapshot(apps: [app(20)], revision: 1))
+    scanReply?.resume(returning: ToolDiscoverySnapshot(apps: [app(20)], revision: 1))
     await settle()
     expect(model.snapshot.state.selectedApp?.id == app().id, "An older scan cannot overwrite a newer discovery update")
-    latest = PluginDiscoverySnapshot(apps: [app(connectedKinds: [])], revision: 3)
+    latest = ToolDiscoverySnapshot(apps: [app(connectedKinds: [])], revision: 3)
     continuation.yield(())
     await settle()
     expect(model.snapshot.state.selection == nil, "Publish a failed health check without another poll")
@@ -479,7 +479,7 @@ struct ToolSelectionTests {
     expect(scans == 1, "Health updates do not start another device scan")
     model.stop()
     let stoppedRevision = model.snapshot.revision
-    latest = PluginDiscoverySnapshot(apps: [app()], revision: 4)
+    latest = ToolDiscoverySnapshot(apps: [app()], revision: 4)
     continuation.yield(())
     clock.cancelAll()
     await settle()
@@ -492,7 +492,7 @@ struct ToolSelectionTests {
     let defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
     let clock = TestClock()
-    var replies: [CheckedContinuation<PluginDiscoverySnapshot, Never>] = []
+    var replies: [CheckedContinuation<ToolDiscoverySnapshot, Never>] = []
     let model = AppToolModel(preferences: defaults, discover: {
       await withCheckedContinuation { replies.append($0) }
     }, openApp: { _ in }, sleep: { try await clock.sleep($0) })
@@ -502,13 +502,13 @@ struct ToolSelectionTests {
     model.start()
     await settle()
     expect(replies.count == 2, "Start a new scan after cancellation")
-    replies[0].resume(returning: PluginDiscoverySnapshot(apps: [app()]))
+    replies[0].resume(returning: ToolDiscoverySnapshot(apps: [app()]))
     await settle()
     expect(model.snapshot.loading, "Ignore the canceled scan's result")
     model.refresh()
     await settle()
     expect(replies.count == 2, "The canceled scan must not clear the new scan")
-    replies[1].resume(returning: PluginDiscoverySnapshot(apps: [app(20)]))
+    replies[1].resume(returning: ToolDiscoverySnapshot(apps: [app(20)]))
     await settle()
     expect(model.snapshot.state.selectedApp?.id == app(20).id, "Publish only the restarted scan")
     model.stop()

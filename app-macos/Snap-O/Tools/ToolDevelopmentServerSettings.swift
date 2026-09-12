@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct ToolDevelopmentServerSettings: View {
-  let model: PluginHostModel
+  let model: ToolHostModel
   @Environment(\.dismiss)
   private var dismiss
   @State private var address: String
 
-  init(model: PluginHostModel) {
+  init(model: ToolHostModel) {
     self.model = model
     _address = State(initialValue: model.developmentURL?.absoluteString ?? "")
   }

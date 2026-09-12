@@ -30,7 +30,7 @@ struct CaptureToolbar: View {
   @Bindable var controller: CaptureWindowController
   @Bindable var workspace: WorkspaceLayoutController
   let presentedLayout: WorkspaceLayout
-  let toolModel: PluginHostModel?
+  let toolModel: ToolHostModel?
   let capturePaneWidth: CGFloat
   let toolPaneWidth: CGFloat
   let capturePaneVisibleWidth: CGFloat

@@ -38,7 +38,7 @@ The Android libraries support OkHttp, Ktor's OkHttp engine, and HttpURLConnectio
 
 Change values in Compose, Views, and other Kotlin code without rebuilding or restarting your app. Adjust numbers, colors, booleans, strings, enums, and Bézier curves, or run actions registered by the app.
 
-Use `tweaks-core` and `TweakScope` outside Compose. See [Tweaks without Compose](plugins/tweaks/android/core/README.md) for setup and ownership examples.
+Use `tweaks-core` and `TweakScope` outside Compose. See [Tweaks without Compose](tools/tweaks/android/core/README.md) for setup and ownership examples.
 
 Tweaks are available through the Tool pane, an optional on-device panel, the CLI, and the REST API. This feature is in alpha; its APIs and behavior may change.
 
@@ -67,9 +67,9 @@ Start a new Codex session after installation.
 
 ## Plugins
 
-Apps bundle plugins that provide tools for inspecting data, changing settings, and running actions. A plugin includes its Android implementation and an optional frontend. Snap-O displays the selected tool’s frontend in the Tool pane. Network and Tweaks use the same extension model as custom tools.
+Apps bundle tool plugins that provide tools for inspecting data, changing settings, and running actions. A tool plugin includes its Android implementation and an optional frontend. Snap-O displays the selected tool’s frontend in the Tool pane. Network and Tweaks use the same extension model as custom tools.
 
-Start with [Build a plugin](docs/plugins.md) and the [Plugin API reference](docs/plugin-api.md). See [plugin development](plugins/README.md) for repository commands and host behavior.
+Start with [Build a tool plugin](docs/plugins.md) and the [Tool plugin API reference](docs/plugin-api.md). See [tool plugin development](tools/README.md) for repository commands and host behavior.
 
 ## Build from source
 
@@ -78,7 +78,7 @@ Requires Xcode 26 or later and Android Platform Tools.
 1. Clone this repository.
 2. Open `app-macos/Snap-O.xcodeproj` in Xcode, then build and run.
 
-Plugin frontend development also requires Node.js 22.12 or later. See [plugin development](plugins/README.md).
+Tool plugin frontend development also requires Node.js 22.12 or later. See [tool plugin development](tools/README.md).
 
 See [Contributing](CONTRIBUTING.md) for development and signing instructions, and [Release requirements](release/README.md) for release checks.
 

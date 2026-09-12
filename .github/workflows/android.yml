@@ -6,17 +6,17 @@ on:
       - main
       - master
     paths:
-      - 'plugins/**'
-      - 'sdk/**'
+      - 'tools/**'
+      - 'tool-sdk/**'
       - 'examples/android/**'
-      - 'examples/plugin/**'
+      - 'examples/tool/**'
       - 'build-logic/**'
       - 'gradle/**'
       - '*.gradle.kts'
       - 'gradle.properties'
       - 'gradlew*'
       - 'release/validate_authoring.py'
-      - 'plugin-reader/**'
+      - 'tool-reader/**'
       - 'contracts/**'
       - '.github/workflows/android.yml'
       - 'VERSION'
@@ -25,17 +25,17 @@ on:
       - main
       - master
     paths:
-      - 'plugins/**'
-      - 'sdk/**'
+      - 'tools/**'
+      - 'tool-sdk/**'
       - 'examples/android/**'
-      - 'examples/plugin/**'
+      - 'examples/tool/**'
       - 'build-logic/**'
       - 'gradle/**'
       - '*.gradle.kts'
       - 'gradle.properties'
       - 'gradlew*'
       - 'release/validate_authoring.py'
-      - 'plugin-reader/**'
+      - 'tool-reader/**'
       - 'contracts/**'
       - '.github/workflows/android.yml'
       - 'VERSION'
@@ -97,7 +97,7 @@ jobs:
       - name: Verify bundled Android discovery reader
         run: |
           "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
-          python3 plugin-reader/build.py --check
+          python3 tool-reader/build.py --check
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
@@ -160,7 +160,7 @@ jobs:
         module: [network, tweaks]
     defaults:
       run:
-        working-directory: plugins/${{ matrix.module }}/frontend
+        working-directory: tools/${{ matrix.module }}/frontend
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Set up Node for tool frontends
@@ -168,7 +168,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: plugins/${{ matrix.module }}/frontend/package-lock.json
+          cache-dependency-path: tools/${{ matrix.module }}/frontend/package-lock.json
       - run: npm ci
       - run: npm run format:check
       - run: npm run lint

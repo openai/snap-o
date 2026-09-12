@@ -11,7 +11,7 @@ public struct LegacyPluginMetadata: Sendable, Equatable {
 enum LegacyPluginReader {
   static let maximumBytes = 1_048_576
 
-  static func requests(kind: PluginID) -> [String] {
+  static func requests(kind: ToolID) -> [String] {
     switch kind.rawValue {
     case "network": ["HelloSnapO\n", httpRequest("/.snap-o/info")]
     case "tweaks": [httpRequest("/.snap-o/info"), httpRequest("/app")]
@@ -60,7 +60,7 @@ enum LegacyPluginReader {
     return ended ? body : nil
   }
 
-  static func decode(_ data: Data, kind: PluginID, pid: Int, http: Bool) throws -> LegacyPluginMetadata? {
+  static func decode(_ data: Data, kind: ToolID, pid: Int, http: Bool) throws -> LegacyPluginMetadata? {
     struct Metadata: Decodable {
       let packageName: String
       let name: String?

@@ -10,7 +10,7 @@ struct SnapOCommands: Commands {
   @FocusedValue(\.workspaceController)
   var workspaceController: WorkspaceLayoutController?
   @FocusedValue(\.toolHost)
-  var toolHost: PluginHostModel?
+  var toolHost: ToolHostModel?
 
   let settings: AppSettings
   let adbService: ADBService

@@ -308,20 +308,20 @@ public struct ADBClient: Sendable {
     deviceID: String,
     socketNames: [String],
     helperURL: URL
-  ) async throws -> [PluginProcessMetadata] {
-    let command = try PluginManifestReader.command(helper: Data(contentsOf: helperURL), socketNames: socketNames)
+  ) async throws -> [ToolProcessMetadata] {
+    let command = try ToolManifestReader.command(helper: Data(contentsOf: helperURL), socketNames: socketNames)
     let data = try await runPluginReader(deviceID: deviceID, command: command, maximumBytes: 8_388_608)
-    return try PluginManifestReader.decode(data)
+    return try ToolManifestReader.decode(data)
   }
 
   public func pluginFrontend(
     deviceID: String,
     socketName: String,
-    manifest: PluginProcessMetadata,
-    tool: PluginDescriptor,
+    manifest: ToolProcessMetadata,
+    tool: ToolDescriptor,
     helperURL: URL
-  ) async throws -> PluginFrontendBundle {
-    guard let identity = PluginProcessIdentity(metadata: manifest) else {
+  ) async throws -> ToolFrontendBundle {
+    guard let identity = ToolProcessIdentity(metadata: manifest) else {
       throw ADBError.parseFailure("invalid tool process identity")
     }
     return try await pluginFrontend(
@@ -332,25 +332,25 @@ public struct ADBClient: Sendable {
   public func pluginFrontend(
     deviceID: String,
     socketName: String,
-    identity: PluginProcessIdentity,
-    tool: PluginDescriptor,
+    identity: ToolProcessIdentity,
+    tool: ToolDescriptor,
     helperURL: URL
-  ) async throws -> PluginFrontendBundle {
+  ) async throws -> ToolFrontendBundle {
     guard tool.frontend != nil, socketName == "snapo_\(tool.id.rawValue)_\(identity.pid)" else {
       throw ADBError.parseFailure("invalid tool frontend request")
     }
-    let expected = try PluginFrontendBundle.request(identity: identity, tool: tool)
-    let command = try PluginManifestReader.command(
+    let expected = try ToolFrontendBundle.request(identity: identity, tool: tool)
+    let command = try ToolManifestReader.command(
       helper: Data(contentsOf: helperURL),
       socketNames: [socketName],
       frontendRequest: expected
     )
     let data = try await runPluginReader(deviceID: deviceID, command: command, maximumBytes: 16 * 1024 * 1024)
-    return try PluginFrontendBundle(archive: data)
+    return try ToolFrontendBundle(archive: data)
   }
 
   public func legacyPluginMetadata(
-    reference: PluginServerReference, kind: PluginID, pid: Int
+    reference: ToolServerReference, kind: ToolID, pid: Int
   ) async throws -> LegacyPluginMetadata? {
     guard pid > 0, reference.socketName == "snapo_\(kind.rawValue)_\(pid)" else { return nil }
     for request in LegacyPluginReader.requests(kind: kind) {

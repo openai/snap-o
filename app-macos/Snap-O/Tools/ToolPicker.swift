@@ -9,7 +9,7 @@ struct AppToolPicker: View {
     static let height: CGFloat = 48
   }
 
-  @Bindable var model: PluginHostModel
+  @Bindable var model: ToolHostModel
   @State private var isPresented = false
 
   var body: some View {
@@ -68,7 +68,7 @@ struct AppToolPicker: View {
 }
 
 struct AppToolReconnectButton: View {
-  @Bindable var model: PluginHostModel
+  @Bindable var model: ToolHostModel
   @Environment(\.colorScheme)
   private var colorScheme
 
@@ -100,7 +100,7 @@ struct AppToolReconnectButton: View {
 }
 
 struct AppToolViewPicker: View {
-  @Bindable var model: PluginHostModel
+  @Bindable var model: ToolHostModel
 
   var body: some View {
     if let app = model.selectedToolApp,
@@ -136,7 +136,7 @@ private struct AppToolPickerPopover: View {
     static let nonTextWidth: CGFloat = 103
   }
 
-  @Bindable var model: PluginHostModel
+  @Bindable var model: ToolHostModel
   let dismiss: () -> Void
 
   var body: some View {

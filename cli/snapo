@@ -526,14 +526,14 @@ class NetworkHTTPResponse:
 def discovery_helper():
     script = pathlib.Path(__file__).resolve()
     candidates = [
-        script.with_name("snapo-discovery.jar"),
-        script.parent.parent / "Resources/snapo-discovery.jar",
-        script.parent.parent / "plugin-reader/snapo-discovery.jar",
+        script.with_name("snapo-tool-reader.jar"),
+        script.parent.parent / "Resources/snapo-tool-reader.jar",
+        script.parent.parent / "tool-reader/snapo-tool-reader.jar",
     ]
     for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise SnapOError("Android discovery reader is missing; reinstall Snap-O or place snapo-discovery.jar beside the CLI")
+    raise SnapOError("Android discovery reader is missing; reinstall Snap-O or place snapo-tool-reader.jar beside the CLI")
 
 
 def manifest_command(helper, socket_names):

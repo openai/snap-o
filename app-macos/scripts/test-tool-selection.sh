@@ -21,7 +21,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -profile-generate \
   Snap-O/Device/*.swift Snap-O/Device/ADB/*.swift \
   Snap-O/Utilities/Logging.swift \
   Snap-O/Tools/ToolModels.swift \
-  Snap-O/Tools/PluginMetadata.swift \
+  Snap-O/Tools/ToolMetadata.swift \
   Tests/ToolSelection/ToolTestFixtures.swift \
   Snap-O/Tools/ToolSelection.swift \
   Snap-O/Tools/AppToolModel.swift \
@@ -36,11 +36,11 @@ xcrun swiftc -swift-version 6 -parse-as-library -profile-generate \
   Snap-O/Device/*.swift Snap-O/Device/ADB/*.swift \
   Snap-O/Utilities/Logging.swift \
   Snap-O/Tools/ToolModels.swift \
-  Snap-O/Tools/PluginMetadata.swift \
+  Snap-O/Tools/ToolMetadata.swift \
   Tests/ToolSelection/ToolTestFixtures.swift \
   Snap-O/Tools/ToolSelection.swift \
   Snap-O/Tools/AppToolModel.swift \
-  Snap-O/Tools/PluginHostModel.swift \
+  Snap-O/Tools/ToolHostModel.swift \
   Snap-O/Models/Media.swift \
   Snap-O/Storage/SaveLocation.swift \
   Snap-O/Tools/ToolWebBridge.swift \

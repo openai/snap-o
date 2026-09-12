@@ -1,12 +1,12 @@
 import Foundation
 
-extension PluginID {
+extension ToolID {
   static let network = Self(rawValue: "network")
   static let tweaks = Self(rawValue: "tweaks")
   static let sample = Self(rawValue: "sample")
 }
 
-func testManifest(pid: Int, kinds: [PluginID], version: Int = 4, includeFrontend: Bool = true) -> PluginProcessMetadata {
+func testManifest(pid: Int, kinds: [ToolID], version: Int = 4, includeFrontend: Bool = true) -> ToolProcessMetadata {
   let record: [String: Any] = [
     "processIdentity": "boot:\(pid):1",
     "version": 1, "pid": pid, "processName": "com.example.demo\(pid)", "androidUserId": 0,
@@ -21,11 +21,11 @@ func testManifest(pid: Int, kinds: [PluginID], version: Int = 4, includeFrontend
       }
     ]
   ]
-  return try! JSONDecoder().decode(PluginProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
+  return try! JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))
 }
 
-func testProcessMetadata(pid: Int, kinds: [PluginID], version: Int = 4, includeFrontend: Bool = true) -> PluginMetadata.Process {
-  var metadata = PluginMetadata()
+func testProcessMetadata(pid: Int, kinds: [ToolID], version: Int = 4, includeFrontend: Bool = true) -> ToolMetadata.Process {
+  var metadata = ToolMetadata()
   metadata.applyPackageMetadata(
     testManifest(pid: pid, kinds: kinds, version: version, includeFrontend: includeFrontend), kind: kinds.first ?? .network
   )

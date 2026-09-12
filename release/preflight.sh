@@ -228,14 +228,17 @@ print_android_protocol_declarations() {
   print_protocol_declaration "$1" 'Android Network protocol version' \
     'const val NetworkProtocolVersion[[:space:]:=]|protocolVersion="[0-9]+"|protocolVersion[[:space:]]*=[[:space:]]*[0-9]+' \
     'snapo-link-android/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
+    'tools/network/android/core/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
     'plugins/network/android/core/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
     'plugins/implementations/network/core/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
     'plugins/network/src/main/java/com/openai/snapo/network/SnapOProtocol.kt' \
     'snapo-link-android/network/src/main/res/xml/snapo_network_inspector.xml' \
+    'tools/network/android/core/src/main/res/xml/snapo_network_inspector.xml' \
     'plugins/network/android/core/src/main/res/xml/snapo_network_inspector.xml' \
     'plugins/implementations/network/core/src/main/res/xml/snapo_network_inspector.xml' \
     'plugins/network/src/main/res/xml/snapo_network_inspector.xml' \
     'snapo-link-android/network/build.gradle.kts' \
+    'tools/network/android/core/build.gradle.kts' \
     'plugins/network/android/core/build.gradle.kts' \
     'plugins/implementations/network/core/build.gradle.kts' \
     'plugins/network/build.gradle.kts'
@@ -246,14 +249,17 @@ print_android_protocol_declarations() {
     'plugins/implementations/tweaks/compose/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
     'plugins/tweaks/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
     'snapo-link-android/tweaks-core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
+    'tools/tweaks/android/core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
     'plugins/tweaks/android/core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
     'plugins/implementations/tweaks/core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
     'plugins/tweaks-core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt' \
     'snapo-link-android/tweaks-core/src/main/res/xml/snapo_tweaks_inspector.xml' \
+    'tools/tweaks/android/core/src/main/res/xml/snapo_tweaks_inspector.xml' \
     'plugins/tweaks/android/core/src/main/res/xml/snapo_tweaks_inspector.xml' \
     'plugins/implementations/tweaks/core/src/main/res/xml/snapo_tweaks_inspector.xml' \
     'plugins/tweaks-core/src/main/res/xml/snapo_tweaks_inspector.xml' \
     'snapo-link-android/tweaks-core/build.gradle.kts' \
+    'tools/tweaks/android/core/build.gradle.kts' \
     'plugins/tweaks/android/core/build.gradle.kts' \
     'plugins/implementations/tweaks/core/build.gradle.kts' \
     'plugins/tweaks-core/build.gradle.kts'
@@ -276,8 +282,10 @@ print_client_protocol_declarations() {
     'plugins/network/frontend/src/features/network-inspector/lib/protocol.ts' \
     'snapo-link-android/network/frontend/src/features/network-tool/lib/protocol.ts' \
     'plugins/implementations/network/frontend/src/features/network-tool/lib/protocol.ts' \
+    'tools/network/frontend/src/features/network-tool/lib/protocol.ts' \
     'plugins/network/frontend/src/features/network-tool/lib/protocol.ts'
-  if git -C "$SNAPO_DIR" cat-file -e "$1:plugins/tweaks/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
+  if git -C "$SNAPO_DIR" cat-file -e "$1:tools/tweaks/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
+    git -C "$SNAPO_DIR" cat-file -e "$1:plugins/tweaks/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:plugins/implementations/tweaks/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:plugins/tweaks-core/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:snapo-link-android/tweaks-core/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
@@ -290,7 +298,8 @@ print_client_protocol_declarations() {
       'plugins/implementations/tweaks/frontend/src/features/tweaks-inspector/protocol.ts' \
       'plugins/tweaks-core/frontend/src/features/tweaks-inspector/protocol.ts' \
       'snapo-link-android/tweaks-core/frontend/src/features/tweaks-tool/protocol.ts' \
-      'plugins/tweaks/frontend/src/features/tweaks-tool/protocol.ts' \
+      'tools/tweaks/frontend/src/features/tweaks-tool/protocol.ts' \
+    'plugins/tweaks/frontend/src/features/tweaks-tool/protocol.ts' \
       'plugins/implementations/tweaks/frontend/src/features/tweaks-tool/protocol.ts' \
       'plugins/tweaks-core/frontend/src/features/tweaks-tool/protocol.ts'
   else
@@ -346,10 +355,10 @@ print_protocol_evidence() {
 
 print_protocol_evidence 'Android servers' "$ANDROID_BASE" \
   print_android_protocol_declarations \
-  contracts sdk plugin-reader build-logic gradle build.gradle.kts settings.gradle.kts gradle.properties examples/android plugins/discovery android-discovery scripts/snapo-discovery.jar snapo-link-android plugins
+  contracts tool-sdk tool-reader tools sdk plugin-reader build-logic gradle build.gradle.kts settings.gradle.kts gradle.properties examples/android plugins/discovery android-discovery scripts/snapo-discovery.jar snapo-link-android plugins
 print_protocol_evidence 'Mac/web/CLI clients' "$MAC_BASE" \
   print_client_protocol_declarations \
-  contracts app-macos cli sdk/host plugin-reader examples/plugin plugins/tweaks/frontend plugins/discovery android-discovery snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
+  contracts app-macos cli tool-sdk/host tool-reader examples/tool tools/network/frontend tools/tweaks/frontend sdk/host plugin-reader examples/plugin plugins/tweaks/frontend plugins/discovery android-discovery snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
   snapo-app-mac/Snap-O/Inspectors snapo-app-mac/Snap-O/Tools snapo-network-inspector-web inspectors tools plugin-host plugins/host snapo-link-android/tweaks-core/frontend snapo-link-android/network/frontend plugins/tweaks-core/frontend plugins/network/frontend plugins/implementations/tweaks/frontend plugins/implementations/network/frontend scripts snapo-link-android/example plugins/example
 printf '%s\n' 'Protocol review must be recorded for this source SHA before the version bump; this report does not approve compatibility.'
 
