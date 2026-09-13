@@ -51,7 +51,7 @@ When its optional dependency is installed and its developer setting is enabled, 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `OPTIONS` | `/` | Check connection readiness. |
-| `GET` | `/tweaks/protocol` | Check the Tweaks API version: `{"version":8}`. |
+| `GET` | `/tweaks/protocol` | Check the Tweaks API version: `{"version":9}`. |
 | `GET` | `/tweaks` | List value tweaks and actions with active owners. |
 | `GET` | `/tweaks?include=adjusted` | Include inactive, previously adjusted value tweaks. |
 | `PATCH` | `/tweaks` | Update or reset one or more live values. |
@@ -71,9 +71,9 @@ snapo-tweaks apps --json
 
 JSON listings include `pid`, `processName`, and `packageName`, without friendly app labels or icons. Unknown identity fields are `null`; their sockets remain visible.
 
-The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":8}` before reading or changing tweaks. The bundled frontend uses its matching Android server without a version check. Missing, older, and newer versions are unsupported by the CLI; update Snap-O and the Android library together.
+The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":9}` before reading or changing tweaks. The bundled frontend uses its matching Android server without a version check. Missing, older, and newer versions are unsupported by the CLI; update Snap-O and the Android library together.
 
-Protocol 8 moves version checks from discovery into the tool’s HTTP API. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
+Protocol 9 requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use `Cache-Control: no-store`. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
 
 ## App icons {#get-app-icon data-step="3"}
 
@@ -210,7 +210,7 @@ Each retained snapshot preserves its complete descriptor, latest effective value
 **Inactive history is read-only.** Only active value tweaks can be updated or reset. App-owned history keeps an immutable snapshot, not its source or observers, and never replays an old value into a returning source. Actions do not create adjustment history. Retention ends when the app process exits.
 {.notice}
 
-Unchanged tweaks, no-op adjustments, and rejected updates do not create history entries. Plain `GET /tweaks` and event snapshots remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters return `400 Bad Request`.
+Unchanged tweaks, no-op adjustments, and rejected updates do not create history entries. Plain `GET /tweaks` and event snapshots remain active-only. `GET /tweaks` accepts only `include=adjusted`, with URL escapes decoded. Unsupported, repeated, or additional parameters on this route return `400 Bad Request`. Other routes ignore query parameters.
 
 ## PATCH /tweaks {#patch-tweaks data-step="6"}
 
@@ -342,7 +342,7 @@ When more than one live owner registers the same action name, its descriptor rem
 
 ## GET /tweaks/events {#tweak-events data-step="8"}
 
-Subscribe to the current full tweak snapshot and subsequent changes as controls are registered, removed, or updated. The response uses server-sent events with the `text/event-stream` content type.
+Subscribe to the current full tweak snapshot and subsequent changes as controls are registered, removed, or updated. The response uses server-sent events with the `text/event-stream` content type. HTTP chunk framing is omitted from the example below.
 
 ``` { .http title="Example Request" }
 GET /tweaks/events HTTP/1.1
@@ -353,7 +353,7 @@ Accept: text/event-stream
 ``` { .http title="Example Response · 200 OK" }
 HTTP/1.1 200 OK
 Content-Type: text/event-stream; charset=utf-8
-Cache-Control: no-cache
+Cache-Control: no-store
 
 event: tweaks
 data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":36,"min":16,"max":72,"step":1},{"name":"Motion/Toggle animation","type":"action"}]}

@@ -17,7 +17,7 @@ Snap-O is a public, open-source Android inspection tool.
 
 - Read the component's `AGENTS.md` before changing it.
 - Keep macOS ADB and device transport in `app-macos/Snap-O/Device/`. Keep UI code in the app and tool plugin frontends.
-- Android tool plugins use `tool-sdk/runtime` and its `ToolServer` API. Keep shared socket and HTTP behavior in the runtime.
+- Android tool plugins use `tool-sdk/core` and its `ToolServer` API. Keep shared socket and HTTP behavior in the core library.
 - Each Python CLI implements its own transport; it does not use the Swift client.
 - When changing shared behavior, check the Android libraries, macOS client, web tool, and both Python CLIs. Use `contracts/` and its fixtures to keep them compatible.
 

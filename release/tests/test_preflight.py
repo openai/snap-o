@@ -386,7 +386,7 @@ class ProtocolReportTests(unittest.TestCase):
         }
         for path, content in declarations.items():
             self.write(path, content + "\n")
-        for path in ("app-macos/Snap-O/Device/ToolDiscovery.swift", "tool-sdk/runtime/src/Changed.kt", "tool-reader/src/Changed.java"):
+        for path in ("app-macos/Snap-O/Device/ToolDiscovery.swift", "tool-sdk/core/src/Changed.kt", "tool-reader/src/Changed.java"):
             self.write(path, "// fixture\n")
         self.commit()
         report = self.report()
@@ -394,7 +394,7 @@ class ProtocolReportTests(unittest.TestCase):
         for path in declarations:
             self.assertIn(path, report)
         self.assertIn("app-macos/Snap-O/Device/ToolDiscovery.swift", report)
-        self.assertIn("tool-sdk/runtime/src/Changed.kt", report)
+        self.assertIn("tool-sdk/core/src/Changed.kt", report)
         self.assertIn("tool-reader/src/Changed.java", report)
 
     def test_reports_bundled_frontends_without_version_negotiation(self):

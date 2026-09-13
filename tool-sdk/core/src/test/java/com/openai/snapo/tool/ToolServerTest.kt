@@ -66,12 +66,14 @@ class ToolServerTest {
         for ((method, path, status) in listOf(
             Triple("OPTIONS", "/", 204),
             Triple("DELETE", "/example", 405),
-            Triple("GET", "/missing", 404)
+            Triple("GET", "/missing", 404),
+            Triple("POST", "/missing", 404)
         )) {
             val connection = MemoryConnection("$method $path HTTP/1.1\r\nHost: localhost\r\nOrigin: $origin\r\n\r\n")
             server.serve(connection)
             assertTrue(connection.response.startsWith("HTTP/1.1 $status"))
             assertTrue(connection.response.contains("Access-Control-Allow-Origin: $origin\r\n"))
+            assertTrue(connection.response.contains("Cache-Control: no-store\r\n"))
             if (status == 405) assertTrue(connection.response.contains("Allow: GET, POST\r\n"))
         }
     }

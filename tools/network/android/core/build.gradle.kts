@@ -2,7 +2,7 @@ plugins {
     id("snapo.android.library")
     id("snapo.maven.publish")
     id("snapo.detekt")
-    id("com.openai.snapo.tool")
+    id("com.openai.snapo.tool-packager")
     alias(libs.plugins.kotlinx.serialization)
 }
 
@@ -20,7 +20,7 @@ snapoTool {
 }
 
 dependencies {
-    implementation(project(":tool-runtime"))
+    implementation(project(":tool-core"))
     api(libs.kotlinx.coroutines.core)
     api(libs.serialization.core)
 

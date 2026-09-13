@@ -1,21 +1,21 @@
-# Tool Gradle Plugin
+# Tool Packager Gradle Plugin
 
-Snap-O's Tool Gradle Plugin builds a tool frontend and packages it in an Android library or app. It generates the manifest entry, XML descriptor, Android identity constants, and APK asset ZIP. The Tool Gradle Plugin is available from Maven Central.
+Snap-O's Tool Packager Gradle Plugin builds a tool frontend and packages it in an Android library or app. It generates the manifest entry, XML descriptor, Android identity constants, and APK asset ZIP. The Tool Packager Gradle Plugin is available from Maven Central.
 
-For Android socket serving and HTTP handling, use [tool-runtime](../runtime/README.md). The runtime and the Tool Gradle Plugin have separate responsibilities.
+For Android socket serving and HTTP handling, use [tool-core](../core/README.md). The core library and the Tool Packager Gradle Plugin have separate responsibilities.
 
 ## Configuration
 
 The Snap-O build includes this build integration through `pluginManagement.includeBuild("tool-sdk/gradle-plugin")`. Independent projects resolve its versioned Gradle marker from Maven Central or a local staging repository.
 
-Apply `com.openai.snapo.tool` in the Android module. Declare `mavenCentral()` in `pluginManagement.repositories` so Gradle can resolve it.
+Apply `com.openai.snapo.tool-packager` in the Android module. Declare `mavenCentral()` in `pluginManagement.repositories` so Gradle can resolve it.
 
 Apply the module plugin alongside an Android library or application Gradle plugin:
 
 ```kotlin
 plugins {
     id("com.android.library")
-    id("com.openai.snapo.tool")
+    id("com.openai.snapo.tool-packager")
 }
 
 snapoTool {
@@ -31,7 +31,7 @@ Install Node and npm and make them available to Gradle on `PATH`, including Andr
 
 The Android build runs `npm ci`, `npm run build`, and ZIP packaging through Gradle task dependencies. Apps consuming a published AAR only use its packaged frontend files and do not need Node or npm.
 
-The Tool Gradle Plugin generates a Java `SnapOTool` class in the module's Android namespace, accessible from Java or Kotlin. Its `ID` constant comes from the same definition as the discovery descriptor. For example:
+The Tool Packager Gradle Plugin generates a Java `SnapOTool` class in the module's Android namespace, accessible from Java or Kotlin. Its `ID` constant comes from the same definition as the discovery descriptor. For example:
 
 ```kotlin
 val server = ToolServer(SnapOTool.ID) {
@@ -76,6 +76,6 @@ Both frontends depend on `@snap-o/tool-host` through a local npm file dependency
 
 Run `python3 release/validate_authoring.py` from the repository root. It stages the Gradle plugin implementation and its marker in a temporary Maven repository, packages the host SDK, and builds a copied [Example tool](../../examples/tool/README.md). It does not upload anything or require signing credentials.
 
-The Tool Gradle Plugin's Maven group comes from `gradle.properties`, its artifact names from this build's `settings.gradle.kts`, and its version from the root `VERSION`. Its Gradle plugin ID is declared in `build.gradle.kts`. See [package release guidance](../../release/authoring.md) for publishing and renames.
+The Tool Packager Gradle Plugin's Maven group comes from `gradle.properties`, its artifact names from this build's `settings.gradle.kts`, and its version from the root `VERSION`. Its Gradle plugin ID is declared in `build.gradle.kts`. See [package release guidance](../../release/authoring.md) for publishing and renames.
 
 The build validates the [tool frontend bundle contract](../../contracts/tool-frontend/README.md) before packaging. Invalid paths, oversized archives, and invalid entry points fail the build with the offending entry or limit.

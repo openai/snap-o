@@ -6,12 +6,12 @@ The tool plugin SDK is distributed through Maven Central and npm. Use this workf
 
 | Package | Destination | Name/version source |
 | --- | --- | --- |
-| Android runtime | Maven Central | Module name, Android `GROUP`, root `VERSION` |
-| Tool Gradle Plugin implementation | Maven Central | Project name in the Gradle build's settings, Android `GROUP`, root `VERSION` |
-| Tool Gradle Plugin marker | Maven Central | Gradle plugin ID in `build.gradle.kts`, root `VERSION` |
+| Android core library | Maven Central | Module name, Android `GROUP`, root `VERSION` |
+| Tool Packager Gradle Plugin implementation | Maven Central | Project name in the Gradle build's settings, Android `GROUP`, root `VERSION` |
+| Tool Packager Gradle Plugin marker | Maven Central | Gradle plugin ID in `build.gradle.kts`, root `VERSION` |
 | Host JavaScript SDK | npm | `tool-sdk/host/package.json` |
 
-The Tool Gradle Plugin configures its implementation and marker publications. The marker lets a consumer use `id("com.openai.snapo.tool") version "…"` with `mavenCentral()` in `pluginManagement.repositories`. A Gradle Plugin Portal release is optional and is not configured here.
+The Tool Packager Gradle Plugin configures its implementation and marker publications. The marker lets a consumer use `id("com.openai.snapo.tool-packager") version "…"` with `mavenCentral()` in `pluginManagement.repositories`. A Gradle Plugin Portal release is optional and is not configured here.
 
 The SDK exports compiled ES modules and declarations. It has a public npm publication configuration and a `prepack` build. The first-party frontends use a local package dependency, compiling the SDK during installation and before frontend builds.
 
@@ -29,7 +29,7 @@ The command stages three Maven publications and an npm tarball, checks their met
 
 The output includes `report.json`, the copied example, local Maven repository, npm tarball, and debug APK. The build uses Node and npm from `PATH`. It also builds with prebuilt frontend assets, checking that this mode schedules no Node/npm tasks. CI runs the same command. This check does not prove that registry credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
 
-To inspect Tool Gradle Plugin artifacts without copying the example:
+To inspect Tool Packager Gradle Plugin artifacts without copying the example:
 
 ```sh
 ./gradlew -p tool-sdk/gradle-plugin assembleMavenCentralPublication
@@ -42,7 +42,7 @@ For manual local Maven staging, use the explicitly local `Authoring` repository 
 1. Choose package versions and update the Example project and documentation. Rerun the independent consumer check after API or packaging changes.
 2. Confirm ownership of the final Central namespaces, including the Gradle marker namespace, and the final npm scope. Configure credentials outside the repository.
 3. Follow [release readiness](README.md), including publication checks, signatures, and protocol compatibility review. Package version changes do not automatically change the host bridge API or domain protocols.
-4. With explicit authorization to publish, use the existing Android publication tasks and the Gradle build's `publishToMavenCentral` task. The Tool Gradle Plugin configures `automaticRelease = false`, so uploading does not automatically release a deployment.
+4. With explicit authorization to publish, use the existing Android publication tasks and the Gradle build's `publishToMavenCentral` task. The Tool Packager Gradle Plugin configures `automaticRelease = false`, so uploading does not automatically release a deployment.
 5. With explicit authorization, publish the SDK with `npm publish` from `tool-sdk/host/`. Its `prepack` script builds the same files checked by local validation. Configure npm publishing authentication or trusted publishing for the final package at that time.
 6. Resolve the released packages from clean projects before updating public dependency examples.
 

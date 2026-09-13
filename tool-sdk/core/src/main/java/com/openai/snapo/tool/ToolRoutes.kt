@@ -7,14 +7,10 @@ import kotlin.time.Duration.Companion.seconds
 /** Routes are registered once, before the server starts. JSON serialization belongs to the tool plugin. */
 class ToolRoutes internal constructor() {
     var requestPolicy = ToolHttpRequestPolicy()
-    var preflightStatusCode = 204
     var exposedHeaders: String? = null
     var vary = "Origin"
-    var cacheControl = "no-store"
     internal val entries = mutableListOf<ToolRoute>()
-    internal var validate: (ToolHttpRequest) -> Unit = {}
     internal var errorResponse: (Exception) -> ToolHttpResponse = ::defaultErrorResponse
-    internal var fallback: suspend ToolCall.() -> Unit = { throw ToolHttpException(404, "Unknown endpoint") }
 
     fun get(path: String, handler: suspend ToolCall.() -> Unit) = route("GET", path, handler)
     fun post(path: String, handler: suspend ToolCall.() -> Unit) = route("POST", path, handler)
@@ -42,13 +38,8 @@ class ToolRoutes internal constructor() {
         entries.add(ToolRoute(method, path, handler))
     }
 
-    /** Optional protocol-specific validation, after HTTP/browser validation and before routing. */
-    fun validateRequest(validate: (ToolHttpRequest) -> Unit) { this.validate = validate }
-
     /** Customize domain errors. Responses already started are never replaced with an error response. */
     fun onError(response: (Exception) -> ToolHttpResponse) { errorResponse = response }
-
-    fun notFound(handler: suspend ToolCall.() -> Unit) { fallback = handler }
 }
 
 internal class ToolRoute(

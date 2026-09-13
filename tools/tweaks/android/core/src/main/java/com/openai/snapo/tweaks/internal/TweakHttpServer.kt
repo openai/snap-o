@@ -7,7 +7,6 @@ import android.util.JsonReader
 import android.util.JsonToken
 import android.util.JsonWriter
 import com.openai.snapo.tool.ToolCall
-import com.openai.snapo.tool.ToolHttpRequestPolicy
 import com.openai.snapo.tool.ToolServer
 import com.openai.snapo.tool.ToolSseSession
 import com.openai.snapo.tweaks.BezierCurve
@@ -60,8 +59,7 @@ internal fun applyTweakBatch(
     return TweakBatchResult(tweaks, errors)
 }
 
-internal const val TweaksProtocolVersion = 8
-private const val MaxBodyBytes = 64 * 1024
+internal const val TweaksProtocolVersion = 9
 private const val MainThreadTimeoutMillis = 5_000L
 
 internal class TweakHttpServer(
@@ -78,16 +76,6 @@ internal class TweakHttpServer(
     )
 
     private val server = ToolServer(SnapOTool.ID) {
-        requestPolicy = RequestPolicy
-        preflightStatusCode = 200
-        cacheControl = "no-cache"
-        validateRequest { request ->
-            if ('?' in request.requestTarget &&
-                (request.requestTarget != "/tweaks?include=adjusted" || request.method != "GET")
-            ) {
-                invalidRequest("Unsupported query parameters.")
-            }
-        }
         onError { error ->
             when (error) {
                 is TweakUpdateException -> errorResponse(error.statusCode, error.message ?: "Invalid tweak update.")
@@ -100,10 +88,14 @@ internal class TweakHttpServer(
         }
         get("/tweaks/protocol") { respondJson("""{"version":$TweaksProtocolVersion}""") }
         get("/tweaks") {
+            val query = request.queryParameters
+            if (query.isNotEmpty() && query != mapOf("include" to listOf("adjusted"))) {
+                invalidRequest("Unsupported query parameters.")
+            }
             respond(
                 runInterruptible {
                     tweaksResponse(
-                        snapshotForRequest(includeAdjusted = request.requestTarget != "/tweaks"),
+                        snapshotForRequest(includeAdjusted = query.isNotEmpty()),
                         includeDescriptors = true,
                     )
                 }
@@ -151,8 +143,7 @@ internal class TweakHttpServer(
             }
         }
         subscription.use {
-            // Tweaks protocol 7 uses a close-delimited SSE response.
-            respondSse(chunked = false) {
+            respondSse {
                 sendTweaks(subscription.initial)
                 while (isActive) {
                     sendTweaks(runInterruptible { subscription.events.take() })
@@ -442,9 +433,3 @@ internal class TweakHttpServer(
     private fun invalidRequest(message: String): Nothing =
         throw HttpFailure(400, message)
 }
-
-private val RequestPolicy = ToolHttpRequestPolicy(
-    maxBodyBytes = MaxBodyBytes,
-    httpVersions = setOf("HTTP/1.0", "HTTP/1.1"),
-    requireJsonContentType = false,
-)

@@ -19,7 +19,7 @@ breadcrumbs:
 
 # Build a tool
 
-Build a debugging tool for your Android app and use it from Snap-O on your Mac. Start with a tool that displays **Tool ready**, then add your app's data and controls.
+Build a debugging tool for your Android app and use it from Snap-O on your Mac.
 {.lead}
 
 ## About tools {#model data-nav="About tools"}
@@ -27,7 +27,7 @@ Build a debugging tool for your Android app and use it from Snap-O on your Mac. 
 A tool plugin connects your tool to Snap-O. For a tool with a web frontend, that integration has three parts:
 
 - **An Android socket serving HTTP.** Your app opens a named socket. Snap-O forwards HTTP requests from the frontend to that socket over ADB.
-- **A tool plugin manifest.** Android resources describe the tool's ID, display name, API version, and frontend asset path.
+- **A tool plugin manifest.** Android resources describe the tool's ID, display name, icon, and frontend asset path.
 - **A frontend ZIP.** Your app's APK contains a ZIP of web assets. Snap-O opens it in a WebView. The frontend uses the host SDK to interact with the Mac app and HTTP requests to communicate with the Android app.
 
 ### How Snap-O uses a tool {#how-the-ui-talks-to-your-app}
@@ -39,31 +39,33 @@ A tool plugin connects your tool to Snap-O. For a tool with a web frontend, that
 
 ## Define the tool's identity {#definition data-step="1"}
 
-Use Snap-O's Tool Gradle Plugin in the Android library module that contains your tool.
+We recommend Snap-O's Tool Packager Gradle Plugin to simplify tool development and packaging. Apply it in the Android library module that contains your tool.
 
-Snap-O's Tool Gradle Plugin builds your web frontend, packages it into a ZIP, and includes it in the Android build. It also generates the descriptor and manifest entry that Snap-O uses to identify your tool and find its frontend.
+Snap-O's Tool Packager Gradle Plugin builds your web frontend, packages it into a ZIP, and includes it in the Android build. It also generates the descriptor and manifest entry that Snap-O uses to identify your tool and find its frontend.
 
-### Add the Tool Gradle Plugin {#the-build-plugin-comopenaisnapoplugin}
+### Getting started with the Tool Packager Gradle Plugin {#the-build-plugin-comopenaisnapoplugin}
 
-Install Node and npm and make them available to Gradle on `PATH`, including Android Studio and CI builds. Use a Node version that satisfies your frontend package’s `engines` requirement. Snap-O does not install or manage Node. Apps consuming a finished tool library do not need either.
+We recommend Node and npm for frontend development and testing. The plugin's default frontend build uses them, but you can package existing frontend files with `frontendAssets` without running npm.
+
+For the default build, make Node and npm available to Gradle on `PATH`, including Android Studio and CI builds. Use a Node version that satisfies your frontend package's `engines` requirement. Snap-O does not install or manage Node. Apps consuming a finished tool library do not need either.
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
 snapo = "8.0.0"
 
 [plugins]
-snapo-tool = { id = "com.openai.snapo.tool", version.ref = "snapo" }
+snapo-tool-packager = { id = "com.openai.snapo.tool-packager", version.ref = "snapo" }
 ```
 
 The plugin resolves from Maven Central. Most projects already have `mavenCentral()` in `pluginManagement.repositories`; add it if needed. Keep your existing Android Gradle configuration.
 
 ### Configure your tool {#manifest}
 
-Apply the Tool Gradle Plugin to your Android library module and set its identity:
+Apply the Tool Packager Gradle Plugin to your Android library module and set its identity:
 
 ``` { .kotlin title="Your tool module's build.gradle.kts" }
 plugins {
-    alias(libs.plugins.snapo.tool)
+    alias(libs.plugins.snapo.tool.packager)
 }
 
 snapoTool {
@@ -75,13 +77,42 @@ snapoTool {
 
 Set `id`, `displayName`, and `icon` for your tool. The ID must be unique within the app and stay stable across releases. Use lowercase letters, digits, dots, or hyphens, starting with a letter.
 
-Set `icon` to a drawable or mipmap resource in your tool module. You can use Android Studio's **New → Vector Asset** action to create `res/drawable/tool_icon.xml`, or copy the [Example icon](https://github.com/openai/snap-o/blob/main/examples/tool/example-tool/src/main/res/drawable/example_tool_icon.xml) and rename it. Android checks that the resource exists when linking the app.
+The icon must be an Android drawable or mipmap resource, referenced as `@drawable/tool_icon` or `@mipmap/tool_icon`. Android checks that the resource exists when linking the app.
 
 The frontend ships with its Android server, so you do not need to configure or check a protocol version.
 
-The frontend directory defaults to `frontend/` inside your tool module. Set `frontendDirectory` only if your web project is elsewhere. See the [Gradle API reference](plugin-api.md#packaging) for other options.
+The frontend directory defaults to `frontend/` inside your tool module. Set `frontendDirectory` only if your web project is elsewhere.
 
-## Serve HTTP on Android {#the-android-library-tool-runtime data-step="2"}
+<details markdown="1">
+<summary>Configuration limits and custom frontend builds</summary>
+
+| Property | Required or default | Meaning |
+| --- | --- | --- |
+| `id` | Required | Stable tool ID, up to 100 characters. |
+| `displayName` | Required | Nonblank name shown in Snap-O, up to 200 characters. |
+| `icon` | Required | Android drawable or mipmap resource reference. |
+| `frontendDirectory` | `frontend/` | npm project containing `package.json` and `package-lock.json`. |
+| `frontendAssets` | Output of `toolBuild` | Built frontend files, including `index.html`. |
+
+These are Gradle properties: assign values directly or use `.set(...)` with a provider. The default `toolBuild` task runs `npm run build`, which must write to `frontendDirectory/dist/`.
+
+To package files you have already built, set `frontendAssets`. Gradle then skips the default npm tasks:
+
+``` { .kotlin title="Package existing frontend files" }
+snapoTool {
+    frontendAssets = layout.projectDirectory.dir("prebuilt-frontend")
+}
+```
+
+You can also set `frontendAssets` from another task's output directory provider. Gradle runs that task before packaging.
+
+The plugin generates `SnapOTool.ID` in your Android module's namespace. Each module defines one tool; give each tool module its own namespace.
+
+The plugin also generates `hostApiVersion`, which lets Snap-O check frontend compatibility before loading it. It is not an author setting. If your tool has independently shipped clients, define their compatibility rules through your own HTTP endpoints.
+
+</details>
+
+## Serve HTTP on Android {#the-android-library-tool-core data-step="2"}
 
 ### How the socket connects to Snap-O {#android}
 
@@ -89,10 +120,10 @@ The tool serves HTTP over an Android abstract Unix socket named `snapo_<tool-id>
 
 ### Use the Android Tool SDK {#starter}
 
-Add `tool-runtime` to your Android module. Its `ToolServer` opens the socket, handles HTTP requests, and calls your route handlers. You define the routes and choose when to start the server.
+Add `tool-core` to your Android module. Its `ToolServer` opens the socket, handles HTTP requests, and calls your route handlers. You define the routes and choose when to start the server.
 
 <details id="support-requests-from-the-webview" markdown="1">
-<summary>What the runtime server handles for you</summary>
+<summary>What the server handles for you</summary>
 
 - Opens the named socket and accepts connections in the background.
 - Parses HTTP requests and writes responses from your handlers.
@@ -102,7 +133,7 @@ Add `tool-runtime` to your Android module. Its `ToolServer` opens the socket, ha
 - Limits request sizes, concurrent connections, and read and write times.
 - Formats SSE events, sends heartbeat comments, and cancels stream handlers when clients disconnect.
 
-See the [browser access rules](https://github.com/openai/snap-o/blob/main/contracts/network/README.md#limits-and-lifecycle) and [runtime implementation](https://github.com/openai/snap-o/blob/main/tool-sdk/runtime/src/main/java/com/openai/snapo/tool/ToolBrowserAccess.kt) for the exact host and origin checks.
+See the [browser access rules](https://github.com/openai/snap-o/blob/main/contracts/network/README.md#limits-and-lifecycle) and [server implementation](https://github.com/openai/snap-o/blob/main/tool-sdk/core/src/main/java/com/openai/snapo/tool/ToolBrowserAccess.kt) for the exact host and origin checks.
 
 </details>
 
@@ -114,12 +145,12 @@ See the [browser access rules](https://github.com/openai/snap-o/blob/main/contra
 snapo = "8.0.0"
 
 [libraries]
-snapo-tool-runtime = { module = "com.openai.snapo:tool-runtime", version.ref = "snapo" }
+snapo-tool-core = { module = "com.openai.snapo:tool-core", version.ref = "snapo" }
 ```
 
 ``` { .kotlin title="Your Android module's build.gradle.kts" }
 dependencies {
-    implementation(libs.snapo.tool.runtime)
+    implementation(libs.snapo.tool.core)
 }
 ```
 
@@ -128,7 +159,7 @@ dependencies {
 
 ``` { .kotlin title="Your Android module's build.gradle.kts" }
 dependencies {
-    implementation("com.openai.snapo:tool-runtime:8.0.0")
+    implementation("com.openai.snapo:tool-core:8.0.0")
 }
 ```
 
@@ -137,23 +168,86 @@ dependencies {
 
 The library comes from Maven Central. Most Android projects already include `mavenCentral()` in their dependency repositories.
 
-Start with one route that confirms your Android server is running:
+This example returns a JSON message:
 
-``` { .kotlin title="Handle a status request" }
+``` { .kotlin title="Handle an example request" }
 import com.openai.snapo.tool.ToolServer
 
 fun createToolServer(toolId: String): ToolServer = ToolServer(toolId) {
-    get("/status") {
-        respondJson("""{"ready":true}""")
+    get("/example") {
+        respondJson("""{"message":"Hello, world!"}""")
     }
 }
 ```
 
-`GET /status` returns a JSON object. Keep this route while connecting the frontend; you can add routes for your app's data afterward. `respondJson` accepts a JSON string, so use your app's serializer for real objects.
+`respondJson` accepts a JSON string. Use your app's serializer to encode objects.
 
-### Start the server with AndroidX Startup {#startup}
+<details markdown="1">
+<summary>Routes, request data, and custom responses</summary>
 
-Usually, you want the tool server to start when the Android app starts. One way to do this is with [AndroidX Startup](https://developer.android.com/topic/libraries/app-startup). With the setup below, adding your tool library as an app dependency starts the server automatically.
+Use `get`, `post`, `put`, `patch`, or `delete` to register a handler. Use `route(method, path)` for another uppercase HTTP method. Snap-O handles `OPTIONS` automatically.
+
+Paths can contain parameters, such as `/items/{id}`. Put fixed paths before overlapping patterns; the first match handles the request. Unknown paths return 404. Unsupported methods on known paths return 405 with an `Allow` header.
+
+Inside a handler, these properties provide request data:
+
+| Property | Meaning |
+| --- | --- |
+| `pathParameters` | Decoded path parameters. `+` remains a plus sign. |
+| `request.method` | HTTP method. |
+| `request.path` | Path without its query; URL escapes remain encoded. |
+| `request.requestTarget` | Original path and query. |
+| `request.queryParameters` | Decoded query names mapped to lists of values, including repeated values. |
+| `request.headers` | Headers with lowercase names. |
+| `request.body` | Body bytes. |
+| `request.bodyText()` | Body decoded as strict UTF-8. |
+
+Use `respondJson(json, statusCode)`, `respondText(text, statusCode)`, or `respondNoContent()`. The first two default to status 200. A handler sends one response; returning without one sends 204.
+
+For custom content types or headers, use `respond(ToolHttpResponse(...), headers = ...)`:
+
+``` { .kotlin title="Return a custom response" }
+respond(
+    ToolHttpResponse(
+        statusCode = 200,
+        body = "one,two\n".toByteArray(),
+        contentType = "text/csv; charset=utf-8",
+    ),
+    headers = mapOf("X-Example" to "sample"),
+)
+```
+
+Import `ToolHttpResponse` from `com.openai.snapo.tool`. Set `exposedHeaders` inside `ToolServer` if the frontend must read custom response headers. `vary` defaults to `"Origin"`; extend it if responses also vary by other request headers.
+
+Throw `ToolHttpException(statusCode, message)` for an intentional HTTP error. Use `onError { error -> ToolHttpResponse.error(...) }` to map domain exceptions. Unexpected handler failures are logged and return a generic 500. Once a response starts, failures close the connection instead of sending another response.
+
+</details>
+
+<details markdown="1">
+<summary>Request limits and HTTP behavior</summary>
+
+The server accepts HTTP/1.1 requests with a known body length, not chunked request bodies. Route handlers validate content types and parse bodies. The defaults are:
+
+``` { .kotlin title="Inside ToolServer" }
+requestPolicy = ToolHttpRequestPolicy(
+    maxBodyBytes = 64 * 1024,
+    bodyMethods = setOf("POST", "PUT", "PATCH"),
+)
+```
+
+Import `ToolHttpRequestPolicy` from `com.openai.snapo.tool` to change those limits. `ToolServer` allows 32 connections by default; pass `maxConnections` to its constructor to change this.
+
+Request reads time out after five seconds. Finite requests have a 30-second deadline. Writes blocked for five seconds are closed, with checks once per second. SSE connections can stay open beyond the finite-request deadline.
+
+Malformed HTTP requests return 400, read timeouts return 408, and oversized bodies return 413. Preflight requests return 204. Responses default to `Cache-Control: no-store`. The server checks Host and Origin headers and adds CORS response headers.
+
+</details>
+
+### Starting the tool on startup {#startup}
+
+Use [AndroidX Startup](https://developer.android.com/topic/libraries/app-startup) when apps should start your tool simply by adding the library dependency. The initializer and manifest entry below belong to your tool library. Consuming apps do not need initialization code.
+
+For an app you control, you can instead create and retain the server in your existing initialization code and call `startIfAllowed(context)`. In that case, skip the AndroidX Startup setup below.
 
 Add the AndroidX Startup dependency to your tool library:
 
@@ -221,13 +315,28 @@ dependencies {
 
 For AndroidX Startup configuration and behavior, see the [AndroidX Startup documentation](https://developer.android.com/topic/libraries/app-startup).
 
-See the [complete Example initializer](https://github.com/openai/snap-o/blob/main/examples/tool/example-tool/src/main/java/com/example/snapo/tool/ExampleInitializer.kt) and [startup API reference](plugin-api.md#server).
+See the [complete Example initializer](https://github.com/openai/snap-o/blob/main/examples/tool/example-tool/src/main/java/com/example/snapo/tool/ExampleInitializer.kt).
+
+<details markdown="1">
+<summary>Server lifecycle and release builds</summary>
+
+Keep the server for the tool's lifetime. `isRunning` reports whether it is listening. `close()` stops it and closes its connections; the server can then start again.
+
+`startIfAllowed(context)` allows startup when the app is debuggable, `allowRelease = true`, or the app sets the `snapo.<tool-id>.allow_release` manifest flag. You can supply `releaseMetadataKey` to use another flag. A denied call does not stop a running server. Binding failures are logged and can be retried; configuration errors still throw.
+
+The lower-level `start()` skips the policy check and throws if binding fails. Use `ToolStartupPolicy.isAllowed(context, releaseMetadataKey, allowRelease)` if you need to check policy separately. Keep the library in debug builds unless release inspection is intentional.
+
+Tests can call `server.serve(connection)` with a `ToolConnection` implementation. It provides input/output streams, `setReadTimeout(millis)`, and `close()`. The server handles one request and closes the connection.
+
+</details>
 
 ## Build the web frontend {#the-frontend-library-snap-oplugin-host data-step="3"}
 
 ### Create your UI {#frontend}
 
-For a new frontend, use [Preact with Vite](https://preactjs.com/guide/v10/getting-started/#create-a-vite-powered-preact-app). Open a terminal in your tool's Android library module directory—the directory containing its `build.gradle.kts`. Then run:
+For a new frontend, we recommend [Preact with Vite](https://preactjs.com/guide/v10/getting-started/#create-a-vite-powered-preact-app). Preact provides components and hooks with a small runtime. Vite provides fast updates during development and bundles the frontend for packaging. You can use another framework or plain JavaScript, provided the output meets the bundle requirements below.
+
+To follow this example, open a terminal in your tool's Android library module directory—the directory containing its `build.gradle.kts`. Then run:
 
 ``` { .bash title="From your Android library module directory" }
 # Start in the library module directory containing build.gradle.kts.
@@ -243,9 +352,16 @@ This creates a TypeScript project in `frontend/`. The build uses [relative asset
 
 The Vite starter already bundles imported code and local assets; no extra bundling setting is needed. Add images and fonts as local files using [Vite's asset handling](https://vite.dev/guide/assets.html).
 
-#### WebView limits
+<details markdown="1">
+<summary>Frontend bundle limits and WebView restrictions</summary>
 
-Snap-O blocks remote scripts and requests to other servers. It also blocks WebAssembly and JavaScript built from strings, such as `eval`.
+The ZIP can contain up to 1,024 entries and 16 MiB of compressed and expanded data. Its `index.html` must be UTF-8 and no larger than 4 MiB. Include all required files in the bundle.
+
+Snap-O blocks remote scripts, frames, workers, forms, and requests to servers other than the tool's Android server. It also blocks WebAssembly and JavaScript built from strings, such as `eval`. A selected development server and its hot-reload connection are allowed.
+
+These restrictions do not guarantee that JavaScript from an untrusted APK is safe. See [WebView safeguards](https://github.com/openai/snap-o/blob/main/tools/README.md#webview-safeguards) for details.
+
+</details>
 
 ### Connect to the Snap-O Mac app {#connect-to-android}
 
@@ -269,7 +385,7 @@ void host.ready().then(
 
 Keep the starter's CSS imports. If startup fails, open the tool in Snap-O and reload it.
 
-Replace the starter's `src/app.tsx` with this component to fetch the Android example's `/status` route:
+Replace the starter's `src/app.tsx` with this component to fetch the Android example's `/example` route:
 
 ``` { .tsx title="frontend/src/app.tsx" }
 import { useEffect, useState } from "preact/hooks";
@@ -282,14 +398,14 @@ export function App() {
     setMessage(connection ? "Connecting…" : "Disconnected");
     if (!connection) return;
     const request = new AbortController();
-    fetch(new URL("status", connection.baseURL), { signal: request.signal })
+    fetch(new URL("example", connection.baseURL), { signal: request.signal })
       .then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       })
-      .then(status => {
+      .then(data => {
         if (!request.signal.aborted) {
-          setMessage(status.ready === true ? "Tool ready" : "Tool not ready");
+          setMessage(data.message);
         }
       })
       .catch(error => {
@@ -304,17 +420,38 @@ export function App() {
 
 The SDK runs the previous cleanup before delivering another connection. Preact also unsubscribes when the component unmounts. The cleanup aborts the old request so it cannot update a disconnected or replaced UI.
 
+<details markdown="1">
+<summary>Connection state, cancellation, and reconnects</summary>
+
+`host.ready()` resolves after the initial host state arrives, even without a connected Android app. It rejects if that request fails. Concurrent calls share one request; calling it again retries a failure.
+
+`host.connection` is either `null` or an object with these properties:
+
+| Property | Meaning |
+| --- | --- |
+| `baseURL` | Forwarded Android server address. |
+| `processIdentity` | Opaque token that changes when the Android process restarts. Use it to scope retained state. |
+| `signal` | Abort signal for this connection. Use it with requests that should end on disconnection. |
+
+`host.onConnection` calls its callback immediately and on connection changes. It returns an unsubscribe function. Cleanup runs before the next callback and when unsubscribing. A replacement connection can reuse the same URL. Unsubscribing one UI does not abort another UI's requests.
+
+Hidden pages may stay loaded and receive a disconnected state. Snap-O unloads pages before releasing their forwarded ports. Close each `EventSource` when replacing it or removing its UI so it stops retrying the old URL.
+
+Requests can fail while connected. Your frontend owns response validation, error display, and event-stream reconnection.
+
+</details>
+
 ## Try your tool in Snap-O {#development data-step="4"}
 
 Build and run your Android app with the tool library included, using your usual workflow. Its build includes the frontend automatically.
 
-<span id="verification"></span>In Snap-O, select your device, app, and tool. The Tool pane should display **Tool ready**. You now have a working connection from your frontend to your Android app.
+<span id="verification"></span>In Snap-O, select your device, app, and tool. The Tool pane should display **Hello, world!**.
 
-If the tool is missing, check that you installed a debug build containing the tool library. If the page shows a request error, check Logcat for server startup failures and confirm the `/status` route matches the example.
+If the tool is missing, check that you installed a debug build containing the tool library. If the page shows a request error, check Logcat for server startup failures and confirm the `/example` route matches the example.
 
 ## Add functionality {#add-functionality}
 
-Keep the working status route and add the features your tool needs. The following examples are optional.
+The following examples show live updates and actions. Use the routes your tool needs.
 
 ### Stream live updates {#live-updates}
 
@@ -363,16 +500,36 @@ Rebuild and run the Android app. The Tool pane now displays a new tick each seco
 
 The cleanup closes the previous stream before a connection changes or the component unmounts. Unloading the page also closes its streams; while a page remains loaded, `EventSource` retries interrupted connections until closed.
 
+<details markdown="1">
+<summary>Stream options, heartbeats, and finite responses</summary>
+
+`send(data, event, id)` formats an SSE event. `event` and `id` are optional. `write(bytes)` sends bytes you have already formatted. The session exposes the request through `call` and is a coroutine scope.
+
+The server sends a heartbeat comment every 30 seconds. Pass a positive, finite `heartbeatInterval` to `sse` or `respondSse`, or `null` to disable it. `heartbeat()` sends a comment immediately.
+
+Use `respondSse` inside an ordinary route when you need to validate the request or choose response headers before streaming:
+
+``` { .kotlin title="Streaming response options" }
+respondSse(
+    statusCode = 200,
+    headers = emptyMap(),
+    heartbeatInterval = 30.seconds,
+) {
+    send("Hello", event = "example")
+}
+```
+
+Import `kotlin.time.Duration.Companion.seconds` for the duration. The session and its child coroutines end when the handler returns, the client disconnects, or the server closes. `close()` ends the session explicitly. Use suspending operations or `runInterruptible` for blocking event sources so they can be cancelled.
+
+For a finite stream, use `respondStream(contentType) { write(bytes) }`, with optional `statusCode` and `headers`. Each write becomes an HTTP chunk; the server completes the response when the block returns. Your tool owns event buffering, IDs, and replay behavior.
+
+</details>
+
 ### Handle actions {#actions}
 
-Use a POST route for actions. This example echoes text to demonstrate reading a request body and returning an error. Add the import at the top of your server file, then add the policy and route inside the existing `ToolServer` block:
+Use a POST route for actions. This example echoes text to demonstrate reading a request body and returning an error. Add the route inside the existing `ToolServer` block:
 
 ``` { .kotlin title="Add a POST route" }
-import com.openai.snapo.tool.ToolHttpRequestPolicy
-
-// Inside ToolServer(toolId) { ... }
-requestPolicy = ToolHttpRequestPolicy(requireJsonContentType = false)
-
 post("/echo") {
     val text = request.bodyText()
     if (text.isBlank()) {
@@ -383,7 +540,7 @@ post("/echo") {
 }
 ```
 
-The default request policy requires JSON bodies. This example allows plain text; keep the default for JSON APIs. Call `/echo` from a frontend event handler:
+Route handlers choose which content types to accept. This example reads the body as UTF-8 text. Call `/echo` from a frontend event handler:
 
 ``` { .typescript title="Send an action request" }
 const connection = host.connection;
@@ -418,7 +575,30 @@ host.setToolbar({
 }).catch(console.error);
 ```
 
-Clear the toolbar with `host.setToolbar({})` when removing the UI. See [toolbar options](plugin-api.md#native) for icons, search fields, and placement.
+Clear the toolbar with `host.setToolbar({})` when removing the UI.
+
+<details markdown="1">
+<summary>Toolbar actions, search, and placement</summary>
+
+`setToolbar` replaces the toolbar. Each action has an `id`, `icon`, `label`, and `onClick` callback. Set `enabled: false` to disable it. Icons are `clear`, `sortAscending`, `sortDescending`, `search`, `export`, or `reset`.
+
+Use `search` to add a search field:
+
+``` { .typescript title="Toolbar with search" }
+await host.setToolbar({
+  search: {
+    label: "Search",
+    value: query,
+    onChange: value => setQuery(value),
+  },
+});
+```
+
+The main area accepts up to three controls: three actions, or two actions and search. Use `endActions` for buttons in the separate trailing area. Both areas together allow up to eleven controls. Action IDs must be unique; `search` is reserved when the search field is present.
+
+The search field also accepts `enabled`. Catch errors from asynchronous work inside callbacks.
+
+</details>
 
 ### Copy text and save files {#files}
 
@@ -435,11 +615,13 @@ const saved = await host.saveFile({
 });
 ```
 
-Snap-O asks the user to confirm before copying text. `saveFile` opens a save dialog and returns `false` if the user cancels. Catch errors and show them in your UI.
+Snap-O asks the user to confirm before copying text. `saveFile` accepts a `Blob` up to 64 MiB and opens a save dialog. It returns `true` when saved or `false` when cancelled, without returning a file path. Catch errors and show them in your UI.
 
 ### Color picker {#color-picker}
 
-If your tool edits colors, use `host.openColorPicker({ value, onChange })`. It returns an object with `setValue` and `close` methods. Keep it so you can close the picker when the device disconnects or the UI is removed.
+If your tool edits colors, use `await host.openColorPicker({ value, onChange })`. Colors use hexadecimal RGBA, such as `#6688ccff`. Snap-O asks the user to confirm before opening the picker.
+
+The returned object has asynchronous `setValue(value)` and `close()` methods. Keep it so you can close the picker when the device disconnects or the UI is removed. You can supply an `onClose` callback; closing an old picker object does not close a newer picker.
 
 ## Develop the frontend {#develop-the-frontend data-step="5"}
 
@@ -451,8 +633,8 @@ npm run dev
 
 With your tool selected in Snap-O, choose **Develop → Use Development Server** and enter the local URL printed by Vite. Keep the Android app running so the frontend can call its API. Vite updates the UI as you edit; see its [development guide](https://vite.dev/guide/) for details.
 
-The Tool Gradle Plugin's `toolDev` task can also run the frontend's npm `dev` script. To inspect the page, choose **Develop → Inspect Current WebView in Safari…**.
+The Tool Packager Gradle Plugin's `toolDev` task can also run the frontend's npm `dev` script. To inspect the page, choose **Develop → Inspect Current WebView in Safari…**.
 
 Choose **Develop → Use Packaged Frontend** to return to the version bundled in the APK. Rebuild and reinstall through your usual Android workflow to update that version.
 
-For a complete tool implementation, see the [Example project](https://github.com/openai/snap-o/tree/main/examples/tool). For SDK methods, see the [Tool API reference](plugin-api.md).
+For a complete tool implementation, see the [Example project](https://github.com/openai/snap-o/tree/main/examples/tool).

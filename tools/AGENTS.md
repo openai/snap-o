@@ -7,12 +7,12 @@ This is the code repository for the Snap-O macOS app and optional Android librar
 - Shared authoring support lives in `../tool-sdk/`; demo apps live in `../examples/android/`.
 - Run Gradle commands from the repository root.
 
-## Tool Runtime
+## Tool Core
 
-- Every Android tool plugin uses `tool-runtime` and its `ToolServer` API for HTTP routes and streaming.
-- Keep socket handling, HTTP framing, browser access rules, and connection cleanup in the shared runtime.
+- Every Android tool plugin uses `tool-core` and its `ToolServer` API for HTTP routes and streaming.
+- Keep socket handling, HTTP framing, browser access rules, and connection cleanup in the shared core library.
 - Tool plugins own their domain data, serialization, routes, startup providers, and event buffering policies.
-- Integration adapters use the runtime through their tool plugin dependency. No-op libraries must not start a server.
+- Integration adapters use the core library through their tool plugin dependency. No-op libraries must not start a server.
 
 ## Security Model Notes
 - Snap-O Network Tool transport on Android uses an app-local abstract Unix domain socket and relies on Android app sandbox + SELinux process isolation.

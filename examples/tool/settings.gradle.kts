@@ -11,7 +11,7 @@ pluginManagement {
         gradlePluginPortal()
     }
     plugins {
-        id("com.openai.snapo.tool") version providers.gradleProperty("snapoVersion").get()
+        id("com.openai.snapo.tool-packager") version providers.gradleProperty("snapoVersion").get()
     }
 }
 

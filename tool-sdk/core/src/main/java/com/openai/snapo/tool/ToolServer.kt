@@ -70,12 +70,11 @@ class ToolServer(
                 routes.entries.map { it.method }.distinct().joinToString(", "),
                 routes.exposedHeaders,
                 routes.vary,
-            ) + ("Cache-Control" to routes.cacheControl)
+            ) + ("Cache-Control" to "no-store")
             val current = ToolCall(request, connection, headers) { deadline.cancel() }
             call.set(current)
-            routes.validate(request)
             if (request.method == "OPTIONS") {
-                current.respond(ToolHttpResponse(routes.preflightStatusCode, byteArrayOf()))
+                current.respondNoContent()
             } else {
                 dispatch(current)
                 if (!current.responseStarted) current.respondNoContent()
@@ -122,7 +121,7 @@ class ToolServer(
             val methods = matches.map { it.first.method }.distinct().joinToString(", ")
             throw ToolHttpException(405, "Use $methods", allowedMethods = methods)
         } else {
-            routes.fallback(call)
+            throw ToolHttpException(404, "Unknown endpoint")
         }
     }
 }

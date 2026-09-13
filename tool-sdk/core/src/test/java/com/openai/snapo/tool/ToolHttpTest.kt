@@ -34,19 +34,21 @@ class ToolHttpTest {
     }
 
     @Test
-    fun `PATCH supports UTF-8 bodies and configurable content type and protocol policies`() {
-        val body = "{\"values\":{\"title\":\"café\"}}".toByteArray()
-        val head = "PATCH /tweaks HTTP/1.0\r\nHost: localhost\r\nContent-Length: ${body.size}\r\n\r\n"
-        val policy = ToolHttpRequestPolicy(
-            maxBodyBytes = body.size,
-            httpVersions = setOf("HTTP/1.0", "HTTP/1.1"),
-            requireJsonContentType = false,
-        )
-        val request = ToolHttpRequest.read(ByteArrayInputStream(head.toByteArray() + body), policy)
-        assertEquals("PATCH", request.method)
-        assertTrue(body.contentEquals(request.body))
-        assertThrows(IllegalArgumentException::class.java) {
-            ToolHttpRequest.read(ByteArrayInputStream(head.toByteArray() + body))
+    fun `request bodies preserve bytes without imposing a content type`() {
+        val body = byteArrayOf(0, 0xc3.toByte(), 0xff.toByte())
+        for (contentType in listOf("", "Content-Type: text/plain\r\n", "Content-Type: application/octet-stream\r\n")) {
+            val head = "PATCH /example HTTP/1.1\r\nHost: localhost\r\nContent-Length: ${body.size}\r\n$contentType\r\n"
+            val request = ToolHttpRequest.read(ByteArrayInputStream(head.toByteArray() + body))
+            assertTrue(body.contentEquals(request.body))
+        }
+    }
+
+    @Test
+    fun `only HTTP 1_1 requests are accepted`() {
+        for (version in listOf("HTTP/1.0", "HTTP/2.0", "HTTP/9.9")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                parse("GET /example $version\r\nHost: localhost\r\n\r\n")
+            }
         }
     }
 
@@ -77,7 +79,6 @@ class ToolHttpTest {
             "Content-Length: 2147483648\r\n",
             "Transfer-Encoding: chunked\r\n",
             "Bad Header: x\r\n",
-            "Content-Length: 1\r\nContent-Type: text/plain\r\n",
         )) {
             assertThrows(IllegalArgumentException::class.java) {
                 parse("POST / HTTP/1.1\r\nHost: localhost\r\n$headers\r\nx")

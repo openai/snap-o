@@ -9,7 +9,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import java.net.URI
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -60,16 +59,6 @@ internal class NetworkToolHttp(
         }
         get("/network/requests/{requestId}/request-body") { body(CdpNetworkMethod.GetRequestPostData) }
         get("/network/requests/{requestId}/response-body") { body(CdpNetworkMethod.GetResponseBody) }
-        notFound {
-            // Keep the existing distinction between expired interception owners and unknown paths.
-            if (URI.create(request.requestTarget).path.startsWith("/interception/")) {
-                runner(request.path.split('/').getOrElse(2) { "" })
-                notFound()
-            } else {
-                requireMethod(request, "GET")
-                notFound()
-            }
-        }
     }
 
     private fun eventStreamRequested(request: ToolHttpRequest): Boolean {
@@ -173,13 +162,11 @@ internal class NetworkToolHttp(
         }
     }
 
-    private fun notFound(): Nothing = throw ToolHttpException(404, "Unknown endpoint")
-
-    private fun requireMethod(request: ToolHttpRequest, method: String) {
-        if (request.method != method) throw ToolHttpException(405, "Use $method")
-    }
-
+    @Suppress("ThrowsCount") // Keep content-type, syntax, and JSON-shape errors distinct.
     private fun ToolHttpRequest.json(): JsonObject {
+        if (!headers["content-type"]?.substringBefore(';')?.trim().equals("application/json", true)) {
+            throw ToolHttpException(400, "Request bodies must use application/json")
+        }
         val body = bodyText()
         val value = try {
             ProtocolJson.parseToJsonElement(body)
