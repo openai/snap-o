@@ -1,6 +1,6 @@
-import type { ToolMetadata } from "../useHostConnection";
+import type { ToolConnection } from "@snap-o/tool-host";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StreamStarted, StreamStatus } from "./bridge-types";
+import type { StreamStarted, StreamClosed } from "./bridge-types";
 import { NetworkStreamController, type StreamLifecycleState } from "./stream-controller";
 
 describe("NetworkStreamController", () => {
@@ -32,7 +32,7 @@ describe("NetworkStreamController", () => {
     expect(client.stopped).toEqual(["stream-3"]);
   });
 
-  it("retries when an active stream exits", async () => {
+  it("retries when an active stream closes", async () => {
     vi.useFakeTimers();
     const client = new TestStreamClient();
     client.startResults.push({ streamId: "stream-1" }, { streamId: "stream-2" });
@@ -40,7 +40,7 @@ describe("NetworkStreamController", () => {
 
     controller.start();
     await settlePromises();
-    client.emitStatus({ streamId: "stream-1", state: "exit" });
+    client.emitClosed({ streamId: "stream-1" });
     await vi.advanceTimersByTimeAsync(250);
 
     expect(client.startCount).toBe(2);
@@ -48,7 +48,7 @@ describe("NetworkStreamController", () => {
     expect(client.stopped).toEqual(["stream-2"]);
   });
 
-  it("handles a terminal status emitted before start resolves", async () => {
+  it("handles a close notification emitted before start resolves", async () => {
     vi.useFakeTimers();
     const client = new TestStreamClient();
     const pending = deferred<StreamStarted>();
@@ -56,13 +56,41 @@ describe("NetworkStreamController", () => {
     const controller = new NetworkStreamController(client, metadata, () => {});
 
     controller.start();
-    client.emitStatus({ streamId: "stream-1", state: "error", message: "closed" });
+    client.emitClosed({ streamId: "stream-1" });
     pending.resolve({ streamId: "stream-1" });
     await settlePromises();
     await vi.advanceTimersByTimeAsync(250);
 
     expect(client.startCount).toBe(2);
     controller.dispose();
+  });
+
+  it("ignores late close notifications from an earlier stream", async () => {
+    vi.useFakeTimers();
+    const client = new TestStreamClient();
+    client.startResults.push({ streamId: "stream-1" }, { streamId: "stream-2" });
+    const controller = new NetworkStreamController(client, metadata, () => {});
+    controller.start();
+    await settlePromises();
+    client.emitClosed({ streamId: "stream-1" });
+    await vi.advanceTimersByTimeAsync(250);
+    client.emitClosed({ streamId: "stream-1" });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(client.startCount).toBe(2);
+    controller.dispose();
+    expect(client.stopped).toEqual(["stream-2"]);
+  });
+
+  it("stops a stream whose start finishes after disposal", async () => {
+    const client = new TestStreamClient();
+    const pending = deferred<StreamStarted>();
+    client.startResults.push(pending.promise);
+    const controller = new NetworkStreamController(client, metadata, () => {});
+    controller.start();
+    controller.dispose();
+    pending.resolve({ streamId: "late-stream" });
+    await settlePromises();
+    expect(client.stopped).toEqual(["late-stream"]);
   });
 
   it("cancels a scheduled retry when disposed", async () => {
@@ -77,7 +105,7 @@ describe("NetworkStreamController", () => {
     await vi.runAllTimersAsync();
 
     expect(client.startCount).toBe(1);
-    expect(client.hasStatusListener).toBe(false);
+    expect(client.hasClosedListener).toBe(false);
   });
 
   it("caps repeated retry delays", async () => {
@@ -99,19 +127,20 @@ describe("NetworkStreamController", () => {
   });
 });
 
-const metadata: ToolMetadata = {
-  protocolVersion: 4,
+const metadata: ToolConnection = {
+  baseURL: "http://127.0.0.1:1234/",
+  signal: new AbortController().signal,
   processIdentity: "boot:20:123"
 };
 
 class TestStreamClient {
   readonly startResults: Array<StreamStarted | Error | Promise<StreamStarted>> = [];
   readonly stopped: string[] = [];
-  private statusCallback: ((status: StreamStatus) => void) | null = null;
+  private closedCallback: ((event: StreamClosed) => void) | null = null;
   startCount = 0;
 
-  get hasStatusListener(): boolean {
-    return this.statusCallback != null;
+  get hasClosedListener(): boolean {
+    return this.closedCallback != null;
   }
 
   startStream(): Promise<StreamStarted> {
@@ -125,15 +154,15 @@ class TestStreamClient {
     this.stopped.push(streamId);
   }
 
-  onStatus(callback: (status: StreamStatus) => void): () => void {
-    this.statusCallback = callback;
+  onClosed(callback: (event: StreamClosed) => void): () => void {
+    this.closedCallback = callback;
     return () => {
-      this.statusCallback = null;
+      this.closedCallback = null;
     };
   }
 
-  emitStatus(status: StreamStatus): void {
-    this.statusCallback?.(status);
+  emitClosed(event: StreamClosed): void {
+    this.closedCallback?.(event);
   }
 }
 

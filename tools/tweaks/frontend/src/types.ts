@@ -31,10 +31,6 @@ export interface TweakList {
   tweaks: TweakDescriptor[];
 }
 
-export interface TweakStreamEvent extends TweakList {
-  streamId: string;
-}
-
 export interface TweakUpdate {
   name: string;
   value: TweakValue;
@@ -57,8 +53,4 @@ export interface UpdateTweaksInput {
 
 export interface InvokeTweakActionInput {
   name: string;
-}
-
-export interface StreamStarted {
-  streamId: string;
 }

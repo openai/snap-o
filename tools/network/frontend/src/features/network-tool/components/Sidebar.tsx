@@ -1,13 +1,10 @@
 import type { JSX } from "preact";
 import type { NetworkClient } from "../../../network/client";
 import type { ToolRecord } from "../../../network/cdp";
-import type { ToolMetadata } from "../../../useHostConnection";
-import { hasProtocolWarning, supportedProtocolVersion } from "../lib/protocol";
 import { ExclusionFilterControl } from "./ExclusionFilterControl";
 import { RecordList } from "./RecordList";
 
 export function Sidebar({
-  metadata,
   isConnected,
   exclusionFilters,
   hiddenRequestCount,
@@ -20,7 +17,6 @@ export function Sidebar({
   onRemoveExclusionFilter,
   onRecordSelect
 }: {
-  metadata: ToolMetadata | null;
   isConnected: boolean;
   exclusionFilters: string[];
   hiddenRequestCount: number;
@@ -35,9 +31,6 @@ export function Sidebar({
 }): JSX.Element {
   return (
     <aside className="sidebar">
-      {metadata && hasProtocolWarning(metadata.protocolVersion) ? (
-        <ProtocolWarning protocolVersion={metadata.protocolVersion} />
-      ) : null}
       <ExclusionFilterControl
         exclusionFilters={exclusionFilters}
         hiddenRequestCount={hiddenRequestCount}
@@ -55,18 +48,5 @@ export function Sidebar({
         isConnected={isConnected}
       />
     </aside>
-  );
-}
-
-function ProtocolWarning({ protocolVersion }: { protocolVersion: number }): JSX.Element {
-  return (
-    <div className="protocol-warning">
-      <div className="protocol-warning-title">Incompatible protocol version {protocolVersion}</div>
-      <div className="protocol-warning-body">
-        {protocolVersion < supportedProtocolVersion
-          ? "This Android build is using an older protocol than this Network Tool supports."
-          : "This Android build may be newer than the Network Tool understands."}
-      </div>
-    </div>
   );
 }

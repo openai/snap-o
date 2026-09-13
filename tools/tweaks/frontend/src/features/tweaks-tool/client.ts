@@ -1,20 +1,15 @@
-import type {
-  InvokeTweakActionInput,
-  StreamStarted,
-  TweakList,
-  TweakStreamEvent,
-  TweakUpdates,
-  UpdateTweaksInput
-} from "../../types";
-import { host } from "@snap-o/tool-host";
+import type { InvokeTweakActionInput, TweakList, TweakUpdates, UpdateTweaksInput } from "../../types";
+import { host, type ToolConnection } from "@snap-o/tool-host";
 
 export interface TweaksClient {
   listTweaks(): Promise<TweakList>;
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates>;
   invokeTweakAction(input: InvokeTweakActionInput): Promise<void>;
-  startTweakStream(onError?: (error: Error) => void): Promise<StreamStarted>;
-  stopTweakStream(streamId: string): Promise<void>;
-  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void;
+  subscribeTweaks(
+    connection: ToolConnection,
+    onSnapshot: (snapshot: TweakList) => void,
+    onError: (error: Error) => void
+  ): () => void;
   openExternal(url: string): Promise<void>;
   dispose(): void;
 }
@@ -24,49 +19,35 @@ export function createTweaksClient(): TweaksClient {
 }
 
 class BrowserTweaksClient implements TweaksClient {
-  private streams = new Map<string, (error?: Error) => void>();
-  private listeners = new Set<(event: TweakStreamEvent) => void>();
-  private requests = new Set<AbortController>();
-  private disconnected = () => this.revokeConnection();
+  private subscriptions = new Set<() => void>();
+  private readonly lifetime = new AbortController();
+  private readonly unsubscribe = host.onConnection(() => () => {
+    for (const close of this.subscriptions) close();
+  });
 
-  constructor() {
-    host.addEventListener("connection", this.disconnected);
-  }
   dispose(): void {
-    host.removeEventListener("connection", this.disconnected);
-    this.revokeConnection();
+    this.unsubscribe();
+    this.lifetime.abort();
   }
 
   private async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
     const current = host.connection;
-    if (!current) throw new Error("Tool is disconnected.");
-    const controller = new AbortController();
-    this.requests.add(controller);
-    try {
-      const response = await fetch(new URL(path, current.baseURL), {
-        method,
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
-        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        redirect: "error",
-        cache: "no-store"
-      });
-      if (!response.ok) {
-        const error = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(error?.error ?? `Tool request failed (${response.status}).`);
-      }
-      return (await response.json()) as T;
-    } finally {
-      this.requests.delete(controller);
+    if (!current || this.lifetime.signal.aborted) throw new Error("Tool is disconnected.");
+    const response = await fetch(new URL(path, current.baseURL), {
+      method,
+      signal: AbortSignal.any([current.signal, this.lifetime.signal, AbortSignal.timeout(30_000)]),
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "error",
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      const error = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(error?.error ?? `Tool request failed (${response.status}).`);
     }
+    return (await response.json()) as T;
   }
 
-  private revokeConnection(): void {
-    for (const request of this.requests) request.abort();
-    this.requests.clear();
-    for (const close of this.streams.values()) close();
-    this.streams.clear();
-  }
   listTweaks(): Promise<TweakList> {
     return this.request("tweaks");
   }
@@ -77,52 +58,51 @@ class BrowserTweaksClient implements TweaksClient {
     await this.request("tweaks/action", "POST", { name: input.name });
   }
 
-  async startTweakStream(onError?: (error: Error) => void): Promise<StreamStarted> {
-    const current = host.connection;
-    if (!current) throw new Error("Tool is disconnected.");
-    const streamId = crypto.randomUUID();
-    const stream = new EventSource(new URL("tweaks/events", current.baseURL));
-    return new Promise((resolve, reject) => {
-      let opened = false;
-      const close = (error?: Error) => {
-        if (this.streams.get(streamId) !== close) return;
-        this.streams.delete(streamId);
-        clearTimeout(timeout);
-        stream.removeEventListener("open", open);
-        stream.removeEventListener("error", fail);
-        stream.removeEventListener("tweaks", receive);
-        stream.close();
-        if (!opened) reject(error ?? new Error("Tool is disconnected."));
-        else if (error) onError?.(error);
-      };
-      const open = () => {
-        opened = true;
-        clearTimeout(timeout);
-        resolve({ streamId });
-      };
-      const fail = () => close(new Error("Tweaks event stream disconnected."));
-      const receive = (event: Event) => {
-        if (this.streams.get(streamId) !== close) return;
-        try {
-          const list = JSON.parse((event as MessageEvent<string>).data) as TweakList;
-          for (const callback of this.listeners) callback({ ...list, streamId });
-        } catch {
-          // Retain the previous values when a snapshot is invalid.
-        }
-      };
-      const timeout = setTimeout(() => close(new Error("Tweaks event stream connection timed out.")), 5_000);
-      this.streams.set(streamId, close);
-      stream.addEventListener("open", open);
-      stream.addEventListener("error", fail);
-      stream.addEventListener("tweaks", receive);
-    });
-  }
-  async stopTweakStream(streamId: string): Promise<void> {
-    this.streams.get(streamId)?.();
-  }
-  onTweaksChanged(callback: (event: TweakStreamEvent) => void): () => void {
-    this.listeners.add(callback);
-    return () => this.listeners.delete(callback);
+  subscribeTweaks(
+    connection: ToolConnection,
+    onSnapshot: (snapshot: TweakList) => void,
+    onError: (error: Error) => void
+  ): () => void {
+    if (connection.signal.aborted || this.lifetime.signal.aborted) throw new Error("Tool is disconnected.");
+    const stream = new EventSource(new URL("tweaks/events", connection.baseURL));
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      this.subscriptions.delete(close);
+      clearTimeout(timeout);
+      stream.removeEventListener("error", fail);
+      stream.removeEventListener("tweaks", receive);
+      stream.close();
+    };
+    const fail = () => {
+      if (closed) return;
+      close();
+      onError(new Error("Tweaks event stream disconnected."));
+    };
+    const receive = (event: Event) => {
+      if (closed || connection.signal.aborted) return;
+      let snapshot: TweakList;
+      try {
+        snapshot = JSON.parse((event as MessageEvent<string>).data) as TweakList;
+        if (!Array.isArray(snapshot?.tweaks)) throw new Error("Invalid Tweaks snapshot.");
+      } catch {
+        close();
+        onError(new Error("Invalid Tweaks snapshot."));
+        return;
+      }
+      clearTimeout(timeout);
+      onSnapshot(snapshot);
+    };
+    // Opening the HTTP response is not enough: editing needs a current snapshot.
+    const timeout = setTimeout(() => {
+      close();
+      onError(new Error("Tweaks snapshot timed out."));
+    }, 5_000);
+    this.subscriptions.add(close);
+    stream.addEventListener("error", fail);
+    stream.addEventListener("tweaks", receive);
+    return close;
   }
   async openExternal(url: string): Promise<void> {
     const anchor = document.createElement("a");

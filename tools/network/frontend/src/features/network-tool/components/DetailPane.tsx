@@ -1,17 +1,14 @@
 import type { JSX } from "preact";
 import type { NetworkClient } from "../../../network/client";
 import type { ToolRecord } from "../../../network/cdp";
-import type { ToolMetadata } from "../../../useHostConnection";
 import type { ToolUiState } from "../hooks/useToolUiState";
 import { resolveDetailEmptyState } from "../lib/records";
-import { hasProtocolWarning, unsupportedProtocolMessage } from "../lib/protocol";
 import { RequestDetail } from "./RequestDetail";
 import { WebSocketDetail } from "./WebSocketDetail";
 
 export function DetailContent({
   client,
   record,
-  metadata,
   isConnected,
   totalItems,
   streamIsRetrying,
@@ -20,7 +17,6 @@ export function DetailContent({
 }: {
   client: NetworkClient;
   record: ToolRecord | null;
-  metadata: ToolMetadata | null;
   isConnected: boolean;
   totalItems: number;
   streamIsRetrying: boolean;
@@ -28,10 +24,7 @@ export function DetailContent({
   onRetryResponseBody(): void;
 }): JSX.Element {
   if (record == null) {
-    const empty =
-      metadata && hasProtocolWarning(metadata.protocolVersion)
-        ? { title: "This app uses an unsupported protocol", body: unsupportedProtocolMessage(metadata.protocolVersion) }
-        : resolveDetailEmptyState({ isConnected, totalItems, streamIsRetrying });
+    const empty = resolveDetailEmptyState({ isConnected, totalItems, streamIsRetrying });
     return (
       <section className="empty-detail">
         <h1>{empty.title}</h1>

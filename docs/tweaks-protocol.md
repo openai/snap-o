@@ -71,7 +71,7 @@ snapo-tweaks apps --json
 
 JSON listings include `pid`, `processName`, and `packageName`, without friendly app labels or icons. Unknown identity fields are `null`; their sockets remain visible.
 
-The Tweaks frontend and CLI call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are unsupported; update Snap-O and the Android library together.
+The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":8}` before reading or changing tweaks. The bundled frontend uses its matching Android server without a version check. Missing, older, and newer versions are unsupported by the CLI; update Snap-O and the Android library together.
 
 Protocol 8 moves version checks from discovery into the tool’s HTTP API. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
 

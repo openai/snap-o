@@ -72,6 +72,6 @@ Commands check the tool's protocol endpoint before reading or changing data.
 
 Host bridge API 2 removes tool protocol versions from connection metadata. The Gradle plugin generates this compatibility marker. Hosts and frontends must use the same host API; older frontends are rejected before loading.
 
-Discovery does not carry tool protocol versions. Network protocol 4 and Tweaks protocol 8 provide their own HTTP version endpoints. Their clients check those endpoints before using the tools; they do not fall back to descriptor versions. Update the clients and Android libraries together.
+Discovery does not carry tool protocol versions. Network protocol 4 and Tweaks protocol 8 provide their own HTTP version endpoints. Their independent CLIs check those endpoints before using the tools; they do not fall back to descriptor versions. Update the clients and Android libraries together.
 
 The optional frontend descriptor and ZIP loading remain in descriptor version 1. Command-line clients do not need to download or execute frontend assets. App identity and icons come from Android resources. Network history, SSE, interception, tweak values, and tweak actions keep their existing payload formats.

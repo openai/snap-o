@@ -17,7 +17,7 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 
 Percent-encode request ids as one path component. Body reads return `404` when the capture is unavailable. Successful updates return `{}`. HTTP errors use a JSON `error` string.
 
-The Network frontend and CLI call `GET /network/protocol` and require `{"version":4}` before reading data or opening a stream. This endpoint belongs to Network, not the shared tool SDK. The desktop gets app labels and icons from [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader.
+The Network CLI calls `GET /network/protocol` and requires `{"version":4}` before reading data or opening a stream. The bundled frontend uses its matching Android server without a version check. This endpoint belongs to Network, not the shared tool SDK. The desktop gets app labels and icons from [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader.
 
 Protocol 4 moves the compatibility check out of discovery; Network data and interception payloads are unchanged from protocol 3. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
 

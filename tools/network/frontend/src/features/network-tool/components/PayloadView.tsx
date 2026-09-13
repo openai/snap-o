@@ -483,13 +483,13 @@ function ImagePreview({ client, payload }: { client: ToolContentClient; payload:
   const saveImage = () => {
     void client
       .saveFile({
-        defaultPath: imageFileName(payload.contentType),
-        data: payload.rawText.replace(/\s+/gu, ""),
-        mimeType: payload.contentType,
-        encoding: "base64"
+        name: imageFileName(payload.contentType),
+        data: new Blob([Uint8Array.from(atob(payload.rawText.replace(/\s+/gu, "")), (char) => char.charCodeAt(0))], {
+          type: payload.contentType ?? "application/octet-stream"
+        })
       })
-      .then((result) => {
-        if (result.saved) saveFeedback.copyWithoutClipboard();
+      .then((saved) => {
+        if (saved) saveFeedback.copyWithoutClipboard();
       });
   };
 
