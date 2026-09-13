@@ -1,7 +1,7 @@
 ---
 layout: guide
 title: "Command-line inspection \xB7 Snap-O"
-description: Install the Snap-O CLI on macOS or Linux, inspect Android network requests,
+description: Install the Snap-O tool CLIs on macOS or Linux, inspect Android network requests,
   and use live Tweaks.
 styles:
 - guide.css
@@ -15,27 +15,40 @@ breadcrumbs:
 
 # Command-line inspection
 
-The `snapo` Python client inspects network traffic and reads or changes Tweaks on macOS and Linux.
-It requires Python 3, Android Platform Tools, and an Android app with the matching Snap-O integration.
+The macOS app bundles `snapo`, a terminal entry point for Network and Tweaks.
+Each tool also has a standalone CLI: `snapo-network` and `snapo-tweaks`.
+Each requires Python 3, Android Platform Tools, and an Android app with the matching Snap-O integration.
 The macOS app does not need to be running.
 
 ## Install
 
 ### macOS
 
-The app bundles the client at `/Applications/Snap-O.app/Contents/MacOS/snapo`.
-Use that full path in place of `snapo` below, or add `/Applications/Snap-O.app/Contents/MacOS` to your `PATH`.
+The app bundles all three executables in `/Applications/Snap-O.app/Contents/MacOS`.
+Add that directory to your `PATH`, or use the full executable path:
+
+```bash
+export PATH="/Applications/Snap-O.app/Contents/MacOS:$PATH"
+snapo network list --json
+snapo tweaks apps --json
+```
+
+Add the `export` line to your shell configuration to keep it across sessions.
+`snapo network` forwards to `snapo-network`; `snapo tweaks` forwards to `snapo-tweaks`.
+Both standalone commands also work directly.
 
 ### Linux and standalone macOS
 
-Download the standalone script and its Android reader from the `main` branch:
+Download either CLI, or both, from the `main` branch:
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/cli/snapo -o ~/.local/bin/snapo
-curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/tool-reader/snapo-tool-reader.jar -o ~/.local/bin/snapo-tool-reader.jar
-chmod +x ~/.local/bin/snapo
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-network-inspector/scripts/snapo-network -o ~/.local/bin/snapo-network
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-tweaks/scripts/snapo-tweaks -o ~/.local/bin/snapo-tweaks
+chmod +x ~/.local/bin/snapo-network ~/.local/bin/snapo-tweaks
 ```
+
+Each CLI is one self-contained Python script. No reader JAR or Python packages are required.
 
 Add `~/.local/bin` to your `PATH` if it is not already there:
 
@@ -45,68 +58,35 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Add the same line to your shell configuration to keep it across sessions.
 
-Python API overrides are included in the same standalone script. No checkout or extra Python package is required.
+Python API overrides are included in `snapo-network`. No checkout or extra Python package is required.
 
 ## ADB configuration
 
-The script supports `snapo network list`, `requests`, and `show`, as well as `snapo tweaks apps`, `list`, `get`, `set`, `action`, `reset`, and `watch`. It resolves `adb` from `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`; use `--adb <path>` or `SNAPO_ADB` to select a specific ADB executable or wrapper. By default, server selection is left to the configured ADB command, which normally connects to `127.0.0.1:5037`. Pass `--adb-host <host> --adb-port <port>` to use an explicit remote ADB server.
+Connect an authorized Android device or emulator and check `adb devices -l`.
+Both tools find ADB through `PATH`, `ANDROID_SDK_ROOT`, or `ANDROID_HOME`.
+Use `--adb <path>` or `SNAPO_ADB` for a specific executable or wrapper.
+For a remote ADB server, pass `--adb-host <host> --adb-port <port>` after the tool name.
 
-Verify that ADB can see your Android device, then inspect its available Snap-O servers:
-
-```bash
-adb devices -l
-snapo network list --json
-snapo tweaks apps --json
-```
-
-With the default ADB configuration, the CLI opens a localhost forward for the selected `snapo_network_<pid>` or `snapo_tweaks_<pid>` socket and removes it when the command exits. Wrappers selecting a remote ADB server must tunnel that forward back to localhost; otherwise, specify `--adb-host` and `--adb-port`. With an explicit ADB endpoint, the CLI connects through the ADB server directly and does not create a forward. Treat captured bodies, URL query values, and editable tweaks as sensitive.
-
-For slow remote wrappers, `--adb-timeout 90` increases the per-command ADB deadline from its 30-second default. Values must be greater than zero and at most 90 seconds. This deadline is separate from the Python handler's `--timeout`. Repeated shutdown signals leave forward cleanup running until it finishes or reaches the ADB deadline.
-
-## Inspect an app
+## Tool commands
 
 ```bash
-snapo network list --json
-snapo network requests -s <serial> -n <socket> --no-stream --json
-snapo network show -s <serial> -n <socket> -r <request-id> --json
-snapo network intercept ./prototype.py -s <serial> -n <socket>
-snapo tweaks apps --json
-snapo tweaks list -s <serial> -n <socket> --json
-snapo tweaks set 'Typography/Font size' 42 -s <serial> -n <socket>
-snapo tweaks set 'Motion/Marker shape' RoundedSquare -s <serial> -n <socket>
-snapo tweaks reset 'Typography/Font size' -s <serial> -n <socket>
-snapo tweaks action 'Motion/Toggle animation' -s <serial> -n <socket>
+snapo network --help
+snapo tweaks --help
+snapo network requests --help
+snapo tweaks set --help
 ```
 
-Use the serial and socket returned by `network list` or `tweaks apps` in subsequent commands. For response editing, see [Network Interception](network-intercept.md).
+App listings use process and package names, without friendly labels or icons.
+Discovery does not require the Android app to respond; inspecting or changing data does.
+Select a listed device and socket with `-s <serial> -n <socket>`.
 
-## Bézier curves
-
-Use the CLI bundled with Snap-O 8.0.0 or the script from `main` with an app using the Android 8.0.0 Tweaks libraries.
-Pass all four coordinates as one quoted JSON object:
-
-```bash
-snapo tweaks set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s <serial> -n <socket>
-snapo tweaks reset 'Motion/Curve' -s <serial> -n <socket>
-```
-
-All four coordinates must be finite Float values between 0 and 1, inclusive.
-Updates and resets apply to the complete curve. See [Bézier setup](tweaks.md#bezier-curves).
-
-## Previously adjusted Tweaks
-
-Include previously adjusted ordinary or app-owned values even after their owners leave composition or close their `TweakScope`:
-
-```bash
-snapo tweaks list --all -s <serial> -n <socket> --json
-snapo tweaks get 'Motion/Duration' --all -s <serial> -n <socket> --json
-```
-
-The equivalent API is `GET /tweaks?include=adjusted`. Inactive tweaks remain read-only; app-owned history retains a value snapshot, not its source. See the [Tweaks protocol guide](https://github.com/openai/snap-o/blob/main/contracts/tweaks/README.md) for descriptors and updates.
+See [Network inspection](network-inspector.md), [Network interception](network-intercept.md),
+and [Tweaks commands](tweaks.md#agents) for tool-specific workflows.
+On Linux or standalone macOS, use `snapo-network` or `snapo-tweaks` in place of `snapo network` or `snapo tweaks`.
 
 ## Codex plugin
 
-Snap-O includes a Codex plugin for macOS and Linux. It bundles skills for network inspection and live Tweaks, along with their shared Python CLI, and requires Python 3 and Android Platform Tools.
+Snap-O includes a Codex plugin for macOS and Linux. Each skill bundles its own Python CLI and requires only Python 3 and Android Platform Tools. Installing either skill individually also includes its executable. Skills call their own CLI directly; they do not require `snapo` or the macOS app.
 
 Add the Snap-O marketplace and install the plugin:
 

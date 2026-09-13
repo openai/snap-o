@@ -4,7 +4,7 @@ Snap-O reads tool descriptors and icons from installed APK resources. The reader
 
 Each socket uses `snapo_<id>_<pid>`. The reader resolves the PID's package and Android user, then reads the `snapo.inspector.<id>` manifest entry. See the [discovery contract](../contracts/discovery/README.md).
 
-Each metadata read uploads the reader into a private temporary directory under `/data/local/tmp`. It runs from that directory, then removes the reader and directory on exit. Concurrent desktop and CLI reads cannot replace each other's helper. Metadata caching avoids uploads during ordinary socket polling.
+Each metadata read uploads the reader into a private temporary directory under `/data/local/tmp`. It runs from that directory, then removes the reader and directory on exit. Concurrent reads cannot replace each other's helper. Metadata caching avoids uploads during ordinary socket polling.
 
 The desktop caches successful reads until a new or replaced socket requires a refresh. Failed reads retry after 30 seconds. A refresh includes every visible tool in the affected process.
 
@@ -27,7 +27,7 @@ python3 tool-reader/build.py
 python3 tool-reader/build.py --check
 ```
 
-The reproducible output is `tool-reader/snapo-tool-reader.jar`. It is checked in so desktop and CLI users do not need Java or an Android SDK. Keep this file beside the standalone CLI when distributing it. The macOS app bundles it under `Contents/Resources`, outside the directory for signed executables. The reader adds no dependencies to inspected Android apps.
+The reproducible output is `tool-reader/snapo-tool-reader.jar`. It is checked in so desktop users do not need Java or an Android SDK. The Python CLIs do not use this reader. The macOS app bundles it under `Contents/Resources`, outside the directory for signed executables. The reader adds no dependencies to inspected Android apps.
 
 ## Device test
 

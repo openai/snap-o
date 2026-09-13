@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Dispatch terminal commands to the tool CLIs bundled beside this executable."""
+
+import os
+from pathlib import Path
+import sys
+
+
+def main():
+    if len(sys.argv) == 1 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: snapo <network|tweaks> [arguments ...]")
+        print("\nRun 'snapo network --help' or 'snapo tweaks --help' for tool commands.")
+        return 0
+
+    tool = sys.argv[1]
+    if tool not in ("network", "tweaks"):
+        print(f"snapo: unknown tool {tool!r}; choose network or tweaks", file=sys.stderr)
+        return 2
+
+    executable = Path(__file__).resolve().with_name(f"snapo-{tool}")
+    try:
+        # Replace the dispatcher so signals and exit status belong to the tool.
+        os.execv(str(executable), [str(executable), *sys.argv[2:]])
+    except OSError as error:
+        print(f"snapo: cannot run {executable}: {error.strerror}", file=sys.stderr)
+        return 127 if isinstance(error, FileNotFoundError) else 126
+
+
+if __name__ == "__main__":
+    sys.exit(main())

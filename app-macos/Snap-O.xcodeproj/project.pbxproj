@@ -124,7 +124,7 @@
 				3234F44D2E2EC5030057AE77 /* Sources */,
 				3234F44E2E2EC5030057AE77 /* Frameworks */,
 				3234F44F2E2EC5030057AE77 /* Resources */,
-				A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */,
+				A100000B2F5B123400C0FFEE /* Embed tool CLIs */,
 			);
 			buildRules = (
 			);
@@ -220,24 +220,28 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		A100000B2F5B123400C0FFEE /* Embed Snap-O CLI */ = {
+		A100000B2F5B123400C0FFEE /* Embed tool CLIs */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputPaths = (
-				"$(PROJECT_DIR)/../cli/snapo",
+				"$(PROJECT_DIR)/cli/snapo",
+				"$(PROJECT_DIR)/../skills/snap-o-network-inspector/scripts/snapo-network",
+				"$(PROJECT_DIR)/../skills/snap-o-tweaks/scripts/snapo-tweaks",
 				"$(PROJECT_DIR)/../tool-reader/snapo-tool-reader.jar",
 			);
-			name = "Embed Snap-O CLI";
+			name = "Embed tool CLIs";
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/snapo",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/snapo-network",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/snapo-tweaks",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/snapo-tool-reader.jar",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\nCLI_SOURCE=\"${PROJECT_DIR}/../cli/snapo\"\nCLI_DEST=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo\"\n\nif [ ! -f \"${CLI_SOURCE}\" ]; then\n  echo \"error: snapo CLI script not found at ${CLI_SOURCE}\" >&2\n  exit 1\nfi\n\n/bin/mkdir -p \"$(/usr/bin/dirname \"${CLI_DEST}\")\"\n/usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n/bin/chmod 755 \"${CLI_DEST}\"\n/bin/mkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n/usr/bin/ditto \"${PROJECT_DIR}/../tool-reader/snapo-tool-reader.jar\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/snapo-tool-reader.jar\"\n# Remove old reader copies from incremental builds.\n/bin/rm -f \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/snapo-discovery.jar\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/snapo-discovery.jar\"\n\nif [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\nfi\n";
+			shellScript = "set -e\n\nCLI_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/MacOS\"\nRESOURCE_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n/bin/mkdir -p \"${CLI_DIR}\" \"${RESOURCE_DIR}\"\nfor CLI_NAME in snapo snapo-network snapo-tweaks; do\n  case \"${CLI_NAME}\" in\n    snapo) CLI_SOURCE=\"${PROJECT_DIR}/cli/snapo\" ;;\n    snapo-network) CLI_SOURCE=\"${PROJECT_DIR}/../skills/snap-o-network-inspector/scripts/snapo-network\" ;;\n    snapo-tweaks) CLI_SOURCE=\"${PROJECT_DIR}/../skills/snap-o-tweaks/scripts/snapo-tweaks\" ;;\n  esac\n  CLI_DEST=\"${CLI_DIR}/${CLI_NAME}\"\n  /usr/bin/ditto \"${CLI_SOURCE}\" \"${CLI_DEST}\"\n  /bin/chmod 755 \"${CLI_DEST}\"\n  if [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ]; then\n    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --timestamp=none \"${CLI_DEST}\"\n  fi\ndone\n/usr/bin/ditto \"${PROJECT_DIR}/../tool-reader/snapo-tool-reader.jar\" \"${RESOURCE_DIR}/snapo-tool-reader.jar\"\n# Remove old reader copies from incremental builds.\n/bin/rm -f \"${CLI_DIR}/snapo-discovery.jar\" \"${RESOURCE_DIR}/snapo-discovery.jar\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

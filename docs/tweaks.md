@@ -321,7 +321,7 @@ App-owned `TweakSource<BezierCurve>` values are also supported. The matching no-
 Open a curve control in the Tool pane or the on-device panel to drag its control points, enter coordinates, or select a preset.
 In the Tool pane, focused handles support arrow keys; hold Shift for larger steps.
 Each edit replaces the complete curve. Reset restores the whole default curve or calls the app-owned source's reset.
-See [CLI commands](cli.md#bezier-curves) and the [protocol reference](tweaks-protocol.md#bezier-curves) for JSON updates.
+See the [protocol reference](tweaks-protocol.md#bezier-curves) for JSON updates.
 
 ## Delegate to app-owned settings {#app-owned-settings data-step="4"}
 
@@ -531,7 +531,7 @@ codex plugin add snap-o@snap-o
 <details markdown="1">
 <summary>Migrate an existing sparse marketplace installation</summary>
 
-If Snap-O was previously installed with sparse paths, remove and add its marketplace again so the shared CLI and both plugin skills are available:
+If Snap-O was previously installed with sparse paths, remove and add its marketplace again so both tool CLIs and skills are available:
 
 ``` { .shell title="Terminal · migrate the Codex plugin" }
 codex plugin marketplace remove snap-o
@@ -546,15 +546,28 @@ Start a new Codex session after installation. Ask the agent to inspect the avail
 Snap-O for macOS also bundles the same CLI. Use it directly for discovery, automation, live snapshots, and explicitly requested updates:
 
 ``` { .shell title="Terminal · inspect and update live tweaks" }
-SNAPO_BIN="/Applications/Snap-O.app/Contents/MacOS/snapo"
+SNAPO_BIN="/Applications/Snap-O.app/Contents/MacOS/snapo-tweaks"
 
-"$SNAPO_BIN" tweaks apps --json
-"$SNAPO_BIN" tweaks list -s emulator-5554 -n snapo_tweaks_12345 --json
-"$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" tweaks action 'Motion/Toggle animation' -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" tweaks reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" tweaks watch -s emulator-5554 -n snapo_tweaks_12345 --once --json
+"$SNAPO_BIN" apps --json
+"$SNAPO_BIN" list -s emulator-5554 -n snapo_tweaks_12345 --json
+"$SNAPO_BIN" set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" action 'Motion/Toggle animation' -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" watch -s emulator-5554 -n snapo_tweaks_12345 --once --json
 ```
+
+The bundled `snapo` entry point also accepts these commands as `snapo tweaks <command>`.
+See [terminal setup](cli.md#macos) to add the bundled commands to your `PATH`.
+
+Pass a Bézier curve as one quoted JSON object. Updates and resets affect the complete curve:
+
+```bash
+"$SNAPO_BIN" set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" reset 'Motion/Curve' -s emulator-5554 -n snapo_tweaks_12345
+```
+
+Use `list --all` or `get NAME --all` to include previously adjusted values without active owners.
+These inactive snapshots remain read-only until their controls return.
 
 Successful `set`, `reset`, and `action` commands produce no output and do not accept `--json`. For batch updates, replace the former `set --values-json` option with [PATCH /tweaks](tweaks-protocol.md#patch-tweaks).
 

@@ -42,7 +42,7 @@ Socket names follow `snapo_tweaks_<pid>`. Keep the forward alive while your clie
 adb -s "$serial" forward --remove "tcp:$port"
 ```
 
-The Snap-O CLI manages this discovery and cleanup automatically. For a remote ADB server, an ADB forward is local to the server’s host; tunnel it to your client, or use the CLI with both `--adb-host` and `--adb-port` for direct ADB transport.
+The `snapo-tweaks` CLI manages this discovery and cleanup automatically. For a remote ADB server, an ADB forward is local to the server’s host; tunnel it to your client, or use the CLI with both `--adb-host` and `--adb-port` for direct ADB transport.
 
 Debug builds enable the server by default. A nondebuggable app can enable it only by including the real Tweaks dependency and setting `snapo.tweaks.allow_release` to `true` in its application's `<application>` metadata. Release no-op artifacts remain the recommended default. See [release setup](tweaks.md#install) for the manifest example. Network has its own independent `snapo.network.allow_release` opt-in.
 
@@ -61,19 +61,23 @@ When its optional dependency is installed and its developer setting is enabled, 
 **Registration determines visibility.** Value tweaks and actions can be changed, invoked, or streamed only while they have active owners. Compose releases owners when they leave composition; other callers close their `TweakScope`. The adjusted-history endpoint can also return inactive, read-only value snapshots.
 {.notice}
 
-## Manifest discovery {#get-app data-step="2"}
+## App discovery {#get-app data-step="2"}
 
-Read app identity and the Tweaks descriptor from installed Android manifest resources before opening a tool connection. The Tweaks frontend and CLI then call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are unsupported; update Snap-O and the Android library together.
+The macOS app reads app labels, icons, and the Tweaks descriptor from installed Android resources. The CLI discovers sockets and reads process and package names through ADB. CLI discovery needs no reader JAR and does not require the app to respond.
 
-``` { .shell title="Terminal · inspect app metadata" }
-snapo tweaks apps --json
+``` { .shell title="Terminal · list app processes" }
+snapo-tweaks apps --json
 ```
 
-Protocol 8 moves version checks from discovery into the tool’s HTTP API. App metadata and icons still come from Android resources. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can use the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md) and bundled reader.
+JSON listings include `pid`, `processName`, and `packageName`, without friendly app labels or icons. Unknown identity fields are `null`; their sockets remain visible.
+
+The Tweaks frontend and CLI call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are unsupported; update Snap-O and the Android library together.
+
+Protocol 8 moves version checks from discovery into the tool’s HTTP API. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
 
 ## App icons {#get-app-icon data-step="3"}
 
-The reader returns optional app icons from Android package resources. There is no HTTP icon endpoint. Use a placeholder when no icon is available.
+The macOS app uses the reader to load optional app icons from Android package resources. The Python CLI does not load icons. There is no HTTP icon endpoint. Custom interfaces should use a placeholder when no icon is available.
 
 ## GET /tweaks {#get-tweaks data-step="4"}
 

@@ -46,15 +46,16 @@ Tweaks are available through the Tool pane, an optional on-device panel, the CLI
 
 ## CLI and Codex
 
-The `snapo` CLI supports network inspection, Python response overrides, and Tweaks on macOS and Linux. It requires Python 3 and Android Platform Tools and can run independently of the macOS app.
+The `snapo-network` and `snapo-tweaks` CLIs support inspection and live changes on macOS and Linux. Each requires only Python 3 and Android Platform Tools and runs independently of the macOS app.
 
-On macOS, the app includes the CLI:
+On macOS, the app includes both CLIs and a `snapo` entry point:
 
 ```bash
 /Applications/Snap-O.app/Contents/MacOS/snapo network list --json
+/Applications/Snap-O.app/Contents/MacOS/snapo tweaks apps --json
 ```
 
-The Codex plugin bundles the CLI with skills for network inspection and Tweaks:
+The Codex plugin bundles two self-contained skills, each with its own CLI:
 
 ```bash
 codex plugin marketplace add openai/snap-o --ref main

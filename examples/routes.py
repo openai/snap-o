@@ -1,8 +1,8 @@
-"""Run with: cli/snapo network intercept examples/routes.py -s DEVICE_SERIAL"""
+"""Run with: skills/snap-o-network-inspector/scripts/snapo-network intercept examples/routes.py -s DEVICE_SERIAL"""
 
 import asyncio
 
-from snapo import route
+from snapo_network import route
 
 tasks = []
 
