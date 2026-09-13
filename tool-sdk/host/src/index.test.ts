@@ -28,9 +28,31 @@ function setup() {
 }
 
 describe("shared tool host", () => {
+  it("reports a missing WebKit bridge", async () => {
+    const host = new ToolHost();
+    await expect(host.ready()).rejects.toThrow("Open this tool in the Snap-O macOS app.");
+  });
+
+  it("reports startup failure and lets callers retry without changing the toolbar", async () => {
+    const { host, request } = setup();
+    request.mockRejectedValueOnce(new Error("Connection request failed."));
+    await expect(host.ready()).rejects.toThrow("Connection request failed.");
+    await host.ready();
+    expect(host.connection).not.toBeNull();
+    expect(request.mock.calls.map(([command]) => command)).toEqual(["hostState", "hostState"]);
+  });
+
+  it("shares startup between callers and succeeds without an Android connection", async () => {
+    const { host, request } = setup();
+    request.mockResolvedValue({ revision: 1, connected: false });
+    await Promise.all([host.ready(), host.ready()]);
+    expect(request).toHaveBeenCalledOnce();
+    expect(host.connection).toBeNull();
+  });
+
   it("keeps discovery objects internal while disconnected", async () => {
     const { host, emit } = setup();
-    await host.setToolbar({ actions: [] });
+    await host.ready();
     emit("connection", { revision: 2, connected: false });
     const changed = vi.fn();
     host.addEventListener("connection", changed);
@@ -45,7 +67,7 @@ describe("shared tool host", () => {
 
   it("waits for connection details and exposes only the fields tools need", async () => {
     const { host, emit } = setup();
-    await host.setToolbar({});
+    await host.ready();
     emit("connection", { revision: 2, connected: true, baseURL: "http://127.0.0.1:4321/", manifest: null });
     expect(host.connection).toBeNull();
     emit("connection", { revision: 3, connected: true, baseURL: "http://127.0.0.1:4321/" });
@@ -60,7 +82,7 @@ describe("shared tool host", () => {
 
   it("connects bundled tools without protocol metadata", async () => {
     const { host, emit } = setup();
-    await host.setToolbar({});
+    await host.ready();
     emit("connection", {
       revision: 2,
       connected: true,
@@ -75,7 +97,7 @@ describe("shared tool host", () => {
     const { host, emit } = setup();
     const changed = vi.fn();
     host.addEventListener("connection", changed);
-    await host.setToolbar({ actions: [] });
+    await host.ready();
     expect(host.connection?.baseURL).toBe("http://127.0.0.1:1234/");
     emit("connection", { revision: 2, connected: true, baseURL: "http://127.0.0.1:4321/" });
     emit("connection", { revision: 1, connected: false });
@@ -113,7 +135,7 @@ describe("shared tool host", () => {
 
   it("delivers current connections, cleans up before replacement, and aborts old requests", async () => {
     const { host, emit } = setup();
-    await host.setToolbar({});
+    await host.ready();
     const first = host.connection!;
     const order: string[] = [];
     const unsubscribe = host.onConnection((connection) => {
@@ -136,7 +158,7 @@ describe("shared tool host", () => {
 
   it("unsubscribing one UI does not abort another UI's connection", async () => {
     const { host, emit } = setup();
-    await host.setToolbar({});
+    await host.ready();
     const connection = host.connection!;
     const cleanup = vi.fn();
     const stop = host.onConnection(() => cleanup);

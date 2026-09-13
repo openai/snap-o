@@ -79,7 +79,7 @@ Requires Xcode 26 or later and Android Platform Tools.
 1. Clone this repository.
 2. Open `app-macos/Snap-O.xcodeproj` in Xcode, then build and run.
 
-Tool frontend development also requires Node.js 22.12 or later. See [tool development](tools/README.md).
+Building the Android libraries and tool frontends also requires Node.js 22.12 or later and npm on `PATH`. See [tool development](tools/README.md).
 
 See [Contributing](CONTRIBUTING.md) for development and signing instructions, and [Release requirements](release/README.md) for release checks.
 

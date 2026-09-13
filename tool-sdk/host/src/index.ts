@@ -49,6 +49,7 @@ export interface ToolConnection {
 }
 
 export interface Host extends EventTarget {
+  ready(): Promise<void>;
   readonly connection: ToolConnection | null;
   onConnection(callback: (connection: ToolConnection | null) => void | (() => void)): () => void;
   addEventListener(
@@ -123,7 +124,7 @@ export class ToolHost extends EventTarget implements Host {
   }
 
   get connection(): ToolConnection | null {
-    void this.start().catch(() => {});
+    void this.ready().catch(() => {});
     return this.currentConnection;
   }
 
@@ -159,7 +160,7 @@ export class ToolHost extends EventTarget implements Host {
     options?: boolean | AddEventListenerOptions
   ): void {
     super.addEventListener(type, callback as EventListenerOrEventListenerObject | null, options);
-    void this.start().catch(() => {});
+    void this.ready().catch(() => {});
   }
 
   override removeEventListener(
@@ -181,7 +182,7 @@ export class ToolHost extends EventTarget implements Host {
   }
 
   async setToolbar(toolbar: Toolbar): Promise<void> {
-    await this.start();
+    await this.ready();
     const start: ToolbarItem[] = (toolbar.actions ?? []).map((action) => ({ ...action, type: "button" }));
     if (toolbar.search) start.push({ ...toolbar.search, type: "search", id: "search" });
     const end: ToolbarItem[] = (toolbar.endActions ?? []).map((action) => ({ ...action, type: "button" }));
@@ -232,7 +233,7 @@ export class ToolHost extends EventTarget implements Host {
   }
 
   async openColorPicker(options: ColorPickerOptions): Promise<ColorPicker> {
-    await this.start();
+    await this.ready();
     this.finishPicker();
     const picker: PickerSession = { id: crypto.randomUUID(), options, closed: false, revision: 0 };
     this.picker = picker;
@@ -285,7 +286,7 @@ export class ToolHost extends EventTarget implements Host {
     return result.saved;
   }
 
-  private start(): Promise<void> {
+  ready(): Promise<void> {
     if (!this.listening) {
       this.listening = true;
       this.transport.listen<HostState>("host:connection", (state) => this.updateState(state));

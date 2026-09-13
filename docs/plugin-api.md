@@ -27,12 +27,7 @@ Start with [Build a tool](plugins.md) to add a tool to your Android project.
 
 The Tool Gradle Plugin generates the descriptor, Android manifest entry, and frontend ZIP. Follow the [tool configuration](plugins.md#manifest) and [frontend packaging](plugins.md#assets) steps in the guide.
 
-The default setup uses two Gradle plugins:
-
-- `com.openai.snapo.tool` goes in your Android module and builds and packages the tool.
-- `com.openai.snapo.tool-settings` goes in `settings.gradle.kts` and enables Node downloads for the build.
-
-Gradle downloads and caches Node and npm automatically. You do not need to configure a Node installation for Gradle builds.
+`com.openai.snapo.tool` builds and packages the tool in your Android module. Its default build requires Node and npm on `PATH`.
 
 Add the module plugin to your version catalog:
 
@@ -50,15 +45,7 @@ plugins {
 }
 ```
 
-Apply the companion settings plugin once per Android project, using the same Snap-O version:
-
-``` { .kotlin title="settings.gradle.kts" }
-plugins {
-    id("com.openai.snapo.tool-settings") version "8.0.0"
-}
-```
-
-Gradle does not support catalog aliases in settings files. Both Gradle components resolve from Maven Central; include `mavenCentral()` in `pluginManagement.repositories`.
+The plugin resolves from Maven Central; include `mavenCentral()` in `pluginManagement.repositories`.
 
 Configure your tool in the Android module:
 
@@ -86,30 +73,13 @@ You can assign these Gradle properties as shown above, or use `.set(...)` with a
 
 Your tool owns its HTTP API and compatibility rules. If clients ship independently, expose any version or capability information through your own endpoints. The SDK does not define a tool protocol version or negotiate compatibility for you.
 
-### Advanced: Node installation {#node-installation}
+### Node installation {#node-installation}
 
-The default build uses its own cached Node installation, including when launched from Android Studio. Running `npm` commands directly in a terminal uses your local Node installation instead.
-
-Override these settings only if your build needs a different Node version or your team already manages Node:
-
-| Property | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `downloadNode` | `Property<Boolean>` | `true` | Use Gradle's managed Node and npm. Set to `false` to use the installation available to Gradle on `PATH`. |
-| `nodeVersion` | `Property<String>` | `22.23.2` | Version of the managed Node installation. Ignored when `downloadNode` is `false`. |
-
-``` { .kotlin title="Use your team's Node installation" }
-snapoTool {
-    downloadNode = false
-}
-```
-
-In this mode, Node and npm must be available to Gradle, including builds launched from Android Studio or CI. You can omit `com.openai.snapo.tool-settings`.
-
-The settings plugin registers the Node download repository. Keeping that repository in settings supports builds that use `FAIL_ON_PROJECT_REPOS`.
+Install Node and npm and make them available to Gradle on `PATH`, including Android Studio and CI builds. Node must satisfy the frontend package’s `engines` requirement. Snap-O does not install or manage Node. Apps consuming a finished tool library do not need either.
 
 ### Custom frontend builds
 
-To include UI files you have already built, set `frontendAssets`. Gradle then skips the default npm build, so the settings plugin is unnecessary:
+To include UI files you have already built, set `frontendAssets`. Gradle then skips the default npm build:
 
 ``` { .kotlin title="Package existing frontend files" }
 snapoTool {
@@ -310,6 +280,7 @@ Import `host` from `@snap-o/tool-host`. This object provides the current connect
 
 ``` { .typescript title="Host interface" }
 interface Host extends EventTarget {
+  ready(): Promise<void>;
   readonly connection: ToolConnection | null;
   onConnection(callback: (connection: ToolConnection | null) => void | (() => void)): () => void;
   setToolbar(toolbar: Toolbar): Promise<void>;
@@ -345,6 +316,8 @@ Snap-O unloads pages before releasing their forwarded ports. Hidden pages may st
 The lower-level `connection` event remains available through `addEventListener`. It reports a boolean `connected` property; read `host.connection` after subscribing and on each event.
 
 The package also exports `Host`, `ToolHost`, and the related types. Most frontends use the `host` object. Tests can supply a fake with just the properties and methods their code uses. `ToolHost` accepts a custom transport for testing messages to and from Snap-O.
+
+Call `await host.ready()` during frontend startup to check communication with Snap-O. It resolves after receiving the initial host state, even without a connected Android app. It rejects if the initial request fails. Show the error instead of displaying an ordinary disconnected state. Concurrent calls share one request; calling it again retries a failed request.
 
 The SDK reports connection changes. Your frontend makes HTTP requests, validates response data, and reconnects its event streams.
 

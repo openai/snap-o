@@ -8,7 +8,7 @@ For Android socket serving and HTTP handling, use [tool-runtime](../runtime/READ
 
 The Snap-O build includes this build integration through `pluginManagement.includeBuild("tool-sdk/gradle-plugin")`. Independent projects resolve its versioned Gradle marker from Maven Central or a local staging repository.
 
-The default setup uses `com.openai.snapo.tool` in the Android module and `com.openai.snapo.tool-settings` in the project settings. The module plugin builds and packages the tool; the settings plugin enables managed Node downloads.
+Apply `com.openai.snapo.tool` in the Android module. Declare `mavenCentral()` in `pluginManagement.repositories` so Gradle can resolve it.
 
 Apply the module plugin alongside an Android library or application Gradle plugin:
 
@@ -25,20 +25,11 @@ snapoTool {
 }
 ```
 
-Place `package.json`, `package-lock.json`, and frontend sources in the module's `frontend/` directory. Its `build` script must write `dist/index.html` and use relative asset URLs. Its `dev` script starts a local development server. Set `frontendDirectory` to use another source directory. The default host bridge API version is 1.
+Place `package.json`, `package-lock.json`, and frontend sources in the module's `frontend/` directory. Its `build` script must write `dist/index.html` and use relative asset URLs. Its `dev` script starts a local development server. Set `frontendDirectory` to use another source directory.
 
-The normal Android build downloads Node.js 22.23.2 and its bundled npm, then runs `npm ci`, `npm run build`, and ZIP packaging through Gradle task dependencies. The runtime is cached under the module’s `.gradle/` directory. Gradle builds and `toolDev` do not require Node or npm on `PATH`, including when launched from Android Studio. Running npm commands directly still requires a local Node installation. Apps consuming a published AAR only use its packaged frontend files.
+Install Node and npm and make them available to Gradle on `PATH`, including Android Studio and CI builds. Node must satisfy the frontend package’s `engines` requirement. Snap-O does not install or manage Node.
 
-Apply the companion settings integration in `settings.gradle.kts`, using the same package version:
-
-```kotlin
-plugins {
-    id("com.openai.snapo.tool-settings") version "<snapo-version>"
-}
-```
-
-It declares the Node download repository and works with `FAIL_ON_PROJECT_REPOS`. No Ivy artifact patterns are needed in the consuming build. Declare `mavenCentral()` in `pluginManagement.repositories`. For local SDK development, you can use a staging repository instead. The settings integration has a separate artifact so loading it does not move Android Gradle plugin classes into the settings classloader.
-
+The Android build runs `npm ci`, `npm run build`, and ZIP packaging through Gradle task dependencies. Apps consuming a published AAR only use its packaged frontend files and do not need Node or npm.
 
 The Tool Gradle Plugin generates a Java `SnapOTool` class in the module's Android namespace, accessible from Java or Kotlin. Its `ID` constant comes from the same definition as the discovery descriptor. For example:
 
@@ -54,15 +45,6 @@ Tool protocols belong to each tool. The plugin does not configure or generate pr
 
 Each variant receives generated resources and assets through Android Gradle plugin source APIs. No source manifest edit is needed. The metadata references `snapo/inspectors/<id>/frontend.zip`. `index.html` is implicit. The ZIP uses reproducible file order and timestamps.
 
-## Advanced: Node installation
-
-Gradle manages Node and npm by default. Override this only if your build needs a different version or your team already manages Node.
-
-- Set `nodeVersion` in `snapoTool` to select a different managed version.
-- Set `downloadNode = false` to use Node and npm available to Gradle on `PATH`. In this mode, `nodeVersion` is ignored and the settings plugin is optional. The installation must also be available to Android Studio and CI builds.
-
-Node must satisfy the frontend package's `engines` requirement. These settings affect Gradle tasks; direct terminal commands use your local installation.
-
 ## Custom frontend build
 
 Set `frontendAssets` from a task's output directory provider to replace the default npm build:
@@ -73,7 +55,7 @@ snapoTool {
 }
 ```
 
-Gradle follows that provider's task dependency. The directory must contain `index.html`; ZIP packaging and metadata generation stay the same. Declare all inputs and outputs on the custom task. For already built files, set `frontendAssets = layout.projectDirectory.dir("prebuilt-frontend")`. Neither form runs the default Node/npm tasks during Android packaging, and neither needs the settings integration.
+Gradle follows that provider's task dependency. The directory must contain `index.html`; ZIP packaging and metadata generation stay the same. Declare all inputs and outputs on the custom task. For already built files, set `frontendAssets = layout.projectDirectory.dir("prebuilt-frontend")`. Neither form runs the default npm tasks during Android packaging.
 
 ## Development
 
@@ -92,7 +74,7 @@ Both frontends depend on `@snap-o/tool-host` through a local npm file dependency
 
 ## Local publication validation
 
-Run `python3 release/validate_authoring.py` from the repository root. It stages the Gradle implementations and both markers in a temporary Maven repository, packages the host SDK, and builds a copied [Example tool](../../examples/tool/README.md). It does not upload anything or require signing credentials.
+Run `python3 release/validate_authoring.py` from the repository root. It stages the Gradle plugin implementation and its marker in a temporary Maven repository, packages the host SDK, and builds a copied [Example tool](../../examples/tool/README.md). It does not upload anything or require signing credentials.
 
 The Tool Gradle Plugin's Maven group comes from `gradle.properties`, its artifact names from this build's `settings.gradle.kts`, and its version from the root `VERSION`. Its Gradle plugin ID is declared in `build.gradle.kts`. See [package release guidance](../../release/authoring.md) for publishing and renames.
 

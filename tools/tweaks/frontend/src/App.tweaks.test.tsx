@@ -97,6 +97,18 @@ describe("Tweaks frontend with the shared host", () => {
     await act(async () => receive({ ...state }));
     await flush();
   }
+  it("shows host startup failures instead of waiting for Android", async () => {
+    container.id = "root";
+    vi.spyOn(mocks.host, "ready").mockRejectedValue(new Error("Open this tool in the Snap-O macOS app."));
+    await act(async () => {
+      await import("./tweaks-main");
+    });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Could not connect to Snap-O");
+    expect(container.textContent).toContain("Open this tool in the Snap-O macOS app.");
+    expect(container.querySelector("button")?.textContent).toBe("Reload tool");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("starts the bundled tool without requesting a protocol version", async () => {
     await mount();
     expect(mocks.client.listTweaks).not.toHaveBeenCalled();

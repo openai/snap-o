@@ -12,12 +12,7 @@ pluginManagement {
     }
     plugins {
         id("com.openai.snapo.tool") version providers.gradleProperty("snapoVersion").get()
-        id("com.openai.snapo.tool-settings") version providers.gradleProperty("snapoVersion").get()
     }
-}
-
-plugins {
-    id("com.openai.snapo.tool-settings")
 }
 
 dependencyResolutionManagement {
