@@ -70,7 +70,7 @@ Start a new Codex session after installation.
 
 Apps bundle tool plugins that provide tools for inspecting data, changing settings, and running actions. A tool plugin includes its Android implementation and an optional frontend. Snap-O displays the selected tool’s frontend in the Tool pane. Network and Tweaks use the same extension model as custom tools.
 
-Start with [Build a tool](docs/plugins.md) and the [Tool API reference](docs/plugin-api.md). See [tool development](tools/README.md) for repository commands and host behavior.
+Start with [Build a tool](docs/plugins.md). See [tool development](tools/README.md) for repository commands and host behavior.
 
 ## Build from source
 

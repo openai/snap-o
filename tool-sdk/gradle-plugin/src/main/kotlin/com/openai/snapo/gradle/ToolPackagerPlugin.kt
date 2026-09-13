@@ -20,7 +20,7 @@ abstract class ToolBuildTask : NpmTask() {
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 }
 
-class ToolPackagingPlugin : Plugin<Project> {
+class ToolPackagerPlugin : Plugin<Project> {
     override fun apply(project: Project) = with(project) {
         val tool = extensions.create<ToolExtension>("snapoTool")
         tool.frontendDirectory.convention(layout.projectDirectory.dir("frontend"))

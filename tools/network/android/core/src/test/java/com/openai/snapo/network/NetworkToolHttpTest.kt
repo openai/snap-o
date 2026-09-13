@@ -46,7 +46,8 @@ class NetworkToolHttpTest {
         assertEquals("HTTP/1.1 404 Not Found", request("/.snap-o/info").first)
         assertEquals("HTTP/1.1 404 Not Found", request("/.snap-o/appicon").first)
         assertEquals("HTTP/1.1 404 Not Found", request("/unknown").first)
-        assertEquals("HTTP/1.1 405 Method Not Allowed", request("/.snap-o/info", method = "POST").first)
+        assertEquals("HTTP/1.1 404 Not Found", request("/interception/expired/unknown", method = "POST").first)
+        assertEquals("HTTP/1.1 404 Not Found", request("/.snap-o/info", method = "POST").first)
     }
 
     @Test
@@ -276,6 +277,19 @@ class NetworkToolHttpTest {
             val response = server.request("/interception", "POST", """{"routes":[],"timeoutMs":30000}""")
             assertEquals(400, response.statusCode())
             assertTrue(response.headers().firstValue("Content-Type").get().startsWith("application/json"))
+        }
+    }
+
+    @Test
+    fun `JSON routes reject missing or non JSON content types`() = runBlocking {
+        for (contentType in listOf("", "Content-Type: text/plain\r\n")) {
+            val request = "POST /interception HTTP/1.1\r\nHost: localhost\r\n" +
+                "Content-Length: 2\r\n$contentType\r\n{}"
+            val output = ByteArrayOutputStream()
+            NetworkToolHttp().serveConnection(ByteArrayInputStream(request.toByteArray()), output)
+            val response = output.toString("UTF-8")
+            assertTrue(response.startsWith("HTTP/1.1 400"))
+            assertTrue(response.contains("Request bodies must use application/json"))
         }
     }
 

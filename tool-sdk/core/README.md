@@ -1,12 +1,12 @@
-# Tool plugin runtime
+# Android Tool Core
 
 Shared Android infrastructure for Snap-O tools. Network and Tweaks depend on this library. It has no frontend, discovery entry, content provider, or automatic startup of its own.
 
-The runtime provides:
+The core library provides:
 
 - HTTP routes, request/response helpers, and coroutine-scoped SSE sessions.
 - An abstract Unix socket server with bounded connections, request read timeouts, and shutdown cleanup.
-- HTTP request parsing with configurable body limits, methods, and protocol versions.
+- HTTP request parsing with configurable body limits and body methods.
 - Host and Origin validation, CORS headers, and HTTP response writing.
 - A common debuggable-app and explicit release opt-in check.
 - SSE event framing and automatic heartbeat comments.
@@ -17,13 +17,13 @@ Each tool owns its routes, JSON payloads, startup provider, release metadata key
 
 ```kotlin
 dependencies {
-    implementation(project(":tool-runtime"))
+    implementation(project(":tool-core"))
 }
 ```
 
-Apply the [Tool Gradle Plugin](../gradle-plugin/README.md) separately to package the frontend and discovery metadata. The Tool Gradle Plugin generates `SnapOTool` in the Android namespace. Use `SnapOTool.ID` for the socket server. Each tool defines its own HTTP API and any compatibility checks needed by independent clients.
+Apply the [Tool Packager Gradle Plugin](../gradle-plugin/README.md) separately to package the frontend and discovery metadata. The Tool Packager Gradle Plugin generates `SnapOTool` in the Android namespace. Use `SnapOTool.ID` for the socket server. Each tool defines its own HTTP API and any compatibility checks needed by independent clients.
 
-This module uses the repository's Maven publishing convention. Consumers of Network or Tweaks receive it transitively. A new release must publish the runtime alongside the tool libraries that depend on it.
+This module uses the repository's Maven publishing convention. Consumers of Network or Tweaks receive it transitively. A new release must publish the core library alongside the tool libraries that depend on it.
 
 ## Serve a tool
 
@@ -67,13 +67,13 @@ post("/items") {
 
 Path parameters are percent-decoded without converting `+` to a space. Query parameters retain repeated values. `request.requestTarget` preserves the original target, including its query. `request.path` is the encoded path without the query; encoded slashes remain part of their segment. `request.queryParameters` contains decoded names and values. Header names are lowercase. `request.body` provides bounded bytes; `bodyText()` validates UTF-8.
 
-`respondJson` accepts already-serialized JSON. The runtime does not select a serialization library. `respondText` returns plain text. For custom status, content type, or headers, use `respond(ToolHttpResponse(...), headers = ...)`.
+`respondJson` accepts already-serialized JSON. The server does not select a serialization library. `respondText` returns plain text. For custom status, content type, or headers, use `respond(ToolHttpResponse(...), headers = ...)`.
 
-The default request policy accepts HTTP/1.1, caps bodies at 64 KiB, and requires JSON content types for nonempty bodies. Set `requestPolicy` only when a protocol needs different limits or accepted forms. `validateRequest` adds protocol-specific checks. `onError` maps domain exceptions to responses; unexpected handler failures are logged and return a generic 500. Malformed HTTP requests return 400, and request-read timeouts return 408. Once a response starts, failures close the connection without appending another HTTP response.
+The server accepts HTTP/1.1 and caps bodies at 64 KiB by default. Set `requestPolicy` to change the body limit or methods that accept bodies. Route handlers validate content types and parse bodies. Preflight requests return 204, and responses use `Cache-Control: no-store`. `onError` maps domain exceptions to responses; unexpected handler failures are logged and return a generic 500. Malformed HTTP requests return 400, and request-read timeouts return 408. Once a response starts, failures close the connection without appending another HTTP response.
 
 ### Streaming
 
-SSE handlers run in a coroutine scope. `send(data, event, id)` frames an event. The runtime sends a `: keep-alive` comment every 30 seconds automatically, including while the producer waits for data. Writes are serialized with events, and comments do not become frontend message events.
+SSE handlers run in a coroutine scope. `send(data, event, id)` frames an event. The server sends a `: keep-alive` comment every 30 seconds automatically, including while the producer waits for data. Writes are serialized with events, and comments do not become frontend message events.
 
 Both `sse` and `respondSse` accept `heartbeatInterval`. Use a positive, finite Kotlin `Duration` to override the interval, or `null` to disable automatic heartbeats. `heartbeat()` still writes one immediate comment when needed:
 
@@ -88,9 +88,9 @@ sse("/manual-events", heartbeatInterval = null) {
 
 The tool chooses event sources, buffering, and replay policies. Cancelling the server or disconnecting the client closes the socket and cancels the producer, heartbeat job, and other child coroutines. They also end when the handler returns. Use suspending operations or `runInterruptible` for blocking event sources. Network, Tweaks, and Example all use the shared 30-second default; none schedules its own heartbeat loop.
 
-Use `respondSse` inside an ordinary route when streaming depends on request headers or setup can fail before sending response headers. It supports status and headers such as Network's interception `Location`. Its default is chunked HTTP/1.1 framing; `chunked = false` preserves protocols that end their body by closing the connection. `ToolSseSession.write` sends an already-framed SSE event for tools that queue encoded bytes.
+Use `respondSse` inside an ordinary route when streaming depends on request headers or setup can fail before sending response headers. It supports status and headers such as Network's interception `Location`. Streaming responses use chunked HTTP/1.1 framing. `ToolSseSession.write` sends an already-framed SSE event for tools that queue encoded bytes.
 
-For finite streams such as NDJSON history, use `respondStream(contentType) { write(bytes) }`. The runtime writes chunk boundaries and the terminating chunk.
+For finite streams such as NDJSON history, use `respondStream(contentType) { write(bytes) }`. The server writes chunk boundaries and the terminating chunk.
 
 Connections use a five-second request read timeout, a thirty-second finite-request deadline, and a five-second blocked-write limit checked once per second. SSE disables the finite-request deadline. The default is 32 concurrent connections per tool/process; Network retains its existing override of 128 and separate limit of 16 event streams. Excess socket connections close immediately.
 
@@ -98,11 +98,11 @@ Connections use a five-second request read timeout, a thirty-second finite-reque
 
 `ToolServer.serve(connection)` handles and closes an externally supplied `ToolConnection`. This lets tests exercise the real parser, router, and response writer using memory or loopback TCP streams. Normal tools only call `start()` and `close()`.
 
-`ToolHttpRequest`, `ToolHttpResponse`, and `ToolSse.event` support custom request handling and pre-encoded event queues. Socket management and response framing stay internal. Use `ToolServer.startIfAllowed(context)` from the tool's initializer to check startup policy and log socket binding failures. Its default release metadata key is `snapo.<tool-id>.allow_release`; pass an existing key when needed. The runtime does not add a provider or depend on AndroidX Startup. See the [startup guide](../../docs/plugins.md#startup) for a complete initializer.
+`ToolHttpRequest`, `ToolHttpResponse`, and `ToolSse.event` support custom request handling and pre-encoded event queues. Socket management and response framing stay internal. Use `ToolServer.startIfAllowed(context)` from the tool's initializer to check startup policy and log socket binding failures. Its default release metadata key is `snapo.<tool-id>.allow_release`; pass an existing key when needed. The server does not add a provider or depend on AndroidX Startup. See the [startup guide](../../docs/plugins.md#startup) for a complete initializer.
 
 ## Compatibility
 
-This extraction keeps Network protocol 3 and Tweaks protocol 7. Socket names, endpoint paths, payloads, startup opt-ins, and SSE event semantics remain unchanged. Existing HTTP/1.1 clients continue to work; Tweaks also keeps HTTP/1.0 support and its optional request content type.
+Network uses protocol 4 and Tweaks uses protocol 9. Both use HTTP/1.1 and chunked streaming responses. Each tool owns its protocol version and content-type checks. See the [Network](../../contracts/network/README.md) and [Tweaks](../../contracts/tweaks/README.md) contracts.
 
 Both tools now use the same bounded ASCII/CRLF header parser. Tweaks no longer accepts malformed header names, duplicate headers, or LF-only request headers. Excess connections close at the shared server's limit. The first-party clients use the accepted request forms.
 
@@ -111,9 +111,9 @@ Both tools now use the same bounded ASCII/CRLF header parser. Tweaks no longer a
 From the repository root:
 
 ```sh
-./gradlew :tool-runtime:testDebugUnitTest :network:testDebugUnitTest :tweaks-core:testDebugUnitTest
-./gradlew :tool-runtime:lintDebug :network:lintDebug :tweaks-core:lintDebug
+./gradlew :tool-core:testDebugUnitTest :network:testDebugUnitTest :tweaks-core:testDebugUnitTest
+./gradlew :tool-core:lintDebug :network:lintDebug :tweaks-core:lintDebug
 ./gradlew assembleDebug validateMavenCentralRelease
 ```
 
-Runtime tests use memory and loopback TCP streams to exercise routing, framing, browser access, and disconnect cancellation without an Android device. Production uses only Android abstract Unix sockets. Existing Network tests cover history, SSE subscriptions, interception, and browser preflight behavior.
+Core tests use memory and loopback TCP streams to exercise routing, framing, browser access, and disconnect cancellation without an Android device. Production uses only Android abstract Unix sockets. Existing Network tests cover history, SSE subscriptions, interception, and browser preflight behavior.

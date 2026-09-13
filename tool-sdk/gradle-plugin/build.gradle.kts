@@ -29,10 +29,10 @@ dependencies {
 
 gradlePlugin {
     plugins {
-        register("snapoTool") {
-            id = "com.openai.snapo.tool"
-            implementationClass = "com.openai.snapo.gradle.ToolPackagingPlugin"
-            displayName = "Snap-O tool"
+        register("snapoToolPackager") {
+            id = "com.openai.snapo.tool-packager"
+            implementationClass = "com.openai.snapo.gradle.ToolPackagerPlugin"
+            displayName = "Snap-O Tool Packager"
             description = project.description
         }
     }

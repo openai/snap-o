@@ -1,6 +1,6 @@
 # Snap-O Tweaks protocol
 
-Current protocol version: 8.
+Current protocol version: 9.
 
 Snap-O Tweaks exposes adjustable values and explicitly registered, parameterless actions from registered Android application owners through an app-local socket, enabled by default only in debug builds. Agents and desktop tools can use HTTP to inspect those values, change them, and invoke app-owned callbacks while the app runs.
 
@@ -31,11 +31,13 @@ Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `
 
 ### Discovery and readiness
 
-The desktop reads app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader. The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are rejected. The bundled frontend uses its matching Android server without a version check. This endpoint belongs to Tweaks, not the shared tool SDK.
+The desktop reads app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader. The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":9}` before reading or changing tweaks. Missing, older, and newer versions are rejected. The bundled frontend uses its matching Android server without a version check. This endpoint belongs to Tweaks, not the shared tool SDK.
 
-Protocol 8 moves the compatibility check out of discovery; data, mutation, and SSE payloads are unchanged from protocol 7. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
+Protocol 8 moved the compatibility check out of discovery. Earlier servers lack the endpoint, and earlier clients require the removed descriptor field. There is no fallback.
 
-`OPTIONS /` returns an empty readiness response. App metadata and icons are not HTTP endpoints. Values, actions, curves, batch errors, modification flags, and null resets retain their existing behavior.
+Protocol 9 requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use `Cache-Control: no-store`. The CLI requires version 9; update it with the Android library. Values, mutations, and event payloads are unchanged from protocol 8.
+
+`OPTIONS /` returns an empty 204 readiness response. App metadata and icons are not HTTP endpoints. Values, actions, curves, batch errors, modification flags, and null resets retain their existing behavior.
 
 ### GET /tweaks
 
@@ -214,7 +216,7 @@ The response uses the same `{"tweaks":[...]}` shape and complete tweak descripto
 
 An adjusted tweak remains in this history even after it is reset. An app-owned reset can leave an effective value different from the captured default while its modification status is false. An inactive tweak that was never adjusted, a no-op update that changes neither its value nor its modification status, and a rejected update do not create history entries. Adjustment history exists only for the current app process and is discarded when that process exits.
 
-Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names. Inactive names produce a named per-item error. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. The only supported query is exactly `include=adjusted` on `GET /tweaks`; unsupported, repeated, or additional query parameters and queries on other endpoints or methods return `400`.
+Historical inactive tweaks are read-only: `PATCH /tweaks` still accepts only currently active names. Inactive names produce a named per-item error. Actions appear while active but never create adjusted-history entries because they have no editable or retained value. Plain `GET /tweaks` and `GET /tweaks/events` remain active-only. `GET /tweaks` accepts only `include=adjusted`, with URL escapes decoded. Unsupported, repeated, or additional parameters on this route return `400`. Other routes ignore query parameters.
 
 ### GET /tweaks/events
 
@@ -334,7 +336,7 @@ curl -fsS -X POST http://127.0.0.1:43817/tweaks/action \
 
 The JSON body must contain exactly one nonblank string field named `name`. The registered callback executes synchronously on the Android main thread. This endpoint accepts no arguments, arbitrary code, or dynamic invocation targets; only explicitly registered app-owned callbacks are available.
 
-Return `400` for malformed bodies, unsupported content types, additional fields, blank names, or unsupported query parameters; `404` for an unknown action or a name belonging to a value tweak; `405` for methods other than `POST`; and `409` when more than one live owner registered the same name. Duplicate registration errors explain that the action must be registered once at its owner. Main-thread unavailability, callback failures, and timeouts return `503`, `500`, and `504`, respectively. Errors use the same `{"error":"..."}` response shape as tweak updates.
+Return `400` for malformed bodies, unsupported content types, additional fields, or blank names; `404` for an unknown action or a name belonging to a value tweak; `405` for methods other than `POST`; and `409` when more than one live owner registered the same name. Duplicate registration errors explain that the action must be registered once at its owner. Main-thread unavailability, callback failures, and timeouts return `503`, `500`, and `504`, respectively. Errors use the same `{"error":"..."}` response shape as tweak updates.
 
 ## Compose API
 

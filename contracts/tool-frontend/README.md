@@ -1,6 +1,6 @@
 # Tool frontend bundle
 
-The Tool Gradle Plugin validates frontend ZIPs before including them in Android assets. The Mac validates the same contract when loading a tool frontend.
+The Tool Packager Gradle Plugin validates frontend ZIPs before including them in Android assets. The Mac validates the same contract when loading a tool frontend.
 
 - The ZIP is at most 16 MiB, with at most 16 MiB of expanded file content.
 - There are at most 1024 entries, including directories.

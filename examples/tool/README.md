@@ -4,13 +4,13 @@ Copy this project to start a Snap-O tool. Its displayed name is **Example**, its
 
 This is an independent Android build. It has its own Gradle wrapper and does not include Snap-O's source builds. The app depends on `example-tool` only in debug builds.
 
-See the [tool plugin authoring guide](../../docs/plugins.md) for a walkthrough and the [API reference](../../docs/plugin-api.md) for the SDK surface.
+See the [tool plugin authoring guide](../../docs/plugins.md) for setup, examples, and optional API details.
 
 ## Run the example
 
 Copy this directory to your own project location. Use JDK 17, Android SDK 36, and Node.js 22.12 or later. Set `ANDROID_HOME` to your Android SDK directory if needed.
 
-The example resolves the runtime and Tool Gradle Plugin from Maven Central. Its `gradle.properties` selects the package version. Install the host SDK from npm, replacing the local tarball dependency used by the repository's validation workflow:
+The example resolves the core library and Tool Packager Gradle Plugin from Maven Central. Its `gradle.properties` selects the package version. Install the host SDK from npm, replacing the local tarball dependency used by the repository's validation workflow:
 
 ```sh
 cd example-tool/frontend
@@ -27,7 +27,7 @@ Open Snap-O and select **Example app → Example**. You should see three fake va
 
 Run `./gradlew :app:assembleDebug` to rebuild the Android app and its frontend. Reinstall the APK to try the updated tool.
 
-The Tool Gradle Plugin builds the frontend with Node and npm from `PATH`. Make them available to Gradle, including Android Studio and CI builds. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. Frontend-only commands are available in `example-tool/frontend`:
+The Tool Packager Gradle Plugin builds the frontend with Node and npm from `PATH`. Make them available to Gradle, including Android Studio and CI builds. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. Frontend-only commands are available in `example-tool/frontend`:
 
 ```sh
 npm ci
@@ -48,7 +48,7 @@ python3 release/validate_authoring.py --output /tmp/snapo-example
 
 Use a new or empty output directory. The command:
 
-1. Stages the runtime and Tool Gradle Plugin in `/tmp/snapo-example/maven`.
+1. Stages the core library and Tool Packager Gradle Plugin in `/tmp/snapo-example/maven`.
 2. Builds and packs the host SDK under `/tmp/snapo-example/npm`.
 3. Copies this entire project to `/tmp/snapo-example/example`.
 4. Installs the packed SDK and builds/tests the copied project.
@@ -68,9 +68,9 @@ Install and launch the debug APK using the commands in **Run the example** from 
 ## What to copy or replace
 
 - `app/`: a tiny Android app used to try the tool. Its main code has no dependency on the tool.
-- `example-tool/build.gradle.kts`: runtime dependency and tool plugin configuration. The tool plugin generates the descriptor and frontend ZIP.
+- `example-tool/build.gradle.kts`: core library dependency and tool plugin configuration. The tool plugin generates the descriptor and frontend ZIP.
 - `ExampleInitializer.kt`: AndroidX Startup retains the server for the process. `startIfAllowed` checks the release opt-in and logs socket failures.
-- `ExampleServer.kt`: GET returns a synthetic snapshot, POST increments a fake counter, and SSE streams snapshots from a `StateFlow`. The runtime handles HTTP preflight, browser access, errors, and cleanup. The counter resets when the app process restarts. The runtime automatically sends heartbeat comments every 30 seconds while waiting for changes.
+- `ExampleServer.kt`: GET returns a synthetic snapshot, POST increments a fake counter, and SSE streams snapshots from a `StateFlow`. The core library handles HTTP preflight, browser access, errors, and cleanup. The counter resets when the app process restarts. The core library automatically sends heartbeat comments every 30 seconds while waiting for changes.
 - `frontend/src/snapshot.ts`: snapshot validation, snapshot requests, the increment command, and event-stream cleanup on connection changes. Revisions prevent a late GET response from replacing newer streamed data.
 - `frontend/src/main.ts`: native toolbar search/refresh, copy, save, and color-picker APIs.
 

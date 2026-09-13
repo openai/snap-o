@@ -23,7 +23,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "snap-o"
-include(":tool-runtime")
+include(":tool-core")
 include(":tweaks-core")
 include(":tweaks-core-noop")
 include(":tweaks-views")
@@ -56,7 +56,7 @@ project(":tweaks-noop").projectDir = file("tools/tweaks/android/noop")
 project(":tweaks-overlay").projectDir = file("tools/tweaks/android/overlay")
 project(":tweaks-overlay-noop").projectDir = file("tools/tweaks/android/overlay-noop")
 project(":tweaks-views").projectDir = file("tools/tweaks/android/views")
-project(":tool-runtime").projectDir = file("tool-sdk/runtime")
+project(":tool-core").projectDir = file("tool-sdk/core")
 
 project(":samples").projectDir = file("examples/android")
 

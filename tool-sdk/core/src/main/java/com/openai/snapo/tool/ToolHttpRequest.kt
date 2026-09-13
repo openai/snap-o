@@ -11,8 +11,6 @@ import java.nio.charset.CharacterCodingException
 data class ToolHttpRequestPolicy(
     val maxBodyBytes: Int = 64 * 1024,
     val bodyMethods: Set<String> = setOf("POST", "PUT", "PATCH"),
-    val httpVersions: Set<String> = setOf("HTTP/1.1"),
-    val requireJsonContentType: Boolean = true,
 ) {
     init {
         require(maxBodyBytes >= 0)
@@ -53,7 +51,7 @@ data class ToolHttpRequest(
         ): ToolHttpRequest {
             val lines = readHead(input).removeSuffix("\r\n\r\n").split("\r\n")
             val first = lines.first().split(' ')
-            require(first.size == 3 && first[2] in policy.httpVersions) { "Unsupported HTTP request line" }
+            require(first.size == 3 && first[2] == "HTTP/1.1") { "Unsupported HTTP request line" }
             require(first[1].startsWith('/') && !first[1].contains('#')) { "Expected a relative request path" }
             val headers = parseHeaders(lines.drop(1))
             ToolBrowserAccess.origin(headers)
@@ -112,11 +110,6 @@ data class ToolHttpRequest(
             require(rawLength.all { it in '0'..'9' } && length != null && length >= 0) { "Invalid Content-Length" }
             if (length > policy.maxBodyBytes) throw ToolHttpException(413, "The request body is too large")
             require(method in policy.bodyMethods || length == 0) { "This method cannot have a body" }
-            if (length > 0 && policy.requireJsonContentType) {
-                require(headers["content-type"]?.substringBefore(';')?.trim().equals("application/json", true)) {
-                    "Request bodies must use application/json"
-                }
-            }
             return length
         }
     }

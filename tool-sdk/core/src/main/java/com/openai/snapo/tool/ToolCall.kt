@@ -45,8 +45,8 @@ class ToolCall internal constructor(
         headers: Map<String, String> = emptyMap(),
         block: suspend ToolResponseStream.() -> Unit,
     ) {
-        startStream(contentType, statusCode, headers, chunked = true)
-        ToolResponseStream(this, connection.output, true).block()
+        startStream(contentType, statusCode, headers)
+        ToolResponseStream(this, connection.output).block()
         writing {
             connection.output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
             connection.output.flush()
@@ -57,7 +57,6 @@ class ToolCall internal constructor(
     suspend fun respondSse(
         statusCode: Int = 200,
         headers: Map<String, String> = emptyMap(),
-        chunked: Boolean = true,
         heartbeatInterval: Duration? = 30.seconds,
         block: suspend ToolSseSession.() -> Unit,
     ) = coroutineScope {
@@ -65,7 +64,7 @@ class ToolCall internal constructor(
             "Heartbeat interval must be positive and finite, or null"
         }
         onStreaming()
-        startStream("text/event-stream; charset=utf-8", statusCode, headers, chunked)
+        startStream("text/event-stream; charset=utf-8", statusCode, headers)
         val scope = this
         val disconnect = launch(Dispatchers.IO) {
             try {
@@ -80,7 +79,7 @@ class ToolCall internal constructor(
         try {
             coroutineScope {
                 val session =
-                    ToolSseSession(this, this@ToolCall, connection.output, chunked, connection::close)
+                    ToolSseSession(this, this@ToolCall, connection.output, connection::close)
                 if (heartbeatInterval != null) {
                     launch {
                         while (isActive) {
@@ -95,11 +94,9 @@ class ToolCall internal constructor(
                     coroutineContext.cancelChildren()
                 }
             }
-            if (chunked) {
-                writing {
-                    connection.output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
-                    connection.output.flush()
-                }
+            writing {
+                connection.output.write("0\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                connection.output.flush()
             }
         } finally {
             runCatching { connection.close() }
@@ -108,14 +105,17 @@ class ToolCall internal constructor(
         }
     }
 
-    private fun startStream(contentType: String, statusCode: Int, headers: Map<String, String>, chunked: Boolean) {
+    private fun startStream(contentType: String, statusCode: Int, headers: Map<String, String>) {
         beginResponse()
         writing {
             ToolHttpResponse.writeHead(
                 connection.output,
                 statusCode,
-                this.headers + headers + mapOf("Content-Type" to contentType, "Connection" to "close") +
-                    if (chunked) mapOf("Transfer-Encoding" to "chunked") else emptyMap(),
+                this.headers + headers + mapOf(
+                    "Content-Type" to contentType,
+                    "Connection" to "close",
+                    "Transfer-Encoding" to "chunked",
+                ),
             )
             connection.output.flush()
         }
@@ -136,15 +136,14 @@ class ToolCall internal constructor(
 open class ToolResponseStream internal constructor(
     private val call: ToolCall,
     private val output: OutputStream,
-    private val chunked: Boolean,
 ) {
     @Synchronized
     fun write(bytes: ByteArray) {
         if (bytes.isEmpty()) return
         call.writing {
-            if (chunked) output.write("${bytes.size.toString(16)}\r\n".toByteArray(Charsets.US_ASCII))
+            output.write("${bytes.size.toString(16)}\r\n".toByteArray(Charsets.US_ASCII))
             output.write(bytes)
-            if (chunked) output.write("\r\n".toByteArray(Charsets.US_ASCII))
+            output.write("\r\n".toByteArray(Charsets.US_ASCII))
             output.flush()
         }
     }
@@ -154,9 +153,8 @@ class ToolSseSession internal constructor(
     scope: CoroutineScope,
     val call: ToolCall,
     output: OutputStream,
-    chunked: Boolean,
     private val closeConnection: () -> Unit,
-) : ToolResponseStream(call, output, chunked), CoroutineScope {
+) : ToolResponseStream(call, output), CoroutineScope {
     override val coroutineContext: CoroutineContext = scope.coroutineContext
     fun send(data: String, event: String? = null, id: String? = null) = write(ToolSse.event(data, event, id))
     fun heartbeat() = write(ToolSse.heartbeat())

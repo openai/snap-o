@@ -7,7 +7,7 @@ The shared [tool host SDK](../tool-sdk/host/README.md) provides connection state
 - Network: `tools/network/frontend`
 - Tweaks: `tools/tweaks/frontend`
 
-For an end-to-end example, read [Build a tool](../docs/plugins.md) and the [Tool API reference](../docs/plugin-api.md).
+For an end-to-end example, read [Build a tool](../docs/plugins.md).
 
 ## Directory layout
 
@@ -50,7 +50,7 @@ Run the same checks from `tool-sdk/host/` for the host SDK, including `npm run b
 
 A tool plugin can include a frontend ZIP in its AAR. Its manifest descriptor references that asset. Snap-O reads the ZIP from the installed APK through ADB, without starting app code or serving frontend files over the tool endpoint. `index.html` is always the entry point. Both Network and Tweaks use this path. The Mac app contains no tool frontend. Older Android libraries without frontend metadata require an app rebuild with updated libraries, or an explicit development-server override.
 
-See the [Tool Gradle Plugin](../tool-sdk/gradle-plugin/README.md) for packaging, custom builds, and development commands. App developers consuming a published AAR do not need Node.js. The frontend and Android implementation update together when the app is rebuilt.
+See the [Tool Packager Gradle Plugin](../tool-sdk/gradle-plugin/README.md) for packaging, custom builds, and development commands. App developers consuming a published AAR do not need Node.js. The frontend and Android implementation update together when the app is rebuilt.
 
 Snap-O checks the selected process identity and package revision before and after reading the archive. It caches up to four validated bundles, keyed by device, Android user, package revision, tool ID, and asset path. The host bounds compressed and expanded data to 16 MiB, limits archives to 1,024 entries, and rejects unsafe paths, symlinks, duplicate files, and invalid checksums. Files stay in memory. WebKit loads the unchanged HTML and assets through `snapo-inspector://<storage-uuid>/`. The origin stays stable for each provider and tool; a document query parameter changes on reload to reject stale bridge messages.
 

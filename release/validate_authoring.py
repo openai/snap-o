@@ -32,7 +32,7 @@ def properties(path):
 
 def verify_maven(repository):
     poms = list(repository.rglob("*.pom"))
-    assert len(poms) == 3, f"Expected runtime, plugin implementation, and marker; found {poms}"
+    assert len(poms) == 3, f"Expected core library, plugin implementation, and marker; found {poms}"
     coordinates = []
     for path in poms:
         root = ET.parse(path).getroot()
@@ -111,7 +111,7 @@ def verify_frontend_modes(example, overrides):
     init = example / "frontend-mode.gradle"
     init.write_text('''
 gradle.beforeProject { project ->
-    project.pluginManager.withPlugin("com.openai.snapo.tool") {
+    project.pluginManager.withPlugin("com.openai.snapo.tool-packager") {
         project.extensions.getByName("snapoTool").frontendAssets.set(
             project.layout.projectDirectory.dir("frontend/dist"))
     }
@@ -142,7 +142,7 @@ def main():
     npm_output.mkdir()
     gradle = str(android / "gradlew")
     local = [f"-Psnapo.authoringRepository={repository}", "-Psnapo.localAuthoring=true"]
-    run([gradle, "--no-daemon", ":tool-runtime:publishAllPublicationsToAuthoringRepository", *local], android)
+    run([gradle, "--no-daemon", ":tool-core:publishAllPublicationsToAuthoringRepository", *local], android)
     run([gradle, "--no-daemon", "test", "validatePlugins", "publishAllPublicationsToAuthoringRepository", *local],
         ROOT / "tool-sdk/gradle-plugin")
     coordinates = verify_maven(repository)

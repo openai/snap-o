@@ -137,7 +137,7 @@ class TweakHTTPServer:
         self.stream_events = stream_events
         self.requests = []
         self.protocol_requests = []
-        self.protocol_version = 8
+        self.protocol_version = 9
         self.protocol_error = None
         self.protocol_content_type = "application/json"
         owner = self
@@ -168,10 +168,14 @@ class TweakHTTPServer:
                     body = "".join(events).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
-                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Transfer-Encoding", "chunked")
                     self.send_header("Connection", "close")
                     self.end_headers()
-                    self.wfile.write(body)
+                    # Split SSE lines across HTTP chunks to exercise response decoding.
+                    for offset in range(0, len(body), 7):
+                        chunk = body[offset:offset + 7]
+                        self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+                    self.wfile.write(b"0\r\n\r\n")
                     self.wfile.flush()
                 else:
                     self.send_json(404, {"error": f"Unknown endpoint: {self.path}"})
@@ -291,7 +295,7 @@ class TweakSmartSocketServer:
                 while stream.readline().strip():
                     pass
 
-                body = json.dumps({"version": 8} if request_line == "GET /tweaks/protocol HTTP/1.1" else owner.payload).encode("utf-8")
+                body = json.dumps({"version": 9} if request_line == "GET /tweaks/protocol HTTP/1.1" else owner.payload).encode("utf-8")
                 response = (
                     b"HTTP/1.1 200 OK\r\n"
                     b"Content-Type: application/json\r\n"
@@ -1166,7 +1170,7 @@ class TweakCommandTests(unittest.TestCase):
 class ProtocolTests(unittest.TestCase):
     def test_commands_check_tool_protocol_before_data_requests(self):
         for kind, supported, connection_type in (
-            ("tweaks", 8, snapo.TweakConnection),
+            ("tweaks", 9, snapo.TweakConnection),
         ):
             for version in (None, True, "4", 0, 1, supported - 1, supported + 1):
                 wire = TweakHTTPServer()

@@ -5,4 +5,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = "snapo-tool-gradle-plugin"
+rootProject.name = "snapo-tool-packager-gradle-plugin"

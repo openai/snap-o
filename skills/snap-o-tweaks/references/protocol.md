@@ -32,16 +32,16 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 | Request | Result |
 | --- | --- |
-| `GET /tweaks/protocol` | Tweaks compatibility metadata: `{"version":8}`. |
+| `GET /tweaks/protocol` | Tweaks compatibility metadata: `{"version":9}`. |
 | `GET /tweaks` | Current active tweak and app-owned action descriptors. |
 | `GET /tweaks?include=adjusted` | Active descriptors plus previously adjusted ordinary or app-owned value snapshots retained outside composition. |
 | `PATCH /tweaks` | One update containing one or more named values. Apply valid entries and report individual errors. |
 | `POST /tweaks/action` | Invoke one explicitly registered parameterless app-owned action by name. |
 | `GET /tweaks/events` | Server-sent events containing complete current tweak and action snapshots. |
 
-Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
+Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream` with HTTP chunk framing.
 
-The CLI and Tweaks frontend call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. The CLI reads package and process identity through ADB; the desktop uses Android resources for labels and icons. Missing, older, or newer versions are unsupported; update Snap-O and the Android library together. Use `snapo-tweaks apps --json` to inspect app metadata without opening a tool connection.
+The CLI calls `GET /tweaks/protocol` and requires `{"version":9}` before reading or changing tweaks. The bundled frontend uses its matching server without a protocol check. The CLI reads package and process identity through ADB; the desktop uses Android resources for labels and icons. Missing, older, or newer versions are unsupported; update Snap-O and the Android library together. Use `snapo-tweaks apps --json` to inspect app metadata without opening a tool connection.
 
 ### Read active values
 

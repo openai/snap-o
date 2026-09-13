@@ -1,6 +1,6 @@
 plugins {
     id("com.android.library")
-    id("com.openai.snapo.tool")
+    id("com.openai.snapo.tool-packager")
 }
 
 android {
@@ -17,6 +17,6 @@ snapoTool {
 
 dependencies {
     implementation("androidx.startup:startup-runtime:1.2.0")
-    implementation("${providers.gradleProperty("snapoGroup").get()}:tool-runtime:${providers.gradleProperty("snapoVersion").get()}")
+    implementation("${providers.gradleProperty("snapoGroup").get()}:tool-core:${providers.gradleProperty("snapoVersion").get()}")
     testImplementation("junit:junit:4.13.2")
 }
