@@ -38,7 +38,6 @@ const metadata = {
   name: "Demo",
   packageName: "com.example.demo",
   pid: 20,
-  protocolVersion: 4,
   processIdentity: "boot:20:123"
 };
 const replayMessages: CdpMessage[] = [
@@ -81,7 +80,7 @@ describe("Network frontend with the shared host", () => {
   let listeners: Map<string, (value: unknown) => void>;
   let requests: ReturnType<typeof vi.fn<(command: string, payload?: unknown) => Promise<unknown>>>;
   let events: Set<(event: StreamEvent) => void>;
-  let fetchMetadata: ReturnType<typeof vi.fn<typeof fetch>>;
+  let fetchRequest: ReturnType<typeof vi.fn<typeof fetch>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -106,12 +105,11 @@ describe("Network frontend with the shared host", () => {
         return () => listeners.delete(name);
       }
     });
-    fetchMetadata = vi.fn<typeof fetch>(async () => Response.json({ version: 4 }));
-    vi.stubGlobal("fetch", fetchMetadata);
+    fetchRequest = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchRequest);
     events = new Set();
     mocks.model = null;
     mocks.client = {
-      appVersion: vi.fn(async () => "1.0"),
       startStream: vi.fn(async () => ({ streamId: "network-stream" })),
       stopStream: vi.fn(async () => {}),
       loadBodies: vi.fn(async ({ requestId }) => ({ requestId, responseBody: "cached response" })),
@@ -119,13 +117,12 @@ describe("Network frontend with the shared host", () => {
         events.add(callback);
         return () => events.delete(callback);
       }),
-      onStatus: vi.fn(() => () => {}),
-      listExclusionFilters: vi.fn(async () => []),
-      addExclusionFilter: vi.fn(async () => {}),
-      removeExclusionFilter: vi.fn(async () => {}),
+      onClosed: vi.fn(() => () => {}),
+      listExclusionFilters: vi.fn(() => []),
+      addExclusionFilter: vi.fn(() => {}),
+      removeExclusionFilter: vi.fn(() => {}),
       copyText: vi.fn(async () => {}),
-      openExternal: vi.fn(async () => {}),
-      saveFile: vi.fn(async () => ({ saved: false })),
+      saveFile: vi.fn(async () => false),
       dispose: vi.fn()
     };
     container = document.createElement("div");
@@ -238,26 +235,26 @@ describe("Network frontend with the shared host", () => {
     state.connected = false;
     await act(async () => render(<App />, container));
     await flush();
-    expect(fetchMetadata).not.toHaveBeenCalled();
+    expect(fetchRequest).not.toHaveBeenCalled();
     expect(mocks.client.startStream).not.toHaveBeenCalled();
     await publish(true);
-    expect(fetchMetadata).toHaveBeenCalledOnce();
+    expect(fetchRequest).not.toHaveBeenCalled();
     expect(mocks.client.startStream).toHaveBeenCalledWith(
-      expect.objectContaining({ protocolVersion: metadata.protocolVersion, processIdentity: metadata.processIdentity })
+      expect.objectContaining({ processIdentity: metadata.processIdentity })
     );
   });
 
   it("does not restart an unchanged connection after a repeated host update", async () => {
     await captureTraffic();
     const starts = vi.mocked(mocks.client.startStream).mock.calls.length;
-    const metadataReads = fetchMetadata.mock.calls.length;
+    const metadataReads = fetchRequest.mock.calls.length;
     await act(async () => {
       listeners.get("host:connection")?.({ ...state });
       listeners.get("host:connection")?.({ ...state });
     });
     await flush();
     expect(mocks.client.startStream).toHaveBeenCalledTimes(starts);
-    expect(fetchMetadata).toHaveBeenCalledTimes(metadataReads);
+    expect(fetchRequest).toHaveBeenCalledTimes(metadataReads);
     await publish(true);
     expect(mocks.client.startStream).toHaveBeenCalledTimes(starts + 1);
   });
@@ -283,23 +280,24 @@ describe("Network frontend with the shared host", () => {
     state.manifest = manifest;
     await publish(true);
     expect(mocks.client.startStream).toHaveBeenCalledWith(
-      expect.objectContaining({ protocolVersion: metadata.protocolVersion, processIdentity: metadata.processIdentity })
+      expect.objectContaining({ processIdentity: metadata.processIdentity })
     );
-    expect(fetchMetadata).toHaveBeenCalledOnce();
+    expect(fetchRequest).not.toHaveBeenCalled();
   });
 
   it("uses host metadata with the real Network connection on each reconnect", async () => {
     const { createNetworkClient } = await vi.importActual<typeof import("./network/client")>("./network/client");
+    const streams: Events[] = [];
     class Events extends EventTarget {
       constructor() {
         super();
+        streams.push(this);
         queueMicrotask(() => this.dispatchEvent(new Event("open")));
       }
-      close() {}
+      close = vi.fn();
     }
     vi.stubGlobal("EventSource", Events);
-    fetchMetadata.mockImplementation(async (url) => {
-      if (String(url).endsWith("/network/protocol")) return Response.json({ version: 4 });
+    fetchRequest.mockImplementation(async (url) => {
       if (String(url).endsWith("/network"))
         return new Response("", {
           headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": "0" }
@@ -310,34 +308,46 @@ describe("Network frontend with the shared host", () => {
     await act(async () => render(<App />, container));
     await flush();
     await vi.waitFor(() =>
-      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
-        "/network/protocol",
-        "/network"
-      ])
+      expect(fetchRequest.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network"])
     );
     await publish(false);
+    expect(streams[0].close).toHaveBeenCalledOnce();
     await publish(true);
     await vi.waitFor(() =>
-      expect(fetchMetadata.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
-        "/network/protocol",
-        "/network",
-        "/network/protocol",
-        "/network"
-      ])
+      expect(fetchRequest.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network", "/network"])
     );
+    await act(async () => render(null, container));
+    expect(streams[1].close).toHaveBeenCalledOnce();
   });
 
-  it.each([1, 3, 5])("does not start a Network stream for unsupported protocol v%s", async (protocolVersion) => {
-    fetchMetadata.mockResolvedValue(Response.json({ version: protocolVersion }));
-    await act(async () => render(<App />, container));
-    await flush();
-    await vi.waitFor(() => expect(mocks.model?.metadata?.protocolVersion).toBe(protocolVersion));
-    expect(mocks.client.startStream).not.toHaveBeenCalled();
+  it("updates filters after successful writes and preserves them when writes fail", async () => {
+    let stored = ["-initial.test"];
+    vi.mocked(mocks.client.listExclusionFilters).mockImplementation(() => stored);
+    vi.mocked(mocks.client.addExclusionFilter).mockImplementation((filter) => {
+      stored = [...stored, filter];
+    });
+    vi.mocked(mocks.client.removeExclusionFilter).mockImplementation((filter) => {
+      stored = stored.filter((item) => item !== filter);
+    });
+    await captureTraffic();
+    await act(() => mocks.model!.addExclusionFilter("NEW.test"));
+    expect(mocks.model?.exclusionFilters).toEqual(["-initial.test", "-new.test"]);
+    await act(() => mocks.model!.removeExclusionFilter("-initial.test"));
+    expect(mocks.model?.exclusionFilters).toEqual(["-new.test"]);
+    vi.mocked(mocks.client.addExclusionFilter).mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    vi.mocked(mocks.client.removeExclusionFilter).mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    await act(() => mocks.model!.addExclusionFilter("failed.test"));
+    await act(() => mocks.model!.removeExclusionFilter("-new.test"));
+    expect(mocks.model?.exclusionFilters).toEqual(["-new.test"]);
   });
 
   it("updates filters after another window writes local storage", async () => {
     await captureTraffic();
-    vi.mocked(mocks.client.listExclusionFilters).mockResolvedValue(["-example.test"]);
+    vi.mocked(mocks.client.listExclusionFilters).mockReturnValue(["-example.test"]);
     await act(async () => {
       window.dispatchEvent(new StorageEvent("storage", { key: "network.exclusionFilters" }));
     });

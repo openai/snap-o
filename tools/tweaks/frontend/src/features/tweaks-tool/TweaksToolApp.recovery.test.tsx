@@ -2,9 +2,9 @@
 import { act } from "preact/test-utils";
 import { render as renderPreact } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TweakList, TweakStreamEvent } from "../../types";
+import type { TweakList } from "../../types";
 import type { TweaksClient } from "./client";
-import { host, type ToolbarAction } from "@snap-o/tool-host";
+import { host, type ToolConnection, type ToolbarAction } from "@snap-o/tool-host";
 import { TweaksToolApp } from "./TweaksToolApp";
 
 const response: TweakList = {
@@ -18,12 +18,26 @@ const connectionError = new Error("Could not connect to the server.");
 describe("Tweaks connection recovery", () => {
   let container: HTMLDivElement;
   let client: TweaksClient;
-  let receive: (event: TweakStreamEvent) => void;
+  let connection: ToolConnection;
+  let receive: (snapshot: TweakList) => void;
+  let fail: (error: Error) => void;
+  let initialSnapshot: TweakList | null;
+  let stops: ReturnType<typeof vi.fn>[];
   let reset: () => void;
   let toolbar: readonly ToolbarAction[] = [];
+  const setSnapshot = (snapshot: TweakList) => {
+    initialSnapshot = snapshot;
+  };
 
   beforeEach(() => {
     vi.useFakeTimers();
+    initialSnapshot = response;
+    stops = [];
+    connection = {
+      baseURL: "http://127.0.0.1:1234/",
+      processIdentity: "boot:20:123",
+      signal: new AbortController().signal
+    };
     vi.spyOn(host, "setToolbar").mockImplementation(async ({ actions = [] }) => {
       toolbar = actions;
       reset = () => {
@@ -33,11 +47,14 @@ describe("Tweaks connection recovery", () => {
     });
     client = {
       listTweaks: vi.fn(async () => response),
-      startTweakStream: vi.fn(async () => ({ streamId: "stream-1" })),
-      stopTweakStream: vi.fn(async () => {}),
-      onTweaksChanged: vi.fn((callback) => {
-        receive = callback;
-        return () => {};
+      subscribeTweaks: vi.fn((_connection, onSnapshot, onError) => {
+        receive = onSnapshot;
+        fail = onError;
+        const stop = vi.fn();
+        stops.push(stop);
+        const snapshot = initialSnapshot;
+        if (snapshot) queueMicrotask(() => onSnapshot(snapshot));
+        return stop;
       }),
       updateTweaks: vi.fn(async () => ({ tweaks: [] })),
       invokeTweakAction: vi.fn(async () => {}),
@@ -55,15 +72,14 @@ describe("Tweaks connection recovery", () => {
     vi.restoreAllMocks();
   });
 
-  async function render(isConnected = true, revision = 0) {
+  async function render(connected = true) {
     await act(async () =>
-      renderPreact(<TweaksToolApp client={client} connectionRevision={revision} isConnected={isConnected} />, container)
+      renderPreact(<TweaksToolApp client={client} connection={connected ? connection : null} />, container)
     );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
   }
-
   it("collapses one named section and keeps it collapsed after a stream update", async () => {
     const tweaks: TweakList = {
       tweaks: [
@@ -71,7 +87,7 @@ describe("Tweaks connection recovery", () => {
         { name: "Motion/Speed", type: "float", value: 1, default: 1, min: 0, max: 2 }
       ]
     };
-    vi.mocked(client.listTweaks).mockResolvedValue(tweaks);
+    setSnapshot(tweaks);
     await render();
 
     const buttons = container.querySelectorAll<HTMLButtonElement>(".tweaks-section-toggle");
@@ -88,14 +104,14 @@ describe("Tweaks connection recovery", () => {
     expect(motion.getAttribute("aria-expanded")).toBe("true");
     expect(motionList.hidden).toBe(false);
 
-    await act(async () => receive({ streamId: "stream-1", tweaks: tweaks.tweaks }));
+    await act(async () => receive({ tweaks: tweaks.tweaks }));
     expect(haloList.hidden).toBe(true);
     await act(async () => halo.click());
     expect(haloList.hidden).toBe(false);
   });
 
   it("places each bounded numeric slider beside its value", async () => {
-    vi.mocked(client.listTweaks).mockResolvedValue({
+    setSnapshot({
       tweaks: [
         { name: "Halo/Opacity", type: "float", value: 0.5, default: 0.5, min: 0, max: 1 },
         { name: "Halo/Iterations", type: "int", value: 3, default: 3 }
@@ -111,7 +127,7 @@ describe("Tweaks connection recovery", () => {
   });
 
   it("keeps enum options open for internal focus and closes them when focus leaves", async () => {
-    vi.mocked(client.listTweaks).mockResolvedValue({
+    setSnapshot({
       tweaks: [{ name: "Theme", type: "enum", value: "Light", default: "Light", options: ["Light", "Dark"] }]
     });
     await render();
@@ -130,53 +146,6 @@ describe("Tweaks connection recovery", () => {
     expect(container.querySelector('[role="listbox"]')).toBeNull();
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(client.updateTweaks).not.toHaveBeenCalled();
-  });
-
-  it("shows status only after loading has lasted 300 ms", async () => {
-    let finish!: (value: TweakList) => void;
-    vi.mocked(client.listTweaks).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await render();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(299);
-    });
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    const status = container.querySelector('[role="status"]');
-    expect(status?.textContent).toBe("Waiting for tool");
-    expect(status?.querySelector("svg")).not.toBeNull();
-    expect(container.querySelector(".tool-open-app")).toBeNull();
-
-    await act(async () => finish(response));
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-  });
-
-  it("does not flash a waiting indicator when loading finishes quickly", async () => {
-    let finish!: (value: TweakList) => void;
-    vi.mocked(client.listTweaks).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await render();
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(100);
-      finish(response);
-    });
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(300);
-    });
-    expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
   it("sends text input before blur and preserves focus during live updates", async () => {
@@ -200,8 +169,6 @@ describe("Tweaks connection recovery", () => {
 
     await act(async () =>
       receive({
-        streamId: "stream-1",
-
         tweaks: [{ name: "Demo title", type: "string", value: "Streamed", default: "Default" }]
       })
     );
@@ -210,61 +177,8 @@ describe("Tweaks connection recovery", () => {
     expect(document.activeElement).toBe(input);
   });
 
-  it("retries a failed initial request without changing the selected tool", async () => {
-    vi.mocked(client.listTweaks).mockRejectedValueOnce(connectionError);
-    await render();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(connectionError.message);
-    expect(client.startTweakStream).not.toHaveBeenCalled();
-    expect(container.querySelector(".tool-open-app")).toBeNull();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-    expect(client.listTweaks).toHaveBeenCalledTimes(2);
-    expect(client.startTweakStream).toHaveBeenCalledExactlyOnceWith(expect.any(Function));
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.querySelector(".tool-open-app")).toBeNull();
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(client.startTweakStream).toHaveBeenCalledTimes(1);
-  });
-
-  it("retries a failed stream start while preserving loaded tweaks", async () => {
-    vi.mocked(client.startTweakStream).mockRejectedValueOnce(connectionError);
-    await render();
-    expect(container.textContent).toContain("Demo title");
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe(connectionError.message);
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-    expect(client.startTweakStream).toHaveBeenCalledTimes(2);
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.querySelector("fieldset")?.disabled).toBe(false);
-    await act(async () => receive({ streamId: "stream-1", tweaks: [] }));
-    expect(container.textContent).toContain("No tweaks on screen");
-  });
-
-  it("clears an update error only after accepting a fresh stream snapshot", async () => {
-    vi.mocked(client.listTweaks).mockResolvedValue(modifiedResponse);
-    vi.mocked(client.updateTweaks).mockRejectedValueOnce(new Error("Update failed"));
-    await render();
-    await act(() => reset());
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Update failed");
-    await act(async () => receive({ streamId: "other-stream", tweaks: [] }));
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Update failed");
-    await act(async () => receive({ streamId: "stream-1", tweaks: [] }));
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.textContent).toContain("No tweaks on screen");
-  });
-
   it("clears an action error when the tool reconnects", async () => {
-    vi.mocked(client.listTweaks).mockResolvedValue({ tweaks: [{ name: "Refresh preview", type: "action" }] });
+    setSnapshot({ tweaks: [{ name: "Refresh preview", type: "action" }] });
     vi.mocked(client.invokeTweakAction).mockRejectedValueOnce(new Error("Action failed"));
     await render();
     await act(() => container.querySelector<HTMLButtonElement>('[aria-label="Run Refresh preview"]')!.click());
@@ -273,14 +187,14 @@ describe("Tweaks connection recovery", () => {
     });
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("Action failed");
     await render(false);
-    vi.mocked(client.listTweaks).mockResolvedValue({ tweaks: [] });
+    setSnapshot({ tweaks: [] });
     await render();
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).toContain("No tweaks on screen");
   });
 
   it("clears a rejected-update error after its reload succeeds", async () => {
-    vi.mocked(client.listTweaks).mockResolvedValue(modifiedResponse);
+    setSnapshot(modifiedResponse);
     vi.mocked(client.updateTweaks).mockResolvedValueOnce({
       tweaks: [],
       errors: [{ name: "Demo title", error: "Rejected" }]
@@ -312,7 +226,7 @@ describe("Tweaks connection recovery", () => {
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
     expect(container.querySelector("fieldset")?.hasAttribute("inert")).toBe(true);
     expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(client.stopTweakStream).toHaveBeenCalledWith("stream-1");
+    expect(stops[0]).toHaveBeenCalledOnce();
     await act(() => reset());
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -328,178 +242,145 @@ describe("Tweaks connection recovery", () => {
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
   });
 
-  it("keeps the old values disabled until the replacement process has loaded", async () => {
+  it("waits for the initial SSE snapshot without fetching a separate list", async () => {
+    initialSnapshot = null;
     await render();
-    await render(false);
-    let finish!: (value: TweakList) => void;
-    vi.mocked(client.listTweaks).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await render(true, 1);
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    expect(client.listTweaks).not.toHaveBeenCalled();
+    expect(toolbar[0]?.enabled).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
     expect(container.querySelector('[role="status"]')).toBeNull();
-    await act(async () =>
-      finish({ tweaks: [{ ...response.tweaks[0], value: "New process" } as TweakList["tweaks"][number]] })
-    );
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1);
     });
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("New process");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Waiting for tool");
+    await act(async () => receive(response));
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
   });
 
-  it("backs off repeated failures and cancels retries when leaving the tool", async () => {
-    vi.mocked(client.listTweaks).mockRejectedValue(connectionError);
+  it("does not flash a waiting indicator for a quick initial snapshot", async () => {
+    initialSnapshot = null;
     await render();
-    for (const delay of [250, 500, 1_000, 2_000, 4_000, 4_000]) {
-      const count = vi.mocked(client.listTweaks).mock.calls.length;
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(delay - 1);
-      });
-      expect(client.listTweaks).toHaveBeenCalledTimes(count);
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1);
-      });
-      expect(client.listTweaks).toHaveBeenCalledTimes(count + 1);
-    }
-    await act(async () => renderPreact(null, container));
-    const count = vi.mocked(client.listTweaks).mock.calls.length;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.advanceTimersByTimeAsync(100);
+      receive(response);
     });
-    expect(client.listTweaks).toHaveBeenCalledTimes(count);
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
-  it("disables stale values after a live stream failure and waits for the replacement stream", async () => {
-    let fail!: (error: Error) => void;
-    vi.mocked(client.startTweakStream).mockImplementationOnce(async (onError) => {
-      fail = onError!;
-      return { streamId: "stream-1" };
+  it("retries a failed subscription without changing the selected tool", async () => {
+    vi.mocked(client.subscribeTweaks).mockImplementationOnce(() => {
+      throw connectionError;
     });
     await render();
-    expect(container.querySelector("fieldset")?.disabled).toBe(false);
-    await act(async () => fail(connectionError));
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
-    expect(container.textContent).toContain(connectionError.message);
-    let finish!: (value: { streamId: string }) => void;
-    vi.mocked(client.startTweakStream).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(connectionError.message);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
     });
-    await act(async () => receive({ streamId: "stream-1", tweaks: modifiedResponse.tweaks }));
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
-    await act(async () => finish({ streamId: "stream-2" }));
-    expect(container.querySelector("fieldset")?.disabled).toBe(false);
-    expect(client.listTweaks).toHaveBeenCalledTimes(2);
-  });
-
-  it("stops a late stream from an earlier connection", async () => {
-    let finish!: (value: { streamId: string }) => void;
-    vi.mocked(client.startTweakStream).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await render();
-    await render(true, 1);
-    await act(async () => finish({ streamId: "old-stream" }));
-    expect(client.stopTweakStream).toHaveBeenCalledWith("old-stream");
-    expect(client.startTweakStream).toHaveBeenCalledTimes(2);
-  });
-
-  it("ignores a late old-stream event while reconnecting the same endpoint", async () => {
-    await render();
-    await render(false);
-    let finish!: (value: TweakList) => void;
-    vi.mocked(client.listTweaks).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
-    await render();
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
-    await act(async () => receive({ streamId: "stream-1", tweaks: modifiedResponse.tweaks }));
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    expect(client.subscribeTweaks).toHaveBeenCalledTimes(2);
+    expect(client.listTweaks).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-    await act(async () => finish(response));
   });
 
-  it("preserves an initial snapshot that arrives before stream startup resolves", async () => {
-    let finish!: (value: { streamId: string }) => void;
-    vi.mocked(client.startTweakStream).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
+  it("keeps values disabled after stream failure until the next snapshot", async () => {
     await render();
-    await act(async () => receive({ streamId: "new-stream", tweaks: modifiedResponse.tweaks }));
+    const oldReceive = receive;
+    await act(async () => fail(connectionError));
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    initialSnapshot = null;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(stops[0]).toHaveBeenCalledOnce();
+    await act(async () => oldReceive(modifiedResponse));
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-    await act(async () => finish({ streamId: "new-stream" }));
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    await act(async () => receive(modifiedResponse));
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
     expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Changed");
   });
 
-  it("ignores an old stream while the new stream start is pending", async () => {
-    let finish!: (value: { streamId: string }) => void;
-    vi.mocked(client.startTweakStream).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
+  it("clears an update error only after accepting a fresh snapshot", async () => {
+    initialSnapshot = modifiedResponse;
+    vi.mocked(client.updateTweaks).mockRejectedValueOnce(new Error("Update failed"));
     await render();
-    await act(async () => receive({ streamId: "old-stream", tweaks: modifiedResponse.tweaks }));
-    await act(async () => finish({ streamId: "new-stream" }));
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
-  });
-
-  it("ignores early events when stream startup fails", async () => {
-    let reject!: (cause: Error) => void;
-    vi.mocked(client.startTweakStream).mockImplementationOnce(
-      () =>
-        new Promise((_, fail) => {
-          reject = fail;
-        })
-    );
-    await render();
-    await act(async () => receive({ streamId: "new-stream", tweaks: modifiedResponse.tweaks }));
-    await act(async () => reject(connectionError));
-    expect(container.querySelector("fieldset")?.disabled).toBe(true);
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    await act(() => reset());
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
+      await vi.advanceTimersByTimeAsync(0);
     });
-    expect(client.startTweakStream).toHaveBeenCalledTimes(2);
-    expect(container.querySelector("fieldset")?.disabled).toBe(false);
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Update failed");
+    await act(async () => receive({ tweaks: [] }));
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).toContain("No tweaks on screen");
   });
 
-  it("discards early events and stops a late stream exactly once after unmount", async () => {
-    let finish!: (value: { streamId: string }) => void;
-    vi.mocked(client.startTweakStream).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        })
-    );
+  it("backs off repeated failures and cancels retries when leaving the tool", async () => {
+    vi.mocked(client.subscribeTweaks).mockImplementation(() => {
+      throw connectionError;
+    });
     await render();
-    await act(async () => receive({ streamId: "new-stream", tweaks: modifiedResponse.tweaks }));
+    for (const delay of [250, 500, 1_000, 2_000, 4_000, 4_000]) {
+      const count = vi.mocked(client.subscribeTweaks).mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay - 1);
+      });
+      expect(client.subscribeTweaks).toHaveBeenCalledTimes(count);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(client.subscribeTweaks).toHaveBeenCalledTimes(count + 1);
+    }
     await act(async () => renderPreact(null, container));
-    await act(async () => finish({ streamId: "new-stream" }));
-    expect(client.stopTweakStream).toHaveBeenCalledExactlyOnceWith("new-stream");
+    const count = vi.mocked(client.subscribeTweaks).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(client.subscribeTweaks).toHaveBeenCalledTimes(count);
+  });
+
+  it.each([false, true])("ignores old callbacks when replacing a connection (new process: %s)", async (newProcess) => {
+    await render();
+    const oldReceive = receive;
+    const oldFail = fail;
+    initialSnapshot = null;
+    connection = {
+      ...connection,
+      signal: new AbortController().signal,
+      processIdentity: newProcess ? "boot:20:456" : connection.processIdentity
+    };
+    await render();
+    expect(stops[0]).toHaveBeenCalledOnce();
+    expect(container.querySelector("fieldset")?.disabled).toBe(true);
+    await act(async () => {
+      oldReceive(modifiedResponse);
+      oldFail(connectionError);
+    });
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Recovered");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => receive(modifiedResponse));
+    expect(container.querySelector("fieldset")?.disabled).toBe(false);
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')?.value).toBe("Changed");
+  });
+
+  it("cleans up immediately while awaiting a snapshot and ignores late callbacks after unmount", async () => {
+    initialSnapshot = null;
+    await render();
+    await act(async () => renderPreact(null, container));
+    expect(stops[0]).toHaveBeenCalledOnce();
+    await act(async () => {
+      receive(response);
+      fail(connectionError);
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(client.subscribeTweaks).toHaveBeenCalledOnce();
     expect(container.textContent).toBe("");
   });
 });

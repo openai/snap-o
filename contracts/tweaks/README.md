@@ -31,7 +31,7 @@ Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `
 
 ### Discovery and readiness
 
-The desktop reads app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader. The Tweaks frontend and CLI call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are rejected. This endpoint belongs to Tweaks, not the shared tool SDK.
+The desktop reads app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader. The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are rejected. The bundled frontend uses its matching Android server without a version check. This endpoint belongs to Tweaks, not the shared tool SDK.
 
 Protocol 8 moves the compatibility check out of discovery; data, mutation, and SSE payloads are unchanged from protocol 7. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
 
@@ -544,13 +544,7 @@ Install the standalone debug sample on a connected Android device:
 ./gradlew :samples:demo-tweaks:installDebug
 ```
 
-From the repository root, start the sample's optional host-side tweak panel:
-
-```bash
-node examples/android/demo-tweaks/panel/server.mjs
-```
-
-Open `http://127.0.0.1:4175`. The dependency-free panel discovers connected devices and live tweak sockets, creates its own ADB forward, displays the app icon and tweaks, and reconnects when the app process changes. It is a model-built demo, not a required setup step or the expected way to use Snap-O Tweaks. Any agent or host can use the same endpoints to create its own UI. See the sample panel's README for device and package selection.
+Open Snap-O and select the sample app’s Tweaks tool.
 
 A non-exported `ContentProvider` in the live artifact starts the runtime by default only when `ApplicationInfo.FLAG_DEBUGGABLE` is set. To intentionally enable live Snap-O Tweaks in a non-debuggable app, set its application flag:
 

@@ -25,7 +25,6 @@ export function NetworkToolApp({ model }: { model: NetworkToolModel }): JSX.Elem
       style={{ "--sidebar-width": `${sidebarWidth}px` } as JSX.CSSProperties}
     >
       <Sidebar
-        metadata={model.metadata}
         isConnected={model.isConnected}
         exclusionFilters={model.exclusionFilters}
         hiddenRequestCount={model.hiddenRequestCount}
@@ -59,7 +58,6 @@ export function NetworkToolApp({ model }: { model: NetworkToolModel }): JSX.Elem
         <DetailContent
           client={model.client}
           record={model.selectedRecord}
-          metadata={model.metadata}
           isConnected={model.isConnected}
           totalItems={model.totalItems}
           streamIsRetrying={model.streamIsRetrying}

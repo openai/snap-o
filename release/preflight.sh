@@ -274,17 +274,22 @@ print_client_protocol_declarations() {
   else
     printf '    Swift Network client: absent; review the Web Network client below.\n'
   fi
-  print_protocol_declaration "$1" 'Web Network supported version' \
-    'const supportedProtocolVersion[[:space:]:=]' \
-    'snapo-network-inspector-web/src/features/network-inspector/lib/protocol.ts' \
-    'inspectors/network/src/features/network-inspector/lib/protocol.ts' \
-    'snapo-link-android/network/frontend/src/features/network-inspector/lib/protocol.ts' \
-    'plugins/implementations/network/frontend/src/features/network-inspector/lib/protocol.ts' \
-    'plugins/network/frontend/src/features/network-inspector/lib/protocol.ts' \
-    'snapo-link-android/network/frontend/src/features/network-tool/lib/protocol.ts' \
-    'plugins/implementations/network/frontend/src/features/network-tool/lib/protocol.ts' \
-    'tools/network/frontend/src/features/network-tool/lib/protocol.ts' \
-    'plugins/network/frontend/src/features/network-tool/lib/protocol.ts'
+  if ! git -C "$SNAPO_DIR" cat-file -e "$1:tools/network/frontend/src/features/network-tool/lib/protocol.ts" 2>/dev/null &&
+    git -C "$SNAPO_DIR" grep -q 'frontendDirectory' "$1" -- 'tools/network/android/core/build.gradle.kts'; then
+    printf '    Web Network client: bundled with its Android server; no protocol negotiation.\n'
+  else
+    print_protocol_declaration "$1" 'Web Network supported version' \
+      'const supportedProtocolVersion[[:space:]:=]' \
+      'snapo-network-inspector-web/src/features/network-inspector/lib/protocol.ts' \
+      'inspectors/network/src/features/network-inspector/lib/protocol.ts' \
+      'snapo-link-android/network/frontend/src/features/network-inspector/lib/protocol.ts' \
+      'plugins/implementations/network/frontend/src/features/network-inspector/lib/protocol.ts' \
+      'plugins/network/frontend/src/features/network-inspector/lib/protocol.ts' \
+      'snapo-link-android/network/frontend/src/features/network-tool/lib/protocol.ts' \
+      'plugins/implementations/network/frontend/src/features/network-tool/lib/protocol.ts' \
+      'tools/network/frontend/src/features/network-tool/lib/protocol.ts' \
+      'plugins/network/frontend/src/features/network-tool/lib/protocol.ts'
+  fi
   if git -C "$SNAPO_DIR" cat-file -e "$1:tools/tweaks/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:plugins/tweaks/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
     git -C "$SNAPO_DIR" cat-file -e "$1:plugins/implementations/tweaks/frontend/src/features/tweaks-tool/protocol.ts" 2>/dev/null ||
@@ -303,6 +308,8 @@ print_client_protocol_declarations() {
     'plugins/tweaks/frontend/src/features/tweaks-tool/protocol.ts' \
       'plugins/implementations/tweaks/frontend/src/features/tweaks-tool/protocol.ts' \
       'plugins/tweaks-core/frontend/src/features/tweaks-tool/protocol.ts'
+  elif git -C "$SNAPO_DIR" grep -q 'frontendDirectory' "$1" -- 'tools/tweaks/android/core/build.gradle.kts'; then
+    printf '    Web Tweaks client: bundled with its Android server; no protocol negotiation.\n'
   else
     print_protocol_declaration "$1" 'Web Tweaks modified-state/reset feature threshold' \
       'const modifiedTweakProtocolVersion[[:space:]:=]' \

@@ -25,8 +25,17 @@ import {
 describe("empty tweaks tool", () => {
   const client = { openExternal: async () => {} } as unknown as TweaksClient;
 
-  it("waits for the initial tweak request before showing an empty state", () => {
-    const markup = renderToStaticMarkup(createElement(TweaksToolApp, { client, isConnected: true }));
+  it("waits for the initial tweak snapshot before showing an empty state", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TweaksToolApp, {
+        client,
+        connection: {
+          baseURL: "http://127.0.0.1:1234/",
+          processIdentity: "boot:20:123",
+          signal: new AbortController().signal
+        }
+      })
+    );
 
     expect(markup).not.toContain('class="empty-detail"');
     expect(markup).not.toContain("No tweaks on screen");
@@ -605,9 +614,10 @@ function action(name: string, conflicted = false): TweakActionDescriptor {
   };
 }
 
-describe("Tweaks event stream transport", () => {
+describe("Tweaks snapshot subscription", () => {
   let client: TweaksClient;
   let streams: FakeEventSource[];
+  let connection: NonNullable<typeof host.connection>;
   class FakeEventSource extends EventTarget {
     close = vi.fn();
     constructor(readonly url: URL) {
@@ -619,11 +629,12 @@ describe("Tweaks event stream transport", () => {
   beforeEach(() => {
     streams = [];
     vi.useFakeTimers();
-    vi.spyOn(host, "connection", "get").mockReturnValue({
+    connection = {
       baseURL: "http://127.0.0.1:1234/",
       processIdentity: "boot:20:123",
       signal: new AbortController().signal
-    });
+    };
+    vi.spyOn(host, "connection", "get").mockReturnValue(connection);
     vi.stubGlobal("EventSource", FakeEventSource);
     client = createTweaksClient();
   });
@@ -635,62 +646,111 @@ describe("Tweaks event stream transport", () => {
     vi.unstubAllGlobals();
   });
 
-  it("waits for open before resolving and delivers snapshots until stopped", async () => {
+  it("delivers the initial snapshot and later updates until unsubscribed", () => {
     const changed = vi.fn();
-    client.onTweaksChanged(changed);
-    const started = client.startTweakStream();
-    const ready = vi.fn();
-    void started.then(ready);
-    await Promise.resolve();
-    expect(ready).not.toHaveBeenCalled();
+    const failed = vi.fn();
+    const stop = client.subscribeTweaks(connection, changed, failed);
     expect(streams[0].url.href).toBe("http://127.0.0.1:1234/tweaks/events");
     streams[0].dispatchEvent(new Event("open"));
-    const { streamId } = await started;
+    expect(changed).not.toHaveBeenCalled();
     streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
-    expect(changed).toHaveBeenCalledExactlyOnceWith({ streamId, tweaks: [] });
-    await client.stopTweakStream(streamId);
-    streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
-    expect(changed).toHaveBeenCalledOnce();
-    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(changed).toHaveBeenCalledExactlyOnceWith({ tweaks: [] });
     expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("rejects an initial error instead of letting EventSource retry indefinitely", async () => {
-    const failed = vi.fn();
-    const started = client.startTweakStream(failed);
-    const rejected = expect(started).rejects.toThrow("Tweaks event stream disconnected.");
+    streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
+    expect(changed).toHaveBeenCalledTimes(2);
+    stop();
+    stop();
+    streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
     streams[0].dispatchEvent(new Event("error"));
-    streams[0].dispatchEvent(new Event("open"));
-    await rejected;
+    expect(changed).toHaveBeenCalledTimes(2);
     expect(failed).not.toHaveBeenCalled();
     expect(streams[0].close).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each(["timeout", "dispose", "host change"])("settles pending startup after %s", async (reason) => {
-    const started = client.startTweakStream();
-    const rejected = expect(started).rejects.toThrow(reason === "timeout" ? "timed out" : "disconnected");
-    if (reason === "timeout") await vi.advanceTimersByTimeAsync(5_000);
-    else if (reason === "dispose") client.dispose();
-    else host.dispatchEvent(new Event("connection"));
-    await rejected;
+  it("times out if the response opens without an initial snapshot", async () => {
+    const failed = vi.fn();
+    client.subscribeTweaks(connection, vi.fn(), failed);
+    streams[0].dispatchEvent(new Event("open"));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(failed).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: "Tweaks snapshot timed out." }));
     expect(streams[0].close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("reports a live stream failure once and drops subsequent snapshots", async () => {
-    const failed = vi.fn();
+  it.each([false, true])("reports a stream failure once (initial snapshot received: %s)", (live) => {
     const changed = vi.fn();
-    client.onTweaksChanged(changed);
-    const started = client.startTweakStream(failed);
-    streams[0].dispatchEvent(new Event("open"));
-    const { streamId } = await started;
+    const failed = vi.fn();
+    client.subscribeTweaks(connection, changed, failed);
+    if (live) streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
     streams[0].dispatchEvent(new Event("error"));
     streams[0].dispatchEvent(new Event("error"));
     streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
-    await client.stopTweakStream(streamId);
-    expect(failed).toHaveBeenCalledExactlyOnceWith(expect.any(Error));
+    expect(changed).toHaveBeenCalledTimes(live ? 1 : 0);
+    expect(failed).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ message: "Tweaks event stream disconnected." })
+    );
+    expect(streams[0].close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["dispose", "host change"])("closes a pending subscription immediately on %s", async (reason) => {
+    const changed = vi.fn();
+    const failed = vi.fn();
+    const stop = client.subscribeTweaks(connection, changed, failed);
+    if (reason === "dispose") client.dispose();
+    else host.dispatchEvent(new Event("connection"));
+    stop();
+    streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(streams[0].close).toHaveBeenCalledOnce();
     expect(changed).not.toHaveBeenCalled();
+    expect(failed).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["not json", "null", "{}", '{"tweaks":{}}'])("rejects malformed snapshots (%s)", (data) => {
+    const changed = vi.fn();
+    const failed = vi.fn();
+    client.subscribeTweaks(connection, changed, failed);
+    streams[0].dispatchEvent(new MessageEvent("tweaks", { data }));
+    expect(changed).not.toHaveBeenCalled();
+    expect(failed).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: "Invalid Tweaks snapshot." }));
+    expect(streams[0].close).toHaveBeenCalledOnce();
+  });
+
+  it("binds subscriptions to their supplied connection and rejects expired connections", () => {
+    vi.spyOn(host, "connection", "get").mockReturnValue({ ...connection, baseURL: "http://127.0.0.1:9999/" });
+    client.subscribeTweaks(connection, vi.fn(), vi.fn());
+    expect(streams[0].url.href).toBe(connection.baseURL + "tweaks/events");
+    const abort = new AbortController();
+    abort.abort();
+    expect(() => client.subscribeTweaks({ ...connection, signal: abort.signal }, vi.fn(), vi.fn())).toThrow(
+      "disconnected"
+    );
+    expect(streams).toHaveLength(1);
+  });
+
+  it.each(["host disconnect", "dispose"])("cancels pending HTTP requests on %s", async (reason) => {
+    const connectionAbort = new AbortController();
+    vi.spyOn(host, "connection", "get").mockReturnValue({
+      baseURL: "http://127.0.0.1:1234/",
+      processIdentity: "boot:20:123",
+      signal: connectionAbort.signal
+    });
+    const request = vi.fn<typeof fetch>(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init!.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), {
+            once: true
+          });
+        })
+    );
+    vi.stubGlobal("fetch", request);
+    const pending = client.listTweaks();
+    const rejected = expect(pending).rejects.toThrow("Aborted");
+    if (reason === "dispose") client.dispose();
+    else connectionAbort.abort();
+    await rejected;
+    expect(request.mock.calls[0][1]?.signal?.aborted).toBe(true);
   });
 });

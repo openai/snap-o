@@ -36,8 +36,11 @@ describe("Tweaks frontend with the shared host", () => {
     inspector: ToolDescriptor;
   };
   let receive: (value: typeof state) => void;
+  let snapshot: TweakList | null;
+  let onSnapshot: (snapshot: TweakList) => void;
   beforeEach(() => {
     vi.useFakeTimers();
+    snapshot = list("Cached value");
     state = {
       revision: 1,
       connected: true,
@@ -57,15 +60,15 @@ describe("Tweaks frontend with the shared host", () => {
         return () => {};
       }
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ version: 8 }))
-    );
+    vi.stubGlobal("fetch", vi.fn());
     mocks.client = {
       listTweaks: vi.fn(async () => list("Cached value")),
-      startTweakStream: vi.fn(async () => ({ streamId: "stream" })),
-      stopTweakStream: vi.fn(async () => {}),
-      onTweaksChanged: vi.fn(() => () => {}),
+      subscribeTweaks: vi.fn((_connection, callback) => {
+        onSnapshot = callback;
+        const initial = snapshot;
+        if (initial) queueMicrotask(() => callback(initial));
+        return vi.fn();
+      }),
       updateTweaks: vi.fn(async () => ({ tweaks: [] })),
       invokeTweakAction: vi.fn(async () => {}),
       openExternal: vi.fn(async () => {}),
@@ -94,16 +97,11 @@ describe("Tweaks frontend with the shared host", () => {
     await act(async () => receive({ ...state }));
     await flush();
   }
-  it.each([1, 4, 6, 7, 9])("rejects unsupported protocol v%s before reading or changing tweaks", async (version) => {
-    vi.mocked(fetch).mockResolvedValue(Response.json({ version }));
+  it("starts the bundled tool without requesting a protocol version", async () => {
     await mount();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(`App reports protocol v${version}`);
     expect(mocks.client.listTweaks).not.toHaveBeenCalled();
-    expect(mocks.client.startTweakStream).not.toHaveBeenCalled();
-    expect(mocks.client.updateTweaks).not.toHaveBeenCalled();
-    vi.mocked(fetch).mockResolvedValue(Response.json({ version: 8 }));
-    await publish(true);
-    expect(mocks.client.listTweaks).toHaveBeenCalledOnce();
+    expect(mocks.client.subscribeTweaks).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("preserves values while disconnected and refreshes after reconnect", async () => {
     await mount();
@@ -115,17 +113,11 @@ describe("Tweaks frontend with the shared host", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
-    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
-    let reply!: (value: TweakList) => void;
-    vi.mocked(mocks.client.listTweaks).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          reply = resolve;
-        })
-    );
+    expect(mocks.client.listTweaks).not.toHaveBeenCalled();
+    snapshot = null;
     await publish(true);
     expect(container.querySelector("fieldset")?.disabled).toBe(true);
-    await act(async () => reply(list("Fresh value")));
+    await act(async () => onSnapshot(list("Fresh value")));
     expect(input.value).toBe("Fresh value");
     await flush();
     expect(container.querySelector("fieldset")?.disabled).toBe(false);
@@ -137,20 +129,20 @@ describe("Tweaks frontend with the shared host", () => {
     await publish(true);
     await act(async () => receive({ ...state }));
     await flush();
-    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(1);
-    expect(mocks.client.startTweakStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.listTweaks).not.toHaveBeenCalled();
+    expect(mocks.client.subscribeTweaks).toHaveBeenCalledTimes(1);
     await publish(true);
-    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(2);
-    expect(mocks.client.startTweakStream).toHaveBeenCalledTimes(2);
+    expect(mocks.client.listTweaks).not.toHaveBeenCalled();
+    expect(mocks.client.subscribeTweaks).toHaveBeenCalledTimes(2);
   });
   it("refreshes when the host changes the forwarded port", async () => {
     await mount();
     await publish(true, "http://127.0.0.1:4321/");
-    expect(mocks.client.listTweaks).toHaveBeenCalledTimes(2);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.client.listTweaks).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("retains an empty snapshot while disconnected", async () => {
-    vi.mocked(mocks.client.listTweaks).mockResolvedValue({ tweaks: [] });
+    snapshot = { tweaks: [] };
     await mount();
     await publish(false);
     expect(container.textContent).toContain("No tweaks on screen");

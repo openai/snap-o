@@ -397,6 +397,31 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("tool-sdk/runtime/src/Changed.kt", report)
         self.assertIn("tool-reader/src/Changed.java", report)
 
+    def test_reports_bundled_frontends_without_version_negotiation(self):
+        for _, path, _ in DECLARATIONS:
+            (self.repo / path).unlink(missing_ok=True)
+        declarations = {
+            "tools/network/android/core/src/main/java/com/openai/snapo/network/NetworkToolHttp.kt": "internal const val NetworkProtocolVersion = 4",
+            "tools/tweaks/android/core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt": "internal const val TweaksProtocolVersion = 8",
+            "skills/snap-o-network-inspector/scripts/snapo-network": "NETWORK_PROTOCOL_VERSION = 4",
+            "skills/snap-o-tweaks/scripts/snapo-tweaks": "TWEAKS_PROTOCOL_VERSION = 8",
+        }
+        for path, content in declarations.items():
+            self.write(path, content + "\n")
+        for tool in ("network", "tweaks"):
+            self.write(f"tools/{tool}/android/core/build.gradle.kts",
+                       'snapoTool { frontendDirectory = layout.projectDirectory.dir("../../frontend") }\n')
+        self.commit()
+        report = self.report()
+        self.assertNotIn("UNRESOLVED", report)
+        for name in ("Network", "Tweaks"):
+            self.assertIn(f"Web {name} client: bundled with its Android server; no protocol negotiation.", report)
+            self.assertIn(f"CLI {name} supported version:", report)
+        # Historical versions must still be reported for the release comparison.
+        self.assertIn("Web Network supported version:", report)
+        for path in declarations:
+            self.assertIn(path, report)
+
     def test_reports_removed_swift_network_client(self):
         label, path, declaration = DECLARATIONS[2]
         (self.repo / path).unlink()

@@ -39,312 +39,11 @@ REDACTED = "[REDACTED]"
 REQUEST_HEADERS = {"authorization", "cookie"}
 RESPONSE_HEADERS = {"set-cookie"}
 
-ADB_COMMAND_TIMEOUT = 30
 MAX_HTTP_RESPONSE_BYTES = 16 * 1024 * 1024
 
 
 class SnapOError(Exception):
     pass
-
-
-@dataclass(frozen=True)
-class Server:
-    device_id: str
-    socket_name: str
-
-    @property
-    def identifier(self):
-        return f"{self.device_id}/{self.socket_name}"
-
-    @property
-    def pid(self):
-        suffix = self.socket_name.rsplit("_", 1)[-1]
-        return int(suffix) if suffix.isdigit() else None
-
-
-def resolve_adb(explicit=None, environ=None, which=shutil.which):
-    environ = os.environ if environ is None else environ
-    configured = explicit or environ.get("SNAPO_ADB")
-    if configured:
-        resolved = which(configured) if os.sep not in configured else configured
-        if resolved and os.path.isfile(resolved) and os.access(resolved, os.X_OK):
-            return resolved
-        raise SnapOError(f"adb executable was not found at '{configured}'")
-
-    resolved = which("adb")
-    if resolved:
-        return resolved
-
-    for key in ("ANDROID_SDK_ROOT", "ANDROID_HOME"):
-        sdk_root = environ.get(key)
-        if not sdk_root:
-            continue
-        candidate = os.path.join(sdk_root, "platform-tools", "adb")
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    raise SnapOError(
-        "adb was not found; add platform-tools to PATH, set ANDROID_SDK_ROOT, or pass --adb"
-    )
-
-
-class ADB:
-    def __init__(self, executable, host=None, port=None, run=subprocess.run, timeout=ADB_COMMAND_TIMEOUT):
-        self.executable = executable
-        self.host = host
-        self.port = port
-        self._run = run
-        self.timeout = timeout
-
-    @property
-    def has_explicit_endpoint(self):
-        return self.host is not None or self.port is not None
-
-    @property
-    def endpoint(self):
-        return self.host or "127.0.0.1", self.port or 5037
-
-    def command(self, *arguments, serial=None):
-        command = [self.executable]
-        if self.host:
-            command += ["-H", self.host]
-        if self.port:
-            command += ["-P", str(self.port)]
-        if serial:
-            command += ["-s", serial]
-        command += list(arguments)
-        try:
-            result = self._run(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False,
-                timeout=self.timeout,
-            )
-        except subprocess.TimeoutExpired as error:
-            raise SnapOError(f"adb command timed out after {self.timeout} seconds") from error
-        except OSError as error:
-            raise SnapOError(f"failed to run adb: {error}") from error
-        if result.returncode:
-            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
-            raise SnapOError(f"adb command failed: {detail}")
-        return result.stdout
-
-    def devices(self):
-        return parse_devices(self.command("devices", "-l"))
-
-    def sockets(self, serial, prefix):
-        output = self.command("shell", "cat /proc/net/unix", serial=serial)
-        return parse_sockets(output, prefix)
-
-    def process_info(self, server):
-        output = self.command("shell", f"cat /proc/{server.pid}/status /proc/{server.pid}/stat /proc/{server.pid}/cmdline", serial=server.device_id)
-        return parse_process_info(output, server.pid)
-
-    def packages_for_uid(self, serial, uid):
-        output = self.command("shell", f"cmd package list packages -U --user {uid // 100000}", serial=serial)
-        packages = []
-        for line in output.splitlines():
-            match = re.fullmatch(r"package:([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+) uid:([0-9]+)", line.strip())
-            if match and int(match[2]) == uid:
-                packages.append(match[1])
-        return sorted(set(packages))
-
-
-def parse_devices(output):
-    devices = []
-    for line in output.splitlines():
-        fields = line.split()
-        if len(fields) >= 2 and fields[1].lower() in {"device", "emulator"}:
-            devices.append(fields[0])
-    return devices
-
-
-def parse_sockets(output, prefix=SOCKET_PREFIX):
-    sockets = set()
-    for line in output.splitlines():
-        fields = line.split()
-        if len(fields) < 8 or fields[3:6] != ["00010000", "0001", "01"]:
-            continue
-        name = fields[-1]
-        if re.fullmatch(re.escape("@" + prefix) + r"[1-9][0-9]{0,9}", name):
-            sockets.add(name[1:])
-    return sorted(sockets)
-
-
-def select_devices(devices, serial=None, usb=False, emulator=False):
-    if serial:
-        if serial not in devices:
-            raise SnapOError(f"Device '{serial}' is not connected")
-        return [serial]
-    if emulator:
-        matches = [device for device in devices if device.startswith("emulator-")]
-        if not matches:
-            raise SnapOError("No emulator connected")
-        if len(matches) > 1:
-            raise SnapOError("More than one emulator connected; use -s <serial>")
-        return matches
-    if usb:
-        matches = [device for device in devices if not device.startswith("emulator-")]
-        if not matches:
-            raise SnapOError("No USB device connected")
-        if len(matches) > 1:
-            raise SnapOError("More than one USB device connected; use -s <serial>")
-        return matches
-    return devices
-
-
-def discover(adb, options, prefix=SOCKET_PREFIX):
-    devices = select_devices(
-        adb.devices(),
-        serial=options.serial,
-        usb=options.usb,
-        emulator=options.emulator,
-    )
-    if not devices:
-        raise SnapOError("No connected devices found")
-    servers = []
-    for device in devices:
-        try:
-            servers.extend(Server(device, name) for name in adb.sockets(device, prefix))
-        except SnapOError:
-            continue
-    return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
-
-
-def choose_server(servers, requested):
-    if not servers:
-        raise SnapOError("No Snap-O network servers found for selected device(s)")
-    if not requested:
-        if len(servers) == 1:
-            return servers[0]
-        choices = ", ".join(server.identifier for server in servers)
-        raise SnapOError(f"Multiple sockets found; select one with -n/--socket. Available: {choices}")
-
-    if "/" in requested:
-        device_id, socket_name = requested.split("/", 1)
-        matches = [
-            server
-            for server in servers
-            if server.device_id == device_id and server.socket_name == socket_name
-        ]
-    else:
-        matches = [server for server in servers if server.socket_name == requested]
-    if not matches:
-        raise SnapOError(f"No Snap-O network server named '{requested}' found")
-    if len(matches) > 1:
-        choices = ", ".join(server.identifier for server in matches)
-        raise SnapOError(f"Socket '{requested}' exists on multiple devices. Available: {choices}")
-    return matches[0]
-
-
-class Forward:
-    def __init__(self, adb, server):
-        self.adb = adb
-        self.server = server
-        self.port = None
-
-    def __enter__(self):
-        output = self.adb.command(
-            "forward",
-            "tcp:0",
-            f"localabstract:{self.server.socket_name}",
-            serial=self.server.device_id,
-        )
-        try:
-            self.port = int(output.strip())
-        except (TypeError, ValueError) as error:
-            raise SnapOError("ADB did not report the allocated forwarding port") from error
-        return self
-
-    def __exit__(self, error_type, error, traceback):
-        if self.port is None:
-            return False
-        try:
-            self.adb.command(
-                "forward",
-                "--remove",
-                f"tcp:{self.port}",
-                serial=self.server.device_id,
-            )
-        except SnapOError:
-            if error_type is None:
-                raise
-        return False
-
-
-class LocalAbstractSocket:
-    def __init__(self, port=None, adb=None, server=None, timeout=5):
-        endpoint = ("127.0.0.1", port) if adb is None else adb.endpoint
-        try:
-            self.socket = socket.create_connection(endpoint, timeout=timeout)
-        except OSError as error:
-            raise SnapOError(f"Failed to connect to Snap-O socket: {error}") from error
-        try:
-            if adb is not None:
-                self.adb_request(f"host:transport:{server.device_id}")
-                self.adb_request(f"localabstract:{server.socket_name}")
-        except BaseException:
-            self.socket.close()
-            raise
-
-    def adb_request(self, request):
-        payload = request.encode("utf-8")
-        if len(payload) > 0xFFFF:
-            raise SnapOError("ADB request is too large")
-        try:
-            self.socket.sendall(f"{len(payload):04X}".encode("ascii") + payload)
-        except OSError as error:
-            raise SnapOError(f"Failed to write to ADB server: {error}") from error
-        status = self.read_exact(4)
-        if status == b"OKAY":
-            return
-        if status == b"FAIL":
-            try:
-                length = int(self.read_exact(4), 16)
-            except ValueError as error:
-                raise SnapOError("ADB returned an invalid failure response") from error
-            message = self.read_exact(length).decode("utf-8", errors="replace")
-            raise SnapOError(f"ADB rejected the connection: {message}")
-        raise SnapOError("ADB returned an invalid status response")
-
-    def read_exact(self, count):
-        data = bytearray()
-        while len(data) < count:
-            try:
-                chunk = self.socket.recv(count - len(data))
-            except OSError as error:
-                raise SnapOError(f"Failed to read from ADB server: {error}") from error
-            if not chunk:
-                raise SnapOError("ADB server closed the connection unexpectedly")
-            data.extend(chunk)
-        return bytes(data)
-
-
-class ServerConnection:
-    def __init__(self, adb, server):
-        self.adb = adb
-        self.server = server
-        self.forward = None
-
-    def __enter__(self):
-        if not self.adb.has_explicit_endpoint:
-            self.forward = Forward(self.adb, self.server)
-            self.forward.__enter__()
-        return self
-
-    def __exit__(self, error_type, error, traceback):
-        if self.forward is not None:
-            return self.forward.__exit__(error_type, error, traceback)
-        return False
-
-    def open_socket(self, timeout=5):
-        return LocalAbstractSocket(
-            port=self.forward.port if self.forward is not None else None,
-            adb=None if self.forward is not None else self.adb,
-            server=self.server,
-            timeout=timeout,
-        )
 
 
 class HTTPError(SnapOError):
@@ -440,76 +139,6 @@ class HTTPResponse:
             if self.response is not None:
                 self.response.close()
         self.http.close()
-
-
-def parse_process_info(output, pid):
-    if len(output) > 65536:
-        raise SnapOError("Process metadata is too large")
-    uid = re.search(r"^Uid:\s+([0-9]+)(?:\s|$)", output, re.MULTILINE)
-    stat = re.search(rf"^{pid} \(.*\) ([^\n]+)\n", output, re.MULTILINE)
-    if uid is None or stat is None:
-        raise SnapOError("Process metadata is unavailable")
-    fields = stat[1].split()
-    if len(fields) < 20 or not fields[19].isdigit():
-        raise SnapOError("Invalid process start time")
-    name = output[stat.end():].split("\0", 1)[0].strip()
-    if not name or any(ord(character) < 32 for character in name):
-        raise SnapOError("Invalid process name")
-    return {"uid": int(uid[1]), "processName": name, "startTime": fields[19]}
-
-
-def read_app_info(adb, servers):
-    results = {}
-    packages_by_uid = {}
-    for server in servers:
-        try:
-            process = adb.process_info(server)
-            key = server.device_id, process["uid"]
-            if key not in packages_by_uid:
-                packages_by_uid[key] = adb.packages_for_uid(*key)
-            packages = packages_by_uid[key]
-            hint = process["processName"].split(":", 1)[0]
-            package = hint if hint in packages else packages[0] if len(packages) == 1 else None
-            # Do not attribute metadata to a replacement process that reused the PID.
-            if adb.process_info(server) != process:
-                raise SnapOError("Process changed during discovery")
-            results[server] = {"packageName": package, "processName": process["processName"]}
-        except (SnapOError, OSError) as error:
-            print(f"Cannot identify {server.identifier}: {error}", file=sys.stderr)
-            results[server] = {}
-    return results
-
-
-def add_common_options(parser, socket_option=False, json_option=True):
-    selection = parser.add_mutually_exclusive_group()
-    selection.add_argument("-s", "--serial")
-    selection.add_argument("-d", dest="usb", action="store_true")
-    selection.add_argument("-e", dest="emulator", action="store_true")
-    if socket_option:
-        parser.add_argument("-n", "--socket")
-    parser.add_argument("--adb", help="path to the configured adb executable or shim")
-    parser.add_argument("--adb-host", help="explicit ADB server host (requires --adb-port)")
-    parser.add_argument("--adb-port", type=valid_port, help="explicit ADB server port (requires --adb-host)")
-    parser.add_argument("--adb-timeout", type=float, default=ADB_COMMAND_TIMEOUT, help="ADB command deadline in seconds, up to 90 (default: 30)")
-    if json_option:
-        parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
-
-
-def valid_port(value):
-    try:
-        port = int(value)
-    except ValueError as error:
-        raise argparse.ArgumentTypeError("port must be an integer") from error
-    if not 1 <= port <= 65535:
-        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
-    return port
-
-
-def interrupted(signum, frame):
-    # The parent CLI can send SIGTERM after the terminal has already sent SIGINT.
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    raise KeyboardInterrupt
 
 
 class Session:
@@ -885,10 +514,6 @@ class EventFilter:
         return request_id is not None and str(request_id) in self.request_ids
 
 
-def print_json(value):
-    print(json.dumps(value, separators=(",", ":"), ensure_ascii=False), flush=True)
-
-
 def event_line(message):
     method = message.get("method")
     params = message.get("params") or {}
@@ -926,24 +551,6 @@ def emit_event(message, as_json):
         print_json(message)
     else:
         print(event_line(message), flush=True)
-
-
-def emit_app(server, name, package, as_json, current_device, details=""):
-    if as_json:
-        app = {
-            "server": server.identifier,
-            "deviceId": server.device_id,
-            "socketName": server.socket_name,
-            "packageName": package,
-            "processName": name,
-            "pid": server.pid,
-        }
-        print_json(app)
-    else:
-        if current_device != server.device_id:
-            print(f"{server.device_id}:")
-        print(f"    {server.socket_name}{details}")
-    return server.device_id
 
 
 def run_list(adb, options):
@@ -1644,6 +1251,404 @@ def main(arguments=None):
     except SnapOError as error:
         print(f"snapo-network: {error}", file=sys.stderr)
         return 1
+
+
+# ADB and CLI support
+# Kept in both tool scripts so each remains a standalone file. Keep fixes in sync.
+
+ADB_COMMAND_TIMEOUT = 30
+
+
+@dataclass(frozen=True)
+class Server:
+    device_id: str
+    socket_name: str
+
+    @property
+    def identifier(self):
+        return f"{self.device_id}/{self.socket_name}"
+
+    @property
+    def pid(self):
+        suffix = self.socket_name.rsplit("_", 1)[-1]
+        return int(suffix) if suffix.isdigit() else None
+
+
+def resolve_adb(explicit=None, environ=None, which=shutil.which):
+    environ = os.environ if environ is None else environ
+    configured = explicit or environ.get("SNAPO_ADB")
+    if configured:
+        resolved = which(configured) if os.sep not in configured else configured
+        if resolved and os.path.isfile(resolved) and os.access(resolved, os.X_OK):
+            return resolved
+        raise SnapOError(f"adb executable was not found at '{configured}'")
+
+    resolved = which("adb")
+    if resolved:
+        return resolved
+
+    for key in ("ANDROID_SDK_ROOT", "ANDROID_HOME"):
+        sdk_root = environ.get(key)
+        if not sdk_root:
+            continue
+        candidate = os.path.join(sdk_root, "platform-tools", "adb")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise SnapOError(
+        "adb was not found; add platform-tools to PATH, set ANDROID_SDK_ROOT, or pass --adb"
+    )
+
+
+class ADB:
+    def __init__(self, executable, host=None, port=None, run=subprocess.run, timeout=ADB_COMMAND_TIMEOUT):
+        self.executable = executable
+        self.host = host
+        self.port = port
+        self._run = run
+        self.timeout = timeout
+
+    @property
+    def has_explicit_endpoint(self):
+        return self.host is not None or self.port is not None
+
+    @property
+    def endpoint(self):
+        return self.host or "127.0.0.1", self.port or 5037
+
+    def command(self, *arguments, serial=None):
+        command = [self.executable]
+        if self.host:
+            command += ["-H", self.host]
+        if self.port:
+            command += ["-P", str(self.port)]
+        if serial:
+            command += ["-s", serial]
+        command += list(arguments)
+        try:
+            result = self._run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+                timeout=self.timeout,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise SnapOError(f"adb command timed out after {self.timeout} seconds") from error
+        except OSError as error:
+            raise SnapOError(f"failed to run adb: {error}") from error
+        if result.returncode:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            raise SnapOError(f"adb command failed: {detail}")
+        return result.stdout
+
+    def devices(self):
+        return parse_devices(self.command("devices", "-l"))
+
+    def sockets(self, serial, prefix):
+        output = self.command("shell", "cat /proc/net/unix", serial=serial)
+        return parse_sockets(output, prefix)
+
+    def process_info(self, server):
+        output = self.command("shell", f"cat /proc/{server.pid}/status /proc/{server.pid}/stat /proc/{server.pid}/cmdline", serial=server.device_id)
+        return parse_process_info(output, server.pid)
+
+    def packages_for_uid(self, serial, uid):
+        output = self.command("shell", f"cmd package list packages -U --user {uid // 100000}", serial=serial)
+        packages = []
+        for line in output.splitlines():
+            match = re.fullmatch(r"package:([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+) uid:([0-9]+)", line.strip())
+            if match and int(match[2]) == uid:
+                packages.append(match[1])
+        return sorted(set(packages))
+
+
+def parse_devices(output):
+    devices = []
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[1].lower() in {"device", "emulator"}:
+            devices.append(fields[0])
+    return devices
+
+
+def parse_sockets(output, prefix=SOCKET_PREFIX):
+    sockets = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) < 8 or fields[3:6] != ["00010000", "0001", "01"]:
+            continue
+        name = fields[-1]
+        if re.fullmatch(re.escape("@" + prefix) + r"[1-9][0-9]{0,9}", name):
+            sockets.add(name[1:])
+    return sorted(sockets)
+
+
+def select_devices(devices, serial=None, usb=False, emulator=False):
+    if serial:
+        if serial not in devices:
+            raise SnapOError(f"Device '{serial}' is not connected")
+        return [serial]
+    if emulator:
+        matches = [device for device in devices if device.startswith("emulator-")]
+        if not matches:
+            raise SnapOError("No emulator connected")
+        if len(matches) > 1:
+            raise SnapOError("More than one emulator connected; use -s <serial>")
+        return matches
+    if usb:
+        matches = [device for device in devices if not device.startswith("emulator-")]
+        if not matches:
+            raise SnapOError("No USB device connected")
+        if len(matches) > 1:
+            raise SnapOError("More than one USB device connected; use -s <serial>")
+        return matches
+    return devices
+
+
+def discover(adb, options, prefix=SOCKET_PREFIX):
+    devices = select_devices(
+        adb.devices(),
+        serial=options.serial,
+        usb=options.usb,
+        emulator=options.emulator,
+    )
+    if not devices:
+        raise SnapOError("No connected devices found")
+    servers = []
+    for device in devices:
+        try:
+            servers.extend(Server(device, name) for name in adb.sockets(device, prefix))
+        except SnapOError:
+            continue
+    return sorted(servers, key=lambda server: (server.device_id, server.socket_name))
+
+
+def choose_server(servers, requested):
+    if not servers:
+        raise SnapOError("No Snap-O network servers found for selected device(s)")
+    if not requested:
+        if len(servers) == 1:
+            return servers[0]
+        choices = ", ".join(server.identifier for server in servers)
+        raise SnapOError(f"Multiple sockets found; select one with -n/--socket. Available: {choices}")
+
+    if "/" in requested:
+        device_id, socket_name = requested.split("/", 1)
+        matches = [
+            server
+            for server in servers
+            if server.device_id == device_id and server.socket_name == socket_name
+        ]
+    else:
+        matches = [server for server in servers if server.socket_name == requested]
+    if not matches:
+        raise SnapOError(f"No Snap-O network server named '{requested}' found")
+    if len(matches) > 1:
+        choices = ", ".join(server.identifier for server in matches)
+        raise SnapOError(f"Socket '{requested}' exists on multiple devices. Available: {choices}")
+    return matches[0]
+
+
+class Forward:
+    def __init__(self, adb, server):
+        self.adb = adb
+        self.server = server
+        self.port = None
+
+    def __enter__(self):
+        output = self.adb.command(
+            "forward",
+            "tcp:0",
+            f"localabstract:{self.server.socket_name}",
+            serial=self.server.device_id,
+        )
+        try:
+            self.port = int(output.strip())
+        except (TypeError, ValueError) as error:
+            raise SnapOError("ADB did not report the allocated forwarding port") from error
+        return self
+
+    def __exit__(self, error_type, error, traceback):
+        if self.port is None:
+            return False
+        try:
+            self.adb.command(
+                "forward",
+                "--remove",
+                f"tcp:{self.port}",
+                serial=self.server.device_id,
+            )
+        except SnapOError:
+            if error_type is None:
+                raise
+        return False
+
+
+class LocalAbstractSocket:
+    def __init__(self, port=None, adb=None, server=None, timeout=5):
+        endpoint = ("127.0.0.1", port) if adb is None else adb.endpoint
+        try:
+            self.socket = socket.create_connection(endpoint, timeout=timeout)
+        except OSError as error:
+            raise SnapOError(f"Failed to connect to Snap-O socket: {error}") from error
+        try:
+            if adb is not None:
+                self.adb_request(f"host:transport:{server.device_id}")
+                self.adb_request(f"localabstract:{server.socket_name}")
+        except BaseException:
+            self.socket.close()
+            raise
+
+    def adb_request(self, request):
+        payload = request.encode("utf-8")
+        if len(payload) > 0xFFFF:
+            raise SnapOError("ADB request is too large")
+        try:
+            self.socket.sendall(f"{len(payload):04X}".encode("ascii") + payload)
+        except OSError as error:
+            raise SnapOError(f"Failed to write to ADB server: {error}") from error
+        status = self.read_exact(4)
+        if status == b"OKAY":
+            return
+        if status == b"FAIL":
+            try:
+                length = int(self.read_exact(4), 16)
+            except ValueError as error:
+                raise SnapOError("ADB returned an invalid failure response") from error
+            message = self.read_exact(length).decode("utf-8", errors="replace")
+            raise SnapOError(f"ADB rejected the connection: {message}")
+        raise SnapOError("ADB returned an invalid status response")
+
+    def read_exact(self, count):
+        data = bytearray()
+        while len(data) < count:
+            try:
+                chunk = self.socket.recv(count - len(data))
+            except OSError as error:
+                raise SnapOError(f"Failed to read from ADB server: {error}") from error
+            if not chunk:
+                raise SnapOError("ADB server closed the connection unexpectedly")
+            data.extend(chunk)
+        return bytes(data)
+
+
+class ServerConnection:
+    def __init__(self, adb, server):
+        self.adb = adb
+        self.server = server
+        self.forward = None
+
+    def __enter__(self):
+        if not self.adb.has_explicit_endpoint:
+            self.forward = Forward(self.adb, self.server)
+            self.forward.__enter__()
+        return self
+
+    def __exit__(self, error_type, error, traceback):
+        if self.forward is not None:
+            return self.forward.__exit__(error_type, error, traceback)
+        return False
+
+    def open_socket(self, timeout=5):
+        return LocalAbstractSocket(
+            port=self.forward.port if self.forward is not None else None,
+            adb=None if self.forward is not None else self.adb,
+            server=self.server,
+            timeout=timeout,
+        )
+
+
+def parse_process_info(output, pid):
+    if len(output) > 65536:
+        raise SnapOError("Process metadata is too large")
+    uid = re.search(r"^Uid:\s+([0-9]+)(?:\s|$)", output, re.MULTILINE)
+    stat = re.search(rf"^{pid} \(.*\) ([^\n]+)\n", output, re.MULTILINE)
+    if uid is None or stat is None:
+        raise SnapOError("Process metadata is unavailable")
+    fields = stat[1].split()
+    if len(fields) < 20 or not fields[19].isdigit():
+        raise SnapOError("Invalid process start time")
+    name = output[stat.end():].split("\0", 1)[0].strip()
+    if not name or any(ord(character) < 32 for character in name):
+        raise SnapOError("Invalid process name")
+    return {"uid": int(uid[1]), "processName": name, "startTime": fields[19]}
+
+
+def read_app_info(adb, servers):
+    results = {}
+    packages_by_uid = {}
+    for server in servers:
+        try:
+            process = adb.process_info(server)
+            key = server.device_id, process["uid"]
+            if key not in packages_by_uid:
+                packages_by_uid[key] = adb.packages_for_uid(*key)
+            packages = packages_by_uid[key]
+            hint = process["processName"].split(":", 1)[0]
+            package = hint if hint in packages else packages[0] if len(packages) == 1 else None
+            # Do not attribute metadata to a replacement process that reused the PID.
+            if adb.process_info(server) != process:
+                raise SnapOError("Process changed during discovery")
+            results[server] = {"packageName": package, "processName": process["processName"]}
+        except (SnapOError, OSError) as error:
+            print(f"Cannot identify {server.identifier}: {error}", file=sys.stderr)
+            results[server] = {}
+    return results
+
+
+def add_common_options(parser, socket_option=False, json_option=True):
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("-s", "--serial")
+    selection.add_argument("-d", dest="usb", action="store_true")
+    selection.add_argument("-e", dest="emulator", action="store_true")
+    if socket_option:
+        parser.add_argument("-n", "--socket")
+    parser.add_argument("--adb", help="path to the configured adb executable or shim")
+    parser.add_argument("--adb-host", help="explicit ADB server host (requires --adb-port)")
+    parser.add_argument("--adb-port", type=valid_port, help="explicit ADB server port (requires --adb-host)")
+    parser.add_argument("--adb-timeout", type=float, default=ADB_COMMAND_TIMEOUT, help="ADB command deadline in seconds, up to 90 (default: 30)")
+    if json_option:
+        parser.add_argument("--json", action="store_true", help="emit newline-delimited JSON")
+
+
+def valid_port(value):
+    try:
+        port = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("port must be an integer") from error
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return port
+
+
+def interrupted(signum, frame):
+    # The parent CLI can send SIGTERM after the terminal has already sent SIGINT.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    raise KeyboardInterrupt
+
+
+def print_json(value):
+    print(json.dumps(value, separators=(",", ":"), ensure_ascii=False), flush=True)
+
+
+def emit_app(server, name, package, as_json, current_device, details=""):
+    if as_json:
+        app = {
+            "server": server.identifier,
+            "deviceId": server.device_id,
+            "socketName": server.socket_name,
+            "packageName": package,
+            "processName": name,
+            "pid": server.pid,
+        }
+        print_json(app)
+    else:
+        if current_device != server.device_id:
+            print(f"{server.device_id}:")
+        print(f"    {server.socket_name}{details}")
+    return server.device_id
 
 
 if __name__ == "__main__":

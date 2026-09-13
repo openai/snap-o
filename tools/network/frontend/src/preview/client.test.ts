@@ -17,10 +17,7 @@ describe("synthetic preview client", () => {
     expect(writeText).toHaveBeenCalledWith("Synthetic payload");
   });
 
-  it.each([
-    { encoding: "utf8" as const, data: "demo", bytes: [100, 101, 109, 111] },
-    { encoding: "base64" as const, data: "AAH/", bytes: [0, 1, 255] }
-  ])("downloads $encoding data and releases its temporary URL", async ({ encoding, data, bytes }) => {
+  it("downloads a Blob and releases its temporary URL", async () => {
     const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:preview-download");
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
@@ -28,22 +25,14 @@ describe("synthetic preview client", () => {
       expect(this.isConnected).toBe(true);
     });
 
-    await expect(previewClient.saveFile({ encoding, data, defaultPath: "sample.bin" })).resolves.toEqual({
-      saved: true
-    });
+    const data = new Blob([new Uint8Array([0, 1, 255])], { type: "image/png" });
+    await expect(previewClient.saveFile({ data, name: "sample.png" })).resolves.toBe(true);
+    expect(createObjectURL).toHaveBeenCalledWith(data);
 
     const download = click.mock.instances[0] as HTMLAnchorElement;
-    expect(download.download).toBe("sample.bin");
+    expect(download.download).toBe("sample.png");
     expect(download.href).toBe("blob:preview-download");
     expect(download.isConnected).toBe(false);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:preview-download");
-    const blob = createObjectURL.mock.calls[0][0];
-    const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as ArrayBuffer);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsArrayBuffer(blob);
-    });
-    expect([...new Uint8Array(buffer)]).toEqual(bytes);
   });
 });

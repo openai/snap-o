@@ -1,3 +1,4 @@
+import { version } from "../../../../package.json";
 import type { NetworkClient } from "../../../network/client";
 import type { RequestBodies } from "../../../network/bridge-types";
 import { estimatedStringStorageBytes, hydratedBodyRetentionLimitBytes } from "../../../network/body-retention";
@@ -35,12 +36,9 @@ export async function exportAsHar(
 ): Promise<void> {
   if (records.length === 0) return;
   const hydrated = await hydrateRecordsForHar(client, records, maximumBodyBytes, loadMissingBodies);
-  const appVersion = await client.appVersion();
   await client.saveFile({
-    defaultPath: harFileName(hydrated.length),
-    data: buildHar(hydrated, appVersion),
-    mimeType: "application/har+json",
-    directoryKind: "har"
+    name: harFileName(hydrated.length),
+    data: new Blob([buildHar(hydrated, version)], { type: "application/har+json" })
   });
 }
 

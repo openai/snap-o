@@ -1,32 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  ExclusionFiltersRevision,
-  exclusionFilterForUrl,
-  normalizeExclusionFilter,
-  normalizeExclusionFilters
-} from "./exclusionFilters";
+import { exclusionFilterForUrl, normalizeExclusionFilter, normalizeExclusionFilters } from "./exclusionFilters";
 
 describe("persistent Snap-O exclusion filters", () => {
-  it("rejects startup snapshots after a newer exclusion-filter update", () => {
-    const revision = new ExclusionFiltersRevision();
-    const startupSnapshot = revision.capture();
-
-    revision.invalidate();
-
-    expect(revision.isCurrent(startupSnapshot)).toBe(false);
-    expect(revision.isCurrent(revision.capture())).toBe(true);
-  });
-
-  it("rejects a failed mutation's recovery after a newer exclusion-filter update", () => {
-    const revision = new ExclusionFiltersRevision();
-
-    revision.invalidate();
-    const recoverySnapshot = revision.capture();
-    revision.invalidate();
-
-    expect(revision.isCurrent(recoverySnapshot)).toBe(false);
-  });
-
   it("stores exclusions in the same minus-prefixed syntax as regular Snap-O filters", () => {
     expect(normalizeExclusionFilter("  API.Example.COM  ")).toBe("-api.example.com");
     expect(normalizeExclusionFilter("-API.Example.COM")).toBe("-api.example.com");

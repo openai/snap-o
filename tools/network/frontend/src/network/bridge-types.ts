@@ -39,25 +39,6 @@ export interface StreamEvent {
   message: CdpMessage;
 }
 
-export type StreamStatusState = "started" | "stderr" | "exit" | "error";
-
-export interface StreamStatus {
+export interface StreamClosed {
   streamId: string;
-  state: StreamStatusState;
-  message?: string;
-  code?: number | null;
-  signal?: string | null;
-}
-
-export interface SaveFileInput {
-  defaultPath: string;
-  data: string;
-  mimeType?: string | null;
-  encoding?: "utf8" | "base64";
-  directoryKind?: "har";
-}
-
-export interface SaveFileResult {
-  saved: boolean;
-  path?: string | null;
 }

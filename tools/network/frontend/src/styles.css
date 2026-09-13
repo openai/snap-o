@@ -1,4 +1,4 @@
-@import url("./shared.css");
+@import url("../../../frontend/shared.css");
 
 .app-shell {
   min-height: 0;
@@ -55,29 +55,6 @@ body.split-pane-resizing {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.protocol-warning {
-  margin: 8px 8px 0;
-  padding: 12px;
-  background: var(--warning-strong);
-  color: var(--on-warning-strong);
-}
-
-.protocol-warning-title {
-  margin-bottom: 8px;
-  font-size: 14px;
-  line-height: 18px;
-  font-weight: 500;
-}
-
-.protocol-warning-body {
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.protocol-warning-body + .protocol-warning-body {
-  margin-top: 6px;
 }
 
 .toolbar-icon-button {
@@ -236,10 +213,6 @@ body.split-pane-resizing {
   position: relative;
   flex: 1;
   min-height: 0;
-}
-
-.sidebar > .protocol-warning + .record-list-frame {
-  margin-top: 8px;
 }
 
 .record-list {

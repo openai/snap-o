@@ -1,12 +1,12 @@
-import type { ToolMetadata } from "../useHostConnection";
-import type { StreamStarted, StreamStatus } from "./bridge-types";
+import type { ToolConnection } from "@snap-o/tool-host";
+import type { StreamStarted, StreamClosed } from "./bridge-types";
 
 export type StreamLifecycleState = "starting" | "streaming" | "retrying";
 
 interface StreamLifecycleClient {
-  startStream(input: ToolMetadata): Promise<StreamStarted>;
+  startStream(input: ToolConnection): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
-  onStatus(callback: (status: StreamStatus) => void): () => void;
+  onClosed(callback: (event: StreamClosed) => void): () => void;
 }
 
 interface StreamControllerOptions {
@@ -17,17 +17,17 @@ interface StreamControllerOptions {
 
 const defaultRetryDelaysMs = [250, 500, 1_000, 2_000, 4_000, 5_000] as const;
 const defaultStableAfterMs = 10_000;
-const maximumBufferedTerminalStatuses = 32;
+const maximumBufferedClosedStreams = 32;
 
 export class NetworkStreamController {
   private readonly retryDelaysMs: readonly number[];
   private readonly stableAfterMs: number;
   private readonly now: () => number;
-  private readonly terminalStreams = new Set<string>();
+  private readonly closedStreams = new Set<string>();
   private activeStreamId: string | null = null;
   private activeSince: number | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
-  private unsubscribeStatus: (() => void) | null = null;
+  private unsubscribeClosed: (() => void) | null = null;
   private retryIndex = 0;
   private attemptGeneration = 0;
   private started = false;
@@ -35,7 +35,7 @@ export class NetworkStreamController {
 
   constructor(
     private readonly client: StreamLifecycleClient,
-    private readonly input: ToolMetadata,
+    private readonly input: ToolConnection,
     private readonly didChangeState: (state: StreamLifecycleState) => void,
     options: StreamControllerOptions = {}
   ) {
@@ -50,7 +50,7 @@ export class NetworkStreamController {
   start(): void {
     if (this.started || this.disposed) return;
     this.started = true;
-    this.unsubscribeStatus = this.client.onStatus((status) => this.handleStatus(status));
+    this.unsubscribeClosed = this.client.onClosed((event) => this.handleClosed(event));
     this.didChangeState("starting");
     this.startAttempt();
   }
@@ -59,8 +59,8 @@ export class NetworkStreamController {
     if (this.disposed) return;
     this.disposed = true;
     this.attemptGeneration += 1;
-    this.unsubscribeStatus?.();
-    this.unsubscribeStatus = null;
+    this.unsubscribeClosed?.();
+    this.unsubscribeClosed = null;
     if (this.retryTimer != null) clearTimeout(this.retryTimer);
     this.retryTimer = null;
     const streamId = this.activeStreamId;
@@ -80,7 +80,7 @@ export class NetworkStreamController {
           return;
         }
 
-        if (this.terminalStreams.delete(started.streamId)) {
+        if (this.closedStreams.delete(started.streamId)) {
           this.scheduleRetry();
           return;
         }
@@ -94,10 +94,10 @@ export class NetworkStreamController {
       });
   }
 
-  private handleStatus(status: StreamStatus): void {
-    if (this.disposed || (status.state !== "exit" && status.state !== "error")) return;
-    if (status.streamId !== this.activeStreamId) {
-      this.rememberTerminalStream(status.streamId);
+  private handleClosed(event: StreamClosed): void {
+    if (this.disposed) return;
+    if (event.streamId !== this.activeStreamId) {
+      this.rememberClosedStream(event.streamId);
       return;
     }
 
@@ -109,12 +109,12 @@ export class NetworkStreamController {
     this.scheduleRetry();
   }
 
-  private rememberTerminalStream(streamId: string): void {
-    this.terminalStreams.add(streamId);
-    while (this.terminalStreams.size > maximumBufferedTerminalStatuses) {
-      const oldest = this.terminalStreams.values().next().value as string | undefined;
+  private rememberClosedStream(streamId: string): void {
+    this.closedStreams.add(streamId);
+    while (this.closedStreams.size > maximumBufferedClosedStreams) {
+      const oldest = this.closedStreams.values().next().value as string | undefined;
       if (oldest == null) break;
-      this.terminalStreams.delete(oldest);
+      this.closedStreams.delete(oldest);
     }
   }
 

@@ -1,21 +1,5 @@
 import { parseKeywordSearchQuery } from "../../../network/keyword-search";
 
-export class ExclusionFiltersRevision {
-  private value = 0;
-
-  capture(): number {
-    return this.value;
-  }
-
-  invalidate(): void {
-    this.value += 1;
-  }
-
-  isCurrent(revision: number): boolean {
-    return this.value === revision;
-  }
-}
-
 export function normalizeExclusionFilter(value: string): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0) return null;

@@ -1,6 +1,7 @@
+import { version } from "../../../../package.json";
 import { describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
-import type { RequestBodies, SaveFileInput } from "../../../network/bridge-types";
+import type { RequestBodies } from "../../../network/bridge-types";
 import type { ToolRecord, RequestRecord, StreamEventRecord } from "../../../network/cdp";
 import { copyCurl, exportAsHar, hydrateRecordsForHar } from "./exportActions";
 
@@ -9,8 +10,7 @@ describe("export body readiness", () => {
     const client = {
       loadBodies: vi.fn(),
       copyText: vi.fn(async () => {}),
-      appVersion: vi.fn(async () => "test"),
-      saveFile: vi.fn(async () => ({ saved: true }))
+      saveFile: vi.fn(async () => true)
     } as unknown as NetworkClient;
     const complete = request("offline", {
       method: "POST",
@@ -23,9 +23,12 @@ describe("export body readiness", () => {
     await exportAsHar(client, [complete], undefined, false);
     expect(client.loadBodies).not.toHaveBeenCalled();
     expect(client.copyText).toHaveBeenCalledOnce();
-    expect(client.saveFile).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.stringContaining("cached-response") })
-    );
+    const { name, data } = vi.mocked(client.saveFile).mock.calls[0][0];
+    expect(name).toMatch(/\.har$/u);
+    expect(data.type).toBe("application/har+json");
+    const har = JSON.parse(await data.text());
+    expect(har.log.creator.version).toBe(version);
+    expect(har.log.entries[0].response.content.text).toBe("cached-response");
   });
   it("does not query a request body before its upload is known to be complete", async () => {
     const client = {
@@ -138,13 +141,12 @@ describe("HAR body hydration budget", () => {
   });
 
   it("omits retained SSE text that does not fit while preserving valid HAR metadata", async () => {
-    const saved: SaveFileInput[] = [];
+    const saved: Parameters<NetworkClient["saveFile"]>[0][] = [];
     const client = {
       loadBodies: vi.fn(async (input: { requestId: string }) => ({ requestId: input.requestId })),
-      appVersion: vi.fn(async () => "test"),
-      saveFile: vi.fn(async (input: SaveFileInput) => {
+      saveFile: vi.fn(async (input: Parameters<NetworkClient["saveFile"]>[0]) => {
         saved.push(input);
-        return { saved: true };
+        return true;
       })
     } as unknown as NetworkClient;
     const streaming = request("stream", {
@@ -155,7 +157,7 @@ describe("HAR body hydration budget", () => {
     await exportAsHar(client, [streaming], 8);
 
     expect(client.loadBodies).not.toHaveBeenCalled();
-    const har = JSON.parse(saved[0].data) as {
+    const har = JSON.parse(await saved[0].data.text()) as {
       log: { entries: Array<{ request: { url: string }; response: { content: { text?: string } } }> };
     };
     expect(har.log.entries).toHaveLength(1);

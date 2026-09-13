@@ -12,12 +12,11 @@ import {
   type ToolDataState,
   type ToolRecord
 } from "../../../network/cdp";
-import type { ToolMetadata } from "../../../useHostConnection";
-import { supportedProtocolVersion } from "../lib/protocol";
+import type { ToolConnection } from "@snap-o/tool-host";
 import { NetworkStreamController, type StreamLifecycleState } from "../../../network/stream-controller";
 import { useToolUiState } from "./useToolUiState";
 import { exportAsHar } from "../lib/exportActions";
-import { ExclusionFiltersRevision, normalizeExclusionFilter, normalizeExclusionFilters } from "../lib/exclusionFilters";
+import { normalizeExclusionFilter, normalizeExclusionFilters } from "../lib/exclusionFilters";
 import {
   clearCompleted,
   countExcludedRecords,
@@ -31,7 +30,6 @@ import {
 export interface NetworkToolModel {
   client: NetworkClient;
   uiState: ReturnType<typeof useToolUiState>;
-  metadata: ToolMetadata | null;
   isConnected: boolean;
   selectedRecord: ToolRecord | null;
   selectedRecordId: string | null;
@@ -51,21 +49,16 @@ export interface NetworkToolModel {
   retryResponseBody(): void;
 }
 
-export function useNetworkToolModel(
-  client: NetworkClient,
-  metadata: ToolMetadata | null,
-  isConnected: boolean,
-  connectionRevision = 0
-): NetworkToolModel {
+export function useNetworkToolModel(client: NetworkClient, connection: ToolConnection | null): NetworkToolModel {
+  const isConnected = connection !== null;
   const [state, setState] = useState<ToolDataState>(() => createEmptyToolState());
   const [preferredRecordId, setPreferredRecordId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [exclusionFilters, setExclusionFilters] = useState<string[]>([]);
-  const [exclusionFiltersRevision] = useState(() => new ExclusionFiltersRevision());
   const [sortNewestFirst, setSortNewestFirst] = useState(false);
   const [, setBodyCacheRevision] = useState(0);
   const [streamLifecycle, setStreamLifecycle] = useState<{
-    revision: number;
+    connection: ToolConnection;
     state: StreamLifecycleState;
   } | null>(null);
   const uiState = useToolUiState();
@@ -79,37 +72,25 @@ export function useNetworkToolModel(
       const filter = normalizeExclusionFilter(value);
       if (filter == null) return;
 
-      exclusionFiltersRevision.invalidate();
-      setExclusionFilters((current) => (current.includes(filter) ? current : [...current, filter].sort()));
-
-      void client.addExclusionFilter(filter).catch(() => {
-        const revision = exclusionFiltersRevision.capture();
-        void client.listExclusionFilters().then(
-          (filters) => {
-            if (exclusionFiltersRevision.isCurrent(revision)) setExclusionFilters(normalizeExclusionFilters(filters));
-          },
-          () => {}
-        );
-      });
+      try {
+        client.addExclusionFilter(filter);
+        setExclusionFilters(normalizeExclusionFilters(client.listExclusionFilters()));
+      } catch {
+        // Keep the current filters if storage rejects the write.
+      }
     },
-    [client, exclusionFiltersRevision]
+    [client]
   );
   const removeExclusionFilter = useCallback(
     (filter: string) => {
-      exclusionFiltersRevision.invalidate();
-      setExclusionFilters((current) => current.filter((value) => value !== filter));
-
-      void client.removeExclusionFilter(filter).catch(() => {
-        const revision = exclusionFiltersRevision.capture();
-        void client.listExclusionFilters().then(
-          (filters) => {
-            if (exclusionFiltersRevision.isCurrent(revision)) setExclusionFilters(normalizeExclusionFilters(filters));
-          },
-          () => {}
-        );
-      });
+      try {
+        client.removeExclusionFilter(filter);
+        setExclusionFilters(normalizeExclusionFilters(client.listExclusionFilters()));
+      } catch {
+        // Keep the current filters if storage rejects the write.
+      }
     },
-    [client, exclusionFiltersRevision]
+    [client]
   );
 
   useEffect(() => {
@@ -117,30 +98,14 @@ export function useNetworkToolModel(
   }, [bodyLoader]);
 
   useEffect(() => {
-    let disposed = false;
-    const reload = () => {
-      const revision = exclusionFiltersRevision.capture();
-      void client.listExclusionFilters().then(
-        (filters) => {
-          if (!disposed && exclusionFiltersRevision.isCurrent(revision))
-            setExclusionFilters(normalizeExclusionFilters(filters));
-        },
-        () => {}
-      );
-    };
+    const reload = () => setExclusionFilters(normalizeExclusionFilters(client.listExclusionFilters()));
     const changed = (event: StorageEvent) => {
-      if (event.key === null || event.key === "network.exclusionFilters") {
-        exclusionFiltersRevision.invalidate();
-        reload();
-      }
+      if (event.key === null || event.key === "network.exclusionFilters") reload();
     };
     reload();
     window.addEventListener("storage", changed);
-    return () => {
-      disposed = true;
-      window.removeEventListener("storage", changed);
-    };
-  }, [client, exclusionFiltersRevision]);
+    return () => window.removeEventListener("storage", changed);
+  }, [client]);
 
   useEffect(() => {
     const unsubscribeEvent = client.onEvent((event) => {
@@ -149,16 +114,16 @@ export function useNetworkToolModel(
     return unsubscribeEvent;
   }, [client]);
 
-  const streamIsRetrying = streamLifecycle?.revision === connectionRevision && streamLifecycle.state === "retrying";
+  const streamIsRetrying = streamLifecycle?.connection === connection && streamLifecycle.state === "retrying";
 
   useEffect(() => {
-    if (!isConnected || !metadata || metadata.protocolVersion !== supportedProtocolVersion) return;
-    const controller = new NetworkStreamController(client, metadata, (state) => {
-      setStreamLifecycle({ revision: connectionRevision, state });
+    if (!connection) return;
+    const controller = new NetworkStreamController(client, connection, (state) => {
+      setStreamLifecycle({ connection, state });
     });
     controller.start();
     return () => controller.dispose();
-  }, [client, metadata, isConnected, connectionRevision]);
+  }, [client, connection]);
 
   const allRecords = hydrateCachedBodies([...state.requests.values(), ...state.webSockets.values()], bodyCache);
 
@@ -305,7 +270,6 @@ export function useNetworkToolModel(
   return {
     client,
     uiState,
-    metadata,
     isConnected,
     selectedRecord,
     selectedRecordId,

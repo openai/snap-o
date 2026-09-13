@@ -3,7 +3,6 @@ import { BezierEditor } from "./BezierEditor";
 import { ChevronDown, RotateCcw } from "lucide-preact";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import type {
-  StreamStarted,
   TweakActionDescriptor,
   TweakDescriptor,
   TweakUpdate,
@@ -11,7 +10,7 @@ import type {
   TweakValueDescriptor
 } from "../../types";
 import type { TweaksClient } from "./client";
-import { host, type ColorPicker } from "@snap-o/tool-host";
+import { host, type ColorPicker, type ToolConnection } from "@snap-o/tool-host";
 import { ToolWaitingState } from "../app-tool/components/ToolWaitingState";
 import { TweakUpdateQueue } from "./tweak-update-queue";
 
@@ -35,14 +34,11 @@ const docsUrl = "https://openai.github.io/snap-o/tweaks.html#expose-values";
 
 export function TweaksToolApp({
   client,
-  isConnected,
-  connectionRevision = 0
+  connection
 }: {
   client: TweaksClient;
-  isConnected: boolean;
-  connectionRevision?: number;
+  connection: ToolConnection | null;
 }): JSX.Element {
-  const connection = useMemo(() => ({ isConnected, connectionRevision }), [isConnected, connectionRevision]);
   const [tweaks, setTweaks] = useState<TweakDescriptor[]>([]);
   const [hasSnapshot, setHasSnapshot] = useState(false);
   const [connectionState, setConnectionState] = useState<{
@@ -57,7 +53,7 @@ export function TweaksToolApp({
   const sectionListId = useId();
   const activeColorPanelRef = useRef<ActiveColorPanelSession | null>(null);
   const currentConnection = connectionState?.connection === connection ? connectionState : null;
-  const canEdit = isConnected && currentConnection?.error === null;
+  const canEdit = connection !== null && !connection.signal.aborted && currentConnection?.error === null;
   const connectionError = currentConnection?.error ?? null;
   const displayedError = connectionError ?? error;
   const queue = useMemo(
@@ -90,79 +86,55 @@ export function TweaksToolApp({
   );
 
   useEffect(() => {
-    if (!isConnected) return;
+    if (!connection) return;
     let disposed = false;
-    let streamStart: Promise<StreamStarted> | undefined;
+    let unsubscribe: (() => void) | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let retryDelay = 250;
-    let streamFailed = false;
 
-    const applySnapshot = (incoming: TweakDescriptor[]) => {
-      // Preserve the queue state at receipt, before React defers this update.
-      const pending = new Map(queue.pending);
-      const inFlight = new Set(queue.inFlight);
-      setTweaks((current) => reconcileStreamedTweaks(current, incoming, pending, inFlight));
-      setHasSnapshot(true);
-      setError(null);
-    };
-
-    const unsubscribe = client.onTweaksChanged((event) => {
-      if (disposed) {
-        return;
-      }
-
-      // The initial event can arrive before the start reply identifies its stream.
-      const pending = streamStart;
-      void pending?.then(
-        ({ streamId }) => {
-          if (disposed || streamFailed || pending !== streamStart || event.streamId !== streamId) return;
-          applySnapshot(event.tweaks);
-          setConnectionState({ connection, error: null });
-        },
-        () => {}
-      );
-    });
-
-    const connect = async () => {
-      streamStart = undefined;
-      streamFailed = false;
-      const failed = (cause: unknown) => {
-        if (disposed || streamFailed) return;
-        streamFailed = true;
+    const connect = () => {
+      unsubscribe?.();
+      let failed = false;
+      const fail = (cause: unknown) => {
+        if (disposed || failed || connection.signal.aborted) return;
+        failed = true;
         queue.cancel();
         setSaving(false);
         setConnectionState({
           connection,
           error: cause instanceof Error ? cause.message : "Unable to connect to tweaks."
         });
-        retryTimer = setTimeout(() => void connect(), retryDelay);
+        retryTimer = setTimeout(connect, retryDelay);
         retryDelay = Math.min(retryDelay * 2, 4_000);
       };
       try {
-        const response = await client.listTweaks();
-        if (disposed) return;
-        applySnapshot(response.tweaks);
-        setConnectionState(null);
-        setSaving(false);
-
-        streamStart = client.startTweakStream(failed);
-        await streamStart;
-        if (disposed || streamFailed) return;
-        setConnectionState({ connection, error: null });
+        unsubscribe = client.subscribeTweaks(
+          connection,
+          (snapshot) => {
+            if (disposed || failed || connection.signal.aborted) return;
+            // Preserve queue state at receipt, before Preact defers this update.
+            const pending = new Map(queue.pending);
+            const inFlight = new Set(queue.inFlight);
+            setTweaks((current) => reconcileStreamedTweaks(current, snapshot.tweaks, pending, inFlight));
+            setHasSnapshot(true);
+            setError(null);
+            setConnectionState({ connection, error: null });
+          },
+          fail
+        );
       } catch (cause) {
-        failed(cause);
+        fail(cause);
       }
     };
-    void connect();
+    connect();
 
     return () => {
       disposed = true;
       clearTimeout(retryTimer);
       queue.cancel();
-      unsubscribe();
-      void streamStart?.then(({ streamId }) => client.stopTweakStream(streamId)).catch(() => {});
+      unsubscribe?.();
     };
-  }, [client, connection, isConnected, queue]);
+  }, [client, connection, queue]);
 
   const closeActiveColorPanel = useCallback(async () => {
     const active = activeColorPanelRef.current;

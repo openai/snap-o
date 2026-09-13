@@ -346,7 +346,7 @@ The lower-level `connection` event remains available through `addEventListener`.
 
 The package also exports `Host`, `ToolHost`, and the related types. Most frontends use the `host` object. Tests can supply a fake with just the properties and methods their code uses. `ToolHost` accepts a custom transport for testing messages to and from Snap-O.
 
-The SDK reports connection changes. Your frontend makes HTTP requests, reads JSON, checks protocol versions, and reconnects its event streams.
+The SDK reports connection changes. Your frontend makes HTTP requests, validates response data, and reconnects its event streams.
 
 ## Toolbar and native helpers {#native}
 

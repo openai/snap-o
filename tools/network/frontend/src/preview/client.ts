@@ -3,12 +3,10 @@ import type { ToolContentClient } from "../network/client";
 export const previewClient: ToolContentClient = {
   copyText: (text) => navigator.clipboard.writeText(text),
   async saveFile(input) {
-    const data =
-      input.encoding === "base64" ? Uint8Array.from(atob(input.data), (char) => char.charCodeAt(0)) : input.data;
-    const url = URL.createObjectURL(new Blob([data], { type: input.mimeType ?? "application/octet-stream" }));
+    const url = URL.createObjectURL(input.data);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = input.defaultPath;
+    anchor.download = input.name;
     anchor.hidden = true;
     document.body.append(anchor);
     try {
@@ -17,6 +15,6 @@ export const previewClient: ToolContentClient = {
       anchor.remove();
       URL.revokeObjectURL(url);
     }
-    return { saved: true };
+    return true;
   }
 };
