@@ -29,8 +29,9 @@ dependencies {
     testImplementation(libs.junit4)
 }
 
-// These first-party frontends use the SDK checkout while external tools use an npm package.
+// Include sources outside each frontend directory in incremental builds.
 tasks.named("toolBuild") {
+    inputs.dir(rootProject.file("tools/frontend"))
     inputs.dir(rootProject.file("tool-sdk/host/src"))
     inputs.file(rootProject.file("tool-sdk/host/tsconfig.build.json"))
 }

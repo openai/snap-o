@@ -4,9 +4,10 @@ import type { StreamEvent } from "./bridge-types";
 
 const baseURL = "http://127.0.0.1:1234/";
 const metadata = {
+  baseURL,
+  signal: new AbortController().signal,
   name: "Demo",
   packageName: "example.demo",
-  protocolVersion: 4,
   processIdentity: "boot:20:123"
 };
 const event = (sequence: number, name = "request") => ({
@@ -29,7 +30,7 @@ afterEach(() => {
 function setup(history: (events: Events) => Response | Promise<Response>) {
   const events = new Events();
   const received: StreamEvent[] = [];
-  const status = vi.fn();
+  const closed = vi.fn();
   const fetchRequest = vi.fn<typeof fetch>(async (url, init) => {
     if (String(url).endsWith("/network")) {
       expect(init?.headers).toEqual({ Accept: "application/x-ndjson" });
@@ -42,12 +43,12 @@ function setup(history: (events: Events) => Response | Promise<Response>) {
     queueMicrotask(() => events.dispatchEvent(new Event("open")));
     return events as unknown as EventSource;
   });
-  const connection = new NetworkConnection(baseURL, metadata, (value) => received.push(value), status, {
+  const connection = new NetworkConnection(metadata, (value) => received.push(value), closed, {
     fetch: fetchRequest,
     eventSource
   });
   connections.push(connection);
-  return { connection, events, received, fetchRequest, eventSource, status };
+  return { connection, events, received, fetchRequest, eventSource, closed };
 }
 function snapshot(text = "", sequence = "0") {
   return new Response(text, { headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": sequence } });
@@ -91,11 +92,11 @@ describe("direct Network HTTP and SSE connection", () => {
     expect(events.close).toHaveBeenCalled();
   });
   it("closes EventSource on failure so the controller can request a new snapshot", async () => {
-    const { connection, events, status } = setup(() => snapshot());
+    const { connection, events, closed } = setup(() => snapshot());
     await connection.start();
     events.dispatchEvent(new Event("error"));
     expect(events.close).toHaveBeenCalledTimes(1);
-    expect(status).toHaveBeenCalledWith(expect.objectContaining({ state: "exit" }));
+    expect(closed).toHaveBeenCalledWith({ streamId: connection.id });
     await expect(connection.loadBodies({ processId: "boot:20:123", requestId: "one" })).rejects.toThrow("disconnected");
   });
   it("uses the bound endpoint for body reads and encodes request IDs", async () => {

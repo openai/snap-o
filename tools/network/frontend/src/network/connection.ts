@@ -1,7 +1,6 @@
-import type { ToolMetadata } from "../useHostConnection";
+import type { ToolConnection } from "@snap-o/tool-host";
 import { readText } from "../http";
-import type { CdpMessage, LoadBodiesInput, RequestBodies, StreamEvent, StreamStatus } from "./bridge-types";
-import { supportedProtocolVersion } from "../features/network-tool/lib/protocol";
+import type { CdpMessage, LoadBodiesInput, RequestBodies, StreamEvent, StreamClosed } from "./bridge-types";
 
 const maximumRecordBytes = 16 * 1024 * 1024;
 const encoder = new TextEncoder();
@@ -15,7 +14,6 @@ export class NetworkConnection {
   readonly id = crypto.randomUUID();
   private readonly abort = new AbortController();
   private stream: EventSource | undefined;
-  private readonly processId: string;
   private closed = false;
   private rejectOpening: ((error: Error) => void) | undefined;
   private replaying = true;
@@ -24,23 +22,18 @@ export class NetworkConnection {
   private bufferedBytes = 0;
 
   constructor(
-    private baseURL: string,
-    private metadata: ToolMetadata,
+    private readonly connection: ToolConnection,
     private onEvent: (event: StreamEvent) => void,
-    private onStatus: (status: StreamStatus) => void,
+    private onClosed: (event: StreamClosed) => void,
     private transport: ConnectionTransport = {
       fetch: (...args) => fetch(...args),
       eventSource: (url) => new EventSource(url)
     }
-  ) {
-    this.processId = metadata.processIdentity;
-  }
+  ) {}
 
   async start(): Promise<void> {
     try {
-      if (this.metadata.protocolVersion !== supportedProtocolVersion) {
-        throw new Error("This app uses an unsupported Network Tool protocol.");
-      }
+      this.checkOpen();
       await this.openEvents();
       await this.history();
       this.checkOpen();
@@ -63,12 +56,12 @@ export class NetworkConnection {
     this.stream?.close();
     this.buffered = [];
     this.bufferedBytes = 0;
-    this.onStatus({ streamId: this.id, state: "exit", message: error.message });
+    this.onClosed({ streamId: this.id });
   }
 
   async loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
     this.checkOpen();
-    if (input.processId !== this.processId) {
+    if (input.processId !== this.connection.processIdentity) {
       throw new Error("The request belongs to an earlier app process.");
     }
     const result: RequestBodies = { requestId: input.requestId };
@@ -94,18 +87,18 @@ export class NetworkConnection {
   }
 
   private url(path: string): string {
-    return new URL(path, this.baseURL).href;
+    return new URL(path, this.connection.baseURL).href;
   }
 
   private checkOpen(): void {
-    if (this.closed) throw new Error("Tool is disconnected.");
+    if (this.closed || this.connection.signal.aborted) throw new Error("Tool is disconnected.");
   }
 
   private async response(path: string, accept = "application/json"): Promise<Response> {
     this.checkOpen();
     return this.transport.fetch(this.url(path), {
       headers: { Accept: accept },
-      signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(30_000)]),
+      signal: AbortSignal.any([this.abort.signal, this.connection.signal, AbortSignal.timeout(30_000)]),
       cache: "no-store",
       redirect: "error"
     });
@@ -221,7 +214,7 @@ export class NetworkConnection {
 
   private publish(message: CdpMessage): void {
     this.checkOpen();
-    this.onEvent({ streamId: this.id, processId: this.processId, message });
+    this.onEvent({ streamId: this.id, processId: this.connection.processIdentity, message });
   }
 }
 

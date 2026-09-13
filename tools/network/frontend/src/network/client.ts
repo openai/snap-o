@@ -1,70 +1,53 @@
-import type { ToolMetadata } from "../useHostConnection";
-import type {
-  LoadBodiesInput,
-  RequestBodies,
-  SaveFileInput,
-  SaveFileResult,
-  StreamEvent,
-  StreamStarted,
-  StreamStatus
-} from "./bridge-types";
+import type { Host, ToolConnection } from "@snap-o/tool-host";
+import type { LoadBodiesInput, RequestBodies, StreamEvent, StreamStarted, StreamClosed } from "./bridge-types";
 import { host } from "@snap-o/tool-host";
 import { NetworkConnection } from "./connection";
-import { version } from "../../package.json";
 
-export interface NetworkClient {
-  appVersion(): Promise<string>;
-  listExclusionFilters(): Promise<string[]>;
-  addExclusionFilter(filter: string): Promise<void>;
-  removeExclusionFilter(filter: string): Promise<void>;
+export interface NetworkClient extends ToolContentClient {
+  listExclusionFilters(): string[];
+  addExclusionFilter(filter: string): void;
+  removeExclusionFilter(filter: string): void;
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies>;
-  startStream(input: ToolMetadata): Promise<StreamStarted>;
+  startStream(input: ToolConnection): Promise<StreamStarted>;
   stopStream(streamId: string): Promise<void>;
   onEvent(callback: (event: StreamEvent) => void): () => void;
-  onStatus(callback: (status: StreamStatus) => void): () => void;
-  copyText(text: string): Promise<void>;
-  openExternal(url: string): Promise<void>;
-  saveFile(input: SaveFileInput): Promise<SaveFileResult>;
+  onClosed(callback: (event: StreamClosed) => void): () => void;
   dispose(): void;
 }
 
-export type ToolContentClient = Pick<NetworkClient, "copyText" | "saveFile">;
+export type ToolContentClient = Pick<Host, "copyText" | "saveFile">;
 
 export function createNetworkClient(): NetworkClient {
   return new BrowserNetworkClient();
 }
 
 class BrowserNetworkClient implements NetworkClient {
-  private connections = new Map<string, NetworkConnection>();
+  private active: NetworkConnection | undefined;
+  private disposed = false;
   private events = new Set<(event: StreamEvent) => void>();
-  private statuses = new Set<(status: StreamStatus) => void>();
-  private disconnected = () => {
-    for (const connection of this.connections.values()) connection.close();
-    this.connections.clear();
+  private closedListeners = new Set<(event: StreamClosed) => void>();
+  private closeConnection = () => {
+    const connection = this.active;
+    this.active = undefined;
+    connection?.close();
   };
 
-  constructor() {
-    host.addEventListener("connection", this.disconnected);
-  }
+  private readonly unsubscribe = host.onConnection(() => this.closeConnection);
   dispose(): void {
-    host.removeEventListener("connection", this.disconnected);
-    for (const connection of this.connections.values()) connection.close();
-    this.connections.clear();
-  }
-  appVersion(): Promise<string> {
-    return Promise.resolve(version);
+    this.disposed = true;
+    this.unsubscribe();
   }
 
-  async listExclusionFilters(): Promise<string[]> {
+  listExclusionFilters(): string[] {
     return readExclusionFilters();
   }
-  async addExclusionFilter(filter: string): Promise<void> {
+  addExclusionFilter(filter: string): void {
     localStorage.setItem(
       "network.exclusionFilters",
       JSON.stringify([...new Set([...readExclusionFilters(), filter])].sort())
     );
   }
-  async removeExclusionFilter(filter: string): Promise<void> {
+  removeExclusionFilter(filter: string): void {
     localStorage.setItem(
       "network.exclusionFilters",
       JSON.stringify(readExclusionFilters().filter((item) => item !== filter))
@@ -72,69 +55,44 @@ class BrowserNetworkClient implements NetworkClient {
   }
 
   loadBodies(input: LoadBodiesInput): Promise<RequestBodies> {
-    const connection = this.connections.values().next().value;
+    const connection = this.active;
     if (!connection) return Promise.reject(new Error("Tool is disconnected."));
     return connection.loadBodies(input);
   }
-  async startStream(input: ToolMetadata): Promise<StreamStarted> {
-    const current = host.connection;
-    if (!current) throw new Error("Tool is disconnected.");
-    for (const connection of this.connections.values()) connection.close();
-    this.connections.clear();
+  async startStream(input: ToolConnection): Promise<StreamStarted> {
+    if (this.disposed || input.signal.aborted) throw new Error("Tool is disconnected.");
+    this.closeConnection();
     const connection = new NetworkConnection(
-      current.baseURL,
       input,
       (event) => {
         for (const listener of this.events) listener(event);
       },
-      (status) => {
-        if (status.state === "exit" || status.state === "error") this.connections.delete(status.streamId);
-        for (const listener of this.statuses) listener(status);
+      (event) => {
+        if (this.active?.id === event.streamId) {
+          this.active = undefined;
+        }
+        for (const listener of this.closedListeners) listener(event);
       }
     );
-    this.connections.set(connection.id, connection);
-    try {
-      await connection.start();
-    } catch (error) {
-      connection.close();
-      throw error;
-    }
+    this.active = connection;
+    await connection.start();
     return { streamId: connection.id };
   }
   async stopStream(streamId: string): Promise<void> {
-    this.connections.get(streamId)?.close();
-    this.connections.delete(streamId);
+    if (this.active?.id === streamId) this.closeConnection();
   }
   onEvent(callback: (event: StreamEvent) => void): () => void {
     this.events.add(callback);
     return () => this.events.delete(callback);
   }
-  onStatus(callback: (status: StreamStatus) => void): () => void {
-    this.statuses.add(callback);
-    return () => this.statuses.delete(callback);
+  onClosed(callback: (event: StreamClosed) => void): () => void {
+    this.closedListeners.add(callback);
+    return () => this.closedListeners.delete(callback);
   }
   copyText(text: string): Promise<void> {
     return host.copyText(text);
   }
-  async openExternal(url: string): Promise<void> {
-    openToolLink(url);
-  }
-  async saveFile(input: SaveFileInput): Promise<SaveFileResult> {
-    const data =
-      input.encoding === "base64" ? Uint8Array.from(atob(input.data), (char) => char.charCodeAt(0)) : input.data;
-    return {
-      saved: await host.saveFile({
-        name: input.defaultPath,
-        data: new Blob([data], { type: input.mimeType ?? "application/octet-stream" })
-      })
-    };
-  }
-}
-
-export function openToolLink(url: string): void {
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.click();
+  saveFile: ToolContentClient["saveFile"] = (input) => host.saveFile(input);
 }
 
 function readExclusionFilters(): string[] {
