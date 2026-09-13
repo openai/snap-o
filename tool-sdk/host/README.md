@@ -8,6 +8,8 @@ requests, event streams, and domain state.
 
 The native host owns process and tool isolation. It creates a separate page for each tool and replaces the page when its app/process identity changes. Before releasing an old forwarded port, it unloads every page authorized to use it. A frontend does not need to route requests between processes or protect another tool's endpoint.
 
+Call `await host.ready()` during frontend startup. It resolves when the SDK receives Snap-O's connection details, even when no Android app is connected. It rejects if the SDK cannot communicate with Snap-O. Show that error separately from the disconnected state. Calling it again retries a failed request; concurrent calls share one request.
+
 `host.connection` contains the selected tool's connection details, or `null` while disconnected. Hidden tool pages can remain alive and receive a disconnected connection state.
 
 `host.onConnection(callback)` delivers the current `ToolConnection` or `null` immediately. Return a cleanup function to close that connection's stream before replacement or disconnection. Unsubscribe when the UI unmounts; this also runs its cleanup. Use `connection.signal` with requests that should abort on disconnection.

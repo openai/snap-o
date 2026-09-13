@@ -56,6 +56,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Set up Node for tool frontends
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
@@ -98,6 +102,10 @@ jobs:
         run: |
           "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
           python3 tool-reader/build.py --check
+      - name: Set up Node for tool frontends
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:

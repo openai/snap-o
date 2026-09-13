@@ -13,9 +13,6 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-plugins {
-    id("com.openai.snapo.tool-settings")
-}
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)

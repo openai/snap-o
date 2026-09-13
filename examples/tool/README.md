@@ -27,7 +27,7 @@ Open Snap-O and select **Example app → Example**. You should see three fake va
 
 Run `./gradlew :app:assembleDebug` to rebuild the Android app and its frontend. Reinstall the APK to try the updated tool.
 
-The settings tool plugin configures Node downloads; the packaging tool plugin builds the frontend automatically. Set `downloadNode = false` in `snapoTool` to use Node/npm on `PATH`. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. Frontend-only commands are available in `example-tool/frontend`:
+The Tool Gradle Plugin builds the frontend with Node and npm from `PATH`. Make them available to Gradle, including Android Studio and CI builds. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. Frontend-only commands are available in `example-tool/frontend`:
 
 ```sh
 npm ci

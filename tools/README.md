@@ -24,14 +24,14 @@ Tool plugins are the bundled extensions; tools are the features users interact w
 
 ## Development
 
-From the repository root, start a tool's development server:
+Install Node.js 22.12 or later and npm. Make both available on `PATH` for Gradle, including Android Studio and CI builds. From the repository root, start a tool's development server:
 
 ```sh
 ./gradlew :network:toolDev
 ./gradlew :tweaks-core:toolDev
 ```
 
-Run one command per terminal. Gradle downloads the required Node.js runtime. In Snap-O, choose Develop → Use Development Server and enter the URL printed by the server. The Network server also serves `/preview.html` with synthetic request examples.
+Run one command per terminal. In Snap-O, choose Develop → Use Development Server and enter the URL printed by the server. The Network server also serves `/preview.html` with synthetic request examples.
 
 To check a frontend directly, use Node.js 22.12 or later and run these commands from its `frontend/` directory:
 

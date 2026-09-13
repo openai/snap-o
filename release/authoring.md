@@ -7,11 +7,11 @@ The tool plugin SDK is distributed through Maven Central and npm. Use this workf
 | Package | Destination | Name/version source |
 | --- | --- | --- |
 | Android runtime | Maven Central | Module name, Android `GROUP`, root `VERSION` |
-| Tool Gradle Plugin implementations | Maven Central | Project names in the Gradle build's settings, Android `GROUP`, root `VERSION` |
-| Tool Gradle Plugin markers | Maven Central | Gradle plugin IDs in each project's `build.gradle.kts`, root `VERSION` |
+| Tool Gradle Plugin implementation | Maven Central | Project name in the Gradle build's settings, Android `GROUP`, root `VERSION` |
+| Tool Gradle Plugin marker | Maven Central | Gradle plugin ID in `build.gradle.kts`, root `VERSION` |
 | Host JavaScript SDK | npm | `tool-sdk/host/package.json` |
 
-The Tool Gradle Plugin configures both project/settings implementations and their marker publications. The marker lets a consumer use `id("com.openai.snapo.tool") version "…"` with `mavenCentral()` in `pluginManagement.repositories`. A Gradle Plugin Portal release is optional and is not configured here.
+The Tool Gradle Plugin configures its implementation and marker publications. The marker lets a consumer use `id("com.openai.snapo.tool") version "…"` with `mavenCentral()` in `pluginManagement.repositories`. A Gradle Plugin Portal release is optional and is not configured here.
 
 The SDK exports compiled ES modules and declarations. It has a public npm publication configuration and a `prepack` build. The first-party frontends use a local package dependency, compiling the SDK during installation and before frontend builds.
 
@@ -25,9 +25,9 @@ python3 release/validate_authoring.py --output /tmp/snapo-authoring
 
 Use a new or empty directory outside the checkout. Requirements: JDK 17, Android SDK 36, Python 3, and Node.js 22.12 or later. The validation uses the repository's npm registry for downloads. There are no credential or signing requirements for local staging.
 
-The command stages five Maven publications and an npm tarball, checks their metadata/files, and builds a copied [Example tool](../examples/tool/README.md). The consumer resolves real package artifacts, with no composite build or SDK source dependency. It builds debug and release APKs, runs the example's Android and frontend tests, and runs Android lint. It checks that the debug APK includes the generated frontend ZIP and the release APK does not. It also checks that the bundled Example descriptor has its required icon and generated host API version, without a synthetic protocol version.
+The command stages three Maven publications and an npm tarball, checks their metadata/files, and builds a copied [Example tool](../examples/tool/README.md). The consumer resolves real package artifacts, with no composite build or SDK source dependency. It builds debug and release APKs, runs the example's Android and frontend tests, and runs Android lint. It checks that the debug APK includes the generated frontend ZIP and the release APK does not. It also checks that the bundled Example descriptor has its required icon and generated host API version, without a synthetic protocol version.
 
-The output includes `report.json`, the copied example, local Maven repository, npm tarball, and debug APK. It also builds with Node from `PATH` and prebuilt frontend assets, checking that prebuilt mode schedules no Node/npm tasks. CI runs the same command. This check does not prove that registry credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
+The output includes `report.json`, the copied example, local Maven repository, npm tarball, and debug APK. The build uses Node and npm from `PATH`. It also builds with prebuilt frontend assets, checking that this mode schedules no Node/npm tasks. CI runs the same command. This check does not prove that registry credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
 
 To inspect Tool Gradle Plugin artifacts without copying the example:
 

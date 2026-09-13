@@ -31,7 +31,7 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 | `release/`, `scripts/` | Release checks and contributor utilities |
 | `skills/` | Codex plugin skills |
 
-Open the repository root in Android Studio. Run `./gradlew` from that root; published Android artifact names are independent of folder names.
+Open the repository root in Android Studio. Android builds require Node.js 22.12 or later and npm on Gradle’s `PATH` to build the bundled frontends. Run `./gradlew` from the repository root; published Android artifact names are independent of folder names.
 
 The macOS app owns its device code under `Snap-O/Device/`. Run its unit tests with:
 

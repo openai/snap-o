@@ -32,7 +32,7 @@ def properties(path):
 
 def verify_maven(repository):
     poms = list(repository.rglob("*.pom"))
-    assert len(poms) == 5, f"Expected runtime, two plugin implementations, and two markers; found {poms}"
+    assert len(poms) == 3, f"Expected runtime, plugin implementation, and marker; found {poms}"
     coordinates = []
     for path in poms:
         root = ET.parse(path).getroot()
@@ -112,15 +112,6 @@ def verify_frontend_modes(example, overrides):
     init.write_text('''
 gradle.beforeProject { project ->
     project.pluginManager.withPlugin("com.openai.snapo.tool") {
-        project.extensions.getByName("snapoTool").downloadNode.set(false)
-    }
-}
-''')
-    run([str(example / "gradlew"), "--no-daemon", *overrides, "--init-script", str(init),
-         ":example-tool:toolBuild", "--rerun-tasks"], example)
-    init.write_text('''
-gradle.beforeProject { project ->
-    project.pluginManager.withPlugin("com.openai.snapo.tool") {
         project.extensions.getByName("snapoTool").frontendAssets.set(
             project.layout.projectDirectory.dir("frontend/dist"))
     }
@@ -192,7 +183,7 @@ def main():
     apk = verify_example(example)
     report = {"mavenCoordinates": coordinates, "npmPackage": f"{sdk['name']}@{sdk['version']}",
               "npmTarball": str(archive), "exampleProject": str(example), "debugApk": str(apk),
-              "frontendModes": ["managed-node", "installed-node", "prebuilt"], "published": False}
+              "frontendModes": ["installed-node", "prebuilt"], "published": False}
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

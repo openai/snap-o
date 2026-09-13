@@ -24,15 +24,10 @@ class ToolPackagingPlugin : Plugin<Project> {
     override fun apply(project: Project) = with(project) {
         val tool = extensions.create<ToolExtension>("snapoTool")
         tool.frontendDirectory.convention(layout.projectDirectory.dir("frontend"))
-        tool.downloadNode.convention(true)
-        tool.nodeVersion.convention("22.23.2")
 
         pluginManager.apply(NodePlugin::class.java)
         extensions.getByType<NodeExtension>().apply {
-            download.set(tool.downloadNode)
-            version.set(tool.nodeVersion)
-            // The settings plugin declares the repository, including in builds that forbid project repositories.
-            distBaseUrl.set(null as String?)
+            download.set(false)
             nodeProjectDir.set(tool.frontendDirectory)
             npmInstallCommand.set("ci")
             enableTaskRules.set(false)

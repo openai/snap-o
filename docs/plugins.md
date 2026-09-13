@@ -45,7 +45,7 @@ Snap-O's Tool Gradle Plugin builds your web frontend, packages it into a ZIP, an
 
 ### Add the Tool Gradle Plugin {#the-build-plugin-comopenaisnapoplugin}
 
-This setup has a module plugin that builds your tool and a companion settings plugin that enables Node downloads. Gradle manages Node and npm for frontend builds automatically.
+Install Node and npm and make them available to Gradle on `PATH`, including Android Studio and CI builds. Use a Node version that satisfies your frontend package’s `engines` requirement. Snap-O does not install or manage Node. Apps consuming a finished tool library do not need either.
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
@@ -55,15 +55,7 @@ snapo = "8.0.0"
 snapo-tool = { id = "com.openai.snapo.tool", version.ref = "snapo" }
 ```
 
-Apply the companion `com.openai.snapo.tool-settings` plugin once in your Android project’s `settings.gradle.kts`:
-
-``` { .kotlin title="settings.gradle.kts" }
-plugins {
-    id("com.openai.snapo.tool-settings") version "8.0.0"
-}
-```
-
-Both Gradle components resolve from Maven Central. Most projects already have `mavenCentral()` in `pluginManagement.repositories`; add it if needed. Keep your existing Android Gradle configuration.
+The plugin resolves from Maven Central. Most projects already have `mavenCentral()` in `pluginManagement.repositories`; add it if needed. Keep your existing Android Gradle configuration.
 
 ### Configure your tool {#manifest}
 
@@ -260,6 +252,22 @@ Snap-O blocks remote scripts and requests to other servers. It also blocks WebAs
 The host SDK connects your frontend to the Snap-O Mac app. It provides the forwarded Android server address and native controls.
 
 Use `host.onConnection` to receive the current connection immediately and respond when it changes. The callback can return a cleanup function for that connection's work.
+
+First, wait for the host in the starter's `src/main.tsx`. This distinguishes a failed connection to Snap-O from a disconnected Android app:
+
+``` { .tsx title="frontend/src/main.tsx" }
+import { render } from "preact";
+import { host } from "@snap-o/tool-host";
+import { App } from "./app";
+
+const root = document.getElementById("app")!;
+void host.ready().then(
+  () => render(<App />, root),
+  error => render(<p role="alert">Could not connect to Snap-O: {String(error)}</p>, root),
+);
+```
+
+Keep the starter's CSS imports. If startup fails, open the tool in Snap-O and reload it.
 
 Replace the starter's `src/app.tsx` with this component to fetch the Android example's `/status` route:
 
