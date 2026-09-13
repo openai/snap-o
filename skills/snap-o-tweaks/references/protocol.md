@@ -41,7 +41,7 @@ For remote ADB servers, an `adb forward` is local to the ADB server's host, not 
 
 Ordinary responses close their connection and include a content length. The event response stays open and uses `Content-Type: text/event-stream`.
 
-The CLI and Tweaks frontend call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. App identity and icons come from Android package resources, not HTTP. Missing, older, or newer versions are unsupported; update Snap-O and the Android library together. Use `snapo tweaks apps --json` to inspect app metadata without opening a tool connection.
+The CLI and Tweaks frontend call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. The CLI reads package and process identity through ADB; the desktop uses Android resources for labels and icons. Missing, older, or newer versions are unsupported; update Snap-O and the Android library together. Use `snapo-tweaks apps --json` to inspect app metadata without opening a tool connection.
 
 ### Read active values
 
@@ -196,5 +196,5 @@ Send all four coordinates as one value; reset the entire curve with `null`.
 Curve values use structured JSON objects.
 
 ```bash
-snapo tweaks set 'Motion/Curve' '{"x1":0.4,"y1":0,"x2":0.2,"y2":1}' -s "$serial" -n "$socket"
+snapo-tweaks set 'Motion/Curve' '{"x1":0.4,"y1":0,"x2":0.2,"y2":1}' -s "$serial" -n "$socket"
 ```

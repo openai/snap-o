@@ -12,7 +12,7 @@ import sys
 import tempfile
 import unittest
 
-from test_snapo import snapo
+from test_network import snapo
 
 Runner = snapo.Runner
 load_routes = snapo.load_routes
@@ -36,23 +36,23 @@ class ResponseTest(unittest.TestCase):
         self.assertEqual(wire, response._wire("GET"))
 
     def test_copied_cli_loads_routes_without_a_checkout_or_python_package(self):
-        root = pathlib.Path(__file__).resolve().parents[2]
+        root = pathlib.Path(__file__).resolve().parents[4]
         with tempfile.TemporaryDirectory() as directory:
-            script = pathlib.Path(directory) / "snapo"
-            shutil.copyfile(root / "cli/snapo", script)
+            script = pathlib.Path(directory) / "snapo-network"
+            shutil.copyfile(root / "skills/snap-o-network-inspector/scripts/snapo-network", script)
             script.chmod(0o755)
             routes = pathlib.Path(directory) / "routes.py"
-            routes.write_text('from snapo import route\n@route("GET", "/api/tasks")\nasync def tasks(call):\n    return call.json([])\n')
+            routes.write_text('from snapo_network import route\n@route("GET", "/api/tasks")\nasync def tasks(call):\n    return call.json([])\n')
             for command in ([sys.executable, "-I", str(script)], [str(script)]):
                 with self.subTest(command=command):
-                    result = subprocess.run([*command, "network", "intercept", str(routes), "--check"], cwd=directory, capture_output=True, text=True, timeout=10)
+                    result = subprocess.run([*command, "intercept", str(routes), "--check"], cwd=directory, capture_output=True, text=True, timeout=10)
                     self.assertEqual(0, result.returncode, result.stderr)
                     self.assertIn("GET /api/tasks", result.stdout)
 
 
 class RouteLoaderTest(unittest.IsolatedAsyncioTestCase):
     async def test_reload_ignores_cached_bytecode_for_same_size_and_timestamp(self):
-        source = '''from snapo import route
+        source = '''from snapo_network import route
 version = "old"
 @route("GET", "/api/profile")
 async def profile(call):
@@ -87,7 +87,7 @@ async def profile(call):
             path = root / "routes"
             path.write_text('''from __future__ import annotations
 from dataclasses import dataclass
-from snapo import route
+from snapo_network import route
 from snapo_test_route_helper import VERSION
 @dataclass
 class State:
@@ -207,7 +207,7 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         return json.loads(base64.b64decode(resolution["response"]["body"]))
 
     async def test_sixty_four_upstream_calls_do_not_exhaust_http_workers(self):
-        routes = await self.start('from snapo import route\n@route("GET", "/api/profile")\nasync def profile(call):\n    return await call.upstream()\n')
+        routes = await self.start('from snapo_network import route\n@route("GET", "/api/profile")\nasync def profile(call):\n    return await call.upstream()\n')
         for index in range(64):
             await self.request(str(index), routes["/api/profile"])
         pending = [await self.next_command("decision") for _ in range(64)]
@@ -220,7 +220,7 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(item["phase"] == "response" for item in completed))
 
     async def test_disconnect_cancels_paused_handlers_without_reconnecting(self):
-        routes = await self.start('from snapo import route\n@route("GET", "/api/profile")\nasync def profile(call):\n    return await call.upstream()\n')
+        routes = await self.start('from snapo_network import route\n@route("GET", "/api/profile")\nasync def profile(call):\n    return await call.upstream()\n')
         await self.request("one", routes["/api/profile"])
         await self.next_command("decision")
         self.writer.close()
@@ -233,7 +233,7 @@ class InterceptionTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.commands.empty())
 
     async def test_editing_json_sends_upstream_once_and_preserves_repeated_headers(self):
-        routes = await self.start('''from snapo import route
+        routes = await self.start('''from snapo_network import route
 @route("GET", "api/profile")
 async def profile(call):
     assert call.request.path == "/api/profile"
@@ -256,7 +256,7 @@ async def profile(call):
         self.assertIn({"name": "Content-Length", "value": str(len(base64.b64decode(result["response"]["body"])))}, headers)
 
     async def test_module_state_connects_synthetic_create_and_list_without_upstream(self):
-        routes = await self.start('''from snapo import route
+        routes = await self.start('''from snapo_network import route
 tasks = []
 @route("POST", "api/tasks/create")
 async def create(call):
@@ -275,7 +275,7 @@ async def list_tasks(call):
         self.assertEqual({"tasks": [{"title": "Walk"}]}, self.decoded(listed))
 
     async def test_reload_keeps_in_flight_and_not_yet_announced_requests_on_old_handlers(self):
-        routes = await self.start('''from snapo import route
+        routes = await self.start('''from snapo_network import route
 @route("GET", "api/profile")
 async def profile(call):
     response = await call.upstream()
@@ -284,7 +284,7 @@ async def profile(call):
 ''')
         await self.request("inflight", routes["/api/profile"])
         await self.next_command("decision")
-        self.path.write_text('''from snapo import route
+        self.path.write_text('''from snapo_network import route
 @route("GET", "api/profile")
 async def profile(call):
     return call.json({"version": "new"})
@@ -303,7 +303,7 @@ async def profile(call):
         self.assertEqual({"version": "new"}, self.decoded(await self.next_command("decision")))
 
     async def test_concurrent_handlers_can_release_one_response_before_another(self):
-        routes = await self.start('''from snapo import route
+        routes = await self.start('''from snapo_network import route
 import asyncio
 ready = asyncio.Event()
 @route("GET", "api/profile")
@@ -322,7 +322,7 @@ async def settings(call):
         self.assertTrue(all(result["action"] == "fulfill" for result in results))
 
     async def test_handler_exception_fails_the_request_without_sending_it_upstream(self):
-        routes = await self.start('''from snapo import route
+        routes = await self.start('''from snapo_network import route
 @route("GET", "api/profile")
 async def profile(call):
     raise ValueError("broken prototype")
@@ -333,7 +333,7 @@ async def profile(call):
         self.assertIn("ValueError", result["error"])
 
     async def test_watch_rejects_broken_edits_and_recovers_on_the_next_save(self):
-        original = '''from snapo import route
+        original = '''from snapo_network import route
 @route("GET", "api/profile")
 async def profile(call):
     return call.json({"version": "old"})

@@ -54,7 +54,19 @@ Clients can send `OPTIONS /` over a forwarded socket to check HTTP readiness wit
 
 The reader emits one JSON line per process. Each record has `version: 1` and a positive `pid`. Successful records contain `app` and a nonempty `processIdentity`; clients must reject successful records without that identity. The identity combines boot identity, PID, and process start time, so clients can distinguish a replacement process that reuses a PID. Error records can omit `app` and `processIdentity`.
 
-The CLI runs the bundled reader through ADB in batches of at most 64 socket names per device. Listing apps does not forward or connect to tool sockets. Commands validate the selected descriptor before sending tool requests.
+### Command-line discovery
+
+The Network and Tweaks CLIs discover their known socket prefixes without the reader.
+They read `/proc/<pid>/status`, `stat`, and `cmdline` through ADB, then match the UID
+against `cmd package list packages -U --user <user>`. Process names are hints;
+package ownership must match the UID. Ambiguous packages remain unknown.
+The CLIs check process metadata again after package lookup to reject PID reuse.
+
+Listing does not forward or connect to tool sockets, so the app need not respond.
+Exited or unreadable processes remain visible with unknown identity fields.
+JSON listings expose `pid`, `processName`, and `packageName`, not a friendly app label.
+These fixed-purpose clients do not load descriptors, icons, or frontends.
+Commands check the tool's protocol endpoint before reading or changing data.
 
 ## Protocol migration
 

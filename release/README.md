@@ -82,7 +82,7 @@ Tag the validated version-update commit with `VERSION`, without a `v` prefix. Co
 
 A tagged build must produce `Snap-O.dmg`, `Snap-O.dmg.sha256`, and a generated Sparkle `<item>`. The checksum file contains only the SHA-256 digest. Compare it with the final DMG. Test builds may omit the checksum and Sparkle item.
 
-Mount the DMG and check the app's signature, notarization, bundled CLI and Android reader. Confirm the app version and build match the tag. Test relevant CLI commands, including route loading if interception changed. The normal `snapo --help` invocation must exit successfully; a notarization check alone is not enough.
+Mount the DMG and check the app's signature, notarization, bundled CLIs and Android reader. Confirm the app version and build match the tag. Test relevant CLI commands, including route loading if interception changed. `snapo --help`, `snapo network --help`, `snapo tweaks --help`, `snapo-network --help`, and `snapo-tweaks --help` must exit successfully; a notarization check alone is not enough.
 
 Open a temporary copy of the final app and confirm the changed flows work. Review the release notes before publishing.
 

@@ -1,4 +1,4 @@
-name: Snap-O CLI
+name: Snap-O tool CLIs
 
 on:
   push:
@@ -7,13 +7,13 @@ on:
       - '.agents/plugins/marketplace.json'
       - '.codex-plugin/plugin.json'
       - 'VERSION'
-      - 'cli/snapo'
-      - 'tool-reader/**'
+      - 'app-macos/cli/**'
+      - 'tools/network/cli/**'
+      - 'tools/tweaks/cli/**'
       - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
-      - 'cli/tests/**'
       - 'contracts/**'
       - '.github/workflows/snapo-cli.yml'
   pull_request:
@@ -22,13 +22,13 @@ on:
       - '.agents/plugins/marketplace.json'
       - '.codex-plugin/plugin.json'
       - 'VERSION'
-      - 'cli/snapo'
-      - 'tool-reader/**'
+      - 'app-macos/cli/**'
+      - 'tools/network/cli/**'
+      - 'tools/tweaks/cli/**'
       - 'release/**'
       - 'examples/**'
       - 'skills/snap-o-network-inspector/**'
       - 'skills/snap-o-tweaks/**'
-      - 'cli/tests/**'
       - 'contracts/**'
       - '.github/workflows/snapo-cli.yml'
 
@@ -36,7 +36,8 @@ permissions:
   contents: read
 
 env:
-  SNAPO_CLI: cli/snapo
+  NETWORK_CLI: skills/snap-o-network-inspector/scripts/snapo-network
+  TWEAKS_CLI: skills/snap-o-tweaks/scripts/snapo-tweaks
 
 jobs:
   test:
@@ -49,25 +50,32 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Check Python CLI
-        run: python3 -m py_compile "$SNAPO_CLI" cli/tests/test_snapo.py
+        run: python3 -m py_compile app-macos/cli/snapo "$NETWORK_CLI" "$TWEAKS_CLI"
       - name: Test Python CLI
-        run: python3 -m unittest discover -s cli/tests -p 'test_*.py' -v
+        run: |
+          python3 -m unittest discover -s tools/network/cli/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/tweaks/cli/tests -p 'test_*.py' -v
+      - name: Test bundled CLI dispatcher
+        run: python3 -m unittest discover -s app-macos/cli/tests -p 'test_*.py' -v
       - name: Test release scripts
         run: |
           bash -n release/preflight.sh
           python3 -m unittest discover -s release/tests -p 'test_*.py' -v
       - name: Smoke test command surface
         run: |
-          test -x "$SNAPO_CLI"
-          "$SNAPO_CLI" --help
-          "$SNAPO_CLI" network list --help
-          "$SNAPO_CLI" network requests --help
-          "$SNAPO_CLI" network show --help
-          "$SNAPO_CLI" network intercept --help
-          "$SNAPO_CLI" network intercept examples/routes.py --check
-          "$SNAPO_CLI" tweaks apps --help
-          "$SNAPO_CLI" tweaks list --help
-          "$SNAPO_CLI" tweaks get --help
-          "$SNAPO_CLI" tweaks set --help
-          "$SNAPO_CLI" tweaks reset --help
-          "$SNAPO_CLI" tweaks watch --help
+          test -x "$NETWORK_CLI"
+          test -x "$TWEAKS_CLI"
+          "$NETWORK_CLI" --help
+          "$TWEAKS_CLI" --help
+          "$NETWORK_CLI" list --help
+          "$NETWORK_CLI" requests --help
+          "$NETWORK_CLI" show --help
+          "$NETWORK_CLI" intercept --help
+          "$NETWORK_CLI" intercept examples/routes.py --check
+          "$TWEAKS_CLI" apps --help
+          "$TWEAKS_CLI" list --help
+          "$TWEAKS_CLI" get --help
+          "$TWEAKS_CLI" set --help
+          "$TWEAKS_CLI" action --help
+          "$TWEAKS_CLI" reset --help
+          "$TWEAKS_CLI" watch --help

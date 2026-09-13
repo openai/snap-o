@@ -1,15 +1,15 @@
 # Network interception
 
-Use `network intercept` to change HTTP responses delivered to an Android app. The app must use a Snap-O OkHttp integration that supports interception. If it reports unsupported routes, rebuild the app with that integration; updating the CLI alone is insufficient.
+Use `snapo-network intercept` to change HTTP responses delivered to an Android app. The app must use a Snap-O OkHttp integration that supports interception. If it reports unsupported routes, rebuild the app with that integration; updating the CLI alone is insufficient.
 
 ## Write and check routes
 
-Resolve `SNAPO_BIN` as described in the skill. Save handlers in a Python file in the user's workspace. Run that file through the bundled CLI, not `python prototype.py`: the CLI provides `from snapo import route` without an installed Python package.
+Resolve `SNAPO_BIN` as described in the skill. Save handlers in a Python file in the user's workspace. Run that file through the bundled CLI, not `python prototype.py`: the CLI provides `from snapo_network import route` without an installed Python package.
 
 ```python
 import asyncio
 
-from snapo import route
+from snapo_network import route
 
 
 @route("GET", "/api/profile")
@@ -30,26 +30,26 @@ Adapt the method, path, and response shape to the app. The profile handler sends
 Validate the file before connecting:
 
 ```bash
-"$SNAPO_BIN" network intercept /path/to/prototype.py --check
+"$SNAPO_BIN" intercept /path/to/prototype.py --check
 ```
 
 `--check` loads the file and prints its routes without ADB or a device. It executes module-level code but does not run handlers or prove the app supports interception.
 
 ## Run and verify
 
-List servers with `network list --json`, then select the device serial and network socket:
+List servers with `snapo-network list --json`, then select the device serial and network socket:
 
 ```bash
-"$SNAPO_BIN" network intercept /path/to/prototype.py -s <serial> -n <socket_name>
+"$SNAPO_BIN" intercept /path/to/prototype.py -s <serial> -n <socket_name>
 ```
 
-Keep the runner alive while triggering the matching request in the app. Wait for `Loaded N route(s)` before reproducing the behavior. Check runner logs for the method, path, and returned status, or handler errors. `network requests` and `network show` can inspect the delivered response from another connection. Inspection shows what the app received, without a before/after diff; also verify the requested app behavior.
+Keep the runner alive while triggering the matching request in the app. Wait for `Loaded N route(s)` before reproducing the behavior. Check runner logs for the method, path, and returned status, or handler errors. `snapo-network requests` and `snapo-network show` can inspect the delivered response from another connection. Inspection shows what the app received, without a before/after diff; also verify the requested app behavior.
 
 Stop this runner with Ctrl-C when the override session is finished, unless the user wants it left running. Stopping removes its routes and fails its paused calls. New calls then follow normal behavior unless another runner matches them.
 
 ## Matching and response APIs
 
-- Routes match the exact HTTP method and encoded URL path on any host. A leading slash is optional. Query parameters are ignored. Wildcards, regular expressions, and `network requests --filter` syntax are not supported for routes.
+- Routes match the exact HTTP method and encoded URL path on any host. A leading slash is optional. Query parameters are ignored. Wildcards, regular expressions, and `snapo-network requests --filter` syntax are not supported for routes.
 - For host or query conditions, inspect `call.request.url` inside the handler. Return `await call.upstream()` when the condition does not apply. Requests without a matching route follow their normal path.
 - Register between 1 and 128 unique method/path pairs per file. Avoid overlapping routes across runners: only one matching handler runs, and selection order is unspecified.
 - `call.request` exposes `method`, `url`, `path`, `headers`, `body` (bytes), and `json`. Editing it does not rewrite the original request.

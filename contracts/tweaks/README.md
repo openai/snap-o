@@ -31,7 +31,7 @@ Implement HTTP with Android `LocalServerSocket`, standard streams, and Android `
 
 ### Discovery and readiness
 
-Read app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The Tweaks frontend and CLI call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are rejected. This endpoint belongs to Tweaks, not the shared tool SDK.
+The desktop reads app identity, icons, and the Tweaks descriptor through [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader. The Tweaks frontend and CLI call `GET /tweaks/protocol` and require `{"version":8}` before reading or changing tweaks. Missing, older, and newer versions are rejected. This endpoint belongs to Tweaks, not the shared tool SDK.
 
 Protocol 8 moves the compatibility check out of discovery; data, mutation, and SSE payloads are unchanged from protocol 7. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
 

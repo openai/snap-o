@@ -1,6 +1,6 @@
 import json
 import unittest
-from test_snapo import snapo
+from test_tweaks import snapo
 
 
 class BezierTests(unittest.TestCase):

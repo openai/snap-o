@@ -381,7 +381,8 @@ class ProtocolReportTests(unittest.TestCase):
             "tools/tweaks/android/core/src/main/java/com/openai/snapo/tweaks/internal/TweakHttpServer.kt": "internal const val TweaksProtocolVersion = 8",
             "tools/network/frontend/src/features/network-tool/lib/protocol.ts": "const supportedProtocolVersion = 4;",
             "tools/tweaks/frontend/src/features/tweaks-tool/protocol.ts": "const supportedProtocolVersion = 8;",
-            "cli/snapo": "NETWORK_PROTOCOL_VERSION = 4\nTWEAKS_PROTOCOL_VERSION = 8",
+            "skills/snap-o-network-inspector/scripts/snapo-network": "NETWORK_PROTOCOL_VERSION = 4",
+            "skills/snap-o-tweaks/scripts/snapo-tweaks": "TWEAKS_PROTOCOL_VERSION = 8",
         }
         for path, content in declarations.items():
             self.write(path, content + "\n")

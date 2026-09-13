@@ -3,7 +3,7 @@ This is the code repository for the Snap-O macOS app and optional Android librar
 ## Directory Structure
 
 - `network/` and `tweaks/` contain concrete tool plugins.
-- Each tool plugin has `android/` libraries and a `frontend/` web UI.
+- Each tool plugin has `android/` libraries, a `frontend/` web UI, and CLI tests in `cli/`. Standalone executables live inside their `../../skills/` packages.
 - Shared authoring support lives in `../tool-sdk/`; demo apps live in `../examples/android/`.
 - Run Gradle commands from the repository root.
 

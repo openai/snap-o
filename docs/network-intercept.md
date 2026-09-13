@@ -19,7 +19,7 @@ breadcrumbs:
 Edit real API responses or return mock data with Python handlers. Test new app states, errors, and delays through your Android app's existing OkHttp integration.
 {.lead}
 
-Run handlers with `snapo network intercept` and inspect the results in Network.
+Run handlers with `snapo-network intercept` and inspect the results in Network.
 
 ## Check requirements {#requirements data-step="1"}
 
@@ -27,12 +27,12 @@ Start with the [Network setup](network-inspector.md). Your debug app must use `S
 
 Run the CLI on macOS or Linux with Python 3 and Android Platform Tools. No Python package installation is needed. The Snap-O desktop app can stay open for inspection, but the CLI does not require it to be running.
 
-The examples assume `snapo` is on your `PATH`. On macOS, you can use `/Applications/Snap-O.app/Contents/MacOS/snapo` instead. On Linux, follow the [CLI installation steps](cli.md#linux-and-standalone-macos).
+The examples assume `snapo-network` is on your `PATH`. On macOS, you can use `/Applications/Snap-O.app/Contents/MacOS/snapo-network` instead. On Linux, follow the [CLI installation steps](cli.md#linux-and-standalone-macos).
 
 Connect an authorized device or emulator and launch your debug app. List the available app processes:
 
 ``` { .bash title="Terminal" }
-snapo network list --json
+snapo-network list --json
 ```
 
 Use the target app's `deviceId` and `socketName` as `SERIAL` and `SOCKET` below. A network socket looks like `snapo_network_12345`.
@@ -43,7 +43,7 @@ Use the target app's `deviceId` and `socketName` as `SERIAL` and `SOCKET` below.
 Save this as `prototype.py`. Replace `/api/tasks` with a JSON endpoint your app calls. This handler returns mock data without contacting the server.
 
 ``` { .python title="prototype.py" }
-from snapo import route
+from snapo_network import route
 
 
 @route("GET", "/api/tasks")
@@ -57,11 +57,11 @@ Check that the file loads, then connect to your app:
 {style="margin-top: 18px"}
 
 ``` { .bash title="Terminal" }
-snapo network intercept prototype.py --check
-snapo network intercept prototype.py -s SERIAL -n SOCKET
+snapo-network intercept prototype.py --check
+snapo-network intercept prototype.py -s SERIAL -n SOCKET
 ```
 
-`--check` loads and lists routes without ADB or a device; it does not run the handlers. The CLI provides the `snapo` Python module when it loads your file.
+`--check` loads and lists routes without ADB or a device; it does not run the handlers. The CLI provides the `snapo_network` Python module when it loads your file.
 {style="margin-top: 18px"}
 
 1. Wait for **Loaded 1 route(s)** in the terminal.
@@ -97,7 +97,7 @@ Module variables let handlers share mock state. Replace your file with this exam
 ``` { .python title="prototype.py" }
 import asyncio
 
-from snapo import route
+from snapo_network import route
 
 saved_tasks = []
 
@@ -130,7 +130,7 @@ Read `call.request.method`, `url`, `path`, `headers`, `body` (bytes), or `json` 
 ``` { .python title="prototype.py · replace the tasks route" }
 from urllib.parse import parse_qs, urlsplit
 
-from snapo import route
+from snapo_network import route
 
 
 @route("GET", "/api/tasks")
@@ -184,7 +184,7 @@ Update the Snap-O Android dependency, then rebuild and reinstall the app. Updati
 <details markdown="1">
 <summary>No servers appear, or the wrong app is selected</summary>
 
-Check `adb devices`, launch the debug build, and run `network list --json` again. Select its device and socket explicitly. After an app process restarts, reconnect the runner to the new socket.
+Check `adb devices`, launch the debug build, and run `snapo-network list --json` again. Select its device and socket explicitly. After an app process restarts, reconnect the runner to the new socket.
 
 </details>
 

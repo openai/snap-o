@@ -257,7 +257,7 @@ Use the arrow keys to move between requests. Server-Sent Events show whether the
 
 ### Intercept requests {#python-overrides}
 
-Use `snapo network intercept` to change a real API response or return mock data. The tool shows the response delivered to the app while your Python handlers run separately. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.
+Use `snapo-network intercept` to change a real API response or return mock data. The tool shows the response delivered to the app while your Python handlers run separately. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.
 
 ## Troubleshooting {#troubleshoot data-step="5"}
 

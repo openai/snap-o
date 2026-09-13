@@ -42,9 +42,9 @@ These commands also build, lint, and test the debug variants of all library modu
 From the repository root, list the sample's network socket and start the existing route example:
 
 ```bash
-cli/snapo network list -s <serial> --json
-cli/snapo network intercept examples/routes.py --check
-cli/snapo network intercept examples/routes.py -s <serial> -n <socket_name>
+skills/snap-o-network-inspector/scripts/snapo-network list -s <serial> --json
+skills/snap-o-network-inspector/scripts/snapo-network intercept examples/routes.py --check
+skills/snap-o-network-inspector/scripts/snapo-network intercept examples/routes.py -s <serial> -n <socket_name>
 ```
 
 Select the socket for the OkHttp or Ktor sample's package. Keep the runner open, then tap **Refresh**. The task list starts empty. Enter a title and tap **Add**. The Python POST handler returns a task with status `pending`, and the app reloads the list. Both task handlers return synthetic responses without contacting the in-app server. Each running app needs its own runner and keeps its own Python task list.
