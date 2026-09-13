@@ -42,12 +42,18 @@ class ResponseTest(unittest.TestCase):
             shutil.copyfile(root / "skills/snap-o-network-inspector/scripts/snapo-network", script)
             script.chmod(0o755)
             routes = pathlib.Path(directory) / "routes.py"
-            routes.write_text('from snapo_network import route\n@route("GET", "/api/tasks")\nasync def tasks(call):\n    return call.json([])\n')
-            for command in ([sys.executable, "-I", str(script)], [str(script)]):
-                with self.subTest(command=command):
-                    result = subprocess.run([*command, "intercept", str(routes), "--check"], cwd=directory, capture_output=True, text=True, timeout=10)
-                    self.assertEqual(0, result.returncode, result.stderr)
-                    self.assertIn("GET /api/tasks", result.stdout)
+            for module in ("snapo_network", "snapo"):
+                routes.write_text(
+                    f'from {module} import route, Request, Response, Headers\n'
+                    'import snapo_network\n'
+                    'assert (route, Request, Response, Headers) == (snapo_network.route, snapo_network.Request, snapo_network.Response, snapo_network.Headers)\n'
+                    '@route("GET", "/api/tasks")\nasync def tasks(call):\n    return call.json([])\n'
+                )
+                for command in ([sys.executable, "-I", str(script)], [str(script)]):
+                    with self.subTest(module=module, command=command):
+                        result = subprocess.run([*command, "intercept", str(routes), "--check"], cwd=directory, capture_output=True, text=True, timeout=10)
+                        self.assertEqual(0, result.returncode, result.stderr)
+                        self.assertIn("GET /api/tasks", result.stdout)
 
 
 class RouteLoaderTest(unittest.IsolatedAsyncioTestCase):

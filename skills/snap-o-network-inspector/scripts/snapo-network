@@ -1127,6 +1127,7 @@ _route_api = types.ModuleType("snapo_network")
 for _name in ("route", "Request", "Response", "Headers"):
     setattr(_route_api, _name, globals()[_name])
 sys.modules["snapo_network"] = _route_api
+sys.modules["snapo"] = _route_api  # Keep existing Python override files working.
 
 
 def load_routes(path):
