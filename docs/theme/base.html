@@ -10,9 +10,21 @@
     {% endfor %}
     {% if page.meta.layout == 'home' %}<meta name="twitter:card" content="summary_large_image">{% endif %}
     <link rel="icon" type="image/png" href="{{ 'assets/icon-64.png'|url }}">
+    {% if page.meta.layout == 'home' %}<link rel="stylesheet" href="{{ 'assets/theme.css'|url }}">{% endif %}
+    <link rel="stylesheet" href="{{ 'assets/robot.css'|url }}">
     {% for stylesheet in page.meta.styles %}<link rel="stylesheet" href="{{ ('assets/' ~ stylesheet)|url }}">{% endfor %}
   </head>
-  <body>
+  <body class="page-{{ page.meta.layout }}">
+    {% if page.meta.layout == 'home' %}
+    <div class="space-scene" aria-hidden="true">
+      <div class="stars"></div>
+      <img class="space-earth" src="{{ 'assets/space-earth.webp'|url }}" alt="" width="1254" height="1254">
+    </div>
+    {% endif %}
+    {% if page.meta.layout == 'guide' %}
+    {% set robot_class = 'guide-robot' %}
+    {% include "robot.html" %}
+    {% endif %}
     {% block main %}{% endblock %}
     <footer>
       <div class="wrap footer-row">
@@ -33,5 +45,6 @@
     {% endfor %}
     {% endif %}
     <script src="{{ 'assets/guide.js'|url }}"></script>
+    <script src="{{ 'assets/robot.js'|url }}" defer></script>
   </body>
 </html>

@@ -82,3 +82,9 @@ The build generates the tab buttons, accessibility attributes, and keyboard navi
 
 `mkdocs.yml` configures the build. Templates live in `docs/theme/`; styles, scripts, and images live in `docs/assets/`.
 `docs/hooks.py` handles numbered sections, code captions, and dependency tabs.
+
+`assets/theme.css` defines the homepage's dark palette, space background, and footer.
+Guides use the original light palette in `assets/guide.css` and their page styles.
+`theme/robot.html`, `assets/robot.css`, and `assets/robot.js` provide the shared robot and its click animation.
+Guides show the robot above page navigation when the viewport is at least 1200 pixels wide.
+Space artwork uses WebP images. The robot and rocket have twice their maximum display resolution for sharp rendering on Retina screens.

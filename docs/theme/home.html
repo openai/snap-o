@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block main %}
-<main>
+<main id="main">
   <section class="hero">
     <div class="wrap hero-grid">
-      <div>
+      <div class="hero-copy">
         {{ title|safe }}
         <p class="subtitle">{{ page.meta.subtitle }}</p>
         {{ introduction|safe }}
@@ -14,9 +14,10 @@
         </div>
         {{ note|safe }}
       </div>
-      <figure class="demo">
-        <img {% for name, value in page.meta.image.items() %}{{ name }}="{{ value }}" {% endfor %}>
-      </figure>
+      <div class="robot-orbit">
+        <img class="space-rocket" src="{{ 'assets/space-rocket.webp'|url }}" alt="" width="200" height="200" aria-hidden="true">
+        {% include "robot.html" %}
+      </div>
     </div>
   </section>
   <div class="section section-features">

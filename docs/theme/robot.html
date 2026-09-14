@@ -1,0 +1,7 @@
+<button class="robot-flight {{ robot_class|default('') }}" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+  {% if page.meta.layout == 'home' %}
+  <img class="space-robot" src="{{ 'assets/space-robot.webp'|url }}" alt="" width="550" height="550" fetchpriority="high" draggable="false">
+  {% else %}
+  <img class="space-robot" src="{{ 'assets/space-robot-small.webp'|url }}" alt="" width="224" height="224" loading="lazy" draggable="false">
+  {% endif %}
+</button>

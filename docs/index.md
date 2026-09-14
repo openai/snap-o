@@ -13,13 +13,6 @@ actions:
 - label: View on GitHub
   href: https://github.com/openai/snap-o
   class: secondary-link
-image:
-  src: assets/banner.webp
-  width: '1280'
-  height: '721'
-  fetchpriority: high
-  alt: Snap-O interface with a green robot above Earth and the words Fast, Focused,
-    Effortless
 social:
   og:title: Snap-O
   og:description: Capture screenshots and recordings, and inspect Android app network
@@ -48,14 +41,14 @@ Inspect HTTP and HTTPS requests, responses, JSON payloads, Server-Sent Events, a
 Start in Live Preview and Option-drag the current frame to share a screenshot. Recordings open for immediate playback and frame-by-frame inspection. Drag screenshots or clips into pull requests, chats, or docs without saving them first.
 {.product-copy}
 
-## Tweaks (Alpha) {.product-title}
+## Tweaks {.product-title}
 
 Adjust values from Compose, Views, and other Kotlin code. Change app-owned settings and run actions through the Tool pane, an optional on-device panel, the REST API, or an agent.
 {.product-copy}
 
-[Set up Tweaks (Alpha)](tweaks.md){.section-link}
+[Set up Tweaks](tweaks.md){.section-link}
 
-## Custom tools {.product-title}
+## Build your own tools {.product-title}
 
 Bundle app-specific debugging tools with your Android app. Define HTTP routes and live events, then display a web frontend in Snap-O's Tool pane.
 {.product-copy}

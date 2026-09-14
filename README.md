@@ -34,13 +34,13 @@ The Android libraries support OkHttp, Ktor's OkHttp engine, and HttpURLConnectio
 
 [Set up Network](https://openai.github.io/snap-o/network-inspector.html)
 
-## Tweaks (Alpha)
+## Tweaks
 
 Change values in Compose, Views, and other Kotlin code without rebuilding or restarting your app. Adjust numbers, colors, booleans, strings, enums, and Bézier curves, or run actions registered by the app.
 
 Use `tweaks-core` and `TweakScope` outside Compose. See [Tweaks without Compose](tools/tweaks/android/core/README.md) for setup and ownership examples.
 
-Tweaks are available through the Tool pane, an optional on-device panel, the CLI, and the REST API. This feature is in alpha; its APIs and behavior may change.
+Tweaks are available through the Tool pane, an optional on-device panel, the CLI, and the REST API.
 
 [Set up Tweaks](https://openai.github.io/snap-o/tweaks.html)
 
