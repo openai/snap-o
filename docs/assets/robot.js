@@ -11,8 +11,7 @@ robot.addEventListener("click", () => {
   const idleTransform = getComputedStyle(robotImage).transform;
   const pose = idleTransform === "none" ? "" : idleTransform;
   const radius = Math.min(52, robotImage.clientWidth * 0.22) * 5.2;
-  // Keep the guide's loop inside the viewport by flying left and down from its corner.
-  const startAngle = robot.classList.contains("guide-robot") ? -Math.PI / 4 : 3 * Math.PI / 4;
+  const startAngle = 3 * Math.PI / 4;
   const keyframes = reducedMotion.matches
     ? [1, 1.04, 1].map(scale => ({ transform: `${pose} scale(${scale})` }))
     : Array.from({ length: 61 }, (_, frame) => {
