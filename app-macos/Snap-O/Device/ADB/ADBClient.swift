@@ -379,16 +379,18 @@ public struct ADBClient: Sendable {
     deviceID: String,
     abstractSocket: String
   ) async throws -> ADBSocketConnection {
-    let connection = try await makeConnection()
-    do {
-      try connection.withRequestTimeout(discoveryTimeout) {
-        try connection.sendTransport(to: deviceID)
-        try connection.sendLocalAbstract(abstractSocket)
+    try await runWithRetry(maxAttempts: 1) { connection in
+      try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          continuation.resume(with: Result {
+            try connection.withRequestTimeout(discoveryTimeout) {
+              try connection.sendTransport(to: deviceID)
+              try connection.sendLocalAbstract(abstractSocket)
+            }
+            return connection
+          })
+        }
       }
-      return connection
-    } catch {
-      connection.close()
-      throw error
     }
   }
 

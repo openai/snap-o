@@ -160,7 +160,23 @@ struct ToolHTTPTransportTests {
     #expect(server.connectionCount == 0)
   }
 
-  @Test("Cancellation during the ADB handshake closes the unclaimed socket")
+  @Test("Cancellation interrupts a stalled ADB handshake", arguments: [0, 1])
+  func cancelsStalledHandshake(command: Int) async throws {
+    let server = FakeToolADB(plans: [.stallHandshake(command: command)])
+    defer { server.close() }
+    let operation = try Self.operation(URLRequest(url: Self.endpoint), adb: server.client(timeout: .seconds(10)))
+    let task = Task { try await operation.load(maximumBytes: 1024) }
+    try await eventually { server.commands.count == command + 1 }
+    let start = ContinuousClock.now
+    task.cancel()
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(start.duration(to: .now) < .seconds(1))
+    try await eventually { server.cancelledConnections == 1 }
+    #expect(server.connectionCount == 1)
+    #expect(server.requests.isEmpty)
+  }
+
+  @Test("Cancellation after the ADB handshake closes the unclaimed socket")
   func cancelsBeforeSocketTransfer() async throws {
     let server = FakeToolADB(plans: [.waitForCancellation])
     defer { server.close() }
@@ -445,6 +461,7 @@ private final class FakeToolADB: @unchecked Sendable {
   enum Plan {
     case response([Part])
     case waitForCancellation
+    case stallHandshake(command: Int)
   }
 
   private let lock = NSLock()
@@ -475,8 +492,8 @@ private final class FakeToolADB: @unchecked Sendable {
     lock.withLock { peers.count }
   }
 
-  func client() -> ADBClient {
-    ADBClient(discoveryTimeout: .seconds(1)) { try self.connect() }
+  func client(timeout: Duration = .seconds(1)) -> ADBClient {
+    ADBClient(discoveryTimeout: timeout) { try self.connect() }
   }
 
   func close() {
@@ -507,10 +524,16 @@ private final class FakeToolADB: @unchecked Sendable {
         self.workers.leave()
       }
       do {
-        for _ in 0 ..< 2 {
+        for index in 0 ..< 2 {
           guard let command = try peer.readLengthPrefixedPayload(),
                 let text = String(data: command, encoding: .utf8) else { return }
           self.lock.withLock { self.storedCommands.append(text) }
+          if case .stallHandshake(command: index) = plan {
+            if try peer.readChunk(maxLength: 1) == nil {
+              self.lock.withLock { self.storedCancellations += 1 }
+            }
+            return
+          }
           try peer.writeFully(Data("OKAY".utf8))
         }
         let request = try Self.readRequest(from: peer)
@@ -525,6 +548,8 @@ private final class FakeToolADB: @unchecked Sendable {
           if try peer.readChunk(maxLength: 1) == nil {
             self.lock.withLock { self.storedCancellations += 1 }
           }
+        case .stallHandshake:
+          Issue.record("Expected the handshake to stall")
         }
       } catch {
         if case .waitForCancellation = plan {
