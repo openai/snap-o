@@ -9,6 +9,9 @@ description = "Compose-free live tweaks for Snap-O."
 
 android { namespace = "com.openai.snapo.tweaks.core" }
 
+// This build declares the Node repository in settings.gradle.kts.
+node { distBaseUrl.set(null as String?) }
+
 snapoTool {
     frontendDirectory = layout.projectDirectory.dir("../../frontend")
     id = "tweaks"

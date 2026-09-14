@@ -33,9 +33,9 @@ class ToolCall internal constructor(
     fun respondText(text: String, statusCode: Int = 200) = respond(ToolHttpResponse.text(text, statusCode))
     fun respondNoContent() = respond(ToolHttpResponse(204, byteArrayOf()))
 
-    fun respond(response: ToolHttpResponse, headers: Map<String, String> = emptyMap()) {
+    fun respond(response: ToolHttpResponse) {
         beginResponse()
-        writing { response.write(connection.output, this.headers + headers) }
+        writing { response.write(connection.output, headers) }
     }
 
     /** A finite response of unknown size. Each write becomes an HTTP chunk. */

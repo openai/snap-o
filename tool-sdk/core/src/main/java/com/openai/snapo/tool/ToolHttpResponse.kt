@@ -2,21 +2,20 @@ package com.openai.snapo.tool
 
 import java.io.OutputStream
 
-data class ToolHttpResponse(
+class ToolHttpResponse(
     val statusCode: Int,
     val body: ByteArray,
-    val allowedMethods: String? = null,
     val contentType: String = "application/json; charset=utf-8",
+    val headers: Map<String, String> = emptyMap(),
 ) {
-    internal fun write(output: OutputStream, headers: Map<String, String> = emptyMap()) {
+    internal fun write(output: OutputStream, defaultHeaders: Map<String, String> = emptyMap()) {
         writeHead(
             output,
             statusCode,
-            headers + buildMap {
+            defaultHeaders + headers + buildMap {
                 put("Content-Type", contentType)
                 put("Content-Length", body.size.toString())
                 put("Connection", "close")
-                allowedMethods?.let { put("Allow", it) }
             },
         )
         output.write(body)
@@ -34,11 +33,11 @@ data class ToolHttpResponse(
                 contentType = "text/plain; charset=utf-8"
             )
 
-        fun error(statusCode: Int, message: String, allowedMethods: String? = null): ToolHttpResponse =
+        fun error(statusCode: Int, message: String, headers: Map<String, String> = emptyMap()): ToolHttpResponse =
             ToolHttpResponse(
                 statusCode,
                 ("{\"error\":" + quoteJson(message) + "}").toByteArray(Charsets.UTF_8),
-                allowedMethods
+                headers = headers,
             )
 
         /** Writes headers for a streaming response. The caller owns its body and framing. */

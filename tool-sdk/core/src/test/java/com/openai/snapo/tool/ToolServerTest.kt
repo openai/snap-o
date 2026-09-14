@@ -102,10 +102,11 @@ class ToolServerTest {
     }
 
     @Test
-    fun `domain errors are customizable and errors after headers never produce a second response`() = runBlocking {
+    fun `routes return domain errors and failures after headers never produce a second response`() = runBlocking {
         val server = ToolServer("example") {
-            onError { ToolHttpResponse.error(409, "Fake \"conflict\"\n") }
-            get("/early") { throw IllegalStateException("Fake failure") }
+            get("/early") {
+                respond(ToolHttpResponse.error(409, "Fake \"conflict\"\n", headers = mapOf("Retry-After" to "1")))
+            }
             get("/late") {
                 respondStream("application/x-ndjson") {
                     write("fake\n".toByteArray())
@@ -116,11 +117,39 @@ class ToolServerTest {
         val early = MemoryConnection("GET /early HTTP/1.1\r\nHost: localhost\r\n\r\n")
         server.serve(early)
         assertTrue(early.response.startsWith("HTTP/1.1 409"))
+        assertTrue(early.response.contains("Retry-After: 1\r\n"))
         assertTrue(early.response.endsWith("{\"error\":\"Fake \\\"conflict\\\"\\u000a\"}"))
         val late = MemoryConnection("GET /late HTTP/1.1\r\nHost: localhost\r\n\r\n")
         server.serve(late)
         assertEquals(1, Regex("HTTP/1.1").findAll(late.response).count())
         assertTrue(late.response.endsWith("5\r\nfake\n\r\n"))
+    }
+
+    @Test
+    fun `responses and HTTP exceptions carry their own headers`() = runBlocking {
+        val server = ToolServer("example") {
+            get("/export") {
+                respond(
+                    ToolHttpResponse(
+                        statusCode = 200,
+                        body = "one,two\n".toByteArray(),
+                        contentType = "text/csv; charset=utf-8",
+                        headers = mapOf("Content-Disposition" to "attachment; filename=example.csv"),
+                    )
+                )
+            }
+            get("/busy") { throw ToolHttpException(503, "Try again", headers = mapOf("Retry-After" to "2")) }
+        }
+        val export = MemoryConnection("GET /export HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        server.serve(export)
+        assertTrue(export.response.contains("Content-Type: text/csv; charset=utf-8\r\n"))
+        assertTrue(export.response.contains("Content-Disposition: attachment; filename=example.csv\r\n"))
+        assertTrue(export.response.contains("Cache-Control: no-store\r\n"))
+        assertTrue(export.response.endsWith("one,two\n"))
+        val busy = MemoryConnection("GET /busy HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        server.serve(busy)
+        assertTrue(busy.response.startsWith("HTTP/1.1 503"))
+        assertTrue(busy.response.contains("Retry-After: 2\r\n"))
     }
 
     @Test

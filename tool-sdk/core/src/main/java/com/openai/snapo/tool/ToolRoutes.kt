@@ -10,7 +10,6 @@ class ToolRoutes internal constructor() {
     var exposedHeaders: String? = null
     var vary = "Origin"
     internal val entries = mutableListOf<ToolRoute>()
-    internal var errorResponse: (Exception) -> ToolHttpResponse = ::defaultErrorResponse
 
     fun get(path: String, handler: suspend ToolCall.() -> Unit) = route("GET", path, handler)
     fun post(path: String, handler: suspend ToolCall.() -> Unit) = route("POST", path, handler)
@@ -37,9 +36,6 @@ class ToolRoutes internal constructor() {
         require(entries.none { it.method == method && it.path == path }) { "Duplicate route: $method $path" }
         entries.add(ToolRoute(method, path, handler))
     }
-
-    /** Customize domain errors. Responses already started are never replaced with an error response. */
-    fun onError(response: (Exception) -> ToolHttpResponse) { errorResponse = response }
 }
 
 internal class ToolRoute(
@@ -70,5 +66,5 @@ internal fun defaultErrorResponse(error: Exception): ToolHttpResponse {
         else -> 500
     }
     val message = if (status == 500) "Internal server error" else error.message ?: "Invalid request"
-    return ToolHttpResponse.error(status, message, (error as? ToolHttpException)?.allowedMethods)
+    return ToolHttpResponse.error(status, message, (error as? ToolHttpException)?.headers.orEmpty())
 }

@@ -8,7 +8,7 @@ See the [tool plugin authoring guide](../../docs/plugins.md) for setup, examples
 
 ## Run the example
 
-Copy this directory to your own project location. Use JDK 17, Android SDK 36, and Node.js 22.12 or later. Set `ANDROID_HOME` to your Android SDK directory if needed.
+Copy this directory to your own project location. Use JDK 17 and Android SDK 36. The initial npm setup below also needs a local Node.js 22.12 or later installation. Set `ANDROID_HOME` to your Android SDK directory if needed.
 
 The example resolves the core library and Tool Packager Gradle Plugin from Maven Central. Its `gradle.properties` selects the package version. Install the host SDK from npm, replacing the local tarball dependency used by the repository's validation workflow:
 
@@ -27,7 +27,9 @@ Open Snap-O and select **Example app → Example**. You should see three fake va
 
 Run `./gradlew :app:assembleDebug` to rebuild the Android app and its frontend. Reinstall the APK to try the updated tool.
 
-The Tool Packager Gradle Plugin builds the frontend with Node and npm from `PATH`. Make them available to Gradle, including Android Studio and CI builds. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. Frontend-only commands are available in `example-tool/frontend`:
+The Tool Packager Gradle Plugin downloads Node and uses its bundled npm. Android Studio and CI builds do not need Node or npm on `PATH`. This example forbids project repositories, so it declares the Node download source in settings and sets `node.distBaseUrl` to `null` in the tool module. Builds that allow project repositories need neither change. See [Node configuration](../../tool-sdk/gradle-plugin/README.md#node-configuration) for version overrides and using an existing installation.
+
+Run `./gradlew :example-tool:toolDev` to start the development server with managed Node. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. With a local Node installation, frontend-only commands are also available in `example-tool/frontend`:
 
 ```sh
 npm ci
@@ -36,7 +38,7 @@ npm test
 npm run dev
 ```
 
-For live development in Snap-O, choose Develop → Use Development Server and enter the URL from `npm run dev`.
+For live development in Snap-O, choose Develop → Use Development Server and enter the URL printed by the development server.
 
 ## Validate local SDK changes
 

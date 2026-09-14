@@ -17,6 +17,8 @@ The SDK exports compiled ES modules and declarations. It has a public npm public
 
 ## Validate without publishing
 
+For core API changes, run `./gradlew :tool-core:apiCheck` first. Review any changes to the [public API baseline](../tool-sdk/core/README.md#public-api-baseline); rebuilding the Example alone does not check compatibility with already-compiled tools.
+
 From the repository root:
 
 ```sh
@@ -27,7 +29,7 @@ Use a new or empty directory outside the checkout. Requirements: JDK 17, Android
 
 The command stages three Maven publications and an npm tarball, checks their metadata/files, and builds a copied [Example tool](../examples/tool/README.md). The consumer resolves real package artifacts, with no composite build or SDK source dependency. It builds debug and release APKs, runs the example's Android and frontend tests, and runs Android lint. It checks that the debug APK includes the generated frontend ZIP and the release APK does not. It also checks that the bundled Example descriptor has its required icon and generated host API version, without a synthetic protocol version.
 
-The output includes `report.json`, the copied example, local Maven repository, npm tarball, and debug APK. The build uses Node and npm from `PATH`. It also builds with prebuilt frontend assets, checking that this mode schedules no Node/npm tasks. CI runs the same command. This check does not prove that registry credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
+The output includes `report.json`, the copied example, local Maven repository, npm tarball, and debug APK. The consumer build runs without Node or npm on `PATH` and verifies that its frontend uses the downloaded runtime. It checks configuration cache reuse, an explicit installed-Node override, and prebuilt assets that schedule no Node/npm tasks. It also builds without the centralized repository override to verify automatic Node repository setup. Local Node remains required to stage and test the host SDK. CI runs the same command. This check does not prove that registry credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
 
 To inspect Tool Packager Gradle Plugin artifacts without copying the example:
 
