@@ -13,7 +13,6 @@ struct SnapOCommands: Commands {
   var toolHost: ToolHostModel?
 
   let settings: AppSettings
-  let adbService: ADBService
   let updaterController: SPUStandardUpdaterController
 
   var body: some Commands {
@@ -161,14 +160,6 @@ struct SnapOCommands: Commands {
       }
       .keyboardShortcut("c", modifiers: [.command, .option])
       .disabled(workspaceController?.canToggleCapture != true)
-
-      Divider()
-      Button("Set ADB path…") {
-        Task { await adbService.promptForPath() }
-      }
-      if let url = ADBPathManager.lastKnownADBURL() {
-        Text("Current: \(url.path)")
-      }
     }
   }
 }

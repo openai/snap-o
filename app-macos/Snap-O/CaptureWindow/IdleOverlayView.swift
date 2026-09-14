@@ -35,8 +35,13 @@ struct IdleOverlayView: View {
           .tint(.primary)
           .controlSize(.large)
       } else if !hasDevices, isDeviceListInitialized {
-        Text("Waiting for device")
-          .foregroundStyle(.gray)
+        VStack(spacing: 4) {
+          Text("Waiting for device")
+            .foregroundStyle(.gray)
+          Text("Connect a device, or run `adb start-server` in Terminal.")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+        }
       }
 
       if let err = lastError {
