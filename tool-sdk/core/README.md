@@ -104,7 +104,7 @@ Handlers receive a `ToolHttpRequest`; its construction and HTTP parsing are inte
 
 ## Compatibility
 
-Network uses protocol 4 and Tweaks uses protocol 9. Both use HTTP/1.1 and chunked streaming responses. Each tool owns its protocol version and content-type checks. See the [Network](../../contracts/network/README.md) and [Tweaks](../../contracts/tweaks/README.md) contracts.
+Network uses protocol 4 and Tweaks uses protocol 9. Both use HTTP/1.1 and chunked streaming responses. Each tool owns its protocol version and content-type checks. See the [Network](../../contracts/network/README.md) and [Tweaks](../../docs/tweaks-protocol.md) protocol references.
 
 Both tools now use the same bounded ASCII/CRLF header parser. Tweaks no longer accepts malformed header names, duplicate headers, or LF-only request headers. Excess connections close at the shared server's limit. The first-party clients use the accepted request forms.
 

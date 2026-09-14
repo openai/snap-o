@@ -50,6 +50,10 @@ tags
 .gradle/
 /local.properties
 
+# Local files left by the former Android project
+/snapo-link-android/.idea/
+/snapo-link-android/local.properties
+
 # Android Studio project files to ignore
 /.idea/AndroidProjectSystem.xml
 /.idea/ChatHistory_schema_v2.xml

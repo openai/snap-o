@@ -140,6 +140,10 @@ Compose color defaults retain their original color space and precision in the ap
 
 Integer values must be whole numbers. Floating-point values may be whole or fractional. When present, a numeric `step` is relative to `min`, or to the tweak's `default` when no minimum is specified. Reusing an ordinary tweak name shares one value across active owners; its type, default, constraints, and enum options must match. App-owned sources sharing a name must represent the same setting and value type. Their first active source owns the value until its owner is released.
 
+Numeric JSON values may contain at most 128 characters and 64 significant digits, with a decimal scale between -64 and 64. Values outside these limits return `422` before any tweaks change.
+
+Names retain their first-observed order across removal and reactivation. A returning registry-owned declaration restores its last edited value. App-owned sources control their own persistence instead.
+
 ### Bézier curves {#bezier-curves}
 
 A `bezier` descriptor represents one cubic curve with fixed endpoints `(0, 0)` and `(1, 1)`.
@@ -169,9 +173,9 @@ Send the complete object in a `PATCH /tweaks` request:
 ```
 
 Reset with `{"values":{"Motion/Curve":null}}`. This restores the complete default or invokes the app-owned reset.
-Missing or unknown coordinate names and coordinates outside `[0, 1]` produce per-item errors.
-Duplicate coordinate names are malformed requests. Arrays, nested objects, nonnumeric coordinates, and objects with more than four fields are rejected at the request level.
-Numeric precision limits still apply. See the [protocol contract](https://github.com/openai/snap-o/blob/main/contracts/tweaks/README.md#bézier-curves) for details.
+Missing or unknown coordinate names, nonnumeric coordinates, and coordinates outside `[0, 1]` produce per-item errors.
+Duplicate coordinate names are malformed requests. Arrays, nested objects, and objects with more than four fields are rejected at the request level.
+The numeric precision limits above also apply to coordinates.
 
 ## GET /tweaks?include=adjusted {#adjusted-tweaks data-step="5" data-nav="Adjusted history"}
 
@@ -206,6 +210,8 @@ Host: 127.0.0.1
 ```
 
 Each retained snapshot preserves its complete descriptor, latest effective value, and modification status. History can remain after a reset; an app-owned value may then differ from its captured default without being modified, as shown above. Separate screens may reuse a name with different descriptors, so preserve repeated names instead of deduplicating them. An active descriptor takes precedence over its matching historical snapshot.
+
+Order names by first observation. For repeated names, list the active declaration first, followed by historical declarations in adjustment order.
 
 **Inactive history is read-only.** Only active value tweaks can be updated or reset. App-owned history keeps an immutable snapshot, not its source or observers, and never replays an old value into a returning source. Actions do not create adjustment history. Retention ends when the app process exits.
 {.notice}
@@ -369,8 +375,11 @@ Each `tweaks` event contains a complete current snapshot of active values and ac
 
 The first event arrives immediately. Later changes made within the same Android main-thread turn are combined into one ordered snapshot, including values changed by the on-device overlay or an app-owned source. An omitted tweak or action has lost its last owner. Inactive adjustment history never appears in event snapshots. Slow clients receive the newest complete snapshot instead of accumulating every intermediate state.
 
-**Browser clients need a same-origin proxy.** The Android server does not provide CORS headers or handle browser `OPTIONS` preflight. Serve your interface and its forwarded API through the same origin; native and server-side HTTP clients do not have this restriction.
-{.notice}
+### Browser access
+
+Browser clients can use `fetch` and `EventSource` directly against the forwarded endpoint. Every request must use a loopback `Host`: `localhost`, `127.0.0.1`, or `[::1]`, with an optional port. This blocks DNS rebinding through attacker-owned names.
+
+CORS permits HTTP and HTTPS loopback origins and the desktop origin `snapo-inspector://<uuid>`. The UUID must be lowercase and canonical, without a port, path, query, or fragment. Other origins, including `null`, are rejected. `OPTIONS` permits `GET`, `PATCH`, and `POST` with `Content-Type`. Native clients may omit `Origin`; credentials are not required.
 
 ## Error responses {#errors data-step="9"}
 

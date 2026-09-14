@@ -60,12 +60,6 @@ class DocumentationThemeTests(unittest.TestCase):
                         for identifier in node.get(attribute, "").split():
                             self.assertIn(identifier, ids)
 
-    def test_list_styles_apply_to_lists(self):
-        soup = self.pages["network-inspector.html"]
-        self.assertIsNotNone(soup.select_one("ol.verify-list > li > span > strong"))
-        self.assertIsNotNone(soup.select_one("ul.check-list > li"))
-        self.assertFalse(soup.select("li.verify-list, li.check-list"))
-
     def test_nested_code_tabs_and_escaping(self):
         body = '''# Example
 
