@@ -2,7 +2,7 @@ package com.openai.snapo.tool
 
 import java.net.URI
 
-/** Browser access policy for tool plugin sockets forwarded to loopback. */
+/** Browser access policy for tool plugin HTTP requests. */
 internal object ToolBrowserAccess {
     fun origin(headers: Map<String, String>): String? {
         val host = headers["host"].orEmpty()
@@ -14,7 +14,7 @@ internal object ToolBrowserAccess {
         ) { "Invalid Host header" }
         val value = headers["origin"] ?: return null
         val origin = runCatching { URI(value) }.getOrNull()
-        val allowedAuthority = ToolOrigin.matches(value) ||
+        val allowedAuthority = value == ToolOrigin ||
             (origin?.scheme in listOf("http", "https") && origin?.host?.lowercase() in BrowserHosts)
         require(
             allowedAuthority && origin?.rawUserInfo == null && origin?.rawQuery == null &&
@@ -41,4 +41,4 @@ internal object ToolBrowserAccess {
 }
 
 private val BrowserHosts = setOf("localhost", "127.0.0.1", "[::1]")
-private val ToolOrigin = Regex("snapo-inspector://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+private const val ToolOrigin = "snapo://tool"

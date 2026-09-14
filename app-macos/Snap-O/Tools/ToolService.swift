@@ -93,7 +93,7 @@ actor ToolService {
     for reference: ToolServerReference, identity: ToolProcessIdentity, tool: ToolDescriptor
   ) async throws -> ToolFrontendBundle {
     guard let frontend = tool.frontend,
-          frontend.hostApiVersion == 2 else { throw ToolError.frontendUnavailable }
+          frontend.hostApiVersion == 3 else { throw ToolError.frontendUnavailable }
     let key = [
       reference.deviceId,
       String(identity.androidUserId),

@@ -59,7 +59,7 @@ struct ToolFrontendTests {
     let manifest = try JSONDecoder().decode(
       ToolProcessMetadata.self,
       from: Data(
-        #"{"version":1,"pid":42,"processIdentity":"boot:42:1","androidUserId":0,"app":{"packageName":"com.example.demo","name":"Demo","revision":"12:34","inspectors":[{"id":"sample","name":"Sample","frontend":{"assetPath":"snapo/inspectors/sample/frontend.zip","hostApiVersion":2}}]}}"#
+        #"{"version":1,"pid":42,"processIdentity":"boot:42:1","androidUserId":0,"app":{"packageName":"com.example.demo","name":"Demo","revision":"12:34","inspectors":[{"id":"sample","name":"Sample","frontend":{"assetPath":"snapo/inspectors/sample/frontend.zip","hostApiVersion":3}}]}}"#
           .utf8
       )
     )

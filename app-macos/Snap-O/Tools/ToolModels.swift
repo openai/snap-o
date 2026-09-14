@@ -55,8 +55,8 @@ enum ToolCompatibility: Equatable, Codable {
     case .missingFrontend:
       "This app’s Snap-O library does not include a tool interface for this version of Snap-O." + Self.libraryGuidance
     case .hostAPI(let version):
-      version > 2
-        ? "This tool requires host API \(version). This version of Snap-O supports host API 2. Update Snap-O to open it."
+      version > 3
+        ? "This tool requires host API \(version). This version of Snap-O supports host API 3. Update Snap-O to open it."
         : "This tool uses unsupported host API \(version)." + Self.libraryGuidance
     case .metadataUnavailable:
       "Snap-O could not reach this tool or check its library version. Open the app on your device. Snap-O will retry automatically."
@@ -168,20 +168,18 @@ enum ToolError: LocalizedError {
 
 struct ToolConnectionState: Encodable {
   var revision = 0
-  var baseURL: String?
   var connected = false
   var metadata: ToolMetadata.Process?
   var tool: ToolDescriptor?
 
   private enum CodingKeys: String, CodingKey {
-    case revision, baseURL, connected, manifest
+    case revision, connected, manifest
     case tool = "inspector"
   }
 
   func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(revision, forKey: .revision)
-    try container.encodeIfPresent(baseURL, forKey: .baseURL)
     try container.encode(connected, forKey: .connected)
     try container.encodeIfPresent(metadata.flatMap(FrontendManifest.init), forKey: .manifest)
     try container.encodeIfPresent(tool, forKey: .tool)

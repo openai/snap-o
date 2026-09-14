@@ -21,23 +21,9 @@ enum ToolWebPolicy {
     ))
   }
 
-  static func isPluginEndpoint(_ url: URL) -> Bool {
-    url.scheme == "http" && url.host == "127.0.0.1" && url.port.map { (1 ... 65535).contains($0) } == true
-      && url.user == nil && url.password == nil && url.path == "/" && url.query == nil && url.fragment == nil
-  }
-
-  static func contentRules(endpoint: URL?, developmentURL: URL?, assetURL: URL? = nil) throws -> String {
-    if let endpoint, !isPluginEndpoint(endpoint) { throw ToolError.invalidBridgeMessage }
-    var allowed = ["^data:", "^blob:"]
-    if let assetURL {
-      guard assetURL.scheme == "snapo-inspector", let host = assetURL.host, UUID(uuidString: host) != nil,
-            assetURL.port == nil, assetURL.user == nil, assetURL.password == nil,
-            assetURL.path == "/", assetURL.query == nil, assetURL.fragment == nil else {
-        throw ToolError.invalidBridgeMessage
-      }
-      allowed.append("^" + NSRegularExpression.escapedPattern(for: assetURL.absoluteString))
-    }
-    for url in [endpoint, developmentURL].compactMap(\.self) {
+  static func contentRules(developmentURL: URL?) throws -> String {
+    var allowed = ["^data:", "^blob:", "^snapo://tool/"]
+    if let url = developmentURL {
       guard let origin = origin(of: url) else { throw ToolError.invalidBridgeMessage }
       allowed.append("^" + NSRegularExpression.escapedPattern(for: origin) + "/")
       let socket = origin.replacingOccurrences(of: "https://", with: "wss://")
@@ -55,9 +41,8 @@ enum ToolWebPolicy {
     return encoded
   }
 
-  /// Content rules restrict connections to the selected endpoint, including redirects and network hints.
   static let contentSecurityPolicy = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
-    + "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* data: blob:; "
+    + "connect-src 'self' data: blob:; "
     + "img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; "
     + "worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
 

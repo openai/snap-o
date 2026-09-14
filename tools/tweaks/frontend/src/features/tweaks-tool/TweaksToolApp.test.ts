@@ -29,7 +29,6 @@ describe("empty tweaks tool", () => {
       createElement(TweaksToolApp, {
         client,
         connection: {
-          baseURL: "http://127.0.0.1:1234/",
           processIdentity: "boot:20:123",
           signal: new AbortController().signal
         }
@@ -337,9 +336,8 @@ describe("registered tweak actions", () => {
     expect(document.createRange().createContextualFragment(markup).querySelector("button:disabled")).not.toBeNull();
   });
 
-  it("invokes actions through the forwarded HTTP endpoint", async () => {
+  it("invokes actions through the tool URL", async () => {
     vi.spyOn(host, "connection", "get").mockReturnValue({
-      baseURL: "http://127.0.0.1:1234/",
       processIdentity: "boot:20:123",
       signal: new AbortController().signal
     });
@@ -350,7 +348,7 @@ describe("registered tweak actions", () => {
     try {
       await client.invokeTweakAction({ name: "Motion/Toggle animation" });
       expect(fetchRequest).toHaveBeenCalledWith(
-        new URL("http://127.0.0.1:1234/tweaks/action"),
+        "/api/tweaks/action",
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ name: "Motion/Toggle animation" })
@@ -605,7 +603,6 @@ describe("Tweaks snapshot subscription", () => {
     streams = [];
     vi.useFakeTimers();
     connection = {
-      baseURL: "http://127.0.0.1:1234/",
       processIdentity: "boot:20:123",
       signal: new AbortController().signal
     };
@@ -625,7 +622,7 @@ describe("Tweaks snapshot subscription", () => {
     const changed = vi.fn();
     const failed = vi.fn();
     const stop = client.subscribeTweaks(connection, changed, failed);
-    expect(streams[0].url.href).toBe("http://127.0.0.1:1234/tweaks/events");
+    expect(String(streams[0].url)).toBe("/api/tweaks/events");
     streams[0].dispatchEvent(new Event("open"));
     expect(changed).not.toHaveBeenCalled();
     streams[0].dispatchEvent(new MessageEvent("tweaks", { data: '{"tweaks":[]}' }));
@@ -694,9 +691,9 @@ describe("Tweaks snapshot subscription", () => {
   });
 
   it("binds subscriptions to their supplied connection and rejects expired connections", () => {
-    vi.spyOn(host, "connection", "get").mockReturnValue({ ...connection, baseURL: "http://127.0.0.1:9999/" });
+    vi.spyOn(host, "connection", "get").mockReturnValue(connection);
     client.subscribeTweaks(connection, vi.fn(), vi.fn());
-    expect(streams[0].url.href).toBe(connection.baseURL + "tweaks/events");
+    expect(String(streams[0].url)).toBe("/api/tweaks/events");
     const abort = new AbortController();
     abort.abort();
     expect(() => client.subscribeTweaks({ ...connection, signal: abort.signal }, vi.fn(), vi.fn())).toThrow(
@@ -708,7 +705,6 @@ describe("Tweaks snapshot subscription", () => {
   it.each(["host disconnect", "dispose"])("cancels pending HTTP requests on %s", async (reason) => {
     const connectionAbort = new AbortController();
     vi.spyOn(host, "connection", "get").mockReturnValue({
-      baseURL: "http://127.0.0.1:1234/",
       processIdentity: "boot:20:123",
       signal: connectionAbort.signal
     });

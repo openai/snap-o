@@ -5,7 +5,6 @@ import { observeExample } from "../.test-build/snapshot.js";
 
 class FakeHost extends EventTarget {
   connection = {
-    baseURL: "http://127.0.0.1:12345/",
     processIdentity: "boot:42:1",
     signal: new AbortController().signal,
   };
@@ -93,7 +92,6 @@ test("activation resumes requests and disposal removes the listener", async () =
   });
   assert.equal(fetch.mock.calls.length, 0);
   host.connection = {
-    baseURL: "http://127.0.0.1:12345/",
     processIdentity: "boot:42:2",
     signal: new AbortController().signal,
   };
@@ -120,7 +118,10 @@ test("fake mutation uses POST and applies its snapshot", async () => {
   });
   await setImmediate();
   await observer.increment();
-  assert.equal(fetch.mock.calls[1].arguments[0].pathname, "/example/increment");
+  assert.equal(
+    fetch.mock.calls[1].arguments[0],
+    "/api/example/increment",
+  );
   assert.equal(fetch.mock.calls[1].arguments[1].method, "POST");
   assert.equal(state.items[0].value, 1);
   observer.dispose();
@@ -140,7 +141,7 @@ test("an older GET cannot overwrite a newer SSE snapshot", async () => {
   const observer = observeExample(new FakeHost(), (next) => {
     state = next;
   });
-  assert.equal(streams[0].url.pathname, "/example/events");
+  assert.equal(streams[0].url, "/api/example/events");
   streams[0].snapshot(sample(1));
   complete(new Response(JSON.stringify(sample(0))));
   await setImmediate();

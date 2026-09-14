@@ -51,10 +51,10 @@ def main():
             shutil.copyfile(icon, resources / "drawable" / icon.name)
             (resources / f"xml/snapo_{plugin}_inspector.xml").write_text(f'''<inspector version="1" id="{plugin}" name="{plugin.title()}"
                 icon="@drawable/snapo_{plugin}_inspector_icon"
-                frontendAssets="snapo/inspectors/{plugin}/frontend.zip" hostApiVersion="2" />''')
+                frontendAssets="snapo/inspectors/{plugin}/frontend.zip" hostApiVersion="3" />''')
         (resources / "xml/snapo_sample.xml").write_text('''<inspector version="1" id="sample" name="Sample"
             icon="@drawable/snapo_network_inspector_icon"
-            frontendAssets="snapo/inspectors/sample/frontend.zip" hostApiVersion="2" />''')
+            frontendAssets="snapo/inspectors/sample/frontend.zip" hostApiVersion="3" />''')
         assets = temporary / "assets"
         archive = assets / "snapo/inspectors/tweaks/frontend.zip"
         archive.parent.mkdir(parents=True)
@@ -139,7 +139,7 @@ def main():
             assert "protocolVersion" not in descriptors["sample"], descriptors
             assert "iconBase64" in descriptors["sample"], descriptors
             frontend = descriptors["tweaks"]["frontend"]
-            assert frontend == {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 2}
+            assert frontend == {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 3}
             expected = dict(frontend, processIdentity=info["processIdentity"], androidUserId=info["androidUserId"],
                             packageName=package, revision=info["app"]["revision"], inspectorId="tweaks")
             encoded = base64.b64encode(json.dumps(expected).encode()).decode()

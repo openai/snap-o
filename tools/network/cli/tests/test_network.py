@@ -71,10 +71,9 @@ def response_event():
 
 
 class WireServer:
-    def __init__(self, handler, adb_handshake=False, bodies=None, history=(), watermark=0, complete_history=True):
+    def __init__(self, handler, adb_handshake=False, bodies=None, history=(), complete_history=True):
         self.handler = handler
         self.history = history
-        self.watermark = watermark
         self.complete_history = complete_history
         self.protocol_requests = []
         self.protocol_version = 4
@@ -147,7 +146,7 @@ class WireServer:
                     stream.write(f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(payload)}\r\n\r\n".encode() + payload)
                 elif path == "/network" and b"Accept: application/x-ndjson\r\n" in head:
                     self.http_requests.append(path)
-                    stream.write((f"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\nSnapO-Sequence: {self.watermark}\r\n\r\n").encode())
+                    stream.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\n\r\n")
                     for message in self.history:
                         body = json.dumps(message).encode() + b"\n"
                         stream.write(f"{len(body):x}\r\n".encode() + body + b"\r\n")
@@ -604,7 +603,7 @@ class ProtocolTests(unittest.TestCase):
     def test_shared_history_fixture_contains_only_sequenced_network_events(self):
         root = REPOSITORY / "contracts" / "network" / "v2"
         records = [json.loads(line) for line in (root / "history.jsonl").read_text().splitlines()]
-        with WireServer(lambda *_: self.fail("No stream expected"), history=records, watermark=3) as wire:
+        with WireServer(lambda *_: self.fail("No stream expected"), history=records) as wire:
             history = snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))
             try:
                 self.assertEqual([history.read() for _ in records], records)
@@ -614,7 +613,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_incomplete_http_history_cannot_be_mistaken_for_completion(self):
         event = {**request_event(), "snapoSequence": 1}
-        with WireServer(lambda *_: None, history=[event], watermark=1, complete_history=False) as wire:
+        with WireServer(lambda *_: None, history=[event], complete_history=False) as wire:
             history = snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))
             try:
                 self.assertEqual(history.read(), event)
@@ -623,10 +622,27 @@ class ProtocolTests(unittest.TestCase):
             finally:
                 history.close()
 
-    def test_history_rejects_an_invalid_snapshot_cursor(self):
-        with WireServer(lambda *_: None, watermark="invalid") as wire:
-            with self.assertRaisesRegex(snapo.SnapOError, "Invalid history snapshot headers"):
-                snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))
+    def test_history_rejects_an_invalid_event_sequence(self):
+        with WireServer(lambda *_: None, history=[{**request_event(), "snapoSequence": -1}]) as wire:
+            with contextlib.closing(snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))) as history:
+                with self.assertRaisesRegex(snapo.SnapOError, "Invalid history record"):
+                    history.read()
+
+    def test_empty_history_keeps_live_events_and_advances_the_last_sequence(self):
+        live = {**request_event(), "snapoSequence": 120}
+        next_event = {**response_event(), "snapoSequence": 121}
+        def handler(stream, received):
+            write_message(stream, live)
+            write_message(stream, live)
+            write_message(stream, next_event)
+        with WireServer(handler) as wire:
+            with contextlib.closing(open_session(wire.port)) as session:
+                session.start_stream()
+                self.assertIsNone(session.read(1))
+                self.assertEqual(session.last_sequence, -1)
+                self.assertEqual(session.read(1), live)
+                self.assertEqual(session.read(1), next_event)
+                self.assertEqual(session.last_sequence, 121)
 
     def test_metadata_does_not_open_an_event_stream(self):
         with WireServer(lambda *_: self.fail("Metadata must not use HTTP")) as wire:
@@ -646,7 +662,7 @@ class ProtocolTests(unittest.TestCase):
         def handler(stream, received):
             write_message(stream, history)
             write_message(stream, live)
-        with WireServer(handler, history=[history], watermark=1) as wire:
+        with WireServer(handler, history=[history]) as wire:
             session = open_session(wire.port)
             try:
                 session.start_stream()
@@ -702,7 +718,7 @@ class ProtocolTests(unittest.TestCase):
         history = [{**event, "snapoSequence": index} for index, event in enumerate([
             request_event(), response_event(), {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}}], 1)]
         bodies = {"request-body": {"postData": '{"hello":"world"}'}, "response-body": {"body": '{"ok":true}', "base64Encoded": False}}
-        with WireServer(lambda *_: None, history=history, watermark=3, bodies=bodies) as wire:
+        with WireServer(lambda *_: None, history=history, bodies=bodies) as wire:
             session = open_session(wire.port)
             try:
                 details = snapo.request_details(session, snapo.Server("emulator-5554", "snapo_network_42"), "request-1")
@@ -725,7 +741,7 @@ class ProtocolTests(unittest.TestCase):
                     response["params"]["response"]["headers"]["Content-Length"] = length
                 history = [{**event, "snapoSequence": index} for index, event in enumerate([
                     request, response, {"method": "Network.loadingFinished", "params": {"requestId": "request-1"}}], 1)]
-                with WireServer(lambda *_: None, history=history, watermark=3) as wire:
+                with WireServer(lambda *_: None, history=history) as wire:
                     session = open_session(wire.port)
                     try:
                         details = snapo.request_details(session, snapo.Server("emulator-5554", "snapo_network_42"), "request-1")
@@ -907,7 +923,7 @@ class OutputTests(unittest.TestCase):
 
         adb = FakeADB()
         stdout = io.StringIO()
-        with WireServer(handler, history=history, watermark=2) as wire:
+        with WireServer(handler, history=history) as wire:
             adb.forward_port = wire.port
             with mock.patch.object(snapo, "resolve_adb", return_value="/configured/adb"):
                 with mock.patch.object(snapo, "ADB", return_value=adb):

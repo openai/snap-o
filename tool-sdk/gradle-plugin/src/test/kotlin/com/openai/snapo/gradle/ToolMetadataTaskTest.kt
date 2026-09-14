@@ -35,7 +35,7 @@ class ToolMetadataTaskTest {
         assertTrue(task.manifestFile.get().asFile.readText().contains("snapo.inspector.renamed-plugin"))
         val source = task.sourceDirectory.file("com/example/plugin/SnapOTool.java").get().asFile.readText()
         assertTrue(source.contains("public static final String ID = \"renamed-plugin\";"))
-        assertEquals("2", descriptor.getAttribute("hostApiVersion"))
+        assertEquals("3", descriptor.getAttribute("hostApiVersion"))
     }
 
     @Test

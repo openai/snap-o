@@ -54,6 +54,7 @@ struct ToolWebContainerTests {
     container.pageReadinessChangedHandler = { ready = $0 }
     container.sendPageEvent(name: "host:state", payload: "queued")
     container.start(frontend: bundle)
+    container.start(frontend: nil)
     try await eventually { ready }
     let startup = try await web.callAsyncJavaScript("return await startup", arguments: [:], in: nil, contentWorld: .page)
     #expect(startup as? Bool == true, "Install the deny-all policy before executing tool scripts")
@@ -67,15 +68,17 @@ struct ToolWebContainerTests {
     #expect(served?["html"] as? String == html, "Serve original asset bytes")
     #expect(served?["earlyEval"] as? Bool == false, "Attach CSP before the first script")
 
-    try await container.allowEndpoint(allowedURL)
-    #expect(try await fetch(allowedURL, in: web))
+    container.setServer(ToolHTTPService.Endpoint(
+      id: UUID(), reference: ToolServerReference(deviceId: "phone", socketName: "snapo_sample_42"), adb: ADBClient()
+    ))
+    #expect(try await !fetch(allowedURL, in: web))
     #expect(try await !fetch(deniedURL, in: web))
     #expect(try await !fetch(allowedURL.appendingPathComponent("redirect"), in: web))
     #expect(denied.paths.isEmpty, "Direct and redirected requests must not reach a different endpoint")
-    try await container.allowEndpoint(nil)
+    container.setServer(nil)
     let requests = allowed.paths.count
     #expect(try await !fetch(allowedURL, in: web))
-    #expect(allowed.paths.count == requests, "Retiring an endpoint revokes its allowance")
+    #expect(allowed.paths.count == requests, "Tool pages cannot contact loopback directly")
 
     let hostState = try await web.callAsyncJavaScript(
       "return await webkit.messageHandlers.snapoHost.postMessage({command:'hostState'})",
@@ -96,7 +99,7 @@ struct ToolWebContainerTests {
     otherConfiguration.userContentController.addScriptMessageHandler(bridge, contentWorld: .page, name: ToolWebBridge.messageHandlerName)
     defer { otherConfiguration.userContentController.removeAllScriptMessageHandlers() }
     let url = try #require(web.url)
-    let assets = try ToolAssetSchemeHandler(storageIdentifier: UUID(uuidString: #require(url.host)))
+    let assets = ToolAssetSchemeHandler()
     assets.bundle = try ToolFrontendBundle(files: ["index.html": Data("<p>Foreign page</p>".utf8)])
     otherConfiguration.setURLSchemeHandler(assets, forURLScheme: ToolAssetSchemeHandler.scheme)
     let other = WKWebView(frame: .zero, configuration: otherConfiguration)

@@ -92,10 +92,10 @@ class NetworkInspectorServer internal constructor(
         }
     }
 
-    private suspend fun snapshotMessages(): NetworkReplaySnapshot {
+    private suspend fun snapshotMessages(): List<CdpMessage> {
         val snapshot = bufferLock.withLock { eventBuffer.sequencedSnapshot() }
         val requestUrls = HashMap<String, String>()
-        val messages = snapshot.records
+        return snapshot
             .sortedBy(SequencedNetworkEvent::snapoSequence)
             .map { sequencedRecord ->
                 val record = sequencedRecord.record
@@ -111,10 +111,6 @@ class NetworkInspectorServer internal constructor(
                     snapoSequence = sequencedRecord.snapoSequence,
                 )
             }
-        return NetworkReplaySnapshot(
-            messages = messages,
-            watermark = snapshot.watermark,
-        )
     }
 
     private suspend fun handleCommand(message: CdpMessage): CdpMessage? {

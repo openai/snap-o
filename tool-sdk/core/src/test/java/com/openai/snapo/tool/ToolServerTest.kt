@@ -62,7 +62,7 @@ class ToolServerTest {
             get("/example") { respondText("fake") }
             post("/example") { respondNoContent() }
         }
-        val origin = "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef"
+        val origin = "snapo://tool"
         for ((method, path, status) in listOf(
             Triple("OPTIONS", "/", 204),
             Triple("DELETE", "/example", 405),

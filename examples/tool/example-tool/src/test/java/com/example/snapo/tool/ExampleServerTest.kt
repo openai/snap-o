@@ -19,7 +19,7 @@ import java.net.Socket
 class ExampleServerTest {
     @Test
     fun `native readiness and browser preflight work`() {
-        val origin = "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef"
+        val origin = "snapo://tool"
         val response = request("OPTIONS", "/", "Origin: $origin\r\n")
         assertTrue(response.startsWith("HTTP/1.1 204 No Content\r\n"))
         assertTrue(response.contains("Access-Control-Allow-Origin: $origin\r\n"))

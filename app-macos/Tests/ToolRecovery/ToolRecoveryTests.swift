@@ -1,90 +1,9 @@
 import Foundation
-import Network
 
 actor ADBService {
   let client = ADBClient()
   func exec() -> ADBClient {
     client
-  }
-}
-
-private final class ToolHTTP: @unchecked Sendable {
-  static let state = State()
-
-  final class State: @unchecked Sendable {
-    private let lock = NSLock()
-    private var frozenRequests = 0
-    private var frozen = true
-    private var networkDisconnected = false
-    var count: Int {
-      lock.withLock { frozenRequests }
-    }
-
-    func unfreeze() {
-      lock.withLock { frozen = false }
-    }
-
-    func disconnectNetwork() {
-      lock.withLock { networkDisconnected = true }
-    }
-
-    func shouldFail(port: Int?) -> Bool {
-      lock.withLock {
-        guard port == 12345 || port == 12344 else { return false }
-        frozenRequests += 1
-        return frozen || (port == 12344 && networkDisconnected)
-      }
-    }
-  }
-
-  private var listeners: [NWListener] = []
-  private let lock = NSLock()
-  private var sockets: [NWConnection] = []
-
-  func start() async throws {
-    for port: UInt16 in [12344, 12345, 12346] {
-      let parameters = NWParameters.tcp
-      parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
-      let listener = try NWListener(using: parameters)
-      listener.newConnectionHandler = { connection in
-        self.lock.withLock { self.sockets.append(connection) }
-        connection.start(queue: .global())
-        self.read(connection, port: port)
-      }
-      listeners.append(listener)
-      try await withCheckedThrowingContinuation { (ready: CheckedContinuation<Void, Error>) in
-        listener.stateUpdateHandler = { state in
-          switch state {
-          case .ready: ready.resume()
-          case .failed(let error): ready.resume(throwing: error)
-          default: break
-          }
-        }
-        listener.start(queue: .global())
-      }
-    }
-  }
-
-  func stop() {
-    listeners.forEach { $0.cancel() }
-    lock.withLock { sockets.forEach { $0.cancel() } }
-  }
-
-  private func read(_ connection: NWConnection, port: UInt16, previous: Data = Data()) {
-    connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { data, _, _, _ in
-      guard let data, !data.isEmpty else { return }
-      let request = previous + data
-      guard request.range(of: Data("\r\n\r\n".utf8)) != nil else {
-        self.read(connection, port: port, previous: request)
-        return
-      }
-      if Self.state.shouldFail(port: Int(port)) { return }
-      precondition(String(decoding: request, as: UTF8.self).hasPrefix("OPTIONS / HTTP/1.1"))
-      let status = "204 No Content"
-      let body = ""
-      let response = "HTTP/1.1 \(status)\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
-      connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
-    }
   }
 }
 
@@ -96,9 +15,6 @@ enum SnapOLog {
 @MainActor
 struct ToolRecoveryTests {
   static func main() async throws {
-    let http = ToolHTTP()
-    try await http.start()
-    defer { http.stop() }
     let adbService = ADBService()
     let adb = await adbService.exec()
     let tracker = DeviceTracker(adbService: adbService)
@@ -136,19 +52,17 @@ struct ToolRecoveryTests {
     _ = await service.discoverPlugins().apps
     try await eventually {
       let apps = await service.discoverPlugins().apps
-      return ToolHTTP.state.count == 2 && apps.count == 2
+      return adb.failedToolConnectionCount == 2 && apps.count == 2
         && apps.first(where: { $0.deviceId == "frozen" })?.tools.allSatisfy { !$0.isConnected } == true
     }
-    let count = adb.forwardCount
-    for _ in 0 ..< 50 {
+    for _ in 0 ..< 5 {
       _ = await service.discoverPlugins().apps
       do {
         _ = try await service.pluginEndpoint(for: frozen)
         fatalError("Frozen tool should remain disconnected during cooldown")
       } catch ToolError.serverNotConnected {}
     }
-    precondition(adb.forwardCount == count)
-    precondition(ToolHTTP.state.count == 2)
+    precondition(adb.failedToolConnectionCount == 2)
     precondition(!adb.scannedDeviceIDs.contains("stalled"))
     print("A device with failed properties is excluded from app discovery")
     do {
@@ -168,7 +82,7 @@ struct ToolRecoveryTests {
     let frozenMetadata = await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }!
     precondition(frozenMetadata.tools.allSatisfy { !$0.isConnected })
     print("App metadata loads while tool HTTP servers remain frozen")
-    ToolHTTP.state.unfreeze()
+    adb.unfreeze()
     try await Task.sleep(for: .milliseconds(3200))
     try await eventually {
       let app = await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }
@@ -177,18 +91,17 @@ struct ToolRecoveryTests {
     let discovered = await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }!
     precondition(discovered.name == "Demo" && discovered.tools.allSatisfy { $0.compatibility == .supported })
     _ = try await service.pluginEndpoint(for: frozen)
-    precondition(adb.forwardCount == count + 2)
     print("Both tool kinds reconnect automatically after cooldown")
 
-    ToolHTTP.state.disconnectNetwork()
+    adb.disconnectNetwork()
     try await eventually {
       let apps = await service.discoverPlugins().apps
       let options = apps.first(where: { $0.deviceId == "frozen" })?.tools
       return options?.first(where: { $0.kind == .network })?.isConnected == false
         && options?.first(where: { $0.kind == .tweaks })?.isConnected == true
     }
-    let disconnectedCount = adb.forwardCount
-    for _ in 0 ..< 50 {
+    let disconnectedFailures = adb.failedToolConnectionCount
+    for _ in 0 ..< 5 {
       let apps = await service.discoverPlugins().apps
       precondition(apps.map(\.id) == initialOrder)
       let cached = apps.first { $0.deviceId == "frozen" }!
@@ -197,7 +110,7 @@ struct ToolRecoveryTests {
       precondition(cached.tools.map(\.kind) == [.network, .tweaks])
       precondition(cached.tools.allSatisfy { $0.compatibility == .supported })
     }
-    precondition(adb.forwardCount == disconnectedCount)
+    precondition(adb.failedToolConnectionCount == disconnectedFailures)
     _ = try await service.pluginEndpoint(for: frozen)
     print("A connection failure retains app metadata, tool options, and row order")
 
@@ -258,7 +171,6 @@ struct ToolRecoveryTests {
     var invalidated = false
     var retired = false
     var releasePage: CheckedContinuation<Void, Never>?
-    let beforeRetirement = adb.removedPorts.count(where: { $0 == 12345 })
     _ = try await restarted.pluginEndpoint(for: frozen, ownerID: ownerID, invalidated: {
       invalidated = true
       await withCheckedContinuation { releasePage = $0 }
@@ -266,14 +178,11 @@ struct ToolRecoveryTests {
     })
     let stop = Task { await restarted.stop() }
     try await eventually { invalidated }
-    precondition(
-      adb.removedPorts.count(where: { $0 == 12345 }) == beforeRetirement,
-      "The forward stays reserved while an authorized page is still unloading"
-    )
+    precondition(!retired, "Endpoint retirement waits for its authorized page to unload")
     releasePage?.resume()
     await stop.value
-    precondition(retired && adb.removedPorts.count(where: { $0 == 12345 }) == beforeRetirement + 1)
-    print("Endpoint retirement waits for the page before releasing its forwarded port")
+    precondition(retired)
+    print("Endpoint retirement waits for the authorized page to unload")
     print("A new service instance can reconnect immediately")
 
     adb.setMetadataAvailable(true)
@@ -283,23 +192,23 @@ struct ToolRecoveryTests {
     _ = await recovered.discoverPlugins().apps
     precondition(adb.scannedDeviceIDs.contains("stalled"))
     await recovered.stop()
-    let failingPayload = "forward-failure device transport_id:4"
+    let failingPayload = "direct-failure device transport_id:4"
     adb.emitDevices(failingPayload)
-    try await eventually { await tracker.latestDevices.map(\.id) == ["forward-failure"] }
-    let forwardFailure = ToolService(adbService: adbService, deviceTracker: tracker)
-    let beforeForwardFailure = adb.forwardCount
-    for _ in 0 ..< 50 {
-      _ = await forwardFailure.discoverPlugins().apps
+    try await eventually { await tracker.latestDevices.map(\.id) == ["direct-failure"] }
+    let connectionFailure = ToolService(adbService: adbService, deviceTracker: tracker)
+    let beforeConnectionFailure = adb.toolConnectionCount
+    for _ in 0 ..< 5 {
+      _ = await connectionFailure.discoverPlugins().apps
     }
-    precondition(adb.forwardCount == beforeForwardFailure + 2)
-    let failedApps = await forwardFailure.discoverPlugins().apps
+    precondition(adb.toolConnectionCount == beforeConnectionFailure + 2)
+    let failedApps = await connectionFailure.discoverPlugins().apps
     precondition(failedApps.count == 1 && failedApps[0].tools.count == 2)
     precondition(failedApps[0].tools.allSatisfy { !$0.isConnected })
     try await eventually {
-      await forwardFailure.discoverPlugins().apps.first?.appIconBase64 == "icon-forward-failure"
+      await connectionFailure.discoverPlugins().apps.first?.appIconBase64 == "icon-direct-failure"
     }
-    await forwardFailure.stop()
-    print("Port forwarding failures enter the same cooldown as failed tool requests")
+    await connectionFailure.stop()
+    print("Direct connection failures enter the tool request cooldown")
     await tracker.stopTracking()
     print("Property failures recover without another device tracking event")
     try await refreshesSiblingDescriptors()
@@ -386,11 +295,11 @@ struct ToolRecoveryTests {
     precondition(invalidDescriptor == .invalidDescriptor)
     let siblingError = try status(tools: [], errors: [["key": "snapo.inspector.tweaks", "error": "Invalid XML"]])
     precondition(siblingError == .missingDescriptor)
-    for version in [0, 1, 2, 3] {
+    for version in [0, 1, 2, 3, 4] {
       var value = descriptor
       value["frontend"] = ["assetPath": "frontend.zip", "hostApiVersion": version]
       let actual = try status(tools: [value])
-      precondition(actual == (version == 2 ? .supported : .hostAPI(version: version)))
+      precondition(actual == (version == 3 ? .supported : .hostAPI(version: version)))
     }
     var pending = ToolHTTPService.App(
       kind: .network,
@@ -427,7 +336,7 @@ struct ToolRecoveryTests {
             [
               "id": kind.rawValue,
               "name": kind.rawValue,
-              "frontend": ["assetPath": "frontend.zip", "hostApiVersion": 2]
+              "frontend": ["assetPath": "frontend.zip", "hostApiVersion": 3]
             ] as [String: Any]
           }
         ]

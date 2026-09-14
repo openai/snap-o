@@ -73,7 +73,6 @@ describe("Network frontend with the shared host", () => {
   let state: {
     revision: number;
     connected: boolean;
-    baseURL?: string;
     manifest?: ProcessManifest;
     inspector?: ToolDescriptor;
   };
@@ -87,7 +86,6 @@ describe("Network frontend with the shared host", () => {
     state = {
       revision: 1,
       connected: true,
-      baseURL: "http://127.0.0.1:1234/",
       manifest: {
         version: 1,
         pid: metadata.pid,
@@ -312,21 +310,19 @@ describe("Network frontend with the shared host", () => {
     fetchRequest.mockImplementation(async (url) => {
       if (String(url).endsWith("/network"))
         return new Response("", {
-          headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": "0" }
+          headers: { "Content-Type": "application/x-ndjson" }
         });
       throw new Error(`Unexpected request: ${url}`);
     });
     mocks.client = createNetworkClient();
     await act(async () => render(<App />, container));
     await flush();
-    await vi.waitFor(() =>
-      expect(fetchRequest.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network"])
-    );
+    await vi.waitFor(() => expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network"]));
     await publish(false);
     expect(streams[0].close).toHaveBeenCalledOnce();
     await publish(true);
     await vi.waitFor(() =>
-      expect(fetchRequest.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/network", "/network"])
+      expect(fetchRequest.mock.calls.map(([url]) => String(url))).toEqual(["/api/network", "/api/network"])
     );
     await act(async () => render(null, container));
     expect(streams[1].close).toHaveBeenCalledOnce();

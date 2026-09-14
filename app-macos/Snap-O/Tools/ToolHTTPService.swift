@@ -1,4 +1,5 @@
 import Foundation
+import NIOHTTP1
 
 actor ToolHTTPService {
   struct App {
@@ -60,13 +61,10 @@ actor ToolHTTPService {
   private struct Connection {
     let id: UUID
     let reference: ToolServerReference
-    let forward: ADBForwardHandle
-    let baseURL: URL
     var isReady = false
     var healthTask: Task<Void, Never>?
   }
 
-  private static let discoveryRequestTimeout: TimeInterval = 2
   private static let retryCooldown: Duration = .seconds(3)
 
   private let adbService: ADBService
@@ -79,7 +77,6 @@ actor ToolHTTPService {
   private var legacyTasks: [String: Task<Void, Never>] = [:]
   private var metadataReadAt: [String: ContinuousClock.Instant] = [:]
   private let helperURL: URL
-  private let session: URLSession
   private var observers: [UUID: AsyncStream<Void>.Continuation] = [:]
   private var snapshotRevision: UInt64 = 0
   private var isStopped = false
@@ -88,11 +85,6 @@ actor ToolHTTPService {
     self.adbService = adbService
     self.helperURL = helperURL ?? (Bundle.main.resourceURL ?? Bundle.main.bundleURL.appending(path: "Contents/Resources"))
       .appending(path: "snapo-tool-reader.jar")
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.connectionProxyDictionary = [:]
-    configuration.httpCookieStorage = nil
-    configuration.urlCredentialStorage = nil
-    session = URLSession(configuration: configuration, delegate: ToolHTTPRedirectPolicy(), delegateQueue: nil)
   }
 
   func currentApps() -> (revision: UInt64, apps: [App]) {
@@ -150,7 +142,7 @@ actor ToolHTTPService {
         previous.metadataReadFailed = false
         if let connection = connections.removeValue(forKey: reference.key) {
           connection.healthTask?.cancel()
-          await retireConnection(connection, using: adb)
+          await retireConnection(connection)
         }
         if let processName = socket.processName, processName == previous.processName {
           // Keep display metadata, but verify the process before using a replacement listener.
@@ -190,10 +182,7 @@ actor ToolHTTPService {
           checkHealth(for: key)
         } else {
           group.addTask {
-            await self.connect(
-              reference: reference,
-              using: adb
-            )
+            await self.connect(reference: reference)
           }
         }
       }
@@ -203,22 +192,23 @@ actor ToolHTTPService {
     for key in connections.keys.filter({ !activeKeys.contains($0) }) {
       guard let connection = connections.removeValue(forKey: key) else { continue }
       connection.healthTask?.cancel()
-      await retireConnection(connection, using: adb)
+      await retireConnection(connection)
     }
   }
 
   struct Endpoint {
     let id: UUID
-    let baseURL: URL
+    let reference: ToolServerReference
+    let adb: ADBClient
   }
 
   func endpoint(
     for reference: ToolServerReference, ownerID: UUID? = nil,
     invalidated: (@MainActor @Sendable () async -> Void)? = nil
-  ) throws -> Endpoint {
+  ) async throws -> Endpoint {
     let connection = try connection(for: reference)
     if let ownerID, let invalidated { endpointObservers[connection.id, default: [:]][ownerID] = invalidated }
-    return Endpoint(id: connection.id, baseURL: connection.baseURL)
+    return await Endpoint(id: connection.id, reference: reference, adb: adbService.exec())
   }
 
   func releaseEndpoint(ownerID: UUID) {
@@ -228,14 +218,9 @@ actor ToolHTTPService {
     }
   }
 
-  private func isCurrent(_ connection: Connection) -> Bool {
-    !isStopped && connections[connection.reference.key]?.id == connection.id
-  }
-
   func stop() async {
     guard !isStopped else { return }
     isStopped = true
-    session.invalidateAndCancel()
     for observer in observers.values {
       observer.finish()
     }
@@ -252,7 +237,6 @@ actor ToolHTTPService {
     for connection in connections.values {
       connection.healthTask?.cancel()
     }
-    let adb = await adbService.exec()
     let retired = Array(connections.values)
     connections.removeAll()
     knownApps.removeAll()
@@ -260,51 +244,19 @@ actor ToolHTTPService {
     retryAfter.removeAll()
 
     for connection in retired {
-      await retireConnection(connection, using: adb)
+      await retireConnection(connection)
     }
   }
 
-  private func connect(
-    reference: ToolServerReference,
-    using adb: ADBClient
-  ) async {
+  private func connect(reference: ToolServerReference) async {
     let key = reference.key
     guard !Task.isCancelled, !isStopped, connections[key] == nil, retryAfter[key] == nil else {
       return
     }
 
-    var forward: ADBForwardHandle?
-
-    do {
-      let handle = try await adb.forwardLocalAbstract(
-        deviceID: reference.deviceId,
-        abstractSocket: reference.socketName
-      )
-      forward = handle
-
-      guard !Task.isCancelled, !isStopped else {
-        await removeForward(handle, using: adb)
-        return
-      }
-
-      guard let baseURL = URL(string: "http://127.0.0.1:\(handle.port)/") else {
-        throw ToolError.invalidBridgeMessage
-      }
-
-      guard knownApps[key] != nil else {
-        await removeForward(handle, using: adb)
-        return
-      }
-      connections[key] = Connection(id: UUID(), reference: reference, forward: handle, baseURL: baseURL)
-      checkHealth(for: key)
-    } catch {
-      if !Task.isCancelled, !isStopped {
-        retryAfter[key] = .now.advanced(by: Self.retryCooldown)
-      }
-      if let forward {
-        await removeForward(forward, using: adb)
-      }
-    }
+    guard knownApps[key] != nil else { return }
+    connections[key] = Connection(id: UUID(), reference: reference)
+    checkHealth(for: key)
   }
 
   private func populateMetadata(sockets: [DiscoveredPluginSocket], using adb: ADBClient) {
@@ -388,10 +340,16 @@ actor ToolHTTPService {
       if connections[key]?.id == connectionID { connections[key]?.healthTask = nil }
     }
     guard let connection = connections[key], connection.id == connectionID else { return }
-    var request = URLRequest(url: connection.baseURL, timeoutInterval: Self.discoveryRequestTimeout)
+    let healthURL = ToolURL.api
+    var request = URLRequest(url: healthURL)
     request.httpMethod = "OPTIONS"
     do {
-      let (data, response) = try await data(for: request, connection: connection)
+      let adb = await adbService.exec()
+      let input = try ToolHTTPRequestInput(request: request)
+      let operation = ToolHTTPRequestOperation(input: input, requestTimeout: .seconds(2)) {
+        try await adb.openLocalAbstract(deviceID: connection.reference.deviceId, abstractSocket: connection.reference.socketName)
+      }
+      let (response, data) = try await operation.load(maximumBytes: 1_048_576)
       try Self.validate(response, data: data)
       guard !Task.isCancelled, connections[key]?.id == connectionID else { return }
       let changed = connections[key]?.isReady != true
@@ -399,9 +357,10 @@ actor ToolHTTPService {
       if changed { notifyChange() }
     } catch {
       if connections[key]?.id == connectionID {
-        let changed = connections[key]?.isReady == true
-        connections[key]?.isReady = false
-        if changed { notifyChange() }
+        retryAfter[key] = .now.advanced(by: Self.retryCooldown)
+        connections.removeValue(forKey: key)
+        notifyChange()
+        await retireConnection(connection)
       }
     }
   }
@@ -409,84 +368,30 @@ actor ToolHTTPService {
   private func connection(for reference: ToolServerReference) throws -> Connection {
     guard let connection = connections[reference.key], connection.isReady,
           let app = knownApps[reference.key], !app.awaitingMetadata, let descriptor = app.descriptor,
-          descriptor.frontend == nil || descriptor.frontend?.hostApiVersion == 2 else {
+          descriptor.frontend == nil || descriptor.frontend?.hostApiVersion == 3 else {
       throw ToolError.serverNotConnected(reference)
     }
     return connection
   }
 
-  private func data(for request: URLRequest, connection: Connection) async throws -> (Data, URLResponse) {
-    do {
-      let (bytes, response) = try await session.bytes(for: request)
-      var data = Data()
-      for try await byte in bytes {
-        guard data.count < 1_048_576 else { throw ToolError.invalidBridgeMessage }
-        data.append(byte)
-      }
-      guard isCurrent(connection) else { throw CancellationError() }
-      return (data, response)
-    } catch {
-      await invalidateConnection(connection, after: error)
-      throw error
-    }
-  }
-
-  private func invalidateConnection(_ connection: Connection, after error: Error) async {
-    guard let error = error as? URLError,
-          [.cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet, .timedOut].contains(error.code)
-    else { return }
-    let key = connection.reference.key
-    guard connections[key]?.id == connection.id else { return }
-
-    // Frozen apps keep listening but cannot accept connections. Avoid filling their queues on every scan.
-    retryAfter[key] = .now.advanced(by: Self.retryCooldown)
-    // A brief device disconnect can remove the forward without changing the Android socket.
-    connections.removeValue(forKey: key)
-    notifyChange()
-    let adb = await adbService.exec()
-    await retireConnection(connection, using: adb)
-  }
-
-  private func retireConnection(_ connection: Connection, using adb: ADBClient) async {
+  private func retireConnection(_ connection: Connection) async {
     connection.healthTask?.cancel()
     let observers = endpointObservers.removeValue(forKey: connection.id) ?? [:]
-    // Keep the port reserved until every authorized page has unloaded.
     await withTaskGroup(of: Void.self) { group in
       for invalidate in observers.values {
         group.addTask { await invalidate() }
       }
     }
-    await removeForward(connection.forward, using: adb)
   }
 
-  private func removeForward(_ forward: ADBForwardHandle, using adb: ADBClient) async {
-    // Cleanup must still run when metadata loading or discovery was cancelled.
-    await Task { await adb.removeForward(forward) }.value
-  }
-
-  private static func validate(_ response: URLResponse, data: Data? = nil) throws {
-    guard let response = response as? HTTPURLResponse else {
-      throw ToolError.invalidBridgeMessage
-    }
-    guard (200 ... 299).contains(response.statusCode) else {
+  private static func validate(_ response: HTTPResponseHead, data: Data? = nil) throws {
+    guard (200 ... 299).contains(response.status.code) else {
       let message = data.flatMap { try? JSONDecoder().decode(ErrorResponse.self, from: $0).error }
-        ?? "Tool request failed (\(response.statusCode))."
+        ?? "Tool request failed (\(response.status.code))."
       throw ToolError.requestFailed(
-        statusCode: response.statusCode,
+        statusCode: Int(response.status.code),
         message: message
       )
     }
-  }
-}
-
-private final class ToolHTTPRedirectPolicy: NSObject, URLSessionTaskDelegate {
-  func urlSession(
-    _ session: URLSession,
-    task: URLSessionTask,
-    willPerformHTTPRedirection response: HTTPURLResponse,
-    newRequest request: URLRequest,
-    completionHandler: @escaping @Sendable (URLRequest?) -> Void
-  ) {
-    completionHandler(nil)
   }
 }

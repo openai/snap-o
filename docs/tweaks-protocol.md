@@ -377,9 +377,9 @@ The first event arrives immediately. Later changes made within the same Android 
 
 ### Browser access
 
-Browser clients can use `fetch` and `EventSource` directly against the forwarded endpoint. Every request must use a loopback `Host`: `localhost`, `127.0.0.1`, or `[::1]`, with an optional port. This blocks DNS rebinding through attacker-owned names.
+Desktop frontends use `fetch` and `EventSource` with `snapo://tool/api/` URLs. The macOS host strips `/api` and sends those requests directly over ADB. Development frontends use the same URLs: Snap-O proxies local frontend files while keeping `/api/...` on Android. Standalone loopback browser clients can also use HTTP. Every request received by Android must use a loopback `Host`: `localhost`, `127.0.0.1`, or `[::1]`, with an optional port. This blocks DNS rebinding through attacker-owned names.
 
-CORS permits HTTP and HTTPS loopback origins and the desktop origin `snapo-inspector://<uuid>`. The UUID must be lowercase and canonical, without a port, path, query, or fragment. Other origins, including `null`, are rejected. `OPTIONS` permits `GET`, `PATCH`, and `POST` with `Content-Type`. Native clients may omit `Origin`; credentials are not required.
+CORS permits HTTP and HTTPS loopback origins and the desktop origin `snapo://tool`. Other origins, including `null`, are rejected. `OPTIONS` permits `GET`, `PATCH`, and `POST` with `Content-Type`. Native clients may omit `Origin`; credentials are not required.
 
 ## Error responses {#errors data-step="9"}
 

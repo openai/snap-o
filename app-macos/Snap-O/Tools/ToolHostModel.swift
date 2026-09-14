@@ -225,7 +225,6 @@ final class ToolHostModel {
                 let identity = pages[kind]?.identity else { return }
           replacePage(kind: kind, identity: identity)
         }
-        try await container.allowEndpoint(target.baseURL)
         guard !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
         setEndpoint(target, kind: kind)
       } catch {
@@ -237,6 +236,7 @@ final class ToolHostModel {
 
   private func setEndpoint(_ endpoint: ToolHTTPService.Endpoint?, kind: ToolID) {
     guard var page = pages[kind] else { return }
+    page.container.setServer(endpoint)
     let state = appTool.snapshot.pageState(for: kind)
     let app = state.selectedApp?.id == page.identity.appID
       ? state.selectedApp : toolApps.first { $0.id == page.identity.appID }
@@ -248,7 +248,6 @@ final class ToolHostModel {
     page.connection.tool = tool
     page.endpointID = endpoint?.id
     page.connection.revision += 1
-    page.connection.baseURL = endpoint?.baseURL.absoluteString
     page.connection.connected = endpoint != nil
     pages[kind] = page
     page.container.sendPageEvent(name: "host:connection", payload: page.connection)
@@ -320,7 +319,7 @@ final class ToolHostModel {
         } else if identity.frontend != nil {
           guard let server = identity.server, let processIdentity = metadata?.verifiedIdentity,
                 let tool = metadata?.tools.first(where: { $0.id == kind }),
-                tool.frontend?.hostApiVersion == 2 else { throw ToolError.frontendUnavailable }
+                tool.frontend?.hostApiVersion == 3 else { throw ToolError.frontendUnavailable }
           frontend = try await service.pluginFrontend(for: server, identity: processIdentity, tool: tool)
         } else {
           throw ToolError.frontendUnavailable

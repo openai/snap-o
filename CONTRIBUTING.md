@@ -20,8 +20,8 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 | Folder | Purpose |
 | --- | --- |
 | `app-macos/` | Native app, device transport, and Xcode tests |
-| `cli/` | Python CLI and tests |
-| `tools/` | Network and Tweaks implementations, each with `android/` and `frontend/` |
+| `skills/` | Standalone Python CLIs and installable skills |
+| `tools/` | Network and Tweaks implementations, each with `android/`, `frontend/`, and `cli/` tests |
 | `tool-sdk/` | Plugin authoring APIs, runtime, and Gradle integration |
 | `tool-reader/` | Android APK metadata and frontend asset reader |
 | `examples/` | Demo apps, an independent plugin, and CLI examples |
