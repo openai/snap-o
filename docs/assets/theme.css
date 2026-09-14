@@ -48,7 +48,7 @@
 
 body { isolation: isolate; overflow-x: clip; }
 
-.space-scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.space-scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: var(--bg); }
 .space-scene::before {
   content: "";
   position: absolute;
@@ -67,14 +67,14 @@ body { isolation: isolate; overflow-x: clip; }
   background-size: 317px 293px, 443px 389px, 617px 499px, 257px 397px;
   mask-image: linear-gradient(90deg, #0005, #000);
 }
-.space-earth {
+.space-planet {
   position: absolute;
   width: clamp(760px, 84vw, 1440px);
   height: auto;
   right: -20%;
   bottom: min(-510px, -54vw);
   opacity: .34;
-  filter: saturate(1.35) drop-shadow(0 0 12px #0ca8ef55);
+  mix-blend-mode: screen;
   mask-image: linear-gradient(125deg, transparent 6%, #000 45%);
 }
 
@@ -83,11 +83,11 @@ body { isolation: isolate; overflow-x: clip; }
 .footer-copy { margin: 0; color: #859aaa; font-size: 13px; }
 
 @media (min-width: 1600px) {
-  .space-earth { right: -13%; bottom: -920px; }
+  .space-planet { right: -13%; bottom: -920px; }
 }
 @media (max-width: 900px) {
-  .space-earth { width: 850px; right: -400px; bottom: -530px; }
+  .space-planet { width: 850px; right: -400px; bottom: -530px; }
 }
 @media (max-width: 640px) {
-  .space-earth { width: 700px; bottom: -520px; right: -340px; opacity: .2; }
+  .space-planet { width: 700px; bottom: -520px; right: -340px; opacity: .2; }
 }
