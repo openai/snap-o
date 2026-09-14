@@ -555,8 +555,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.9.1;
+				kind = exactVersion;
+				version = 2.10.0;
 			};
 		};
 		D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
