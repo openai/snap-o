@@ -17,7 +17,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Device/DeviceTracker.swift \
   Snap-O/Tools/ToolModels.swift \
   Snap-O/Tools/ToolMetadata.swift \
-  Tests/ToolSelection/ToolTestFixtures.swift \
+  Snap-OTests/Tools/ToolTestFixtures.swift \
   Snap-O/Tools/ToolSelection.swift \
   Snap-O/Tools/AppToolModel.swift \
   Snap-O/Tools/ToolHTTPService.swift \

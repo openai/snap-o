@@ -69,17 +69,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - name: Set shared build directory
-        run: echo "SNAPO_DERIVED_DATA=$RUNNER_TEMP/snap-o-derived-data" >> "$GITHUB_ENV"
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.1.1'
-      - name: Test macOS device services
+      - name: Test macOS app
         working-directory: app-macos
         run: |
           xcodebuild -project Snap-O.xcodeproj -scheme Snap-O \
-            -destination "platform=macOS" -derivedDataPath "$SNAPO_DERIVED_DATA" \
+            -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
       - name: Test live preview frame export
         working-directory: app-macos
@@ -93,30 +91,9 @@ jobs:
       - name: Test capture startup
         working-directory: app-macos
         run: sh scripts/test-startup-capture.sh
-      - name: Set up Node for tool lifecycle tests
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            tools/network/frontend/package-lock.json
-            tools/tweaks/frontend/package-lock.json
-      - name: Build Network test resources
-        working-directory: tools/network/frontend
-        run: |
-          npm ci
-          npm run build
-      - name: Build Tweaks test resources
-        working-directory: tools/tweaks/frontend
-        run: |
-          npm ci
-          npm run build
       - name: Test tool recovery
         working-directory: app-macos
         run: sh scripts/test-tool-recovery.sh
-      - name: Test tool selection
-        working-directory: app-macos
-        run: sh scripts/test-tool-selection.sh
 
   build:
     runs-on: macos-26

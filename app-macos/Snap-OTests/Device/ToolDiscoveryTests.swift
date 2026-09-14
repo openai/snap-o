@@ -280,11 +280,6 @@ struct ToolDiscoveryTests {
   }
 }
 
-private extension ToolID {
-  static let network = Self(rawValue: "network")
-  static let tweaks = Self(rawValue: "tweaks")
-}
-
 extension ToolDiscoveryTests {
   @Test("legacy metadata accepts only recognized protocols and matching process identity")
   func legacyMetadataEvidence() throws {
