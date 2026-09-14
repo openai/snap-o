@@ -54,10 +54,6 @@ actor ToolHTTPService {
     }
   }
 
-  private struct ErrorResponse: Decodable {
-    let error: String
-  }
-
   private struct Connection {
     let id: UUID
     let reference: ToolServerReference
@@ -69,7 +65,6 @@ actor ToolHTTPService {
 
   private let adbService: ADBService
   private var connections: [String: Connection] = [:]
-  private var endpointObservers: [UUID: [UUID: @MainActor @Sendable () async -> Void]] = [:]
   private var knownApps: [String: App] = [:]
   private var discoveredKeys: Set<String> = []
   private var retryAfter: [String: ContinuousClock.Instant] = [:]
@@ -142,7 +137,6 @@ actor ToolHTTPService {
         previous.metadataReadFailed = false
         if let connection = connections.removeValue(forKey: reference.key) {
           connection.healthTask?.cancel()
-          await retireConnection(connection)
         }
         if let processName = socket.processName, processName == previous.processName {
           // Keep display metadata, but verify the process before using a replacement listener.
@@ -192,8 +186,8 @@ actor ToolHTTPService {
     for key in connections.keys.filter({ !activeKeys.contains($0) }) {
       guard let connection = connections.removeValue(forKey: key) else { continue }
       connection.healthTask?.cancel()
-      await retireConnection(connection)
     }
+    notifyChange()
   }
 
   struct Endpoint {
@@ -202,20 +196,9 @@ actor ToolHTTPService {
     let adb: ADBClient
   }
 
-  func endpoint(
-    for reference: ToolServerReference, ownerID: UUID? = nil,
-    invalidated: (@MainActor @Sendable () async -> Void)? = nil
-  ) async throws -> Endpoint {
+  func endpoint(for reference: ToolServerReference) async throws -> Endpoint {
     let connection = try connection(for: reference)
-    if let ownerID, let invalidated { endpointObservers[connection.id, default: [:]][ownerID] = invalidated }
     return await Endpoint(id: connection.id, reference: reference, adb: adbService.exec())
-  }
-
-  func releaseEndpoint(ownerID: UUID) {
-    for id in endpointObservers.keys {
-      endpointObservers[id]?.removeValue(forKey: ownerID)
-      if endpointObservers[id]?.isEmpty == true { endpointObservers.removeValue(forKey: id) }
-    }
   }
 
   func stop() async {
@@ -237,15 +220,10 @@ actor ToolHTTPService {
     for connection in connections.values {
       connection.healthTask?.cancel()
     }
-    let retired = Array(connections.values)
     connections.removeAll()
     knownApps.removeAll()
     discoveredKeys.removeAll()
     retryAfter.removeAll()
-
-    for connection in retired {
-      await retireConnection(connection)
-    }
   }
 
   private func connect(reference: ToolServerReference) async {
@@ -340,8 +318,7 @@ actor ToolHTTPService {
       if connections[key]?.id == connectionID { connections[key]?.healthTask = nil }
     }
     guard let connection = connections[key], connection.id == connectionID else { return }
-    let healthURL = ToolURL.api
-    var request = URLRequest(url: healthURL)
+    var request = URLRequest(url: ToolURL.api)
     request.httpMethod = "OPTIONS"
     do {
       let adb = await adbService.exec()
@@ -349,8 +326,9 @@ actor ToolHTTPService {
       let operation = ToolHTTPRequestOperation(input: input, requestTimeout: .seconds(2)) {
         try await adb.openLocalAbstract(deviceID: connection.reference.deviceId, abstractSocket: connection.reference.socketName)
       }
-      let (response, data) = try await operation.load(maximumBytes: 1_048_576)
-      try Self.validate(response, data: data)
+      try await operation.run(onResponse: { response in
+        guard (200 ... 299).contains(response.status.code) else { throw ToolHTTPTransportError.invalidResponse }
+      }, onData: { _ in })
       guard !Task.isCancelled, connections[key]?.id == connectionID else { return }
       let changed = connections[key]?.isReady != true
       connections[key]?.isReady = true
@@ -360,7 +338,6 @@ actor ToolHTTPService {
         retryAfter[key] = .now.advanced(by: Self.retryCooldown)
         connections.removeValue(forKey: key)
         notifyChange()
-        await retireConnection(connection)
       }
     }
   }
@@ -372,26 +349,5 @@ actor ToolHTTPService {
       throw ToolError.serverNotConnected(reference)
     }
     return connection
-  }
-
-  private func retireConnection(_ connection: Connection) async {
-    connection.healthTask?.cancel()
-    let observers = endpointObservers.removeValue(forKey: connection.id) ?? [:]
-    await withTaskGroup(of: Void.self) { group in
-      for invalidate in observers.values {
-        group.addTask { await invalidate() }
-      }
-    }
-  }
-
-  private static func validate(_ response: HTTPResponseHead, data: Data? = nil) throws {
-    guard (200 ... 299).contains(response.status.code) else {
-      let message = data.flatMap { try? JSONDecoder().decode(ErrorResponse.self, from: $0).error }
-        ?? "Tool request failed (\(response.status.code))."
-      throw ToolError.requestFailed(
-        statusCode: Int(response.status.code),
-        message: message
-      )
-    }
   }
 }

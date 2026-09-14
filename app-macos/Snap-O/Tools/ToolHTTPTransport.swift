@@ -133,20 +133,6 @@ struct ToolHTTPRequestOperation {
       channel.close(promise: nil)
     }
   }
-
-  func load(maximumBytes: Int) async throws -> (HTTPResponseHead, Data) {
-    var response: HTTPResponseHead?
-    var data = Data()
-    try await run(
-      onResponse: { response = $0 },
-      onData: { chunk in
-        guard data.count + chunk.count <= maximumBytes else { throw ToolHTTPTransportError.invalidResponse }
-        data.append(chunk)
-      }
-    )
-    guard let response else { throw ToolHTTPTransportError.invalidResponse }
-    return (response, data)
-  }
 }
 
 enum ToolHTTPTransportError: LocalizedError {

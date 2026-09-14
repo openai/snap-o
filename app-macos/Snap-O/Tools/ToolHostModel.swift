@@ -130,7 +130,6 @@ final class ToolHostModel {
       pageTransitions[kind] = Task {
         await transition?.value
         await page.container.finishStopping()
-        await service.releasePluginEndpoint(ownerID: page.container.id)
       }
     }
     pages.removeAll()
@@ -215,16 +214,7 @@ final class ToolHostModel {
     bindings[kind] = Task { [weak self, weak container = page.container] in
       guard let self, let container else { return }
       do {
-        let target = try await service.pluginEndpoint(
-          for: selection.server, ownerID: container.id
-        ) { [weak self, weak container] in
-          guard let container else { return }
-          container.stop()
-          await container.finishStopping()
-          guard let self, !isStopped, pages[kind]?.container === container,
-                let identity = pages[kind]?.identity else { return }
-          replacePage(kind: kind, identity: identity)
-        }
+        let target = try await service.pluginEndpoint(for: selection.server)
         guard !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
         setEndpoint(target, kind: kind)
       } catch {
@@ -302,7 +292,6 @@ final class ToolHostModel {
     pageTransitions[kind] = Task { [weak self] in
       await transition?.value
       await previous?.finishStopping()
-      if let previous { await self?.service.releasePluginEndpoint(ownerID: previous.id) }
       guard let self, !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
       defer {
         if pages[kind]?.container === container { pageTransitions[kind] = nil }

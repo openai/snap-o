@@ -231,7 +231,7 @@ struct ToolHTTPTransportTests {
       + "5\r\nhello\r\n0\r\n\r\n"
     let server = FakeToolADB(plans: [.response([.init(data: Data(response.utf8))])])
     defer { server.close() }
-    let handler = ToolAPISchemeHandler()
+    let handler = ToolSchemeHandler()
     handler.authorize(ToolHTTPService.Endpoint(id: UUID(), reference: Self.reference, adb: server.client()))
     let task = SchemeTask(URLRequest(url: Self.endpoint.appending(path: "items")))
     handler.webView(WKWebView(), start: task)
@@ -251,18 +251,22 @@ struct ToolHTTPTransportTests {
     handler.invalidate()
   }
 
-  @Test("Stopping or invalidating a WebKit request closes its socket without callbacks", arguments: [false, true])
+  @Test("Stopping or disconnecting a WebKit request closes its socket without callbacks", arguments: ["stop", "disconnect", "invalidate"])
   @MainActor
-  func cancelsWebKitRequest(invalidate: Bool) async throws {
+  func cancelsWebKitRequest(action: String) async throws {
     let server = FakeToolADB(plans: [.waitForCancellation])
     defer { server.close() }
-    let handler = ToolAPISchemeHandler()
+    let handler = ToolSchemeHandler()
     handler.authorize(ToolHTTPService.Endpoint(id: UUID(), reference: Self.reference, adb: server.client()))
     let task = SchemeTask(URLRequest(url: Self.endpoint.appending(path: "events")))
     let webView = WKWebView()
     handler.webView(webView, start: task)
     try await eventually { server.requests.count == 1 }
-    if invalidate { handler.invalidate() } else { handler.webView(webView, stop: task) }
+    switch action {
+    case "disconnect": handler.authorize(nil)
+    case "invalidate": handler.invalidate()
+    default: handler.webView(webView, stop: task)
+    }
     try await eventually { server.cancelledConnections == 1 }
     #expect(task.failure == nil)
     #expect(task.response == nil)
@@ -274,7 +278,7 @@ struct ToolHTTPTransportTests {
   func isolatesSessions() throws {
     let server = FakeToolADB(plans: [])
     defer { server.close() }
-    let handler = ToolAPISchemeHandler()
+    let handler = ToolSchemeHandler()
     let endpoint = try ToolHTTPService.Endpoint(
       id: #require(UUID(uuidString: "01234567-89ab-cdef-0123-456789abcdef")),
       reference: Self.reference,
@@ -325,7 +329,8 @@ struct ToolHTTPTransportTests {
       id: UUID(), reference: Self.reference, adb: server.client()
     ))
     try container.start(frontend: ToolFrontendBundle(files: ["index.html": Data("<p>Tool</p>".utf8)]))
-    for _ in 0 ..< 200 where !ready {
+    let deadline = ContinuousClock.now + .seconds(10)
+    while !ready, ContinuousClock.now < deadline {
       try await Task.sleep(for: .milliseconds(10))
     }
     try #require(ready)
@@ -377,6 +382,22 @@ struct ToolHTTPTransportTests {
       try await Task.sleep(for: .milliseconds(10))
     }
     Issue.record("Condition did not become true")
+  }
+}
+
+private extension ToolHTTPRequestOperation {
+  func load(maximumBytes: Int) async throws -> (HTTPResponseHead, Data) {
+    var response: HTTPResponseHead?
+    var data = Data()
+    try await run(
+      onResponse: { response = $0 },
+      onData: { chunk in
+        guard data.count + chunk.count <= maximumBytes else { throw ToolHTTPTransportError.invalidResponse }
+        data.append(chunk)
+      }
+    )
+    guard let response else { throw ToolHTTPTransportError.invalidResponse }
+    return (response, data)
   }
 }
 

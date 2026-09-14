@@ -150,7 +150,6 @@ enum ToolError: LocalizedError {
   case invalidBridgeMessage
   case frontendUnavailable
   case serverNotConnected(ToolServerReference)
-  case requestFailed(statusCode: Int, message: String)
 
   var errorDescription: String? {
     switch self {
@@ -160,8 +159,6 @@ enum ToolError: LocalizedError {
       "This tool has no compatible frontend. Update its Android library or select a development server."
     case .serverNotConnected(let server):
       "Snap-O server is not connected: \(server.deviceId)/\(server.socketName)"
-    case .requestFailed(_, let message):
-      message
     }
   }
 }

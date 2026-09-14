@@ -64,13 +64,15 @@ Storage is separate for each device, Android user, package, and tool. Pages with
 
 Switching tools keeps their pages alive. A hidden page keeps its UI state, but disconnects from Android and cannot present native panels. A process replacement unloads the page and resets in-memory UI state while preserving settings for the same provider.
 
+Connection updates reach the frontend through `host.onConnection`. A known disconnect cancels API requests and delivers `null`, without reloading the page. Requests can also fail before Snap-O detects a disconnect. Stopping a page revokes API and bridge access immediately; transport cleanup does not wait for WebKit to unload it.
+
 Native messages must come from the owning WebView's current main document. The bridge bounds payload size, nesting, concurrent requests, and toolbar fields. Clipboard writes, color picker presentation, and external links require native confirmation. Exports use a save sheet, accept at most 64 MiB, and do not return the selected filesystem path to JavaScript. Only one native action runs at a time. File upload dialogs, JavaScript dialogs, media capture, and downloads are blocked.
 
 Develop → Use Development Server sets a loopback URL for the selected app and tool. Snap-O proxies frontend files from that server under `snapo://tool/`; `/api/...` still goes to Android. Both packaged and development frontends use relative API URLs without CORS configuration. Frontend paths stay unchanged; there is no added `/assets` prefix.
 
 Vite's hot-reload WebSocket connects directly to the selected development server. The repo’s Vite configs set an explicit HMR host and port; Snap-O does not proxy WebSockets. The override allows resources and WebSockets from that server and does not add the packaged frontend's CSP. Use it only with trusted local code.
 
-Run `sh app-macos/scripts/test-tool-selection.sh` and `sh app-macos/scripts/test-tool-recovery.sh` from the repository root. Selection, restoration, storage scopes, and bridge validation run as native tests. A small WebKit fixture checks request isolation, bridge ownership, event delivery, recovery, and page retirement. These tests do not build or load the Network and Tweaks frontends. CI includes the selection tests in the main macOS test run.
+Run `sh app-macos/scripts/test-tool-selection.sh` and `sh app-macos/scripts/test-tool-recovery.sh` from the repository root. Selection, restoration, storage scopes, and bridge validation run as native tests. A small WebKit fixture checks request isolation, bridge ownership, event delivery, recovery, and page shutdown. These tests do not build or load the Network and Tweaks frontends. CI includes the selection tests in the main macOS test run.
 
 These controls do not prevent WebKit vulnerabilities, resource exhaustion, or data sent to the selected Android tool server. App-provided frontends run JavaScript supplied by the inspected APK. These restrictions are not a guarantee that untrusted code is safe.
 

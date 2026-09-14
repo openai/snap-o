@@ -78,7 +78,6 @@ struct ToolRecoveryTests {
       return app?.name == "Demo" && app?.appIconBase64 == "icon-frozen"
     }
     precondition(adb.scannedDeviceIDs.count == scansBeforeMetadata, "Completed metadata reaches the UI without another device scan")
-    host.stop()
     let frozenMetadata = await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }!
     precondition(frozenMetadata.tools.allSatisfy { !$0.isConnected })
     print("App metadata loads while tool HTTP servers remain frozen")
@@ -93,6 +92,9 @@ struct ToolRecoveryTests {
     _ = try await service.pluginEndpoint(for: frozen)
     print("Both tool kinds reconnect automatically after cooldown")
 
+    host.selectTool(discovered, option: discovered.tools.first { $0.kind == .network }!)
+    precondition(host.snapshot.pageState(for: .network).isConnected)
+    precondition(!host.snapshot.pageState(for: .tweaks).isConnected, "Hidden pages receive a disconnected state")
     adb.disconnectNetwork()
     try await eventually {
       let apps = await service.discoverPlugins().apps
@@ -100,6 +102,9 @@ struct ToolRecoveryTests {
       return options?.first(where: { $0.kind == .network })?.isConnected == false
         && options?.first(where: { $0.kind == .tweaks })?.isConnected == true
     }
+    try await eventually { !host.snapshot.pageState(for: .network).isConnected }
+    host.stop()
+    print("Connection updates notify the selected page when its server becomes unavailable")
     let disconnectedFailures = adb.failedToolConnectionCount
     for _ in 0 ..< 5 {
       let apps = await service.discoverPlugins().apps
@@ -167,22 +172,12 @@ struct ToolRecoveryTests {
       await restarted.discoverPlugins().apps.first { $0.deviceId == "frozen" }?
         .tools.first { $0.kind == .tweaks }?.compatibility == .supported
     }
-    let ownerID = UUID()
-    var invalidated = false
-    var retired = false
-    var releasePage: CheckedContinuation<Void, Never>?
-    _ = try await restarted.pluginEndpoint(for: frozen, ownerID: ownerID, invalidated: {
-      invalidated = true
-      await withCheckedContinuation { releasePage = $0 }
-      retired = true
-    })
-    let stop = Task { await restarted.stop() }
-    try await eventually { invalidated }
-    precondition(!retired, "Endpoint retirement waits for its authorized page to unload")
-    releasePage?.resume()
-    await stop.value
-    precondition(retired)
-    print("Endpoint retirement waits for the authorized page to unload")
+    _ = try await restarted.pluginEndpoint(for: frozen)
+    await restarted.stop()
+    do {
+      _ = try await restarted.pluginEndpoint(for: frozen)
+      fatalError("Stopped services must reject new endpoints")
+    } catch ToolError.serverNotConnected {}
     print("A new service instance can reconnect immediately")
 
     adb.setMetadataAvailable(true)

@@ -78,15 +78,8 @@ actor ToolService {
     try await adb.openApp(deviceID: input.deviceId, packageName: input.packageName, androidUserID: input.androidUserId)
   }
 
-  func pluginEndpoint(
-    for reference: ToolServerReference, ownerID: UUID? = nil,
-    invalidated: (@MainActor @Sendable () async -> Void)? = nil
-  ) async throws -> ToolHTTPService.Endpoint {
-    try await httpService.endpoint(for: reference, ownerID: ownerID, invalidated: invalidated)
-  }
-
-  func releasePluginEndpoint(ownerID: UUID) async {
-    await httpService.releaseEndpoint(ownerID: ownerID)
+  func pluginEndpoint(for reference: ToolServerReference) async throws -> ToolHTTPService.Endpoint {
+    try await httpService.endpoint(for: reference)
   }
 
   func pluginFrontend(

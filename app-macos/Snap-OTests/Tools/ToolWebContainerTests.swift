@@ -8,7 +8,7 @@ import WebKit
 @Suite("Tool WebKit wiring")
 @MainActor
 struct ToolWebContainerTests {
-  @Test("custom assets, request policy, bridge ownership, and retirement", .timeLimit(.minutes(1)))
+  @Test("custom assets, request policy, bridge ownership, and shutdown", .timeLimit(.minutes(1)))
   func containerLifecycle() async throws {
     let allowed = try ToolHTTPFixture()
     let denied = try ToolHTTPFixture()
@@ -99,9 +99,9 @@ struct ToolWebContainerTests {
     otherConfiguration.userContentController.addScriptMessageHandler(bridge, contentWorld: .page, name: ToolWebBridge.messageHandlerName)
     defer { otherConfiguration.userContentController.removeAllScriptMessageHandlers() }
     let url = try #require(web.url)
-    let assets = ToolAssetSchemeHandler()
+    let assets = ToolSchemeHandler()
     assets.bundle = try ToolFrontendBundle(files: ["index.html": Data("<p>Foreign page</p>".utf8)])
-    otherConfiguration.setURLSchemeHandler(assets, forURLScheme: ToolAssetSchemeHandler.scheme)
+    otherConfiguration.setURLSchemeHandler(assets, forURLScheme: ToolURL.scheme)
     let other = WKWebView(frame: .zero, configuration: otherConfiguration)
     defer { other.stopLoading() }
     other.load(URLRequest(url: url))
@@ -123,8 +123,24 @@ struct ToolWebContainerTests {
     #expect(try await !bridgeRejected(in: web), "The replacement document keeps bridge access")
     container.stop()
     await container.finishStopping()
-    #expect(web.url?.absoluteString == "about:blank", "Unload the page before releasing its endpoint")
+    try await eventually { web.url?.absoluteString == "about:blank" && !web.isLoading }
     #expect(try await web.evaluateJavaScript("typeof window.events") as? String == "undefined")
+
+    let development = ToolWebContainer(bridge: ToolWebBridge(), storageIdentifier: nil, developmentURL: allowedURL)
+    defer { development.stop() }
+    var developmentReady = false
+    development.pageReadinessChangedHandler = { developmentReady = $0 }
+    window.contentView = development.webView
+    development.start(frontend: nil)
+    try await eventually { developmentReady }
+    #expect(development.webView.url?.scheme == "snapo")
+    #expect(try await fetch(ToolURL.frontend.appending(path: "main.js"), in: development.webView))
+    #expect(allowed.paths.contains("/main.js"), "Development files come from the local server")
+    let developmentRequests = allowed.paths.count
+    #expect(try await !fetch(ToolURL.api, in: development.webView))
+    #expect(allowed.paths.count == developmentRequests, "API requests never go to the development server")
+    #expect(try await !fetch(ToolURL.frontend.appending(path: "redirect"), in: development.webView))
+    #expect(denied.paths.isEmpty, "Development redirects must not escape the selected server")
   }
 
   private func fetch(_ url: URL, in web: WKWebView) async throws -> Bool {
@@ -215,7 +231,7 @@ private final class ToolHTTPFixture {
         } else {
           "HTTP/1.1 200 OK\r\n"
         }
-        let headers = "Content-Length: 2\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\nok"
+        let headers = "Content-Type: text/html\r\nContent-Length: 2\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\nok"
         connection.send(content: Data((response + headers).utf8), completion: .contentProcessed { _ in connection.cancel() })
       }
     }
