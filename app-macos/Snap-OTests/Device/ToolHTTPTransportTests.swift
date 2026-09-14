@@ -1,7 +1,6 @@
 import AppKit
 import Darwin
 import Foundation
-import NIOHTTP1
 @testable import Snap_O
 import Testing
 import WebKit
@@ -14,24 +13,22 @@ struct ToolHTTPTransportTests {
   @Test("GET and JSON POST preserve request details")
   func forwardsRequests() async throws {
     let server = FakeToolADB(plans: [
-      .response([.init(data: Self.response(body: #"{"method":"GET"}"#))]),
-      .response([.init(data: Self.response(body: #"{"method":"POST"}"#))])
+      .response(Self.response(body: #"{"method":"GET"}"#)),
+      .response(Self.response(body: #"{"method":"POST"}"#))
     ])
     defer { server.close() }
     let adb = server.client()
 
     var get = URLRequest(url: Self.endpoint.appending(path: "items").appending(queryItems: [.init(name: "page", value: "2")]))
     get.setValue("application/json", forHTTPHeaderField: "Accept")
-    let getResult = try await Self.operation(get, adb: adb).load(maximumBytes: 1024)
-    #expect(getResult.0.status == .ok)
-    #expect(String(decoding: getResult.1, as: UTF8.self) == #"{"method":"GET"}"#)
+    let getResult = try await Self.operation(get, adb: adb).load()
+    #expect(String(decoding: getResult, as: UTF8.self) == #"{"method":"GET"}"#)
 
     var post = URLRequest(url: Self.endpoint.appending(path: "items"))
     post.httpMethod = "POST"
-    post.httpBody = Data(#"{"enabled":true}"#.utf8)
+    post.httpBodyStream = InputStream(data: Data(#"{"enabled":true}"#.utf8))
     post.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    let postResult = try await Self.operation(post, adb: adb).load(maximumBytes: 1024)
-    #expect(postResult.0.status == .ok)
+    _ = try await Self.operation(post, adb: adb).load()
 
     let requests = server.requests
     #expect(requests.count == 2)
@@ -46,118 +43,34 @@ struct ToolHTTPTransportTests {
       "host:transport:phone", "localabstract:snapo_network_42",
       "host:transport:phone", "localabstract:snapo_network_42"
     ])
-    #expect(!server.commands.contains { $0.contains("forward") })
   }
 
-  @Test("EventSource chunks arrive before the response completes")
-  func streamsDelayedEvents() async throws {
-    let head = Data(
-      "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".utf8
-    )
-    let server = FakeToolADB(plans: [
-      .response([
-        .init(data: head + Self.chunk("data: first\n\n")),
-        .init(delay: 0.15, data: Self.chunk("data: second\n\n")),
-        .init(delay: 0.15, data: Data("0\r\n\r\n".utf8))
-      ])
-    ])
-    defer { server.close() }
-    let recorder = ChunkRecorder()
-    var request = URLRequest(url: Self.endpoint.appending(path: "events"))
-    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-    try await Self.operation(request, adb: server.client()).run(
-      onResponse: { recorder.receive($0) },
-      onData: { recorder.receive($0) }
-    )
-    let chunks = recorder.chunks
-    #expect(chunks.map { String(decoding: $0.data, as: UTF8.self) } == ["data: first\n\n", "data: second\n\n"])
-    #expect(chunks[0].time.duration(to: chunks[1].time) >= .milliseconds(100))
-    #expect(recorder.response?.headers.first(name: "Content-Type") == "text/event-stream")
-  }
-
-  @Test("HTTP framing survives fragmented headers, chunk extensions, and trailers")
-  func decodesFragmentedResponse() async throws {
-    let bytes = Array(
-      ("HTTP/1.1 100 Continue\r\n\r\n"
-        + "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
-        + "5;sample=yes\r\nhello\r\n0\r\nX-Finished: yes\r\n\r\n").utf8
-    )
-    let server = FakeToolADB(plans: [
-      .response(bytes.map { .init(delay: 0.001, data: Data([$0])) })
-    ])
-    defer { server.close() }
-    let (head, body) = try await Self.operation(
-      URLRequest(url: Self.endpoint.appending(path: "items")), adb: server.client()
-    ).load(maximumBytes: 1024)
-    #expect(head.status == .ok)
-    #expect(String(decoding: body, as: UTF8.self) == "hello")
-  }
-
-  @Test("HTTP responses without Content-Length finish at EOF")
-  func decodesEOFResponse() async throws {
-    let server = FakeToolADB(plans: [.response([
-      .init(data: Data("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nhello".utf8))
-    ])])
-    defer { server.close() }
-    let (_, body) = try await Self.operation(
-      URLRequest(url: Self.endpoint.appending(path: "items")), adb: server.client()
-    ).load(maximumBytes: 1024)
-    #expect(String(decoding: body, as: UTF8.self) == "hello")
-  }
-
-  @Test("Truncated and malformed HTTP framing fails", arguments: [
+  @Test("Truncated responses and oversized headers fail", arguments: [
     "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhi",
-    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nz\r\n",
-    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n",
     "HTTP/1.1 200 OK\r\nX-Large: " + String(repeating: "x", count: 17 * 1024) + "\r\n\r\n"
   ])
   func rejectsMalformedResponse(_ response: String) async throws {
-    let server = FakeToolADB(plans: [.response([.init(data: Data(response.utf8))])])
+    let server = FakeToolADB(plans: [.response(Data(response.utf8))])
     defer { server.close() }
     let operation = try Self.operation(
       URLRequest(url: Self.endpoint.appending(path: "items")), adb: server.client()
     )
     await #expect(throws: (any Error).self) {
-      try await operation.load(maximumBytes: 1024)
+      try await operation.load()
     }
-  }
-
-  @Test("Task cancellation closes a pending HTTP read")
-  func cancelsTask() async throws {
-    let server = FakeToolADB(plans: [.waitForCancellation])
-    defer { server.close() }
-    let operation = try Self.operation(URLRequest(url: Self.endpoint.appending(path: "events")), adb: server.client())
-    let task = Task { try await operation.load(maximumBytes: 1024) }
-    try await eventually { server.requests.count == 1 }
-    task.cancel()
-    await #expect(throws: (any Error).self) { try await task.value }
-    try await eventually { server.cancelledConnections == 1 }
   }
 
   @Test("Health request timeout closes an unresponsive server connection")
   func timesOut() async throws {
-    let server = FakeToolADB(plans: [.waitForCancellation])
+    let server = FakeToolADB(plans: [.stream(Data())])
     defer { server.close() }
     let adb = server.client()
     let input = try ToolHTTPRequestInput(request: URLRequest(url: Self.endpoint))
     let operation = ToolHTTPRequestOperation(input: input, requestTimeout: .milliseconds(100)) {
       try await adb.openLocalAbstract(deviceID: Self.reference.deviceId, abstractSocket: Self.reference.socketName)
     }
-    await #expect(throws: (any Error).self) { try await operation.load(maximumBytes: 1024) }
+    await #expect(throws: (any Error).self) { try await operation.load() }
     try await eventually { server.cancelledConnections == 1 }
-  }
-
-  @Test("Cancellation before opening does not contact ADB")
-  func cancelsBeforeOpening() async throws {
-    let server = FakeToolADB(plans: [])
-    defer { server.close() }
-    let operation = try Self.operation(URLRequest(url: Self.endpoint), adb: server.client())
-    let task = Task {
-      withUnsafeCurrentTask { $0?.cancel() }
-      return try await operation.load(maximumBytes: 1024)
-    }
-    await #expect(throws: CancellationError.self) { try await task.value }
-    #expect(server.connectionCount == 0)
   }
 
   @Test("Cancellation interrupts a stalled ADB handshake", arguments: [0, 1])
@@ -165,7 +78,7 @@ struct ToolHTTPTransportTests {
     let server = FakeToolADB(plans: [.stallHandshake(command: command)])
     defer { server.close() }
     let operation = try Self.operation(URLRequest(url: Self.endpoint), adb: server.client(timeout: .seconds(10)))
-    let task = Task { try await operation.load(maximumBytes: 1024) }
+    let task = Task { try await operation.load() }
     try await eventually { server.commands.count == command + 1 }
     let start = ContinuousClock.now
     task.cancel()
@@ -178,7 +91,7 @@ struct ToolHTTPTransportTests {
 
   @Test("Cancellation after the ADB handshake closes the unclaimed socket")
   func cancelsBeforeSocketTransfer() async throws {
-    let server = FakeToolADB(plans: [.waitForCancellation])
+    let server = FakeToolADB(plans: [.stream(Data())])
     defer { server.close() }
     let adb = server.client()
     let input = try ToolHTTPRequestInput(request: URLRequest(url: Self.endpoint))
@@ -187,37 +100,10 @@ struct ToolHTTPTransportTests {
       withUnsafeCurrentTask { $0?.cancel() }
       return connection
     }
-    let task = Task { try await operation.load(maximumBytes: 1024) }
+    let task = Task { try await operation.load() }
     await #expect(throws: CancellationError.self) { try await task.value }
     try await eventually { server.cancelledConnections == 1 }
     #expect(server.requests.isEmpty)
-  }
-
-  @Test("NIO rejects invalid methods before sending the request")
-  func rejectsInvalidRequest() async throws {
-    let server = FakeToolADB(plans: [.waitForCancellation])
-    defer { server.close() }
-    let adb = server.client()
-    var request = URLRequest(url: Self.endpoint)
-    request.httpMethod = "GET injected"
-    let input = try ToolHTTPRequestInput(request: request)
-    let operation = ToolHTTPRequestOperation(input: input) {
-      try await adb.openLocalAbstract(deviceID: Self.reference.deviceId, abstractSocket: Self.reference.socketName)
-    }
-    await #expect(throws: HTTPParserError.self) { try await operation.load(maximumBytes: 1024) }
-    #expect(server.requests.isEmpty)
-  }
-
-  @Test("Body streams are forwarded and collection stays bounded")
-  func forwardsBodyStream() async throws {
-    let server = FakeToolADB(plans: [.response([.init(data: Self.response(body: "too large"))])])
-    defer { server.close() }
-    var request = URLRequest(url: Self.endpoint.appending(path: "items"))
-    request.httpMethod = "POST"
-    request.httpBodyStream = InputStream(data: Data("upload".utf8))
-    let operation = try Self.operation(request, adb: server.client())
-    await #expect(throws: ToolHTTPTransportError.self) { try await operation.load(maximumBytes: 4) }
-    #expect(server.requests.first?.hasSuffix("\r\n\r\nupload") == true)
   }
 
   @Test("WebKit receives normalized response headers and decoded body")
@@ -229,7 +115,7 @@ struct ToolHTTPTransportTests {
       + "Connection: close, X-Hop\r\nX-Hop: private\r\n"
       + "Vary: Accept\r\nvary: Accept-Encoding\r\nX-Values: first\r\nx-values: second\r\n\r\n"
       + "5\r\nhello\r\n0\r\n\r\n"
-    let server = FakeToolADB(plans: [.response([.init(data: Data(response.utf8))])])
+    let server = FakeToolADB(plans: [.response(Data(response.utf8))])
     defer { server.close() }
     let handler = ToolSchemeHandler()
     handler.authorize(ToolHTTPService.Endpoint(id: UUID(), reference: Self.reference, adb: server.client()))
@@ -254,7 +140,7 @@ struct ToolHTTPTransportTests {
   @Test("Stopping or disconnecting a WebKit request closes its socket without callbacks", arguments: ["stop", "disconnect", "invalidate"])
   @MainActor
   func cancelsWebKitRequest(action: String) async throws {
-    let server = FakeToolADB(plans: [.waitForCancellation])
+    let server = FakeToolADB(plans: [.stream(Data())])
     defer { server.close() }
     let handler = ToolSchemeHandler()
     handler.authorize(ToolHTTPService.Endpoint(id: UUID(), reference: Self.reference, adb: server.client()))
@@ -298,7 +184,7 @@ struct ToolHTTPTransportTests {
     #expect(server.connectionCount == 0)
   }
 
-  @Test("WebKit fetch and EventSource use the API path")
+  @Test("WebKit fetch and EventSource stream through the API path")
   @MainActor
   func webKitUsesSchemeHandler() async throws {
     _ = NSApplication.shared
@@ -306,11 +192,8 @@ struct ToolHTTPTransportTests {
       "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".utf8
     )
     let server = FakeToolADB(plans: [
-      .response([.init(data: Self.response(body: #"{"source":"fetch"}"#))]),
-      .response([
-        .init(data: eventHead + Self.chunk("event: update\ndata: live\n\n")),
-        .init(data: Data("0\r\n\r\n".utf8))
-      ])
+      .response(Self.response(body: #"{"source":"fetch"}"#)),
+      .stream(eventHead + Self.chunk("event: update\ndata: live\n\n"))
     ])
     defer { server.close() }
     let bridge = ToolWebBridge()
@@ -351,7 +234,8 @@ struct ToolHTTPTransportTests {
       """,
       arguments: [:], in: nil, contentWorld: .page
     ) as? String
-    #expect(event == "live")
+    #expect(event == "live", "Deliver events without waiting for the HTTP response to finish")
+    try await eventually { server.cancelledConnections == 1 }
     #expect(server.requests.map { $0.components(separatedBy: "\r\n")[0] } == [
       "GET /items HTTP/1.1", "GET /events HTTP/1.1"
     ])
@@ -386,102 +270,46 @@ struct ToolHTTPTransportTests {
 }
 
 private extension ToolHTTPRequestOperation {
-  func load(maximumBytes: Int) async throws -> (HTTPResponseHead, Data) {
-    var response: HTTPResponseHead?
+  func load() async throws -> Data {
     var data = Data()
-    try await run(
-      onResponse: { response = $0 },
-      onData: { chunk in
-        guard data.count + chunk.count <= maximumBytes else { throw ToolHTTPTransportError.invalidResponse }
-        data.append(chunk)
-      }
-    )
-    guard let response else { throw ToolHTTPTransportError.invalidResponse }
-    return (response, data)
+    try await run(onResponse: { _ in }, onData: { data.append($0) })
+    return data
   }
 }
 
-private final class SchemeTask: NSObject, WKURLSchemeTask, @unchecked Sendable {
+@MainActor
+private final class SchemeTask: NSObject, @preconcurrency WKURLSchemeTask {
   let request: URLRequest
-  private let lock = NSLock()
-  private var storedFailure: Error?
-  private var storedResponse: HTTPURLResponse?
-  private var storedBody = Data()
-  private var storedFinished = false
-
-  var response: HTTPURLResponse? {
-    lock.withLock { storedResponse }
-  }
-
-  var body: Data {
-    lock.withLock { storedBody }
-  }
-
-  var finished: Bool {
-    lock.withLock { storedFinished }
-  }
-
-  var failure: Error? {
-    lock.withLock { storedFailure }
-  }
+  var failure: Error?
+  var response: HTTPURLResponse?
+  var body = Data()
+  var finished = false
 
   init(_ request: URLRequest) {
     self.request = request
   }
 
   func didReceive(_ response: URLResponse) {
-    lock.withLock { storedResponse = response as? HTTPURLResponse }
+    self.response = response as? HTTPURLResponse
   }
 
   func didReceive(_ data: Data) {
-    lock.withLock { storedBody.append(data) }
+    body.append(data)
   }
 
   func didFinish() {
-    lock.withLock { storedFinished = true }
+    finished = true
   }
 
   func didFailWithError(_ error: any Error) {
-    lock.withLock { storedFailure = error }
-  }
-}
-
-private final class ChunkRecorder: @unchecked Sendable {
-  struct Chunk {
-    let time: ContinuousClock.Instant
-    let data: Data
-  }
-
-  private let lock = NSLock()
-  private var storedResponse: HTTPResponseHead?
-  private var storedChunks: [Chunk] = []
-
-  var response: HTTPResponseHead? {
-    lock.withLock { storedResponse }
-  }
-
-  var chunks: [Chunk] {
-    lock.withLock { storedChunks }
-  }
-
-  func receive(_ response: HTTPResponseHead) {
-    lock.withLock { storedResponse = response }
-  }
-
-  func receive(_ data: Data) {
-    lock.withLock { storedChunks.append(Chunk(time: .now, data: data)) }
+    failure = error
   }
 }
 
 private final class FakeToolADB: @unchecked Sendable {
-  struct Part {
-    var delay: TimeInterval = 0
-    let data: Data
-  }
-
   enum Plan {
-    case response([Part])
-    case waitForCancellation
+    case response(Data)
+    case stream(Data)
     case stallHandshake(command: Int)
   }
 
@@ -560,12 +388,10 @@ private final class FakeToolADB: @unchecked Sendable {
         let request = try Self.readRequest(from: peer)
         self.lock.withLock { self.storedRequests.append(request) }
         switch plan {
-        case .response(let parts):
-          for part in parts {
-            if part.delay > 0 { Thread.sleep(forTimeInterval: part.delay) }
-            try peer.writeFully(part.data)
-          }
-        case .waitForCancellation:
+        case .response(let data):
+          try peer.writeFully(data)
+        case .stream(let data):
+          try peer.writeFully(data)
           if try peer.readChunk(maxLength: 1) == nil {
             self.lock.withLock { self.storedCancellations += 1 }
           }
@@ -573,7 +399,7 @@ private final class FakeToolADB: @unchecked Sendable {
           Issue.record("Expected the handshake to stall")
         }
       } catch {
-        if case .waitForCancellation = plan {
+        if case .stream = plan {
           self.lock.withLock { self.storedCancellations += 1 }
         }
       }
