@@ -66,6 +66,8 @@ jobs:
 
   test:
     runs-on: macos-26
+    env:
+      SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -75,7 +77,10 @@ jobs:
           xcode-version: '26.1.1'
       - name: Test macOS device services
         working-directory: app-macos
-        run: xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
+        run: |
+          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O \
+            -destination "platform=macOS" -derivedDataPath "$SNAPO_DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
       - name: Test live preview frame export
         working-directory: app-macos
         run: sh scripts/test-live-preview-frame-export.sh
