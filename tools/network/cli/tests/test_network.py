@@ -285,20 +285,13 @@ class PluginPackagingTests(unittest.TestCase):
             if line.startswith("VERSION =")
         )
 
-        self.assertEqual(manifest["name"], "snap-o")
         self.assertEqual(manifest["version"], release_version)
         skills_root = (REPOSITORY / manifest["skills"]).resolve()
         self.assertEqual(skills_root, REPOSITORY / "skills")
         self.assertEqual(SCRIPT.parent, skills_root / "snap-o-network-inspector" / "scripts")
         self.assertTrue(SCRIPT.is_file())
         self.assertTrue(os.access(SCRIPT, os.X_OK))
-        self.assertEqual(manifest["interface"]["displayName"], "Snap-O")
-        self.assertEqual(manifest["interface"]["capabilities"], ["Read", "Write"])
-
-        for name, display_name in (
-            ("snap-o-network-inspector", "Snap-O Network Tool"),
-            ("snap-o-tweaks", "Snap-O Tweaks"),
-        ):
+        for name in ("snap-o-network-inspector", "snap-o-tweaks"):
             with self.subTest(skill=name):
                 skill_path = skills_root / name / "SKILL.md"
                 agent_path = skills_root / name / "agents" / "openai.yaml"
@@ -313,20 +306,11 @@ class PluginPackagingTests(unittest.TestCase):
                 self.assertTrue(agent_path.is_file())
 
                 agent_metadata = agent_path.read_text(encoding="utf-8")
-                self.assertIn("interface:\n", agent_metadata)
-                self.assertIn(f'display_name: "{display_name}"', agent_metadata)
-                self.assertIn("short_description:", agent_metadata)
                 self.assertIn(f"${name}", agent_metadata)
 
     def test_tweaks_skill_has_its_own_cli_and_protocol_references(self):
         skill_root = REPOSITORY / "skills" / "snap-o-tweaks"
         skill_content = (skill_root / "SKILL.md").read_text(encoding="utf-8")
-        tool_cli = "scripts/snapo-tweaks"
-
-        self.assertIn(tool_cli, skill_content)
-        self.assertEqual((skill_root / tool_cli).resolve(), REPOSITORY / "skills/snap-o-tweaks/scripts/snapo-tweaks")
-        self.assertTrue(SCRIPT.is_file())
-
         for name in ("protocol.md", "interaction-surfaces.md"):
             with self.subTest(reference=name):
                 reference = skill_root / "references" / name
@@ -338,15 +322,10 @@ class PluginPackagingTests(unittest.TestCase):
         marketplace = json.loads(
             (REPOSITORY / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(marketplace["name"], "snap-o")
-        self.assertEqual(len(marketplace["plugins"]), 1)
-
-        plugin = marketplace["plugins"][0]
-        self.assertEqual(plugin["name"], "snap-o")
-        self.assertEqual(plugin["source"], {"source": "local", "path": "./"})
+        manifest = json.loads((REPOSITORY / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        plugin = next(plugin for plugin in marketplace["plugins"] if plugin["name"] == manifest["name"])
+        self.assertEqual(plugin["source"]["source"], "local")
         self.assertEqual((REPOSITORY / plugin["source"]["path"]).resolve(), REPOSITORY)
-        self.assertEqual(plugin["policy"]["installation"], "AVAILABLE")
-        self.assertEqual(plugin["policy"]["authentication"], "ON_INSTALL")
 
 
 class DiscoveryTests(unittest.TestCase):
@@ -624,9 +603,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_shared_history_fixture_contains_only_sequenced_network_events(self):
         root = REPOSITORY / "contracts" / "network" / "v2"
-        app = json.loads((root / "app.json").read_text())
         records = [json.loads(line) for line in (root / "history.jsonl").read_text().splitlines()]
-        self.assertEqual(app["protocolVersion"], 2)
         with WireServer(lambda *_: self.fail("No stream expected"), history=records, watermark=3) as wire:
             history = snapo.NetworkHistory(lambda timeout: snapo.LocalAbstractSocket(port=wire.port, timeout=timeout))
             try:

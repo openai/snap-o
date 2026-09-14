@@ -11,7 +11,6 @@ Snap-O is a public, open-source Android inspection tool.
 - `build-logic/` and `gradle/`: internal Gradle conventions and root build tooling.
 - `contracts/`: shared protocol definitions and fixtures.
 - `docs/`: GitHub Pages sources and theme. See `docs/README.md` for build conventions.
-- `scripts/`: contributor utilities.
 
 ## Working Across Components
 
@@ -19,7 +18,7 @@ Snap-O is a public, open-source Android inspection tool.
 - Keep macOS ADB and device transport in `app-macos/Snap-O/Device/`. Keep UI code in the app and tool plugin frontends.
 - Android tool plugins use `tool-sdk/core` and its `ToolServer` API. Keep shared socket and HTTP behavior in the core library.
 - Each Python CLI implements its own transport; it does not use the Swift client.
-- When changing shared behavior, check the Android libraries, macOS client, web tool, and both Python CLIs. Use `contracts/` and its fixtures to keep them compatible.
+- When changing shared behavior, check the Android libraries, macOS client, web tool, and both Python CLIs. Use `contracts/`, its fixtures, and `docs/tweaks-protocol.md` to keep them compatible.
 
 ## Public Repository
 

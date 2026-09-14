@@ -28,7 +28,7 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 | `contracts/` | Protocol definitions and shared fixtures |
 | `docs/` | Documentation sources, theme, and tests |
 | `build-logic/`, `gradle/` | Internal build conventions and Gradle wrapper configuration |
-| `release/`, `scripts/` | Release checks and contributor utilities |
+| `release/` | Release checks and authoring validation |
 | `skills/` | Codex plugin skills |
 
 Open the repository root in Android Studio. Gradle downloads Node.js and uses its bundled npm to build the tool frontends. No local Node installation is needed for Android builds. Run `./gradlew` from the repository root; published Android artifact names are independent of folder names.

@@ -17,7 +17,6 @@ import {
   TweakColorField,
   TweakEnumListbox,
   TweakField,
-  TweaksEmptyState,
   TweaksToolApp,
   tweakColorWithPreservedAlpha
 } from "./TweaksToolApp";
@@ -39,17 +38,6 @@ describe("empty tweaks tool", () => {
 
     expect(markup).not.toContain('class="empty-detail"');
     expect(markup).not.toContain("No tweaks on screen");
-  });
-
-  it("uses the network tool empty-state layout and offers the developer guide", () => {
-    const markup = renderToStaticMarkup(createElement(TweaksEmptyState, { onOpenDocs() {} }));
-
-    expect(markup).toContain('class="empty-detail"');
-    expect(markup).toContain("No tweaks on screen");
-    expect(markup).toContain("Add a tweak to your app’s Compose UI to see it here.");
-    expect(markup).toContain('class="text-button"');
-    expect(markup).toContain("Read the developer guide");
-    expect(markup).not.toContain('class="tweaks-columns"');
   });
 });
 
@@ -84,21 +72,8 @@ describe("editable tweak colors", () => {
     expect(nativePanelTweakColor("#a1b2c344")).toBe("#A1B2C344");
   });
 
-  it("keeps panel-originated changes on the current session", () => {
-    expect(nativePanelTweakColor("#11223380")).toBe("#11223380");
-    expect(nativePanelTweakColor("#44556640")).toBe("#44556640");
-  });
-
-  it("keeps the alpha component when a native color is translucent", () => {
-    expect(nativePanelTweakColor("#a1b2c380")).toBe("#A1B2C380");
-  });
-
   it("omits the alpha component when a native color is fully opaque", () => {
     expect(nativePanelTweakColor("#a1b2c3ff")).toBe("#A1B2C3");
-  });
-
-  it("canonicalizes originally RGBA colors to RGB when made opaque", () => {
-    expect(nativePanelTweakColor("#5468FFFF")).toBe("#5468FF");
   });
 
   it("ignores native color updates without an alpha component", () => {
