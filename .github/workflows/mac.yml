@@ -66,11 +66,11 @@ jobs:
 
   test:
     runs-on: macos-26
-    env:
-      SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set shared build directory
+        run: echo "SNAPO_DERIVED_DATA=$RUNNER_TEMP/snap-o-derived-data" >> "$GITHUB_ENV"
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
