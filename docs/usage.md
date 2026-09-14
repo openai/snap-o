@@ -58,6 +58,6 @@ Add the Android integration using the [Network guide](https://openai.github.io/s
 
 ## ADB setup
 
-Snap-O communicates directly with the ADB server. If the server is not running, Snap-O asks you to select an `adb` binary to start it. Choose the binary from Android Platform Tools.
+Snap-O communicates directly with the ADB server. If the server is not running, run `adb start-server` in Terminal. Snap-O reconnects automatically when the server becomes available.
 
 For more live-preview and device-control features, see [scrcpy](https://github.com/Genymobile/scrcpy).

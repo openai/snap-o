@@ -47,7 +47,6 @@ struct SnapOApp: App {
     .commands {
       SnapOCommands(
         settings: settings,
-        adbService: runtime.adbService,
         updaterController: updateCoordinator.updaterController
       )
     }

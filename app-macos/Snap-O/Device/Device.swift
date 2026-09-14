@@ -27,7 +27,6 @@ public struct Device: Identifiable, Hashable, Sendable {
 }
 
 public enum ADBError: Error, LocalizedError, Sendable {
-  case adbNotFound
   case nonZeroExit(Int32, stderr: String?)
   case parseFailure(String)
   case noSuchRecording
@@ -39,7 +38,6 @@ public enum ADBError: Error, LocalizedError, Sendable {
 
   public var errorDescription: String? {
     switch self {
-    case .adbNotFound: "adb binary not found"
     case .nonZeroExit(let code, let stderr): "adb exited with code \(code). stderr: \(stderr ?? "<none>")"
     case .parseFailure(let message): "Failed to parse adb output: \(message)"
     case .noSuchRecording: "No such recording handle"

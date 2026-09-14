@@ -13,13 +13,13 @@ struct WaitingForDeviceView: View {
         .infiniteRotate(animated: true)
 
       if !isDeviceListInitialized {
-        HStack(spacing: 8) {
-          ProgressView()
-            .controlSize(.small)
-          Text("Loading devices")
-            .foregroundStyle(.secondary)
-        }
-        .transition(.opacity)
+        Text("Waiting for ADB server")
+          .foregroundStyle(.secondary)
+        Text("Run `adb start-server` in Terminal. Snap-O reconnects automatically.")
+          .font(.footnote)
+          .foregroundStyle(.tertiary)
+          .multilineTextAlignment(.center)
+          .transition(.opacity)
       } else {
         Text("Waiting for device")
           .foregroundStyle(.gray)

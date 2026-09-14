@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 public struct ADBForwardHandle: Sendable {
@@ -12,26 +11,14 @@ public struct ADBForwardHandle: Sendable {
 }
 
 public struct ADBClient: Sendable {
-  public typealias PathResolver = @Sendable () async throws -> URL
-  public typealias ServerObserver = @Sendable () async -> Void
-
   private let connectionFactory: @Sendable () throws -> ADBSocketConnection
   private let discoveryTimeout: Duration
-  private let pathResolver: PathResolver
-  private let notifyServerAvailable: ServerObserver
-
-  private static let serverLauncher = ADBServerLauncher()
 
   // MARK: - Public entry points
 
-  public init(
-    pathResolver: @escaping PathResolver = { throw ADBError.adbNotFound },
-    serverObserver: @escaping ServerObserver = {}
-  ) {
+  public init() {
     connectionFactory = { try ADBSocketConnection() }
     discoveryTimeout = .seconds(2)
-    self.pathResolver = pathResolver
-    notifyServerAvailable = serverObserver
   }
 
   init(
@@ -40,8 +27,6 @@ public struct ADBClient: Sendable {
   ) {
     self.discoveryTimeout = discoveryTimeout
     self.connectionFactory = connectionFactory
-    pathResolver = { throw ADBError.adbNotFound }
-    notifyServerAvailable = {}
   }
 
   public func screencapPNG(deviceID: String) async throws -> Data {
@@ -407,11 +392,11 @@ public struct ADBClient: Sendable {
     try await withConnection { connection in
       try connection.withRequestTimeout(discoveryTimeout) {
         let remote = "localabstract:\(abstractSocket)"
-        let portValue = try Self.allocateEphemeralPort()
-        _ = try connection.sendHostCommand(
-          "host-serial:\(deviceID):forward:tcp:\(portValue);\(remote)",
-          expectsResponse: false
+        let response = try connection.sendHostCommand(
+          "host-serial:\(deviceID):forward:tcp:0;\(remote)",
+          expectsResponse: true
         )
+        let portValue = try Self.forwardedPort(from: response)
         return ADBForwardHandle(
           deviceID: deviceID,
           localPort: portValue,
@@ -490,11 +475,9 @@ public struct ADBClient: Sendable {
     _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T
   ) async throws -> T {
     var lastError: Error?
-    var didRestartServer = false
 
     for attempt in 0 ..< maxAttempts {
       try Task.checkCancellation()
-      try await ADBClient.serverLauncher.waitForOngoingRestart()
 
       do {
         let connection = try connectionFactory()
@@ -505,7 +488,6 @@ public struct ADBClient: Sendable {
             connection.close()
           }
           try Task.checkCancellation()
-          await notifyServerAvailable()
           return value
         } catch {
           connection.close()
@@ -516,11 +498,7 @@ public struct ADBClient: Sendable {
         let normalized = normalize(error)
         lastError = normalized
 
-        guard shouldAttemptServerRestart(for: normalized) else { throw normalized }
-
-        if !didRestartServer {
-          didRestartServer = try await startServerIfNeeded()
-        }
+        guard shouldRetryConnection(after: normalized), attempt + 1 < maxAttempts else { throw normalized }
 
         let backoff = UInt64(min(1_000_000_000, 100_000_000 << attempt))
         try await Task.sleep(nanoseconds: backoff)
@@ -528,16 +506,6 @@ public struct ADBClient: Sendable {
     }
 
     throw lastError ?? ADBError.serverUnavailable("Failed to communicate with adb server")
-  }
-
-  private func startServerIfNeeded() async throws -> Bool {
-    do {
-      let url = try await pathResolver()
-      try await ADBClient.serverLauncher.startServer(at: url)
-      return true
-    } catch ADBError.adbNotFound {
-      return false
-    }
   }
 
   private func sendSigInt(deviceID: String, pid: Int32) async {
@@ -590,7 +558,7 @@ public struct ADBClient: Sendable {
     )
   }
 
-  private func shouldAttemptServerRestart(for error: Error) -> Bool {
+  private func shouldRetryConnection(after error: Error) -> Bool {
     if let adbError = error as? ADBError {
       if case .serverUnavailable = adbError { return true }
       return false
@@ -611,42 +579,12 @@ public struct ADBClient: Sendable {
     return error
   }
 
-  private static func allocateEphemeralPort() throws -> UInt16 {
-    let fd = Darwin.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-    guard fd >= 0 else {
-      let error = errno
-      throw POSIXError(POSIXError.Code(rawValue: error) ?? .EIO)
+  static func forwardedPort(from response: String?) throws -> UInt16 {
+    let value = response?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard let port = UInt16(value), port > 0 else {
+      throw ADBError.protocolFailure("invalid forwarded port: \(value.isEmpty ? "<empty>" : value)")
     }
-    defer { Darwin.close(fd) }
-
-    var addr = sockaddr_in()
-    addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-    addr.sin_family = sa_family_t(AF_INET)
-    addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
-    addr.sin_port = in_port_t(0).bigEndian
-
-    let bindResult = withUnsafePointer(to: &addr) {
-      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
-        Darwin.bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
-      }
-    }
-    guard bindResult == 0 else {
-      let error = errno
-      throw POSIXError(POSIXError.Code(rawValue: error) ?? .EIO)
-    }
-
-    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-    let nameResult = withUnsafeMutablePointer(to: &addr) {
-      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
-        getsockname(fd, pointer, &length)
-      }
-    }
-    guard nameResult == 0 else {
-      let error = errno
-      throw POSIXError(POSIXError.Code(rawValue: error) ?? .EIO)
-    }
-
-    return UInt16(bigEndian: addr.sin_port)
+    return port
   }
 }
 
@@ -659,60 +597,5 @@ public struct TrackDevicesHandle: Sendable {
 
   public func cancel() {
     cancelClosure()
-  }
-}
-
-private actor ADBServerLauncher {
-  private var currentTask: Task<Void, Error>?
-
-  func startServer(at url: URL) async throws {
-    if let currentTask {
-      try await currentTask.value
-      return
-    }
-
-    guard FileManager.default.fileExists(atPath: url.path) else {
-      throw ADBError.adbNotFound
-    }
-
-    let launchTask = Task.detached(priority: .userInitiated) {
-      let ok = url.startAccessingSecurityScopedResource()
-      defer { if ok { url.stopAccessingSecurityScopedResource() } }
-
-      let process = Process()
-      process.executableURL = url
-      process.arguments = ["start-server"]
-      let stderr = Pipe()
-      process.standardError = stderr
-      process.standardOutput = Pipe()
-
-      try process.run()
-      process.waitUntilExit()
-
-      let status = process.terminationStatus
-      if status != 0 {
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-        let errString = String(data: errData, encoding: .utf8)
-        throw ADBError.nonZeroExit(status, stderr: errString)
-      } else {
-        // Have to wait just a little bit before the server's actually available?
-        try await Task.sleep(nanoseconds: 100_000_000)
-      }
-    }
-
-    currentTask = launchTask
-    do {
-      try await launchTask.value
-    } catch {
-      currentTask = nil
-      throw error
-    }
-    currentTask = nil
-  }
-
-  func waitForOngoingRestart() async throws {
-    if let currentTask {
-      try await currentTask.value
-    }
   }
 }

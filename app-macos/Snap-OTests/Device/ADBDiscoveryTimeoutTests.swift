@@ -120,8 +120,23 @@ struct ADBDiscoveryTimeoutTests {
       Issue.record("Expected port forwarding to time out")
     } catch ADBError.requestTimedOut {}
     let forward = try await adb.forwardLocalAbstract(deviceID: "cleanup", abstractSocket: "snapo_tweaks_42")
+    #expect(forward.port == 12346)
     await adb.removeForward(forward)
     #expect(server.connectionCount == 3)
+  }
+
+  @Test("forwarded ports must be valid nonzero TCP ports", arguments: [
+    nil, "", "0", "65536", "not-a-port"
+  ] as [String?])
+  func rejectsInvalidForwardedPort(response: String?) {
+    #expect(throws: ADBError.self) {
+      try ADBClient.forwardedPort(from: response)
+    }
+  }
+
+  @Test("forwarded ports tolerate surrounding whitespace")
+  func parsesForwardedPort() throws {
+    #expect(try ADBClient.forwardedPort(from: " 12346\n") == 12346)
   }
 
   @Test("legacy probes read identity without starting inspection")
@@ -239,8 +254,12 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
         try peer.withRequestTimeout(.seconds(2)) {
           let transport = try Self.readRequest(peer)
           if transport.hasPrefix("host-serial:stalled:") { return }
-          if transport.hasPrefix("host-serial:cleanup:") {
-            if transport.contains(":forward:") { Self.send("OKAY", to: descriptor) }
+          if transport == "host-serial:cleanup:forward:tcp:0;localabstract:snapo_tweaks_42" {
+            Self.send("OKAY000512346", to: descriptor)
+            return
+          }
+          if transport == "host-serial:cleanup:killforward:tcp:12346" {
+            Self.send("OKAY", to: descriptor)
             return
           }
           let stalled = transport == "host:transport:stalled"
