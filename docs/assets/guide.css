@@ -155,11 +155,11 @@ article {
         .quick-jump {
           position: fixed;
           z-index: 10;
-          top: 96px;
+          top: 220px;
           right: clamp(32px, 4vw, 56px);
           display: block;
           width: 200px;
-          max-height: calc(100vh - 120px);
+          max-height: calc(100vh - 248px);
           overflow-y: auto;
         }
 

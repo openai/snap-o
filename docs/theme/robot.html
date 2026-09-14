@@ -1,0 +1,3 @@
+<button class="robot-flight {{ robot_class|default('') }}" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+  <img class="space-robot" src="{{ 'assets/space-robot.png'|url }}" alt="" width="1254" height="1254" {% if page.meta.layout == 'home' %}fetchpriority="high"{% else %}loading="lazy"{% endif %} draggable="false">
+</button>

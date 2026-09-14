@@ -1,6 +1,6 @@
 ---
 layout: guide
-title: Tweaks Guide (Alpha) · Snap-O
+title: Tweaks Guide · Snap-O
 description: Expose values from Compose, Views, and Kotlin code, app-owned settings,
   and actions to Snap-O and adjust them with the Tool pane, an on-device panel, the
   REST API, or an agent.
@@ -15,7 +15,7 @@ breadcrumbs:
   href: index.html
 ---
 
-# Tweaks Guide (Alpha)
+# Tweaks Guide
 
 Expose values, app-owned settings, and actions from Compose, Views, ViewModels, and other Kotlin code. Interact with them through Snap-O’s Tool pane, an optional on-device panel, the REST API, or an agent.
 {.lead}
