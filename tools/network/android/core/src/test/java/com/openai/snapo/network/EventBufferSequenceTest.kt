@@ -14,10 +14,9 @@ class EventBufferSequenceTest {
 
         assertEquals(1L, firstSequence)
         assertEquals(2L, secondSequence)
-        assertEquals(2L, snapshot.watermark)
         assertEquals(
             mapOf("first" to 1L, "second" to 2L),
-            snapshot.records.associate { event ->
+            snapshot.associate { event ->
                 (event.record as RequestWillBeSent).id to event.snapoSequence
             },
         )
@@ -44,7 +43,7 @@ class EventBufferSequenceTest {
             bodySize = 12L,
         )
 
-        val event = buffer.sequencedSnapshot().records.single()
+        val event = buffer.sequencedSnapshot().single()
         assertEquals(sequence, event.snapoSequence)
         assertEquals("updated", (event.record as ResponseReceived).bodyPreview)
     }
@@ -62,14 +61,14 @@ class EventBufferSequenceTest {
             bodySize = 14L,
         )
 
-        val event = buffer.sequencedSnapshot().records.single()
+        val event = buffer.sequencedSnapshot().single()
         assertEquals(sequence, event.snapoSequence)
         assertEquals(14L, (event.record as RequestWillBeSent).bodySize)
         assertEquals("updated body", buffer.findRequestBody("request")?.body)
     }
 
     @Test
-    fun `watermark advances when older events are evicted`() {
+    fun `retained events keep their sequence after eviction`() {
         val buffer = EventBuffer(
             NetworkInspectorConfig(maxBufferedEvents = 1),
         )
@@ -78,8 +77,7 @@ class EventBufferSequenceTest {
 
         val snapshot = buffer.sequencedSnapshot()
 
-        assertEquals(2L, snapshot.watermark)
-        assertEquals(listOf(2L), snapshot.records.map(SequencedNetworkEvent::snapoSequence))
+        assertEquals(listOf(2L), snapshot.map(SequencedNetworkEvent::snapoSequence))
     }
 
     private fun request(id: String, wallTimeMs: Long): RequestWillBeSent =

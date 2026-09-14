@@ -34,7 +34,6 @@ describe("Tweaks connection recovery", () => {
     initialSnapshot = response;
     stops = [];
     connection = {
-      baseURL: "http://127.0.0.1:1234/",
       processIdentity: "boot:20:123",
       signal: new AbortController().signal
     };

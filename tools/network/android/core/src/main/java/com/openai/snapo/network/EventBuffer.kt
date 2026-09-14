@@ -13,11 +13,6 @@ internal data class SequencedNetworkEvent(
     val record: NetworkEventRecord,
 )
 
-internal data class EventBufferSnapshot(
-    val records: List<SequencedNetworkEvent>,
-    val watermark: Long,
-)
-
 internal class EventBuffer(
     private val config: NetworkInspectorConfig,
 ) {
@@ -45,15 +40,12 @@ internal class EventBuffer(
 
     fun snapshot(): List<NetworkEventRecord> = ArrayList(records)
 
-    fun sequencedSnapshot(): EventBufferSnapshot = EventBufferSnapshot(
-        records = records.map { record ->
-            SequencedNetworkEvent(
-                snapoSequence = checkNotNull(sequenceByRecord[record]),
-                record = record,
-            )
-        },
-        watermark = latestSequence,
-    )
+    fun sequencedSnapshot(): List<SequencedNetworkEvent> = records.map { record ->
+        SequencedNetworkEvent(
+            snapoSequence = checkNotNull(sequenceByRecord[record]),
+            record = record,
+        )
+    }
 
     fun findRequestBody(requestId: String): CapturedBody? = requestBodiesById[requestId]
 

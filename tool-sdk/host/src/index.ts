@@ -43,7 +43,6 @@ export class ConnectionEvent extends Event {
 }
 
 export interface ToolConnection {
-  readonly baseURL: string;
   readonly processIdentity: string;
   readonly signal: AbortSignal;
 }
@@ -81,7 +80,6 @@ export interface Host extends EventTarget {
 interface HostState {
   revision: number;
   connected: boolean;
-  baseURL?: string | null;
   manifest?: { processIdentity: string } | null;
 }
 
@@ -313,23 +311,19 @@ export class ToolHost extends EventTarget implements Host {
 
   private updateState(state: HostState): void {
     if (state.revision <= this.state.revision) return;
-    // A new connection may reuse the same forwarded port.
     const changed =
-      state.connected ||
-      state.connected !== this.state.connected ||
-      state.baseURL !== this.state.baseURL ||
-      state.manifest !== this.state.manifest;
+      state.connected || state.connected !== this.state.connected || state.manifest !== this.state.manifest;
     this.state = state;
     this.connectionController?.abort();
     const processIdentity = state.manifest?.processIdentity;
-    const ready = state.connected && state.baseURL && processIdentity;
+    const ready = state.connected && processIdentity;
     this.connectionController = ready ? new AbortController() : undefined;
+    const controller = this.connectionController;
     this.currentConnection =
-      ready && this.connectionController
+      ready && controller
         ? {
-            baseURL: state.baseURL!,
             processIdentity,
-            signal: this.connectionController.signal
+            signal: controller.signal
           }
         : null;
     if (changed) this.dispatchEvent(new ConnectionEvent(this.currentConnection !== null));

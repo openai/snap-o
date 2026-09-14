@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** HTTP reads and SSE subscriptions on the tool's existing abstract socket. */
 internal class NetworkToolHttp(
-    private val snapshotProvider: suspend () -> NetworkReplaySnapshot = { NetworkReplaySnapshot(emptyList(), 0) },
+    private val snapshotProvider: suspend () -> List<CdpMessage> = { emptyList() },
     private val commandHandler: suspend (CdpMessage) -> CdpMessage? = { null },
     private val interception: NetworkInterception = NetworkInterception(),
 ) {
@@ -39,7 +39,7 @@ internal class NetworkToolHttp(
 
     val server = ToolServer(SnapOTool.ID, maxConnections = 128) {
         requestPolicy = RequestPolicy
-        exposedHeaders = "SnapO-Sequence, Location"
+        exposedHeaders = "Location"
         vary = "Accept, Origin"
         get("/network/protocol") { respondJson("""{"version":$NetworkProtocolVersion}""") }
         get("/network") {
@@ -153,8 +153,8 @@ internal class NetworkToolHttp(
 
     private suspend fun ToolCall.history() {
         val snapshot = snapshotProvider()
-        respondStream("application/x-ndjson", headers = mapOf("SnapO-Sequence" to snapshot.watermark.toString())) {
-            for (message in snapshot.messages) {
+        respondStream("application/x-ndjson") {
+            for (message in snapshot) {
                 val bytes = ProtocolJson.encodeToString(CdpMessage.serializer(), message).toByteArray(Charsets.UTF_8)
                 require(bytes.size <= MaxNetworkRecordBytes) { "History record is too large" }
                 write(bytes + '\n'.code.toByte())

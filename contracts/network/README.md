@@ -19,7 +19,7 @@ Percent-encode request ids as one path component. Body reads return `404` when t
 
 The Network CLI calls `GET /network/protocol` and requires `{"version":4}` before reading data or opening a stream. The bundled frontend uses its matching Android server without a version check. This endpoint belongs to Network, not the shared tool SDK. The desktop gets app labels and icons from [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader.
 
-Protocol 4 moves the compatibility check out of discovery; Network data and interception payloads are unchanged from protocol 3. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
+Protocol 4 moves the compatibility check out of discovery; history uses event sequence IDs instead of a snapshot header. Interception payloads are unchanged from protocol 3. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
 
 `GET /network` uses the standard `Accept` header to select its response:
 
@@ -31,15 +31,17 @@ Responses include `Vary: Accept, Origin`. Clients can use quality weights to exp
 
 ## Join history and live events
 
-The snapshot responds with `application/x-ndjson`, chunked HTTP framing, and `SnapO-Sequence`. The sequence header is the snapshot watermark. Each line contains one event with a top-level `snapoSequence` at or below that watermark. Only a complete HTTP response marks the snapshot complete. A truncated record or incomplete chunked response is an error.
+The snapshot responds with `application/x-ndjson` and chunked HTTP framing. Each line contains one event with a top-level `snapoSequence`, ordered by increasing sequence. There is no separate snapshot header or metadata record. Only a complete HTTP response marks the snapshot complete. A truncated record or incomplete chunked response is an error.
 
 For a combined history and live view:
 
 1. Select the tool socket, then request `/network/protocol` and require version 4.
 2. Open `/network` with `Accept: text/event-stream` and buffer incoming events.
 3. After the SSE response headers arrive, fetch `/network` with `Accept: application/x-ndjson`.
-4. Read the complete snapshot and retain its watermark.
-5. Apply buffered and subsequent live events only when their sequence exceeds the watermark.
+4. Process the snapshot events, retaining the last processed `snapoSequence`.
+5. Process buffered and subsequent live events only when their sequence is higher, advancing the saved sequence each time.
+
+An empty snapshot or SSE heartbeat leaves the saved sequence unchanged. Buffering a live event does not advance it. Events received live may still be displayed after eviction from server history. Start with no saved sequence for a new view, and reset it when the Android process changes.
 
 Android registers the live subscription before returning its headers. Clients must bound their live buffer while loading history. If it fills, disconnect and start again; do not silently drop events. A history-only view requests the snapshot without opening SSE.
 
@@ -77,9 +79,9 @@ HTTP request bodies are limited to 2 MiB. Individual event JSON payloads and his
 
 Android accepts at most 128 simultaneous tool connections, including at most 16 SSE streams. Clients should bound concurrent HTTP operations. Each HTTP request uses one connection; SSE and history responses stream without buffering their full contents.
 
-Every request must use a loopback `Host` (`localhost`, `127.0.0.1`, or `[::1]`, with an optional port). This blocks DNS rebinding through attacker-owned names. Browser requests must use an HTTP or HTTPS loopback `Origin`, or the desktop origin `snapo-inspector://<uuid>` (a lowercase canonical UUID, without a port, path, query, or fragment). Other origins, including `null`, are rejected. Native clients may omit `Origin`.
+Every request received by Android must use a loopback `Host` (`localhost`, `127.0.0.1`, or `[::1]`, with an optional port). This blocks DNS rebinding through attacker-owned names. Browser requests must use an HTTP or HTTPS loopback `Origin`, or the desktop origin `snapo://tool`. Other origins, including `null`, are rejected. Native clients may omit `Origin`.
 
-The desktop host provides the forwarded base URL. Browser clients connect directly with `fetch` and `EventSource`. CORS responses allow the validated origin and expose `SnapO-Sequence` and `Location`. `OPTIONS` permits `GET`, `POST`, and `PUT` with `Content-Type`; credentials are not required.
+Desktop frontends call `snapo://tool/api/network` with `fetch` and `EventSource`. The macOS host strips `/api`, sends the request directly over ADB, and supplies the required Android headers. Development frontends use the same origin: only their frontend files come from the local development server. Standalone loopback browser clients can use HTTP. CORS responses allow the validated origin and expose `Location`. `OPTIONS` permits `GET`, `POST`, and `PUT` with `Content-Type`; credentials are not required.
 
 ## Compatibility
 

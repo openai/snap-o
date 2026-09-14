@@ -22,25 +22,23 @@ struct ToolWebPolicyTests {
     }
   }
 
-  @Test("endpoint rules reject anything except an allocated loopback port")
+  @Test("API routes stay within the tool origin and namespace")
   func endpointURLs() throws {
-    #expect(try ToolWebPolicy.isPluginEndpoint(#require(URL(string: "http://127.0.0.1:1234/"))))
+    #expect(ToolURL.isAPI(ToolURL.api))
     for invalid in [
-      "https://127.0.0.1:1234/", "http://localhost:1234/", "http://127.0.0.1/", "http://127.0.0.1:0/",
-      "http://127.0.0.1:65536/", "http://user@127.0.0.1:1234/", "http://127.0.0.1:1234/path",
-      "http://127.0.0.1:1234/?q=1", "http://127.0.0.1:1234/#fragment"
+      "http://127.0.0.1:1234/api/", "snapo://other/api/", "snapo://tool:1234/api/",
+      "snapo://user@tool/api/", "snapo://tool/index.html", "snapo://tool/apiary", "snapo://tool/api/#fragment"
     ] {
       let url = try #require(URL(string: invalid))
-      #expect(!ToolWebPolicy.isPluginEndpoint(url))
-      #expect(throws: ToolError.self) { try ToolWebPolicy.contentRules(endpoint: url, developmentURL: nil) }
+      #expect(!ToolURL.isAPI(url))
     }
   }
 
   @Test("generated allowlists match whole origins, not neighboring hosts or ports")
   func contentRules() throws {
-    let asset = try #require(URL(string: "snapo-inspector://00000000-0000-0000-0000-000000000001/"))
+    let asset = ToolURL.frontend
     let encoded = try ToolWebPolicy.contentRules(
-      endpoint: URL(string: "http://127.0.0.1:1234/"), developmentURL: URL(string: "https://localhost:443/dev?q=1"), assetURL: asset
+      developmentURL: URL(string: "https://localhost:443/dev?q=1")
     )
     let rules = try #require(JSONSerialization.jsonObject(with: Data(encoded.utf8)) as? [[String: [String: String]]])
     #expect(rules.first == ["trigger": ["url-filter": ".*"], "action": ["type": "block"]])
@@ -52,8 +50,7 @@ struct ToolWebPolicyTests {
       allow.contains { $0.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)) != nil }
     }
     for url in [
-      "http://127.0.0.1:1234/data",
-      "ws://127.0.0.1:1234/events",
+      "snapo://tool/api/events",
       "https://localhost/main.js",
       "wss://localhost/hmr",
       asset.absoluteString + "index.html",
@@ -69,12 +66,12 @@ struct ToolWebPolicyTests {
       "https://localhost.example/",
       "https://localhost:444/",
       "file:///tmp/asset",
-      "snapo-inspector://00000000-0000-0000-0000-000000000002/index.html"
+      "snapo://other/index.html",
+      "snapo://tool.example/index.html",
+      "snapo://tool:1234/api/events",
+      "ws://127.0.0.1:1234/events"
     ] {
       #expect(!permits(url), "Unexpected allowance: \(url)")
-    }
-    #expect(throws: ToolError.self) {
-      try ToolWebPolicy.contentRules(endpoint: nil, developmentURL: nil, assetURL: URL(string: "snapo-inspector://untrusted/"))
     }
   }
 

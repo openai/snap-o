@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = F40000022F70000100C0FFEE /* NIOHTTP1 */; };
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
 		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
@@ -64,6 +65,7 @@
 				32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */,
 				32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */,
 				D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */,
+				F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -137,6 +139,7 @@
 			packageProductDependencies = (
 				32C837092E6A5AD10003BDFA /* Sparkle */,
 				D20000022F70000100C0FFEE /* ZIPFoundation */,
+				F40000022F70000100C0FFEE /* NIOHTTP1 */,
 			);
 			productName = "Snap-O";
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
@@ -188,6 +191,7 @@
 			mainGroup = 3234F4482E2EC5030057AE77;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */,
 				32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */,
 				D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
@@ -553,6 +557,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.100.0;
+			};
+		};
 		32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -572,6 +584,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		F40000022F70000100C0FFEE /* NIOHTTP1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOHTTP1;
+		};
 		32C837092E6A5AD10003BDFA /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */;

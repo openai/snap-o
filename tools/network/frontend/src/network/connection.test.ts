@@ -2,9 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NetworkConnection } from "./connection";
 import type { StreamEvent } from "./bridge-types";
 
-const baseURL = "http://127.0.0.1:1234/";
+const endpoint = "/api/";
 const metadata = {
-  baseURL,
   signal: new AbortController().signal,
   name: "Demo",
   packageName: "example.demo",
@@ -39,7 +38,7 @@ function setup(history: (events: Events) => Response | Promise<Response>) {
     return Response.json({ body: "response", base64Encoded: false });
   });
   const eventSource = vi.fn((url: string) => {
-    expect(url).toBe(baseURL + "network");
+    expect(url).toBe(endpoint + "network");
     queueMicrotask(() => events.dispatchEvent(new Event("open")));
     return events as unknown as EventSource;
   });
@@ -50,8 +49,8 @@ function setup(history: (events: Events) => Response | Promise<Response>) {
   connections.push(connection);
   return { connection, events, received, fetchRequest, eventSource, closed };
 }
-function snapshot(text = "", sequence = "0") {
-  return new Response(text, { headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": sequence } });
+function snapshot(text = "") {
+  return new Response(text, { headers: { "Content-Type": "application/x-ndjson" } });
 }
 
 describe("direct Network HTTP and SSE connection", () => {
@@ -66,20 +65,41 @@ describe("direct Network HTTP and SSE connection", () => {
           controller.close();
         }
       });
-      return new Response(body, { headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": "2" } });
+      return new Response(body, { headers: { "Content-Type": "application/x-ndjson" } });
     });
     await connection.start();
+    events.send(4);
     events.send(4);
     expect(received.map((value) => value.message.snapoSequence)).toEqual([2, 3, 4]);
     expect(received[0].message.params?.requestId).toBe("café");
     expect(received[0].processId).toBe("boot:20:123");
   });
+  it("keeps buffered live events when history is empty and ignores heartbeats", async () => {
+    const { connection, events, received } = setup((stream) => {
+      stream.send(119);
+      stream.send(120);
+      return snapshot();
+    });
+    await connection.start();
+    events.dispatchEvent(new Event("heartbeat"));
+    events.send(120);
+    events.send(121);
+    expect(received.map((value) => value.message.snapoSequence)).toEqual([119, 120, 121]);
+  });
+  it("a new connection starts with its own event sequence", async () => {
+    const first = setup(() => snapshot(JSON.stringify(event(120)) + "\n"));
+    await first.connection.start();
+    first.connection.close();
+    const second = setup(() => snapshot(JSON.stringify(event(1)) + "\n"));
+    await second.connection.start();
+    expect(second.received.map((value) => value.message.snapoSequence)).toEqual([1]);
+  });
   it.each([
-    [JSON.stringify(event(1)), "1"],
-    [JSON.stringify(event(2)) + "\n", "1"],
-    [JSON.stringify(event(1)) + "\n", "missing"]
-  ])("rejects incomplete or inconsistent history (%s)", async (body, sequence) => {
-    const { connection, events } = setup(() => snapshot(body, sequence));
+    JSON.stringify(event(1)),
+    JSON.stringify({ ...event(1), snapoSequence: -1 }) + "\n",
+    JSON.stringify({ ...event(1), snapoSequence: undefined }) + "\n"
+  ])("rejects incomplete or invalid history (%s)", async (body) => {
+    const { connection, events } = setup(() => snapshot(body));
     await expect(connection.start()).rejects.toThrow();
     expect(events.close).toHaveBeenCalled();
   });
@@ -99,7 +119,7 @@ describe("direct Network HTTP and SSE connection", () => {
     expect(closed).toHaveBeenCalledWith({ streamId: connection.id });
     await expect(connection.loadBodies({ processId: "boot:20:123", requestId: "one" })).rejects.toThrow("disconnected");
   });
-  it("uses the bound endpoint for body reads and encodes request IDs", async () => {
+  it("uses the tool URL for body reads and encodes request IDs", async () => {
     const { connection, fetchRequest } = setup(() => snapshot());
     await connection.start();
     const bodies = await connection.loadBodies({
@@ -109,7 +129,7 @@ describe("direct Network HTTP and SSE connection", () => {
     });
     expect(bodies.responseBody).toBe("response");
     expect(fetchRequest).toHaveBeenLastCalledWith(
-      baseURL + "network/requests/one%2Ftwo%2Bthree/response-body",
+      endpoint + "network/requests/one%2Ftwo%2Bthree/response-body",
       expect.anything()
     );
     await expect(connection.loadBodies({ requestId: "one", processId: "older" })).rejects.toThrow(

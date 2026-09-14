@@ -3,13 +3,8 @@ package com.openai.snapo.network
 import android.content.Context
 import java.io.Closeable
 
-internal data class NetworkReplaySnapshot(
-    val messages: List<CdpMessage>,
-    val watermark: Long,
-)
-
 internal class NetworkToolTransport(
-    snapshotProvider: suspend () -> NetworkReplaySnapshot,
+    snapshotProvider: suspend () -> List<CdpMessage>,
     commandHandler: suspend (CdpMessage) -> CdpMessage?,
     interception: NetworkInterception,
 ) : Closeable {

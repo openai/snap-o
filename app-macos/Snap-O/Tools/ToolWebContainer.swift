@@ -12,24 +12,18 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   private static let maximumPendingPageEvents = 2048
   private static let maximumPageEventBatchSize = 64
 
-  let id = UUID()
   let webView: WKWebView
   var pageReadinessChangedHandler: ((Bool) -> Void)?
   var pageLoadFailedHandler: ((String) -> Void)?
 
-  private let assets: ToolAssetSchemeHandler
+  private let schemeHandler: ToolSchemeHandler
   private let developmentURL: URL?
   private let bridge: ToolWebBridge
   private var isStopped = false
   private var policyTask: Task<Void, Never>?
-  private var policyGeneration = 0
-  private var endpoint: URL?
+  private var endpointID: UUID?
   private var policyInstalled = false
-  private var currentRuleList: WKContentRuleList?
-  private var unloadNavigation: WKNavigation?
   private var documentURL: URL?
-  private var stopContinuation: CheckedContinuation<Void, Never>?
-  private var unloadTask: Task<Void, Never>?
   private let ruleListIdentifier = "snapo.inspector." + UUID().uuidString
   private var recoveryTask: Task<Void, Never>?
   private var pendingPageEvents: [PendingPageEvent] = []
@@ -48,7 +42,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     storageIdentifier: UUID?, developmentURL: URL? = nil
   ) {
     let configuration = WKWebViewConfiguration()
-    assets = ToolAssetSchemeHandler(storageIdentifier: storageIdentifier)
+    schemeHandler = ToolSchemeHandler(developmentURL: developmentURL)
     self.developmentURL = developmentURL
     self.bridge = bridge
     configuration.websiteDataStore = storageIdentifier.map { WKWebsiteDataStore(forIdentifier: $0) } ?? .nonPersistent()
@@ -57,7 +51,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     configuration.preferences.isElementFullscreenEnabled = false
     configuration.allowsAirPlayForMediaPlayback = false
     configuration.mediaTypesRequiringUserActionForPlayback = .all
-    configuration.setURLSchemeHandler(assets, forURLScheme: ToolAssetSchemeHandler.scheme)
+    configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ToolURL.scheme)
     configuration.userContentController.addScriptMessageHandler(
       bridge,
       contentWorld: .page,
@@ -73,7 +67,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
       guard let self, !isStopped, policyInstalled, message.webView === webView,
             message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, ownsPage(url) else { return false }
       let origin = message.frameInfo.securityOrigin
-      let expected = developmentURL ?? assets.baseURL
+      let expected = ToolURL.frontend
       return origin.protocol == expected.scheme && origin.host == expected.host
         && origin.port == (expected.port ?? 0)
     }
@@ -86,12 +80,12 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   func start(frontend: ToolFrontendBundle?) {
-    guard !isStopped else { return }
-    assets.bundle = frontend
+    guard !isStopped, policyTask == nil else { return }
+    schemeHandler.bundle = frontend
     policyTask = Task { [weak self] in
       guard let self else { return }
       do {
-        try await allowEndpoint(nil)
+        try await installPolicy()
         guard !isStopped else { return }
         loadTool()
       } catch {
@@ -102,31 +96,22 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
   }
 
-  func allowEndpoint(_ endpoint: URL?) async throws {
-    guard !isStopped else { throw CancellationError() }
-    if policyInstalled, self.endpoint == endpoint { return }
-    policyGeneration += 1
-    let generation = policyGeneration
-    let encoded = try ToolWebPolicy.contentRules(
-      endpoint: endpoint, developmentURL: developmentURL, assetURL: assets.bundle == nil ? nil : assets.baseURL
-    )
-    let identifier = ruleListIdentifier + "." + String(generation)
+  func setServer(_ endpoint: ToolHTTPService.Endpoint?) {
+    guard !isStopped, endpointID != endpoint?.id else { return }
+    schemeHandler.authorize(endpoint)
+    endpointID = endpoint?.id
+  }
+
+  private func installPolicy() async throws {
+    let encoded = try ToolWebPolicy.contentRules(developmentURL: developmentURL)
     let list = try await WKContentRuleListStore.default().compileContentRuleList(
-      forIdentifier: identifier, encodedContentRuleList: encoded
+      forIdentifier: ruleListIdentifier, encodedContentRuleList: encoded
     )
-    guard !Task.isCancelled, !isStopped, generation == policyGeneration, let list else {
-      try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: identifier)
+    guard !Task.isCancelled, !isStopped, let list else {
       throw CancellationError()
     }
-    let controller = webView.configuration.userContentController
-    // The policies overlap during replacement; there is never an unfiltered interval.
-    let previous = currentRuleList
-    controller.add(list)
-    if let previous { controller.remove(previous) }
-    currentRuleList = list
-    self.endpoint = endpoint
+    webView.configuration.userContentController.add(list)
     policyInstalled = true
-    if let previous { try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: previous.identifier) }
   }
 
   func stop() {
@@ -135,8 +120,8 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     webView.isInspectable = false
     isPageReady = false
     bridge.invalidate()
+    schemeHandler.invalidate()
     policyTask?.cancel()
-    policyGeneration += 1
     recoveryTask?.cancel()
     closeNativeColorPanel()
     bridge.colorPanelChangedHandler = nil
@@ -147,20 +132,14 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
       forName: ToolWebBridge.messageHandlerName,
       contentWorld: .page
     )
-    unloadTask = Task { [self] in
-      await withCheckedContinuation { continuation in
-        stopContinuation = continuation
-        unloadNavigation = webView.loadHTMLString("", baseURL: nil)
-      }
-      webView.navigationDelegate = nil
-      webView.uiDelegate = nil
-    }
+    webView.navigationDelegate = nil
+    webView.uiDelegate = nil
+    webView.loadHTMLString("", baseURL: nil)
   }
 
   func finishStopping() async {
-    await unloadTask?.value
     await policyTask?.value
-    if let currentRuleList { try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: currentRuleList.identifier) }
+    try? await WKContentRuleListStore.default().removeContentRuleList(forIdentifier: ruleListIdentifier)
     await recoveryTask?.value
     recoveryTask = nil
     await bridge.finishStopping()
@@ -197,13 +176,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    if isStopped {
-      guard navigation === unloadNavigation else { return }
-      stopContinuation?.resume()
-      stopContinuation = nil
-      return
-    }
-    guard policyInstalled, let url = webView.url, ownsPage(url) else { return }
+    guard !isStopped, policyInstalled, let url = webView.url, ownsPage(url) else { return }
     isPageReady = true
     sendNextPageEventBatchIfNeeded()
   }
@@ -217,12 +190,7 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-    if isStopped {
-      stopContinuation?.resume()
-      stopContinuation = nil
-    } else {
-      recoverPage()
-    }
+    recoverPage()
   }
 
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -382,31 +350,20 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   private func loadTool() {
-    if let developmentURL {
-      webView.load(URLRequest(url: developmentURL))
-      return
-    }
-    guard let bundle = assets.bundle else {
+    guard let entryURL = schemeHandler.entryURL else {
       pageLoadFailedHandler?("Tool resources are unavailable.")
       return
     }
     // Keep the storage origin stable, but reject bridge messages from previous documents.
-    let url = assets.baseURL.appendingPathComponent(bundle.entryPoint)
+    let url = entryURL
       .appending(queryItems: [URLQueryItem(name: "document", value: UUID().uuidString)])
     documentURL = url
     webView.load(URLRequest(url: url))
   }
 
   private func ownsPage(_ url: URL) -> Bool {
-    if let developmentURL { return Self.hasSameOrigin(url, developmentURL) }
     var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
     components?.fragment = nil
     return components?.url == documentURL
-  }
-
-  private static func hasSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
-    lhs.scheme?.lowercased() == rhs.scheme?.lowercased()
-      && lhs.host?.lowercased() == rhs.host?.lowercased()
-      && lhs.port == rhs.port
   }
 }

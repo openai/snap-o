@@ -49,15 +49,19 @@ export function observeExample(
   }
 
   async function fetchSnapshot(
-    path: string,
+    url: string,
     method: string,
     controller: AbortController,
   ) {
     const connection = host.connection;
     if (!connection) return;
-    const response = await fetch(new URL(path, connection.baseURL), {
+    const response = await fetch(url, {
       method,
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
+      signal: AbortSignal.any([
+        connection.signal,
+        controller.signal,
+        AbortSignal.timeout(5000),
+      ]),
       cache: "no-store",
       redirect: "error",
     });
@@ -73,7 +77,7 @@ export function observeExample(
     const current = new AbortController();
     request = current;
     try {
-      await fetchSnapshot("example", "GET", current);
+      await fetchSnapshot("/api/example", "GET", current);
     } catch (error) {
       if (!current.signal.aborted) failed(error);
     }
@@ -84,7 +88,7 @@ export function observeExample(
     const current = new AbortController();
     command = current;
     try {
-      await fetchSnapshot("example/increment", "POST", current);
+      await fetchSnapshot("/api/example/increment", "POST", current);
     } catch (error) {
       if (!current.signal.aborted) throw error;
     } finally {
@@ -114,9 +118,7 @@ export function observeExample(
     if (!connection) return;
     if (!available()) return;
     void refresh();
-    const stream = new EventSource(
-      new URL("example/events", connection.baseURL),
-    );
+    const stream = new EventSource("/api/example/events");
     events = stream;
     stream.addEventListener("snapshot", (event) => {
       if (events !== stream) return;

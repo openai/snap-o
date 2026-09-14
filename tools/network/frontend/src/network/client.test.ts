@@ -60,7 +60,6 @@ describe("browser network client", () => {
     abort.abort();
     await expect(
       client.startStream({
-        baseURL: "http://127.0.0.1:1234/",
         signal: abort.signal,
         processIdentity: "boot:20:123"
       })
@@ -69,11 +68,10 @@ describe("browser network client", () => {
   });
   it("keeps one stream, binds its connection, and ignores cleanup from an older stream", async () => {
     const input = {
-      baseURL: "http://127.0.0.1:1234/",
       processIdentity: "boot:20:123",
       signal: new AbortController().signal
     };
-    vi.spyOn(host, "connection", "get").mockReturnValue({ ...input, baseURL: "http://127.0.0.1:9999/" });
+    vi.spyOn(host, "connection", "get").mockReturnValue(input);
     const streams: Events[] = [];
     class Events extends EventTarget {
       close = vi.fn();
@@ -88,13 +86,13 @@ describe("browser network client", () => {
       "fetch",
       vi.fn(async (url: string) =>
         url.endsWith("/network")
-          ? new Response("", { headers: { "Content-Type": "application/x-ndjson", "SnapO-Sequence": "0" } })
+          ? new Response("", { headers: { "Content-Type": "application/x-ndjson" } })
           : Response.json({ body: "current body", base64Encoded: false })
       )
     );
     const first = await client.startStream(input);
     const second = await client.startStream(input);
-    expect(streams[0].url).toBe(input.baseURL + "network");
+    expect(streams[0].url).toBe("/api/network");
     expect(streams[0].close).toHaveBeenCalledOnce();
     await client.stopStream(first.streamId);
     expect(streams[1].close).not.toHaveBeenCalled();

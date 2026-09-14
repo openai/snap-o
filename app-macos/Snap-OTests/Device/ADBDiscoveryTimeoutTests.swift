@@ -110,33 +110,18 @@ struct ADBDiscoveryTimeoutTests {
     #expect(server.connectionCount == 0)
   }
 
-  @Test("port forward setup and cleanup time out without retrying")
-  func boundsPortForwarding() async throws {
+  @Test("direct socket setup times out without retrying")
+  func boundsDirectSocketSetup() async throws {
     let server = FakeDiscoveryADB(stall: .transport)
     defer { server.close() }
     let adb = server.client()
     do {
-      _ = try await adb.forwardLocalAbstract(deviceID: "stalled", abstractSocket: "snapo_tweaks_42")
-      Issue.record("Expected port forwarding to time out")
+      _ = try await adb.openLocalAbstract(deviceID: "stalled", abstractSocket: "snapo_tweaks_42")
+      Issue.record("Expected direct socket setup to time out")
     } catch ADBError.requestTimedOut {}
-    let forward = try await adb.forwardLocalAbstract(deviceID: "cleanup", abstractSocket: "snapo_tweaks_42")
-    #expect(forward.port == 12346)
-    await adb.removeForward(forward)
-    #expect(server.connectionCount == 3)
-  }
-
-  @Test("forwarded ports must be valid nonzero TCP ports", arguments: [
-    nil, "", "0", "65536", "not-a-port"
-  ] as [String?])
-  func rejectsInvalidForwardedPort(response: String?) {
-    #expect(throws: ADBError.self) {
-      try ADBClient.forwardedPort(from: response)
-    }
-  }
-
-  @Test("forwarded ports tolerate surrounding whitespace")
-  func parsesForwardedPort() throws {
-    #expect(try ADBClient.forwardedPort(from: " 12346\n") == 12346)
+    let connection = try await adb.openLocalAbstract(deviceID: "phone", abstractSocket: "snapo_tweaks_42")
+    connection.close()
+    #expect(server.connectionCount == 2)
   }
 
   @Test("legacy probes read identity without starting inspection")
@@ -254,14 +239,6 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
         try peer.withRequestTimeout(.seconds(2)) {
           let transport = try Self.readRequest(peer)
           if transport.hasPrefix("host-serial:stalled:") { return }
-          if transport == "host-serial:cleanup:forward:tcp:0;localabstract:snapo_tweaks_42" {
-            Self.send("OKAY000512346", to: descriptor)
-            return
-          }
-          if transport == "host-serial:cleanup:killforward:tcp:12346" {
-            Self.send("OKAY", to: descriptor)
-            return
-          }
           let stalled = transport == "host:transport:stalled"
           if stalled, stall == .transport { return }
           if stalled, stall == .partialStatus {

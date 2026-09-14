@@ -30,10 +30,10 @@ class BrowserTweaksClient implements TweaksClient {
     this.lifetime.abort();
   }
 
-  private async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  private async request<T>(url: string, method = "GET", body?: unknown): Promise<T> {
     const current = host.connection;
     if (!current || this.lifetime.signal.aborted) throw new Error("Tool is disconnected.");
-    const response = await fetch(new URL(path, current.baseURL), {
+    const response = await fetch(url, {
       method,
       signal: AbortSignal.any([current.signal, this.lifetime.signal, AbortSignal.timeout(30_000)]),
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
@@ -49,13 +49,13 @@ class BrowserTweaksClient implements TweaksClient {
   }
 
   listTweaks(): Promise<TweakList> {
-    return this.request("tweaks");
+    return this.request("/api/tweaks");
   }
   updateTweaks(input: UpdateTweaksInput): Promise<TweakUpdates> {
-    return this.request("tweaks", "PATCH", { values: input.values });
+    return this.request("/api/tweaks", "PATCH", { values: input.values });
   }
   async invokeTweakAction(input: InvokeTweakActionInput): Promise<void> {
-    await this.request("tweaks/action", "POST", { name: input.name });
+    await this.request("/api/tweaks/action", "POST", { name: input.name });
   }
 
   subscribeTweaks(
@@ -64,7 +64,7 @@ class BrowserTweaksClient implements TweaksClient {
     onError: (error: Error) => void
   ): () => void {
     if (connection.signal.aborted || this.lifetime.signal.aborted) throw new Error("Tool is disconnected.");
-    const stream = new EventSource(new URL("tweaks/events", connection.baseURL));
+    const stream = new EventSource("/api/tweaks/events");
     let closed = false;
     const close = () => {
       if (closed) return;

@@ -147,7 +147,7 @@ class Session:
         self.history = None
         self.events = None
         self.replaying = False
-        self.watermark = None
+        self.last_sequence = -1
         self.reader_thread = None
         self.closed = False
         self.records = deque()
@@ -173,7 +173,6 @@ class Session:
         self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self.reader_thread.start()
         self.history = NetworkHistory(self.open_socket)
-        self.watermark = self.history.watermark
         self.replaying = True
 
     def _read_loop(self):
@@ -204,9 +203,10 @@ class Session:
         if self.reader_error is not None:
             raise self.reader_error
         if self.history is not None:
-            message = self.history.read()
-            if message is not None:
-                return message
+            while (message := self.history.read()) is not None:
+                if message["snapoSequence"] > self.last_sequence:
+                    self.last_sequence = message["snapoSequence"]
+                    return message
             self.history.close()
             self.history = None
             self.replaying = False
@@ -219,8 +219,9 @@ class Session:
                 while self.records:
                     message, size = self.records.popleft()
                     self.buffered_bytes -= size
-                    if self.watermark is not None and message["snapoSequence"] <= self.watermark:
+                    if message["snapoSequence"] <= self.last_sequence:
                         continue
+                    self.last_sequence = message["snapoSequence"]
                     return message
                 if self.closed:
                     raise SnapOError("Snap-O session is closed")
@@ -256,10 +257,6 @@ class NetworkHistory(HTTPResponse):
         try:
             if self.response.getheader("Content-Type", "").split(";")[0].strip() != "application/x-ndjson":
                 raise SnapOError("Expected a network history response")
-            cursor = self.response.getheader("SnapO-Sequence", "")
-            if not cursor.isascii() or not cursor.isdecimal():
-                raise SnapOError("Invalid history snapshot headers")
-            self.watermark = int(cursor)
         except BaseException:
             self.close()
             raise
@@ -273,7 +270,7 @@ class NetworkHistory(HTTPResponse):
                 raise SnapOError("Incomplete or oversized history record")
             message = json.loads(line)
             sequence = message.get("snapoSequence") if isinstance(message, dict) else None
-            if not valid_record(message) or type(sequence) is not int or not 0 <= sequence <= self.watermark:
+            if not valid_record(message) or type(sequence) is not int or sequence < 0:
                 raise SnapOError("Invalid history record")
             return message
         except (OSError, http.client.HTTPException, ValueError) as error:

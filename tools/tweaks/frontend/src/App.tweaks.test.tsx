@@ -31,7 +31,6 @@ describe("Tweaks frontend with the shared host", () => {
   let state: {
     revision: number;
     connected: boolean;
-    baseURL: string;
     manifest: ProcessManifest;
     inspector: ToolDescriptor;
   };
@@ -44,7 +43,6 @@ describe("Tweaks frontend with the shared host", () => {
     state = {
       revision: 1,
       connected: true,
-      baseURL: "http://127.0.0.1:1234/",
       manifest: {
         version: 1,
         pid: 20,
@@ -92,8 +90,8 @@ describe("Tweaks frontend with the shared host", () => {
     await act(async () => render(<TweaksApp />, container));
     await flush();
   }
-  async function publish(connected: boolean, baseURL = state.baseURL) {
-    state = { ...state, revision: state.revision + 1, connected, baseURL };
+  async function publish(connected: boolean) {
+    state = { ...state, revision: state.revision + 1, connected };
     await act(async () => receive({ ...state }));
     await flush();
   }
@@ -147,9 +145,9 @@ describe("Tweaks frontend with the shared host", () => {
     expect(mocks.client.listTweaks).not.toHaveBeenCalled();
     expect(mocks.client.subscribeTweaks).toHaveBeenCalledTimes(2);
   });
-  it("refreshes when the host changes the forwarded port", async () => {
+  it("refreshes when the host publishes a new connection revision", async () => {
     await mount();
-    await publish(true, "http://127.0.0.1:4321/");
+    await publish(true);
     expect(mocks.client.listTweaks).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });

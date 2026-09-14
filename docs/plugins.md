@@ -385,7 +385,7 @@ These restrictions do not guarantee that JavaScript from an untrusted APK is saf
 
 ### Connect to the Snap-O Mac app {#connect-to-android}
 
-The host SDK connects your frontend to the Snap-O Mac app. It provides the forwarded Android server address and native controls.
+The host SDK connects your frontend to the Snap-O Mac app. It provides connection state and native controls. Frontends use ordinary `fetch` and `EventSource` with relative `/api/...` URLs. Pages and API requests share the `snapo://tool` origin, so no frontend CORS setup is needed. Snap-O removes `/api` before forwarding the request to Android. Frontend assets keep their build paths, without an added `/assets` prefix.
 
 Use `host.onConnection` to receive the current connection immediately and respond when it changes. The callback can return a cleanup function for that connection's work.
 
@@ -418,7 +418,11 @@ export function App() {
     setMessage(connection ? "Connecting…" : "Disconnected");
     if (!connection) return;
     const request = new AbortController();
-    fetch(new URL("example", connection.baseURL), { signal: request.signal })
+    fetch("/api/example", {
+      signal: AbortSignal.any([connection.signal, request.signal]),
+      cache: "no-store",
+      redirect: "error",
+    })
       .then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -449,13 +453,12 @@ The SDK runs the previous cleanup before delivering another connection. Preact a
 
 | Property | Meaning |
 | --- | --- |
-| `baseURL` | Forwarded Android server address. |
 | `processIdentity` | Opaque token that changes when the Android process restarts. Use it to scope retained state. |
 | `signal` | Abort signal for this connection. Use it with requests that should end on disconnection. |
 
-`host.onConnection` calls its callback immediately and on connection changes. It returns an unsubscribe function. Cleanup runs before the next callback and when unsubscribing. A replacement connection can reuse the same URL. Unsubscribing one UI does not abort another UI's requests.
+`host.onConnection` calls its callback immediately and on connection changes. It returns an unsubscribe function. Cleanup runs before the next callback and when unsubscribing. Unsubscribing one UI does not abort another UI's requests.
 
-Hidden pages may stay loaded and receive a disconnected state. Snap-O unloads pages before releasing their forwarded ports. Close each `EventSource` when replacing it or removing its UI so it stops retrying the old URL.
+Hidden pages may stay loaded and receive a disconnected state. Close each `EventSource` when replacing it or removing its UI so it stops retrying after disconnection.
 
 Requests can fail while connected. Your frontend owns response validation, error display, and event-stream reconnection.
 
@@ -512,7 +515,7 @@ export function App() {
   useEffect(() => host.onConnection(connection => {
     setMessage(connection ? "Waiting for events…" : "Disconnected");
     if (!connection) return;
-    const events = new EventSource(new URL("events", connection.baseURL));
+    const events = new EventSource("/api/events");
     events.addEventListener("tick", event => setMessage(`Tick: ${event.data}`));
     events.onerror = () => setMessage("Connection lost. Retrying…");
     return () => events.close();
@@ -571,7 +574,7 @@ Route handlers choose which content types to accept. This example reads the body
 ``` { .typescript title="Send an action request" }
 const connection = host.connection;
 if (connection) {
-  const response = await fetch(new URL("echo", connection.baseURL), {
+  const response = await fetch("/api/echo", {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
     body: "Hello from the frontend",
@@ -657,7 +660,18 @@ Use a development server to edit the UI without rebuilding the Android app for e
 ./gradlew :your-tool:toolDev
 ```
 
-With your tool selected in Snap-O, choose **Develop → Use Development Server** and enter the local URL printed by Vite. Keep the Android app running so the frontend can call its API. Vite updates the UI as you edit; see its [development guide](https://vite.dev/guide/) for details.
+With your tool selected in Snap-O, choose **Develop → Use Development Server** and enter the local URL printed by Vite. Snap-O proxies frontend files from that URL under `snapo://tool/`, while `/api/...` still goes to Android. Keep the Android app running. Vite’s hot-reload WebSocket connects directly to the selected local server. Configure its host and port explicitly:
+
+``` { .ts title="vite.config.ts" }
+server: {
+  host: "127.0.0.1",
+  port: 5173,
+  strictPort: true,
+  hmr: { host: "127.0.0.1", clientPort: 5173 },
+}
+```
+
+Add this `server` option to your Vite config. Use the same port for `port` and `hmr.clientPort`. No Vite API proxy or CORS option is needed. See Vite’s [development guide](https://vite.dev/guide/) for details.
 
 The `toolDev` task installs dependencies and runs the frontend's npm `dev` script with the managed Node runtime. You can also run `npm run dev` from the frontend directory with a local Node installation. To inspect the page, choose **Develop → Inspect Current WebView in Safari…**.
 

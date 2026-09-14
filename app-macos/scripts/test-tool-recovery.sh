@@ -6,7 +6,21 @@ TEST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/snap-o-tool-recovery.XXXXXX")
 trap 'rm -rf "$TEST_DIR"' EXIT
 cd "$APP_DIR"
 
-xcrun swiftc -swift-version 6 -parse-as-library \
+# Use the same resolved networking dependencies as the app.
+BUILD_DIR=${SNAPO_DERIVED_DATA:-"$TEST_DIR/xcode"}
+xcodebuild -quiet -project Snap-O.xcodeproj -scheme Snap-O \
+  -derivedDataPath "$BUILD_DIR" \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+PRODUCTS="$BUILD_DIR/Build/Products/Debug"
+export LLVM_PROFILE_FILE="$TEST_DIR/%m.profraw"
+set --
+for modulemap in "$BUILD_DIR/Build/Intermediates.noindex/GeneratedModuleMaps/"*.modulemap \
+  "$BUILD_DIR/SourcePackages/checkouts/"*/Sources/*/include/module.modulemap; do
+  set -- "$@" -Xcc "-fmodule-map-file=$modulemap"
+done
+
+xcrun swiftc -swift-version 6 -parse-as-library -profile-generate -D SNAPO_STANDALONE_TESTS \
+  -I "$PRODUCTS" "$@" "$PRODUCTS/"*.o \
   Snap-O/Device/Device.swift \
   Snap-O/Device/ToolServerReference.swift \
   Snap-O/Device/ToolDiscovery.swift \
@@ -17,6 +31,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Device/DeviceTracker.swift \
   Snap-O/Tools/ToolModels.swift \
   Snap-O/Tools/ToolMetadata.swift \
+  Snap-O/Tools/ToolHTTPTransport.swift \
   Snap-OTests/Tools/ToolTestFixtures.swift \
   Snap-O/Tools/ToolSelection.swift \
   Snap-O/Tools/AppToolModel.swift \

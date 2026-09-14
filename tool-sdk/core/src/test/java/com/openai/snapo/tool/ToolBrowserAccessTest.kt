@@ -24,7 +24,7 @@ class ToolBrowserAccessTest {
                 "http://localhost",
                 "http://127.0.0.1:5173",
                 "http://[::1]:5173",
-                "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef"
+                "snapo://tool"
             )) {
                 assertEquals(origin, ToolBrowserAccess.origin(mapOf("host" to host, "origin" to origin)))
             }
@@ -39,12 +39,12 @@ class ToolBrowserAccessTest {
         }
         for (origin in listOf(
             "null", "https://attacker.example", "http://user@localhost", "http://localhost/path",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef:1234",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef/",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef?q=1",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef#fragment",
-            "snapo-inspector://user@01234567-89ab-cdef-0123-456789abcdef",
-            "snapo-inspector://attacker.example"
+            "snapo://tool:1234",
+            "snapo://tool/",
+            "snapo://tool?q=1",
+            "snapo://tool#fragment",
+            "snapo://user@tool",
+            "snapo://attacker.example"
         )) {
             assertThrows(IllegalArgumentException::class.java) {
                 ToolBrowserAccess.origin(mapOf("host" to "localhost", "origin" to origin))

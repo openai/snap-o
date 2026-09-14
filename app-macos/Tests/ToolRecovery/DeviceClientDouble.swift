@@ -1,10 +1,27 @@
+import Darwin
 import Foundation
 
-public struct ADBForwardHandle: Sendable {
-  public let port: UInt16
-}
-
 public struct ToolFrontendBundle: Sendable {}
+
+public final class ADBSocketConnection: @unchecked Sendable {
+  func takeSocketDescriptor() throws -> Int32 {
+    var descriptors: [Int32] = [0, 0]
+    guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else { throw POSIXError(.EIO) }
+    let peer = descriptors[1]
+    var noSignal: Int32 = 1
+    _ = setsockopt(peer, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
+    DispatchQueue.global().async {
+      defer { Darwin.close(peer) }
+      var request = [UInt8](repeating: 0, count: 16 * 1024)
+      guard Darwin.recv(peer, &request, request.count, 0) > 0 else { return }
+      let response = Array("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n".utf8)
+      _ = response.withUnsafeBytes { Darwin.send(peer, $0.baseAddress, $0.count, 0) }
+    }
+    return descriptors[0]
+  }
+
+  public func close() {}
+}
 
 public final class ADBClient: @unchecked Sendable {
   public enum MetadataFailure: Sendable {
@@ -12,8 +29,10 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   private let lock = NSLock()
-  private var forwards = 0
-  private var removedForwards: [UInt16] = []
+  private var toolConnections = 0
+  private var failedToolConnections = 0
+  private var frozen = true
+  private var networkDisconnected = false
   private var propertiesRecovered = false
   private var metadataAvailable = false
   private var metadataRequests: [[String]] = []
@@ -48,18 +67,32 @@ public final class ADBClient: @unchecked Sendable {
   private var socketGeneration = 0
   private let trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
   public init() {}
-  public var removedPorts: [UInt16] {
-    lock.withLock { removedForwards }
+  public var toolConnectionCount: Int {
+    lock.withLock { toolConnections }
   }
 
-  public var forwardCount: Int {
-    lock.withLock { forwards }
+  public var failedToolConnectionCount: Int {
+    lock.withLock { failedToolConnections }
   }
 
-  public func forwardLocalAbstract(deviceID: String, abstractSocket: String) async throws -> ADBForwardHandle {
-    lock.withLock { forwards += 1 }
-    if deviceID == "forward-failure" { throw ADBError.requestTimedOut("Test timeout") }
-    return ADBForwardHandle(port: deviceID == "frozen" ? (abstractSocket.contains("network") ? 12344 : 12345) : 12346)
+  public func unfreeze() {
+    lock.withLock { frozen = false }
+  }
+
+  public func disconnectNetwork() {
+    lock.withLock { networkDisconnected = true }
+  }
+
+  public func openLocalAbstract(deviceID: String, abstractSocket: String) async throws -> ADBSocketConnection {
+    lock.withLock { toolConnections += 1 }
+    if deviceID == "direct-failure" { throw ADBError.requestTimedOut("Test timeout") }
+    let shouldFail = lock.withLock {
+      let failed = deviceID == "frozen" && (frozen || abstractSocket.contains("network") && networkDisconnected)
+      if failed { failedToolConnections += 1 }
+      return failed
+    }
+    if shouldFail { throw ADBError.requestTimedOut("Test timeout") }
+    return ADBSocketConnection()
   }
 
   public var scannedDeviceIDs: [String] {
@@ -94,8 +127,8 @@ public final class ADBClient: @unchecked Sendable {
       }
     }
     let tools: [[String: Any]] = [
-      ["id": "network", "name": "Network", "frontend": ["assetPath": "network.zip", "hostApiVersion": 2]],
-      ["id": "tweaks", "name": "Tweaks", "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 2]]
+      ["id": "network", "name": "Network", "frontend": ["assetPath": "network.zip", "hostApiVersion": 3]],
+      ["id": "tweaks", "name": "Tweaks", "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 3]]
     ].filter { descriptor in
       !lock.withLock { legacyKinds.contains(ToolID(rawValue: descriptor["id"] as! String)) }
         && socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }
@@ -157,11 +190,6 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   public func openApp(deviceID: String, packageName: String, androidUserID: Int) async throws {}
-
-  public func removeForward(_ handle: ADBForwardHandle) async {
-    precondition(!Task.isCancelled)
-    lock.withLock { removedForwards.append(handle.port) }
-  }
 
   public func setSocketNames(_ names: [String], deviceID: String) {
     lock.withLock { socketsByDevice[deviceID] = names }

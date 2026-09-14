@@ -105,7 +105,7 @@ Run either command from the repository root, in separate terminals if needed:
 ./gradlew :tweaks-core:toolDev
 ```
 
-In Snap-O, select the app and tool, then choose Develop → Use Development Server. Enter the URL printed by the development server. There is no default URL. The override is saved separately for each device, Android user, app, and tool. Choose Develop → Use Packaged Frontend to remove it.
+In Snap-O, select the app and tool, then choose Develop → Use Development Server. Enter the URL printed by the development server. Snap-O proxies frontend files under `snapo://tool/`; relative `/api/...` requests still go to Android. Vite’s hot-reload WebSocket connects directly to the selected server. Set Vite’s `server.hmr.host` and `server.hmr.clientPort` to that address, with `server.strictPort: true`. There is no default URL. The override is saved separately for each device, Android user, app, and tool. Choose Develop → Use Packaged Frontend to remove it.
 
 Only use a trusted local server. Its code can contact the tool's Android endpoint and request native host actions. HTTP, HTTPS, and HMR WebSocket traffic to that server are allowed while other endpoint restrictions remain in effect.
 

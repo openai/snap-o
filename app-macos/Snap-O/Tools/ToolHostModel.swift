@@ -130,7 +130,6 @@ final class ToolHostModel {
       pageTransitions[kind] = Task {
         await transition?.value
         await page.container.finishStopping()
-        await service.releasePluginEndpoint(ownerID: page.container.id)
       }
     }
     pages.removeAll()
@@ -215,17 +214,7 @@ final class ToolHostModel {
     bindings[kind] = Task { [weak self, weak container = page.container] in
       guard let self, let container else { return }
       do {
-        let target = try await service.pluginEndpoint(
-          for: selection.server, ownerID: container.id
-        ) { [weak self, weak container] in
-          guard let container else { return }
-          container.stop()
-          await container.finishStopping()
-          guard let self, !isStopped, pages[kind]?.container === container,
-                let identity = pages[kind]?.identity else { return }
-          replacePage(kind: kind, identity: identity)
-        }
-        try await container.allowEndpoint(target.baseURL)
+        let target = try await service.pluginEndpoint(for: selection.server)
         guard !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
         setEndpoint(target, kind: kind)
       } catch {
@@ -237,6 +226,7 @@ final class ToolHostModel {
 
   private func setEndpoint(_ endpoint: ToolHTTPService.Endpoint?, kind: ToolID) {
     guard var page = pages[kind] else { return }
+    page.container.setServer(endpoint)
     let state = appTool.snapshot.pageState(for: kind)
     let app = state.selectedApp?.id == page.identity.appID
       ? state.selectedApp : toolApps.first { $0.id == page.identity.appID }
@@ -248,7 +238,6 @@ final class ToolHostModel {
     page.connection.tool = tool
     page.endpointID = endpoint?.id
     page.connection.revision += 1
-    page.connection.baseURL = endpoint?.baseURL.absoluteString
     page.connection.connected = endpoint != nil
     pages[kind] = page
     page.container.sendPageEvent(name: "host:connection", payload: page.connection)
@@ -303,7 +292,6 @@ final class ToolHostModel {
     pageTransitions[kind] = Task { [weak self] in
       await transition?.value
       await previous?.finishStopping()
-      if let previous { await self?.service.releasePluginEndpoint(ownerID: previous.id) }
       guard let self, !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
       defer {
         if pages[kind]?.container === container { pageTransitions[kind] = nil }
@@ -320,7 +308,7 @@ final class ToolHostModel {
         } else if identity.frontend != nil {
           guard let server = identity.server, let processIdentity = metadata?.verifiedIdentity,
                 let tool = metadata?.tools.first(where: { $0.id == kind }),
-                tool.frontend?.hostApiVersion == 2 else { throw ToolError.frontendUnavailable }
+                tool.frontend?.hostApiVersion == 3 else { throw ToolError.frontendUnavailable }
           frontend = try await service.pluginFrontend(for: server, identity: processIdentity, tool: tool)
         } else {
           throw ToolError.frontendUnavailable

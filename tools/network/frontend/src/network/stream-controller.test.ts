@@ -128,7 +128,6 @@ describe("NetworkStreamController", () => {
 });
 
 const metadata: ToolConnection = {
-  baseURL: "http://127.0.0.1:1234/",
   signal: new AbortController().signal,
   processIdentity: "boot:20:123"
 };

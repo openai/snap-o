@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -49,15 +50,15 @@ class NetworkToolHttpTest {
     }
 
     @Test
-    fun `HTTP history streams events and a snapshot cursor`() {
+    fun `HTTP history streams only sequenced events`() {
         val event = CdpMessage(method = "Network.loadingFinished", snapoSequence = 7)
         Fixture(
-            NetworkToolHttp(snapshotProvider = { NetworkReplaySnapshot(listOf(event), 9) })
+            NetworkToolHttp(snapshotProvider = { listOf(event) })
         ).use { server ->
             val response = server.request("/network")
             assertEquals(200, response.statusCode())
             assertEquals("application/x-ndjson", response.headers().firstValue("Content-Type").get())
-            assertEquals("9", response.headers().firstValue("SnapO-Sequence").get())
+            assertFalse(response.headers().firstValue("SnapO-Sequence").isPresent)
             assertEquals("http://localhost", response.headers().firstValue("Access-Control-Allow-Origin").get())
             assertEquals(ProtocolJson.encodeToString(CdpMessage.serializer(), event) + "\n", response.body())
         }
@@ -327,7 +328,7 @@ class NetworkToolHttpTest {
             "http://localhost",
             "http://127.0.0.1:5173",
             "http://[::1]:5173",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef"
+            "snapo://tool"
         )) {
             val output = ByteArrayOutputStream()
             val request = "OPTIONS /interception HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n" +
@@ -337,19 +338,19 @@ class NetworkToolHttpTest {
             val response = output.toString("UTF-8")
             assertTrue(response.startsWith("HTTP/1.1 204"))
             assertTrue(response.contains("Access-Control-Allow-Origin: $origin\r\n"))
-            assertTrue(response.contains("Access-Control-Expose-Headers: SnapO-Sequence, Location"))
+            assertTrue(response.contains("Access-Control-Expose-Headers: Location"))
         }
         for (origin in listOf(
             "null",
             "https://example.test",
             "http://localhost.example.test",
             "http://user@localhost",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef:1234",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef/",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef?q=1",
-            "snapo-inspector://01234567-89ab-cdef-0123-456789abcdef#fragment",
-            "snapo-inspector://user@01234567-89ab-cdef-0123-456789abcdef",
-            "snapo-inspector://attacker.example"
+            "snapo://tool:1234",
+            "snapo://tool/",
+            "snapo://tool?q=1",
+            "snapo://tool#fragment",
+            "snapo://user@tool",
+            "snapo://attacker.example"
         )) {
             val output = ByteArrayOutputStream()
             val request = "POST /interception HTTP/1.1\r\nHost: localhost\r\nOrigin: $origin\r\n\r\n"

@@ -67,6 +67,15 @@ public final class ADBSocketConnection {
     Darwin.close(socketDescriptor)
   }
 
+  /// Transfers socket ownership after the ADB handshake, before concurrent I/O starts.
+  func takeSocketDescriptor() throws -> Int32 {
+    try closeLock.withLock {
+      guard !isClosed, lineBuffer.isEmpty else { throw ADBError.protocolFailure("ADB socket is not transferable") }
+      isClosed = true
+      return socketDescriptor
+    }
+  }
+
   /// Use only before handing the connection to concurrent readers or writers.
   func withRequestTimeout<T>(_ timeout: Duration, _ body: () throws -> T) throws -> T {
     let previous = ioTimeout
@@ -75,7 +84,7 @@ public final class ADBSocketConnection {
     return try body()
   }
 
-  private func setIOTimeout(_ timeout: Duration?) throws {
+  func setIOTimeout(_ timeout: Duration?) throws {
     try closeLock.withLock {
       guard !isClosed else { throw ADBError.protocolFailure("ADB connection closed") }
       let parts = (timeout ?? .zero).components
@@ -264,7 +273,7 @@ public final class ADBSocketConnection {
     }
   }
 
-  private func writeFully(_ data: Data) throws {
+  func writeFully(_ data: Data) throws {
     try data.withUnsafeBytes { buffer in
       guard let start = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
         throw ADBError.protocolFailure("invalid buffer state")

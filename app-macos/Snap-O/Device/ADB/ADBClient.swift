@@ -1,15 +1,5 @@
 import Foundation
 
-public struct ADBForwardHandle: Sendable {
-  fileprivate let deviceID: String
-  fileprivate let localPort: UInt16
-  fileprivate let remote: String
-
-  public var port: UInt16 {
-    localPort
-  }
-}
-
 public struct ADBClient: Sendable {
   private let connectionFactory: @Sendable () throws -> ADBSocketConnection
   private let discoveryTimeout: Duration
@@ -385,34 +375,21 @@ public struct ADBClient: Sendable {
     }
   }
 
-  public func forwardLocalAbstract(
+  public func openLocalAbstract(
     deviceID: String,
     abstractSocket: String
-  ) async throws -> ADBForwardHandle {
-    try await withConnection { connection in
-      try connection.withRequestTimeout(discoveryTimeout) {
-        let remote = "localabstract:\(abstractSocket)"
-        let response = try connection.sendHostCommand(
-          "host-serial:\(deviceID):forward:tcp:0;\(remote)",
-          expectsResponse: true
-        )
-        let portValue = try Self.forwardedPort(from: response)
-        return ADBForwardHandle(
-          deviceID: deviceID,
-          localPort: portValue,
-          remote: remote
-        )
-      }
-    }
-  }
-
-  public func removeForward(_ handle: ADBForwardHandle) async {
-    _ = try? await withConnection { connection in
-      try connection.withRequestTimeout(discoveryTimeout) {
-        try connection.sendHostCommand(
-          "host-serial:\(handle.deviceID):killforward:tcp:\(handle.localPort)",
-          expectsResponse: false
-        )
+  ) async throws -> ADBSocketConnection {
+    try await runWithRetry(maxAttempts: 1) { connection in
+      try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          continuation.resume(with: Result {
+            try connection.withRequestTimeout(discoveryTimeout) {
+              try connection.sendTransport(to: deviceID)
+              try connection.sendLocalAbstract(abstractSocket)
+            }
+            return connection
+          })
+        }
       }
     }
   }
@@ -577,14 +554,6 @@ public struct ADBClient: Sendable {
       return ADBError.serverUnavailable((error as NSError).localizedDescription)
     }
     return error
-  }
-
-  static func forwardedPort(from response: String?) throws -> UInt16 {
-    let value = response?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    guard let port = UInt16(value), port > 0 else {
-      throw ADBError.protocolFailure("invalid forwarded port: \(value.isEmpty ? "<empty>" : value)")
-    }
-    return port
   }
 }
 

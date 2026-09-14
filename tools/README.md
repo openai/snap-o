@@ -20,7 +20,7 @@ Shared authoring support lives in [`tool-sdk/`](../tool-sdk/README.md). Demo app
 
 ## Naming compatibility
 
-Tool plugins are the bundled extensions; tools are the features users interact with. Existing discovery fields, browser origins, and saved preference keys keep their original names. The published Android `NetworkInspector`, `NetworkInspectorConfig`, and `NetworkInspectorServer` APIs also retain their names. See the [discovery contract](../contracts/discovery/README.md#naming-compatibility) for the wire format.
+Tool plugins are the bundled extensions; tools are the features users interact with. Existing discovery fields and saved preference keys keep their original names. The published Android `NetworkInspector`, `NetworkInspectorConfig`, and `NetworkInspectorServer` APIs also retain their names. See the [discovery contract](../contracts/discovery/README.md#naming-compatibility) for the wire format.
 
 ## Development
 
@@ -52,25 +52,29 @@ A tool plugin can include a frontend ZIP in its AAR. Its manifest descriptor ref
 
 See the [Tool Packager Gradle Plugin](../tool-sdk/gradle-plugin/README.md) for packaging, custom builds, and development commands. App developers consuming a published AAR do not need Node.js. The frontend and Android implementation update together when the app is rebuilt.
 
-Snap-O checks the selected process identity and package revision before and after reading the archive. It caches up to four validated bundles, keyed by device, Android user, package revision, tool ID, and asset path. The host bounds compressed and expanded data to 16 MiB, limits archives to 1,024 entries, and rejects unsafe paths, symlinks, duplicate files, and invalid checksums. Files stay in memory. WebKit loads the unchanged HTML and assets through `snapo-inspector://<storage-uuid>/`. The origin stays stable for each provider and tool; a document query parameter changes on reload to reject stale bridge messages.
+Snap-O checks the selected process identity and package revision before and after reading the archive. It caches up to four validated bundles, keyed by device, Android user, package revision, tool ID, and asset path. The host bounds compressed and expanded data to 16 MiB, limits archives to 1,024 entries, and rejects unsafe paths, symlinks, duplicate files, and invalid checksums. Files stay in memory. WebKit loads the unchanged HTML and assets under `snapo://tool/`. A document query parameter changes on reload to reject stale bridge messages.
 
 Develop → Inspect Current WebView in Safari enables WebKit's public inspection support. Open the page through Safari's Develop menu. No private WebKit inspection API is used.
 
 ## WebView safeguards
 
-The macOS host installs WebKit content rules before running packaged HTML. A page can reach only its own forwarded tool endpoint. CSP response headers block remote scripts, frames, workers, forms, and other resources outside the self-contained frontend. WebKit Lockdown Mode disables WebRTC and reduces the browser's exposed features. Tool frontends must not depend on WebAssembly or JavaScript evaluation from strings.
+The macOS host installs WebKit content rules before running packaged HTML. A page can reach its Android server only through `snapo://tool/api/`. CSP response headers block remote scripts, frames, workers, forms, and other resources outside the self-contained frontend. WebKit Lockdown Mode disables WebRTC and reduces the browser's exposed features. Tool frontends must not depend on WebAssembly or JavaScript evaluation from strings.
 
 Storage is separate for each device, Android user, package, and tool. Pages without verified package metadata use temporary storage. Preferences from the former localhost origin or shared tool storage are not imported.
 
-Switching tools keeps their pages alive. A hidden page retains permission to contact its own endpoint, but cannot present native panels. Before Snap-O releases a forwarded port, it unloads every page authorized to use that endpoint. An endpoint replacement therefore resets in-memory UI state, but preserves settings for the same provider.
+Switching tools keeps their pages alive. A hidden page keeps its UI state, but disconnects from Android and cannot present native panels. A process replacement unloads the page and resets in-memory UI state while preserving settings for the same provider.
+
+Connection updates reach the frontend through `host.onConnection`. A known disconnect cancels API requests and delivers `null`, without reloading the page. Requests can also fail before Snap-O detects a disconnect. Stopping a page revokes API and bridge access immediately; transport cleanup does not wait for WebKit to unload it.
 
 Native messages must come from the owning WebView's current main document. The bridge bounds payload size, nesting, concurrent requests, and toolbar fields. Clipboard writes, color picker presentation, and external links require native confirmation. Exports use a save sheet, accept at most 64 MiB, and do not return the selected filesystem path to JavaScript. Only one native action runs at a time. File upload dialogs, JavaScript dialogs, media capture, and downloads are blocked.
 
-Develop → Use Development Server sets a loopback URL for the selected app and tool. The explicit override also permits resources and WebSocket connections from that server. Its HTML is served by the development server, so it does not receive the packaged HTML's host CSP. This override is for trusted local development only.
+Develop → Use Development Server sets a loopback URL for the selected app and tool. Snap-O proxies frontend files from that server under `snapo://tool/`; `/api/...` still goes to Android. Both packaged and development frontends use relative API URLs without CORS configuration. Frontend paths stay unchanged; there is no added `/assets` prefix.
 
-Run `sh app-macos/scripts/test-tool-selection.sh` and `sh app-macos/scripts/test-tool-recovery.sh` from the repository root. Selection, restoration, storage scopes, and bridge validation run as native tests. A small WebKit fixture checks request isolation, bridge ownership, event delivery, recovery, and page retirement. These tests do not build or load the Network and Tweaks frontends. CI includes the selection tests in the main macOS test run.
+Vite's hot-reload WebSocket connects directly to the selected development server. The repo’s Vite configs set an explicit HMR host and port; Snap-O does not proxy WebSockets. The override allows resources and WebSockets from that server and does not add the packaged frontend's CSP. Use it only with trusted local code.
 
-These controls do not prevent WebKit vulnerabilities, resource exhaustion, or data sent through the explicitly allowed Android endpoint. An unresponsive page may delay endpoint cleanup; its port must not be released before it retires. App-provided frontends run JavaScript supplied by the inspected APK. These restrictions are not a guarantee that untrusted code is safe.
+Run `sh app-macos/scripts/test-tool-selection.sh` and `sh app-macos/scripts/test-tool-recovery.sh` from the repository root. Selection, restoration, storage scopes, and bridge validation run as native tests. A small WebKit fixture checks request isolation, bridge ownership, event delivery, recovery, and page shutdown. These tests do not build or load the Network and Tweaks frontends. CI includes the selection tests in the main macOS test run.
+
+These controls do not prevent WebKit vulnerabilities, resource exhaustion, or data sent to the selected Android tool server. App-provided frontends run JavaScript supplied by the inspected APK. These restrictions are not a guarantee that untrusted code is safe.
 
 Snap-O requires macOS 26 or later. Keep macOS updated: these safeguards depend on WebKit's security fixes. Older WebKit builds ignored content rules for DNS prefetch and preconnect; the [WebKit fix](https://github.com/WebKit/WebKit/commit/ce84da3fd2d634040f3197d526b4ac914e45d2e6) landed in 2025. Tests on macOS 26.6.2 verify HTTP delivery and TCP connection attempts, including preconnect. They do not measure DNS queries or establish coverage of every supported WebKit build.
 

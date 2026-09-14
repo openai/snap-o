@@ -7,7 +7,6 @@ import { useHostConnection } from "./useHostConnection";
 
 it("renders connection changes and releases subscriptions when replaced or unmounted", async () => {
   const connection: ToolConnection = {
-    baseURL: "http://127.0.0.1:1234/",
     processIdentity: "boot:42:1",
     signal: new AbortController().signal
   };

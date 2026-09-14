@@ -17,7 +17,7 @@ export class NetworkConnection {
   private closed = false;
   private rejectOpening: ((error: Error) => void) | undefined;
   private replaying = true;
-  private watermark = 0;
+  private lastSequence = -1;
   private buffered: CdpMessage[] = [];
   private bufferedBytes = 0;
 
@@ -38,7 +38,7 @@ export class NetworkConnection {
       await this.history();
       this.checkOpen();
       this.replaying = false;
-      for (const message of this.buffered) this.publishLive(message);
+      for (const message of this.buffered) this.publish(message);
       this.buffered = [];
       this.bufferedBytes = 0;
     } catch (error) {
@@ -87,7 +87,7 @@ export class NetworkConnection {
   }
 
   private url(path: string): string {
-    return new URL(path, this.connection.baseURL).href;
+    return `/api/${path}`;
   }
 
   private checkOpen(): void {
@@ -150,7 +150,7 @@ export class NetworkConnection {
             }
             this.buffered.push(message);
             this.bufferedBytes += bytes;
-          } else this.publishLive(message);
+          } else this.publish(message);
         } catch (error) {
           this.close(error instanceof Error ? error : new Error("Invalid tool event."));
         }
@@ -161,19 +161,14 @@ export class NetworkConnection {
 
   private async history(): Promise<void> {
     const response = await this.response("network", "application/x-ndjson");
-    const watermark = response.headers.get("SnapO-Sequence");
     if (
       !response.ok ||
       !response.headers.get("Content-Type")?.toLowerCase().startsWith("application/x-ndjson") ||
-      !watermark ||
-      !/^\d+$/.test(watermark) ||
-      !Number.isSafeInteger(Number(watermark)) ||
       !response.body
     ) {
       await response.body?.cancel();
       throw new Error("Invalid tool history response.");
     }
-    this.watermark = Number(watermark);
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8", { fatal: true });
     let line = "";
@@ -190,7 +185,6 @@ export class NetworkConnection {
           if (length > maximumRecordBytes) throw new Error("Tool history record is too large.");
           line += decoder.decode(value.subarray(start, index));
           const message = parseRecord(line, length);
-          if (message.snapoSequence! > this.watermark) throw new Error("Invalid tool history sequence.");
           this.publish(message);
           line = "";
           length = 0;
@@ -208,13 +202,11 @@ export class NetworkConnection {
     }
   }
 
-  private publishLive(message: CdpMessage): void {
-    if (message.snapoSequence! > this.watermark) this.publish(message);
-  }
-
   private publish(message: CdpMessage): void {
     this.checkOpen();
+    if (message.snapoSequence! <= this.lastSequence) return;
     this.onEvent({ streamId: this.id, processId: this.connection.processIdentity, message });
+    this.lastSequence = message.snapoSequence!;
   }
 }
 

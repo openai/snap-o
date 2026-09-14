@@ -1,5 +1,5 @@
 import Foundation
-#if canImport(Snap_O)
+#if canImport(Snap_O) && !SNAPO_STANDALONE_TESTS
 @testable import Snap_O
 #endif
 
@@ -18,7 +18,7 @@ func testManifest(pid: Int, kinds: [ToolID], includeFrontend: Bool = true) -> To
       "inspectors": kinds.map { kind -> [String: Any] in
         var descriptor: [String: Any] = ["id": kind.rawValue, "name": kind.rawValue]
         if includeFrontend {
-          descriptor["frontend"] = ["assetPath": "snapo/inspectors/\(kind.rawValue)/frontend.zip", "hostApiVersion": 2]
+          descriptor["frontend"] = ["assetPath": "snapo/inspectors/\(kind.rawValue)/frontend.zip", "hostApiVersion": 3]
         }
         return descriptor
       }
