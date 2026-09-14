@@ -29,7 +29,13 @@ Unloading the page closes its event streams. A loaded page's EventSource retries
 
 The [Example tool](../../examples/tool/README.md) demonstrates this lifecycle using fake data, ordinary HTTP requests, and an event stream.
 
-The embedded page uses a stable `snapo-inspector` origin. Each tool has its own persistent browser data store, scoped to the device, Android user, app, and tool. Use ordinary web storage for preferences; windows for the same provider share it. The host does not proxy HTTP response bodies.
+The host does not proxy HTTP response bodies.
+
+## Browser storage
+
+The embedded page uses a stable `snapo-inspector` origin. Its persistent browser data is scoped to the device, Android user, package name, and tool ID. Snap-O reuses that storage after app updates and reinstalls with the same identifiers. Another installation can therefore read data left by the previous installation.
+
+Treat `localStorage` and other browser storage as untrusted preference storage. Store only disposable UI settings. Do not store credentials, access tokens, captured traffic, personal data, or other sensitive information. Windows for the same provider share this storage.
 
 ## Toolbar
 

@@ -461,6 +461,12 @@ Requests can fail while connected. Your frontend owns response validation, error
 
 </details>
 
+### Store preferences safely {#frontend-storage}
+
+Snap-O scopes persistent browser storage to the device, Android user, package name, and tool ID. It reuses that storage after app updates and reinstalls with the same identifiers. Another installation can therefore read data left by the previous installation.
+
+Use browser storage only for disposable UI preferences. Do not store credentials, access tokens, captured traffic, personal data, or other sensitive information. This rule applies to `localStorage` and other persistent browser APIs. See the [host SDK browser storage contract](https://github.com/openai/snap-o/blob/main/tool-sdk/host/README.md#browser-storage) for details.
+
 ## Try your tool in Snap-O {#development data-step="4"}
 
 Build and run your Android app with the tool library included, using your usual workflow. Its build includes the frontend automatically.
