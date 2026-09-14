@@ -68,7 +68,7 @@ Native messages must come from the owning WebView's current main document. The b
 
 Develop → Use Development Server sets a loopback URL for the selected app and tool. The explicit override also permits resources and WebSocket connections from that server. Its HTML is served by the development server, so it does not receive the packaged HTML's host CSP. This override is for trusted local development only.
 
-Run `sh app-macos/scripts/test-tool-selection.sh` and `sh app-macos/scripts/test-tool-recovery.sh` from the repository root. These tests include hostile HTML, synthetic local servers, bridge rejection, storage scopes, and page retirement before port release.
+Run `sh app-macos/scripts/test-tool-selection.sh` and `sh app-macos/scripts/test-tool-recovery.sh` from the repository root. Selection, restoration, storage scopes, and bridge validation run as native tests. A small WebKit fixture checks request isolation, bridge ownership, event delivery, recovery, and page retirement. These tests do not build or load the Network and Tweaks frontends. CI includes the selection tests in the main macOS test run.
 
 These controls do not prevent WebKit vulnerabilities, resource exhaustion, or data sent through the explicitly allowed Android endpoint. An unresponsive page may delay endpoint cleanup; its port must not be released before it retires. App-provided frontends run JavaScript supplied by the inspected APK. These restrictions are not a guarantee that untrusted code is safe.
 

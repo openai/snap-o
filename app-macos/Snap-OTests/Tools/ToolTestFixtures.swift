@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Snap_O)
+@testable import Snap_O
+#endif
 
 extension ToolID {
   static let network = Self(rawValue: "network")
