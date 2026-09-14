@@ -12,6 +12,9 @@ android {
     namespace = "com.openai.snapo.network"
 }
 
+// This build declares the Node repository in settings.gradle.kts.
+node { distBaseUrl.set(null as String?) }
+
 snapoTool {
     frontendDirectory = layout.projectDirectory.dir("../../frontend")
     id = "network"

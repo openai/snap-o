@@ -106,7 +106,7 @@ class ToolHttpTest {
     fun `responses include byte lengths and inspector specific preflight headers`() {
         val body = "café".toByteArray()
         val output = ByteArrayOutputStream()
-        ToolHttpResponse(405, body, allowedMethods = "GET, PATCH").write(
+        ToolHttpResponse(405, body, headers = mapOf("Allow" to "GET, PATCH")).write(
             output,
             ToolBrowserAccess.responseHeaders("http://localhost:5173", "GET, PATCH"),
         )
@@ -117,7 +117,7 @@ class ToolHttpTest {
         assertTrue(response.contains("Access-Control-Allow-Methods: GET, PATCH\r\n"))
         assertEquals("café", response.substringAfter("\r\n\r\n"))
         assertThrows(IllegalArgumentException::class.java) {
-            ToolHttpResponse(200, byteArrayOf()).write(output, mapOf("Location" to "/\r\nInjected: yes"))
+            ToolHttpResponse(200, byteArrayOf(), headers = mapOf("Location" to "/\r\nInjected: yes")).write(output)
         }
     }
 

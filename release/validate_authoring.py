@@ -17,10 +17,10 @@ REGISTRY = "https://openai.firewall.socket.dev/npm/"
 MAVEN_NS = {"m": "http://maven.apache.org/POM/4.0.0"}
 
 
-def run(command, cwd, capture=False):
+def run(command, cwd, capture=False, env=None):
     print(f"[{cwd.name}] {' '.join(map(str, command))}", flush=True)
     result = subprocess.run(command, cwd=cwd, check=True, text=True,
-                            env={**os.environ, "NPM_CONFIG_REGISTRY": REGISTRY},
+                            env={**os.environ, "NPM_CONFIG_REGISTRY": REGISTRY, **(env or {})},
                             stdout=subprocess.PIPE if capture else None)
     return result.stdout
 
@@ -107,9 +107,49 @@ def verify_example(example):
     return debug
 
 
-def verify_frontend_modes(example, overrides):
-    init = example / "frontend-mode.gradle"
-    init.write_text('''
+def node_free_environment():
+    directories = os.environ.get("PATH", os.defpath).split(os.pathsep)
+    path = os.pathsep.join(directory for directory in directories
+                           if not any((Path(directory) / name).is_file()
+                                      for name in ("node", "node.exe", "npm", "npm.cmd")))
+    assert shutil.which("node", path=path) is None
+    assert shutil.which("npm", path=path) is None
+    return {"PATH": path}
+
+
+def verify_configuration_cache(command, example, env):
+    cached = [*command, "--configuration-cache"]
+    run(cached, example, env=env)
+    reused = run(cached, example, capture=True, env=env)
+    assert "Reusing configuration cache." in reused, "Configuration cache was not reused"
+
+
+def verify_node_runtimes(example, command, managed_env):
+    verify_configuration_cache([*command, ":example-tool:toolBuild"], example, managed_env)
+
+    init = example / "installed-node.gradle"
+    installed_node = Path(shutil.which("node")).resolve()
+    installed_env = {"SNAPO_EXPECT_NODE_ROOT": str(installed_node.parent)}
+    installed = [*command, "--init-script", str(init), ":example-tool:toolBuild"]
+    try:
+        init.write_text('''
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin("com.openai.snapo.tool-packager") {
+        project.extensions.getByName("node").download.set(false)
+    }
+}
+''')
+        run([*installed, "--rerun-tasks"], example, env=installed_env)
+        verify_configuration_cache(installed, example, installed_env)
+    finally:
+        init.unlink(missing_ok=True)
+
+
+def verify_prebuilt_frontend(example, command, managed_env):
+    init = example / "prebuilt-frontend.gradle"
+    prebuilt = [*command, "--init-script", str(init), ":app:assembleDebug"]
+    try:
+        init.write_text('''
 gradle.beforeProject { project ->
     project.pluginManager.withPlugin("com.openai.snapo.tool-packager") {
         project.extensions.getByName("snapoTool").frontendAssets.set(
@@ -117,13 +157,46 @@ gradle.beforeProject { project ->
     }
 }
 ''')
-    command = [str(example / "gradlew"), "--no-daemon", *overrides, "--init-script", str(init),
-               ":app:assembleDebug"]
-    graph = run([*command, "--dry-run"], example, capture=True)
-    for task in ("nodeSetup", "npmSetup", "npmInstall", "toolBuild"):
-        assert f":example-tool:{task} " not in graph, f"Prebuilt assets unexpectedly schedule {task}"
-    run(command, example)
-    init.unlink()
+        graph = run([*prebuilt, "--dry-run"], example, capture=True, env=managed_env)
+        for task in ("nodeSetup", "npmSetup", "npmInstall", "toolBuild"):
+            assert f":example-tool:{task} " not in graph, f"Prebuilt assets unexpectedly schedule {task}"
+        run(prebuilt, example, env=managed_env)
+    finally:
+        init.unlink(missing_ok=True)
+
+
+def verify_automatic_node_repository(example, command, managed_env):
+    module_build = example / "example-tool/build.gradle.kts"
+    original_build = module_build.read_text()
+    default_build = original_build.replace("node { distBaseUrl.set(null as String?) }\n", "")
+    assert default_build != original_build, "Example's Node repository override was not found"
+    init = example / "automatic-node-repository.gradle"
+    try:
+        init.write_text('''
+gradle.settingsEvaluated { settings ->
+    settings.dependencyResolutionManagement.repositoriesMode.set(
+        org.gradle.api.initialization.resolve.RepositoriesMode.PREFER_PROJECT)
+    settings.dependencyResolutionManagement.repositories.clear()
+}
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin("com.openai.snapo.tool-packager") {
+        project.extensions.getByName("node").workDir.set(project.layout.buildDirectory.dir("default-node"))
+    }
+}
+''')
+        module_build.write_text(default_build)
+        run([*command, "--init-script", str(init), ":example-tool:toolBuild", "--rerun-tasks"], example,
+            env={**managed_env, "SNAPO_EXPECT_NODE_ROOT": str(example / "example-tool/build/default-node")})
+    finally:
+        module_build.write_text(original_build)
+        init.unlink(missing_ok=True)
+
+
+def verify_frontend_modes(example, overrides, managed_env):
+    command = [str(example / "gradlew"), "--no-daemon", *overrides]
+    verify_node_runtimes(example, command, managed_env)
+    verify_prebuilt_frontend(example, command, managed_env)
+    verify_automatic_node_repository(example, command, managed_env)
 
 
 def main():
@@ -160,6 +233,18 @@ def main():
                     ignore=shutil.ignore_patterns(".gradle", ".kotlin", ".idea", "build", "node_modules",
                                                   "dist", ".test-build", "vendor", "local.properties"))
     frontend = example / "example-tool/frontend"
+    (frontend / "verify-node.cjs").write_text('''
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const relative = path.relative(process.env.SNAPO_EXPECT_NODE_ROOT, process.execPath);
+assert(!relative.startsWith("..") && !path.isAbsolute(relative),
+    `Unexpected Node executable: ${process.execPath}`);
+''')
+    package_path = frontend / "package.json"
+    package = json.loads(package_path.read_text())
+    original_build = package["scripts"]["build"]
+    package["scripts"]["build"] = "node verify-node.cjs && " + package["scripts"]["build"]
+    package_path.write_text(json.dumps(package, indent=2) + "\n")
     (frontend / "vendor").mkdir()
     shutil.copyfile(archive, frontend / "vendor/host.tgz")
     # The tarball changes with SDK edits; retain the locked third-party dependencies.
@@ -176,14 +261,21 @@ def main():
     values.update(snapoVersion=version, snapoGroup=group)
     settings.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
     overrides = [f"-PsnapoRepository={repository}"]
+    managed_env = {**node_free_environment(),
+                   "SNAPO_EXPECT_NODE_ROOT": str(example / "example-tool/.gradle/nodejs")}
     run([str(example / "gradlew"), "--no-daemon", *overrides, ":app:assembleDebug", ":app:assembleRelease",
-         ":example-tool:testDebugUnitTest", ":app:lintDebug", ":app:lintRelease", ":example-tool:lintDebug"], example)
+         ":example-tool:testDebugUnitTest", ":app:lintDebug", ":app:lintRelease", ":example-tool:lintDebug"], example,
+        env=managed_env)
     run(["npm", "test"], frontend)
-    verify_frontend_modes(example, overrides)
+    verify_frontend_modes(example, overrides, managed_env)
     apk = verify_example(example)
+    package["scripts"]["build"] = original_build
+    package_path.write_text(json.dumps(package, indent=2) + "\n")
+    (frontend / "verify-node.cjs").unlink()
     report = {"mavenCoordinates": coordinates, "npmPackage": f"{sdk['name']}@{sdk['version']}",
               "npmTarball": str(archive), "exampleProject": str(example), "debugApk": str(apk),
-              "frontendModes": ["installed-node", "prebuilt"], "published": False}
+              "frontendModes": ["managed-node-without-path", "installed-node", "prebuilt", "automatic-node-repository"],
+              "configurationCacheReused": True, "published": False}
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

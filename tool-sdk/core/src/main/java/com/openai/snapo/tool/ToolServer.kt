@@ -84,7 +84,7 @@ class ToolServer(
         } catch (error: Exception) {
             if (call.get()?.responseStarted != true) {
                 runCatching {
-                    val response = routes.errorResponse(error)
+                    val response = defaultErrorResponse(error)
                     if (response.statusCode >= 500) {
                         Logger.getLogger("SnapOTool").log(Level.SEVERE, "Tool $toolId request failed", error)
                     }
@@ -119,7 +119,7 @@ class ToolServer(
             match.first.handler(call)
         } else if (matches.isNotEmpty()) {
             val methods = matches.map { it.first.method }.distinct().joinToString(", ")
-            throw ToolHttpException(405, "Use $methods", allowedMethods = methods)
+            throw ToolHttpException(405, "Use $methods", headers = mapOf("Allow" to methods))
         } else {
             throw ToolHttpException(404, "Unknown endpoint")
         }

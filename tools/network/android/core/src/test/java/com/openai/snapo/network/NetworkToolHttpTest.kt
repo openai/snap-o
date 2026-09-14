@@ -1,7 +1,6 @@
 package com.openai.snapo.network
 
 import com.openai.snapo.tool.ToolConnection
-import com.openai.snapo.tool.ToolHttpRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
@@ -11,7 +10,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.BufferedReader
@@ -294,19 +292,20 @@ class NetworkToolHttpTest {
     }
 
     @Test
-    fun `HTTP parser rejects ambiguous framing and cross-origin mutations`() {
-        for (headers in listOf(
-            "Host: other\r\n",
-            "Content-Length: -1\r\n",
-            "Content-Length: 999999999\r\n",
-            "Transfer-Encoding: chunked\r\n",
-            "Origin: https://example.test\r\n",
+    fun `HTTP server rejects ambiguous framing and cross-origin mutations`() = runBlocking {
+        for ((headers, status) in listOf(
+            "Host: other\r\n" to 400,
+            "Content-Length: -1\r\n" to 400,
+            "Content-Length: 999999999\r\n" to 413,
+            "Transfer-Encoding: chunked\r\n" to 400,
+            "Origin: https://example.test\r\n" to 400,
         )) {
-            assertThrows(IllegalArgumentException::class.java) {
-                ToolHttpRequest.read(
-                    ByteArrayInputStream("POST /interception HTTP/1.1\r\nHost: localhost\r\n$headers\r\n".toByteArray())
-                )
-            }
+            val output = ByteArrayOutputStream()
+            NetworkToolHttp().serveConnection(
+                ByteArrayInputStream("POST /interception HTTP/1.1\r\nHost: localhost\r\n$headers\r\n".toByteArray()),
+                output,
+            )
+            assertTrue(output.toString("UTF-8").startsWith("HTTP/1.1 $status"))
         }
     }
 

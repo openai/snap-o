@@ -1,0 +1,121 @@
+public final class com/openai/snapo/tool/ToolCall {
+	public final fun getPathParameters ()Ljava/util/Map;
+	public final fun getRequest ()Lcom/openai/snapo/tool/ToolHttpRequest;
+	public final fun respond (Lcom/openai/snapo/tool/ToolHttpResponse;)V
+	public final fun respondJson (Ljava/lang/String;I)V
+	public static synthetic fun respondJson$default (Lcom/openai/snapo/tool/ToolCall;Ljava/lang/String;IILjava/lang/Object;)V
+	public final fun respondNoContent ()V
+	public final fun respondSse-BZiP2OM (ILjava/util/Map;Lkotlin/time/Duration;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun respondSse-BZiP2OM$default (Lcom/openai/snapo/tool/ToolCall;ILjava/util/Map;Lkotlin/time/Duration;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun respondStream (Ljava/lang/String;ILjava/util/Map;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun respondStream$default (Lcom/openai/snapo/tool/ToolCall;Ljava/lang/String;ILjava/util/Map;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun respondText (Ljava/lang/String;I)V
+	public static synthetic fun respondText$default (Lcom/openai/snapo/tool/ToolCall;Ljava/lang/String;IILjava/lang/Object;)V
+}
+
+public abstract interface class com/openai/snapo/tool/ToolConnection : java/io/Closeable {
+	public abstract fun getInput ()Ljava/io/InputStream;
+	public abstract fun getOutput ()Ljava/io/OutputStream;
+	public abstract fun setReadTimeout (I)V
+}
+
+public final class com/openai/snapo/tool/ToolHttpException : java/lang/IllegalArgumentException {
+	public fun <init> (ILjava/lang/String;Ljava/lang/Throwable;Ljava/util/Map;)V
+	public synthetic fun <init> (ILjava/lang/String;Ljava/lang/Throwable;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getHeaders ()Ljava/util/Map;
+	public fun getMessage ()Ljava/lang/String;
+	public final fun getStatusCode ()I
+}
+
+public final class com/openai/snapo/tool/ToolHttpRequest {
+	public final fun bodyText ()Ljava/lang/String;
+	public final fun getBody ()[B
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getMethod ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getQueryParameters ()Ljava/util/Map;
+	public final fun getRequestTarget ()Ljava/lang/String;
+}
+
+public final class com/openai/snapo/tool/ToolHttpRequestPolicy {
+	public fun <init> ()V
+	public fun <init> (ILjava/util/Set;)V
+	public synthetic fun <init> (ILjava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBodyMethods ()Ljava/util/Set;
+	public final fun getMaxBodyBytes ()I
+}
+
+public final class com/openai/snapo/tool/ToolHttpResponse {
+	public static final field Companion Lcom/openai/snapo/tool/ToolHttpResponse$Companion;
+	public fun <init> (I[BLjava/lang/String;Ljava/util/Map;)V
+	public synthetic fun <init> (I[BLjava/lang/String;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBody ()[B
+	public final fun getContentType ()Ljava/lang/String;
+	public final fun getHeaders ()Ljava/util/Map;
+	public final fun getStatusCode ()I
+}
+
+public final class com/openai/snapo/tool/ToolHttpResponse$Companion {
+	public final fun error (ILjava/lang/String;Ljava/util/Map;)Lcom/openai/snapo/tool/ToolHttpResponse;
+	public static synthetic fun error$default (Lcom/openai/snapo/tool/ToolHttpResponse$Companion;ILjava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lcom/openai/snapo/tool/ToolHttpResponse;
+	public final fun json (Ljava/lang/String;I)Lcom/openai/snapo/tool/ToolHttpResponse;
+	public static synthetic fun json$default (Lcom/openai/snapo/tool/ToolHttpResponse$Companion;Ljava/lang/String;IILjava/lang/Object;)Lcom/openai/snapo/tool/ToolHttpResponse;
+	public final fun text (Ljava/lang/String;I)Lcom/openai/snapo/tool/ToolHttpResponse;
+	public static synthetic fun text$default (Lcom/openai/snapo/tool/ToolHttpResponse$Companion;Ljava/lang/String;IILjava/lang/Object;)Lcom/openai/snapo/tool/ToolHttpResponse;
+}
+
+public class com/openai/snapo/tool/ToolResponseStream {
+	public final fun write ([B)V
+}
+
+public final class com/openai/snapo/tool/ToolRoutes {
+	public final fun delete (Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public final fun get (Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public final fun getExposedHeaders ()Ljava/lang/String;
+	public final fun getRequestPolicy ()Lcom/openai/snapo/tool/ToolHttpRequestPolicy;
+	public final fun getVary ()Ljava/lang/String;
+	public final fun patch (Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public final fun post (Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public final fun put (Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public final fun route (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public final fun setExposedHeaders (Ljava/lang/String;)V
+	public final fun setRequestPolicy (Lcom/openai/snapo/tool/ToolHttpRequestPolicy;)V
+	public final fun setVary (Ljava/lang/String;)V
+	public final fun sse-Kx4hsE0 (Ljava/lang/String;Lkotlin/time/Duration;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun sse-Kx4hsE0$default (Lcom/openai/snapo/tool/ToolRoutes;Ljava/lang/String;Lkotlin/time/Duration;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+
+public final class com/openai/snapo/tool/ToolServer : java/io/Closeable {
+	public fun <init> (Ljava/lang/String;ILkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public final fun isRunning ()Z
+	public final fun serve (Lcom/openai/snapo/tool/ToolConnection;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun start ()V
+	public final fun startIfAllowed (Landroid/content/Context;Ljava/lang/String;Z)Z
+	public static synthetic fun startIfAllowed$default (Lcom/openai/snapo/tool/ToolServer;Landroid/content/Context;Ljava/lang/String;ZILjava/lang/Object;)Z
+}
+
+public final class com/openai/snapo/tool/ToolSse {
+	public static final field INSTANCE Lcom/openai/snapo/tool/ToolSse;
+	public final fun event (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[B
+	public static synthetic fun event$default (Lcom/openai/snapo/tool/ToolSse;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)[B
+}
+
+public final class com/openai/snapo/tool/ToolSseSession : com/openai/snapo/tool/ToolResponseStream, kotlinx/coroutines/CoroutineScope {
+	public final fun close ()V
+	public final fun getCall ()Lcom/openai/snapo/tool/ToolCall;
+	public fun getCoroutineContext ()Lkotlin/coroutines/CoroutineContext;
+	public final fun heartbeat ()V
+	public final fun send (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun send$default (Lcom/openai/snapo/tool/ToolSseSession;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+
+public final class com/openai/snapo/tool/ToolStartupPolicy {
+	public static final field INSTANCE Lcom/openai/snapo/tool/ToolStartupPolicy;
+	public final fun isAllowed (Landroid/content/Context;Ljava/lang/String;Z)Z
+	public final fun isAllowed (ZZZ)Z
+	public static synthetic fun isAllowed$default (Lcom/openai/snapo/tool/ToolStartupPolicy;Landroid/content/Context;Ljava/lang/String;ZILjava/lang/Object;)Z
+	public static synthetic fun isAllowed$default (Lcom/openai/snapo/tool/ToolStartupPolicy;ZZZILjava/lang/Object;)Z
+}
+

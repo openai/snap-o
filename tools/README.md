@@ -24,7 +24,7 @@ Tool plugins are the bundled extensions; tools are the features users interact w
 
 ## Development
 
-Install Node.js 22.12 or later and npm. Make both available on `PATH` for Gradle, including Android Studio and CI builds. From the repository root, start a tool's development server:
+Gradle downloads Node.js and uses its bundled npm for frontend builds and development servers. Android Studio and CI builds do not need either on `PATH`. From the repository root, start a tool's development server:
 
 ```sh
 ./gradlew :network:toolDev

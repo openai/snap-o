@@ -9,6 +9,9 @@ android {
     defaultConfig { minSdk = 24 }
 }
 
+// This build declares the Node repository in settings.gradle.kts.
+node { distBaseUrl.set(null as String?) }
+
 snapoTool {
     id = "example"
     displayName = "Example"

@@ -12,6 +12,7 @@ import com.openai.snapo.tool.ToolSseSession
 import com.openai.snapo.tweaks.BezierCurve
 import com.openai.snapo.tweaks.TweakColorValue
 import com.openai.snapo.tweaks.core.SnapOTool
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runInterruptible
 import java.io.ByteArrayInputStream
@@ -19,7 +20,6 @@ import java.io.Closeable
 import java.io.IOException
 import java.io.InputStreamReader
 import java.io.StringWriter
-import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
@@ -76,16 +76,6 @@ internal class TweakHttpServer(
     )
 
     private val server = ToolServer(SnapOTool.ID) {
-        onError { error ->
-            when (error) {
-                is TweakUpdateException -> errorResponse(error.statusCode, error.message ?: "Invalid tweak update.")
-                is HttpFailure -> errorResponse(error.statusCode, error.message, error.allowedMethods)
-                is SocketTimeoutException -> errorResponse(408, "The request timed out.")
-                is IOException, is IllegalArgumentException -> errorResponse(400, "Malformed HTTP or JSON request.")
-                is IllegalStateException -> errorResponse(400, "Malformed JSON request.")
-                else -> errorResponse(500, "The request could not be completed.")
-            }
-        }
         get("/tweaks/protocol") { respondJson("""{"version":$TweaksProtocolVersion}""") }
         get("/tweaks") {
             val query = request.queryParameters
@@ -103,12 +93,13 @@ internal class TweakHttpServer(
         }
         patch("/tweaks") {
             requireJsonRequest(request)
-            val result = runInterruptible { updateOnMainThread(readPatchValues(request.body)) }
+            val values = parseTweakRequest { readPatchValues(request.body) }
+            val result = runInterruptible { updateOnMainThread(values) }
             respond(tweaksResponse(result.tweaks, includeDescriptors = false, errors = result.errors))
         }
         post("/tweaks/action") {
             requireJsonRequest(request)
-            val name = readActionName(request.body)
+            val name = parseTweakRequest { readActionName(request.body) }
             runInterruptible { invokeActionOnMainThread(name) }
             respond(actionResponse(name))
         }
@@ -268,7 +259,7 @@ internal class TweakHttpServer(
     }
 
     private fun invokeActionOnMainThread(name: String) =
-        runOnMainThread("action", "invoked") { TweakRegistry.invokeAction(name) }
+        runOnMainThread("action", "invoked") { invokeTweakAction(name) }
 
     private fun <T> runOnMainThread(
         operationName: String,
@@ -287,7 +278,7 @@ internal class TweakHttpServer(
         val failure = try {
             return task.get(MainThreadTimeoutMillis, TimeUnit.MILLISECONDS)
         } catch (error: ExecutionException) {
-            error.cause as? TweakUpdateException
+            error.cause as? HttpFailure
                 ?: HttpFailure(500, "The tweak $operationName could not be $failureVerb.", error)
         } catch (error: TimeoutException) {
             task.cancel(false)
@@ -411,25 +402,30 @@ internal class TweakHttpServer(
         }
     }
 
-    private fun errorResponse(
-        statusCode: Int,
-        message: String,
-        allowedMethods: String? = null,
-    ): HttpResponse {
-        val output = StringWriter()
-        JsonWriter(output).use { writer ->
-            writer.beginObject()
-            writer.name("error").value(message)
-            writer.endObject()
-        }
-
-        return HttpResponse(
-            statusCode,
-            output.toString().toByteArray(StandardCharsets.UTF_8),
-            allowedMethods,
-        )
-    }
-
     private fun invalidRequest(message: String): Nothing =
         throw HttpFailure(400, message)
+}
+
+internal fun <T> parseTweakRequest(parse: () -> T): T = try {
+    parse()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (failure: HttpFailure) {
+    throw failure
+} catch (failure: TweakUpdateException) {
+    throw HttpFailure(failure.statusCode, failure.message ?: "Invalid tweak value.", failure)
+} catch (failure: IOException) {
+    throw HttpFailure(400, "Malformed JSON request.", failure)
+} catch (failure: IllegalArgumentException) {
+    throw HttpFailure(400, "Malformed JSON request.", failure)
+} catch (failure: IllegalStateException) {
+    throw HttpFailure(400, "Malformed JSON request.", failure)
+}
+
+internal fun invokeTweakAction(name: String) {
+    try {
+        TweakRegistry.invokeAction(name)
+    } catch (failure: TweakUpdateException) {
+        throw HttpFailure(failure.statusCode, failure.message ?: "Invalid tweak action.", failure)
+    }
 }

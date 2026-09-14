@@ -47,7 +47,9 @@ Snap-O's Tool Packager Gradle Plugin builds your web frontend, packages it into 
 
 We recommend Node and npm for frontend development and testing. The plugin's default frontend build uses them, but you can package existing frontend files with `frontendAssets` without running npm.
 
-For the default build, make Node and npm available to Gradle on `PATH`, including Android Studio and CI builds. Use a Node version that satisfies your frontend package's `engines` requirement. Snap-O does not install or manage Node. Apps consuming a finished tool library do not need either.
+The plugin downloads Node.js 22.23.2 and uses its bundled npm for Android Studio and CI builds. You do not need either on Gradle's `PATH`. Direct `npm` commands still require a local Node installation. Apps consuming a finished tool library do not need Node or npm.
+
+The Node Gradle plugin adds its download repository automatically. If your build uses `FAIL_ON_PROJECT_REPOS` or `PREFER_SETTINGS`, follow the [central repository setup](https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#repositories-declared-in-settings). The Example project already includes that override because it forbids project repositories.
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
@@ -105,6 +107,8 @@ snapoTool {
 ```
 
 You can also set `frontendAssets` from another task's output directory provider. Gradle runs that task before packaging.
+
+Use the existing `node` extension if your frontend needs another Node version: `node { version.set("24.21.0") }`. To use Node and npm from Gradle's `PATH`, set `node { download.set(false) }`.
 
 The plugin generates `SnapOTool.ID` in your Android module's namespace. Each module defines one tool; give each tool module its own namespace.
 
@@ -202,9 +206,11 @@ Inside a handler, these properties provide request data:
 | `request.body` | Body bytes. |
 | `request.bodyText()` | Body decoded as strict UTF-8. |
 
+The server creates `ToolHttpRequest` instances. Request construction and HTTP parsing are internal.
+
 Use `respondJson(json, statusCode)`, `respondText(text, statusCode)`, or `respondNoContent()`. The first two default to status 200. A handler sends one response; returning without one sends 204.
 
-For custom content types or headers, use `respond(ToolHttpResponse(...), headers = ...)`:
+For custom content types or headers, use `respond(ToolHttpResponse(...))`:
 
 ``` { .kotlin title="Return a custom response" }
 respond(
@@ -212,14 +218,28 @@ respond(
         statusCode = 200,
         body = "one,two\n".toByteArray(),
         contentType = "text/csv; charset=utf-8",
+        headers = mapOf("X-Example" to "sample"),
     ),
-    headers = mapOf("X-Example" to "sample"),
 )
 ```
 
 Import `ToolHttpResponse` from `com.openai.snapo.tool`. Set `exposedHeaders` inside `ToolServer` if the frontend must read custom response headers. `vary` defaults to `"Origin"`; extend it if responses also vary by other request headers.
 
-Throw `ToolHttpException(statusCode, message)` for an intentional HTTP error. Use `onError { error -> ToolHttpResponse.error(...) }` to map domain exceptions. Unexpected handler failures are logged and return a generic 500. Once a response starts, failures close the connection instead of sending another response.
+Handle expected domain errors in the route or a shared helper. Return an error response with its own headers:
+
+``` { .kotlin title="Return an error from a route" }
+respond(
+    ToolHttpResponse.error(
+        statusCode = 409,
+        message = "An update is already running.",
+        headers = mapOf("Retry-After" to "1"),
+    ),
+)
+```
+
+`ToolHttpResponse.error` encodes the message as a JSON object with an `error` field. A helper can instead throw `ToolHttpException(statusCode, message, headers = ...)` to stop the handler with an HTTP error. Import `ToolHttpException` from `com.openai.snapo.tool`.
+
+Unexpected handler failures are logged and return a generic 500. Once a response starts, failures close the connection instead of sending another response.
 
 </details>
 
@@ -625,15 +645,15 @@ The returned object has asynchronous `setValue(value)` and `close()` methods. Ke
 
 ## Develop the frontend {#develop-the-frontend data-step="5"}
 
-Use a development server to edit the UI without rebuilding the Android app for each frontend change. From your `frontend/` directory, run:
+Use a development server to edit the UI without rebuilding the Android app for each frontend change. From your project root, run the tool module's `toolDev` task:
 
 ``` { .bash title="Start the frontend development server" }
-npm run dev
+./gradlew :your-tool:toolDev
 ```
 
 With your tool selected in Snap-O, choose **Develop → Use Development Server** and enter the local URL printed by Vite. Keep the Android app running so the frontend can call its API. Vite updates the UI as you edit; see its [development guide](https://vite.dev/guide/) for details.
 
-The Tool Packager Gradle Plugin's `toolDev` task can also run the frontend's npm `dev` script. To inspect the page, choose **Develop → Inspect Current WebView in Safari…**.
+The `toolDev` task installs dependencies and runs the frontend's npm `dev` script with the managed Node runtime. You can also run `npm run dev` from the frontend directory with a local Node installation. To inspect the page, choose **Develop → Inspect Current WebView in Safari…**.
 
 Choose **Develop → Use Packaged Frontend** to return to the version bundled in the APK. Rebuild and reinstall through your usual Android workflow to update that version.
 

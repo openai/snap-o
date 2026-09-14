@@ -8,7 +8,7 @@ import java.net.URLDecoder
 import java.nio.charset.CharacterCodingException
 
 /** Limits and accepted request forms for a tool plugin's endpoints. */
-data class ToolHttpRequestPolicy(
+class ToolHttpRequestPolicy(
     val maxBodyBytes: Int = 64 * 1024,
     val bodyMethods: Set<String> = setOf("POST", "PUT", "PATCH"),
 ) {
@@ -17,7 +17,7 @@ data class ToolHttpRequestPolicy(
     }
 }
 
-data class ToolHttpRequest(
+class ToolHttpRequest internal constructor(
     val method: String,
     val requestTarget: String,
     val headers: Map<String, String>,
@@ -44,7 +44,7 @@ data class ToolHttpRequest(
         throw ToolHttpException(400, "Request body must be UTF-8", error)
     }
 
-    companion object {
+    internal companion object {
         fun read(
             input: InputStream,
             policy: ToolHttpRequestPolicy = ToolHttpRequestPolicy(),
@@ -119,7 +119,7 @@ class ToolHttpException(
     val statusCode: Int,
     override val message: String,
     cause: Throwable? = null,
-    val allowedMethods: String? = null,
+    val headers: Map<String, String> = emptyMap(),
 ) : IllegalArgumentException(message, cause)
 
 private const val MaxHttpHeaderBytes = 16 * 1024
