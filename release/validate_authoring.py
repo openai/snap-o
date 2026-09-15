@@ -283,7 +283,7 @@ try {
 
 
 def verify_frontend_modes(example, overrides, managed_env):
-    command = [str(example / "gradlew"), "--no-daemon", *overrides]
+    command = [str(example / "gradlew"), "--daemon", "--build-cache", "--parallel", *overrides]
     verify_dev_server(example, command, managed_env)
     verify_node_runtimes(example, command, managed_env)
     verify_prebuilt_frontend(example, command, managed_env)
@@ -343,7 +343,7 @@ def changed_sdk(archive):
 
 def verify_host_upgrades(example, overrides, managed_env, repository, version, archive):
     frontend = example / "example-tool/frontend"
-    command = [str(example / "gradlew"), "--no-daemon", *overrides]
+    command = [str(example / "gradlew"), "--daemon", "--build-cache", "--parallel", *overrides]
     build = [*command, ":example-tool:buildSnapoToolFrontend"]
     manifest = frontend / "package.json"
     lockfile = frontend / "package-lock.json"
@@ -397,10 +397,12 @@ def verify_host_upgrades(example, overrides, managed_env, repository, version, a
     assert manifest.read_bytes() == initial[0], "Installation changed the npm manifest"
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, help="A new or empty directory outside the checkout")
-    args = parser.parse_args()
+    parser.add_argument("--mode", choices=("full", "release-smoke"), default="full",
+                        help="Use release-smoke only after full CI passed on the exact source commit")
+    args = parser.parse_args(argv)
     output = args.output.resolve() if args.output else Path(tempfile.mkdtemp(prefix="snapo-authoring-"))
     if output == ROOT or ROOT in output.parents:
         parser.error("Use an output directory outside the checkout to verify independent consumption")
@@ -411,8 +413,9 @@ def main():
     repository = output / "maven"
     gradle = str(android / "gradlew")
     local = [f"-Psnapo.authoringRepository={repository}", "-Psnapo.localAuthoring=true"]
-    run([gradle, "--no-daemon", ":tool-core:publishAllPublicationsToAuthoringRepository", *local], android)
-    run([gradle, "--no-daemon", "test", "validatePlugins", "publishAllPublicationsToAuthoringRepository", *local],
+    run([gradle, "--daemon", "--build-cache", "--parallel", ":tool-core:publishAllPublicationsToAuthoringRepository", *local], android)
+    plugin_checks = ["test", "validatePlugins"] if args.mode == "full" else []
+    run([gradle, "--daemon", "--build-cache", "--parallel", *plugin_checks, "publishAllPublicationsToAuthoringRepository", *local],
         ROOT / "tool-sdk/gradle-plugin")
     coordinates = verify_maven(repository)
 
@@ -448,25 +451,30 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
     overrides = [f"-PsnapoRepository={repository}"]
     managed_env = {**node_free_environment(),
                    "SNAPO_EXPECT_NODE_ROOT": str(example / "example-tool/.gradle/nodejs")}
-    run([str(example / "gradlew"), "--no-daemon", *overrides, ":app:assembleDebug", ":app:assembleRelease",
-         ":example-tool:testDebugUnitTest", ":app:lintDebug", ":app:lintRelease", ":example-tool:lintDebug"], example,
-        env=managed_env)
+    command = [str(example / "gradlew"), "--daemon", "--build-cache", "--parallel", *overrides]
+    assemblies = [":app:assembleDebug", ":app:assembleRelease"]
+    checks = [":example-tool:testDebugUnitTest", ":app:lintDebug", ":app:lintRelease", ":example-tool:lintDebug"]
+    run([*command, *assemblies, *(checks if args.mode == "full" else [])], example, env=managed_env)
     verify_host_dependency(frontend, archive)
-    run(["npm", "test"], frontend)
-    verify_host_upgrades(example, overrides, managed_env, repository, version, archive)
-    verify_frontend_modes(example, overrides, managed_env)
-    run([str(example / "gradlew"), "--no-daemon", *overrides, ":app:assembleDebug", ":app:assembleRelease"],
-        example, env=managed_env)
+    if args.mode == "full":
+        run(["npm", "test"], frontend)
+        verify_host_upgrades(example, overrides, managed_env, repository, version, archive)
+        verify_frontend_modes(example, overrides, managed_env)
+        run([*command, *assemblies], example, env=managed_env)
     apk = verify_example(example)
     package = json.loads(package_path.read_text())
     package["scripts"]["build"] = original_build
     package_path.write_text(json.dumps(package, indent=2) + "\n")
     (frontend / "verify-node.cjs").unlink()
-    report = {"mavenCoordinates": coordinates, "bundledHostSdkSha256": hashlib.sha256(archive).hexdigest(),
+    report = {"mode": args.mode, "mavenCoordinates": coordinates,
+              "bundledHostSdkSha256": hashlib.sha256(archive).hexdigest(),
               "exampleProject": str(example), "debugApk": str(apk),
-              "frontendModes": ["managed-node-without-path", "installed-node", "prebuilt", "automatic-node-repository",
-                                "frontend-initializer", "host-sdk-clean-restore", "host-sdk-upgrade", "host-sdk-downgrade"],
-              "configurationCacheReused": True, "published": False}
+              "frontendModes": ["managed-node-without-path"], "published": False}
+    if args.mode == "full":
+        report["frontendModes"].extend(["installed-node", "prebuilt", "automatic-node-repository",
+                                        "frontend-initializer", "host-sdk-clean-restore",
+                                        "host-sdk-upgrade", "host-sdk-downgrade"])
+        report["configurationCacheReused"] = True
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 
