@@ -5,30 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tweaks Protocol</title>
     <meta name="description" content="Reference for the Snap-O Tweaks HTTP and event-stream protocol, including protocol versions, endpoints, JSON responses, updates, resets, actions, and errors.">
-
-
+    
+    
     <link rel="icon" type="image/png" href="assets/icon-64.png">
+    
+    <link rel="stylesheet" href="assets/robot.css">
     <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/tweaks-protocol.css">
   </head>
-  <body>
-
+  <body class="page-guide">
+    
+    
+    
+    <button class="robot-flight guide-robot" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+  
+  <img class="space-robot" src="assets/space-robot-small.webp" alt="" width="224" height="224" loading="lazy" draggable="false">
+  
+</button>
+    
+    
 <main>
   <section class="guide-hero">
     <div class="wrap">
       <div class="hero-copy">
-
+        
         <nav class="back-link" aria-label="Breadcrumb">
-
-
+          
+          
           <a href="index.html">Snap-O</a>
-
+          
           <span aria-hidden="true">-</span>
           <a href="tweaks.html">Tweaks Guide</a>
-
+          
         </nav>
-
+        
         <h1 id="tweaks-protocol">Tweaks Protocol</h1>
-
+        
 <p class="lead">Read registered Android values, change or reset them, invoke app-owned actions, and subscribe to updates through the Snap-O Tweaks HTTP and event-stream protocol.</p>
 
       </div>
@@ -36,7 +47,7 @@
   </section>
   <div class="wrap guide-layout">
     <article>
-
+      
       <section class="guide-section" id="overview">
         <div class="section-heading">
           <span class="step" aria-hidden="true">1</span>
@@ -51,12 +62,11 @@ adb -s "$serial" shell cat /proc/net/unix
 port="$(adb -s "$serial" forward tcp:0 "localabstract:$socket")"
 base="http://127.0.0.1:$port"
 
-curl -fsS "$base/app"
 curl -fsS "$base/tweaks"</code></pre></div>
 <p class="prose">Socket names follow <code>snapo_tweaks_&lt;pid&gt;</code>. Keep the forward alive while your client uses it, and discover and forward the new socket again when the Android app process restarts. When finished, remove only the forward you created:</p>
 <div class="code-block"><div class="code-head"><span>Terminal · remove your ADB forward</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="shell">adb -s "$serial" forward --remove "tcp:$port"</code></pre></div>
-<p class="prose">The Snap-O CLI manages this discovery and cleanup automatically. For a remote ADB server, an ADB forward is local to the server’s host; tunnel it to your client, or use the CLI with both <code>--adb-host</code> and <code>--adb-port</code> for direct ADB transport.</p>
-<p class="prose">Debug builds enable the server by default. A nondebuggable app can enable it only by including the real Tweaks dependency and setting <code>snapo.tweaks.allow_release</code> to <code>true</code> in its application's <code>&lt;application&gt;</code> metadata. Release no-op artifacts remain the recommended default. See <a href="tweaks.html#install">release setup</a> for the manifest example. Network Inspector has its own independent <code>snapo.network.allow_release</code> opt-in.</p>
+<p class="prose">The <code>snapo-tweaks</code> CLI manages this discovery and cleanup automatically. For a remote ADB server, an ADB forward is local to the server’s host; tunnel it to your client, or use the CLI with both <code>--adb-host</code> and <code>--adb-port</code> for direct ADB transport.</p>
+<p class="prose">Debug builds enable the server by default. A nondebuggable app can enable it only by including the real Tweaks dependency and setting <code>snapo.tweaks.allow_release</code> to <code>true</code> in its application's <code>&lt;application&gt;</code> metadata. Release no-op artifacts remain the recommended default. See <a href="tweaks.html#install">release setup</a> for the manifest example. Network has its own independent <code>snapo.network.allow_release</code> opt-in.</p>
 <p class="prose">When its optional dependency is installed and its developer setting is enabled, the on-device floating panel observes the same tweak registry directly. Changes from the panel, Snap-O, and custom clients update that shared registry without a separate panel-specific HTTP connection. Host applications observe updates through the event stream or their normal refresh behavior. See the <a href="tweaks.html#floating-overlay">floating overlay setup</a> for Android integration.</p>
 <div class="table-scroll"><table class="config-table">
 <thead>
@@ -68,14 +78,14 @@ curl -fsS "$base/tweaks"</code></pre></div>
 </thead>
 <tbody>
 <tr>
-<td><code>GET</code></td>
-<td><code>/app</code></td>
-<td>Read app metadata and the supported protocol version.</td>
+<td><code>OPTIONS</code></td>
+<td><code>/</code></td>
+<td>Check connection readiness.</td>
 </tr>
 <tr>
 <td><code>GET</code></td>
-<td><code>/app/icon</code></td>
-<td>Read the app icon.</td>
+<td><code>/tweaks/protocol</code></td>
+<td>Check the Tweaks API version: <code>{"version":6}</code>.</td>
 </tr>
 <tr>
 <td><code>GET</code></td>
@@ -107,73 +117,31 @@ curl -fsS "$base/tweaks"</code></pre></div>
 <p class="notice"><strong>Registration determines visibility.</strong> Value tweaks and actions can be changed, invoked, or streamed only while they have active owners. Compose releases owners when they leave composition; other callers close their <code>TweakScope</code>. The adjusted-history endpoint can also return inactive, read-only value snapshots.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="get-app">
         <div class="section-heading">
           <span class="step" aria-hidden="true">2</span>
-          <h2>GET /app</h2>
+          <h2>App discovery</h2>
         </div>
         <div class="section-body">
-<p class="prose">Read the running app’s user-visible name, Android package name, and supported Tweaks protocol version. Request this endpoint first so your client can select compatible behavior.</p>
-<div class="code-block"><div class="code-head"><span>Example Request</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="http">GET /app HTTP/1.1
-Host: 127.0.0.1</code></pre></div>
-<div class="code-block"><div class="code-head"><span>Example Response · 200 OK</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
-  "name": "Snap-O Tweaks Demo",
-  "packageName": "com.openai.snapo.demo.tweaks",
-  "protocolVersion": 5
-}</code></pre></div>
-<div class="table-scroll"><table class="config-table">
-<thead>
-<tr>
-<th>Version</th>
-<th>Behavior</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>1</code></td>
-<td>Value tweaks only. Updates are atomic, and resets send the reported default. A missing <code>protocolVersion</code> means version 1.</td>
-</tr>
-<tr>
-<td><code>2</code></td>
-<td>Adds action descriptors and <code>POST /tweaks/action</code>. Batch updates and resets retain version-1 behavior.</td>
-</tr>
-<tr>
-<td><code>3</code></td>
-<td>Applies valid batch items independently and reports rejected items in <code>errors</code>. Resets still send the reported default.</td>
-</tr>
-<tr>
-<td><code>4</code></td>
-<td>Adds explicit <code>null</code> resets and authoritative, sparse <code>modified: true</code> status.</td>
-</tr>
-<tr>
-<td><code>5</code></td>
-<td>Adds <code>bezier</code> curve objects with all four coordinates within <code>[0, 1]</code>.</td>
-</tr>
-</tbody>
-</table></div>
-<p class="prose">Android 8.0.0 reports protocol 5; Android 7.0.0 reports protocol 4. Older clients that accept only primitive values cannot decode lists containing curves. Updated clients still support older servers.</p>
-<p class="prose">The Tweaks protocol version is independent of the Network Inspector protocol version.</p>
+<p class="prose">The macOS app reads app labels, icons, and the Tweaks descriptor from installed Android resources. The CLI discovers sockets and reads process and package names through ADB. CLI discovery needs no reader JAR and does not require the app to respond.</p>
+<div class="code-block"><div class="code-head"><span>Terminal · list app processes</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="shell">snapo-tweaks apps --json</code></pre></div>
+<p class="prose">JSON listings include <code>pid</code>, <code>processName</code>, and <code>packageName</code>, without friendly app labels or icons. Unknown identity fields are <code>null</code>; their sockets remain visible.</p>
+<p class="prose">The Tweaks CLI calls <code>GET /tweaks/protocol</code> and requires <code>{"version":6}</code> before reading or changing tweaks. The bundled frontend uses its matching Android server without a version check. Missing, older, and newer versions are unsupported by the CLI; update Snap-O and the Android library together.</p>
+<p class="prose">Protocol 6 replaces protocol 5, released in Snap-O 8.0.0. It requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use <code>Cache-Control: no-store</code>. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the <a href="https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md">discovery contract</a>. Use the reader when your client needs Android resource metadata or frontend assets.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="get-app-icon">
         <div class="section-heading">
           <span class="step" aria-hidden="true">3</span>
-          <h2>GET /app/icon</h2>
+          <h2>App icons</h2>
         </div>
         <div class="section-body">
-<p class="prose">Read the running app’s icon. Use the response’s <code>Content-Type</code> without assuming a particular image format or size.</p>
-<div class="code-block"><div class="code-head"><span>Example Request</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="http">GET /app/icon HTTP/1.1
-Host: 127.0.0.1</code></pre></div>
-<div class="code-block"><div class="code-head"><span>Example Response · 200 OK</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="http">HTTP/1.1 200 OK
-Content-Type: &lt;image media type&gt;
-
-&lt;image bytes&gt;</code></pre></div>
-<p class="notice">The server returns <code>404 Not Found</code> if an app icon cannot be loaded.</p>
+<p class="prose">The macOS app uses the reader to load optional app icons from Android package resources. The Python CLI does not load icons. There is no HTTP icon endpoint. Custom interfaces should use a placeholder when no icon is available.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="get-tweaks">
         <div class="section-heading">
           <span class="step" aria-hidden="true">4</span>
@@ -223,13 +191,15 @@ Host: 127.0.0.1</code></pre></div>
 }</code></pre></div>
 <p class="prose">Supported value types are <code>int</code>, <code>float</code>, <code>boolean</code>, <code>color</code>, <code>string</code>, <code>enum</code>, and <code>bezier</code>. Colors use <code>#RRGGBB</code> or <code>#RRGGBBAA</code>. Enum descriptors include an ordered, nonempty <code>options</code> array; their default, value, and updates use an exact option name. Preserve the declared option order in clients.</p>
 <p class="prose">Actions use <code>"type": "action"</code> and have no <code>default</code>, <code>value</code>, <code>modified</code>, options, or numeric constraints. Invoke them through <code>POST /tweaks/action</code> rather than patching their descriptors.</p>
-<p class="notice"><strong>Modification status is authoritative in version 4 and later.</strong> Only modified values include <code>"modified": true</code>. An absent field means false, even if <code>value</code> differs from <code>default</code>. App-owned settings report whether their own override exists; do not infer their status from their effective value. Versions 1–3 omit this field, so compare <code>value</code> with <code>default</code> instead.</p>
-<p class="prose">Compose color defaults retain their original color space and precision in the app, while HTTP represents them as sRGB hex. <code>Color.Unspecified</code> appears as <code>#00000000</code>. An explicit reset in version 4 or later restores the original Compose value, including when that value does not round-trip through its sRGB hex form.</p>
+<p class="notice"><strong>Modification status is authoritative.</strong> Only modified values include <code>"modified": true</code>. An absent field means false, even if <code>value</code> differs from <code>default</code>. App-owned settings report whether their own override exists; do not infer their status from their effective value.</p>
+<p class="prose">Compose color defaults retain their original color space and precision in the app, while HTTP represents them as sRGB hex. <code>Color.Unspecified</code> appears as <code>#00000000</code>. An explicit reset restores the original Compose value, including when that value does not round-trip through its sRGB hex form.</p>
 <p class="prose">Integer values must be whole numbers. Floating-point values may be whole or fractional. When present, a numeric <code>step</code> is relative to <code>min</code>, or to the tweak's <code>default</code> when no minimum is specified. Reusing an ordinary tweak name shares one value across active owners; its type, default, constraints, and enum options must match. App-owned sources sharing a name must represent the same setting and value type. Their first active source owns the value until its owner is released.</p>
+<p class="prose">Numeric JSON values may contain at most 128 characters and 64 significant digits, with a decimal scale between -64 and 64. Values outside these limits return <code>422</code> before any tweaks change.</p>
+<p class="prose">Names retain their first-observed order across removal and reactivation. A returning registry-owned declaration restores its last edited value. App-owned sources control their own persistence instead.</p>
 <h3 id="bezier-curves">Bézier curves</h3>
 <p class="prose">A <code>bezier</code> descriptor represents one cubic curve with fixed endpoints <code>(0, 0)</code> and <code>(1, 1)</code>.
 Its <code>default</code> and <code>value</code> contain four named coordinates:</p>
-<div class="code-block"><div class="code-head"><span>Bézier descriptor · protocol 5</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
+<div class="code-block"><div class="code-head"><span>Bézier descriptor</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
   "name": "Motion/Curve",
   "type": "bezier",
   "default": {"x1": 0.25, "y1": 0.1, "x2": 0.25, "y2": 1.0},
@@ -239,18 +209,18 @@ Its <code>default</code> and <code>value</code> contain four named coordinates:<
 <p class="prose">All four coordinates must be finite Float values between 0 and 1, inclusive.
 Curves do not use numeric <code>min</code>, <code>max</code>, or <code>step</code> fields. Validate and replace all four coordinates together.</p>
 <p class="prose">Send the complete object in a <code>PATCH /tweaks</code> request:</p>
-<div class="code-block"><div class="code-head"><span>Bézier update · protocol 5</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
+<div class="code-block"><div class="code-head"><span>Bézier update</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
   "values": {
     "Motion/Curve": {"x1": 0.25, "y1": 0.1, "x2": 0.25, "y2": 1.0}
   }
 }</code></pre></div>
 <p class="prose">Reset with <code>{"values":{"Motion/Curve":null}}</code>. This restores the complete default or invokes the app-owned reset.
-Missing or unknown coordinate names and coordinates outside <code>[0, 1]</code> produce per-item errors.
-Duplicate coordinate names are malformed requests. Arrays, nested objects, nonnumeric coordinates, and objects with more than four fields are rejected at the request level.
-Numeric precision limits still apply. See the <a href="https://github.com/openai/snap-o/blob/main/contracts/tweaks/README.md#bézier-curves">protocol contract</a> for details.</p>
+Missing or unknown coordinate names, nonnumeric coordinates, and coordinates outside <code>[0, 1]</code> produce per-item errors.
+Duplicate coordinate names are malformed requests. Arrays, nested objects, and objects with more than four fields are rejected at the request level.
+The numeric precision limits above also apply to coordinates.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="adjusted-tweaks">
         <div class="section-heading">
           <span class="step" aria-hidden="true">5</span>
@@ -281,18 +251,19 @@ Host: 127.0.0.1</code></pre></div>
   ]
 }</code></pre></div>
 <p class="prose">Each retained snapshot preserves its complete descriptor, latest effective value, and modification status. History can remain after a reset; an app-owned value may then differ from its captured default without being modified, as shown above. Separate screens may reuse a name with different descriptors, so preserve repeated names instead of deduplicating them. An active descriptor takes precedence over its matching historical snapshot.</p>
+<p class="prose">Order names by first observation. For repeated names, list the active declaration first, followed by historical declarations in adjustment order.</p>
 <p class="notice"><strong>Inactive history is read-only.</strong> Only active value tweaks can be updated or reset. App-owned history keeps an immutable snapshot, not its source or observers, and never replays an old value into a returning source. Actions do not create adjustment history. Retention ends when the app process exits.</p>
-<p class="prose">Unchanged tweaks, no-op adjustments, and rejected updates do not create history entries. Plain <code>GET /tweaks</code> and event snapshots remain active-only. The only supported query is exactly <code>include=adjusted</code> on <code>GET /tweaks</code>; unsupported, repeated, or additional query parameters return <code>400 Bad Request</code>.</p>
+<p class="prose">Unchanged tweaks, no-op adjustments, and rejected updates do not create history entries. Plain <code>GET /tweaks</code> and event snapshots remain active-only. <code>GET /tweaks</code> accepts only <code>include=adjusted</code>, with URL escapes decoded. Unsupported, repeated, or additional parameters on this route return <code>400 Bad Request</code>. Other routes ignore query parameters.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="patch-tweaks">
         <div class="section-heading">
           <span class="step" aria-hidden="true">6</span>
           <h2>PATCH /tweaks</h2>
         </div>
         <div class="section-body">
-<p class="prose">Update one or more registered tweaks in a single request. Send <code>application/json</code> and put the complete tweak names and their new values in a <code>values</code> object. Protocol 5 also accepts Bézier coordinate objects. In version 4 and later, use <code>null</code> for an explicit reset.</p>
+<p class="prose">Update one or more registered tweaks in a single request. Send <code>application/json</code> and put the complete tweak names and their new values in a <code>values</code> object. Bézier values use coordinate objects. Use <code>null</code> for an explicit reset.</p>
 <div class="code-block"><div class="code-head"><span>Example Request</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="http">PATCH /tweaks HTTP/1.1
 Host: 127.0.0.1
 Content-Type: application/json
@@ -318,7 +289,7 @@ Content-Length: 78
     }
   ]
 }</code></pre></div>
-<p class="notice"><strong>Version 3 and later use best-effort batches.</strong> Valid changes remain applied even if another item fails. A valid request returns <code>200 OK</code> with successful items in <code>tweaks</code> and rejected items in an optional <code>errors</code> array. Versions 1 and 2 validate the whole batch before applying it and reject every change if any item fails.</p>
+<p class="notice"><strong>Batches apply valid changes independently.</strong> Valid changes remain applied even if another item fails. A valid request returns <code>200 OK</code> with successful items in <code>tweaks</code> and rejected items in an optional <code>errors</code> array.</p>
 <h3 id="partial-success">Partial success</h3>
 <p class="prose">Unknown or inactive names, invalid values, and action targets become per-item errors without rolling back successful values. Every error contains only its tweak <code>name</code> and <code>error</code> message. The <code>errors</code> field is absent when every item succeeds.</p>
 <div class="code-block"><div class="code-head"><span>Example Response · 200 OK · Partial Success</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
@@ -337,8 +308,8 @@ Content-Length: 78
   ]
 }</code></pre></div>
 <h3 id="reset-a-value">Reset a value</h3>
-<p class="prose">In version 4 and later, reset an active value by sending <code>null</code>. Updates and resets can appear in the same request. Actions cannot be patched or reset.</p>
-<div class="code-block"><div class="code-head"><span>Example Request · Version 4 Reset</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
+<p class="prose">Reset an active value by sending <code>null</code>. Updates and resets can appear in the same request. Actions cannot be patched or reset.</p>
+<div class="code-block"><div class="code-head"><span>Example Request · Reset</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
   "values": {
     "Typography/Font size": null,
     "Motion/Show": null
@@ -357,17 +328,16 @@ Content-Length: 78
   ]
 }</code></pre></div>
 <p class="prose">Ordinary tweaks reset to their original defaults. App-owned tweaks call their source’s <code>reset()</code> behavior, such as removing a stored override, and return its current effective value. That value can differ from the default first observed by Snap-O; writing the captured default would create an override instead of clearing it. Reset all only active, non-action values marked <code>"modified": true</code>.</p>
-<p class="prose">Versions 1, 2, and 3 do not support explicit <code>null</code> resets. Reset their changed values by sending each descriptor’s reported <code>default</code> instead.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="tweak-actions">
         <div class="section-heading">
           <span class="step" aria-hidden="true">7</span>
           <h2>POST /tweaks/action</h2>
         </div>
         <div class="section-body">
-<p class="prose">Invoke one app-owned, parameterless action registered with <code>TweakAction</code>. Actions are available from protocol version 2 and run synchronously on the Android main thread.</p>
+<p class="prose">Invoke one app-owned, parameterless action registered with <code>TweakAction</code>. Actions run synchronously on the Android main thread.</p>
 <div class="code-block"><div class="code-head"><span>Example Request</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="http">POST /tweaks/action HTTP/1.1
 Host: 127.0.0.1
 Content-Type: application/json
@@ -390,20 +360,20 @@ Content-Length: 39
 <p class="notice"><strong>Conflicting actions cannot run.</strong> Invoking one returns <code>409 Conflict</code> until exactly one owner remains. Register each shared action once at the composable that owns its behavior. The server never chooses between callbacks or executes arbitrary code.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="tweak-events">
         <div class="section-heading">
           <span class="step" aria-hidden="true">8</span>
           <h2>GET /tweaks/events</h2>
         </div>
         <div class="section-body">
-<p class="prose">Subscribe to the current full tweak snapshot and subsequent changes as controls are registered, removed, or updated. The response uses server-sent events with the <code>text/event-stream</code> content type.</p>
+<p class="prose">Subscribe to the current full tweak snapshot and subsequent changes as controls are registered, removed, or updated. The response uses server-sent events with the <code>text/event-stream</code> content type. HTTP chunk framing is omitted from the example below.</p>
 <div class="code-block"><div class="code-head"><span>Example Request</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="http">GET /tweaks/events HTTP/1.1
 Host: 127.0.0.1
 Accept: text/event-stream</code></pre></div>
 <div class="code-block"><div class="code-head"><span>Example Response · 200 OK</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="http">HTTP/1.1 200 OK
 Content-Type: text/event-stream; charset=utf-8
-Cache-Control: no-cache
+Cache-Control: no-store
 
 event: tweaks
 data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value":36,"min":16,"max":72,"step":1},{"name":"Motion/Toggle animation","type":"action"}]}
@@ -414,17 +384,19 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 : keep-alive</code></pre></div>
 <p class="notice">Each <code>tweaks</code> event contains a complete current snapshot of active values and actions, not a patch. Replace your client’s current control list with the received <code>tweaks</code> array. Lines starting with <code>:</code> are keep-alive comments.</p>
 <p class="prose">The first event arrives immediately. Later changes made within the same Android main-thread turn are combined into one ordered snapshot, including values changed by the on-device overlay or an app-owned source. An omitted tweak or action has lost its last owner. Inactive adjustment history never appears in event snapshots. Slow clients receive the newest complete snapshot instead of accumulating every intermediate state.</p>
-<p class="notice"><strong>Browser clients need a same-origin proxy.</strong> The Android server does not provide CORS headers or handle browser <code>OPTIONS</code> preflight. Serve your interface and its forwarded API through the same origin; native and server-side HTTP clients do not have this restriction.</p>
+<h3 id="browser-access">Browser access</h3>
+<p class="prose">Desktop frontends use <code>fetch</code> and <code>EventSource</code> with <code>snapo://tool/api/</code> URLs. The macOS host strips <code>/api</code> and sends those requests directly over ADB. Development frontends use the same URLs: Snap-O proxies local frontend files while keeping <code>/api/...</code> on Android. Standalone loopback browser clients can also use HTTP. Every request received by Android must use a loopback <code>Host</code>: <code>localhost</code>, <code>127.0.0.1</code>, or <code>[::1]</code>, with an optional port. This blocks DNS rebinding through attacker-owned names.</p>
+<p class="prose">CORS permits HTTP and HTTPS loopback origins and the desktop origin <code>snapo://tool</code>. Other origins, including <code>null</code>, are rejected. <code>OPTIONS</code> permits <code>GET</code>, <code>PATCH</code>, and <code>POST</code> with <code>Content-Type</code>. Native clients may omit <code>Origin</code>; credentials are not required.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="errors">
         <div class="section-heading">
           <span class="step" aria-hidden="true">9</span>
           <h2>Error responses</h2>
         </div>
         <div class="section-body">
-<p class="prose">Request-level failures return a JSON object containing an <code>error</code> message and the relevant HTTP status. These failures are distinct from the per-item <code>errors</code> returned inside successful batch responses in version 3 and later.</p>
+<p class="prose">Request-level failures return a JSON object containing an <code>error</code> message and the relevant HTTP status. These failures are distinct from the per-item <code>errors</code> returned inside successful batch responses.</p>
 <div class="code-block"><div class="code-head"><span>Example Response · 422 Unprocessable Entity</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="json">{
   "error": "Tweak values must be primitives or coordinate objects."
 }</code></pre></div>
@@ -442,7 +414,7 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 </tr>
 <tr>
 <td><code>404 Not Found</code></td>
-<td>Unknown endpoint, unavailable icon, unknown action, or a version-1 or version-2 tweak not currently in composition.</td>
+<td>Unknown endpoint or unknown action.</td>
 </tr>
 <tr>
 <td><code>405 Method Not Allowed</code></td>
@@ -462,7 +434,7 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 </tr>
 <tr>
 <td><code>422 Unprocessable Entity</code></td>
-<td>An invalid numeric literal or unsupported value shape; versions 1 and 2 also reject an invalid tweak value at the request level.</td>
+<td>An invalid numeric literal or unsupported value shape.</td>
 </tr>
 <tr>
 <td><code>500 Internal Server Error</code></td>
@@ -478,32 +450,32 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 </tr>
 </tbody>
 </table></div>
-<p class="notice"><strong>Inspect both the HTTP status and the response body.</strong> In version 3 and later, an invalid, unknown, inactive, or action update can appear in <code>errors</code> even when the response status is <code>200 OK</code>. Each item contains only <code>name</code> and <code>error</code>; it does not include a separate HTTP status or error code.</p></div>
+<p class="notice"><strong>Inspect both the HTTP status and the response body.</strong> An invalid, unknown, inactive, or action update can appear in <code>errors</code> even when the response status is <code>200 OK</code>. Each item contains only <code>name</code> and <code>error</code>; it does not include a separate HTTP status or error code.</p></div>
       </section>
-
+      
     </article>
     <aside class="quick-jump" aria-label="On this page">
       <nav>
         <ol class="quick-jump-list">
-
+          
           <li><a class="quick-jump-link" href="#overview">Protocol overview</a></li>
-
-          <li><a class="quick-jump-link" href="#get-app">GET /app</a></li>
-
-          <li><a class="quick-jump-link" href="#get-app-icon">GET /app/icon</a></li>
-
+          
+          <li><a class="quick-jump-link" href="#get-app">App discovery</a></li>
+          
+          <li><a class="quick-jump-link" href="#get-app-icon">App icons</a></li>
+          
           <li><a class="quick-jump-link" href="#get-tweaks">GET /tweaks</a></li>
-
+          
           <li><a class="quick-jump-link" href="#adjusted-tweaks">Adjusted history</a></li>
-
+          
           <li><a class="quick-jump-link" href="#patch-tweaks">PATCH /tweaks</a></li>
-
+          
           <li><a class="quick-jump-link" href="#tweak-actions">POST /tweaks/action</a></li>
-
+          
           <li><a class="quick-jump-link" href="#tweak-events">GET /tweaks/events</a></li>
-
+          
           <li><a class="quick-jump-link" href="#errors">Error responses</a></li>
-
+          
         </ol>
       </nav>
     </aside>
@@ -512,21 +484,23 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 
     <footer>
       <div class="wrap footer-row">
-
+        
         <span>© <span id="year"></span> OpenAI</span>
         <span>Apache 2.0</span>
-
+        
       </div>
     </footer>
     <script>window.Prism = { manual: true };</script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-json.min.js"></script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-http.min.js"></script>
-
-
+    
+    
     <script src="assets/guide.js"></script>
+    <script src="assets/robot.js?v=clockwise-1" defer></script>
+    
   </body>
 </html>

@@ -5,77 +5,100 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Snap-O</title>
     <meta name="description" content="Snap-O is a fast, tidy macOS app for Android inspection: capture screenshots and recordings, and inspect network traffic.">
-
+    
     <meta property="og:title" content="Snap-O">
-
+    
     <meta property="og:description" content="Capture screenshots and recordings, and inspect Android app network traffic on macOS.">
-
+    
     <meta property="og:type" content="website">
-
+    
     <meta property="og:image" content="assets/banner.webp">
-
+    
     <meta name="twitter:card" content="summary_large_image">
     <link rel="icon" type="image/png" href="assets/icon-64.png">
+    <link rel="stylesheet" href="assets/theme.css">
+    <link rel="stylesheet" href="assets/robot.css">
     <link rel="stylesheet" href="assets/index.css">
   </head>
-  <body>
-
-<main>
+  <body class="page-home">
+    
+    <div class="space-scene" aria-hidden="true">
+      <div class="stars"></div>
+      <div class="space-planet">
+        <img src="assets/space-planet.webp" alt="" width="1254" height="1254">
+      </div>
+    </div>
+    
+    
+    
+<main id="main">
   <section class="hero">
     <div class="wrap hero-grid">
-      <div>
+      <div class="hero-copy">
         <h1 id="snap-o">Snap-O</h1>
         <p class="subtitle">Android Inspection System</p>
-
+        
 <p class="lead">A fast, tidy macOS app for Android developers: capture screenshots and recordings, and inspect network traffic from Android devices and emulators.</p>
 
 
         <div class="cta">
-
+          
           <a class="btn primary" href="https://github.com/openai/snap-o/releases/latest">Download for macOS</a>
-
+          
           <a class="secondary-link" href="https://github.com/openai/snap-o">View on GitHub</a>
-
+          
         </div>
-        <p class="note">Requires macOS 15+ and Android Platform Tools (<code>adb</code>).</p>
+        <p class="note">Requires macOS 26+ and Android Platform Tools (<code>adb</code>).</p>
       </div>
-      <figure class="demo">
-        <img src="assets/banner.webp" width="1280" height="721" fetchpriority="high" alt="Snap-O interface with a green robot above Earth and the words Fast, Focused, Effortless" >
-      </figure>
+      <div class="robot-orbit">
+        <img class="space-rocket" src="assets/space-rocket.webp" alt="" width="200" height="200" aria-hidden="true">
+        <button class="robot-flight " type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+  
+  <img class="space-robot" src="assets/space-robot.webp" alt="" width="550" height="550" fetchpriority="high" draggable="false">
+  
+</button>
+      </div>
     </div>
   </section>
   <div class="section section-features">
     <div class="wrap">
-
+      
       <section class="product-section">
-        <h2 class="product-title">Network Inspector</h2>
-        <div><p class="product-copy">Inspect HTTP and HTTPS requests, responses, JSON payloads, Server-Sent Events, and WebSocket messages from Android apps. Use Python handlers to edit or mock HTTP responses through the app's OkHttp connection.</p><a class="section-link" href="network-inspector.html">Set up Network Inspector</a></div>
+        <h2 class="product-title">Network</h2>
+        <div><p class="product-copy">Inspect HTTP and HTTPS requests, responses, JSON payloads, Server-Sent Events, and WebSocket messages from Android apps. Use Python handlers to edit or mock HTTP responses through the app's OkHttp connection.</p><a class="section-link" href="network-inspector.html">Set up Network</a></div>
       </section>
-
+      
       <section class="product-section">
         <h2 class="product-title">Screen capture</h2>
         <p class="product-copy">Start in Live Preview and Option-drag the current frame to share a screenshot. Recordings open for immediate playback and frame-by-frame inspection. Drag screenshots or clips into pull requests, chats, or docs without saving them first.</p>
       </section>
-
+      
       <section class="product-section">
-        <h2 class="product-title">Tweaks (Alpha)</h2>
-        <div><p class="product-copy">Adjust values from Compose, Views, and other Kotlin code. Change app-owned settings and run actions through App Inspector, an optional on-device panel, the REST API, or an agent.</p><a class="section-link" href="tweaks.html">Set up Tweaks (Alpha)</a></div>
+        <h2 class="product-title">Tweaks</h2>
+        <div><p class="product-copy">Adjust values from Compose, Views, and other Kotlin code. Change app-owned settings and run actions through the Tool pane, an optional on-device panel, the REST API, or an agent.</p><a class="section-link" href="tweaks.html">Set up Tweaks</a></div>
       </section>
-
+      
+      <section class="product-section">
+        <h2 class="product-title">Build your own tools</h2>
+        <div><p class="product-copy">Bundle app-specific debugging tools with your Android app. Define HTTP routes and live events, then display a web frontend in Snap-O's Tool pane.</p><a class="section-link" href="plugins.html">Build a tool</a></div>
+      </section>
+      
     </div>
   </div>
 </main>
 
     <footer>
       <div class="wrap footer-row">
-
+        
         <p class="footer-copy">© <span id="year"></span> OpenAI</p>
         <p class="footer-copy">Apache 2.0</p>
-
+        
       </div>
     </footer>
     <script>window.Prism = { manual: true };</script>
-
+    
     <script src="assets/guide.js"></script>
+    <script src="assets/robot.js?v=clockwise-1" defer></script>
+    <script src="assets/planet.js" defer></script>
   </body>
 </html>

@@ -1,0 +1,103 @@
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2") format("woff2");
+      }
+
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Medium.woff2") format("woff2");
+      }
+
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Semibold.woff2") format("woff2");
+      }
+
+@font-face {
+        font-family: "OpenAI Sans";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Bold.woff2") format("woff2");
+      }
+
+:root {
+  color-scheme: dark;
+  --bg: #040c16;
+  --ink: #f2f6fa;
+  --muted: #acbccb;
+  --line: rgb(255 255 255 / 14%);
+  --accent: #9ad927;
+  --accent-hover: #abe63c;
+  --surface: #101f2d;
+  --navy: #071321;
+  --lime: var(--accent);
+  --green: var(--accent);
+  --page-gutter: clamp(24px, 5vw, 64px);
+  --maxw: 1200px;
+}
+
+body { isolation: isolate; overflow-x: clip; }
+
+.space-scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: var(--bg); }
+.space-sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+.space-scene.has-sky .stars, .space-scene.has-sky::before { display: none; }
+.space-scene::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 79% 38%, #07304865, transparent 50%),
+              radial-gradient(ellipse at 100% 100%, #07507850, transparent 48%);
+}
+.stars {
+  position: absolute;
+  inset: 0;
+  opacity: .48;
+  background-image: radial-gradient(1px 1px at 24px 36px, #b6dff4 80%, transparent),
+                    radial-gradient(1px 1px at 158px 122px, #b6dff4 80%, transparent),
+                    radial-gradient(1.5px 1.5px at 86px 206px, #d8eaf5 60%, transparent),
+                    radial-gradient(1px 1px at 234px 68px, #93bace 80%, transparent);
+  background-size: 317px 293px, 443px 389px, 617px 499px, 257px 397px;
+  mask-image: linear-gradient(90deg, #0005, #000);
+}
+.space-planet {
+  position: absolute;
+  width: clamp(760px, 84vw, 1440px);
+  aspect-ratio: 1;
+  right: -20%;
+  bottom: min(-510px, -54vw);
+  opacity: .34;
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(125deg, transparent 6%, #000 45%);
+}
+.space-planet img { display: block; width: 100%; height: 100%; }
+.planet-renderer { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+.space-planet.is-ready + .planet-renderer { opacity: 1; }
+.space-planet.is-ready img { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .space-planet.is-ready + .planet-renderer { opacity: 0; }
+  .space-planet.is-ready img { opacity: 1; }
+}
+
+.footer-row { position: relative; min-height: 82px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.footer-row::before { content: ""; position: absolute; top: 0; inset-inline: var(--page-gutter); border-top: 1px solid var(--line); }
+.footer-copy { margin: 0; color: #859aaa; font-size: 13px; }
+
+@media (min-width: 1600px) {
+  .space-planet { right: -13%; bottom: -920px; }
+}
+@media (max-width: 900px) {
+  .space-planet { width: 850px; right: -400px; bottom: -530px; }
+}
+@media (max-width: 640px) {
+  .space-planet { width: 700px; bottom: -520px; right: -340px; opacity: .2; }
+}
