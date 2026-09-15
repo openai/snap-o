@@ -22,6 +22,8 @@ Capture network requests from an Android app with Snap-O, including response bod
 To edit API responses or return mock data with Python handlers, see [Network Interception](network-intercept.md).
 {style="margin-top: 18px"}
 
+Use these 9.0.0 dependencies with the [Snap-O 9.0.0 Mac app](https://github.com/openai/snap-o/releases/tag/9.0.0), which requires macOS 26+. Rebuild your Android app when upgrading from 8.0.0; the tool protocols have changed.
+
 ## Use Maven Central {#maven-central data-step="1"}
 
 Snap-O publishes Android libraries version 3.1.1 and newer to [Maven Central](https://central.sonatype.com/namespace/com.openai.snapo). Most Android projects already include `mavenCentral()`; add it to your dependency sources if yours does not.
@@ -52,7 +54,7 @@ Use the OkHttp interceptor for OkHttp directly or through Ktor's OkHttp engine.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "8.0.0"
+snapo = "9.0.0"
 
 [libraries]
 snapo-network-okhttp3 = { module = "com.openai.snapo:network-okhttp3", version.ref = "snapo" }
@@ -72,8 +74,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-okhttp3:8.0.0")
-    releaseImplementation("com.openai.snapo:network-okhttp3-noop:8.0.0")
+    debugImplementation("com.openai.snapo:network-okhttp3:9.0.0")
+    releaseImplementation("com.openai.snapo:network-okhttp3-noop:9.0.0")
 }
 ```
 
@@ -94,7 +96,7 @@ Use the HttpURLConnection interceptor on Android 7.0 (API 24) or newer.
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6" }
 [versions]
-snapo = "8.0.0"
+snapo = "9.0.0"
 
 [libraries]
 snapo-network-httpurlconnection = { module = "com.openai.snapo:network-httpurlconnection", version.ref = "snapo" }
@@ -114,8 +116,8 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3" }
 dependencies {
-    debugImplementation("com.openai.snapo:network-httpurlconnection:8.0.0")
-    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:8.0.0")
+    debugImplementation("com.openai.snapo:network-httpurlconnection:9.0.0")
+    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:9.0.0")
 }
 ```
 

@@ -73,7 +73,7 @@ JSON listings include `pid`, `processName`, and `packageName`, without friendly 
 
 The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":6}` before reading or changing tweaks. The bundled frontend uses its matching Android server without a version check. Missing, older, and newer versions are unsupported by the CLI; update Snap-O and the Android library together.
 
-Protocol 6 replaces protocol 5, released in Snap-O 8.0.0. It requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use `Cache-Control: no-store`. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
+Protocol 6 replaces protocol 5, released in Snap-O 8.0.0. It requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use `Cache-Control: no-store`. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/9.0.0/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
 
 ## App icons {#get-app-icon data-step="3"}
 

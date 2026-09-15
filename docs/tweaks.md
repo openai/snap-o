@@ -20,6 +20,8 @@ breadcrumbs:
 Expose values, app-owned settings, and actions from Compose, Views, ViewModels, and other Kotlin code. Interact with them through Snap-O’s Tool pane, an optional on-device panel, the REST API, or an agent.
 {.lead}
 
+Use these 9.0.0 dependencies with the [Snap-O 9.0.0 Mac app](https://github.com/openai/snap-o/releases/tag/9.0.0), which requires macOS 26+. Rebuild your Android app when upgrading from 8.0.0; the tool protocols have changed.
+
 ## Use Maven Central {#maven-central data-step="1"}
 
 Snap-O publishes its Android libraries to [Maven Central](https://central.sonatype.com/namespace/com.openai.snapo). Most Android projects already include `mavenCentral()`; add it to your dependency sources if yours does not.
@@ -45,7 +47,7 @@ The overlay dependencies are optional. Add both only if you want an on-device fl
 
 ``` { .toml title="gradle/libs.versions.toml" data-emphasis-lines="2,5,6,8,9,10" }
 [versions]
-snapo = "8.0.0"
+snapo = "9.0.0"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -73,12 +75,12 @@ dependencies {
 
 ``` { .kotlin title="app/build.gradle.kts" data-emphasis-lines="2,3,5,6,7" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks:8.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:8.0.0")
+    debugImplementation("com.openai.snapo:tweaks:9.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:9.0.0")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:8.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:8.0.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:9.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:9.0.0")
 }
 ```
 
@@ -116,10 +118,10 @@ Use `tweaks-core` in Views, ViewModels, services, and ordinary Kotlin classes. I
 
 ``` { .kotlin title="build.gradle.kts" }
 dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:8.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:8.0.0")
+    debugImplementation("com.openai.snapo:tweaks-core:9.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:9.0.0")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:8.0.0")
+    implementation("com.openai.snapo:tweaks-views:9.0.0")
 }
 ```
 
@@ -139,7 +141,7 @@ class PreviewViewModel : ViewModel() {
 }
 ```
 
-Defaults can be Boolean, Int, Float, String, or enum values. The 8.0.0 libraries also support [Bézier curves](#bezier-curves). Numbers accept optional ranges and steps. Use `tweakColor(defaultArgb, name)` for ARGB colors, `action(name) { ... }` for callbacks, and `tweak(source, name)` for app-owned settings. Declaring an action never runs it; tool callbacks run on main.
+Defaults can be Boolean, Int, Float, String, or enum values. The libraries also support [Bézier curves](#bezier-curves). Numbers accept optional ranges and steps. Use `tweakColor(defaultArgb, name)` for ARGB colors, `action(name) { ... }` for callbacks, and `tweak(source, name)` for app-owned settings. Declaring an action never runs it; tool callbacks run on main.
 
 ### Bind values to a View
 
@@ -164,7 +166,7 @@ Register app-owned sources and close scopes containing them on main. Ordinary de
 
 ## Expose values from Compose {#expose-values data-step="3"}
 
-Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `State<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The 8.0.0 libraries also support [Bézier curves](#bezier-curves).
+Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable `State<T>` that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The libraries also support [Bézier curves](#bezier-curves).
 
 ``` { .kotlin title="Kotlin · typography" }
 import androidx.compose.material3.Text
@@ -290,7 +292,7 @@ fun MotionTrack(modifier: Modifier = Modifier) {
 
 ### Bézier curves {#bezier-curves}
 
-Bézier curves are available in Android 8.0.0 and the Snap-O 8.0.0 Mac app. Curve inspection requires Tweaks protocol 5 support; update older Mac clients before connecting to an app that exposes curves.
+Bézier curves were introduced in Snap-O 8.0.0. For the current release, use the 9.0.0 Android libraries and Mac app together; Tweaks protocol 6 replaces protocol 5.
 
 A `BezierCurve` has fixed endpoints `(0, 0)` and `(1, 1)`, plus two editable control points.
 Declare one inside a composable:
