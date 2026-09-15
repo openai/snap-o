@@ -16,21 +16,7 @@ on:
       - 'skills/snap-o-tweaks/**'
       - 'contracts/**'
       - '.github/workflows/snapo-cli.yml'
-  pull_request:
-    branches: [main, master]
-    paths:
-      - '.agents/plugins/marketplace.json'
-      - '.codex-plugin/plugin.json'
-      - 'VERSION'
-      - 'app-macos/cli/**'
-      - 'tools/network/cli/**'
-      - 'tools/tweaks/cli/**'
-      - 'release/**'
-      - 'examples/**'
-      - 'skills/snap-o-network-inspector/**'
-      - 'skills/snap-o-tweaks/**'
-      - 'contracts/**'
-      - '.github/workflows/snapo-cli.yml'
+  workflow_call:
 
 permissions:
   contents: read
@@ -41,6 +27,7 @@ env:
 
 jobs:
   test:
+    name: CLI tests (${{ matrix.runner }})
     strategy:
       fail-fast: false
       matrix:
