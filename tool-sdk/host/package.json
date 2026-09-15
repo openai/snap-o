@@ -12,8 +12,7 @@
     "test": "node --test scripts/*.test.mjs && vitest run src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "check:boundaries": "node scripts/check-boundaries.mjs",
-    "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build"
+    "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {},
   "devDependencies": {
@@ -42,13 +41,10 @@
     "LICENSE"
   ],
   "types": "./dist/index.d.ts",
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/openai/snap-o.git",
     "directory": "tool-sdk/host"
-  }
+  },
+  "private": true
 }

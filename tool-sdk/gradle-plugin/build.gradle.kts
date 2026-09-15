@@ -1,11 +1,63 @@
+import com.github.gradle.node.npm.task.NpmTask
 import com.vanniktech.maven.publish.GradlePlugin
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
 import java.util.Properties
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 
 plugins {
     `kotlin-dsl`
+    id("com.github.node-gradle.node") version "7.1.0"
     id("com.vanniktech.maven.publish") version "0.36.0"
+}
+
+node {
+    version.set("22.23.2")
+    download.set(true)
+    nodeProjectDir.set(file("../host"))
+    npmInstallCommand.set("ci")
+}
+
+val hostDist = layout.buildDirectory.dir("host-sdk/dist")
+val buildHostSdk = tasks.register<NpmTask>("buildHostSdk") {
+    dependsOn("npmInstall")
+    npmCommand.set(listOf("run", "build", "--", "--outDir", hostDist.get().asFile.absolutePath))
+    inputs.files(fileTree("../host/src") { exclude("**/*.test.ts") }, file("../host/tsconfig.json"),
+        file("../host/tsconfig.build.json"), file("../host/package.json"), file("../host/package-lock.json"))
+    outputs.dir(hostDist)
+    doFirst { hostDist.get().asFile.deleteRecursively() }
+}
+
+val hostMetadata = file("../host/package.json")
+val hostPackage = layout.buildDirectory.file("host-sdk/package.json")
+val writeHostPackage = tasks.register("writeHostPackage") {
+    inputs.file(hostMetadata)
+    outputs.file(hostPackage)
+    doLast {
+        val metadata = JsonSlurper().parse(hostMetadata) as Map<*, *>
+        require((metadata["dependencies"] as Map<*, *>).isEmpty()) { "The host SDK must have no runtime dependencies" }
+        // Gradle supplies the SDK version. npm only needs its local module entry point.
+        val runtime = metadata.filterKeys { it in setOf("name", "private", "type", "exports", "types", "license") }
+        hostPackage.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(JsonOutput.prettyPrint(JsonOutput.toJson(runtime)) + "\n")
+        }
+    }
+}
+
+val bundleHostSdk = tasks.register<Zip>("bundleHostSdk") {
+    archiveFileName.set("host-sdk.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("host-sdk-bundle"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    from(writeHostPackage)
+    from("../host") { include("README.md", "LICENSE") }
+    into("dist") { from(buildHostSdk) }
+}
+
+tasks.processResources {
+    from(bundleHostSdk) { into("host-sdk") }
 }
 
 val androidProperties = Properties().apply { file("../../gradle.properties").inputStream().use(::load) }

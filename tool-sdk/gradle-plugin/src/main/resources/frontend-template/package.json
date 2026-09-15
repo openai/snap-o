@@ -8,8 +8,8 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
-    "@snap-o/tool-host": "1.0.0",
-    "preact": "10.29.8"
+    "preact": "10.29.8",
+    "@snap-o/tool-host": "file:.gradle/tool-host"
   },
   "devDependencies": {
     "@preact/preset-vite": "2.10.6",

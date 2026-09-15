@@ -33,7 +33,6 @@ class ToolPackagerPlugin : Plugin<Project> {
             version.set("22.23.2")
             download.set(true)
             nodeProjectDir.set(tool.frontendDirectory)
-            npmInstallCommand.set("ci")
             enableTaskRules.set(false)
         }
         val downloadNode = extensions.getByType<NodeExtension>().download
@@ -52,17 +51,25 @@ class ToolPackagerPlugin : Plugin<Project> {
         val starter = tasks.register<ToolFrontendInitTask>("writeSnapoToolFrontend") {
             frontendDirectory.set(tool.frontendDirectory)
         }
+        val sdk = tasks.register<ToolHostSdkTask>("prepareSnapoToolHost") {
+            description = "Restores the bundled host SDK for the frontend."
+            outputDirectory.set(tool.frontendDirectory.dir(".gradle/tool-host"))
+            mustRunAfter(starter)
+        }
+        val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME) {
+            dependsOn(sdk)
+        }
         tasks.register<NpmTask>("initSnapoToolFrontend") {
             group = "snapo"
             description = "Creates a Preact frontend and installs its dependencies."
-            dependsOn(starter)
+            dependsOn(starter, sdk)
             npmCommand.set(listOf("install"))
         }
-        val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME)
         val build = tasks.register<ToolBuildTask>("buildSnapoToolFrontend") {
             group = "snapo"
             description = "Builds the tool frontend."
             inputs.files(install).withPropertyName("frontendDependencies").withPathSensitivity(PathSensitivity.RELATIVE)
+            inputs.files(sdk).withPropertyName("hostSdk").withPathSensitivity(PathSensitivity.RELATIVE)
             npmCommand.set(listOf("run", "build"))
             inputs.files(tool.frontendDirectory.map {
                 it.asFileTree.matching { exclude("node_modules/**", "dist/**", ".gradle/**") }
@@ -71,7 +78,6 @@ class ToolPackagerPlugin : Plugin<Project> {
         }
         tool.frontendAssets.convention(build.flatMap { it.outputDirectory })
         val archive = tasks.register<Zip>("zipSnapoToolFrontend") {
-            group = "snapo"
             description = "Packages the tool frontend."
             from(tool.frontendAssets)
             archiveFileName.set("frontend.zip")

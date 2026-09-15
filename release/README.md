@@ -62,7 +62,7 @@ To test the release scripts:
 python3 -m unittest discover -s release/tests -p 'test_*.py' -v
 ```
 
-For changes to the authoring packages, also follow [authoring package preparation](authoring.md). This validates the Gradle plugin, host SDK tarball, and independent Example tool without uploading packages.
+For changes to the authoring packages, also follow [authoring package preparation](authoring.md). This validates the Gradle plugin with its bundled host SDK, and independent Example tool without uploading packages.
 
 ## Update the version and tag
 
