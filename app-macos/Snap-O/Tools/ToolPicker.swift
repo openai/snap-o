@@ -290,7 +290,7 @@ private struct ToolToolIcon: View {
     if option.compatibility.isUnsupported {
       Image(systemName: "exclamationmark.triangle.fill")
     } else if let encoded = option.iconBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
-      Image(nsImage: image).resizable().scaledToFit().frame(width: 16, height: 16)
+      Image(nsImage: image).renderingMode(.template).resizable().scaledToFit().frame(width: 16, height: 16)
     } else if option.compatibility == .unknown {
       ProgressView().progressViewStyle(.circular).controlSize(.small).frame(width: 16, height: 16)
     } else if option.compatibility == .metadataUnavailable {
