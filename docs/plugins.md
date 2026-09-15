@@ -64,7 +64,7 @@ snapoTool {
 }
 ```
 
-Use a stable, unique `id` starting with a lowercase letter and containing only lowercase letters, digits, dots, or hyphens. Set `icon` to an existing drawable or mipmap resource.
+Use a stable, unique `id` starting with a lowercase letter and containing only lowercase letters, digits, dots, or hyphens. Set `icon` to an existing drawable or mipmap resource. Use a single-color icon with a transparent background.
 
 The plugin expects a web project in your module’s `frontend/` directory. You’ll create it in step 3.
 
