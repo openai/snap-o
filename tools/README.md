@@ -66,7 +66,7 @@ Switching tools keeps their pages alive. A hidden page keeps its UI state, but d
 
 Connection updates reach the frontend through `host.onConnection`. A known disconnect cancels API requests and delivers `null`, without reloading the page. Requests can also fail before Snap-O detects a disconnect. Stopping a page revokes API and bridge access immediately; transport cleanup does not wait for WebKit to unload it.
 
-Native messages must come from the owning WebView's current main document. The bridge bounds payload size, nesting, concurrent requests, and toolbar fields. Clipboard writes, color picker presentation, and external links require native confirmation. Exports use a save sheet, accept at most 64 MiB, and do not return the selected filesystem path to JavaScript. Only one native action runs at a time. File upload dialogs, JavaScript dialogs, media capture, and downloads are blocked.
+Native messages must come from the owning WebView's current main document. The bridge bounds payload size, nesting, concurrent requests, and toolbar fields. Clipboard writes and external links require native confirmation. The color picker opens directly for the active tool. Exports use a save sheet, accept at most 64 MiB, and do not return the selected filesystem path to JavaScript. Only one native action runs at a time. File upload dialogs, JavaScript dialogs, media capture, and downloads are blocked.
 
 Develop → Use Development Server sets a loopback URL for the selected app and tool. Snap-O proxies frontend files from that server under `snapo://tool/`; `/api/...` still goes to Android. Both packaged and development frontends use relative API URLs without CORS configuration. Frontend paths stay unchanged; there is no added `/assets` prefix.
 

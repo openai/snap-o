@@ -151,9 +151,6 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
     case "openNativeColorPanel":
       let input = try Self.decode(NativeColorPanelInput.self, from: payload)
       guard isActiveHandler?() == true else { throw ToolError.invalidBridgeMessage }
-      if input.present != false {
-        guard await confirm("Allow this tool to open the color picker?") else { throw CancellationError() }
-      }
       try Task.checkCancellation()
       try openNativeColorPanel(input)
       return nil
