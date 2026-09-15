@@ -33,7 +33,7 @@ dependencies {
 }
 
 // Include sources outside each frontend directory in incremental builds.
-tasks.named("toolBuild") {
+tasks.named("buildSnapoToolFrontend") {
     inputs.dir(rootProject.file("tools/frontend"))
     inputs.dir(rootProject.file("tool-sdk/host/src"))
     inputs.file(rootProject.file("tool-sdk/host/tsconfig.build.json"))

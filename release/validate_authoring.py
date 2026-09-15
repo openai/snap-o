@@ -125,12 +125,12 @@ def verify_configuration_cache(command, example, env):
 
 
 def verify_node_runtimes(example, command, managed_env):
-    verify_configuration_cache([*command, ":example-tool:toolBuild"], example, managed_env)
+    verify_configuration_cache([*command, ":example-tool:buildSnapoToolFrontend"], example, managed_env)
 
     init = example / "installed-node.gradle"
     installed_node = Path(shutil.which("node")).resolve()
     installed_env = {"SNAPO_EXPECT_NODE_ROOT": str(installed_node.parent)}
-    installed = [*command, "--init-script", str(init), ":example-tool:toolBuild"]
+    installed = [*command, "--init-script", str(init), ":example-tool:buildSnapoToolFrontend"]
     try:
         init.write_text('''
 gradle.beforeProject { project ->
@@ -158,7 +158,7 @@ gradle.beforeProject { project ->
 }
 ''')
         graph = run([*prebuilt, "--dry-run"], example, capture=True, env=managed_env)
-        for task in ("nodeSetup", "npmSetup", "npmInstall", "toolBuild"):
+        for task in ("nodeSetup", "npmSetup", "npmInstall", "buildSnapoToolFrontend"):
             assert f":example-tool:{task} " not in graph, f"Prebuilt assets unexpectedly schedule {task}"
         run(prebuilt, example, env=managed_env)
     finally:
@@ -185,10 +185,53 @@ gradle.beforeProject { project ->
 }
 ''')
         module_build.write_text(default_build)
-        run([*command, "--init-script", str(init), ":example-tool:toolBuild", "--rerun-tasks"], example,
+        run([*command, "--init-script", str(init), ":example-tool:buildSnapoToolFrontend", "--rerun-tasks"], example,
             env={**managed_env, "SNAPO_EXPECT_NODE_ROOT": str(example / "example-tool/build/default-node")})
     finally:
         module_build.write_text(original_build)
+        init.unlink(missing_ok=True)
+
+
+def verify_frontend_initializer(example, command, managed_env):
+    init = example / "initialize-frontend.gradle"
+    frontend = example / "example-tool/initialized-frontend"
+    # Use the staged SDK so this also validates changes before an npm release.
+    try:
+        init.write_text('''
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin("com.openai.snapo.tool-packager") {
+        project.extensions.getByName("snapoTool").frontendDirectory.set(
+            project.layout.projectDirectory.dir("initialized-frontend"))
+        def packageFile = project.layout.projectDirectory.file("initialized-frontend/package.json").asFile
+        def sdkArchive = project.layout.projectDirectory.file("frontend/vendor/host.tgz").asFile
+        project.tasks.named("initSnapoToolFrontend") {
+            doFirst {
+                def metadata = new groovy.json.JsonSlurper().parse(packageFile)
+                metadata.dependencies["@snap-o/tool-host"] = sdkArchive.toURI().toString()
+                packageFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata))
+            }
+        }
+    }
+}
+''')
+        configured = [*command, "--init-script", str(init)]
+        run([*configured, ":example-tool:initSnapoToolFrontend", "--configuration-cache"], example, env=managed_env)
+        assert (frontend / "package-lock.json").is_file(), "Initializer did not install dependencies"
+        assert (frontend / "src/main.tsx").is_file(), "Initializer did not write the starter"
+        run([*configured, ":example-tool:zipSnapoToolFrontend"], example, env=managed_env)
+        assert (frontend / "dist/index.html").is_file(), "Generated frontend did not build"
+        source = frontend / "src/main.tsx"
+        source.write_text(source.read_text() + "\n// Keep user edits.\n")
+        expected = source.read_text()
+        refused = subprocess.run([*configured, ":example-tool:initSnapoToolFrontend", "--configuration-cache"],
+                                 cwd=example, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 env={**os.environ, "NPM_CONFIG_REGISTRY": REGISTRY, **managed_env})
+        assert refused.returncode != 0 and "Frontend directory is not empty" in refused.stdout, refused.stdout
+        assert source.read_text() == expected, "Initializer overwrote user edits"
+        dev = run([*configured, ":example-tool:devSnapoToolFrontend", "--dry-run"],
+                  example, capture=True, env=managed_env)
+        assert ":example-tool:devSnapoToolFrontend " in dev, "Development task was not scheduled"
+    finally:
         init.unlink(missing_ok=True)
 
 
@@ -197,6 +240,7 @@ def verify_frontend_modes(example, overrides, managed_env):
     verify_node_runtimes(example, command, managed_env)
     verify_prebuilt_frontend(example, command, managed_env)
     verify_automatic_node_repository(example, command, managed_env)
+    verify_frontend_initializer(example, command, managed_env)
 
 
 def main():
@@ -274,7 +318,8 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
     (frontend / "verify-node.cjs").unlink()
     report = {"mavenCoordinates": coordinates, "npmPackage": f"{sdk['name']}@{sdk['version']}",
               "npmTarball": str(archive), "exampleProject": str(example), "debugApk": str(apk),
-              "frontendModes": ["managed-node-without-path", "installed-node", "prebuilt", "automatic-node-repository"],
+              "frontendModes": ["managed-node-without-path", "installed-node", "prebuilt", "automatic-node-repository",
+                                "frontend-initializer"],
               "configurationCacheReused": True, "published": False}
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

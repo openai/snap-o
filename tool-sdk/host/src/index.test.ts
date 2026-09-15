@@ -25,32 +25,97 @@ function setup() {
   };
 }
 
+async function connected(host: ToolHost) {
+  const changed = vi.fn();
+  const stop = host.onConnection(changed);
+  await vi.waitFor(() =>
+    expect(changed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processIdentity: "boot:42:1"
+      })
+    )
+  );
+  stop();
+}
+
 describe("shared tool host", () => {
-  it("reports a missing WebKit bridge", async () => {
+  it("reports a missing WebKit bridge through onError", async () => {
     const host = new ToolHost();
-    await expect(host.ready()).rejects.toThrow("Open this tool in the Snap-O macOS app.");
+    const error = vi.fn();
+    host.onError(error);
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Open this tool in the Snap-O macOS app."
+        })
+      )
+    );
+    expect(host).not.toHaveProperty("ready");
   });
 
-  it("reports startup failure and lets callers retry without changing the toolbar", async () => {
+  it("replays initialization failures to late subscribers and retries on use", async () => {
     const { host, request } = setup();
-    request.mockRejectedValueOnce(new Error("Connection request failed."));
-    await expect(host.ready()).rejects.toThrow("Connection request failed.");
-    await host.ready();
-    expect(host.connection).not.toBeNull();
+    const failure = new Error("Connection request failed.");
+    request.mockRejectedValueOnce(failure);
+    const first = vi.fn();
+    const stop = host.onError(first);
+    await vi.waitFor(() => expect(first).toHaveBeenCalledWith(failure));
+    stop();
+    const late = vi.fn();
+    host.onError(late);
+    expect(late).toHaveBeenCalledWith(failure);
+    await connected(host);
     expect(request.mock.calls.map(([command]) => command)).toEqual(["hostState", "hostState"]);
+    const recovered = vi.fn();
+    host.onError(recovered);
+    expect(recovered).not.toHaveBeenCalled();
+    request.mockRejectedValueOnce(new Error("Native operation failed."));
+    await expect(host.copyText("test")).rejects.toThrow("Native operation failed.");
+    expect(first).toHaveBeenCalledOnce();
+    expect(late).toHaveBeenCalledOnce();
   });
 
-  it("shares startup between callers and succeeds without an Android connection", async () => {
+  it("shares automatic initialization and succeeds without an Android connection", async () => {
     const { host, request } = setup();
     request.mockResolvedValue({ revision: 1, connected: false });
-    await Promise.all([host.ready(), host.ready()]);
-    expect(request).toHaveBeenCalledOnce();
+    const error = vi.fn();
+    host.onError(error);
+    host.onConnection(() => {});
+    host.onConnection(() => {});
+    // A native method waits internally on the same initialization.
+    await host.setToolbar({});
+    expect(request.mock.calls.filter(([command]) => command === "hostState")).toHaveLength(1);
     expect(host.connection).toBeNull();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("supports async connection callbacks and reports uncaught failures", async () => {
+    const { host, emit } = setup();
+    await connected(host);
+    const error = vi.fn();
+    const stopErrors = host.onError(error);
+    const failure = new Error("Callback failed.");
+    let reject: (error: Error) => void = () => {};
+    const pending = new Promise<void>((_, rejectPromise) => {
+      reject = rejectPromise;
+    });
+    const stop = host.onConnection(async (connection) => {
+      if (connection) await pending;
+    });
+    emit("connection", { revision: 2, connected: false });
+    stop();
+    reject(failure);
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith(failure));
+    stopErrors();
+    host.onConnection(() => {
+      throw new Error("Later failure");
+    });
+    expect(error).toHaveBeenCalledOnce();
   });
 
   it("keeps discovery objects internal while disconnected", async () => {
     const { host, emit } = setup();
-    await host.ready();
+    await connected(host);
     emit("connection", { revision: 2, connected: false });
     const changed = vi.fn();
     host.addEventListener("connection", changed);
@@ -65,7 +130,7 @@ describe("shared tool host", () => {
 
   it("waits for connection details and exposes only the fields tools need", async () => {
     const { host, emit } = setup();
-    await host.ready();
+    await connected(host);
     emit("connection", { revision: 2, connected: true, manifest: null });
     expect(host.connection).toBeNull();
     emit("connection", { revision: 3, connected: true });
@@ -79,7 +144,7 @@ describe("shared tool host", () => {
 
   it("connects bundled tools without protocol metadata", async () => {
     const { host, emit } = setup();
-    await host.ready();
+    await connected(host);
     emit("connection", {
       revision: 2,
       connected: true,
@@ -93,11 +158,10 @@ describe("shared tool host", () => {
     const { host, emit } = setup();
     const changed = vi.fn();
     host.addEventListener("connection", changed);
-    await host.ready();
+    await connected(host);
     expect(host.connection).not.toBeNull();
     emit("connection", { revision: 2, connected: true });
     emit("connection", { revision: 1, connected: false });
-    expect(host.connection).not.toBeNull();
     expect(host.connection).not.toBeNull();
     expect(changed).toHaveBeenCalledTimes(2);
     emit("connection", { revision: 3, connected: true });
@@ -131,7 +195,7 @@ describe("shared tool host", () => {
 
   it("delivers current connections, cleans up before replacement, and aborts old requests", async () => {
     const { host, emit } = setup();
-    await host.ready();
+    await connected(host);
     const first = host.connection!;
     const order: string[] = [];
     const unsubscribe = host.onConnection((connection) => {
@@ -154,7 +218,7 @@ describe("shared tool host", () => {
 
   it("unsubscribing one UI does not abort another UI's connection", async () => {
     const { host, emit } = setup();
-    await host.ready();
+    await connected(host);
     const connection = host.connection!;
     const cleanup = vi.fn();
     const stop = host.onConnection(() => cleanup);

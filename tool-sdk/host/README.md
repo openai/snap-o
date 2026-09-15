@@ -8,11 +8,17 @@ requests, event streams, and domain state.
 
 The native host owns process and tool isolation. It creates a separate page for each tool and replaces the page when its app or process identity changes. A frontend does not need to route requests between processes or protect another tool's endpoint.
 
-Call `await host.ready()` during frontend startup. It resolves when the SDK receives Snap-O's connection details, even when no Android app is connected. It rejects if the SDK cannot communicate with Snap-O. Show that error separately from the disconnected state. Calling it again retries a failed request; concurrent calls share one request.
+The SDK initializes automatically when you subscribe. Toolbar and color picker calls also initialize it internally. Use `host.onError(callback)` to show initialization failures; it returns an unsubscribe function. Late subscribers receive the most recent initialization failure. A later connection subscription, toolbar call, or color picker call can retry initialization. A successful retry clears the stored failure.
+
+`onError` also receives uncaught errors from connection callbacks. Native operation failures remain on that operation’s Promise; handle them at the call site. Your frontend still handles its own HTTP and JSON errors.
+
+```ts
+const stopErrors = host.onError((error) => showError(error.message));
+```
 
 `host.connection` contains the selected tool's connection details, or `null` while disconnected. Hidden tool pages can remain alive and receive a disconnected connection state.
 
-`host.onConnection(callback)` delivers the current `ToolConnection` or `null` immediately. Return a cleanup function to close that connection's stream before replacement or disconnection. Unsubscribe when the UI unmounts; this also runs its cleanup. Use `connection.signal` with requests that should abort on disconnection.
+`host.onConnection(callback)` delivers the current `ToolConnection` or `null` immediately. Return a cleanup function to close that connection's stream before replacement or disconnection. Async callbacks are also supported, but must resolve without a cleanup function; register cleanup synchronously for streams. The SDK does not wait for an async callback before delivering the next connection change. Unsubscribe when the UI unmounts; this also runs its cleanup. Use `connection.signal` with requests that should abort on disconnection.
 
 Use the browser's `fetch` and `EventSource` APIs with relative `/api/...` URLs. Set `redirect: "error"` and `cache: "no-store"` on fetches. Use `connection.signal` to abort requests when the connection ends. Protocol compatibility belongs to the tool and its clients; the host does not expose a protocol version. `connection.processIdentity` is an opaque token that changes when the Android process restarts. Raw discovery metadata stays internal.
 

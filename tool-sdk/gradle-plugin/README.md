@@ -45,6 +45,21 @@ Tool protocols belong to each tool. The plugin does not configure or generate pr
 
 Each variant receives generated resources and assets through Android Gradle plugin source APIs. No source manifest edit is needed. The metadata references `snapo/inspectors/<id>/frontend.zip`. `index.html` is implicit. The ZIP uses reproducible file order and timestamps.
 
+## Frontend tasks
+
+Run these tasks in your tool module, for example `./gradlew :example-tool:initSnapoToolFrontend`:
+
+| Task | Purpose |
+| --- | --- |
+| `initSnapoToolFrontend` | Create a Preact and TypeScript starter and install its dependencies. |
+| `buildSnapoToolFrontend` | Build the frontend into `dist/`. |
+| `devSnapoToolFrontend` | Run the frontend development server. |
+| `zipSnapoToolFrontend` | Build and package the frontend ZIP. |
+
+The initializer uses the configured `frontendDirectory` and Gradle’s managed Node/npm. It writes one `src/main.tsx` with a request to `/example`, matching the [tool guide](../../docs/plugins.md). It refuses to write into a nonempty directory. If dependency installation fails, the generated files remain. Resolve the npm error and run `npm install` in that directory with a local Node installation.
+
+Android builds also run `package<Variant>SnapoToolAssets` and `generate<Variant>SnapoToolMetadata` automatically. These replace the old unprefixed generated task names.
+
 ## Node configuration
 
 The plugin applies the Node Gradle plugin. Use its existing `node` extension when your frontend requires another Node version:
@@ -101,8 +116,8 @@ Gradle follows that provider's task dependency. The directory must contain `inde
 Run either command from the repository root, in separate terminals if needed:
 
 ```sh
-./gradlew :network:toolDev
-./gradlew :tweaks-core:toolDev
+./gradlew :network:devSnapoToolFrontend
+./gradlew :tweaks-core:devSnapoToolFrontend
 ```
 
 In Snap-O, select the app and tool, then choose Develop → Use Development Server. Enter the URL printed by the development server. Snap-O proxies frontend files under `snapo://tool/`; relative `/api/...` requests still go to Android. Vite’s hot-reload WebSocket connects directly to the selected server. Set Vite’s `server.hmr.host` and `server.hmr.clientPort` to that address, with `server.strictPort: true`. There is no default URL. The override is saved separately for each device, Android user, app, and tool. Choose Develop → Use Packaged Frontend to remove it.

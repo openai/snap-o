@@ -29,7 +29,7 @@ Run `./gradlew :app:assembleDebug` to rebuild the Android app and its frontend. 
 
 The Tool Packager Gradle Plugin downloads Node and uses its bundled npm. Android Studio and CI builds do not need Node or npm on `PATH`. This example forbids project repositories, so it declares the Node download source in settings and sets `node.distBaseUrl` to `null` in the tool module. Builds that allow project repositories need neither change. See [Node configuration](../../tool-sdk/gradle-plugin/README.md#node-configuration) for version overrides and using an existing installation.
 
-Run `./gradlew :example-tool:toolDev` to start the development server with managed Node. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. With a local Node installation, frontend-only commands are also available in `example-tool/frontend`:
+Run `./gradlew :example-tool:devSnapoToolFrontend` to start the development server with managed Node. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. With a local Node installation, frontend-only commands are also available in `example-tool/frontend`:
 
 ```sh
 npm ci

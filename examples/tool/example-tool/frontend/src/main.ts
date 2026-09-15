@@ -55,6 +55,8 @@ function report(error: unknown) {
       error instanceof Error ? error.message : "Native helper failed.";
 }
 
+const stopErrors = host.onError(report);
+
 increment.addEventListener("click", () => {
   incrementing = true;
   render();
@@ -119,6 +121,7 @@ window.addEventListener(
   () => {
     disposed = true;
     observer.dispose();
+    stopErrors();
     picker?.close();
     void host.setToolbar({actions:[]}).catch(() => {});
   },
