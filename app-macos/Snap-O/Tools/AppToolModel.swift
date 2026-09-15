@@ -165,9 +165,8 @@ final class AppToolModel {
   }
 
   func reconnectToNewProcess() {
-    guard let app = selection.state.replacementApp,
-          let option = app.tools.first(where: { $0.kind == selection.state.preferredKind }) else { return }
-    selectTool(app, option: option)
+    guard let app = selection.state.replacementApp else { return }
+    selectApp(app)
   }
 
   func openSelectedApp(appId: String) {

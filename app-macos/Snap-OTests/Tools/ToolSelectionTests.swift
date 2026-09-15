@@ -5,10 +5,11 @@ import Testing
 func selectionApp(
   _ pid: Int = 10, kinds: [ToolID] = [.network, .tweaks],
   process: String? = "com.example.demo", device: String = "phone", user: Int? = 0,
-  package: String? = "com.example.demo", connectedKinds: [ToolID]? = nil
+  package: String? = "com.example.demo", connectedKinds: [ToolID]? = nil, processIdentity: String? = nil
 ) -> InspectableApp {
   let manifest = testManifest(pid: pid, kinds: kinds)
   var record = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(manifest)) as! [String: Any]
+  if let processIdentity { record["processIdentity"] = processIdentity }
   record["androidUserId"] = user as Any? ?? NSNull()
   record["processName"] = process as Any? ?? NSNull()
   var packageRecord = record["app"] as! [String: Any]
@@ -139,6 +140,30 @@ struct ToolSelectionTests {
     updated.metadata?.name = "Updated app"
     owner.reconcile([updated])
     #expect(owner.state.selectedApp?.metadata?.name == "Updated app", "Refresh selected app metadata")
+  }
+
+  @Test
+  func replacementTools() {
+    let analytics = ToolID(rawValue: "analytics")
+    let original = selectionApp(kinds: [analytics, .network])
+    for replacement in [
+      selectionApp(20, kinds: [.network]),
+      selectionApp(kinds: [.network], processIdentity: "boot:10:2")
+    ] {
+      var owner = ToolSelection()
+      owner.reconcile([original])
+      owner.reconcile([replacement])
+      #expect(owner.state.selection == nil)
+      #expect(owner.state.replacementApp == replacement, "Offer the new process even when its tools differ")
+      #expect(owner.state.displayed[analytics] != nil, "Keep the old page until explicit reconnection")
+
+      owner.selectApp(replacement)
+      #expect(owner.state.selectedApp?.tools.map(\.kind) == [.network])
+      #expect(owner.state.selection?.kind == .network, "Choose an available tool if the saved tool is absent")
+      #expect(owner.state.displayed[analytics] == nil, "Do not retain pages from the previous process after switching")
+      owner.reconcile([replacement])
+      #expect(owner.state.selectedApp?.tools.map(\.kind) == [.network])
+    }
   }
 
   @Test
@@ -450,6 +475,14 @@ struct ToolSelectionTests {
     #expect(!page.isActive && !page.isConnected, "Deactivate the hidden Network page")
     #expect(page.selection?.server.socketName == "snapo_network_20", "Keep the hidden page mounted with its data")
     #expect(model.snapshot.pageState(for: .tweaks).isConnected, "Activate Tweaks from the native choice")
+
+    apps = [selectionApp(30, kinds: [.network])]
+    model.refresh()
+    await settle()
+    #expect(model.snapshot.state.replacementApp == apps[0])
+    model.reconnectToNewProcess()
+    #expect(model.snapshot.pageState(for: .network).isConnected, "Reconnect even when the previous tool is absent")
+    #expect(model.snapshot.state.selectedApp?.tools.map(\.kind) == [.network])
 
     model.stop()
     clock.cancelAll()
