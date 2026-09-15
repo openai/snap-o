@@ -35,6 +35,7 @@ public final class ADBClient: @unchecked Sendable {
   private var networkDisconnected = false
   private var propertiesRecovered = false
   private var metadataAvailable = false
+  private var toolOrder: [String] = []
   private var metadataRequests: [[Int]] = []
   private var metadataFailure: MetadataFailure?
   private var legacyKinds: Set<ToolID> = []
@@ -107,6 +108,10 @@ public final class ADBClient: @unchecked Sendable {
     lock.withLock { metadataAvailable = available }
   }
 
+  public func setToolOrder(_ order: [String]) {
+    lock.withLock { toolOrder = order }
+  }
+
   public var metadataProcessRequests: [[Int]] {
     lock.withLock { metadataRequests }
   }
@@ -141,7 +146,8 @@ public final class ADBClient: @unchecked Sendable {
         "app": [
           "name": "Demo", "packageName": "com.example.demo", "revision": "1",
           "iconBase64": "icon-\(deviceID)",
-          "inspectors": tools
+          "inspectors": tools,
+          "toolOrder": lock.withLock { toolOrder }
         ]
       ]
       return try JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))

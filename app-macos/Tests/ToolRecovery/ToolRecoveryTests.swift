@@ -17,6 +17,7 @@ struct ToolRecoveryTests {
   static func main() async throws {
     let adbService = ADBService()
     let adb = await adbService.exec()
+    adb.setToolOrder(["tweaks"])
     let tracker = DeviceTracker(adbService: adbService)
     await tracker.startTracking()
     let payload = "frozen device transport_id:1\nhealthy device transport_id:2\nstalled device transport_id:3"
@@ -80,6 +81,8 @@ struct ToolRecoveryTests {
     precondition(adb.scannedDeviceIDs.count == scansBeforeMetadata, "Completed metadata reaches the UI without another device scan")
     let frozenMetadata = await service.discoverPlugins().apps.first { $0.deviceId == "frozen" }!
     precondition(frozenMetadata.tools.allSatisfy { !$0.isConnected })
+    precondition(frozenMetadata.tools.map(\.kind) == [.tweaks, .network])
+    try await eventually { host.snapshot.state.selectedApp?.tools.map(\.kind) == [.tweaks, .network] }
     print("App metadata loads while tool HTTP servers remain frozen")
     adb.unfreeze()
     try await Task.sleep(for: .milliseconds(3200))
@@ -112,7 +115,7 @@ struct ToolRecoveryTests {
       let cached = apps.first { $0.deviceId == "frozen" }!
       precondition(cached.name == discovered.name && cached.appIconBase64 == discovered.appIconBase64)
       precondition(cached.packageName == discovered.packageName && cached.androidUserId == discovered.androidUserId)
-      precondition(cached.tools.map(\.kind) == [.network, .tweaks])
+      precondition(cached.tools.map(\.kind) == [.tweaks, .network])
       precondition(cached.tools.allSatisfy { $0.compatibility == .supported })
     }
     precondition(adb.failedToolConnectionCount == disconnectedFailures)

@@ -80,6 +80,16 @@ final class ToolResources {
                 .put("revision", packageRevision(installed, resources))
                 .put("inspectors", tools)
                 .put("errors", errors);
+        Object order = app.metaData == null ? null : app.metaData.get("snapo.tool_order");
+        if (order instanceof String) {
+            JSONArray toolOrder = new JSONArray();
+            TreeSet<String> seen = new TreeSet<>();
+            for (String value : ((String) order).split(",")) {
+                String id = value.trim();
+                if (id.matches("[a-z][a-z0-9.-]{0,99}") && seen.add(id)) toolOrder.put(id);
+            }
+            result.put("toolOrder", toolOrder);
+        }
         try { result.put("iconBase64", renderAppIcon(pm, app, resources)); } catch (Exception ignored) { }
         return result;
     }

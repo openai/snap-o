@@ -139,7 +139,8 @@ struct ToolSelection {
       options[option.kind] = option
     }
     target = app
-    target?.tools = options.values.sorted { $0.kind.rawValue < $1.kind.rawValue }
+    target?.tools = Array(options.values)
+    target?.sortTools()
   }
 
   private mutating func setCurrent(_ app: InspectableApp, option: AppToolOption?) {

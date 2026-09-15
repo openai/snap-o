@@ -43,6 +43,47 @@ private func selected(_ kind: ToolID = .network) -> ToolSelection {
 @MainActor
 struct ToolSelectionTests {
   @Test
+  func appToolOrdering() throws {
+    let analytics = ToolID(rawValue: "analytics")
+    let logs = ToolID(rawValue: "logs")
+    var app = selectionApp(kinds: [.tweaks, logs, .network, analytics])
+    // Display labels must not affect the ID-based fallback order.
+    app.tools[1].name = "A log viewer"
+    app.tools[3].name = "Z analytics viewer"
+    for order: [ToolID]? in [nil, [], [.network, .tweaks, .network, .sample]] {
+      app.metadata?.toolOrder = order
+      app.sortTools()
+      let expected: [ToolID] = order?.isEmpty == false
+        ? [.network, .tweaks, analytics, logs] : [analytics, logs, .network, .tweaks]
+      #expect(app.tools.map(\.kind) == expected)
+    }
+
+    app.metadata?.toolOrder = [.tweaks, .network]
+    app.sortTools()
+    var owner = ToolSelection()
+    owner.reconcile([app])
+    #expect(owner.state.selection?.kind == .tweaks, "Initial selection follows the app order")
+    #expect(owner.state.selectedApp?.tools.map(\.kind) == [.tweaks, .network, analytics, logs])
+    try owner.selectTool(app, option: #require(app.tools.first { $0.kind == logs }))
+
+    var partial = app
+    partial.tools.removeAll { $0.kind == .tweaks || $0.kind == logs }
+    owner.reconcile([partial])
+    #expect(owner.state.selection == nil)
+    #expect(owner.state.selectedApp?.tools.map(\.kind) == [.tweaks, .network, analytics, logs])
+    owner.reconcile([app])
+    #expect(owner.state.selection?.kind == logs, "Reconnection preserves the selected tool")
+
+    app.metadata?.toolOrder = [.network]
+    owner.reconcile([app])
+    #expect(owner.state.selectedApp?.tools.map(\.kind) == [.network, analytics, logs, .tweaks])
+    #expect(owner.state.selection?.kind == logs, "Metadata updates do not change selection")
+    var restored = ToolSelection(saved: owner.serialized)
+    restored.reconcile([app])
+    #expect(restored.state.selection?.kind == logs, "Saved selection takes priority over app order")
+  }
+
+  @Test
   func restoration() {
     var owner = selected(.tweaks)
     #expect(owner.state.selectedApp?.metadata == selectionApp().metadata, "Selection retains the process manifest for the tool page")

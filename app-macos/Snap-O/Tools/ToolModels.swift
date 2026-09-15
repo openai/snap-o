@@ -83,6 +83,18 @@ struct InspectableApp: Equatable, Codable, Identifiable {
   var tools: [AppToolOption]
   var metadata: ToolMetadata.Process?
 
+  mutating func sortTools() {
+    var ranks: [ToolID: Int] = [:]
+    for (index, kind) in (metadata?.toolOrder ?? []).enumerated() where ranks[kind] == nil {
+      ranks[kind] = index
+    }
+    tools.sort {
+      let first = ranks[$0.kind] ?? Int.max
+      let second = ranks[$1.kind] ?? Int.max
+      return first == second ? $0.kind.rawValue < $1.kind.rawValue : first < second
+    }
+  }
+
   var name: String {
     metadata?.name ?? processName ?? packageName ?? pid.map { "Process \($0)" }
       ?? tools.first?.server.socketName ?? id

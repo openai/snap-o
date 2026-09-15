@@ -52,7 +52,7 @@ actor ToolService {
       metadata.packageName = process.metadata.packageName
       metadata.processName = process.metadata.processName ?? process.metadata.packageNameHint
       metadata.iconBase64 = process.metadata.appIconBase64
-      return InspectableApp(
+      var app = InspectableApp(
         id: process.id,
         pid: process.pid,
         deviceId: process.deviceId,
@@ -69,6 +69,8 @@ actor ToolService {
         },
         metadata: metadata
       )
+      app.sortTools()
+      return app
     }
     return ToolDiscoverySnapshot(apps: orderedToolApps(apps), revision: snapshot.revision)
   }

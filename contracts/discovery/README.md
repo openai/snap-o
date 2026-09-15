@@ -18,6 +18,35 @@ Use `snapo_<id>_<pid>`, where `id` matches `[a-z][a-z0-9.-]{0,99}` and `pid` is 
 
 The key is derived from the socket ID. It does not depend on the library's Java package. Independent plugin libraries contribute separate entries through manifest merging.
 
+## App tool order
+
+An app can set the tool order with metadata inside its `<application>` element:
+
+```xml
+<meta-data
+    android:name="snapo.tool_order"
+    android:value="network,tweaks" />
+```
+
+The value is a comma-separated list of tool IDs. The reader trims whitespace,
+ignores empty or invalid IDs, and keeps the first occurrence of each ID.
+IDs use the socket ID format above. Non-string values are ignored.
+
+Reader output includes an optional app-level `toolOrder` array, such as
+`"toolOrder": ["network", "tweaks"]`. Listed tools appear first in that order.
+Unlisted tools follow alphabetically by ID, regardless of their display names.
+Unavailable tools are skipped; listing an ID does not enable or discover it.
+Without a valid setting, all tools appear alphabetically by ID.
+
+The desktop applies this order to discovered and retained toolbar options.
+It preserves the selected tool during reconnects and metadata updates.
+Saved selection takes priority over order when opening an app.
+
+This optional field is additive to discovery version 1. Older readers omit it,
+and older hosts ignore it. Network and Tweaks protocols and host API versions
+are unchanged. Tool libraries, bundled frontends, and the fixed-purpose CLIs
+do not need changes.
+
 ## Descriptor version 1
 
 ```xml
