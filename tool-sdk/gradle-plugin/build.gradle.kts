@@ -74,7 +74,7 @@ repositories {
 
 dependencies {
     compileOnly("com.android.tools.build:gradle-api:9.0.0")
-    implementation("com.github.node-gradle:gradle-node-plugin:7.1.0")
+    api("com.github.node-gradle:gradle-node-plugin:7.1.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
     testImplementation("junit:junit:4.13.2")
 }
