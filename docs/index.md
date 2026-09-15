@@ -8,7 +8,7 @@ styles:
 subtitle: Android Inspection System
 actions:
 - label: Download for macOS
-  href: https://github.com/openai/snap-o/releases/tag/9.0.0
+  href: https://github.com/openai/snap-o/releases/latest
   class: btn primary
 - label: View on GitHub
   href: https://github.com/openai/snap-o
@@ -26,7 +26,7 @@ social:
 A fast, tidy macOS app for Android developers: capture screenshots and recordings, and inspect network traffic from Android devices and emulators.
 {.lead}
 
-Requires macOS 26+ and Android Platform Tools (`adb`). Start ADB with Android Studio or `adb start-server`. Upgrade Android Network and Tweaks libraries to 9.0.0 and rebuild your app alongside this Mac update. Keep [8.0.0](https://github.com/openai/snap-o/releases/tag/8.0.0) if you cannot upgrade yet.
+Requires macOS 26+ and Android Platform Tools (`adb`).
 {.note}
 
 ## Network {.product-title}

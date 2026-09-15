@@ -20,8 +20,6 @@ breadcrumbs:
 Expose values, app-owned settings, and actions from Compose, Views, ViewModels, and other Kotlin code. Interact with them through Snap-O’s Tool pane, an optional on-device panel, the REST API, or an agent.
 {.lead}
 
-Use these 9.0.0 dependencies with the [Snap-O 9.0.0 Mac app](https://github.com/openai/snap-o/releases/tag/9.0.0), which requires macOS 26+. Rebuild your Android app when upgrading from 8.0.0; the tool protocols have changed.
-
 ## Use Maven Central {#maven-central data-step="1"}
 
 Snap-O publishes its Android libraries to [Maven Central](https://central.sonatype.com/namespace/com.openai.snapo). Most Android projects already include `mavenCentral()`; add it to your dependency sources if yours does not.
@@ -292,7 +290,7 @@ fun MotionTrack(modifier: Modifier = Modifier) {
 
 ### Bézier curves {#bezier-curves}
 
-Bézier curves were introduced in Snap-O 8.0.0. For the current release, use the 9.0.0 Android libraries and Mac app together; Tweaks protocol 6 replaces protocol 5.
+Bézier curves were introduced in Snap-O 8.0.0.
 
 A `BezierCurve` has fixed endpoints `(0, 0)` and `(1, 1)`, plus two editable control points.
 Declare one inside a composable:

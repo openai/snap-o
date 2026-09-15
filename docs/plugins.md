@@ -30,7 +30,7 @@ You’ll need an Android app and an Android library module for your tool. Manual
 
 <span id="how-the-ui-talks-to-your-app"></span>Your tool has two parts: an Android server and a web frontend. The frontend calls your server over HTTP. Snap-O connects them over ADB, and the Gradle plugin bundles the frontend into your APK.
 
-For a working starting point, use the [Example tool](https://github.com/openai/snap-o/tree/9.0.0/examples/tool).
+For a working starting point, use the [Example tool](https://github.com/openai/snap-o/tree/main/examples/tool).
 
 ## Set up the tool {#definition data-step="1"}
 
@@ -282,7 +282,7 @@ The plugin expects your web project in `frontend/`, beside your tool module’s 
 
 This creates a Preact and TypeScript starter with the host SDK and installs its dependencies. Gradle manages Node/npm automatically. It uses `frontendDirectory` if configured and stops if the directory already contains files.
 
-Commit the generated source files, `package.json`, and `package-lock.json`. Subsequent Android builds and `devSnapoToolFrontend` runs prepare the SDK and dependencies automatically. For an existing web project, see [frontend configuration](https://github.com/openai/snap-o/blob/9.0.0/tool-sdk/gradle-plugin/README.md#migrate-an-existing-frontend).
+Commit the generated source files, `package.json`, and `package-lock.json`. Subsequent Android builds and `devSnapoToolFrontend` runs prepare the SDK and dependencies automatically. For an existing web project, see [frontend configuration](https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#migrate-an-existing-frontend).
 
 <span id="assets"></span>The Android build packages the frontend automatically. Include scripts, images, and fonts in the bundle; the packaged page cannot load remote scripts or call unrelated servers.
 
@@ -363,7 +363,7 @@ The `devSnapoToolFrontend` task installs dependencies and runs the frontend's np
 
 Choose **Develop → Use Packaged Frontend** to return to the version bundled in the APK. Rebuild and reinstall through your usual Android workflow to update that version.
 
-For a complete tool implementation, see the [Example project](https://github.com/openai/snap-o/tree/9.0.0/examples/tool).
+For a complete tool implementation, see the [Example project](https://github.com/openai/snap-o/tree/main/examples/tool).
 
 ## Add more features {#add-functionality}
 

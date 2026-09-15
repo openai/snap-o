@@ -22,8 +22,6 @@ Capture network requests from an Android app with Snap-O, including response bod
 To edit API responses or return mock data with Python handlers, see [Network Interception](network-intercept.md).
 {style="margin-top: 18px"}
 
-Use these 9.0.0 dependencies with the [Snap-O 9.0.0 Mac app](https://github.com/openai/snap-o/releases/tag/9.0.0), which requires macOS 26+. Rebuild your Android app when upgrading from 8.0.0; the tool protocols have changed.
-
 ## Use Maven Central {#maven-central data-step="1"}
 
 Snap-O publishes Android libraries version 3.1.1 and newer to [Maven Central](https://central.sonatype.com/namespace/com.openai.snapo). Most Android projects already include `mavenCentral()`; add it to your dependency sources if yours does not.
