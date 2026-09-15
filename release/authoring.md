@@ -62,14 +62,10 @@ For manual local Maven staging, use the explicitly local `Authoring` repository 
 1. Choose package versions and update the Example project and documentation. Rerun the independent consumer check after API or packaging changes.
 2. Confirm ownership of the final Central namespaces, including the Gradle marker namespace. Configure credentials outside the repository.
 3. Follow [release readiness](README.md), including publication checks, signatures, and protocol compatibility review. Package version changes do not automatically change the host bridge API or domain protocols.
-4. With explicit authorization to upload, run both commands below from the repository root. The Android modules and Tool Packager use separate Central deployments with the same namespace and version. Review and publish both deployments in the Central Portal.
+4. With explicit authorization, run both upload commands below from the repository root. Review and publish both deployments in the Central Portal.
 5. Resolve the released packages from clean projects before updating public dependency examples.
 
 ```sh
 ./gradlew --no-daemon publishToMavenCentral
 ./gradlew --no-daemon -p tool-sdk/gradle-plugin publishToMavenCentral
 ```
-
-The plugin implementation is `com.openai.snapo:tool-packager-gradle-plugin`. Its marker uses the plugin ID as its Maven group. Deployment grouping does not affect these coordinates.
-
-The local validation command does not upload to registries or schedule publication.
