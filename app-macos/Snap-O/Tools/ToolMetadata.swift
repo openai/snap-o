@@ -8,6 +8,7 @@ struct ToolMetadata: Equatable {
     var iconBase64: String?
     var verifiedIdentity: ToolProcessIdentity?
     var tools: [ToolDescriptor] = []
+    var toolOrder: [ToolID]?
   }
 
   var process = Process()
@@ -40,7 +41,7 @@ struct ToolMetadata: Equatable {
     let sameProcess = process.verifiedIdentity == identity
     process = Process(
       name: app.name, packageName: app.packageName, processName: record.processName ?? process.processName,
-      iconBase64: app.iconBase64, verifiedIdentity: identity, tools: app.tools
+      iconBase64: app.iconBase64, verifiedIdentity: identity, tools: app.tools, toolOrder: app.toolOrder
     )
     if let descriptor = descriptor(for: kind) {
       compatibility = descriptor.frontend.map {

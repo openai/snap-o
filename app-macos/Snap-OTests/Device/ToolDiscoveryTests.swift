@@ -4,6 +4,18 @@ import Testing
 
 @Suite("Tool process discovery")
 struct ToolDiscoveryTests {
+  @Test("optional app tool order survives manifest decoding and metadata refreshes")
+  func decodesToolOrder() throws {
+    var metadata = ToolMetadata()
+    // Encoding nil omits the field, matching apps without an ordering setting.
+    for order: [ToolID]? in [[.tweaks, .network], nil] {
+      let manifest = testManifest(pid: 42, kinds: [.network, .tweaks], toolOrder: order)
+      let record = try #require(ToolManifestReader.decode(JSONEncoder().encode(manifest)).first)
+      metadata.applyPackageMetadata(record, kind: .network)
+      #expect(metadata.process.toolOrder == order, "Refreshes apply the setting and clear a removed order")
+    }
+  }
+
   @Test("discovers app-provided tool kinds from one socket snapshot")
   func parsesSharedSnapshot() {
     let output = """

@@ -24,11 +24,12 @@ public struct ToolPackageMetadata: Codable, Sendable, Equatable {
   public let revision: String
   public let iconBase64: String?
   public let tools: [ToolDescriptor]
+  public let toolOrder: [ToolID]?
   public let errors: [ToolDescriptorError]?
 
   /// Keep the discovery format compatible with installed Android libraries.
   private enum CodingKeys: String, CodingKey {
-    case packageName, name, revision, iconBase64, errors
+    case packageName, name, revision, iconBase64, errors, toolOrder
     case tools = "inspectors"
   }
 }

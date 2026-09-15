@@ -9,12 +9,13 @@ extension ToolID {
   static let sample = Self(rawValue: "sample")
 }
 
-func testManifest(pid: Int, kinds: [ToolID], includeFrontend: Bool = true) -> ToolProcessMetadata {
+func testManifest(pid: Int, kinds: [ToolID], includeFrontend: Bool = true, toolOrder: [ToolID]? = nil) -> ToolProcessMetadata {
   let record: [String: Any] = [
     "processIdentity": "boot:\(pid):1",
     "version": 1, "pid": pid, "processName": "com.example.demo\(pid)", "androidUserId": 0,
     "app": [
       "packageName": "com.example.demo\(pid)", "name": "Demo \(pid)", "revision": "1",
+      "toolOrder": toolOrder.map { $0.map(\.rawValue) } as Any? ?? NSNull(),
       "inspectors": kinds.map { kind -> [String: Any] in
         var descriptor: [String: Any] = ["id": kind.rawValue, "name": kind.rawValue]
         if includeFrontend {

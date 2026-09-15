@@ -13,6 +13,7 @@ import tempfile
 import time
 import uuid
 import zipfile
+from xml.sax.saxutils import quoteattr
 from PIL import Image, ImageDraw
 
 
@@ -31,6 +32,8 @@ def main():
     parser.add_argument("--serial", required=True)
     parser.add_argument("--freeze", action="store_true", help="also verify the target remains frozen during discovery")
     parser.add_argument("--icon", choices=["round", "adaptive", "legacy"], default="round")
+    parser.add_argument("--tool-order", help="manifest tool order; omit to test alphabetical fallback")
+    parser.add_argument("--expected-tool-order", help="comma-separated IDs expected after parsing")
     options = parser.parse_args()
     sdk = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or Path.home() / "Library/Android/sdk")
     build = sdk / "build-tools/36.0.0"
@@ -78,6 +81,9 @@ def main():
   <path android:fillColor="#0000ff" android:pathData="M45,45h18v18h-18z" />
 </vector>''')
         round_attribute = 'android:roundIcon="@drawable/fixture_round"' if options.icon == "round" else ""
+        order_metadata = "" if options.tool_order is None else (
+            '<meta-data android:name="snapo.tool_order" android:value=' + quoteattr(options.tool_order) + ' />'
+        )
         manifest = temporary / "AndroidManifest.xml"
         manifest.write_text(f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{package}" android:versionCode="1" android:versionName="1">
   <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />
@@ -85,6 +91,7 @@ def main():
     <meta-data android:name="snapo.inspector.network" android:resource="@xml/snapo_network_inspector" />
     <meta-data android:name="snapo.inspector.tweaks" android:resource="@xml/snapo_tweaks_inspector" />
     <meta-data android:name="snapo.inspector.sample" android:resource="@xml/snapo_sample" />
+    {order_metadata}
     <activity android:name="android.app.Activity" android:exported="true" />
   </application>
 </manifest>''')
@@ -117,6 +124,11 @@ def main():
             assert info["pid"] == pid and info["app"]["packageName"] == package, info
             assert info["app"]["name"] == "Manifest fixture", info
             assert not info["app"]["errors"], info
+            if options.expected_tool_order is None:
+                assert "toolOrder" not in info["app"], info
+            else:
+                expected_order = options.expected_tool_order.split(",") if options.expected_tool_order else []
+                assert info["app"]["toolOrder"] == expected_order, info
             assert base64.b64decode(info["app"]["iconBase64"]).startswith(b"\x89PNG\r\n\x1a\n")
             icon = Image.open(io.BytesIO(base64.b64decode(info["app"]["iconBase64"]))).convert("RGBA")
             assert icon.size == (96, 96)

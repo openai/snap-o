@@ -37,6 +37,8 @@ The pixel checks require Pillow (`python3 -m pip install Pillow`).
 python3 tool-reader/test-device.py --serial DEVICE --freeze --icon round
 python3 tool-reader/test-device.py --serial DEVICE --freeze --icon adaptive
 python3 tool-reader/test-device.py --serial DEVICE --freeze --icon legacy
+python3 tool-reader/test-device.py --serial DEVICE --tool-order ' tweaks,network,tweaks,,INVALID,missing ' --expected-tool-order tweaks,network,missing
+python3 tool-reader/test-device.py --serial DEVICE --tool-order true
 ```
 
 The test installs a temporary non-debuggable APK containing both library descriptors. It verifies metadata, icon selection, and rendered pixels while the app is frozen, then removes the fixture and reader. `--freeze` requires an Android version supporting `am freeze`; omit it to test normal background execution. Adaptive-icon checks require API 26 or newer. Only the temporary fixture is frozen.

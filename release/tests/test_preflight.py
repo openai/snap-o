@@ -254,16 +254,19 @@ class ProtocolReportTests(unittest.TestCase):
         scheme = "snapo-app-mac/Snap-O.xcodeproj/xcshareddata/xcschemes/Snap-O.xcscheme"
         self.write(scheme, "Archive configuration\n")
         self.write("custom-build/input.txt", "Build input\n")
+        self.write("contracts/discovery/README.md", "Optional app-level toolOrder metadata\n")
         self.commit()
         self.write("uncommitted.txt", "Local edit\n")
 
         report = self.report(android_base="5.2.0")
         mac_files = report.split("Changed files since macOS base 5.1.0:\n", 1)[1].split("\n\n", 1)[0]
         android_files = report.split("Changed files since Android base 5.2.0:\n", 1)[1].split("\n\n", 1)[0]
-        self.assertEqual(mac_files, "  A\tcustom-build/input.txt\n"
+        self.assertEqual(mac_files, "  A\tcontracts/discovery/README.md\n"
+                         "  A\tcustom-build/input.txt\n"
                          "  A\tdocs/release-note.md\n"
                          f"  A\t{scheme}")
-        self.assertEqual(android_files, "  A\tcustom-build/input.txt\n"
+        self.assertEqual(android_files, "  A\tcontracts/discovery/README.md\n"
+                         "  A\tcustom-build/input.txt\n"
                          f"  A\t{scheme}")
         self.assertNotIn("Recommendation:", report)
 

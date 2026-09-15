@@ -249,6 +249,26 @@ To inspect a release build, include the tool library in that variant and add thi
 
 </details>
 
+### Set the app's tool order
+
+Add this optional setting inside your app's `<application>` element:
+
+``` { .xml title="App manifest tool order" }
+<meta-data
+    android:name="snapo.tool_order"
+    android:value="network,tweaks" />
+```
+
+Listed tools appear first, in the order you specify. Other tools follow alphabetically
+by tool ID. For example, this setting produces Network, Tweaks, Analytics, then Logs
+when all four tools are available.
+
+Use tool IDs, not display names. Spaces around IDs are allowed; duplicates and invalid
+IDs are ignored. Unavailable tools are skipped. Without this setting, tools appear
+alphabetically by ID. Snap-O still remembers your selected tool.
+
+The app owns this setting. Individual tool libraries do not need changes.
+
 ## Build the web frontend {#the-frontend-library-snap-oplugin-host data-step="3"}
 
 ### Create your UI {#frontend}
