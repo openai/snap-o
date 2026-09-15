@@ -155,11 +155,11 @@ article {
         .quick-jump {
           position: fixed;
           z-index: 10;
-          top: 96px;
+          top: 220px;
           right: clamp(32px, 4vw, 56px);
           display: block;
           width: 200px;
-          max-height: calc(100vh - 120px);
+          max-height: calc(100vh - 248px);
           overflow-y: auto;
         }
 
@@ -230,8 +230,17 @@ p {
         margin: 0;
       }
 
-p + p {
+p + p,
+.dependency-format-panel + p {
         margin-top: 14px;
+      }
+
+summary {
+        cursor: default;
+      }
+
+p + details {
+        margin-top: 22px;
       }
 
 .prose {
@@ -252,7 +261,7 @@ p + p {
 
 .code-block {
         max-width: 100%;
-        margin: 22px 0 0;
+        margin: 22px 0;
         overflow: hidden;
         color: #eef3ed;
         background: var(--navy);

@@ -4,31 +4,42 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tweaks</title>
-    <meta name="description" content="Expose values from Compose, Views, and Kotlin code, app-owned settings, and actions to Snap-O and adjust them with App Inspector, an on-device panel, the REST API, or an agent.">
-
-
+    <meta name="description" content="Expose values from Compose, Views, and Kotlin code, app-owned settings, and actions to Snap-O and adjust them with the Tool pane, an on-device panel, the REST API, or an agent.">
+    
+    
     <link rel="icon" type="image/png" href="assets/icon-64.png">
+    
+    <link rel="stylesheet" href="assets/robot.css">
     <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/tweaks.css">
   </head>
-  <body>
-
+  <body class="page-guide">
+    
+    
+    
+    <button class="robot-flight guide-robot" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+  
+  <img class="space-robot" src="assets/space-robot-small.webp" alt="" width="224" height="224" loading="lazy" draggable="false">
+  
+</button>
+    
+    
 <main>
   <section class="guide-hero">
     <div class="wrap">
       <div class="hero-copy">
-
+        
         <a class="back-link" href="index.html">Snap-O</a>
-
-        <h1 id="tweaks-guide-alpha">Tweaks Guide (Alpha)</h1>
-
-<p class="lead">Expose values, app-owned settings, and actions from Compose, Views, ViewModels, and other Kotlin code. Interact with them through Snap-O’s Mac App Inspector, an optional on-device panel, the REST API, or an agent.</p>
+        
+        <h1 id="tweaks-guide">Tweaks Guide</h1>
+        
+<p class="lead">Expose values, app-owned settings, and actions from Compose, Views, ViewModels, and other Kotlin code. Interact with them through Snap-O’s Tool pane, an optional on-device panel, the REST API, or an agent.</p>
 
       </div>
     </div>
   </section>
   <div class="wrap guide-layout">
     <article>
-
+      
       <section class="guide-section" id="maven-central">
         <div class="section-heading">
           <span class="step" aria-hidden="true">1</span>
@@ -44,7 +55,7 @@
 }</code></pre></div>
 </div>
       </section>
-
+      
       <section class="guide-section" id="install">
         <div class="section-heading">
           <span class="step" aria-hidden="true">2</span>
@@ -56,7 +67,7 @@
 <div aria-label="Tweaks dependency format" class="dependency-format-tabs" role="tablist"><button aria-controls="tweaks-catalog-panel" aria-selected="true" class="dependency-format-tab" id="tweaks-catalog-tab" role="tab" tabindex="0" type="button">Version catalog</button><button aria-controls="tweaks-direct-panel" aria-selected="false" class="dependency-format-tab" id="tweaks-direct-tab" role="tab" tabindex="-1" type="button">Direct dependency</button></div>
 <div aria-labelledby="tweaks-catalog-tab" class="dependency-format-panel" id="tweaks-catalog-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,5,6,8,9,10" data-language="toml">[versions]
-snapo = "8.0.0"
+snapo = "9.0.0"
 
 [libraries]
 snapo-tweaks = { module = "com.openai.snapo:tweaks", version.ref = "snapo" }
@@ -76,12 +87,12 @@ snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", v
 </div>
 <div aria-labelledby="tweaks-direct-tab" class="dependency-format-panel" hidden="" id="tweaks-direct-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>app/build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,3,5,6,7" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:tweaks:8.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-noop:8.0.0")
+    debugImplementation("com.openai.snapo:tweaks:9.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-noop:9.0.0")
 
     // Optional: add both if you want the in-app overlay panel.
-    debugImplementation("com.openai.snapo:tweaks-overlay:8.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:8.0.0")
+    debugImplementation("com.openai.snapo:tweaks-overlay:9.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-overlay-noop:9.0.0")
 }</code></pre></div>
 </div>
 
@@ -97,23 +108,23 @@ snapo-tweaks-overlay-noop = { module = "com.openai.snapo:tweaks-overlay-noop", v
             android:value="true" /&gt;
     &lt;/application&gt;
 &lt;/manifest&gt;</code></pre></div>
-<p class="prose">This setting applies only to Tweaks. <code>snapo.network.allow_release</code> controls Network Inspector separately; enabling either feature does not enable the other. Prefer no-op release artifacts unless you need live inspection in a release build.</p>
+<p class="prose">This setting applies only to Tweaks. <code>snapo.network.allow_release</code> controls Network separately; enabling either feature does not enable the other. Prefer no-op release artifacts unless you need live inspection in a release build.</p>
 </div></details>
 </div>
       </section>
-
+      
       <section class="guide-section" id="without-compose">
         <div class="section-heading">
-
+          
           <h2>Use tweaks without Compose</h2>
         </div>
         <div class="section-body">
 <p class="prose">Use <code>tweaks-core</code> in Views, ViewModels, services, and ordinary Kotlin classes. It has no Compose dependency and shares the registry with the Compose API. Use matching versions for all Snap-O artifacts. Existing Compose apps keep using <code>tweaks</code> and <code>tweaks-noop</code>; these bring in <code>tweaks-core</code> and <code>tweaks-core-noop</code> transitively. Add the core dependencies directly only when using tweaks without Compose.</p>
 <div class="code-block"><div class="code-head"><span>build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:tweaks-core:8.0.0")
-    releaseImplementation("com.openai.snapo:tweaks-core-noop:8.0.0")
+    debugImplementation("com.openai.snapo:tweaks-core:9.0.0")
+    releaseImplementation("com.openai.snapo:tweaks-core-noop:9.0.0")
     // Optional View bindings work with both core variants.
-    implementation("com.openai.snapo:tweaks-views:8.0.0")
+    implementation("com.openai.snapo:tweaks-views:9.0.0")
 }</code></pre></div>
 <p class="prose">A <code>TweakScope</code> registers values immediately and returns read-only <code>StateFlow</code> values. Read <code>.value</code> directly or collect changes. Close the scope when its owner is disposed. A ViewModel can own the scope across Activity recreation:</p>
 <div class="code-block"><div class="code-head"><span>ViewModel</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.lifecycle.ViewModel
@@ -127,7 +138,7 @@ class PreviewViewModel : ViewModel() {
         addCloseable(tweaks)
     }
 }</code></pre></div>
-<p class="prose">Defaults can be Boolean, Int, Float, String, or enum values. The 8.0.0 libraries also support <a href="#bezier-curves">Bézier curves</a>. Numbers accept optional ranges and steps. Use <code>tweakColor(defaultArgb, name)</code> for ARGB colors, <code>action(name) { ... }</code> for callbacks, and <code>tweak(source, name)</code> for app-owned settings. Declaring an action never runs it; inspector callbacks run on main.</p>
+<p class="prose">Defaults can be Boolean, Int, Float, String, or enum values. The libraries also support <a href="#bezier-curves">Bézier curves</a>. Numbers accept optional ranges and steps. Use <code>tweakColor(defaultArgb, name)</code> for ARGB colors, <code>action(name) { ... }</code> for callbacks, and <code>tweak(source, name)</code> for app-owned settings. Declaring an action never runs it; tool callbacks run on main.</p>
 <h3 id="bind-values-to-a-view">Bind values to a View</h3>
 <p class="prose">Install a binding once on main, after the View is initialized. The callback applies the current value on each attachment and collects changes until detachment. For custom drawing, update fields and call <code>invalidate()</code> in the setter.</p>
 <div class="code-block"><div class="code-head"><span>View binding</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.tweaks.views.bindTweak
@@ -140,17 +151,17 @@ val binding = preview.bindTweak(viewModel.radius) { radius -&gt;
 binding.close()</code></pre></div>
 <p class="prose">Closing a binding does not close its tweak scope. Attachment does not imply visibility: a GONE View can remain attached. Closing a scope unregisters its declarations and stops observing app-owned sources. Returned flows retain their last value; callers still own their collecting coroutines.</p>
 <p class="prose">Register app-owned sources and close scopes containing them on main. Ordinary declarations and reads can use other threads. Matching live declarations share one value; names, types, defaults, constraints, and enum options must agree.</p>
-<p class="prose"><code>tweaks-core-noop</code> has no registry or inspector server. Ordinary values stay at their defaults and actions never run. App-owned sources still follow application changes without Snap-O writing or resetting them; close the scope to stop observation. Do not combine a live core with its no-op replacement in one variant.</p>
+<p class="prose"><code>tweaks-core-noop</code> has no registry or tool server. Ordinary values stay at their defaults and actions never run. App-owned sources still follow application changes without Snap-O writing or resetting them; close the scope to stop observation. Do not combine a live core with its no-op replacement in one variant.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="expose-values">
         <div class="section-heading">
           <span class="step" aria-hidden="true">3</span>
           <h2>Expose values from Compose</h2>
         </div>
         <div class="section-body">
-<p class="prose">Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable <code>State&lt;T&gt;</code> that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The 8.0.0 libraries also support <a href="#bezier-curves">Bézier curves</a>.</p>
+<p class="prose">Replace a fixed UI value with a tweak at the place that consumes it. Snap-O registers the control while that composable is in composition and returns observable <code>State&lt;T&gt;</code> that updates as you edit its value. Ordinary tweaks support integers, floating-point numbers, booleans, strings, colors, and enums. The libraries also support <a href="#bezier-curves">Bézier curves</a>.</p>
 <div class="code-block"><div class="code-head"><span>Kotlin · typography</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -259,7 +270,7 @@ fun MotionTrack(modifier: Modifier = Modifier) {
     )
 }</code></pre></div>
 <h3 id="bezier-curves">Bézier curves</h3>
-<p class="prose">Bézier curves are available in Android 8.0.0 and the Snap-O 8.0.0 Mac app. Curve inspection requires Tweaks protocol 5 support; update older Mac clients before connecting to an app that exposes curves.</p>
+<p class="prose">Bézier curves were introduced in Snap-O 8.0.0.</p>
 <p class="prose">A <code>BezierCurve</code> has fixed endpoints <code>(0, 0)</code> and <code>(1, 1)</code>, plus two editable control points.
 Declare one inside a composable:</p>
 <div class="code-block"><div class="code-head"><span>Kotlin · inside a composable</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">val curve by tweak(
@@ -276,13 +287,13 @@ Read <code>curve.x1</code>, <code>curve.y1</code>, <code>curve.x2</code>, and <c
 <p class="prose">This returns <code>StateFlow&lt;BezierCurve&gt;</code>; read <code>curve.value</code> or collect changes. Close the scope when its owner is disposed.
 All four coordinates must be finite Float values between 0 and 1, inclusive.
 App-owned <code>TweakSource&lt;BezierCurve&gt;</code> values are also supported. The matching no-op artifacts expose the same API.</p>
-<p class="prose">Open a curve control in App Inspector or the on-device panel to drag its control points, enter coordinates, or select a preset.
-In App Inspector, focused handles support arrow keys; hold Shift for larger steps.
+<p class="prose">Open a curve control in the Tool pane or the on-device panel to drag its control points, enter coordinates, or select a preset.
+In the Tool pane, focused handles support arrow keys; hold Shift for larger steps.
 Each edit replaces the complete curve. Reset restores the whole default curve or calls the app-owned source's reset.
-See <a href="cli.html#bezier-curves">CLI commands</a> and the <a href="tweaks-protocol.html#bezier-curves">protocol reference</a> for JSON updates.</p>
+See the <a href="tweaks-protocol.html#bezier-curves">protocol reference</a> for JSON updates.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="app-owned-settings">
         <div class="section-heading">
           <span class="step" aria-hidden="true">4</span>
@@ -353,13 +364,13 @@ fun SharedPreferences.tweak(
     }
     return tweak(source, name)
 }</code></pre></div>
-<p class="prose">Use it from composition with <code>preferences.tweak("motion_show", true, "Motion/Show")</code>. Snap-O edits <code>source.value</code>, calls <code>source.reset()</code> for resets, and uses <code>source.isModified</code> to decide whether an override exists. The initial value is shown as the inspector default; the app remains responsible for the setting’s effective value, persistence, and reset behavior.</p>
+<p class="prose">Use it from composition with <code>preferences.tweak("motion_show", true, "Motion/Show")</code>. Snap-O edits <code>source.value</code>, calls <code>source.reset()</code> for resets, and uses <code>source.isModified</code> to decide whether an override exists. The initial value is shown as the tool default; the app remains responsible for the setting’s effective value, persistence, and reset behavior.</p>
 <h3 id="source-lifecycle">Source updates and lifecycle</h3>
-<p class="prose">Compose source values are read lazily when your app reads the returned state or an inspector first requests the tweak. Snap-O reads and writes the source, checks its modification status, resets it, and collects <code>observe()</code> on the Android main thread. After the initial read, inspectors use a cached snapshot instead of polling the source.</p>
+<p class="prose">Compose source values are read lazily when your app reads the returned state or a tool first requests the tweak. Snap-O reads and writes the source, checks its modification status, resets it, and collects <code>observe()</code> on the Android main thread. After the initial read, tools use a cached snapshot instead of polling the source.</p>
 <p class="notice"><strong>Notify on value and status changes.</strong> <code>observe(): Flow&lt;Unit&gt;</code> must emit when either <code>value</code> or <code>isModified</code> may have changed. A preference can become modified even when its effective value remains the same, so value-only notifications are not sufficient.</p>
 <p class="prose">If several active owners expose the same source-backed tweak name, the first active source owns its value, edits, reset behavior, modification status, and observation. Only that source’s flow is collected. When its owner is released, ownership transfers to the next active source. Sources that share a name must represent the same underlying setting and value type; conflicting sources are not checked and can produce incorrect values or runtime errors.</p>
 <h3 id="app-owned-actions">Actions</h3>
-<p class="prose">Use <code>TweakAction</code> to expose an operation owned by your app, such as restarting an animation. The callback is invoked only when an inspector requests the action; declaring the composable does not run it.</p>
+<p class="prose">Use <code>TweakAction</code> to expose an operation owned by your app, such as restarting an animation. The callback is invoked only when a tool requests the action; declaring the composable does not run it.</p>
 <div class="code-block"><div class="code-head"><span>Kotlin · app-owned action</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -381,14 +392,14 @@ fun MotionPreview() {
 <p class="prose">Actions are parameterless, run on the Android main thread, and remain available only while their owner is active. A composable stays in composition or its <code>TweakScope</code> stays open. Register each action name once at its owner; multiple active owners create a visible conflict and prevent invocation. See <a href="tweaks-protocol.html#tweak-actions">Invoke an app-owned action</a> for the corresponding REST endpoint.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="groups-and-lifecycle">
         <div class="section-heading">
           <span class="step" aria-hidden="true">5</span>
           <h2>Group tweaks by section (optional)</h2>
         </div>
         <div class="section-body">
-<p class="prose">Tweaks work without sections. When grouping would make a screen easier to inspect, use a slash-separated name to place a control in a visible inspector section. For example, <code>Typography/Font size</code> appears under <strong>Typography</strong>, and <code>Motion/Duration</code> appears under <strong>Motion</strong>.</p>
+<p class="prose">Tweaks work without sections. When grouping would make a screen easier to inspect, use a slash-separated name to place a control in a visible tool section. For example, <code>Typography/Font size</code> appears under <strong>Typography</strong>, and <code>Motion/Duration</code> appears under <strong>Motion</strong>.</p>
 <div class="code-block"><div class="code-head"><span>Kotlin · visibility and motion</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -434,7 +445,7 @@ fun MotionSection(isExpanded: Boolean) {
 <p class="prose">Controls appear only while their composables are in composition. In the example, turning off <code>Motion/Show</code> removes the motion controls; changing <code>Motion/Use spring</code> swaps the spring settings for the duration control. When the same UI returns during the app process, ordinary controls register again with their last edited values and original ordering. App-owned controls use the current value from their source instead.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="interact">
         <div class="section-heading">
           <span class="step" aria-hidden="true">6</span>
@@ -442,20 +453,20 @@ fun MotionSection(isExpanded: Boolean) {
         </div>
         <div class="section-body">
 <p class="prose">Once the enabled app exposes a tweak, choose the interaction that fits your workflow: inspect the app on your Mac, use an optional panel on the device, call the REST API, or let an agent work with the same live values.</p>
-<h3 id="app-inspector">Mac App Inspector</h3>
-<p class="prose">Snap-O’s App Inspector shows one picker row per running app process, with shortcuts for Network and Tweaks when available. The Tweaks inspector shows controls registered by the app’s active owners, including Compose and <code>TweakScope</code>.</p>
+<h3 id="app-inspector">Tool pane</h3>
+<p class="prose">Snap-O’s Tool pane shows one picker row per running app process, with shortcuts for Network and Tweaks when available. The Tweaks tool shows controls registered by the app’s active owners, including Compose and <code>TweakScope</code>.</p>
 <ol class="verify-list">
 <li><span>Install and launch the debug build, or an explicitly enabled release build, on a connected, authorized Android device or emulator.</span></li>
 <li><span>Open Snap-O on macOS and select the device.</span></li>
-<li><span>Choose <strong>Tools → Show App Inspector</strong>, or press <strong>⌘⌥I</strong>.</span></li>
-<li><span>Find your app process in the picker and click its <strong>Tweaks</strong> icon. Click the row instead to keep your current inspector type when available.</span></li>
+<li><span>Choose <strong>Tools → Show Tool Pane</strong>, or press <strong>⌘⌥I</strong>.</span></li>
+<li><span>Find your app process in the picker and click its <strong>Tweaks</strong> icon. Click the row instead to keep your current tool type when available.</span></li>
 <li><span>Adjust a value or enum option, or invoke an app-owned action, and watch the running app update.</span></li>
 <li><span>Reset an individual control or use <strong>Reset all tweaks</strong>; app-owned settings use their source’s reset behavior.</span></li>
 </ol>
-<p class="prose">At startup, Snap-O restores your last app and inspector when available, or selects another available app. During a session, disconnects do not switch apps. If the selected Android app stops, click <strong>Open app</strong> on the waiting screen when available, or launch it on your device.</p>
-<p class="notice">Navigate through your Android app to change which controls are visible. Only tweaks with active owners appear in the inspector.</p>
+<p class="prose">At startup, Snap-O restores your last app and tool when available, or selects another available app. During a session, disconnects do not switch apps. If the selected Android app stops, click <strong>Open app</strong> on the waiting screen when available, or launch it on your device.</p>
+<p class="notice">Navigate through your Android app to change which controls are visible. Only tweaks with active owners appear in the tool.</p>
 <h3 id="on-device-panel">On-device panel</h3>
-<p class="prose">For a developer-facing UI on the Android device, the optional <code>SnapOTweakOverlay</code> starts as a movable floating control and expands into an editable panel. Install it at the app root and expose Snap-O’s built-in overlay setting from your developer settings. The panel automatically observes the same registered tweaks as the Mac inspector. See <a href="#floating-overlay">Add an on-device floating panel</a> for the module and root layout.</p>
+<p class="prose">For a developer-facing UI on the Android device, the optional <code>SnapOTweakOverlay</code> starts as a movable floating control and expands into an editable panel. Install it at the app root and expose Snap-O’s built-in overlay setting from your developer settings. The panel automatically observes the same registered tweaks as the Mac tool. See <a href="#floating-overlay">Add an on-device floating panel</a> for the module and root layout.</p>
 <h3 id="rest-api">REST API</h3>
 <p class="prose">The Tweaks server exposes a small HTTP API for reading registered controls, updating their values, invoking app-owned actions, and streaming changes. Use it to build your own inspection tools, integrations, and custom panels.</p>
 <p class="prose">See the <a href="tweaks-protocol.html">Tweaks protocol reference</a> for every endpoint, example requests and responses, live events, resets, and error handling.</p>
@@ -465,27 +476,34 @@ fun MotionSection(isExpanded: Boolean) {
 codex plugin add snap-o@snap-o</code></pre></div>
 <details><summary>Migrate an existing sparse marketplace installation</summary><div class="details-body">
 
-<p class="prose">If Snap-O was previously installed with sparse paths, remove and add its marketplace again so the shared CLI and both plugin skills are available:</p>
+<p class="prose">If Snap-O was previously installed with sparse paths, remove and add its marketplace again so both tool CLIs and skills are available:</p>
 <div class="code-block"><div class="code-head"><span>Terminal · migrate the Codex plugin</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="shell">codex plugin marketplace remove snap-o
 codex plugin marketplace add openai/snap-o --ref main
 codex plugin add snap-o@snap-o</code></pre></div>
 </div></details>
 <p class="prose">Start a new Codex session after installation. Ask the agent to inspect the available controls, apply a requested design direction, or reset a value. For example: “Make this screen feel calmer; try the typography, color, and motion tweaks and tell me what changed.” The skill discovers the running app, reads typed descriptors, and changes or resets values only when requested.</p>
 <p class="prose">Snap-O for macOS also bundles the same CLI. Use it directly for discovery, automation, live snapshots, and explicitly requested updates:</p>
-<div class="code-block"><div class="code-head"><span>Terminal · inspect and update live tweaks</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="shell">SNAPO_BIN="/Applications/Snap-O.app/Contents/MacOS/snapo"
+<div class="code-block"><div class="code-head"><span>Terminal · inspect and update live tweaks</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="shell">SNAPO_BIN="/Applications/Snap-O.app/Contents/MacOS/snapo-tweaks"
 
-"$SNAPO_BIN" tweaks apps --json
-"$SNAPO_BIN" tweaks list -s emulator-5554 -n snapo_tweaks_12345 --json
-"$SNAPO_BIN" tweaks set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" tweaks action 'Motion/Toggle animation' -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" tweaks reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" tweaks watch -s emulator-5554 -n snapo_tweaks_12345 --once --json</code></pre></div>
+"$SNAPO_BIN" apps --json
+"$SNAPO_BIN" list -s emulator-5554 -n snapo_tweaks_12345 --json
+"$SNAPO_BIN" set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" action 'Motion/Toggle animation' -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" watch -s emulator-5554 -n snapo_tweaks_12345 --once --json</code></pre></div>
+<p class="prose">The bundled <code>snapo</code> entry point also accepts these commands as <code>snapo tweaks &lt;command&gt;</code>.
+See <a href="cli.html#macos">terminal setup</a> to add the bundled commands to your <code>PATH</code>.</p>
+<p class="prose">Pass a Bézier curve as one quoted JSON object. Updates and resets affect the complete curve:</p>
+<div class="code-block"><div class="code-head"><span>bash</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">"$SNAPO_BIN" set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s emulator-5554 -n snapo_tweaks_12345
+"$SNAPO_BIN" reset 'Motion/Curve' -s emulator-5554 -n snapo_tweaks_12345</code></pre></div>
+<p class="prose">Use <code>list --all</code> or <code>get NAME --all</code> to include previously adjusted values without active owners.
+These inactive snapshots remain read-only until their controls return.</p>
 <p class="prose">Successful <code>set</code>, <code>reset</code>, and <code>action</code> commands produce no output and do not accept <code>--json</code>. For batch updates, replace the former <code>set --values-json</code> option with <a href="tweaks-protocol.html#patch-tweaks">PATCH /tweaks</a>.</p>
 <p class="notice">The CLI manages Android socket discovery, forwarding, and cleanup. Device serials and socket names come from the discovery output and change when the app process restarts.</p>
 <p class="prose">You can also ask an agent to create a small custom panel for a specific workflow, such as typography comparisons, animation tuning, or a curated set of design controls. The panel can read <code>GET /tweaks</code>, send <code>PATCH /tweaks</code>, and subscribe to <code>GET /tweaks/events</code>. No separate Snap-O agent API or automatic panel integration is required or implied.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="apply-tweaks">
         <div class="section-heading">
           <span class="step" aria-hidden="true">7</span>
@@ -498,7 +516,7 @@ codex plugin add snap-o@snap-o</code></pre></div>
 <p class="prose">Adjustment history also includes ordinary and app-owned values from owners that have since been released. An agent can request <code>GET /tweaks?include=adjusted</code> to recover those read-only snapshots while the app process remains alive. Inactive values cannot be edited or reset until their controls return; app-owned snapshots do not retain or restore their original source. See <a href="tweaks-protocol.html#adjusted-tweaks">Include previously adjusted tweaks</a> for the response format.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="floating-overlay">
         <div class="section-heading">
           <span class="step" aria-hidden="true">8</span>
@@ -548,11 +566,11 @@ fun ProfileScreen() {
         fontSize = fontSize.sp,
     )
 }</code></pre></div>
-<p class="prose">The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac inspector through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.</p>
+<p class="prose">The panel starts as a collapsed floating button that can be moved anywhere on the screen. Tap it to expand the panel and edit numeric, boolean, color, text, enum, or Bézier curve values, or invoke app-owned actions. Reset an individual tweak or restore every modified tweak; app-owned settings use their source’s reset behavior. Changes update the running app immediately and are available to the Mac tool through its normal updates. Snap-O saves the button’s horizontal and vertical position, restoring it when the button returns or the app restarts.</p>
 <p class="notice"><strong>Visibility follows registered tweaks.</strong> The button appears only when the real overlay is installed, the Tweaks runtime is enabled, <code>SnapOTweakOverlaySettings.isEnabled</code> is <code>true</code> and at least one tweak has an active owner. The setting defaults to off and survives app restarts. As screens and sections appear or disappear, the panel updates automatically. The no-op overlay never appears, and its setting remains disabled. No manually supplied values, update callback, or build-specific root layout is required.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="troubleshoot">
         <div class="section-heading">
           <span class="step" aria-hidden="true">9</span>
@@ -567,37 +585,37 @@ fun ProfileScreen() {
 <li>Use the same type, default, numeric constraints, and enum options wherever an ordinary tweak name is shared.</li>
 <li>For an app-owned setting, emit from <code>observe()</code> whenever its value or modification status changes.</li>
 <li>Ensure sources sharing a name represent the same setting and value type, and register each action name only once.</li>
-<li>Choose your app’s <strong>Tweaks</strong> entry inside <strong>App Inspector</strong>.</li>
+<li>Choose your app’s <strong>Tweaks</strong> entry in the <strong>Tool pane</strong>.</li>
 <li>After the Android app restarts, select its current running app or process if prompted.</li>
 <li>For the optional overlay, confirm its developer setting is enabled and at least one tweak has an active owner.</li>
 </ul></div>
       </section>
-
+      
     </article>
     <aside class="quick-jump" aria-label="On this page">
       <nav>
         <ol class="quick-jump-list">
-
+          
           <li><a class="quick-jump-link" href="#maven-central">Use Maven Central</a></li>
-
+          
           <li><a class="quick-jump-link" href="#install">Add the Android dependencies</a></li>
-
+          
           <li><a class="quick-jump-link" href="#without-compose">Use tweaks without Compose</a></li>
-
+          
           <li><a class="quick-jump-link" href="#expose-values">Expose values from Compose</a></li>
-
+          
           <li><a class="quick-jump-link" href="#app-owned-settings">Delegate to app-owned settings</a></li>
-
+          
           <li><a class="quick-jump-link" href="#groups-and-lifecycle">Group tweaks by section (optional)</a></li>
-
+          
           <li><a class="quick-jump-link" href="#interact">Interact with tweaks</a></li>
-
+          
           <li><a class="quick-jump-link" href="#apply-tweaks">Apply tweaks to your codebase</a></li>
-
+          
           <li><a class="quick-jump-link" href="#floating-overlay">Optional floating panel</a></li>
-
+          
           <li><a class="quick-jump-link" href="#troubleshoot">Troubleshooting</a></li>
-
+          
         </ol>
       </nav>
     </aside>
@@ -606,21 +624,23 @@ fun ProfileScreen() {
 
     <footer>
       <div class="wrap footer-row">
-
+        
         <span>© <span id="year"></span> OpenAI</span>
         <span>Apache 2.0</span>
-
+        
       </div>
     </footer>
     <script>window.Prism = { manual: true };</script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-kotlin.min.js"></script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-toml.min.js"></script>
-
-
+    
+    
     <script src="assets/guide.js"></script>
+    <script src="assets/robot.js?v=clockwise-1" defer></script>
+    
   </body>
 </html>

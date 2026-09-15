@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Build a tool</title>
+    <meta name="description" content="Create your first Snap-O tool, connect its Android server and web frontend, and run it on your Mac.">
+    
+    
+    <link rel="icon" type="image/png" href="assets/icon-64.png">
+    
+    <link rel="stylesheet" href="assets/robot.css">
+    <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/network-inspector.css">
+  </head>
+  <body class="page-guide">
+    
+    
+    
+    <button class="robot-flight guide-robot" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+  
+  <img class="space-robot" src="assets/space-robot-small.webp" alt="" width="224" height="224" loading="lazy" draggable="false">
+  
+</button>
+    
+    
+<main>
+  <section class="guide-hero">
+    <div class="wrap">
+      <div class="hero-copy">
+        
+        <a class="back-link" href="index.html">Snap-O</a>
+        
+        <h1 id="build-a-tool">Build a tool</h1>
+        
+<p class="lead">Build a debugging tool for your Android app and use it from Snap-O on your Mac.</p>
+
+      </div>
+    </div>
+  </section>
+  <div class="wrap guide-layout">
+    <article>
+      
+      <section class="guide-section" id="model">
+        <div class="section-heading">
+          
+          <h2>What you’ll build</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">A tool that displays <strong>Hello, world!</strong> from your Android app in Snap-O’s Tool pane.
+You’ll need an Android app and an Android library module for your tool. Manual frontend setup also requires Node.js and npm. Merge the snippets below into your existing Gradle files and version catalog.</p>
+<p class="prose"><span id="how-the-ui-talks-to-your-app"></span>Your tool has two parts: an Android server and a web frontend. The frontend calls your server over HTTP. Snap-O connects them over ADB, and the Gradle plugin bundles the frontend into your APK.</p>
+<p class="prose">For a working starting point, use the <a href="https://github.com/openai/snap-o/tree/main/examples/tool">Example tool</a>.</p>
+</div>
+      </section>
+      
+      <section class="guide-section" id="definition">
+        <div class="section-heading">
+          <span class="step" aria-hidden="true">1</span>
+          <h2>Set up the tool</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Apply the Tool Packager Gradle Plugin in your tool’s Android library module. It builds the frontend and generates the metadata Snap-O needs to find your tool.</p>
+<p class="prose"><span id="the-build-plugin-comopenaisnapoplugin"></span>Add the plugin to your version catalog:</p>
+<div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="toml">[versions]
+snapo = "9.0.0"
+
+[plugins]
+snapo-tool-packager = { id = "com.openai.snapo.tool-packager", version.ref = "snapo" }</code></pre></div>
+<p class="prose">Make sure <code>pluginManagement.repositories</code> in <code>settings.gradle.kts</code> includes <code>mavenCentral()</code>.</p>
+<h3 id="manifest">Configure your tool</h3>
+<p class="prose">Apply the Tool Packager Gradle Plugin to your tool’s Android library module and set its identity:</p>
+<div class="code-block"><div class="code-head"><span>Your tool module's build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">plugins {
+    alias(libs.plugins.snapo.tool.packager)
+}
+
+snapoTool {
+    id = "your-tool"
+    displayName = "Your tool"
+    icon = "@drawable/tool_icon"
+}</code></pre></div>
+<p class="prose">Use a stable, unique <code>id</code> starting with a lowercase letter and containing only lowercase letters, digits, dots, or hyphens. Set <code>icon</code> to an existing drawable or mipmap resource. Use a single-color icon with a transparent background.</p>
+<p class="prose">The plugin expects a web project in your module’s <code>frontend/</code> directory. You’ll create it in step 3.</p>
+<details><summary>Custom builds and Node setup</summary><div class="details-body">
+
+<p class="prose">Gradle downloads Node and npm automatically. To use a different frontend directory, set it in your tool module:</p>
+<div class="code-block"><div class="code-head"><span>Your tool module's build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">snapoTool {
+    frontendDirectory = layout.projectDirectory.dir("web")
+}</code></pre></div>
+<p class="prose">To package files built elsewhere, set <code>frontendAssets</code> to their directory instead. It must contain <code>index.html</code> and use relative asset URLs. This skips the default npm build:</p>
+<div class="code-block"><div class="code-head"><span>Package prebuilt files</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">snapoTool {
+    frontendAssets = layout.projectDirectory.dir("prebuilt-frontend")
+}</code></pre></div>
+<p class="prose">Use <code>node { version.set("24.21.0") }</code> to select another Node version, or <code>node { download.set(false) }</code> to use Node and npm on Gradle’s <code>PATH</code>.</p>
+<p class="prose">If your build uses <code>FAIL_ON_PROJECT_REPOS</code> or <code>PREFER_SETTINGS</code>, add the Node download repository alongside your existing repositories:</p>
+<div class="code-block"><div class="code-head"><span>settings.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencyResolutionManagement {
+    repositories {
+        ivy {
+            name = "Node.js"
+            url = uri("https://nodejs.org/dist/")
+            patternLayout { artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]") }
+            metadataSources { artifact() }
+            content { includeModule("org.nodejs", "node") }
+        }
+    }
+}</code></pre></div>
+<p class="prose">Then disable the plugin’s automatic repository in each tool module:</p>
+<div class="code-block"><div class="code-head"><span>Your tool module's build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">node { distBaseUrl.set(null as String?) }</code></pre></div>
+</div></details>
+</div>
+      </section>
+      
+      <section class="guide-section" id="the-android-library-tool-core">
+        <div class="section-heading">
+          <span class="step" aria-hidden="true">2</span>
+          <h2>Serve HTTP on Android</h2>
+        </div>
+        <div class="section-body">
+<p class="prose"><span id="android"></span><span id="starter"></span>Add <code>tool-core</code> to your tool library. Its <code>ToolServer</code> handles the connection and HTTP; you provide the routes.</p>
+<p class="prose"><span id="support-requests-from-the-webview"></span></p>
+<div aria-label="Android Tool SDK dependency format" class="dependency-format-tabs" role="tablist"><button aria-controls="tool-sdk-catalog-panel" aria-selected="true" class="dependency-format-tab" id="tool-sdk-catalog-tab" role="tab" tabindex="0" type="button">Version catalog</button><button aria-controls="tool-sdk-direct-panel" aria-selected="false" class="dependency-format-tab" id="tool-sdk-direct-tab" role="tab" tabindex="-1" type="button">Direct dependency</button></div>
+<div aria-labelledby="tool-sdk-catalog-tab" class="dependency-format-panel" id="tool-sdk-catalog-panel" role="tabpanel">
+<div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="toml">[versions]
+snapo = "9.0.0"
+
+[libraries]
+snapo-tool-core = { module = "com.openai.snapo:tool-core", version.ref = "snapo" }</code></pre></div>
+<div class="code-block"><div class="code-head"><span>Your Android module's build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
+    implementation(libs.snapo.tool.core)
+}</code></pre></div>
+</div>
+<div aria-labelledby="tool-sdk-direct-tab" class="dependency-format-panel" hidden="" id="tool-sdk-direct-panel" role="tabpanel">
+<div class="code-block"><div class="code-head"><span>Your Android module's build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
+    implementation("com.openai.snapo:tool-core:9.0.0")
+}</code></pre></div>
+</div>
+
+<p class="prose">The library comes from Maven Central. Most Android projects already include <code>mavenCentral()</code> in their dependency repositories.</p>
+<p class="prose">This example returns a JSON message:</p>
+<div class="code-block"><div class="code-head"><span>Handle an example request</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.tool.ToolServer
+
+fun createToolServer(toolId: String) = ToolServer(toolId) {
+    get("/example") {
+        respondJson("""{"message":"Hello, world!"}""")
+    }
+}</code></pre></div>
+<p class="prose"><code>respondJson</code> accepts a JSON string. Use your app's serializer to encode objects.</p>
+<p class="prose">See <a href="#actions">Actions and request bodies</a> for more HTTP examples.</p>
+<h3 id="startup">Start the server with your app</h3>
+<p class="prose">You can use <a href="https://developer.android.com/topic/libraries/app-startup">AndroidX Startup</a> to start the server when your app launches. Add the initializer and manifest entry below to your tool library.</p>
+<p class="prose">Add the AndroidX Startup dependency to your tool library:</p>
+<div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="toml">[versions]
+androidx-startup = "1.2.0"
+
+[libraries]
+androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "androidx-startup" }</code></pre></div>
+<div class="code-block"><div class="code-head"><span>Your tool module's build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
+    implementation(libs.androidx.startup)
+}</code></pre></div>
+<p class="prose">Create an initializer using <code>createToolServer</code> from the example above. Put both in your module's namespace; <code>com.example.tool</code> below is an example:</p>
+<div class="code-block"><div class="code-head"><span>ExampleToolInitializer.kt</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">package com.example.tool
+
+import android.content.Context
+import androidx.startup.Initializer
+import com.openai.snapo.tool.ToolServer
+
+class ExampleToolInitializer : Initializer&lt;ToolServer&gt; {
+    override fun create(context: Context): ToolServer =
+        createToolServer(SnapOTool.ID).apply { startIfAllowed(context) }
+
+    override fun dependencies(): List&lt;Class&lt;out Initializer&lt;*&gt;&gt;&gt; = emptyList()
+}</code></pre></div>
+<p class="prose">The Gradle plugin generates <code>SnapOTool.ID</code> in your module’s namespace. <code>startIfAllowed</code> starts the server in debuggable apps and logs socket startup failures.</p>
+<p class="prose">Register the initializer under AndroidX Startup's shared provider in your tool library's manifest. Set <code>android:name</code> on the metadata entry to your initializer's full class name:</p>
+<div class="code-block"><div class="code-head"><span>Your tool library's AndroidManifest.xml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="xml">&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"&gt;
+    &lt;application&gt;
+        &lt;provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge"&gt;
+            &lt;meta-data
+                android:name="com.example.tool.ExampleToolInitializer"
+                android:value="androidx.startup" /&gt;
+        &lt;/provider&gt;
+    &lt;/application&gt;
+&lt;/manifest&gt;</code></pre></div>
+<p class="prose">Add the tool library to your app's debug build, replacing <code>:your-tool</code> with your library module's path:</p>
+<div class="code-block"><div class="code-head"><span>app/build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">dependencies {
+    debugImplementation(project(":your-tool"))
+}</code></pre></div>
+<p class="prose">Keep the tool in debug builds.</p>
+<details><summary>Custom startup and release builds</summary><div class="details-body">
+
+<p class="prose">You can call <code>startIfAllowed(context)</code> from your own initialization code instead of AndroidX Startup. Keep the server for your tool’s lifetime and call <code>close()</code> when that lifetime ends.</p>
+<p class="prose">To inspect a release build, include the tool library in that variant and add this metadata inside the app’s <code>&lt;application&gt;</code> element. Replace <code>your-tool</code> with your tool ID:</p>
+<div class="code-block"><div class="code-head"><span>App manifest release opt-in</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="xml">&lt;meta-data
+    android:name="snapo.your-tool.allow_release"
+    android:value="true" /&gt;</code></pre></div>
+</div></details>
+<h3 id="set-the-apps-tool-order">Set the app's tool order</h3>
+<p class="prose">Add this optional setting inside your app's <code>&lt;application&gt;</code> element:</p>
+<div class="code-block"><div class="code-head"><span>App manifest tool order</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="xml">&lt;meta-data
+    android:name="snapo.tool_order"
+    android:value="network,tweaks" /&gt;</code></pre></div>
+<p class="prose">Listed tools appear first, in the order you specify. Other tools follow alphabetically
+by tool ID. For example, this setting produces Network, Tweaks, Analytics, then Logs
+when all four tools are available.</p>
+<p class="prose">Use tool IDs, not display names. Spaces around IDs are allowed; duplicates and invalid
+IDs are ignored. Unavailable tools are skipped. Without this setting, tools appear
+alphabetically by ID. Snap-O still remembers your selected tool.</p>
+<p class="prose">The app owns this setting. Individual tool libraries do not need changes.</p>
+</div>
+      </section>
+      
+      <section class="guide-section" id="the-frontend-library-snap-oplugin-host">
+        <div class="section-heading">
+          <span class="step" aria-hidden="true">3</span>
+          <h2>Build the web frontend</h2>
+        </div>
+        <div class="section-body">
+<h3 id="frontend">Create your UI</h3>
+<p class="prose">The plugin expects your web project in <code>frontend/</code>, beside your tool module’s <code>build.gradle.kts</code>. Create it with Gradle:</p>
+<div class="code-block"><div class="code-head"><span>Create the frontend</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash"># Run from your Android project root
+./gradlew :your-tool:initSnapoToolFrontend</code></pre></div>
+<p class="prose">This creates a Preact and TypeScript starter with the host SDK and installs its dependencies. Gradle manages Node/npm automatically. It uses <code>frontendDirectory</code> if configured and stops if the directory already contains files.</p>
+<p class="prose">Commit the generated source files, <code>package.json</code>, and <code>package-lock.json</code>. Subsequent Android builds and <code>devSnapoToolFrontend</code> runs prepare the SDK and dependencies automatically. For an existing web project, see <a href="https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#migrate-an-existing-frontend">frontend configuration</a>.</p>
+<p class="prose"><span id="assets"></span>The Android build packages the frontend automatically. Include scripts, images, and fonts in the bundle; the packaged page cannot load remote scripts or call unrelated servers.</p>
+<p class="notice"><strong>Preact is optional.</strong> We recommend <a href="https://preactjs.com/">Preact</a> because its lightweight runtime helps keep the frontend bundled in your APK small. You can use plain JavaScript or another framework that builds bundled web assets with an <code>index.html</code>.</p>
+<h3 id="connect-to-android">Connect to the Snap-O Mac app</h3>
+<p class="prose">The host SDK tells your frontend when Android is connected. Call Android routes with <code>/api/</code> in front: <code>/api/example</code> reaches your server’s <code>/example</code> route. The generated <code>src/main.tsx</code> contains this example. For an existing frontend, adapt the code below and keep your CSS imports:</p>
+<div class="code-block"><div class="code-head"><span>frontend/src/main.tsx</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="tsx">import { render } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import { host } from "@snap-o/tool-host";
+
+function App() {
+  const [message, setMessage] = useState("Disconnected");
+
+  useEffect(() =&gt; host.onError(error =&gt; {
+    setMessage(`Could not connect to Snap-O: ${error.message}`);
+  }), []);
+
+  useEffect(() =&gt; host.onConnection(async connection =&gt; {
+    setMessage(connection ? "Connecting…" : "Disconnected");
+    if (!connection) return;
+    try {
+      const response = await fetch("/api/example");
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      setMessage(data.message);
+    } catch (error) {
+      setMessage(`Request failed: ${String(error)}`);
+    }
+  }), []);
+
+  return &lt;output&gt;{message}&lt;/output&gt;;
+}
+
+render(&lt;App /&gt;, document.getElementById("app")!);</code></pre></div>
+<p class="prose">If startup fails, open the tool in Snap-O and reload it.</p>
+<p class="prose"><code>host.onConnection</code> runs when the Android connection changes. <code>host.onError</code> reports SDK initialization failures. Both effects unsubscribe when the component unmounts.</p>
+<p class="prose"><span id="frontend-storage"></span>Use browser storage only for disposable UI preferences. Stored data can survive app reinstalls; don’t persist credentials, captured traffic, or personal data.</p>
+</div>
+      </section>
+      
+      <section class="guide-section" id="development">
+        <div class="section-heading">
+          <span class="step" aria-hidden="true">4</span>
+          <h2>Try your tool in Snap-O</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Build and run your Android app with the tool library included, using your usual workflow. Its build includes the frontend automatically.</p>
+<p class="prose"><span id="verification"></span>In Snap-O, select your device, app, and tool. The Tool pane should display <strong>Hello, world!</strong>.</p>
+<p class="prose">If the tool is missing, check that you installed a debug build containing the tool library. If the page shows a request error, check Logcat for server startup failures and confirm the <code>/example</code> route matches the example.</p>
+</div>
+      </section>
+      
+      <section class="guide-section" id="develop-the-frontend">
+        <div class="section-heading">
+          <span class="step" aria-hidden="true">5</span>
+          <h2>Frontend hot reload</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Use a development server to edit the UI without rebuilding the Android app for each frontend change. From your project root, run the tool module's <code>devSnapoToolFrontend</code> task:</p>
+<div class="code-block"><div class="code-head"><span>Start the frontend development server</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">./gradlew :your-tool:devSnapoToolFrontend</code></pre></div>
+<p class="prose">With your tool selected in Snap-O, choose <strong>Develop → Use Development Server</strong> and enter the local URL printed by Vite. Keep the Android app running. Add this <code>server</code> option to your Vite config so frontend changes reload correctly:</p>
+<div class="code-block"><div class="code-head"><span>vite.config.ts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="ts">server: {
+  host: "127.0.0.1",
+  port: 5173,
+  strictPort: true,
+  hmr: { host: "127.0.0.1", clientPort: 5173 },
+}</code></pre></div>
+<p class="prose">Use the same port for <code>port</code> and <code>hmr.clientPort</code>. Requests to <code>/api/...</code> still go to Android.</p>
+<p class="prose">The <code>devSnapoToolFrontend</code> task installs dependencies and runs the frontend's npm <code>dev</code> script with the managed Node runtime. You can also run <code>npm run dev</code> from the frontend directory with a local Node installation. In a Debug build of Snap-O, choose <strong>Develop → Show Web Inspector</strong> to inspect the page in a separate window.</p>
+<p class="prose">Choose <strong>Develop → Use Packaged Frontend</strong> to return to the version bundled in the APK. Rebuild and reinstall through your usual Android workflow to update that version.</p>
+<p class="prose">For a complete tool implementation, see the <a href="https://github.com/openai/snap-o/tree/main/examples/tool">Example project</a>.</p>
+</div>
+      </section>
+      
+      <section class="guide-section" id="add-functionality">
+        <div class="section-heading">
+          
+          <h2>Add more features</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Once the example works, add the features your tool needs. Frontend snippets below use <code>host</code> from <code>@snap-o/tool-host</code>. The SDK initializes automatically.</p>
+<details id="live-updates"><summary>Live streaming with SSE</summary><div class="details-body">
+
+<p class="prose">Use server-sent events (SSE) to send updates without polling. This route sends a message every second. Add it inside your <code>ToolServer</code> block:</p>
+<div class="code-block"><div class="code-head"><span>Android route</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">sse("/events") {
+    while (true) {
+        send(data = "Hello from Android", event = "message")
+        kotlinx.coroutines.delay(1_000)
+    }
+}</code></pre></div>
+<p class="prose">In <code>App</code>, replace the request effect with a stream subscription:</p>
+<div class="code-block"><div class="code-head"><span>Inside App</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="tsx">useEffect(() =&gt; host.onConnection(connection =&gt; {
+  setMessage(connection ? "Connecting…" : "Disconnected");
+  if (!connection) return;
+  const events = new EventSource("/api/events");
+  events.onmessage = event =&gt; setMessage(event.data);
+  return () =&gt; events.close();
+}), []);</code></pre></div>
+<p class="prose">Replace the timer with your app’s event source. The cleanup closes the stream when the connection changes or the component unmounts.</p>
+</div></details>
+<details id="actions"><summary>Actions and request bodies</summary><div class="details-body">
+
+<p class="prose">Use <code>post</code>, <code>put</code>, <code>patch</code>, or <code>delete</code> for actions. This route receives text and returns it as a response:</p>
+<div class="code-block"><div class="code-head"><span>Android route</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">post("/message") {
+    val message = request.bodyText()
+    respondText(message)
+}</code></pre></div>
+<p class="prose">Call it from a frontend event handler while Android is connected:</p>
+<div class="code-block"><div class="code-head"><span>Send an action</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="typescript">const connection = host.connection;
+if (!connection) throw new Error("Android is disconnected");
+
+const response = await fetch("/api/message", {
+  method: "POST",
+  headers: { "Content-Type": "text/plain" },
+  body: "Hello from the frontend",
+});
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+const message = await response.text();</code></pre></div>
+<p class="prose">For JSON bodies, use <code>JSON.stringify</code> and <code>Content-Type: application/json</code>, then parse the body with your Android serializer. Use <code>respondNoContent()</code> when an action has no response body.</p>
+<p class="prose">Routes can include parameters, such as <code>/items/{id}</code>. Read them with <code>pathParameters.getValue("id")</code>; read query values with <code>request.queryParameters["filter"]</code>.</p>
+</div></details>
+<details id="native"><summary>Toolbar buttons and search</summary><div class="details-body">
+
+<p class="prose">Use <code>host.setToolbar</code> to add controls to Snap-O’s native toolbar. Connect the callbacks to your UI’s state and actions:</p>
+<div class="code-block"><div class="code-head"><span>Configure the toolbar</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="typescript">await host.setToolbar({
+  actions: [
+    { id: "clear", icon: "clear", label: "Clear", onClick: clear },
+  ],
+  search: { label: "Search", value: query, onChange: setQuery },
+});</code></pre></div>
+<p class="prose">Here, <code>clear</code>, <code>query</code>, and <code>setQuery</code> come from your component. Each call replaces the toolbar. The main area fits three controls, including search; use <code>endActions</code> for trailing buttons. Set <code>enabled: false</code> to disable a button, and call <code>host.setToolbar({})</code> when removing the UI.</p>
+</div></details>
+<details id="files"><summary>Copy text and save files</summary><div class="details-body">
+
+<p class="prose">Call these helpers from your frontend’s button handlers:</p>
+<div class="code-block"><div class="code-head"><span>Copy text</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="typescript">await host.copyText("Hello, world!");</code></pre></div>
+<div class="code-block"><div class="code-head"><span>Open a save dialog</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="typescript">const saved = await host.saveFile({
+  name: "message.txt",
+  data: new Blob(["Hello, world!"], { type: "text/plain" }),
+});</code></pre></div>
+<p class="prose"><code>saveFile</code> returns <code>false</code> if the user cancels the dialog.</p>
+</div></details>
+<details id="color-picker"><summary>Pick a color</summary><div class="details-body">
+
+<p class="prose">Open Snap-O’s native color picker from a button handler. Colors use hexadecimal RGBA values:</p>
+<div class="code-block"><div class="code-head"><span>Open the color picker</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="typescript">const picker = await host.openColorPicker({
+  value: "#3366FFFF",
+  onChange: color =&gt; console.log(color),
+});</code></pre></div>
+<p class="prose">Replace <code>console.log</code> with your color update handler. Use <code>picker.setValue(color)</code> to update the picker or <code>picker.close()</code> to dismiss it.</p>
+</div></details></div>
+      </section>
+      
+    </article>
+    <aside class="quick-jump" aria-label="On this page">
+      <nav>
+        <ol class="quick-jump-list">
+          
+          <li><a class="quick-jump-link" href="#model">Overview</a></li>
+          
+          <li><a class="quick-jump-link" href="#definition">Set up the tool</a></li>
+          
+          <li><a class="quick-jump-link" href="#the-android-library-tool-core">Serve HTTP on Android</a></li>
+          
+          <li><a class="quick-jump-link" href="#the-frontend-library-snap-oplugin-host">Build the web frontend</a></li>
+          
+          <li><a class="quick-jump-link" href="#development">Try your tool in Snap-O</a></li>
+          
+          <li><a class="quick-jump-link" href="#develop-the-frontend">Frontend hot reload</a></li>
+          
+          <li><a class="quick-jump-link" href="#add-functionality">Add more features</a></li>
+          
+        </ol>
+      </nav>
+    </aside>
+  </div>
+</main>
+
+    <footer>
+      <div class="wrap footer-row">
+        
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+        
+      </div>
+    </footer>
+    <script>window.Prism = { manual: true };</script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-kotlin.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-toml.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-typescript.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-jsx.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-tsx.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-json.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-bash.min.js"></script>
+    
+    
+    <script src="assets/guide.js"></script>
+    <script src="assets/robot.js?v=clockwise-1" defer></script>
+    
+  </body>
+</html>

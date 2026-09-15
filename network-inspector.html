@@ -3,24 +3,35 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Network Inspector</title>
-    <meta name="description" content="Add Snap-O Network Inspector to an Android app using OkHttp, Ktor, or HttpURLConnection.">
-
-
+    <title>Network</title>
+    <meta name="description" content="Add Snap-O Network to an Android app using OkHttp, Ktor, or HttpURLConnection.">
+    
+    
     <link rel="icon" type="image/png" href="assets/icon-64.png">
+    
+    <link rel="stylesheet" href="assets/robot.css">
     <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/network-inspector.css">
   </head>
-  <body>
-
+  <body class="page-guide">
+    
+    
+    
+    <button class="robot-flight guide-robot" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+  
+  <img class="space-robot" src="assets/space-robot-small.webp" alt="" width="224" height="224" loading="lazy" draggable="false">
+  
+</button>
+    
+    
 <main>
   <section class="guide-hero">
     <div class="wrap">
       <div class="hero-copy">
-
+        
         <a class="back-link" href="index.html">Snap-O</a>
-
-        <h1 id="network-inspector-guide">Network Inspector Guide</h1>
-
+        
+        <h1 id="network-guide">Network Guide</h1>
+        
 <p class="lead">Capture network requests from an Android app with Snap-O, including response bodies, Server-Sent Events, and WebSocket messages. Works with OkHttp, Ktor's OkHttp engine, and HttpURLConnection.</p>
 <p class="prose" style="margin-top: 18px">To edit API responses or return mock data with Python handlers, see <a href="network-intercept.html">Network Interception</a>.</p>
 
@@ -29,7 +40,7 @@
   </section>
   <div class="wrap guide-layout">
     <article>
-
+      
       <section class="guide-section" id="maven-central">
         <div class="section-heading">
           <span class="step" aria-hidden="true">1</span>
@@ -45,7 +56,7 @@
 }</code></pre></div>
 </div>
       </section>
-
+      
       <section class="guide-section" id="install">
         <div class="section-heading">
           <span class="step" aria-hidden="true">2</span>
@@ -60,7 +71,7 @@
 <div aria-label="OkHttp dependency format" class="dependency-format-tabs" role="tablist"><button aria-controls="okhttp-catalog-panel" aria-selected="true" class="dependency-format-tab" id="okhttp-catalog-tab" role="tab" tabindex="0" type="button">Version catalog</button><button aria-controls="okhttp-direct-panel" aria-selected="false" class="dependency-format-tab" id="okhttp-direct-tab" role="tab" tabindex="-1" type="button">Direct dependency</button></div>
 <div aria-labelledby="okhttp-catalog-tab" class="dependency-format-panel" id="okhttp-catalog-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,5,6" data-language="toml">[versions]
-snapo = "8.0.0"
+snapo = "9.0.0"
 
 [libraries]
 snapo-network-okhttp3 = { module = "com.openai.snapo:network-okhttp3", version.ref = "snapo" }
@@ -72,8 +83,8 @@ snapo-network-okhttp3-noop = { module = "com.openai.snapo:network-okhttp3-noop",
 </div>
 <div aria-labelledby="okhttp-direct-tab" class="dependency-format-panel" hidden="" id="okhttp-direct-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>app/build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,3" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:network-okhttp3:8.0.0")
-    releaseImplementation("com.openai.snapo:network-okhttp3-noop:8.0.0")
+    debugImplementation("com.openai.snapo:network-okhttp3:9.0.0")
+    releaseImplementation("com.openai.snapo:network-okhttp3-noop:9.0.0")
 }</code></pre></div>
 </div>
 
@@ -84,7 +95,7 @@ snapo-network-okhttp3-noop = { module = "com.openai.snapo:network-okhttp3-noop",
 <div aria-label="HttpURLConnection dependency format" class="dependency-format-tabs" role="tablist"><button aria-controls="httpurlconnection-catalog-panel" aria-selected="true" class="dependency-format-tab" id="httpurlconnection-catalog-tab" role="tab" tabindex="0" type="button">Version catalog</button><button aria-controls="httpurlconnection-direct-panel" aria-selected="false" class="dependency-format-tab" id="httpurlconnection-direct-tab" role="tab" tabindex="-1" type="button">Direct dependency</button></div>
 <div aria-labelledby="httpurlconnection-catalog-tab" class="dependency-format-panel" id="httpurlconnection-catalog-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>gradle/libs.versions.toml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,5,6" data-language="toml">[versions]
-snapo = "8.0.0"
+snapo = "9.0.0"
 
 [libraries]
 snapo-network-httpurlconnection = { module = "com.openai.snapo:network-httpurlconnection", version.ref = "snapo" }
@@ -96,8 +107,8 @@ snapo-network-httpurlconnection-noop = { module = "com.openai.snapo:network-http
 </div>
 <div aria-labelledby="httpurlconnection-direct-tab" class="dependency-format-panel" hidden="" id="httpurlconnection-direct-panel" role="tabpanel">
 <div class="code-block"><div class="code-head"><span>app/build.gradle.kts</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-emphasis-lines="2,3" data-language="kotlin">dependencies {
-    debugImplementation("com.openai.snapo:network-httpurlconnection:8.0.0")
-    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:8.0.0")
+    debugImplementation("com.openai.snapo:network-httpurlconnection:9.0.0")
+    releaseImplementation("com.openai.snapo:network-httpurlconnection-noop:9.0.0")
 }</code></pre></div>
 </div>
 
@@ -105,7 +116,7 @@ snapo-network-httpurlconnection-noop = { module = "com.openai.snapo:network-http
 </div>
 </div>
       </section>
-
+      
       <section class="guide-section" id="connect">
         <div class="section-heading">
           <span class="step" aria-hidden="true">3</span>
@@ -183,7 +194,7 @@ val client = HttpClient(OkHttp) {
 </div></details>
 </div>
       </section>
-
+      
       <section class="guide-section" id="verify">
         <div class="section-heading">
           <span class="step" aria-hidden="true">4</span>
@@ -193,21 +204,21 @@ val client = HttpClient(OkHttp) {
 <ol class="verify-list">
 <li><span>Install and launch the debug build on an authorized Android device or emulator.</span></li>
 <li><span>Open Snap-O on macOS and select the connected device.</span></li>
-<li><span>Open <strong>Tools → Show App Inspector</strong>, use the toolbar inspector button, or press <strong>⌘⌥I</strong>.</span></li>
+<li><span>Open <strong>Tools → Show Tool Pane</strong>, use the toolbar tool button, or press <strong>⌘⌥I</strong>.</span></li>
 <li><span>Find the app process in the picker and click its <strong>Network</strong> icon, then trigger a request in the Android app.</span></li>
 <li><span>Open the request to inspect headers, bodies, timing, SSE, or WebSocket messages.</span></li>
 </ol>
-<p class="notice">Each running app process has one picker row, with shortcuts for its available inspectors. At startup, Snap-O restores your last app and inspector when available, or selects another available app. During a session, it keeps captured requests visible through disconnects and reconnects when the selected app returns.</p>
+<p class="notice">Each running app process has one picker row, with shortcuts for its available tools. At startup, Snap-O restores your last app and tool when available, or selects another available app. During a session, it keeps captured requests visible through disconnects and reconnects when the selected app returns.</p>
 <p class="prose">If the selected Android app stops, click <strong>Open app</strong> on the waiting screen when available, or launch it on your device.</p>
 <h3 id="filter-traffic">Filter traffic</h3>
 <p class="prose">Right-click a request to add its host to the exclusion filter. Exclusion filters are saved across sessions. Use the settings button beside the exclusion summary to add or remove filters. You can also search requests without changing your saved filters.</p>
 <h3 id="inspect-responses">Inspect responses</h3>
 <p class="prose">Use the arrow keys to move between requests. Server-Sent Events show whether the stream is pending, streaming, closed, or offline. When a response body is unavailable, Snap-O explains whether it is no longer retained or is not cached on this Mac. If loading fails while connected, click <strong>Retry</strong>.</p>
 <h3 id="python-overrides">Intercept requests</h3>
-<p class="prose">Use <code>snapo network intercept</code> to change a real API response or return mock data. The inspector shows the response delivered to the app while your Python handlers run separately. Follow the <a href="network-intercept.html">Network Interception guide</a> for requirements, examples, and supported traffic.</p>
+<p class="prose">Use <code>snapo-network intercept</code> to change a real API response or return mock data. The tool shows the response delivered to the app while your Python handlers run separately. Follow the <a href="network-intercept.html">Network Interception guide</a> for requirements, examples, and supported traffic.</p>
 </div>
       </section>
-
+      
       <section class="guide-section" id="troubleshoot">
         <div class="section-heading">
           <span class="step" aria-hidden="true">5</span>
@@ -225,17 +236,17 @@ val client = HttpClient(OkHttp) {
 </ul>
 </div>
       </section>
-
+      
       <section class="guide-section" id="advanced">
         <div class="section-heading">
           <span class="step" aria-hidden="true">6</span>
           <h2>Advanced setup</h2>
         </div>
         <div class="section-body">
-<p class="prose">Debug builds initialize the on-device server automatically through <code>SnapONetworkInitProvider</code>. Release builds do not start the server unless Network Inspector is explicitly enabled. Most apps should keep the defaults and use the no-op release artifact.</p>
-<details><summary>Enable Network Inspector in release builds</summary><div class="details-body">
+<p class="prose">Debug builds initialize the on-device server automatically through <code>SnapONetworkInitProvider</code>. Release builds do not start the server unless Network is explicitly enabled. Most apps should keep the defaults and use the no-op release artifact.</p>
+<details><summary>Enable Network in release builds</summary><div class="details-body">
 
-<p class="prose">If you intentionally include the real network dependency in a release build, add the following metadata directly to your application's <code>&lt;application&gt;</code> element. This opt-in applies only to Network Inspector. No-op release artifacts remain the recommended setup for most apps.</p>
+<p class="prose">If you intentionally include the real network dependency in a release build, add the following metadata directly to your application's <code>&lt;application&gt;</code> element. This opt-in applies only to Network. No-op release artifacts remain the recommended setup for most apps.</p>
 <div class="code-block"><div class="code-head"><span>AndroidManifest.xml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="xml">&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"&gt;
     &lt;application&gt;
         &lt;meta-data
@@ -246,7 +257,7 @@ val client = HttpClient(OkHttp) {
 </div></details>
 <details><summary>Provider configuration</summary><div class="details-body">
 
-<p class="prose">The provider supports automatic initialization, main-process filtering, a mode label, and replay limits. Manifest overrides must use Android manifest-merger directives because the library already declares these metadata entries.</p>
+<p class="prose">The provider supports automatic initialization, main-process filtering, and replay limits. Manifest overrides must use Android manifest-merger directives because the library already declares these metadata entries.</p>
 <div class="code-block"><div class="code-head"><span>AndroidManifest.xml</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="xml">&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"&gt;
 
@@ -274,17 +285,12 @@ val client = HttpClient(OkHttp) {
 <tr>
 <td><code>snapo.auto_init</code></td>
 <td><code>true</code></td>
-<td>Starts the inspector during app initialization.</td>
+<td>Starts the tool during app initialization.</td>
 </tr>
 <tr>
 <td><code>snapo.main_process_only</code></td>
 <td><code>true</code></td>
 <td>Restricts automatic initialization to the app's main process.</td>
-</tr>
-<tr>
-<td><code>snapo.mode_label</code></td>
-<td><code>safe</code></td>
-<td>Reports a custom mode label to Snap-O clients.</td>
 </tr>
 <tr>
 <td><code>snapo.buffer_window_ms</code></td>
@@ -306,7 +312,7 @@ val client = HttpClient(OkHttp) {
 </div></details>
 <details><summary>Manual initialization</summary><div class="details-body">
 
-<p class="prose">If automatic initialization is disabled, initialize the inspector from your application process with a custom <code>NetworkInspectorConfig</code>.</p>
+<p class="prose">If automatic initialization is disabled, initialize the tool from your application process with a custom <code>NetworkInspectorConfig</code>.</p>
 <div class="code-block"><div class="code-head"><span>Kotlin</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="kotlin">import com.openai.snapo.network.NetworkInspector
 import com.openai.snapo.network.NetworkInspectorConfig
 import kotlin.time.Duration.Companion.minutes
@@ -317,29 +323,28 @@ NetworkInspector.initialize(
         bufferWindow = 10.minutes,
         maxBufferedEvents = 20_000,
         maxBufferedBytes = 32L * 1024 * 1024,
-        modeLabel = "debug",
     ),
 )</code></pre></div>
 </div></details></div>
       </section>
-
+      
     </article>
     <aside class="quick-jump" aria-label="On this page">
       <nav>
         <ol class="quick-jump-list">
-
+          
           <li><a class="quick-jump-link" href="#maven-central">Use Maven Central</a></li>
-
+          
           <li><a class="quick-jump-link" href="#install">Add the Android dependency</a></li>
-
+          
           <li><a class="quick-jump-link" href="#connect">Add request interceptors</a></li>
-
+          
           <li><a class="quick-jump-link" href="#verify">Verify the connection</a></li>
-
+          
           <li><a class="quick-jump-link" href="#troubleshoot">Troubleshooting</a></li>
-
+          
           <li><a class="quick-jump-link" href="#advanced">Advanced setup</a></li>
-
+          
         </ol>
       </nav>
     </aside>
@@ -348,21 +353,23 @@ NetworkInspector.initialize(
 
     <footer>
       <div class="wrap footer-row">
-
+        
         <span>© <span id="year"></span> OpenAI</span>
         <span>Apache 2.0</span>
-
+        
       </div>
     </footer>
     <script>window.Prism = { manual: true };</script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-kotlin.min.js"></script>
-
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-toml.min.js"></script>
-
-
+    
+    
     <script src="assets/guide.js"></script>
+    <script src="assets/robot.js?v=clockwise-1" defer></script>
+    
   </body>
 </html>
