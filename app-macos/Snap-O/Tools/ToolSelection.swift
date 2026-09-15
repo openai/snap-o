@@ -68,8 +68,8 @@ struct ToolSelection {
     }
     // Preserve saved choices while discovery returns partial results.
     if startupSelectionPending, saved.last == nil,
-       let first = apps.first(where: { Self.hasIdentity($0) && $0.tools.contains(where: \.isConnected) })
-       ?? apps.first(where: { Self.hasIdentity($0) && $0.tools.contains { $0.compatibility.isUnsupported } }) {
+       let first = apps.first(where: { Self.canSelectAutomatically($0) && $0.tools.contains(where: \.isConnected) })
+       ?? apps.first(where: { Self.canSelectAutomatically($0) && $0.tools.contains { $0.compatibility.isUnsupported } }) {
       selectApp(first)
       return
     }
@@ -172,6 +172,11 @@ struct ToolSelection {
 
   private static func hasIdentity(_ app: InspectableApp) -> Bool {
     app.processName?.isEmpty == false
+  }
+
+  private static func canSelectAutomatically(_ app: InspectableApp) -> Bool {
+    // HTTP readiness can precede package metadata and its tool order.
+    hasIdentity(app) && (app.metadata?.verifiedIdentity != nil || app.tools.contains { $0.compatibility != .unknown })
   }
 
   private static func decodePreference(_ object: Any) -> Preference? {

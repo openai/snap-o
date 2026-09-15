@@ -44,10 +44,9 @@ struct ToolRecoveryTests {
     precondition(host.snapshot.state.apps.allSatisfy { $0.name == "com.example.demo" && $0.appIconBase64 == nil })
     print("Initial app labels use process names while manifest reads are still pending")
     let initialOrder = host.snapshot.state.apps.map(\.id)
-    host.selectApp(host.snapshot.state.apps.first { $0.deviceId == "healthy" }!)
-    precondition(host.snapshot.state.selection?.server.deviceId == "healthy")
+    precondition(host.snapshot.state.selection == nil, "Automatic selection waits for the app tool order")
     precondition(adb.scannedDeviceIDs.count == 2, "HTTP readiness reaches the UI without another device scan")
-    print("Native discovery publishes and selects healthy apps beside stalled devices")
+    print("Native discovery publishes healthy apps without selecting a tool before metadata loads")
     let frozen = ToolServerReference(deviceId: "frozen", socketName: "snapo_tweaks_42")
     let healthy = ToolServerReference(deviceId: "healthy", socketName: "snapo_tweaks_42")
     _ = await service.discoverPlugins().apps
@@ -83,6 +82,8 @@ struct ToolRecoveryTests {
     precondition(frozenMetadata.tools.allSatisfy { !$0.isConnected })
     precondition(frozenMetadata.tools.map(\.kind) == [.tweaks, .network])
     try await eventually { host.snapshot.state.selectedApp?.tools.map(\.kind) == [.tweaks, .network] }
+    precondition(host.snapshot.state.selection?.server.deviceId == "healthy")
+    precondition(host.snapshot.state.selection?.kind == .tweaks, "Initial selection follows the delayed app order")
     print("App metadata loads while tool HTTP servers remain frozen")
     adb.unfreeze()
     try await Task.sleep(for: .milliseconds(3200))

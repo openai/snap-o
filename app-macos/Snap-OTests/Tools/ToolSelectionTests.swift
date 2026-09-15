@@ -60,10 +60,25 @@ struct ToolSelectionTests {
 
     app.metadata?.toolOrder = [.tweaks, .network]
     app.sortTools()
+    var pending = selectionApp()
+    pending.metadata = ToolMetadata.Process(processName: app.processName)
+    for index in pending.tools.indices {
+      pending.tools[index].compatibility = .unknown
+    }
     var owner = ToolSelection()
+    let unsaved = owner.serialized
+    owner.reconcile([pending])
+    #expect(owner.state.selection == nil && owner.serialized == unsaved, "HTTP readiness must not finalize startup selection")
     owner.reconcile([app])
     #expect(owner.state.selection?.kind == .tweaks, "Initial selection follows the app order")
     #expect(owner.state.selectedApp?.tools.map(\.kind) == [.tweaks, .network, analytics, logs])
+
+    var explicit = ToolSelection()
+    explicit.reconcile([pending])
+    explicit.selectApp(pending)
+    explicit.reconcile([app])
+    #expect(explicit.state.selection?.kind == .network, "An explicit choice before metadata loads is preserved")
+
     try owner.selectTool(app, option: #require(app.tools.first { $0.kind == logs }))
 
     var partial = app
@@ -209,6 +224,14 @@ struct ToolSelectionTests {
 
   @Test
   func fallback() {
+    for compatibility in [ToolCompatibility.metadataUnavailable, .legacy(protocolVersion: 1)] {
+      var app = selectionApp(kinds: [.network])
+      app.metadata = ToolMetadata.Process(processName: app.processName)
+      app.tools[0].compatibility = compatibility
+      var owner = ToolSelection()
+      owner.reconcile([app])
+      #expect(owner.state.preferredKind == .network, "Failed and legacy metadata still allow startup fallback")
+    }
     for raw in [nil, "invalid"] {
       var owner = ToolSelection(saved: raw)
       let before = owner.serialized
