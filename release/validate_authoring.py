@@ -16,6 +16,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = "https://openai.firewall.socket.dev/npm/"
 MAVEN_NS = {"m": "http://maven.apache.org/POM/4.0.0"}
+PLUGIN_ARTIFACT = "tool-packager-gradle-plugin"
+PLUGIN_ID = "com.openai.snapo.tool-packager"
 
 
 def run(command, cwd, capture=False, env=None):
@@ -53,11 +55,16 @@ def verify_maven(repository):
             extension = "aar" if get("packaging") == "aar" else "jar"
             for suffix in (f".{extension}", "-sources.jar", "-javadoc.jar", ".module"):
                 assert path.with_name(f"{artifact}-{version}{suffix}").is_file(), f"Missing {suffix}: {path}"
+    group = properties(ROOT / "gradle.properties")["GROUP"]
+    version = properties(ROOT / "VERSION")["VERSION"]
+    expected = {f"{group}:tool-core:{version}", f"{group}:{PLUGIN_ARTIFACT}:{version}",
+                f"{PLUGIN_ID}:{PLUGIN_ID}.gradle.plugin:{version}"}
+    assert set(coordinates) == expected, f"Unexpected Maven coordinates: {coordinates}"
     return sorted(coordinates)
 
 
 def plugin_jar(repository, version):
-    return next(repository.rglob(f"snapo-tool-packager-gradle-plugin-{version}.jar"))
+    return next(repository.rglob(f"{PLUGIN_ARTIFACT}-{version}.jar"))
 
 
 def verify_sdk(jar):
