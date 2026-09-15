@@ -31,7 +31,7 @@ Requires macOS 26+ and Android Platform Tools (`adb`).
 
 ## Network inspector {.product-title}
 
-Inspect requests and override responses.
+Inspect HTTP and HTTPS requests, Server-Sent Events (SSE), and WebSocket messages. Edit or mock HTTP responses with Python handlers.
 {.product-copy}
 
 [Set up Network](network-inspector.md){.section-link}
