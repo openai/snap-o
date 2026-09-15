@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      android: ${{ github.event.pull_request.changed_files >= 3000 || steps.filter.outputs.android == 'true' }}
+      mac: ${{ github.event.pull_request.changed_files >= 3000 || steps.filter.outputs.mac == 'true' }}
+      cli: ${{ github.event.pull_request.changed_files >= 3000 || steps.filter.outputs.cli == 'true' }}
+      docs: ${{ github.event.pull_request.changed_files >= 3000 || steps.filter.outputs.docs == 'true' }}
+    steps:
+      # Run all suites when the PR reaches the files API limit.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        if: github.event.pull_request.changed_files < 3000
+        id: filter
+        with:
+          filters: |
+            android:
+              - 'tools/**'
+              - 'tool-sdk/**'
+              - 'examples/android/**'
+              - 'examples/tool/**'
+              - 'build-logic/**'
+              - 'gradle/**'
+              - '*.gradle.kts'
+              - 'gradle.properties'
+              - 'gradlew*'
+              - 'release/validate_authoring.py'
+              - 'release/tests/test_authoring.py'
+              - 'tool-reader/**'
+              - 'contracts/**'
+              - '.github/workflows/android.yml'
+              - 'VERSION'
+              - '.github/workflows/ci.yml'
+            mac:
+              - 'app-macos/**'
+              - 'tool-sdk/host/**'
+              - 'tools/tweaks/frontend/**'
+              - 'tools/network/frontend/**'
+              - 'tools/frontend/**'
+              - 'contracts/**'
+              - 'skills/snap-o-network-inspector/scripts/**'
+              - 'skills/snap-o-tweaks/scripts/**'
+              - 'tool-reader/**'
+              - '.github/workflows/mac.yml'
+              - 'VERSION'
+              - '.github/workflows/ci.yml'
+            cli:
+              - '.agents/plugins/marketplace.json'
+              - '.codex-plugin/plugin.json'
+              - 'VERSION'
+              - 'app-macos/cli/**'
+              - 'tools/network/cli/**'
+              - 'tools/tweaks/cli/**'
+              - 'release/**'
+              - 'examples/**'
+              - 'skills/snap-o-network-inspector/**'
+              - 'skills/snap-o-tweaks/**'
+              - 'contracts/**'
+              - '.github/workflows/snapo-cli.yml'
+              - '.github/workflows/ci.yml'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - '.github/workflows/docs.yml'
+              - '.github/workflows/ci.yml'
+
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    uses: ./.github/workflows/android.yml
+
+  mac:
+    needs: changes
+    if: needs.changes.outputs.mac == 'true'
+    uses: ./.github/workflows/mac.yml
+
+  cli:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    uses: ./.github/workflows/snapo-cli.yml
+
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    uses: ./.github/workflows/docs.yml
+
+  ci:
+    name: CI passed
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [changes, android, mac, cli, docs]
+    steps:
+      - name: Verify CI results
+        env:
+          DETECTION: ${{ needs.changes.result }}
+          RESULTS: >-
+            android:${{ needs.changes.outputs.android }}:${{ needs.android.result }}
+            mac:${{ needs.changes.outputs.mac }}:${{ needs.mac.result }}
+            cli:${{ needs.changes.outputs.cli }}:${{ needs.cli.result }}
+            docs:${{ needs.changes.outputs.docs }}:${{ needs.docs.result }}
+        shell: bash
+        run: |
+          test "$DETECTION" = success
+          for result in $RESULTS; do
+            case "$result" in
+              *:true:success|*:false:skipped) ;;
+              *) echo "Unexpected CI result: $result"; exit 1 ;;
+            esac
+          done

@@ -22,26 +22,7 @@ on:
       - 'contracts/**'
       - '.github/workflows/android.yml'
       - 'VERSION'
-  pull_request:
-    branches:
-      - main
-      - master
-    paths:
-      - 'tools/**'
-      - 'tool-sdk/**'
-      - 'examples/android/**'
-      - 'examples/tool/**'
-      - 'build-logic/**'
-      - 'gradle/**'
-      - '*.gradle.kts'
-      - 'gradle.properties'
-      - 'gradlew*'
-      - 'release/validate_authoring.py'
-      - 'release/tests/test_authoring.py'
-      - 'tool-reader/**'
-      - 'contracts/**'
-      - '.github/workflows/android.yml'
-      - 'VERSION'
+  workflow_call:
 
 # Only PR runs share a group; push runs finish to populate Gradle caches.
 concurrency:
@@ -50,6 +31,7 @@ concurrency:
 
 jobs:
   build:
+    name: Android build
     runs-on: ubuntu-latest
 
     steps:
@@ -88,6 +70,7 @@ jobs:
           retention-days: 7
 
   check:
+    name: Android checks
     runs-on: ubuntu-latest
 
     steps:
@@ -132,6 +115,7 @@ jobs:
           retention-days: 7
 
   detekt:
+    name: Android Detekt
     runs-on: ubuntu-latest
 
     steps:
@@ -159,6 +143,7 @@ jobs:
         run: ./gradlew --no-daemon detekt
 
   frontend:
+    name: Android frontend (${{ matrix.module }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -182,6 +167,7 @@ jobs:
       - run: npm run build
 
   authoring:
+    name: Android authoring
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
