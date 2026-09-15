@@ -207,6 +207,7 @@ struct ToolRecoveryTests {
     await tracker.stopTracking()
     print("Property failures recover without another device tracking event")
     try await refreshesSiblingDescriptors()
+    try await filtersSocketFloods()
     try compatibilityStates()
     try await normalizesMetadata()
     try await mixedCompatibility()
@@ -226,10 +227,12 @@ struct ToolRecoveryTests {
     let service = ToolService(adbService: adbService, deviceTracker: tracker)
     _ = await service.discoverPlugins()
     try await eventually {
-      await service.currentPlugins().apps.first?.metadata?.tools.map(\.id) == [.network]
+      await service.currentPlugins().apps.first?.metadata?.tools.map(\.id) == [.network, .tweaks, .sample]
     }
-    precondition(adb.metadataSocketRequests.count == 1)
-    precondition(Set(adb.metadataSocketRequests[0]) == ["snapo_network_42", "snapo_network_43"])
+    precondition(adb.metadataProcessRequests.count == 1)
+    precondition(adb.metadataProcessRequests[0] == [42, 43])
+    let initial = await service.currentPlugins().apps
+    precondition(initial.allSatisfy { $0.tools.map(\.kind) == [.network] }, "A declaration alone cannot expose a tool")
 
     let now = ContinuousClock.now
     var cachedApp = ToolHTTPService.App(
@@ -251,21 +254,62 @@ struct ToolRecoveryTests {
     _ = await service.discoverPlugins()
     try await eventually {
       let app = await service.currentPlugins().apps.first
-      return app?.metadata?.tools.map(\.id) == [.network, .tweaks]
+      return app?.tools.map(\.kind) == [.network, .tweaks]
         && app?.tools.allSatisfy { $0.compatibility == .supported } == true
     }
-    precondition(adb.metadataSocketRequests.count == 2)
-    precondition(Set(adb.metadataSocketRequests[1]) == ["snapo_network_42", "snapo_tweaks_42"])
+    precondition(adb.metadataProcessRequests.count == 2)
+    precondition(adb.metadataProcessRequests[1] == [42])
     _ = await service.discoverPlugins()
-    precondition(adb.metadataSocketRequests.count == 2, "An unchanged socket set keeps cached metadata")
+    precondition(adb.metadataProcessRequests.count == 2, "An unchanged socket set keeps cached metadata")
 
     adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
     let remaining = await service.discoverPlugins().apps.first!
-    precondition(remaining.metadata?.tools.map(\.id) == [.network, .tweaks])
+    precondition(remaining.metadata?.tools.map(\.id) == [.network, .tweaks, .sample])
     precondition(remaining.tools.map(\.kind) == [.network], "A cached descriptor cannot make an absent server available")
     await service.stop()
     await tracker.stopTracking()
     print("A new socket refreshes sibling metadata; only live sockets determine tool availability")
+  }
+
+  static func filtersSocketFloods() async throws {
+    let adbService = ADBService()
+    let adb = await adbService.exec()
+    let noise = (0 ..< 1000).map { "snapo_noise\($0)_42" }
+    adb.setSocketNames(noise + ["snapo_sample_42", "snapo_network_43"], deviceID: "healthy")
+    let service = ToolHTTPService(adbService: adbService)
+    await refresh(service, using: adb)
+    try await eventually { adb.metadataProcessRequests.count == 1 && adb.toolConnectionCount == 1 }
+    let pending = await service.currentApps().apps
+    precondition(pending.map(\.socketName) == ["snapo_network_43"], "Undeclared custom sockets stay hidden during discovery")
+    adb.setMetadataAvailable(true)
+    try await eventually {
+      let apps = await service.currentApps().apps
+      return apps.map(\.socketName) == ["snapo_network_43", "snapo_sample_42"]
+        && apps.allSatisfy { $0.compatibility == .supported && $0.isConnected }
+    }
+    precondition(adb.metadataProcessRequests == [[42, 43]])
+    precondition(adb.toolConnectionCount == 2, "Only declared tools and known legacy kinds receive health checks")
+    precondition(adb.legacyRequestCount == 0, "Unknown custom names do not trigger legacy probes")
+    await refresh(service, using: adb)
+    precondition(adb.metadataProcessRequests.count == 1, "Undeclared names do not invalidate package metadata")
+    adb.setSocketNames(noise + ["snapo_network_43"], deviceID: "healthy")
+    await refresh(service, using: adb)
+    let remaining = await service.currentApps().apps
+    precondition(remaining.map(\.socketName) == ["snapo_network_43"], "A cached manifest cannot keep a closed custom tool visible")
+    await service.stop()
+
+    let requestsBeforeBatches = adb.metadataProcessRequests.count
+    let manyProcesses = ToolHTTPService(adbService: adbService)
+    adb.setSocketNames((100 ... 164).map { "snapo_noise_\($0)" }, deviceID: "healthy")
+    await refresh(manyProcesses, using: adb)
+    try await eventually { adb.metadataProcessRequests.count == requestsBeforeBatches + 2 }
+    let batches = Array(adb.metadataProcessRequests.suffix(2))
+    precondition(batches.map(\.count) == [64, 1])
+    precondition(batches.joined().elementsEqual(100 ... 164))
+    let visible = await manyProcesses.currentApps().apps
+    precondition(visible.isEmpty)
+    await manyProcesses.stop()
+    print("Manifest-backed discovery filters socket floods and batches distinct process IDs")
   }
 
   static func compatibilityStates() throws {
@@ -294,7 +338,7 @@ struct ToolRecoveryTests {
       var value = descriptor
       value["frontend"] = ["assetPath": "frontend.zip", "hostApiVersion": version]
       let actual = try status(tools: [value])
-      precondition(actual == (version == 3 ? .supported : .hostAPI(version: version)))
+      precondition(actual == (version == 1 ? .supported : .hostAPI(version: version)))
     }
     var pending = ToolHTTPService.App(
       kind: .network,
@@ -331,7 +375,7 @@ struct ToolRecoveryTests {
             [
               "id": kind.rawValue,
               "name": kind.rawValue,
-              "frontend": ["assetPath": "frontend.zip", "hostApiVersion": 3]
+              "frontend": ["assetPath": "frontend.zip", "hostApiVersion": 1]
             ] as [String: Any]
           }
         ]
@@ -457,13 +501,13 @@ struct ToolRecoveryTests {
       precondition(!failed[0].needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(29))))
       precondition(failed[0].needsMetadataRead(lastAttempt: now, now: now.advanced(by: .seconds(30))))
       await refresh(service, using: adb)
-      precondition(adb.metadataSocketRequests.count == 2, "Failed metadata refreshes must still back off")
+      precondition(adb.metadataProcessRequests.count == 2, "Failed metadata refreshes must still back off")
 
       adb.replaceListeners()
       await refresh(service, using: adb)
       try await eventually {
         let apps = await service.currentApps().apps
-        return adb.metadataSocketRequests.count == 3 && apps.allSatisfy(\.metadataReadFailed)
+        return adb.metadataProcessRequests.count == 3 && apps.allSatisfy(\.metadataReadFailed)
       }
       let replacement = await service.currentApps().apps.first!
       precondition(replacement.metadata.process == original.metadata.process, "Retain display metadata while a replacement is unverified")
@@ -506,7 +550,7 @@ struct ToolRecoveryTests {
     try await eventually { adb.legacyRequestCount == 2 }
     let returned = await service.currentApps().apps.first!
     precondition(!returned.checkingLegacy, "A canceled probe must not leave the cached loading flag set")
-    precondition(adb.metadataSocketRequests.count == 2, "Rediscovery must not wait for the failed-request cooldown")
+    precondition(adb.metadataProcessRequests.count == 2, "Rediscovery must not wait for the failed-request cooldown")
     adb.setLegacyBlocked(false)
     try await eventually { await service.currentApps().apps.first?.compatibility == .legacy(protocolVersion: 1) }
     adb.setLegacyBlocked(true)

@@ -44,7 +44,7 @@ struct ToolMetadata: Equatable {
     )
     if let descriptor = descriptor(for: kind) {
       compatibility = descriptor.frontend.map {
-        $0.hostApiVersion == 3 ? .supported : .hostAPI(version: $0.hostApiVersion)
+        $0.isHostAPICompatible ? .supported : .hostAPI(version: $0.hostApiVersion)
       } ?? .missingFrontend
     } else if app.errors?.contains(where: { $0.key == "snapo.inspector." + kind.rawValue }) == true {
       compatibility = .invalidDescriptor

@@ -51,7 +51,7 @@ When its optional dependency is installed and its developer setting is enabled, 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `OPTIONS` | `/` | Check connection readiness. |
-| `GET` | `/tweaks/protocol` | Check the Tweaks API version: `{"version":9}`. |
+| `GET` | `/tweaks/protocol` | Check the Tweaks API version: `{"version":6}`. |
 | `GET` | `/tweaks` | List value tweaks and actions with active owners. |
 | `GET` | `/tweaks?include=adjusted` | Include inactive, previously adjusted value tweaks. |
 | `PATCH` | `/tweaks` | Update or reset one or more live values. |
@@ -71,9 +71,9 @@ snapo-tweaks apps --json
 
 JSON listings include `pid`, `processName`, and `packageName`, without friendly app labels or icons. Unknown identity fields are `null`; their sockets remain visible.
 
-The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":9}` before reading or changing tweaks. The bundled frontend uses its matching Android server without a version check. Missing, older, and newer versions are unsupported by the CLI; update Snap-O and the Android library together.
+The Tweaks CLI calls `GET /tweaks/protocol` and requires `{"version":6}` before reading or changing tweaks. The bundled frontend uses its matching Android server without a version check. Missing, older, and newer versions are unsupported by the CLI; update Snap-O and the Android library together.
 
-Protocol 9 requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use `Cache-Control: no-store`. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
+Protocol 6 replaces protocol 5, released in Snap-O 8.0.0. It requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use `Cache-Control: no-store`. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the [discovery contract](https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md). Use the reader when your client needs Android resource metadata or frontend assets.
 
 ## App icons {#get-app-icon data-step="3"}
 

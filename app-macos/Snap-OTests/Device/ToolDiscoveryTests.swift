@@ -32,7 +32,7 @@ struct ToolDiscoveryTests {
       "custom_sample_42", "snapo__42", "snapo_Sample_42", "snapo_a_b_42", "snapo_../sample_42",
       "snapo_sample_", "snapo_sample_0", "snapo_sample_01", "snapo_sample_-1", "snapo_sample_+1",
       "snapo_sample_42extra", "snapo_sample_42_extra", "snapo_sample_999999999999999999999999",
-      "snapo_sample_10000000000", "snapo_sample_４２", "snapo_" + String(repeating: "a", count: 101) + "_42"
+      "snapo_sample_2147483648", "snapo_sample_10000000000", "snapo_sample_４２", "snapo_" + String(repeating: "a", count: 101) + "_42"
     ] {
       let output = "1: 00000002 00000000 00010000 0001 01 101 @\(name)"
       #expect(ToolDiscovery.sockets(inProcNetUnix: output, deviceID: "phone").isEmpty)
@@ -101,13 +101,23 @@ struct ToolDiscoveryTests {
     #expect(DeviceDiscovery.processNames(inProcessList: "ps: permission denied").isEmpty)
   }
 
+  @Test("metadata requests deduplicate and validate process IDs")
+  func validatesMetadataProcessIDs() throws {
+    let helper = Data("fixture reader".utf8)
+    let command = try ToolManifestReader.metadataCommand(helper: helper, processIDs: Array(repeating: 42, count: 1000) + [7])
+    #expect(command.contains("com.openai.snapo.discovery.Main 7 42 2>/dev/null"))
+    for invalid in [[], [0], [-1], [Int(Int32.max) + 1], Array(1 ... 65)] {
+      #expect(throws: (any Error).self) { try ToolManifestReader.metadataCommand(helper: helper, processIDs: invalid) }
+    }
+  }
+
   @Test("removes the reader after successful and failed invocations")
   func cleansUpManifestReader() throws {
     let directory = FileManager.default.temporaryDirectory.appending(path: "snapo-reader-\(UUID())")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let helper = Data("fixture reader".utf8)
-    let command = try ToolManifestReader.command(helper: helper, socketNames: ["snapo_network_42"])
+    let command = try ToolManifestReader.metadataCommand(helper: helper, processIDs: [42])
       .replacingOccurrences(of: "/data/local/tmp", with: directory.path)
     // Capture the file the runtime would open without requiring Android in the unit test.
     for status: Int32 in [0, 7] {
@@ -146,7 +156,7 @@ struct ToolDiscoveryTests {
     }
     for name in ["first reader", "second reader"] {
       let helper = Data(name.utf8)
-      let command = try ToolManifestReader.command(helper: helper, socketNames: ["snapo_network_42"])
+      let command = try ToolManifestReader.metadataCommand(helper: helper, processIDs: [42])
         .replacingOccurrences(of: "/data/local/tmp", with: directory.path)
       // Hold both runtimes after upload. The timeout bounds a failed test.
       let script = "app_process() { printf 'ready\\n'; read -r -t 5 proceed || return 1; cat \"$CLASSPATH\"; };\n" + command
@@ -290,14 +300,14 @@ extension ToolDiscoveryTests {
     #expect(try LegacyPluginReader.decode(network, kind: .network, pid: 42, http: false)?.protocolVersion == 1)
     #expect(try LegacyPluginReader.decode(network, kind: .network, pid: 43, http: false) == nil)
     let http = Data(#"{"protocolVersion":2,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}"#.utf8)
-    #expect(try LegacyPluginReader.decode(http, kind: .network, pid: 42, http: true)?.protocolVersion == 2)
-    for version in [5, 6, 7, 100] {
+    #expect(try LegacyPluginReader.decode(http, kind: .network, pid: 42, http: true) == nil)
+    for version in [0, 1, 5, 6, 7, 100] {
       let tweaks = Data("{\"protocolVersion\":\(version),\"packageName\":\"com.example.demo\",\"name\":\"Demo\"}".utf8)
-      #expect(try (LegacyPluginReader.decode(tweaks, kind: .tweaks, pid: 42, http: true) != nil) == (version < 7))
+      #expect(try (LegacyPluginReader.decode(tweaks, kind: .tweaks, pid: 42, http: true) != nil) == (1 ... 5).contains(version))
     }
-    #expect(LegacyPluginReader.requests(kind: ToolID(rawValue: "custom")).isEmpty)
-    #expect(LegacyPluginReader.requests(kind: .network).first == "HelloSnapO\n")
-    #expect(LegacyPluginReader.requests(kind: .tweaks).allSatisfy { $0.hasPrefix("GET ") })
+    #expect(LegacyPluginReader.request(kind: ToolID(rawValue: "custom")) == nil)
+    #expect(LegacyPluginReader.request(kind: .network) == "HelloSnapO\n")
+    #expect(LegacyPluginReader.request(kind: .tweaks) == "GET /app HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
   }
 
   @Test("legacy metadata responses are bounded and reject redirects and malformed framing")

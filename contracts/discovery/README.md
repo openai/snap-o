@@ -34,9 +34,9 @@ App labels and icons come from Android package information, not the tool descrip
 
 ## Optional frontend
 
-A descriptor can include `frontendAssets="snapo/inspectors/tweaks/frontend.zip"` and `hostApiVersion="3"`. These fields appear together. `frontendAssets` is a relative APK asset path to a ZIP, not a URL or resource name. Its path must not contain empty segments, `.` or `..`, backslashes, or control characters. The ZIP contains `index.html` at its root and any relative scripts, styles, and other assets.
+A descriptor can include `frontendAssets="snapo/inspectors/tweaks/frontend.zip"` and `hostApiVersion="1"`. These fields appear together. `frontendAssets` is a relative APK asset path to a ZIP, not a URL or resource name. Its path must not contain empty segments, `.` or `..`, backslashes, or control characters. The ZIP contains `index.html` at its root and any relative scripts, styles, and other assets.
 
-Reader output represents these fields as `frontend: {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 3}`. The host API version identifies the JavaScript bridge contract, independently of the Android wire protocol. The authoring plugin generates this host API version; it is not an author setting. Hosts reject unsupported host API versions before executing the frontend. Clients that do not display frontends can ignore this optional object. Network and Tweaks both package frontends through the Gradle packaging plugin. The Mac host requires this metadata unless a development server is selected; it has no bundled frontend fallback.
+Reader output represents these fields as `frontend: {"assetPath": "snapo/inspectors/tweaks/frontend.zip", "hostApiVersion": 1}`. The host API version identifies the JavaScript bridge contract, independently of the Android wire protocol. The authoring plugin generates this host API version; it is not an author setting. Hosts reject unsupported host API versions before executing the frontend. Clients that do not display frontends can ignore this optional object. Network and Tweaks both package frontends through the Gradle packaging plugin. The Mac host requires this metadata unless a development server is selected; it has no bundled frontend fallback.
 
 Manifest entries point to compiled XML resource IDs. Loading does not depend on the XML resource's source filename surviving resource optimization. APK assets use literal paths and must retain the descriptor's path.
 
@@ -46,13 +46,15 @@ Clients that do not display a frontend can omit asset loading. The desktop reads
 
 Use `PackageManager.getApplicationInfo` with `GET_META_DATA`, `ApplicationInfo.loadXmlMetaData`, and `PackageManager.getResourcesForApplication` in a separate reader process. Resolve the correct Android user and verify package ownership against the process UID. The [bundled reader](../../tool-reader/README.md) supports non-debuggable apps without invoking app code.
 
-Cache installed metadata separately from live connections. Invalidate it when the installed package or resource configuration changes. A missing or malformed descriptor is not evidence that the socket disappeared; show the app and an unsupported-tool state. Never infer that a plugin is enabled merely because its descriptor is installed. When a new socket appears, refresh metadata for all visible tool sockets in that process and update their cached records together.
+Cache installed metadata separately from live connections. Invalidate it when the installed package or resource configuration changes. Enumerate all `snapo.inspector.*` manifest entries for each verified package, then match their IDs against the current sockets for each PID. Undeclared custom socket names do not appear as tools or receive HTTP probes. Keep malformed declarations visible as unsupported tools, and retain legacy Network and Tweaks detection. Never infer that a plugin is enabled merely because its descriptor is installed. When a new socket appears, refresh metadata for that process and update its cached records together.
 
 Clients can send `OPTIONS /` over a direct or forwarded socket to check HTTP readiness without fetching app metadata. The Network and Tweaks servers return a successful empty response. They no longer serve `/.snap-o/info` or `/.snap-o/appicon`.
 
+Legacy discovery only recognizes inspectors released in Snap-O 8.0.0 or earlier: Network protocol 1 through `HelloSnapO`, and Tweaks protocols 1–5 through `GET /app`. This evidence supplies an unsupported-tool label; it never authorizes a frontend or tool requests. Intermediate post-8.0.0 protocols have no compatibility fallback.
+
 ### Reader output
 
-The reader emits one JSON line per process. Each record has `version: 1` and a positive `pid`. Successful records contain `app` and a nonempty `processIdentity`; clients must reject successful records without that identity. The identity combines boot identity, PID, and process start time, so clients can distinguish a replacement process that reuses a PID. Error records can omit `app` and `processIdentity`.
+The reader accepts up to 64 process IDs and emits one JSON line per process. Each record has `version: 1` and a positive `pid`. Successful records contain `app` and a nonempty `processIdentity`; clients must reject successful records without that identity. The identity combines boot identity, PID, and process start time, so clients can distinguish a replacement process that reuses a PID. Error records can omit `app` and `processIdentity`.
 
 ### Command-line discovery
 
@@ -70,8 +72,8 @@ Commands check the tool's protocol endpoint before reading or changing data.
 
 ## Protocol migration
 
-Host bridge API 3 removes the forwarded loopback URL from the frontend contract. Packaged assets keep their paths under `snapo://tool/`, and frontends call Android routes under `snapo://tool/api/` with standard browser APIs. The Gradle plugin generates this compatibility marker. Hosts and frontends must use the same host API; older frontends are rejected before loading.
+Host bridge API 1 is the first app-bundled frontend contract. Packaged assets keep their paths under `snapo://tool/`, and frontends call Android routes under `snapo://tool/api/` with standard browser APIs. The Gradle plugin generates this compatibility marker. Hosts and frontends must use the same host API; mismatched frontends are rejected before loading.
 
-Discovery does not carry tool protocol versions. Network protocol 4 and Tweaks protocol 9 provide their own HTTP version endpoints. Their independent CLIs check those endpoints before using the tools; they do not fall back to descriptor versions. Update the clients and Android libraries together.
+Discovery does not carry tool protocol versions. Network protocol 2 and Tweaks protocol 6 provide their own HTTP version endpoints. Their independent CLIs check those endpoints before using the tools; they do not fall back to descriptor versions. Update the clients and Android libraries together.
 
 The optional frontend descriptor and ZIP loading remain in descriptor version 1. Command-line clients do not need to download or execute frontend assets. App identity and icons come from Android resources. Network history, SSE, interception, tweak values, and tweak actions keep their existing payload formats.

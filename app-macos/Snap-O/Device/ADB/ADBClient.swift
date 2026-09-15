@@ -281,10 +281,10 @@ public struct ADBClient: Sendable {
 
   public func pluginMetadata(
     deviceID: String,
-    socketNames: [String],
+    processIDs: [Int],
     helperURL: URL
   ) async throws -> [ToolProcessMetadata] {
-    let command = try ToolManifestReader.command(helper: Data(contentsOf: helperURL), socketNames: socketNames)
+    let command = try ToolManifestReader.metadataCommand(helper: Data(contentsOf: helperURL), processIDs: processIDs)
     let data = try await runPluginReader(deviceID: deviceID, command: command, maximumBytes: 8_388_608)
     return try ToolManifestReader.decode(data)
   }
@@ -315,10 +315,10 @@ public struct ADBClient: Sendable {
       throw ADBError.parseFailure("invalid tool frontend request")
     }
     let expected = try ToolFrontendBundle.request(identity: identity, tool: tool)
-    let command = try ToolManifestReader.command(
+    let command = try ToolManifestReader.frontendCommand(
       helper: Data(contentsOf: helperURL),
-      socketNames: [socketName],
-      frontendRequest: expected
+      socketName: socketName,
+      request: expected
     )
     let data = try await runPluginReader(deviceID: deviceID, command: command, maximumBytes: 16 * 1024 * 1024)
     return try ToolFrontendBundle(archive: data)
@@ -327,35 +327,33 @@ public struct ADBClient: Sendable {
   public func legacyPluginMetadata(
     reference: ToolServerReference, kind: ToolID, pid: Int
   ) async throws -> LegacyPluginMetadata? {
-    guard pid > 0, reference.socketName == "snapo_\(kind.rawValue)_\(pid)" else { return nil }
-    for request in LegacyPluginReader.requests(kind: kind) {
-      try Task.checkCancellation()
-      do {
-        let metadata = try await withConnection(maxAttempts: 1) { connection in
-          try connection.withRequestTimeout(.seconds(2)) {
-            try connection.sendTransport(to: reference.deviceId)
-            try connection.sendLocalAbstract(reference.socketName)
-            try connection.writeLine(String(request.dropLast()))
-            let http = request.hasPrefix("GET ")
-            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-            var bytes = Data()
-            while true {
-              let chunk = try connection.readChunk(maxLength: 16384, deadline: deadline)
-              if let chunk { bytes.append(chunk) }
-              if let payload = try LegacyPluginReader.payload(bytes, http: http, ended: chunk == nil) {
-                return try LegacyPluginReader.decode(payload, kind: kind, pid: pid, http: http)
-              }
-              if chunk == nil { return nil }
+    guard pid > 0, reference.socketName == "snapo_\(kind.rawValue)_\(pid)",
+          let request = LegacyPluginReader.request(kind: kind) else { return nil }
+    try Task.checkCancellation()
+    do {
+      return try await withConnection(maxAttempts: 1) { connection in
+        try connection.withRequestTimeout(.seconds(2)) {
+          try connection.sendTransport(to: reference.deviceId)
+          try connection.sendLocalAbstract(reference.socketName)
+          try connection.writeLine(String(request.dropLast()))
+          let http = request.hasPrefix("GET ")
+          let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+          var bytes = Data()
+          while true {
+            let chunk = try connection.readChunk(maxLength: 16384, deadline: deadline)
+            if let chunk { bytes.append(chunk) }
+            if let payload = try LegacyPluginReader.payload(bytes, http: http, ended: chunk == nil) {
+              return try LegacyPluginReader.decode(payload, kind: kind, pid: pid, http: http)
             }
+            if chunk == nil { return nil }
           }
         }
-        if let metadata { return metadata }
-      } catch {
-        try Task.checkCancellation()
-        // A failed probe is not evidence that the app uses an old library.
       }
+    } catch {
+      try Task.checkCancellation()
+      // A failed probe is not evidence that the app uses an old library.
+      return nil
     }
-    return nil
   }
 
   private func runPluginReader(deviceID: String, command: String, maximumBytes: Int) async throws -> Data {

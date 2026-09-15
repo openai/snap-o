@@ -137,7 +137,7 @@ class TweakHTTPServer:
         self.stream_events = stream_events
         self.requests = []
         self.protocol_requests = []
-        self.protocol_version = 9
+        self.protocol_version = 6
         self.protocol_error = None
         self.protocol_content_type = "application/json"
         owner = self
@@ -295,7 +295,7 @@ class TweakSmartSocketServer:
                 while stream.readline().strip():
                     pass
 
-                body = json.dumps({"version": 9} if request_line == "GET /tweaks/protocol HTTP/1.1" else owner.payload).encode("utf-8")
+                body = json.dumps({"version": 6} if request_line == "GET /tweaks/protocol HTTP/1.1" else owner.payload).encode("utf-8")
                 response = (
                     b"HTTP/1.1 200 OK\r\n"
                     b"Content-Type: application/json\r\n"
@@ -1169,20 +1169,17 @@ class TweakCommandTests(unittest.TestCase):
 
 class ProtocolTests(unittest.TestCase):
     def test_commands_check_tool_protocol_before_data_requests(self):
-        for kind, supported, connection_type in (
-            ("tweaks", 9, snapo.TweakConnection),
-        ):
-            for version in (None, True, "4", 0, 1, supported - 1, supported + 1):
-                wire = TweakHTTPServer()
-                wire.protocol_version = version
-                with self.subTest(kind=kind, version=version), wire:
-                    adb = FakeADB(forward_port=wire.port)
-                    with self.assertRaisesRegex(snapo.SnapOError, "Unsupported .* Tool protocol"):
-                        with connection_type(adb, snapo.Server("phone", f"snapo_{kind}_42")):
-                            self.fail("unsupported connection opened")
-                    self.assertEqual(wire.protocol_requests, [f"/{kind}/protocol"])
-                    self.assertEqual(wire.http_requests if kind == "network" else wire.requests, [])
-                    self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", f"tcp:{wire.port}")))
+        for version in (None, True, "6", 0, 1, 5, 7, 8, 9):
+            wire = TweakHTTPServer()
+            wire.protocol_version = version
+            with self.subTest(version=version), wire:
+                adb = FakeADB(forward_port=wire.port)
+                with self.assertRaisesRegex(snapo.SnapOError, "Unsupported Tweaks Tool protocol"):
+                    with snapo.TweakConnection(adb, snapo.Server("phone", "snapo_tweaks_42")):
+                        self.fail("unsupported connection opened")
+                self.assertEqual(wire.protocol_requests, ["/tweaks/protocol"])
+                self.assertEqual(wire.requests, [])
+                self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_missing_protocol_endpoint_is_rejected(self):
         with TweakHTTPServer() as wire:

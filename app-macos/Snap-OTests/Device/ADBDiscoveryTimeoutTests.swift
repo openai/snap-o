@@ -127,19 +127,19 @@ struct ADBDiscoveryTimeoutTests {
   @Test("legacy probes read identity without starting inspection")
   func readsLegacyIdentity() async throws {
     let raw = #"{"method":"SnapO.appInfo","params":{"protocolVersion":1,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}}"#
-    let http = #"{"protocolVersion":2,"packageName":"com.example.demo","processName":"com.example.demo","pid":42}"#
-    for (reply, expectedVersion, expectedConnections) in [
-      (FakeDiscoveryADB.LegacyReply.raw(raw), 1, 1), (.http(http), 2, 2)
+    let http = #"{"protocolVersion":5,"packageName":"com.example.demo","name":"Demo"}"#
+    for (reply, kind, expectedVersion) in [
+      (FakeDiscoveryADB.LegacyReply.raw(raw), "network", 1), (.http(http), "tweaks", 5)
     ] {
       let server = FakeDiscoveryADB(stall: .output, legacyReply: reply)
       defer { server.close() }
       let metadata = try await server.client().legacyPluginMetadata(
-        reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"),
+        reference: ToolServerReference(deviceId: "phone", socketName: "snapo_\(kind)_42"), kind: ToolID(rawValue: kind),
         pid: 42
       )
       #expect(metadata?.protocolVersion == expectedVersion)
       #expect(metadata?.packageName == "com.example.demo")
-      #expect(server.connectionCount == expectedConnections)
+      #expect(server.connectionCount == 1)
     }
   }
 
@@ -153,8 +153,8 @@ struct ADBDiscoveryTimeoutTests {
       pid: 42
     )
     #expect(metadata == nil)
-    #expect(start.duration(to: .now) < .seconds(6))
-    #expect(server.connectionCount == 2)
+    #expect(start.duration(to: .now) < .seconds(3))
+    #expect(server.connectionCount == 1)
   }
 
   @Test("cancelling a legacy probe closes the socket without trying a fallback")
@@ -258,7 +258,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
               guard request == "HelloSnapO" else { return }
               Self.send(response + "\n", to: descriptor)
             case .http(let body):
-              guard request == "GET /.snap-o/info HTTP/1.1" else { return }
+              guard request == "GET /app HTTP/1.1" else { return }
               while let header = try peer.readLine(), !header.isEmpty {}
               Self.send("HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body, to: descriptor)
             case .trickle:

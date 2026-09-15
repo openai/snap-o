@@ -55,8 +55,9 @@ enum ToolCompatibility: Equatable, Codable {
     case .missingFrontend:
       "This app’s Snap-O library does not include a tool interface for this version of Snap-O." + Self.libraryGuidance
     case .hostAPI(let version):
-      version > 3
-        ? "This tool requires host API \(version). This version of Snap-O supports host API 3. Update Snap-O to open it."
+      version > ToolFrontend.supportedHostAPIVersion
+        ? "This tool requires host API \(version). "
+        + "This version of Snap-O supports host API \(ToolFrontend.supportedHostAPIVersion). Update Snap-O to open it."
         : "This tool uses unsupported host API \(version)." + Self.libraryGuidance
     case .metadataUnavailable:
       "Snap-O could not reach this tool or check its library version. Open the app on your device. Snap-O will retry automatically."

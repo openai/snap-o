@@ -76,7 +76,7 @@ class WireServer:
         self.history = history
         self.complete_history = complete_history
         self.protocol_requests = []
-        self.protocol_version = 4
+        self.protocol_version = 2
         self.http_requests = []
         self.peers = []
         self.adb_handshake = adb_handshake
@@ -569,36 +569,28 @@ except KeyboardInterrupt:
 
 
 class ProtocolTests(unittest.TestCase):
-
-
     def test_commands_check_tool_protocol_before_data_requests(self):
-        for kind, supported, connection_type in (
-            ("network", 4, snapo.ConnectedSession),
-        ):
-            for version in (None, True, "4", 0, 1, supported - 1, supported + 1):
-                wire = WireServer(lambda *_: self.fail("No stream expected"))
-                wire.protocol_version = version
-                with self.subTest(kind=kind, version=version), wire:
-                    adb = FakeADB(forward_port=wire.port)
-                    with self.assertRaisesRegex(snapo.SnapOError, "Unsupported .* Tool protocol"):
-                        with connection_type(adb, snapo.Server("phone", f"snapo_{kind}_42")):
-                            self.fail("unsupported connection opened")
-                    self.assertEqual(wire.protocol_requests, [f"/{kind}/protocol"])
-                    self.assertEqual(wire.http_requests if kind == "network" else wire.requests, [])
-                    self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", f"tcp:{wire.port}")))
+        for version in (None, True, "2", 0, 1, 3, 4):
+            wire = WireServer(lambda *_: self.fail("No stream expected"))
+            wire.protocol_version = version
+            with self.subTest(version=version), wire:
+                adb = FakeADB(forward_port=wire.port)
+                with self.assertRaisesRegex(snapo.SnapOError, "Unsupported Network Tool protocol"):
+                    with snapo.ConnectedSession(adb, snapo.Server("phone", "snapo_network_42")):
+                        self.fail("unsupported connection opened")
+                self.assertEqual(wire.protocol_requests, ["/network/protocol"])
+                self.assertEqual(wire.http_requests, [])
+                self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", f"tcp:{wire.port}")))
 
     def test_missing_protocol_endpoint_is_rejected(self):
-        for kind, version, connection_type in (
-            ("network", 4, snapo.ConnectedSession),
+        adb = FakeADB()
+        with mock.patch.object(
+            snapo, "HTTPResponse", side_effect=snapo.HTTPError(404, "Unknown endpoint")
         ):
-            adb = FakeADB()
-            with self.subTest(kind=kind), mock.patch.object(
-                snapo, "HTTPResponse", side_effect=snapo.HTTPError(404, "Unknown endpoint")
-            ):
-                with self.assertRaisesRegex(snapo.SnapOError, "Cannot check .* Tool protocol"):
-                    with connection_type(adb, snapo.Server("phone", f"snapo_{kind}_42")):
-                        self.fail("missing endpoint accepted")
-                self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", "tcp:27185")))
+            with self.assertRaisesRegex(snapo.SnapOError, "Cannot check Network Tool protocol"):
+                with snapo.ConnectedSession(adb, snapo.Server("phone", "snapo_network_42")):
+                    self.fail("missing endpoint accepted")
+            self.assertEqual(adb.calls[-1], ("phone", ("forward", "--remove", "tcp:27185")))
 
     def test_shared_history_fixture_contains_only_sequenced_network_events(self):
         root = REPOSITORY / "contracts" / "network" / "v2"

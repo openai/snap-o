@@ -59,7 +59,7 @@ internal fun applyTweakBatch(
     return TweakBatchResult(tweaks, errors)
 }
 
-internal const val TweaksProtocolVersion = 9
+internal const val TweaksProtocolVersion = 6
 private const val MainThreadTimeoutMillis = 5_000L
 
 internal class TweakHttpServer(

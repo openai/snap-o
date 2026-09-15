@@ -59,7 +59,7 @@ struct ToolFrontendTests {
     let manifest = try JSONDecoder().decode(
       ToolProcessMetadata.self,
       from: Data(
-        #"{"version":1,"pid":42,"processIdentity":"boot:42:1","androidUserId":0,"app":{"packageName":"com.example.demo","name":"Demo","revision":"12:34","inspectors":[{"id":"sample","name":"Sample","frontend":{"assetPath":"snapo/inspectors/sample/frontend.zip","hostApiVersion":3}}]}}"#
+        #"{"version":1,"pid":42,"processIdentity":"boot:42:1","androidUserId":0,"app":{"packageName":"com.example.demo","name":"Demo","revision":"12:34","inspectors":[{"id":"sample","name":"Sample","frontend":{"assetPath":"snapo/inspectors/sample/frontend.zip","hostApiVersion":1}}]}}"#
           .utf8
       )
     )
@@ -82,10 +82,10 @@ struct ToolFrontendTests {
     #expect(fields["revision"] as? String == "12:34")
     #expect(fields["processIdentity"] as? String == "boot:42:1")
     #expect(fields["assetPath"] as? String == "snapo/inspectors/sample/frontend.zip")
-    let command = try ToolManifestReader.command(
+    let command = try ToolManifestReader.frontendCommand(
       helper: Data("fixture".utf8),
-      socketNames: ["snapo_sample_42"],
-      frontendRequest: request
+      socketName: "snapo_sample_42",
+      request: request
     )
     #expect(command.contains("com.openai.snapo.discovery.FrontendMain snapo_sample_42"))
     #expect(command.contains(request.base64EncodedString()))

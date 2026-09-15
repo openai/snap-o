@@ -1,6 +1,6 @@
 import Foundation
 
-/// Display evidence only. Legacy metadata never authorizes a frontend or tool requests.
+/// Detects inspectors from Snap-O 8.0.0 and earlier. Never authorizes tool requests.
 public struct LegacyPluginMetadata: Sendable, Equatable {
   public let packageName: String
   public let name: String?
@@ -11,16 +11,12 @@ public struct LegacyPluginMetadata: Sendable, Equatable {
 enum LegacyPluginReader {
   static let maximumBytes = 1_048_576
 
-  static func requests(kind: ToolID) -> [String] {
+  static func request(kind: ToolID) -> String? {
     switch kind.rawValue {
-    case "network": ["HelloSnapO\n", httpRequest("/.snap-o/info")]
-    case "tweaks": [httpRequest("/.snap-o/info"), httpRequest("/app")]
-    default: []
+    case "network": "HelloSnapO\n"
+    case "tweaks": "GET /app HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+    default: nil
     }
-  }
-
-  private static func httpRequest(_ path: String) -> String {
-    "GET \(path) HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
   }
 
   static func payload(_ bytes: Data, http: Bool, ended: Bool = false) throws -> Data? {
@@ -85,10 +81,10 @@ enum LegacyPluginReader {
           value.pid == nil || value.pid == pid else { return nil }
     switch kind.rawValue {
     case "network":
-      guard value.pid == pid, value.processName?.isEmpty == false,
-            value.protocolVersion == (http ? 2 : 1) else { return nil }
+      guard !http, value.pid == pid, value.processName?.isEmpty == false,
+            value.protocolVersion == 1 else { return nil }
     case "tweaks":
-      guard http, (1 ... 6).contains(value.protocolVersion), value.name?.isEmpty == false else { return nil }
+      guard http, (1 ... 5).contains(value.protocolVersion), value.name?.isEmpty == false else { return nil }
     default: return nil
     }
     return LegacyPluginMetadata(

@@ -18,7 +18,7 @@ func testManifest(pid: Int, kinds: [ToolID], includeFrontend: Bool = true) -> To
       "inspectors": kinds.map { kind -> [String: Any] in
         var descriptor: [String: Any] = ["id": kind.rawValue, "name": kind.rawValue]
         if includeFrontend {
-          descriptor["frontend"] = ["assetPath": "snapo/inspectors/\(kind.rawValue)/frontend.zip", "hostApiVersion": 3]
+          descriptor["frontend"] = ["assetPath": "snapo/inspectors/\(kind.rawValue)/frontend.zip", "hostApiVersion": 1]
         }
         return descriptor
       }

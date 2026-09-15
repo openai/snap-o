@@ -24,7 +24,7 @@ import org.xmlpull.v1.XmlPullParser;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Set;
+import java.util.TreeSet;
 
 /** Shared package and resource access for the discovery and frontend tools. */
 final class ToolResources {
@@ -59,15 +59,14 @@ final class ToolResources {
         throw new IllegalArgumentException("Several packages share this process UID.");
     }
 
-    static JSONObject readPackage(PackageManager pm, ApplicationInfo app, Set<String> ids) throws Exception {
+    static JSONObject readPackage(PackageManager pm, ApplicationInfo app) throws Exception {
         PackageInfo installed = pm.getPackageInfo(app.packageName, 0);
         Resources resources = pm.getResourcesForApplication(app);
         JSONArray tools = new JSONArray();
         JSONArray errors = new JSONArray();
         if (app.metaData != null) {
-            for (String id : ids) {
-                String key = PREFIX + id;
-                if (!app.metaData.containsKey(key)) continue;
+            for (String key : new TreeSet<>(app.metaData.keySet())) {
+                if (!key.startsWith(PREFIX)) continue;
                 try {
                     tools.put(readPlugin(pm, app, resources, key));
                 } catch (Exception error) {
