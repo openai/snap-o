@@ -266,16 +266,41 @@ export class ToolHost extends EventTarget implements Host {
       throw error;
     }
     if (picker.closed) throw new DOMException("Color picker closed.", "AbortError");
+    let pending: { color: string; revision: number } | undefined;
+    let updates: Promise<void> | undefined;
+    let nextRevision = picker.revision;
+    let appliedRevision = picker.revision;
+    const sendUpdates = async () => {
+      try {
+        while (pending && !picker.closed) {
+          const update = pending;
+          pending = undefined;
+          try {
+            await this.transport.request("openNativeColorPanel", {
+              ...update,
+              sessionId: picker.id,
+              present: false
+            });
+            appliedRevision = update.revision;
+          } catch (error) {
+            if (!pending) {
+              picker.revision = appliedRevision;
+              throw error;
+            }
+          }
+        }
+      } finally {
+        updates = undefined;
+      }
+    };
     return {
       setValue: async (value) => {
         if (picker.closed) return;
-        const revision = ++picker.revision;
-        await this.transport.request("openNativeColorPanel", {
-          color: value,
-          sessionId: picker.id,
-          revision,
-          present: false
-        });
+        picker.revision = ++nextRevision;
+        // Keep only the latest color while the native bridge handles a request.
+        pending = { color: value, revision: picker.revision };
+        updates ??= sendUpdates();
+        await updates;
       },
       close: async () => {
         if (picker.closed) return;

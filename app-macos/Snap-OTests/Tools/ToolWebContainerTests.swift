@@ -5,9 +5,53 @@ import Network
 import Testing
 import WebKit
 
-@Suite("Tool WebKit wiring")
+@Suite("Tool WebKit wiring", .serialized)
 @MainActor
 struct ToolWebContainerTests {
+  #if DEBUG
+  @Test("local Web Inspector renders in a separate window without Safari", .timeLimit(.minutes(1)))
+  func localWebInspector() async throws {
+    let container = ToolWebContainer(bridge: ToolWebBridge(), storageIdentifier: nil)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+      styleMask: [.titled], backing: .buffered, defer: false
+    )
+    window.contentView = container.webView
+    window.orderBack(nil)
+    defer {
+      container.stop()
+      window.orderOut(nil)
+    }
+    var ready = false
+    container.pageReadinessChangedHandler = { ready = $0 }
+    try container.start(frontend: ToolFrontendBundle(files: ["index.html": Data("<p>Inspector fixture</p>".utf8)]))
+    try await eventually { ready }
+    container.showWebInspector()
+    let inspector = try #require(
+      container.webView.perform(NSSelectorFromString("_inspector"))?.takeUnretainedValue() as? NSObject
+    )
+    defer { inspector.perform(NSSelectorFromString("close")) }
+    #expect(!container.webView.isInspectable, "Local inspection does not require remote inspection")
+    try await eventually("Inspector did not detach") {
+      NSApp.windows.contains { $0 !== window && $0.isVisible && $0.title.hasPrefix("Web Inspector") }
+    }
+    let inspectorWindow = try #require(NSApp.windows.first { $0 !== window && $0.title.hasPrefix("Web Inspector") })
+    let inspectorContent = try #require(inspectorWindow.contentView)
+    let inspectorView = try #require(webViews(in: inspectorContent).first)
+    try await eventually("Inspector frontend did not render") {
+      await (try? inspectorView.evaluateJavaScript(
+        "['Elements', 'Console', 'Network'].every(label => document.body.innerText.includes(label))"
+      ) as? Bool) == true
+    }
+    #expect(!inspectorView.isHiddenOrHasHiddenAncestor)
+    #expect(inspectorView.bounds.width > 0 && inspectorView.bounds.height > 0)
+  }
+
+  private func webViews(in view: NSView) -> [WKWebView] {
+    (view as? WKWebView).map { [$0] } ?? view.subviews.flatMap { webViews(in: $0) }
+  }
+  #endif
+
   @Test("custom assets, request policy, bridge ownership, and shutdown", .timeLimit(.minutes(1)))
   func containerLifecycle() async throws {
     let allowed = try ToolHTTPFixture()
@@ -85,14 +129,26 @@ struct ToolWebContainerTests {
       arguments: [:], in: nil, contentWorld: .page
     ) as? [String: Any]
     #expect(hostState?["connected"] as? Bool == false)
-    let hidden = try await web.callAsyncJavaScript(
-      """
-      const results = await Promise.allSettled(['copyText','saveFile','openNativeColorPanel'].map(command =>
-        webkit.messageHandlers.snapoHost.postMessage({command, payload:{text:'fixture',defaultPath:'fixture.txt',data:'',sessionId:'test',color:'#112233',revision:0}})));
-      return results.every(r => r.status === 'rejected');
-      """, arguments: [:], in: nil, contentWorld: .page
-    )
-    #expect(hidden as? Bool == true, "Inactive pages cannot invoke native actions")
+    for active in [false, true] {
+      bridge.isActiveHandler = { active }
+      web.isHidden = active
+      let rejected = try await web.callAsyncJavaScript(
+        """
+        for (const command of ['copyText', 'saveFile', 'openNativeColorPanel']) {
+          try {
+            await webkit.messageHandlers.snapoHost.postMessage({command, payload: {
+              text: 'fixture', defaultPath: 'fixture.txt', data: '',
+              sessionId: 'test', color: '#112233', revision: 0
+            }});
+            return false;
+          } catch {}
+        }
+        return true;
+        """, arguments: [:], in: nil, contentWorld: .page
+      )
+      #expect(rejected as? Bool == true, "Inactive or hidden pages cannot present native UI")
+    }
+    web.isHidden = false
 
     let otherConfiguration = WKWebViewConfiguration()
     otherConfiguration.websiteDataStore = .nonPersistent()
@@ -157,13 +213,15 @@ struct ToolWebContainerTests {
     ) as? Bool == true
   }
 
-  private func eventually(_ predicate: () async -> Bool) async throws {
+  private func eventually(
+    _ message: String = "WebKit fixture did not become ready", _ predicate: () async -> Bool
+  ) async throws {
     let deadline = ContinuousClock.now + .seconds(10)
     while ContinuousClock.now < deadline {
       if await predicate() { return }
       try await Task.sleep(for: .milliseconds(20))
     }
-    Issue.record("WebKit fixture did not become ready within 10 seconds")
+    Issue.record("\(message) within 10 seconds")
     throw CancellationError()
   }
 }
@@ -199,7 +257,8 @@ private final class ToolHTTPFixture {
     for await state in states {
       switch state {
       case .ready:
-        return try URL(string: "http://127.0.0.1:\(#require(listener.port).rawValue)/")!
+        let port = try #require(listener.port)
+        return try #require(URL(string: "http://127.0.0.1:\(port.rawValue)/"))
       case .failed(let error): throw error
       case .cancelled: throw CancellationError()
       default: continue
@@ -231,7 +290,8 @@ private final class ToolHTTPFixture {
         } else {
           "HTTP/1.1 200 OK\r\n"
         }
-        let headers = "Content-Type: text/html\r\nContent-Length: 2\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\nok"
+        let headers = "Content-Type: text/html\r\nContent-Length: 2\r\nAccess-Control-Allow-Origin: *\r\n"
+          + "Cache-Control: no-store\r\nConnection: close\r\n\r\nok"
         connection.send(content: Data((response + headers).utf8), completion: .contentProcessed { _ in connection.cancel() })
       }
     }

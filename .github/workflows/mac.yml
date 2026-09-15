@@ -93,6 +93,8 @@ jobs:
         run: sh scripts/test-startup-capture.sh
       - name: Test tool recovery
         working-directory: app-macos
+        env:
+          SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-tool-recovery.sh
 
   build:

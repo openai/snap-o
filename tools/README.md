@@ -54,7 +54,7 @@ See the [Tool Packager Gradle Plugin](../tool-sdk/gradle-plugin/README.md) for p
 
 Snap-O checks the selected process identity and package revision before and after reading the archive. It caches up to four validated bundles, keyed by device, Android user, package revision, tool ID, and asset path. The host bounds compressed and expanded data to 16 MiB, limits archives to 1,024 entries, and rejects unsafe paths, symlinks, duplicate files, and invalid checksums. Files stay in memory. WebKit loads the unchanged HTML and assets under `snapo://tool/`. A document query parameter changes on reload to reject stale bridge messages.
 
-Develop → Inspect Current WebView in Safari enables WebKit's public inspection support. Open the page through Safari's Develop menu. No private WebKit inspection API is used.
+In Debug builds, **Develop → Show Web Inspector** opens the current tool's inspector in a separate window. This uses private WebKit API, which is excluded from Release builds.
 
 ## WebView safeguards
 
@@ -66,7 +66,7 @@ Switching tools keeps their pages alive. A hidden page keeps its UI state, but d
 
 Connection updates reach the frontend through `host.onConnection`. A known disconnect cancels API requests and delivers `null`, without reloading the page. Requests can also fail before Snap-O detects a disconnect. Stopping a page revokes API and bridge access immediately; transport cleanup does not wait for WebKit to unload it.
 
-Native messages must come from the owning WebView's current main document. The bridge bounds payload size, nesting, concurrent requests, and toolbar fields. Clipboard writes, color picker presentation, and external links require native confirmation. Exports use a save sheet, accept at most 64 MiB, and do not return the selected filesystem path to JavaScript. Only one native action runs at a time. File upload dialogs, JavaScript dialogs, media capture, and downloads are blocked.
+Native messages must come from the owning WebView's current main document. The bridge bounds payload size, nesting, concurrent requests, and toolbar fields. Clipboard writes and external links require native confirmation. The color picker opens directly for the active tool. Exports use a save sheet, accept at most 64 MiB, and do not return the selected filesystem path to JavaScript. Only one native action runs at a time. File upload dialogs, JavaScript dialogs, media capture, and downloads are blocked.
 
 Develop → Use Development Server sets a loopback URL for the selected app and tool. Snap-O proxies frontend files from that server under `snapo://tool/`; `/api/...` still goes to Android. Both packaged and development frontends use relative API URLs without CORS configuration. Frontend paths stay unchanged; there is no added `/assets` prefix.
 

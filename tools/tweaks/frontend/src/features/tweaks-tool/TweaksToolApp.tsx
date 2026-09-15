@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { BezierEditor } from "./BezierEditor";
 import { ChevronDown, RotateCcw } from "lucide-preact";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type {
   TweakActionDescriptor,
   TweakDescriptor,
@@ -176,6 +176,7 @@ export function TweaksToolApp({
     (tweak: TweakValueDescriptor) => {
       if (!canEdit) return;
       const active: ActiveColorPanelSession = { tweak };
+      let pickerValue = tweak.value;
       activeColorPanelRef.current = active;
       void host
         .openColorPicker({
@@ -184,6 +185,7 @@ export function TweaksToolApp({
             if (activeColorPanelRef.current !== active) return;
             const value = nativePanelTweakColor(color);
             if (value === null) return;
+            pickerValue = value;
             active.tweak = { ...active.tweak, value };
             updateTweak(active.tweak, value);
           },
@@ -197,7 +199,7 @@ export function TweaksToolApp({
             return;
           }
           active.picker = picker;
-          if (active.tweak.value !== tweak.value) void picker.setValue(String(active.tweak.value)).catch(() => {});
+          if (active.tweak.value !== pickerValue) void picker.setValue(String(active.tweak.value)).catch(() => {});
         })
         .catch((cause: unknown) => {
           if (activeColorPanelRef.current !== active) return;
@@ -208,7 +210,8 @@ export function TweaksToolApp({
     [canEdit, updateTweak]
   );
 
-  useEffect(() => {
+  // Sync before another picker event can make a deferred effect's value stale.
+  useLayoutEffect(() => {
     const active = activeColorPanelRef.current;
     if (active === null) return;
     const tweak = tweaks.find((candidate) => candidate.name === active.tweak.name && candidate.type === "color");
