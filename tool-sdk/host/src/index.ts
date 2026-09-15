@@ -48,9 +48,9 @@ export interface ToolConnection {
 }
 
 export interface Host extends EventTarget {
-  ready(): Promise<void>;
+  onError(callback: (error: Error) => void): () => void;
   readonly connection: ToolConnection | null;
-  onConnection(callback: (connection: ToolConnection | null) => void | (() => void)): () => void;
+  onConnection(callback: (connection: ToolConnection | null) => void | (() => void) | Promise<void>): () => void;
   addEventListener(
     type: "connection",
     callback: (event: ConnectionEvent) => void,
@@ -108,6 +108,7 @@ export class ToolHost extends EventTarget implements Host {
   private connectionController: AbortController | undefined;
   private state: HostState = { revision: -1, connected: false };
   private startup: Promise<void> | undefined;
+  private initializationError: Error | undefined;
   private listening = false;
   private toolbarRevision = 0;
   private nextToolbarRevision = 0;
@@ -122,16 +123,22 @@ export class ToolHost extends EventTarget implements Host {
   }
 
   get connection(): ToolConnection | null {
-    void this.ready().catch(() => {});
+    void this.initialize().catch(() => {});
     return this.currentConnection;
   }
 
-  onConnection(callback: (connection: ToolConnection | null) => void | (() => void)): () => void {
+  onConnection(callback: (connection: ToolConnection | null) => void | (() => void) | Promise<void>): () => void {
     let cleanup: void | (() => void);
     const update = () => {
       cleanup?.();
       cleanup = undefined;
-      cleanup = callback(this.connection);
+      try {
+        const result = callback(this.connection);
+        if (typeof result === "function") cleanup = result;
+        else if (result) void result.catch((error) => this.reportError(error));
+      } catch (error) {
+        this.reportError(error);
+      }
     };
     this.addEventListener("connection", update);
     update();
@@ -140,6 +147,19 @@ export class ToolHost extends EventTarget implements Host {
       cleanup?.();
       cleanup = undefined;
     };
+  }
+
+  onError(callback: (error: Error) => void): () => void {
+    const listener = (event: Event) => callback((event as CustomEvent<Error>).detail);
+    super.addEventListener("error", listener);
+    if (this.initializationError) callback(this.initializationError);
+    else void this.initialize().catch(() => {});
+    return () => super.removeEventListener("error", listener);
+  }
+
+  private reportError(cause: unknown): void {
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    this.dispatchEvent(new CustomEvent("error", { detail: error }));
   }
 
   override addEventListener(
@@ -158,7 +178,7 @@ export class ToolHost extends EventTarget implements Host {
     options?: boolean | AddEventListenerOptions
   ): void {
     super.addEventListener(type, callback as EventListenerOrEventListenerObject | null, options);
-    void this.ready().catch(() => {});
+    void this.initialize().catch(() => {});
   }
 
   override removeEventListener(
@@ -180,7 +200,7 @@ export class ToolHost extends EventTarget implements Host {
   }
 
   async setToolbar(toolbar: Toolbar): Promise<void> {
-    await this.ready();
+    await this.initialize();
     const start: ToolbarItem[] = (toolbar.actions ?? []).map((action) => ({ ...action, type: "button" }));
     if (toolbar.search) start.push({ ...toolbar.search, type: "search", id: "search" });
     const end: ToolbarItem[] = (toolbar.endActions ?? []).map((action) => ({ ...action, type: "button" }));
@@ -231,7 +251,7 @@ export class ToolHost extends EventTarget implements Host {
   }
 
   async openColorPicker(options: ColorPickerOptions): Promise<ColorPicker> {
-    await this.ready();
+    await this.initialize();
     this.finishPicker();
     const picker: PickerSession = { id: crypto.randomUUID(), options, closed: false, revision: 0 };
     this.picker = picker;
@@ -284,7 +304,7 @@ export class ToolHost extends EventTarget implements Host {
     return result.saved;
   }
 
-  ready(): Promise<void> {
+  private initialize(): Promise<void> {
     if (!this.listening) {
       this.listening = true;
       this.transport.listen<HostState>("host:connection", (state) => this.updateState(state));
@@ -300,9 +320,14 @@ export class ToolHost extends EventTarget implements Host {
     if (!this.startup) {
       this.startup = this.transport
         .request<HostState>("hostState")
-        .then((state) => this.updateState(state))
+        .then((state) => {
+          this.initializationError = undefined;
+          this.updateState(state);
+        })
         .catch((error) => {
           this.startup = undefined;
+          this.initializationError = error instanceof Error ? error : new Error(String(error));
+          this.reportError(this.initializationError);
           throw error;
         });
     }

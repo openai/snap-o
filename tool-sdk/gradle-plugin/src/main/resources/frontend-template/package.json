@@ -1,0 +1,22 @@
+{
+  "name": "snapo-tool-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@snap-o/tool-host": "1.0.0",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "typescript": "5.9.3",
+    "vite": "8.2.2"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

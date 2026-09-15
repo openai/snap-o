@@ -97,7 +97,12 @@ describe("Tweaks frontend with the shared host", () => {
   }
   it("shows host startup failures instead of waiting for Android", async () => {
     container.id = "root";
-    vi.spyOn(mocks.host, "ready").mockRejectedValue(new Error("Open this tool in the Snap-O macOS app."));
+    mocks.host = new ToolHost({
+      request: async () => {
+        throw new Error("Open this tool in the Snap-O macOS app.");
+      },
+      listen: () => () => {}
+    });
     await act(async () => {
       await import("./tweaks-main");
     });

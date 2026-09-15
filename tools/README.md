@@ -27,8 +27,8 @@ Tool plugins are the bundled extensions; tools are the features users interact w
 Gradle downloads Node.js and uses its bundled npm for frontend builds and development servers. Android Studio and CI builds do not need either on `PATH`. From the repository root, start a tool's development server:
 
 ```sh
-./gradlew :network:toolDev
-./gradlew :tweaks-core:toolDev
+./gradlew :network:devSnapoToolFrontend
+./gradlew :tweaks-core:devSnapoToolFrontend
 ```
 
 Run one command per terminal. In Snap-O, choose Develop → Use Development Server and enter the URL printed by the server. The Network server also serves `/preview.html` with synthetic request examples.

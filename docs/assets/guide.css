@@ -230,8 +230,17 @@ p {
         margin: 0;
       }
 
-p + p {
+p + p,
+.dependency-format-panel + p {
         margin-top: 14px;
+      }
+
+summary {
+        cursor: default;
+      }
+
+p + details {
+        margin-top: 22px;
       }
 
 .prose {
@@ -252,7 +261,7 @@ p + p {
 
 .code-block {
         max-width: 100%;
-        margin: 22px 0 0;
+        margin: 22px 0;
         overflow: hidden;
         color: #eef3ed;
         background: var(--navy);

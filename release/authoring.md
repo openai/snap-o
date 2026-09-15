@@ -29,7 +29,7 @@ Use a new or empty directory outside the checkout. Requirements: JDK 17, Android
 
 The command stages three Maven publications and an npm tarball, checks their metadata/files, and builds a copied [Example tool](../examples/tool/README.md). The consumer resolves real package artifacts, with no composite build or SDK source dependency. It builds debug and release APKs, runs the example's Android and frontend tests, and runs Android lint. It checks that the debug APK includes the generated frontend ZIP and the release APK does not. It also checks that the bundled Example descriptor has its required icon and generated host API version, without a synthetic protocol version.
 
-The output includes `report.json`, the copied example, local Maven repository, npm tarball, and debug APK. The consumer build runs without Node or npm on `PATH` and verifies that its frontend uses the downloaded runtime. It checks configuration cache reuse, an explicit installed-Node override, and prebuilt assets that schedule no Node/npm tasks. It also builds without the centralized repository override to verify automatic Node repository setup. Local Node remains required to stage and test the host SDK. CI runs the same command. This check does not prove that registry credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
+The output includes `report.json`, the copied example, local Maven repository, npm tarball, and debug APK. The consumer build runs without Node or npm on `PATH` and verifies that its frontend uses the downloaded runtime. It also creates and builds the bundled frontend starter in a custom directory, checks that initialization preserves existing files, and verifies the deprecated task aliases. It checks configuration cache reuse, an explicit installed-Node override, and prebuilt assets that schedule no Node/npm tasks. It also builds without the centralized repository override to verify automatic Node repository setup. Local Node remains required to stage and test the host SDK. CI runs the same command. This check does not prove that registry credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
 
 To inspect Tool Packager Gradle Plugin artifacts without copying the example:
 
@@ -49,3 +49,7 @@ For manual local Maven staging, use the explicitly local `Authoring` repository 
 6. Resolve the released packages from clean projects before updating public dependency examples.
 
 The local validation command does not upload to registries or schedule publication.
+
+## Host SDK initialization API change
+
+The next host SDK release removes the public `ready()` method. Consumers render immediately and subscribe with `onConnection()` and `onError()`. Async connection callbacks are supported; stream cleanup functions must still be returned synchronously. This is a breaking JavaScript API change and requires a major version increment if version 1.0.0 has been published. The native host bridge and Android tool protocols are unchanged. Validate initialization failure reporting, late error subscriptions, internal initialization waits, and async callback cleanup handling before publishing.

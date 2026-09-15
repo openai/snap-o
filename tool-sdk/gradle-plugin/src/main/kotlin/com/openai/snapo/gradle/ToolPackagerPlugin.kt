@@ -49,8 +49,17 @@ class ToolPackagerPlugin : Plugin<Project> {
                 }
             })
         }
+        val starter = tasks.register<ToolFrontendInitTask>("writeSnapoToolFrontend") {
+            frontendDirectory.set(tool.frontendDirectory)
+        }
+        tasks.register<NpmTask>("initSnapoToolFrontend") {
+            group = "snapo"
+            description = "Creates a Preact frontend and installs its dependencies."
+            dependsOn(starter)
+            npmCommand.set(listOf("install"))
+        }
         val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME)
-        val build = tasks.register<ToolBuildTask>("toolBuild") {
+        val build = tasks.register<ToolBuildTask>("buildSnapoToolFrontend") {
             group = "snapo"
             description = "Builds the tool frontend."
             inputs.files(install).withPropertyName("frontendDependencies").withPathSensitivity(PathSensitivity.RELATIVE)
@@ -61,7 +70,7 @@ class ToolPackagerPlugin : Plugin<Project> {
             outputDirectory.convention(tool.frontendDirectory.dir("dist"))
         }
         tool.frontendAssets.convention(build.flatMap { it.outputDirectory })
-        val archive = tasks.register<Zip>("toolZip") {
+        val archive = tasks.register<Zip>("zipSnapoToolFrontend") {
             group = "snapo"
             description = "Packages the tool frontend."
             from(tool.frontendAssets)
@@ -70,22 +79,34 @@ class ToolPackagerPlugin : Plugin<Project> {
             isPreserveFileTimestamps = false
             isReproducibleFileOrder = true
         }
-        tasks.register<NpmTask>("toolDev") {
+        tasks.register<NpmTask>("devSnapoToolFrontend") {
             group = "snapo"
             description = "Runs the tool development server until stopped."
             dependsOn(install)
             npmCommand.set(listOf("run", "dev"))
         }
 
+        mapOf(
+            "toolBuild" to "buildSnapoToolFrontend",
+            "toolDev" to "devSnapoToolFrontend",
+            "toolZip" to "zipSnapoToolFrontend",
+        ).forEach { (oldName, newName) ->
+            tasks.register(oldName) {
+                description = "Deprecated alias for $newName."
+                dependsOn(newName)
+                doLast { logger.warn("$oldName is deprecated. Use $newName instead.") }
+            }
+        }
+
         listOf("com.android.application", "com.android.library").forEach { androidPlugin ->
             pluginManager.withPlugin(androidPlugin) {
                 extensions.getByType(AndroidComponentsExtension::class.java).onVariants { variant ->
                     val suffix = variant.name.replaceFirstChar { it.uppercaseChar() }
-                    val assets = tasks.register<ToolAssetsTask>("package${suffix}ToolAssets") {
+                    val assets = tasks.register<ToolAssetsTask>("package${suffix}SnapoToolAssets") {
                         toolId.set(tool.id)
                         frontendArchive.set(archive.flatMap { it.archiveFile })
                     }
-                    val metadata = tasks.register<ToolMetadataTask>("generate${suffix}ToolMetadata") {
+                    val metadata = tasks.register<ToolMetadataTask>("generate${suffix}SnapoToolMetadata") {
                         namespace.set(variant.namespace)
                         toolId.set(tool.id)
                         displayName.set(tool.displayName)
