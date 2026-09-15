@@ -62,7 +62,10 @@ For manual local Maven staging, use the explicitly local `Authoring` repository 
 1. Choose package versions and update the Example project and documentation. Rerun the independent consumer check after API or packaging changes.
 2. Confirm ownership of the final Central namespaces, including the Gradle marker namespace. Configure credentials outside the repository.
 3. Follow [release readiness](README.md), including publication checks, signatures, and protocol compatibility review. Package version changes do not automatically change the host bridge API or domain protocols.
-4. With explicit authorization to publish, use the existing Android publication tasks and the Gradle build's `publishToMavenCentral` task. The Tool Packager Gradle Plugin configures `automaticRelease = false`, so uploading does not automatically release a deployment.
+4. With explicit authorization, run both upload commands below from the repository root. Review and publish both deployments in the Central Portal.
 5. Resolve the released packages from clean projects before updating public dependency examples.
 
-The local validation command does not upload to registries or schedule publication.
+```sh
+./gradlew --no-daemon publishToMavenCentral
+./gradlew --no-daemon -p tool-sdk/gradle-plugin publishToMavenCentral
+```

@@ -155,6 +155,6 @@ Host bridge compatibility still uses generated `hostApiVersion = 1`. SDK distrib
 
 Run `python3 release/validate_authoring.py` from the repository root. It stages the Gradle plugin implementation and its marker in a temporary Maven repository, checks the SDK inside the plugin JAR, and builds a copied [Example tool](../../examples/tool/README.md). It does not upload anything or require signing credentials.
 
-The Tool Packager Gradle Plugin's Maven group comes from `gradle.properties`, its artifact names from this build's `settings.gradle.kts`, and its version from the root `VERSION`. Its Gradle plugin ID is declared in `build.gradle.kts`. See [package release guidance](../../release/authoring.md) for publishing and renames.
+The Maven artifact is `com.openai.snapo:tool-packager-gradle-plugin`. See [release instructions](../../release/authoring.md) for publishing.
 
 The build validates the [tool frontend bundle contract](../../contracts/tool-frontend/README.md) before packaging. Invalid paths, oversized archives, and invalid entry points fail the build with the offending entry or limit.
