@@ -33,7 +33,6 @@ class ToolPackagerPlugin : Plugin<Project> {
             version.set("22.23.2")
             download.set(true)
             nodeProjectDir.set(tool.frontendDirectory)
-            npmInstallCommand.set("ci")
             enableTaskRules.set(false)
         }
         val downloadNode = extensions.getByType<NodeExtension>().download
@@ -53,20 +52,18 @@ class ToolPackagerPlugin : Plugin<Project> {
             frontendDirectory.set(tool.frontendDirectory)
         }
         val sdk = tasks.register<ToolHostSdkTask>("prepareSnapoToolHost") {
-            group = "snapo"
             description = "Restores the bundled host SDK for the frontend."
             outputDirectory.set(tool.frontendDirectory.dir("build/tool-host"))
             mustRunAfter(starter)
         }
         val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME) {
             dependsOn(sdk)
-            args.add("--install-links=false")
         }
         tasks.register<NpmTask>("initSnapoToolFrontend") {
             group = "snapo"
             description = "Creates a Preact frontend and installs its dependencies."
             dependsOn(starter, sdk)
-            npmCommand.set(listOf("install", "--install-links=false"))
+            npmCommand.set(listOf("install"))
         }
         val build = tasks.register<ToolBuildTask>("buildSnapoToolFrontend") {
             group = "snapo"
@@ -81,7 +78,6 @@ class ToolPackagerPlugin : Plugin<Project> {
         }
         tool.frontendAssets.convention(build.flatMap { it.outputDirectory })
         val archive = tasks.register<Zip>("zipSnapoToolFrontend") {
-            group = "snapo"
             description = "Packages the tool frontend."
             from(tool.frontendAssets)
             archiveFileName.set("frontend.zip")

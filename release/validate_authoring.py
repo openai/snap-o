@@ -361,7 +361,7 @@ def verify_host_upgrades(example, overrides, managed_env, repository, version, a
     run([*command, "clean", ":example-tool:buildSnapoToolFrontend"], example, env=managed_env)
     assert verify_host_dependency(frontend, archive) == third_party
     assert (manifest.read_bytes(), lockfile.read_bytes()) == initial
-    run(["npm", "ci", "--ignore-scripts", "--install-links=false", f"--registry={REGISTRY}"], frontend)
+    run(["npm", "install", "--ignore-scripts", f"--registry={REGISTRY}"], frontend)
     assert verify_host_dependency(frontend, archive) == third_party
 
     same_version = stage_plugin_upgrade(repository, version, "same-sdk", archive)
@@ -376,7 +376,7 @@ def verify_host_upgrades(example, overrides, managed_env, repository, version, a
         run([*build, f"-PsnapoVersion={upgraded_version}"], example, env=managed_env)
         assert verify_host_dependency(frontend, upgraded_archive) == third_party
         assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "SDK upgrade rewrote npm files"
-        run(["npm", "ci", "--ignore-scripts", "--install-links=false", f"--registry={REGISTRY}"], frontend)
+        run(["npm", "install", "--ignore-scripts", f"--registry={REGISTRY}"], frontend)
         verify_host_dependency(frontend, upgraded_archive)
         # Import at runtime as well; tsc alone only checks the declarations.
         run(["node", "--input-type=module", "-e",
@@ -388,6 +388,13 @@ def verify_host_upgrades(example, overrides, managed_env, repository, version, a
     assert verify_host_dependency(frontend, archive) == third_party
     assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "Downgrade did not restore npm files"
     assert all(path.read_bytes() == content for path, content in sources.items()), "Build changed user sources"
+
+    # Normal builds also install dependencies when no lockfile exists yet.
+    lockfile.unlink()
+    shutil.rmtree(frontend / "node_modules")
+    run(build, example, env=managed_env)
+    verify_host_dependency(frontend, archive)
+    assert manifest.read_bytes() == initial[0], "Installation changed the npm manifest"
 
 
 def main():

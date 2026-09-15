@@ -25,11 +25,11 @@ snapoTool {
 }
 ```
 
-Place `package.json`, `package-lock.json`, and frontend sources in the module's `frontend/` directory. Its `build` script must write `dist/index.html` and use relative asset URLs. Its `dev` script starts a local development server. Set `frontendDirectory` to use another source directory.
+Place `package.json` and frontend sources in the module's `frontend/` directory. Its `build` script must write `dist/index.html` and use relative asset URLs. Its `dev` script starts a local development server. Set `frontendDirectory` to use another source directory.
 
 The plugin downloads Node.js 22.23.2 and uses its bundled npm. Android Studio and CI builds do not need Node or npm on `PATH`. Downloads are cached between builds. Direct `npm` commands still require a local Node installation.
 
-The Android build prepares the bundled host SDK, then runs `npm ci`, `npm run build`, and ZIP packaging through Gradle task dependencies. Apps consuming a published AAR only use its packaged frontend files and do not need Node or npm.
+The Android build prepares the bundled host SDK, then runs `npm install`, `npm run build`, and ZIP packaging through Gradle task dependencies. Apps consuming a published AAR only use its packaged frontend files and do not need Node or npm.
 
 The Tool Packager Gradle Plugin generates a Java `SnapOTool` class in the module's Android namespace, accessible from Java or Kotlin. Its `ID` constant comes from the same definition as the discovery descriptor. For example:
 
@@ -52,14 +52,12 @@ Run these tasks in your tool module, for example `./gradlew :example-tool:initSn
 | Task | Purpose |
 | --- | --- |
 | `initSnapoToolFrontend` | Create a Preact and TypeScript starter and install its dependencies. |
-| `prepareSnapoToolHost` | Restore the bundled host SDK into `frontend/build/tool-host`. |
 | `buildSnapoToolFrontend` | Build the frontend into `dist/`. |
 | `devSnapoToolFrontend` | Run the frontend development server. |
-| `zipSnapoToolFrontend` | Build and package the frontend ZIP. |
 
-The initializer uses the configured `frontendDirectory` and Gradle’s managed Node/npm. It writes one `src/main.tsx` with a request to `/example`, matching the [tool guide](../../docs/plugins.md). It refuses to write into a nonempty directory. If dependency installation fails, the generated files remain. Resolve the npm error and run `npmInstall` in the tool module. This also prepares the bundled host SDK.
+The initializer uses the configured `frontendDirectory` and Gradle’s managed Node/npm. It writes one `src/main.tsx` with a request to `/example`, matching the [tool guide](../../docs/plugins.md). It refuses to write into a nonempty directory. If dependency installation fails, the generated files remain. Resolve the error and build your Android app again.
 
-Android builds also run `package<Variant>SnapoToolAssets` and `generate<Variant>SnapoToolMetadata` automatically. These replace the old unprefixed generated task names.
+Android builds generate the tool metadata and package its frontend automatically.
 
 ## Node configuration
 
@@ -133,23 +131,23 @@ import { host } from "@snap-o/tool-host";
 
 ### Bundled SDK and lockfiles
 
-Before dependency installation, builds, or development-server startup, `prepareSnapoToolHost` copies the SDK to `frontend/build/tool-host`. Initialization writes the starter first. The dependency stays fixed:
+Gradle supplies the SDK automatically during frontend setup, builds, and development-server startup. The dependency stays fixed:
 
 ```json
 "@snap-o/tool-host": "file:build/tool-host"
 ```
 
-npm links to that generated directory. The Gradle plugin version determines the SDK contents, so SDK upgrades do not rewrite `package.json` or `package-lock.json`. Gradle replaces the generated files and tracks them as frontend build inputs. Normal installs still use `npm ci`. The SDK has no runtime dependencies.
+npm links to that generated directory. The Gradle plugin version determines the SDK contents, so SDK upgrades do not rewrite `package.json` or `package-lock.json`. Gradle replaces the generated files and tracks them as frontend build inputs. Normal builds use `npm install`, which creates or updates the lockfile as needed. The SDK has no runtime dependencies.
 
-Commit the npm manifest and lockfile, and ignore `build/`. Gradle restores the SDK after a clean checkout or deletion. Before running npm directly, run `./gradlew :your-tool:prepareSnapoToolHost`, then `npm ci`. Keep npm's default `install-links=false`; the Gradle tasks set this explicitly. Prebuilt `frontendAssets` still skip the entire Node/npm workflow.
+Commit the npm manifest and lockfile, and ignore `build/`. After a clean checkout or plugin upgrade, build the Android app or run `devSnapoToolFrontend` as usual. Prebuilt `frontendAssets` still skip the entire Node/npm workflow.
 
 ### Migrate an existing frontend
 
-1. Upgrade the Tool Packager Gradle plugin and run `./gradlew :your-tool:prepareSnapoToolHost`.
-2. In the frontend directory, run `npm install @snap-o/tool-host@file:build/tool-host --install-links=false` once. This replaces the old host dependency and updates the lockfile.
+1. Upgrade the Tool Packager Gradle plugin and set `dependencies["@snap-o/tool-host"]` to `"file:build/tool-host"` in the frontend's `package.json`.
+2. Build your Android app normally. Gradle supplies the SDK and installs dependencies, updating the lockfile as needed.
 3. Commit the npm manifest and lockfile, and ignore `build/`. Remove obsolete host SDK tarballs and npm-publication setup.
 
-Gradle does not edit frontend source files, manifests, or lockfiles during normal builds. Imports stay unchanged. Explicit directory dependencies on SDK source also remain available; Snap-O's Network and Tweaks frontends use them for SDK development.
+Gradle leaves frontend source files and manifests unchanged. npm may update the lockfile when dependencies change. Imports stay unchanged. Explicit directory dependencies on SDK source also remain available; Snap-O's Network and Tweaks frontends use them for SDK development.
 
 Host bridge compatibility still uses generated `hostApiVersion = 1`. SDK distribution does not change that contract. The SDK runtime and supported Mac host behavior are unchanged.
 

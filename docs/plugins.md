@@ -253,34 +253,16 @@ To inspect a release build, include the tool library in that variant and add thi
 
 ### Create your UI {#frontend}
 
-The plugin expects your web project in `frontend/`, beside your tool module’s `build.gradle.kts`. Create a starter with Gradle, or set it up manually:
-
-<div class="dependency-tabs" data-label="Frontend setup" markdown="1">
-<div id="frontend-gradle-panel" data-tab="Gradle setup" markdown="1">
+The plugin expects your web project in `frontend/`, beside your tool module’s `build.gradle.kts`. Create it with Gradle:
 
 ``` { .bash title="Create the frontend" }
 # Run from your Android project root
 ./gradlew :your-tool:initSnapoToolFrontend
 ```
 
-This creates a Preact and TypeScript starter, adds the host SDK, and installs dependencies using managed Node/npm. It uses `frontendDirectory` if configured and stops if the directory already contains files.
+This creates a Preact and TypeScript starter with the host SDK and installs its dependencies. Gradle manages Node/npm automatically. It uses `frontendDirectory` if configured and stops if the directory already contains files.
 
-</div>
-<div id="frontend-manual-panel" data-tab="Manual setup" markdown="1">
-
-``` { .bash title="Create the frontend manually" }
-# Run from your tool’s Android library module, with Node.js and npm installed
-npm create vite@latest frontend -- --template preact-ts
-cd frontend
-npm pkg set 'scripts.build=tsc -b && vite build --base=./'
-```
-
-This creates `frontend/` and configures relative asset URLs. From your Android project root, run `./gradlew :your-tool:prepareSnapoToolHost`. Then run `npm install @snap-o/tool-host@file:build/tool-host --install-links=false` in the frontend directory. No Snap-O npm package is required.
-
-</div>
-</div>
-
-Commit the npm manifest and lockfile, and ignore `frontend/build/`. Gradle restores the bundled SDK there before installation, builds, and development-server startup. See [SDK migration and lockfiles](https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#bundled-sdk-and-lockfiles) for existing frontends and direct npm commands.
+Commit the generated source files, `package.json`, and `package-lock.json`. Subsequent Android builds and `devSnapoToolFrontend` runs prepare the SDK and dependencies automatically. For an existing web project, see [frontend configuration](https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#migrate-an-existing-frontend).
 
 <span id="assets"></span>The Android build packages the frontend automatically. Include scripts, images, and fonts in the bundle; the packaged page cannot load remote scripts or call unrelated servers.
 
@@ -289,7 +271,7 @@ Commit the npm manifest and lockfile, and ignore `frontend/build/`. Gradle resto
 
 ### Connect to the Snap-O Mac app {#connect-to-android}
 
-The host SDK tells your frontend when Android is connected. Call Android routes with `/api/` in front: `/api/example` reaches your server’s `/example` route. The generated `src/main.tsx` contains this example. If you used manual setup, replace that file with the code below and keep its CSS imports:
+The host SDK tells your frontend when Android is connected. Call Android routes with `/api/` in front: `/api/example` reaches your server’s `/example` route. The generated `src/main.tsx` contains this example. For an existing frontend, adapt the code below and keep your CSS imports:
 
 ``` { .tsx title="frontend/src/main.tsx" }
 import { render } from "preact";
