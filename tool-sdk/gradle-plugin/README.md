@@ -58,8 +58,6 @@ Run these tasks in your tool module, for example `./gradlew :example-tool:initSn
 
 The initializer uses the configured `frontendDirectory` and Gradle’s managed Node/npm. It writes one `src/main.tsx` with a request to `/example`, matching the [tool guide](../../docs/plugins.md). It refuses to write into a nonempty directory. If dependency installation fails, the generated files remain. Resolve the npm error and run `npm install` in that directory with a local Node installation.
 
-`toolBuild`, `toolDev`, and `toolZip` remain deprecated command aliases. Update build-script task configuration to target the new names; the aliases only depend on the replacement tasks.
-
 Android builds also run `package<Variant>SnapoToolAssets` and `generate<Variant>SnapoToolMetadata` automatically. These replace the old unprefixed generated task names.
 
 ## Node configuration

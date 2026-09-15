@@ -74,7 +74,3 @@ selection belong to the native host, not this API.
 From `tool-sdk/host/`, run `npm ci`, `npm run build`, `npm test`, and `npm run typecheck`. `npm pack` builds and creates a local tarball. The package exposes compiled ES modules and TypeScript declarations under `dist/`; tests and TypeScript implementation sources are excluded.
 
 Package versions follow the SDK's `package.json`. Host bridge API compatibility is recorded separately in generated `hostApiVersion` metadata. Install released versions from npm. See [authoring package validation](../../release/authoring.md) when developing SDK changes.
-
-## Migration from explicit initialization
-
-Remove `host.ready()` calls and render your UI immediately. Subscribe to `host.onConnection` for Android state and `host.onError` for SDK errors. Native helpers wait internally when needed. This removes a public JavaScript API; tools using the old method must update before building against this SDK. The native host bridge protocol is unchanged.

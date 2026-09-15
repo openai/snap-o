@@ -228,11 +228,9 @@ gradle.beforeProject { project ->
                                  env={**os.environ, "NPM_CONFIG_REGISTRY": REGISTRY, **managed_env})
         assert refused.returncode != 0 and "Frontend directory is not empty" in refused.stdout, refused.stdout
         assert source.read_text() == expected, "Initializer overwrote user edits"
-        aliases = run([*configured, ":example-tool:toolBuild", ":example-tool:toolZip"],
-                      example, capture=True, env=managed_env)
-        assert "toolBuild is deprecated" in aliases and "toolZip is deprecated" in aliases
-        dev = run([*configured, ":example-tool:toolDev", "--dry-run"], example, capture=True, env=managed_env)
-        assert ":example-tool:devSnapoToolFrontend " in dev, "Development alias does not delegate"
+        dev = run([*configured, ":example-tool:devSnapoToolFrontend", "--dry-run"],
+                  example, capture=True, env=managed_env)
+        assert ":example-tool:devSnapoToolFrontend " in dev, "Development task was not scheduled"
     finally:
         init.unlink(missing_ok=True)
 
@@ -321,7 +319,7 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
     report = {"mavenCoordinates": coordinates, "npmPackage": f"{sdk['name']}@{sdk['version']}",
               "npmTarball": str(archive), "exampleProject": str(example), "debugApk": str(apk),
               "frontendModes": ["managed-node-without-path", "installed-node", "prebuilt", "automatic-node-repository",
-                                "frontend-initializer", "legacy-task-aliases"],
+                                "frontend-initializer"],
               "configurationCacheReused": True, "published": False}
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

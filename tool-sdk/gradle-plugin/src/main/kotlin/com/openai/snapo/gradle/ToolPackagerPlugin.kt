@@ -86,18 +86,6 @@ class ToolPackagerPlugin : Plugin<Project> {
             npmCommand.set(listOf("run", "dev"))
         }
 
-        mapOf(
-            "toolBuild" to "buildSnapoToolFrontend",
-            "toolDev" to "devSnapoToolFrontend",
-            "toolZip" to "zipSnapoToolFrontend",
-        ).forEach { (oldName, newName) ->
-            tasks.register(oldName) {
-                description = "Deprecated alias for $newName."
-                dependsOn(newName)
-                doLast { logger.warn("$oldName is deprecated. Use $newName instead.") }
-            }
-        }
-
         listOf("com.android.application", "com.android.library").forEach { androidPlugin ->
             pluginManager.withPlugin(androidPlugin) {
                 extensions.getByType(AndroidComponentsExtension::class.java).onVariants { variant ->
