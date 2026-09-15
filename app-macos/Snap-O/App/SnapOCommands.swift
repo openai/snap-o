@@ -139,9 +139,11 @@ struct SnapOCommands: Commands {
       Toggle("Record Screen as Bug Report", isOn: $settings.recordAsBugReport)
     }
     CommandMenu("Develop") {
-      Button("Inspect Current WebView in Safari…") { toolHost?.webContainer?.inspectInSafari() }
+      #if DEBUG
+      Button("Show Web Inspector") { toolHost?.webContainer?.showWebInspector() }
         .disabled(toolHost?.isPageReady != true)
       Divider()
+      #endif
       Button("Use Development Server…") { toolHost?.isDevelopmentServerPresented = true }
         .disabled(toolHost?.canConfigureDevelopmentServer != true)
       Button("Use Packaged Frontend") { toolHost?.useDevelopmentServer(nil) }

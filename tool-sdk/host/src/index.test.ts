@@ -255,6 +255,68 @@ describe("shared tool host", () => {
     expect(request).toHaveBeenLastCalledWith("closeNativeColorPanel", { sessionId: session.sessionId });
   });
 
+  it.each(["succeeds", "fails"])("sends only the latest pending color after the first update %s", async (outcome) => {
+    const { host, request, emit } = setup();
+    const changed = vi.fn();
+    const picker = await host.openColorPicker({ value: "#112233FF", onChange: changed });
+    const session = request.mock.calls.at(-1)![1] as { sessionId: string };
+    request.mockClear();
+    let finish!: () => void;
+    request.mockReturnValueOnce(
+      new Promise<void>((resolve, reject) => {
+        finish = () => (outcome === "fails" ? reject(new Error("Native action in progress.")) : resolve());
+      })
+    );
+    const updates = ["#445566FF", "#778899FF", "#99AABBFF"].map((value) => picker.setValue(value));
+    expect(request).toHaveBeenCalledTimes(1);
+    finish();
+    await Promise.all(updates);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenLastCalledWith("openNativeColorPanel", {
+      color: "#99AABBFF",
+      sessionId: session.sessionId,
+      revision: 3,
+      present: false
+    });
+    emit("color-changed", { ...session, revision: 1, color: "#000000FF" });
+    emit("color-changed", { ...session, revision: 3, color: "#AABBCCFF" });
+    expect(changed).toHaveBeenCalledExactlyOnceWith("#AABBCCFF");
+  });
+
+  it("discards a pending color when the picker closes", async () => {
+    const { host, request } = setup();
+    const picker = await host.openColorPicker({ value: "#112233FF", onChange: vi.fn() });
+    let finish!: () => void;
+    request.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const first = picker.setValue("#445566FF");
+    const second = picker.setValue("#778899FF");
+    await picker.close();
+    finish();
+    await Promise.all([first, second]);
+    expect(request.mock.calls.filter(([command]) => command === "openNativeColorPanel")).toHaveLength(2);
+    expect(request.mock.calls.at(-1)![0]).toBe("closeNativeColorPanel");
+  });
+
+  it("keeps accepting live colors after a picker update is rejected", async () => {
+    const { host, request, emit } = setup();
+    const changed = vi.fn();
+    const picker = await host.openColorPicker({ value: "#112233FF", onChange: changed });
+    const session = request.mock.calls.at(-1)![1] as { sessionId: string };
+    await picker.setValue("#445566FF");
+    request.mockRejectedValueOnce(new Error("Native action in progress."));
+    await expect(picker.setValue("#778899FF")).rejects.toThrow("Native action in progress.");
+    emit("color-changed", { ...session, revision: 1, color: "#AABBCCFF" });
+    expect(changed).toHaveBeenCalledExactlyOnceWith("#AABBCCFF");
+    await picker.setValue("#DDEEFF80");
+    emit("color-changed", { ...session, revision: 3, color: "#00000080" });
+    expect(changed).toHaveBeenLastCalledWith("#00000080");
+  });
+
   it("routes toolbar input to current callbacks and rejects stale button events", async () => {
     const { host, request, emit } = setup();
     const oldClick = vi.fn(),

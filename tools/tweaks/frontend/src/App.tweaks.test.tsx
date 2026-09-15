@@ -118,6 +118,43 @@ describe("Tweaks frontend with the shared host", () => {
     expect(mocks.client.subscribeTweaks).toHaveBeenCalledOnce();
     expect(fetch).not.toHaveBeenCalled();
   });
+  it("applies live native picker changes to the text color", async () => {
+    const colorList = (value: string): TweakList => ({
+      tweaks: [{ name: "Colors/Text", type: "color", value, default: "#112233" }]
+    });
+    snapshot = colorList("#112233");
+    let colorChanged: (event: { sessionId: string; revision: number; color: string }) => void;
+    const request = vi.fn(async (command: string, _payload?: unknown): Promise<unknown> => {
+      void _payload;
+      return command === "hostState" ? { ...state } : undefined;
+    });
+    mocks.host = new ToolHost({
+      request: async <T,>(command: string, payload?: unknown) => (await request(command, payload)) as T,
+      listen: <T,>(name: string, callback: (value: T) => void) => {
+        if (name === "host:color-changed") colorChanged = callback as typeof colorChanged;
+        return () => {};
+      }
+    });
+    vi.mocked(mocks.client.updateTweaks).mockImplementation(async ({ values }) => {
+      const value = String(values["Colors/Text"]);
+      onSnapshot(colorList(value));
+      return { tweaks: [{ name: "Colors/Text", value, modified: true }] };
+    });
+    await mount();
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Colors/Text color"]')!.click());
+    const session = request.mock.calls.find(([command]) => command === "openNativeColorPanel")![1] as {
+      sessionId: string;
+      revision: number;
+    };
+    for (const color of ["#FF0000FF", "#00FF0080", "#0000FFFF"]) {
+      await act(async () => colorChanged({ ...session, color }));
+      await flush();
+      const value = color.endsWith("FF") ? color.slice(0, 7) : color;
+      expect(mocks.client.updateTweaks).toHaveBeenLastCalledWith({ values: { "Colors/Text": value } });
+      expect(container.querySelector<HTMLInputElement>('[aria-label="Colors/Text hex"]')?.value).toBe(value);
+    }
+    expect(request.mock.calls.filter(([command]) => command === "openNativeColorPanel")).toHaveLength(1);
+  });
   it("preserves values while disconnected and refreshes after reconnect", async () => {
     await mount();
     const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;

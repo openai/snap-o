@@ -356,7 +356,7 @@ server: {
 
 Use the same port for `port` and `hmr.clientPort`. Requests to `/api/...` still go to Android.
 
-The `devSnapoToolFrontend` task installs dependencies and runs the frontend's npm `dev` script with the managed Node runtime. You can also run `npm run dev` from the frontend directory with a local Node installation. To inspect the page, choose **Develop → Inspect Current WebView in Safari…**.
+The `devSnapoToolFrontend` task installs dependencies and runs the frontend's npm `dev` script with the managed Node runtime. You can also run `npm run dev` from the frontend directory with a local Node installation. In a Debug build of Snap-O, choose **Develop → Show Web Inspector** to inspect the page in a separate window.
 
 Choose **Develop → Use Packaged Frontend** to return to the version bundled in the APK. Rebuild and reinstall through your usual Android workflow to update that version.
 

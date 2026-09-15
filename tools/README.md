@@ -54,7 +54,7 @@ See the [Tool Packager Gradle Plugin](../tool-sdk/gradle-plugin/README.md) for p
 
 Snap-O checks the selected process identity and package revision before and after reading the archive. It caches up to four validated bundles, keyed by device, Android user, package revision, tool ID, and asset path. The host bounds compressed and expanded data to 16 MiB, limits archives to 1,024 entries, and rejects unsafe paths, symlinks, duplicate files, and invalid checksums. Files stay in memory. WebKit loads the unchanged HTML and assets under `snapo://tool/`. A document query parameter changes on reload to reject stale bridge messages.
 
-Develop → Inspect Current WebView in Safari enables WebKit's public inspection support. Open the page through Safari's Develop menu. No private WebKit inspection API is used.
+In Debug builds, **Develop → Show Web Inspector** opens the current tool's inspector in a separate window. This uses private WebKit API, which is excluded from Release builds.
 
 ## WebView safeguards
 

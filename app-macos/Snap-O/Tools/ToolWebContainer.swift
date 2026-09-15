@@ -117,7 +117,6 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
   func stop() {
     guard !isStopped else { return }
     isStopped = true
-    webView.isInspectable = false
     isPageReady = false
     bridge.invalidate()
     schemeHandler.invalidate()
@@ -149,22 +148,32 @@ final class ToolWebContainer: NSObject, WKNavigationDelegate, WKUIDelegate {
     bridge.cancelPresentation()
   }
 
-  func inspectInSafari() {
-    guard !isStopped else { return }
-    webView.isInspectable = true
-    let alert = NSAlert()
-    alert.messageText = "Inspect in Safari"
-    alert.informativeText = "In Safari’s Develop menu, select this Mac, then Snap-O and this tool page. "
-      + "If Develop is hidden, enable web developer features in Safari Settings → Advanced."
-    alert.addButton(withTitle: "Open Safari")
-    alert.addButton(withTitle: "Cancel")
-    guard let window = webView.window else { return }
-    alert.beginSheetModal(for: window) { response in
-      guard response == .alertFirstButtonReturn,
-            let safari = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") else { return }
-      NSWorkspace.shared.openApplication(at: safari, configuration: NSWorkspace.OpenConfiguration())
+  #if DEBUG
+  func showWebInspector() {
+    guard !isStopped, isPageReady else { return }
+    // WebKit's in-app inspector uses private API, so keep it out of release builds.
+    let selector = NSSelectorFromString("_inspector")
+    guard webView.responds(to: selector),
+          let inspector = webView.perform(selector)?.takeUnretainedValue() as? NSObject,
+          inspector.responds(to: NSSelectorFromString("setDelegate:")),
+          inspector.responds(to: NSSelectorFromString("show")),
+          inspector.responds(to: NSSelectorFromString("detach")) else {
+      NSSound.beep()
+      return
     }
+    webView.configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
+    inspector.perform(NSSelectorFromString("setDelegate:"), with: self)
+    inspector.perform(NSSelectorFromString("show"))
+    inspector.perform(NSSelectorFromString("detach"))
   }
+
+  @objc
+  private func inspectorFrontendLoaded(_ inspector: NSObject) {
+    guard !isStopped else { return }
+    // Showing the inspector loads its saved docking state asynchronously.
+    inspector.perform(NSSelectorFromString("detach"))
+  }
+  #endif
 
   func recoverFromEventOverflow() {
     recoverPage()
