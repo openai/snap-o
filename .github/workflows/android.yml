@@ -1,6 +1,7 @@
 name: Android
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -16,6 +17,7 @@ on:
       - 'gradle.properties'
       - 'gradlew*'
       - 'release/validate_authoring.py'
+      - 'release/tests/test_authoring.py'
       - 'tool-reader/**'
       - 'contracts/**'
       - '.github/workflows/android.yml'
@@ -35,6 +37,7 @@ on:
       - 'gradle.properties'
       - 'gradlew*'
       - 'release/validate_authoring.py'
+      - 'release/tests/test_authoring.py'
       - 'tool-reader/**'
       - 'contracts/**'
       - '.github/workflows/android.yml'
@@ -191,10 +194,16 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            tool-sdk/host/package-lock.json
+            examples/tool/example-tool/frontend/package-lock.json
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
           validate-wrappers: true
+      - name: Test authoring validation modes
+        run: python3 -m unittest discover -s release/tests -p 'test_authoring.py' -v
       - name: Validate local authoring packages and independent Example tool
         run: python3 release/validate_authoring.py --output "${RUNNER_TEMP}/snapo-authoring"
       - name: Upload validation report

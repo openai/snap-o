@@ -37,6 +37,18 @@ The validator also creates and builds the bundled frontend starter in a custom d
 
 The plugin build also uses managed Node to compile the SDK. Local Node remains required for the validator’s direct npm checks. CI runs the same command. This check does not prove that Central credentials, namespace ownership, signing keys, or a device integration work; those are release-time checks.
 
+### Release smoke test
+
+After full Android CI passes on the exact source commit, release automation uses:
+
+```sh
+python3 release/validate_authoring.py --mode release-smoke --output /tmp/snapo-release-smoke
+```
+
+This mode stages and checks the same three publications and bundled SDK. It builds one independent debug/release APK pair with managed Node, verifies the installed SDK bytes, and checks the tool assets and initialization metadata. It skips unit tests, lint, and authoring regression scenarios already covered by full CI. The report records the mode and only claims checks that ran. The default mode remains `full`.
+
+Both modes reuse Gradle daemons within the job. The independent example enables build caching and parallel execution. CI caches npm downloads; each copied consumer still starts without installed packages or generated SDK files.
+
 To inspect Tool Packager Gradle Plugin artifacts without copying the example:
 
 ```sh

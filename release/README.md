@@ -50,7 +50,9 @@ Before the version update, run the macOS build for `mac` or `both`, and Android 
 ./gradlew --no-daemon validateMavenCentralRelease
 ```
 
-Use `build/reports/maven-central/publications.tsv` for the Android library coordinates.
+Publication validation builds release artifacts and metadata. Demo apps are built by normal Android CI. Use `build/reports/maven-central/publications.tsv` for the Android library coordinates.
+
+The Android release workflow requires successful Android CI on the exact source commit from `main`, including the full authoring suite. It then runs the independent consumer smoke test described in [authoring package preparation](authoring.md). If path filters skipped CI, manually run the Android workflow on `main` while it points to the source commit.
 
 Test the release workflow before updating the version when build, signing, packaging, or publishing code changes. Check changes to the Xcode project, macOS build scripts, source CI, and frontend build files against the release workflow's setup. Source-only changes still need normal tests, but do not require an extra release workflow run when that workflow is unchanged.
 

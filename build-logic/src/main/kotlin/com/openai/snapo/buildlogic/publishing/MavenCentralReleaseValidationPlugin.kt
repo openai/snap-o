@@ -26,7 +26,7 @@ class MavenCentralReleaseValidationPlugin : Plugin<Project> {
             "validateMavenCentralRelease",
         ) {
             group = LifecycleBasePlugin.VERIFICATION_GROUP
-            description = "Builds Maven Central release artifacts and debug sample applications."
+            description = "Builds Maven Central release artifacts and their publication manifest."
             publicationManifest.set(
                 target.layout.buildDirectory.file("reports/maven-central/publications.tsv"),
             )
@@ -45,16 +45,6 @@ class MavenCentralReleaseValidationPlugin : Plugin<Project> {
                             "${project.path}\t${project.group}:${project.name}:${project.version}"
                         },
                     )
-                }
-            }
-
-            listOf("com.android.application", "com.android.library").forEach { pluginId ->
-                project.pluginManager.withPlugin(pluginId) {
-                    if (project.path.startsWith(SAMPLE_PROJECT_PREFIX)) {
-                        validation.configure {
-                            dependsOn("${project.path}:assembleDebug")
-                        }
-                    }
                 }
             }
         }
