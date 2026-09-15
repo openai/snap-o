@@ -43,7 +43,7 @@ Start in Live Preview and Option-drag the current frame to share a screenshot. R
 
 ## Tweaks {.product-title}
 
-Adjust values from Compose, Views, and other Kotlin code. Change app-owned settings and run actions through the Tool pane, an optional on-device panel, the REST API, or an agent.
+Adjust values from Compose and other Kotlin code. Change app-owned settings and run actions through the Tool pane, an optional on-device panel, the REST API, or an agent.
 {.product-copy}
 
 [Set up Tweaks](tweaks.md){.section-link}
