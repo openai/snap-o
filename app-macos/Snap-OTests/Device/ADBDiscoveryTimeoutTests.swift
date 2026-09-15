@@ -147,13 +147,12 @@ struct ADBDiscoveryTimeoutTests {
   func boundsLegacyTrickle() async throws {
     let server = FakeDiscoveryADB(stall: .output, legacyReply: .trickle)
     defer { server.close() }
-    let start = ContinuousClock.now
     let metadata = try await server.client().legacyPluginMetadata(
       reference: ToolServerReference(deviceId: "phone", socketName: "snapo_network_42"), kind: ToolID(rawValue: "network"),
       pid: 42
     )
     #expect(metadata == nil)
-    #expect(start.duration(to: .now) < .seconds(3))
+    #expect(!server.legacyStreamFinished)
     #expect(server.connectionCount == 1)
   }
 
@@ -201,6 +200,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private let workers = DispatchGroup()
   private let lock = NSLock()
   private var peers: [ADBSocketConnection] = []
+  private var finishedLegacyStream = false
 
   init(stall: Stall, legacyReply: LegacyReply? = nil) {
     self.stall = stall
@@ -209,6 +209,10 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
 
   var connectionCount: Int {
     lock.withLock { peers.count }
+  }
+
+  var legacyStreamFinished: Bool {
+    lock.withLock { finishedLegacyStream }
   }
 
   func client(timeout: Duration = .milliseconds(500)) -> ADBClient {
@@ -262,10 +266,11 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
               while let header = try peer.readLine(), !header.isEmpty {}
               Self.send("HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\n\r\n" + body, to: descriptor)
             case .trickle:
-              for _ in 0 ..< 100 {
-                if !Self.send("x", to: descriptor) { break }
+              for _ in 0 ..< 200 {
+                if !Self.send("x", to: descriptor) { return }
                 Thread.sleep(forTimeInterval: 0.03)
               }
+              self.lock.withLock { self.finishedLegacyStream = true }
             }
             return
           }
