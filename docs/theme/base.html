@@ -18,7 +18,9 @@
     {% if page.meta.layout == 'home' %}
     <div class="space-scene" aria-hidden="true">
       <div class="stars"></div>
-      <img class="space-planet" src="{{ 'assets/space-planet.webp'|url }}" alt="" width="1254" height="1254">
+      <div class="space-planet">
+        <img src="{{ 'assets/space-planet.webp'|url }}" alt="" width="1254" height="1254">
+      </div>
     </div>
     {% endif %}
     {% if page.meta.layout == 'guide' %}
@@ -46,5 +48,6 @@
     {% endif %}
     <script src="{{ 'assets/guide.js'|url }}"></script>
     <script src="{{ 'assets/robot.js'|url }}?v=clockwise-1" defer></script>
+    {% if page.meta.layout == 'home' %}<script src="{{ 'assets/planet.js'|url }}" defer></script>{% endif %}
   </body>
 </html>
