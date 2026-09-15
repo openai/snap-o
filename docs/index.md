@@ -29,9 +29,9 @@ A fast, tidy macOS app for Android developers: capture screenshots and recording
 Requires macOS 26+ and Android Platform Tools (`adb`).
 {.note}
 
-## Network {.product-title}
+## Network inspector {.product-title}
 
-Inspect HTTP and HTTPS requests, responses, JSON payloads, Server-Sent Events, and WebSocket messages from Android apps. Use Python handlers to edit or mock HTTP responses through the app's OkHttp connection.
+Inspect HTTP and HTTPS requests, Server-Sent Events (SSE), and WebSocket messages. Edit or mock HTTP responses with Python handlers.
 {.product-copy}
 
 [Set up Network](network-inspector.md){.section-link}
@@ -43,7 +43,7 @@ Start in Live Preview and Option-drag the current frame to share a screenshot. R
 
 ## Tweaks {.product-title}
 
-Adjust values from Compose, Views, and other Kotlin code. Change app-owned settings and run actions through the Tool pane, an optional on-device panel, the REST API, or an agent.
+Adjust values from Compose and other Kotlin code. Change app-owned settings and run actions through the Tool pane, an optional on-device panel, the REST API, or an agent.
 {.product-copy}
 
 [Set up Tweaks](tweaks.md){.section-link}
