@@ -8,14 +8,11 @@ See the [tool plugin authoring guide](../../docs/plugins.md) for setup, examples
 
 ## Run the example
 
-Copy this directory to your own project location. Use JDK 17 and Android SDK 36. The initial npm setup below also needs a local Node.js 22.12 or later installation. Set `ANDROID_HOME` to your Android SDK directory if needed.
+Copy this directory to your own project location. Use JDK 17 and Android SDK 36. Set `ANDROID_HOME` to your Android SDK directory if needed.
 
-The example resolves the core library and Tool Packager Gradle Plugin from Maven Central. Its `gradle.properties` selects the package version. Install the host SDK from npm, replacing the local tarball dependency used by the repository's validation workflow:
+The example resolves the core library and Tool Packager Gradle Plugin from Maven Central. Its `gradle.properties` selects the package version. The plugin supplies the host SDK from its JAR and manages Node/npm automatically:
 
 ```sh
-cd example-tool/frontend
-npm install @snap-o/tool-host@1.0.0
-cd ../..
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.example.snapo/.MainActivity
@@ -29,7 +26,7 @@ Run `./gradlew :app:assembleDebug` to rebuild the Android app and its frontend. 
 
 The Tool Packager Gradle Plugin downloads Node and uses its bundled npm. Android Studio and CI builds do not need Node or npm on `PATH`. This example forbids project repositories, so it declares the Node download source in settings and sets `node.distBaseUrl` to `null` in the tool module. Builds that allow project repositories need neither change. See [Node configuration](../../tool-sdk/gradle-plugin/README.md#node-configuration) for version overrides and using an existing installation.
 
-Run `./gradlew :example-tool:devSnapoToolFrontend` to start the development server with managed Node. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. With a local Node installation, frontend-only commands are also available in `example-tool/frontend`:
+Run `./gradlew :example-tool:devSnapoToolFrontend` to start the development server with managed Node. Set `frontendAssets` to a task output or prebuilt directory to skip the default npm build. After the first Gradle build, frontend-only commands are also available in `example-tool/frontend` with a local Node installation. After a clean checkout or plugin upgrade, first run `./gradlew :example-tool:prepareSnapoToolHost` from the project root:
 
 ```sh
 npm ci
@@ -51,9 +48,9 @@ python3 release/validate_authoring.py --output /tmp/snapo-example
 Use a new or empty output directory. The command:
 
 1. Stages the core library and Tool Packager Gradle Plugin in `/tmp/snapo-example/maven`.
-2. Builds and packs the host SDK under `/tmp/snapo-example/npm`.
+2. Verifies the compiled host SDK and declarations inside the plugin JAR.
 3. Copies this entire project to `/tmp/snapo-example/example`.
-4. Installs the packed SDK and builds/tests the copied project.
+4. Restores the SDK through Gradle and builds/tests the copied project, including clean restoration and SDK upgrades.
 5. Checks that the debug APK includes Example and the release APK excludes it.
 
 It does not upload packages or use signing credentials. The validation command writes the staged package version and group into the copied `gradle.properties`. No source links to the Snap-O checkout are needed after staging.

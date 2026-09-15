@@ -29,7 +29,7 @@ Place `package.json`, `package-lock.json`, and frontend sources in the module's 
 
 The plugin downloads Node.js 22.23.2 and uses its bundled npm. Android Studio and CI builds do not need Node or npm on `PATH`. Downloads are cached between builds. Direct `npm` commands still require a local Node installation.
 
-The Android build runs `npm ci`, `npm run build`, and ZIP packaging through Gradle task dependencies. Apps consuming a published AAR only use its packaged frontend files and do not need Node or npm.
+The Android build prepares the bundled host SDK, then runs `npm ci`, `npm run build`, and ZIP packaging through Gradle task dependencies. Apps consuming a published AAR only use its packaged frontend files and do not need Node or npm.
 
 The Tool Packager Gradle Plugin generates a Java `SnapOTool` class in the module's Android namespace, accessible from Java or Kotlin. Its `ID` constant comes from the same definition as the discovery descriptor. For example:
 
@@ -52,11 +52,12 @@ Run these tasks in your tool module, for example `./gradlew :example-tool:initSn
 | Task | Purpose |
 | --- | --- |
 | `initSnapoToolFrontend` | Create a Preact and TypeScript starter and install its dependencies. |
+| `prepareSnapoToolHost` | Restore the bundled host SDK into `frontend/build/tool-host`. |
 | `buildSnapoToolFrontend` | Build the frontend into `dist/`. |
 | `devSnapoToolFrontend` | Run the frontend development server. |
 | `zipSnapoToolFrontend` | Build and package the frontend ZIP. |
 
-The initializer uses the configured `frontendDirectory` and Gradle’s managed Node/npm. It writes one `src/main.tsx` with a request to `/example`, matching the [tool guide](../../docs/plugins.md). It refuses to write into a nonempty directory. If dependency installation fails, the generated files remain. Resolve the npm error and run `npm install` in that directory with a local Node installation.
+The initializer uses the configured `frontendDirectory` and Gradle’s managed Node/npm. It writes one `src/main.tsx` with a request to `/example`, matching the [tool guide](../../docs/plugins.md). It refuses to write into a nonempty directory. If dependency installation fails, the generated files remain. Resolve the npm error and run `npmInstall` in the tool module. This also prepares the bundled host SDK.
 
 Android builds also run `package<Variant>SnapoToolAssets` and `generate<Variant>SnapoToolMetadata` automatically. These replace the old unprefixed generated task names.
 
@@ -124,11 +125,37 @@ In Snap-O, select the app and tool, then choose Develop → Use Development Serv
 
 Only use a trusted local server. Its code can contact the tool's Android endpoint and request native host actions. HTTP, HTTPS, and HMR WebSocket traffic to that server are allowed while other endpoint restrictions remain in effect.
 
-Both frontends depend on `@snap-o/tool-host` through a local npm file dependency. External tool authors use a versioned dependency from npm; the compiled SDK remains inside the frontend ZIP, so consuming Android apps still need no npm setup.
+The plugin JAR contains the compiled `@snap-o/tool-host` SDK and its TypeScript declarations. No Snap-O npm publication is needed. Tool code keeps its usual import:
+
+```ts
+import { host } from "@snap-o/tool-host";
+```
+
+### Bundled SDK and lockfiles
+
+Before dependency installation, builds, or development-server startup, `prepareSnapoToolHost` copies the SDK to `frontend/build/tool-host`. Initialization writes the starter first. The dependency stays fixed:
+
+```json
+"@snap-o/tool-host": "file:build/tool-host"
+```
+
+npm links to that generated directory. The Gradle plugin version determines the SDK contents, so SDK upgrades do not rewrite `package.json` or `package-lock.json`. Gradle replaces the generated files and tracks them as frontend build inputs. Normal installs still use `npm ci`. The SDK has no runtime dependencies.
+
+Commit the npm manifest and lockfile, and ignore `build/`. Gradle restores the SDK after a clean checkout or deletion. Before running npm directly, run `./gradlew :your-tool:prepareSnapoToolHost`, then `npm ci`. Keep npm's default `install-links=false`; the Gradle tasks set this explicitly. Prebuilt `frontendAssets` still skip the entire Node/npm workflow.
+
+### Migrate an existing frontend
+
+1. Upgrade the Tool Packager Gradle plugin and run `./gradlew :your-tool:prepareSnapoToolHost`.
+2. In the frontend directory, run `npm install @snap-o/tool-host@file:build/tool-host --install-links=false` once. This replaces the old host dependency and updates the lockfile.
+3. Commit the npm manifest and lockfile, and ignore `build/`. Remove obsolete host SDK tarballs and npm-publication setup.
+
+Gradle does not edit frontend source files, manifests, or lockfiles during normal builds. Imports stay unchanged. Explicit directory dependencies on SDK source also remain available; Snap-O's Network and Tweaks frontends use them for SDK development.
+
+Host bridge compatibility still uses generated `hostApiVersion = 1`. SDK distribution does not change that contract. The SDK runtime and supported Mac host behavior are unchanged.
 
 ## Local publication validation
 
-Run `python3 release/validate_authoring.py` from the repository root. It stages the Gradle plugin implementation and its marker in a temporary Maven repository, packages the host SDK, and builds a copied [Example tool](../../examples/tool/README.md). It does not upload anything or require signing credentials.
+Run `python3 release/validate_authoring.py` from the repository root. It stages the Gradle plugin implementation and its marker in a temporary Maven repository, checks the SDK inside the plugin JAR, and builds a copied [Example tool](../../examples/tool/README.md). It does not upload anything or require signing credentials.
 
 The Tool Packager Gradle Plugin's Maven group comes from `gradle.properties`, its artifact names from this build's `settings.gradle.kts`, and its version from the root `VERSION`. Its Gradle plugin ID is declared in `build.gradle.kts`. See [package release guidance](../../release/authoring.md) for publishing and renames.
 

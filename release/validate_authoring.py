@@ -2,12 +2,13 @@
 """Stage packages locally and build an independent Example tool. Never uploads packages."""
 
 import argparse
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
-import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
@@ -55,17 +56,41 @@ def verify_maven(repository):
     return sorted(coordinates)
 
 
-def verify_sdk(archive):
-    with tarfile.open(archive) as package:
-        names = set(package.getnames())
-        expected = {"package/package.json", "package/README.md", "package/LICENSE",
-                    "package/dist/index.js", "package/dist/index.d.ts", "package/dist/bridge.js"}
+def plugin_jar(repository, version):
+    return next(repository.rglob(f"snapo-tool-packager-gradle-plugin-{version}.jar"))
+
+
+def verify_sdk(jar):
+    with zipfile.ZipFile(jar) as plugin:
+        archive = plugin.read("host-sdk/host-sdk.zip")
+    with zipfile.ZipFile(io.BytesIO(archive)) as package:
+        names = set(package.namelist())
+        expected = {"package.json", "README.md", "LICENSE", "dist/index.js", "dist/index.d.ts",
+                    "dist/bridge.js", "dist/bridge.d.ts"}
         assert expected <= names, f"Missing SDK files: {expected - names}"
-        assert not any("/src/" in name or ".test." in name or "node_modules" in name for name in names)
-        metadata = json.load(package.extractfile("package/package.json"))
-        assert not metadata.get("private")
-        assert metadata["publishConfig"]["access"] == "public"
-        return metadata
+        assert not any("src/" in name or ".test." in name or "node_modules" in name for name in names)
+        metadata = json.loads(package.read("package.json"))
+        assert metadata["private"] is True
+        assert not any(key in metadata for key in ("publishConfig", "dependencies", "devDependencies", "scripts"))
+    return archive
+
+
+def verify_host_dependency(frontend, archive):
+    dependency = "file:build/tool-host"
+    metadata = json.loads((frontend / "package.json").read_text())
+    lock = json.loads((frontend / "package-lock.json").read_text())
+    assert metadata["dependencies"]["@snap-o/tool-host"] == dependency
+    assert lock["packages"][""]["dependencies"]["@snap-o/tool-host"] == dependency
+    assert lock["packages"]["node_modules/@snap-o/tool-host"] == {"resolved": "build/tool-host", "link": True}
+    installed = frontend / "node_modules/@snap-o/tool-host"
+    assert installed.is_symlink(), "The SDK must link to its generated directory"
+    assert installed.resolve() == (frontend / "build/tool-host").resolve()
+    with zipfile.ZipFile(io.BytesIO(archive)) as package:
+        for entry in package.infolist():
+            if not entry.is_dir():
+                assert (installed / entry.filename).read_bytes() == package.read(entry), f"Stale SDK: {entry.filename}"
+    return {name: value for name, value in lock["packages"].items()
+            if name not in ("", "node_modules/@snap-o/tool-host", "build/tool-host")}
 
 
 def verify_example(example):
@@ -158,7 +183,8 @@ gradle.beforeProject { project ->
 }
 ''')
         graph = run([*prebuilt, "--dry-run"], example, capture=True, env=managed_env)
-        for task in ("nodeSetup", "npmSetup", "npmInstall", "buildSnapoToolFrontend"):
+        for task in ("nodeSetup", "npmSetup", "prepareSnapoToolHost",
+                     "npmInstall", "buildSnapoToolFrontend"):
             assert f":example-tool:{task} " not in graph, f"Prebuilt assets unexpectedly schedule {task}"
         run(prebuilt, example, env=managed_env)
     finally:
@@ -195,22 +221,12 @@ gradle.beforeProject { project ->
 def verify_frontend_initializer(example, command, managed_env):
     init = example / "initialize-frontend.gradle"
     frontend = example / "example-tool/initialized-frontend"
-    # Use the staged SDK so this also validates changes before an npm release.
     try:
         init.write_text('''
 gradle.beforeProject { project ->
     project.pluginManager.withPlugin("com.openai.snapo.tool-packager") {
         project.extensions.getByName("snapoTool").frontendDirectory.set(
             project.layout.projectDirectory.dir("initialized-frontend"))
-        def packageFile = project.layout.projectDirectory.file("initialized-frontend/package.json").asFile
-        def sdkArchive = project.layout.projectDirectory.file("frontend/vendor/host.tgz").asFile
-        project.tasks.named("initSnapoToolFrontend") {
-            doFirst {
-                def metadata = new groovy.json.JsonSlurper().parse(packageFile)
-                metadata.dependencies["@snap-o/tool-host"] = sdkArchive.toURI().toString()
-                packageFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata))
-            }
-        }
     }
 }
 ''')
@@ -231,16 +247,147 @@ gradle.beforeProject { project ->
         dev = run([*configured, ":example-tool:devSnapoToolFrontend", "--dry-run"],
                   example, capture=True, env=managed_env)
         assert ":example-tool:devSnapoToolFrontend " in dev, "Development task was not scheduled"
+        assert dev.index(":example-tool:prepareSnapoToolHost ") < dev.index(":example-tool:npmInstall ")
+        assert dev.index(":example-tool:npmInstall ") < dev.index(":example-tool:devSnapoToolFrontend ")
     finally:
         init.unlink(missing_ok=True)
 
 
+def verify_dev_server(example, command, managed_env):
+    frontend = example / "example-tool/frontend"
+    manifest = frontend / "package.json"
+    original = manifest.read_bytes()
+    metadata = json.loads(original)
+    metadata["scripts"]["dev"] = "node verify-dev.mjs"
+    probe = frontend / "verify-dev.mjs"
+    probe.write_text('''import { createServer } from "vite";
+import { host } from "@snap-o/tool-host";
+if (typeof host.setToolbar !== "function") throw new Error("Host SDK unavailable");
+const server = await createServer({ server: { host: "127.0.0.1", port: 0 } });
+try {
+  await server.listen();
+  const response = await fetch(server.resolvedUrls.local[0]);
+  if (!response.ok) throw new Error(`Development server returned ${response.status}`);
+} finally {
+  await server.close();
+}
+''')
+    try:
+        manifest.write_text(json.dumps(metadata, indent=2) + "\n")
+        shutil.rmtree(frontend / "build/tool-host")
+        shutil.rmtree(frontend / "node_modules")
+        run([*command, ":example-tool:devSnapoToolFrontend"], example, env=managed_env)
+    finally:
+        manifest.write_bytes(original)
+        probe.unlink(missing_ok=True)
+
+
 def verify_frontend_modes(example, overrides, managed_env):
     command = [str(example / "gradlew"), "--no-daemon", *overrides]
+    verify_dev_server(example, command, managed_env)
     verify_node_runtimes(example, command, managed_env)
     verify_prebuilt_frontend(example, command, managed_env)
     verify_automatic_node_repository(example, command, managed_env)
     verify_frontend_initializer(example, command, managed_env)
+
+
+def stage_plugin_upgrade(repository, version, suffix, archive):
+    """Create a synthetic local release without changing the checkout or SDK package version."""
+    upgraded = f"{version}-{suffix}"
+    staged = []
+    for directory in list(repository.rglob(version)):
+        if not directory.is_dir():
+            continue
+        destination = directory.with_name(upgraded)
+        destination.mkdir()
+        for source in directory.iterdir():
+            if source.suffix not in (".jar", ".aar", ".pom", ".module"):
+                continue
+            target = destination / source.name.replace(version, upgraded)
+            if source.suffix in (".pom", ".module"):
+                target.write_text(source.read_text().replace(version, upgraded))
+            else:
+                shutil.copyfile(source, target)
+            staged.append(target)
+    jar = plugin_jar(repository, upgraded)
+    with zipfile.ZipFile(jar) as package:
+        entries = [(entry, package.read(entry)) for entry in package.infolist()]
+    with zipfile.ZipFile(jar, "w") as package:
+        for entry, content in entries:
+            package.writestr(entry, archive if entry.filename == "host-sdk/host-sdk.zip" else content)
+    for path in staged:
+        if path.suffix == ".module":
+            metadata = json.loads(path.read_text())
+            for variant in metadata.get("variants", []):
+                for artifact in variant.get("files", []):
+                    content = (path.parent / artifact["url"]).read_bytes()
+                    artifact["size"] = len(content)
+                    for algorithm in ("md5", "sha1", "sha256", "sha512"):
+                        artifact[algorithm] = hashlib.new(algorithm, content).hexdigest()
+            path.write_text(json.dumps(metadata, indent=2) + "\n")
+    return upgraded
+
+
+def changed_sdk(archive):
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(archive)) as original, zipfile.ZipFile(output, "w") as changed:
+        for entry in original.infolist():
+            content = original.read(entry)
+            if entry.filename == "dist/index.js":
+                content += b"\nexport const authoringUpgrade = true;\n"
+            elif entry.filename == "dist/index.d.ts":
+                content += b"\nexport declare const authoringUpgrade: true;\n"
+            changed.writestr(entry, content)
+    return output.getvalue()
+
+
+def verify_host_upgrades(example, overrides, managed_env, repository, version, archive):
+    frontend = example / "example-tool/frontend"
+    command = [str(example / "gradlew"), "--no-daemon", *overrides]
+    build = [*command, ":example-tool:buildSnapoToolFrontend"]
+    manifest = frontend / "package.json"
+    lockfile = frontend / "package-lock.json"
+    initial = (manifest.read_bytes(), lockfile.read_bytes())
+    third_party = verify_host_dependency(frontend, archive)
+    sources = {path: path.read_bytes() for path in (frontend / "src").rglob("*") if path.is_file()}
+    run(build, example, env=managed_env)
+    repeated = run(build, example, capture=True, env=managed_env)
+    assert ":example-tool:npmInstall UP-TO-DATE" in repeated, repeated
+    assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "Repeat build rewrote npm files"
+
+    # A checkout restores ignored artifacts before using its committed lockfile.
+    shutil.rmtree(frontend / "build/tool-host")
+    shutil.rmtree(frontend / "node_modules")
+    run([*command, "clean", ":example-tool:buildSnapoToolFrontend"], example, env=managed_env)
+    assert verify_host_dependency(frontend, archive) == third_party
+    assert (manifest.read_bytes(), lockfile.read_bytes()) == initial
+    run(["npm", "ci", "--ignore-scripts", "--install-links=false", f"--registry={REGISTRY}"], frontend)
+    assert verify_host_dependency(frontend, archive) == third_party
+
+    same_version = stage_plugin_upgrade(repository, version, "same-sdk", archive)
+    run([*build, f"-PsnapoVersion={same_version}"], example, env=managed_env)
+    assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "Unchanged SDK caused lockfile churn"
+    upgraded_archive = changed_sdk(archive)
+    upgraded_version = stage_plugin_upgrade(repository, version, "changed-sdk", upgraded_archive)
+    # The export requires both the new JS and the new declarations to reach the consumer.
+    probe = frontend / "src/authoring-upgrade.ts"
+    probe.write_text('import { authoringUpgrade } from "@snap-o/tool-host";\nconst value: true = authoringUpgrade;\n')
+    try:
+        run([*build, f"-PsnapoVersion={upgraded_version}"], example, env=managed_env)
+        assert verify_host_dependency(frontend, upgraded_archive) == third_party
+        assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "SDK upgrade rewrote npm files"
+        run(["npm", "ci", "--ignore-scripts", "--install-links=false", f"--registry={REGISTRY}"], frontend)
+        verify_host_dependency(frontend, upgraded_archive)
+        # Import at runtime as well; tsc alone only checks the declarations.
+        run(["node", "--input-type=module", "-e",
+             'import { authoringUpgrade } from "@snap-o/tool-host"; if (authoringUpgrade !== true) process.exit(1);'],
+            frontend)
+    finally:
+        probe.unlink()
+    run(build, example, env=managed_env)
+    assert verify_host_dependency(frontend, archive) == third_party
+    assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "Downgrade did not restore npm files"
+    assert all(path.read_bytes() == content for path, content in sources.items()), "Build changed user sources"
 
 
 def main():
@@ -255,8 +402,6 @@ def main():
         parser.error("Output directory must be empty")
     android = ROOT
     repository = output / "maven"
-    npm_output = output / "npm"
-    npm_output.mkdir()
     gradle = str(android / "gradlew")
     local = [f"-Psnapo.authoringRepository={repository}", "-Psnapo.localAuthoring=true"]
     run([gradle, "--no-daemon", ":tool-core:publishAllPublicationsToAuthoringRepository", *local], android)
@@ -264,13 +409,8 @@ def main():
         ROOT / "tool-sdk/gradle-plugin")
     coordinates = verify_maven(repository)
 
-    sdk = json.loads((ROOT / "tool-sdk/host/package.json").read_text())
-    run(["npm", "ci", f"--registry={REGISTRY}"], ROOT / "tool-sdk/host")
-    run(["npm", "run", "build"], ROOT / "tool-sdk/host")
-    packed = json.loads(run(["npm", "pack", "--ignore-scripts",
-                             "--json", "--pack-destination", str(npm_output)], ROOT / "tool-sdk/host", capture=True))
-    archive = npm_output / packed[0]["filename"]
-    verify_sdk(archive)
+    version = properties(ROOT / "VERSION")["VERSION"]
+    archive = verify_sdk(plugin_jar(repository, version))
 
     example = output / "example"
     shutil.copytree(ROOT / "examples/tool", example,
@@ -289,16 +429,6 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
     original_build = package["scripts"]["build"]
     package["scripts"]["build"] = "node verify-node.cjs && " + package["scripts"]["build"]
     package_path.write_text(json.dumps(package, indent=2) + "\n")
-    (frontend / "vendor").mkdir()
-    shutil.copyfile(archive, frontend / "vendor/host.tgz")
-    # The tarball changes with SDK edits; retain the locked third-party dependencies.
-    lock_path = frontend / "package-lock.json"
-    if lock_path.exists():
-        lock = json.loads(lock_path.read_text())
-        lock["packages"].pop(f"node_modules/{sdk['name']}", None)
-        lock_path.write_text(json.dumps(lock, indent=2) + "\n")
-    run(["npm", "install", "--package-lock-only", "--ignore-scripts", f"--registry={REGISTRY}"], frontend)
-    version = properties(ROOT / "VERSION")["VERSION"]
     group = properties(android / "gradle.properties")["GROUP"]
     settings = example / "gradle.properties"
     values = properties(settings)
@@ -310,16 +440,21 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
     run([str(example / "gradlew"), "--no-daemon", *overrides, ":app:assembleDebug", ":app:assembleRelease",
          ":example-tool:testDebugUnitTest", ":app:lintDebug", ":app:lintRelease", ":example-tool:lintDebug"], example,
         env=managed_env)
+    verify_host_dependency(frontend, archive)
     run(["npm", "test"], frontend)
+    verify_host_upgrades(example, overrides, managed_env, repository, version, archive)
     verify_frontend_modes(example, overrides, managed_env)
+    run([str(example / "gradlew"), "--no-daemon", *overrides, ":app:assembleDebug", ":app:assembleRelease"],
+        example, env=managed_env)
     apk = verify_example(example)
+    package = json.loads(package_path.read_text())
     package["scripts"]["build"] = original_build
     package_path.write_text(json.dumps(package, indent=2) + "\n")
     (frontend / "verify-node.cjs").unlink()
-    report = {"mavenCoordinates": coordinates, "npmPackage": f"{sdk['name']}@{sdk['version']}",
-              "npmTarball": str(archive), "exampleProject": str(example), "debugApk": str(apk),
+    report = {"mavenCoordinates": coordinates, "bundledHostSdkSha256": hashlib.sha256(archive).hexdigest(),
+              "exampleProject": str(example), "debugApk": str(apk),
               "frontendModes": ["managed-node-without-path", "installed-node", "prebuilt", "automatic-node-repository",
-                                "frontend-initializer"],
+                                "frontend-initializer", "host-sdk-clean-restore", "host-sdk-upgrade", "host-sdk-downgrade"],
               "configurationCacheReused": True, "published": False}
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

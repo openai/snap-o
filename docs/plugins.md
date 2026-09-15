@@ -272,14 +272,15 @@ This creates a Preact and TypeScript starter, adds the host SDK, and installs de
 # Run from your tool’s Android library module, with Node.js and npm installed
 npm create vite@latest frontend -- --template preact-ts
 cd frontend
-npm install @snap-o/tool-host@1.0.0
 npm pkg set 'scripts.build=tsc -b && vite build --base=./'
 ```
 
-This creates `frontend/` and configures relative asset URLs.
+This creates `frontend/` and configures relative asset URLs. From your Android project root, run `./gradlew :your-tool:prepareSnapoToolHost`. Then run `npm install @snap-o/tool-host@file:build/tool-host --install-links=false` in the frontend directory. No Snap-O npm package is required.
 
 </div>
 </div>
+
+Commit the npm manifest and lockfile, and ignore `frontend/build/`. Gradle restores the bundled SDK there before installation, builds, and development-server startup. See [SDK migration and lockfiles](https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#bundled-sdk-and-lockfiles) for existing frontends and direct npm commands.
 
 <span id="assets"></span>The Android build packages the frontend automatically. Include scripts, images, and fonts in the bundle; the packaged page cannot load remote scripts or call unrelated servers.
 

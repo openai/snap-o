@@ -9,7 +9,7 @@
     "test": "tsc -p tsconfig.test.json && node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@snap-o/tool-host": "file:vendor/host.tgz"
+    "@snap-o/tool-host": "file:build/tool-host"
   },
   "devDependencies": {
     "typescript": "5.9.3",

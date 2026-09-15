@@ -73,6 +73,6 @@ selection belong to the native host, not this API.
 
 ## Package development
 
-From `tool-sdk/host/`, run `npm ci`, `npm run build`, `npm test`, and `npm run typecheck`. `npm pack` builds and creates a local tarball. The package exposes compiled ES modules and TypeScript declarations under `dist/`; tests and TypeScript implementation sources are excluded.
+From `tool-sdk/host/`, run `npm ci`, `npm run build`, `npm test`, and `npm run typecheck`. The Gradle plugin build compiles and bundles the SDK automatically. Its embedded archive contains ES modules and TypeScript declarations under `dist/`; tests and TypeScript implementation sources are excluded.
 
-Package versions follow the SDK's `package.json`. Host bridge API compatibility is recorded separately in generated `hostApiVersion` metadata. Install released versions from npm. See [authoring package validation](../../release/authoring.md) when developing SDK changes.
+The package is private and is not published to npm. The Tool Packager Gradle plugin supplies it as a fixed local dependency at `file:build/tool-host` while preserving the `@snap-o/tool-host` import. The Gradle plugin version pins the bundled SDK. Generated `hostApiVersion` metadata separately identifies the native API; a distribution change does not change the host bridge contract. See [authoring package validation](../../release/authoring.md) when developing SDK changes.

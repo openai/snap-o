@@ -52,20 +52,30 @@ class ToolPackagerPlugin : Plugin<Project> {
         val starter = tasks.register<ToolFrontendInitTask>("writeSnapoToolFrontend") {
             frontendDirectory.set(tool.frontendDirectory)
         }
+        val sdk = tasks.register<ToolHostSdkTask>("prepareSnapoToolHost") {
+            group = "snapo"
+            description = "Restores the bundled host SDK for the frontend."
+            outputDirectory.set(tool.frontendDirectory.dir("build/tool-host"))
+            mustRunAfter(starter)
+        }
+        val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME) {
+            dependsOn(sdk)
+            args.add("--install-links=false")
+        }
         tasks.register<NpmTask>("initSnapoToolFrontend") {
             group = "snapo"
             description = "Creates a Preact frontend and installs its dependencies."
-            dependsOn(starter)
-            npmCommand.set(listOf("install"))
+            dependsOn(starter, sdk)
+            npmCommand.set(listOf("install", "--install-links=false"))
         }
-        val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME)
         val build = tasks.register<ToolBuildTask>("buildSnapoToolFrontend") {
             group = "snapo"
             description = "Builds the tool frontend."
             inputs.files(install).withPropertyName("frontendDependencies").withPathSensitivity(PathSensitivity.RELATIVE)
+            inputs.files(sdk).withPropertyName("hostSdk").withPathSensitivity(PathSensitivity.RELATIVE)
             npmCommand.set(listOf("run", "build"))
             inputs.files(tool.frontendDirectory.map {
-                it.asFileTree.matching { exclude("node_modules/**", "dist/**", ".gradle/**") }
+                it.asFileTree.matching { exclude("node_modules/**", "dist/**", ".gradle/**", "build/**") }
             }).withPropertyName("frontendSources").withPathSensitivity(PathSensitivity.RELATIVE)
             outputDirectory.convention(tool.frontendDirectory.dir("dist"))
         }
