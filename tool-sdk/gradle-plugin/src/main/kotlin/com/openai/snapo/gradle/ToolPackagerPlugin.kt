@@ -53,7 +53,7 @@ class ToolPackagerPlugin : Plugin<Project> {
         }
         val sdk = tasks.register<ToolHostSdkTask>("prepareSnapoToolHost") {
             description = "Restores the bundled host SDK for the frontend."
-            outputDirectory.set(tool.frontendDirectory.dir("build/tool-host"))
+            outputDirectory.set(tool.frontendDirectory.dir(".gradle/tool-host"))
             mustRunAfter(starter)
         }
         val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME) {
@@ -72,7 +72,7 @@ class ToolPackagerPlugin : Plugin<Project> {
             inputs.files(sdk).withPropertyName("hostSdk").withPathSensitivity(PathSensitivity.RELATIVE)
             npmCommand.set(listOf("run", "build"))
             inputs.files(tool.frontendDirectory.map {
-                it.asFileTree.matching { exclude("node_modules/**", "dist/**", ".gradle/**", "build/**") }
+                it.asFileTree.matching { exclude("node_modules/**", "dist/**", ".gradle/**") }
             }).withPropertyName("frontendSources").withPathSensitivity(PathSensitivity.RELATIVE)
             outputDirectory.convention(tool.frontendDirectory.dir("dist"))
         }

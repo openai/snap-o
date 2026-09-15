@@ -76,21 +76,21 @@ def verify_sdk(jar):
 
 
 def verify_host_dependency(frontend, archive):
-    dependency = "file:build/tool-host"
+    dependency = "file:.gradle/tool-host"
     metadata = json.loads((frontend / "package.json").read_text())
     lock = json.loads((frontend / "package-lock.json").read_text())
     assert metadata["dependencies"]["@snap-o/tool-host"] == dependency
     assert lock["packages"][""]["dependencies"]["@snap-o/tool-host"] == dependency
-    assert lock["packages"]["node_modules/@snap-o/tool-host"] == {"resolved": "build/tool-host", "link": True}
+    assert lock["packages"]["node_modules/@snap-o/tool-host"] == {"resolved": ".gradle/tool-host", "link": True}
     installed = frontend / "node_modules/@snap-o/tool-host"
     assert installed.is_symlink(), "The SDK must link to its generated directory"
-    assert installed.resolve() == (frontend / "build/tool-host").resolve()
+    assert installed.resolve() == (frontend / ".gradle/tool-host").resolve()
     with zipfile.ZipFile(io.BytesIO(archive)) as package:
         for entry in package.infolist():
             if not entry.is_dir():
                 assert (installed / entry.filename).read_bytes() == package.read(entry), f"Stale SDK: {entry.filename}"
     return {name: value for name, value in lock["packages"].items()
-            if name not in ("", "node_modules/@snap-o/tool-host", "build/tool-host")}
+            if name not in ("", "node_modules/@snap-o/tool-host", ".gradle/tool-host")}
 
 
 def verify_example(example):
@@ -274,7 +274,7 @@ try {
 ''')
     try:
         manifest.write_text(json.dumps(metadata, indent=2) + "\n")
-        shutil.rmtree(frontend / "build/tool-host")
+        shutil.rmtree(frontend / ".gradle/tool-host")
         shutil.rmtree(frontend / "node_modules")
         run([*command, ":example-tool:devSnapoToolFrontend"], example, env=managed_env)
     finally:
@@ -356,7 +356,7 @@ def verify_host_upgrades(example, overrides, managed_env, repository, version, a
     assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "Repeat build rewrote npm files"
 
     # A checkout restores ignored artifacts before using its committed lockfile.
-    shutil.rmtree(frontend / "build/tool-host")
+    shutil.rmtree(frontend / ".gradle/tool-host")
     shutil.rmtree(frontend / "node_modules")
     run([*command, "clean", ":example-tool:buildSnapoToolFrontend"], example, env=managed_env)
     assert verify_host_dependency(frontend, archive) == third_party
@@ -434,7 +434,11 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
     package_path = frontend / "package.json"
     package = json.loads(package_path.read_text())
     original_build = package["scripts"]["build"]
-    package["scripts"]["build"] = "node verify-node.cjs && " + package["scripts"]["build"]
+    # Frontend cleanup must not remove the generated SDK linked by npm.
+    package["scripts"]["build"] = (
+        "node -e \"require('fs').rmSync('build', {recursive: true, force: true})\" && "
+        "node verify-node.cjs && " + original_build
+    )
     package_path.write_text(json.dumps(package, indent=2) + "\n")
     group = properties(android / "gradle.properties")["GROUP"]
     settings = example / "gradle.properties"

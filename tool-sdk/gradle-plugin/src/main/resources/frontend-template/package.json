@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "preact": "10.29.8",
-    "@snap-o/tool-host": "file:build/tool-host"
+    "@snap-o/tool-host": "file:.gradle/tool-host"
   },
   "devDependencies": {
     "@preact/preset-vite": "2.10.6",

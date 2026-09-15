@@ -20,7 +20,7 @@ class ToolFrontendInitTaskTest {
         task.generate()
 
         assertTrue(destination.resolve("index.html").readText().contains("/src/main.tsx"))
-        assertTrue(destination.resolve("package.json").readText().contains("file:build/tool-host"))
+        assertTrue(destination.resolve("package.json").readText().contains("file:.gradle/tool-host"))
         assertTrue(destination.resolve("src/main.tsx").readText().contains("host.onError("))
         assertFalse(directory.root.resolve("frontend").exists())
 

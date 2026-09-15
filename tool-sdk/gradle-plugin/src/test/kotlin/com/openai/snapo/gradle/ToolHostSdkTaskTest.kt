@@ -15,7 +15,7 @@ class ToolHostSdkTaskTest {
         val project = ProjectBuilder.builder().withProjectDir(directory.newFolder()).build()
         val task = project.tasks.register("prepareHost", ToolHostSdkTask::class.java).get()
         val frontend = directory.newFolder("frontend")
-        val target = frontend.resolve("build/tool-host")
+        val target = frontend.resolve(".gradle/tool-host")
         task.outputDirectory.set(target)
         frontend.resolve("main.ts").writeText("user source")
         task.restore()

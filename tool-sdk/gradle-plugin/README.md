@@ -131,21 +131,21 @@ import { host } from "@snap-o/tool-host";
 
 ### Bundled SDK and lockfiles
 
-Gradle supplies the SDK automatically during frontend setup, builds, and development-server startup. The dependency stays fixed:
+Gradle supplies the SDK automatically during frontend setup, builds, and development-server startup. It lives under `.gradle/` so frontend output cleanup does not delete it. The dependency stays fixed:
 
 ```json
-"@snap-o/tool-host": "file:build/tool-host"
+"@snap-o/tool-host": "file:.gradle/tool-host"
 ```
 
 npm links to that generated directory. The Gradle plugin version determines the SDK contents, so SDK upgrades do not rewrite `package.json` or `package-lock.json`. Gradle replaces the generated files and tracks them as frontend build inputs. Normal builds use `npm install`, which creates or updates the lockfile as needed. The SDK has no runtime dependencies.
 
-Commit the npm manifest and lockfile, and ignore `build/`. After a clean checkout or plugin upgrade, build the Android app or run `devSnapoToolFrontend` as usual. Prebuilt `frontendAssets` still skip the entire Node/npm workflow.
+Commit the npm manifest and lockfile, and ignore `.gradle/`. After a clean checkout or plugin upgrade, build the Android app or run `devSnapoToolFrontend` as usual. Prebuilt `frontendAssets` still skip the entire Node/npm workflow.
 
 ### Migrate an existing frontend
 
-1. Upgrade the Tool Packager Gradle plugin and set `dependencies["@snap-o/tool-host"]` to `"file:build/tool-host"` in the frontend's `package.json`.
+1. Upgrade the Tool Packager Gradle plugin and set `dependencies["@snap-o/tool-host"]` to `"file:.gradle/tool-host"` in the frontend's `package.json`.
 2. Build your Android app normally. Gradle supplies the SDK and installs dependencies, updating the lockfile as needed.
-3. Commit the npm manifest and lockfile, and ignore `build/`. Remove obsolete host SDK tarballs and npm-publication setup.
+3. Commit the npm manifest and lockfile, and ignore `.gradle/`. Remove obsolete host SDK tarballs and npm-publication setup.
 
 Gradle leaves frontend source files and manifests unchanged. npm may update the lockfile when dependencies change. Imports stay unchanged. Explicit directory dependencies on SDK source also remain available; Snap-O's Network and Tweaks frontends use them for SDK development.
 
