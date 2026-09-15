@@ -72,7 +72,7 @@ abstract class ToolMetadataTask : DefaultTask() {
         .replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
     private companion object {
-        const val HOST_API_VERSION = 3
+        const val HOST_API_VERSION = 1
         val ICON_REFERENCE = Regex("@(?:[a-zA-Z_][a-zA-Z0-9_.]*:)?(?:drawable|mipmap)/[a-z_][a-z0-9_]*")
     }
 }

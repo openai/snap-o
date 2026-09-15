@@ -13,15 +13,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.openai.snapo.discovery.ToolResources.ProcessInfo;
 import static com.openai.snapo.discovery.ToolResources.*;
 
 /** Lists installed tool metadata without loading application code or frontend assets. */
 public final class Main {
-    private static final Pattern SOCKET = Pattern.compile("snapo_([a-z][a-z0-9.-]{0,99})_([1-9][0-9]{0,9})");
     private static final int MAX_PROCESSES = 64;
     private Main() {}
 
@@ -39,17 +36,14 @@ public final class Main {
 
     private static void discover(String[] args) throws Exception {
         if (args.length == 0 || args.length > MAX_PROCESSES) {
-            throw new IllegalArgumentException("Pass between 1 and 64 tool socket names.");
+            throw new IllegalArgumentException("Pass between 1 and 64 process IDs.");
         }
         Set<Integer> pids = new LinkedHashSet<>();
-        Set<String> pluginIds = new LinkedHashSet<>();
         for (String arg : args) {
-            Matcher socket = SOCKET.matcher(arg);
-            if (!socket.matches()) throw new IllegalArgumentException("Invalid tool socket name.");
-            int pid = Integer.parseInt(socket.group(2));
+            if (!arg.matches("[1-9][0-9]{0,9}")) throw new IllegalArgumentException("Invalid process ID.");
+            int pid = Integer.parseInt(arg);
             if (pid <= 0) throw new IllegalArgumentException("Invalid process ID.");
             pids.add(pid);
-            pluginIds.add(socket.group(1));
         }
         Context system = systemContext();
         ExecutorService executor = Executors.newFixedThreadPool(Math.min(4, pids.size()));
@@ -69,7 +63,7 @@ public final class Main {
                     CompletableFuture<JSONObject> previous = packages.putIfAbsent(key, pending);
                     if (previous == null) {
                         try {
-                            pending.complete(readPackage(pm, app, pluginIds));
+                            pending.complete(readPackage(pm, app));
                         } catch (Exception error) {
                             pending.completeExceptionally(error);
                         }

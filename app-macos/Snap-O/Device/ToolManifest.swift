@@ -8,8 +8,14 @@ public struct ToolDescriptor: Codable, Sendable, Equatable {
 }
 
 public struct ToolFrontend: Codable, Sendable, Equatable {
+  static let supportedHostAPIVersion = 1
+
   public let assetPath: String
   public let hostApiVersion: Int
+
+  var isHostAPICompatible: Bool {
+    hostApiVersion == Self.supportedHostAPIVersion
+  }
 }
 
 public struct ToolPackageMetadata: Codable, Sendable, Equatable {
@@ -65,24 +71,32 @@ public struct ToolProcessIdentity: Codable, Sendable, Equatable {
 }
 
 enum ToolManifestReader {
-  static func command(helper: Data, socketNames: [String], frontendRequest: Data? = nil) throws -> String {
-    guard !socketNames.isEmpty, socketNames.count <= 64,
-          socketNames.allSatisfy({ $0.range(
-            of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#,
-            options: .regularExpression
-          ) != nil }),
-          helper.count <= 32768, frontendRequest == nil || socketNames.count == 1,
-          (frontendRequest?.count ?? 0) <= 8192 else {
+  static func metadataCommand(helper: Data, processIDs: [Int]) throws -> String {
+    let pids = Set(processIDs).sorted()
+    guard !pids.isEmpty, pids.count <= 64, pids.allSatisfy({ $0 > 0 && Int32(exactly: $0) != nil }) else {
       throw ADBError.parseFailure("invalid tool discovery request")
     }
+    return try command(helper: helper, main: "Main", arguments: pids.map(String.init).joined(separator: " "))
+  }
+
+  static func frontendCommand(helper: Data, socketName: String, request: Data) throws -> String {
+    guard socketName.range(
+      of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#, options: .regularExpression
+    ) != nil, request.count <= 8192 else {
+      throw ADBError.parseFailure("invalid tool frontend request")
+    }
+    return try command(helper: helper, main: "FrontendMain", arguments: "\(socketName) \(request.base64EncodedString())")
+  }
+
+  private static func command(helper: Data, main: String, arguments: String) throws -> String {
+    guard helper.count <= 32768 else { throw ADBError.parseFailure("tool reader is too large") }
     // Keep uploads and execution separate from concurrent desktop or CLI readers.
     return """
     directory=$(mktemp -d /data/local/tmp/snapo-discovery.XXXXXX) || exit 1
     trap 'rm -f "$directory/reader.jar"; rmdir "$directory"' EXIT
     (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/reader.jar") &&
       chmod 444 "$directory/reader.jar" || exit 1
-      CLASSPATH="$directory/reader.jar" app_process / com.openai.snapo.discovery.\(frontendRequest == nil ? "Main" :
-      "FrontendMain") \(socketNames.joined(separator: " ")) \(frontendRequest?.base64EncodedString() ?? "") 2>/dev/null
+      CLASSPATH="$directory/reader.jar" app_process / com.openai.snapo.discovery.\(main) \(arguments) 2>/dev/null
     """
   }
 

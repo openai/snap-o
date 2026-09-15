@@ -46,8 +46,17 @@ actor ToolHTTPService {
       metadata.descriptor(for: kind)
     }
 
+    var supportsLegacyDiscovery: Bool {
+      kind.rawValue == "network" || kind.rawValue == "tweaks"
+    }
+
+    var isVisible: Bool {
+      descriptor != nil || metadata.compatibility == .invalidDescriptor || supportsLegacyDiscovery
+    }
+
     func needsMetadataRead(lastAttempt: ContinuousClock.Instant?, now: ContinuousClock.Instant) -> Bool {
-      guard metadata.process.verifiedIdentity == nil || awaitingMetadata || metadataReadFailed || metadata.needsLegacyProbe
+      guard metadata.process.verifiedIdentity == nil || awaitingMetadata || metadataReadFailed
+        || (supportsLegacyDiscovery && metadata.needsLegacyProbe)
       else { return false }
       guard let lastAttempt else { return true }
       return lastAttempt.duration(to: now) >= .seconds(30)
@@ -85,7 +94,7 @@ actor ToolHTTPService {
   func currentApps() -> (revision: UInt64, apps: [App]) {
     snapshotRevision += 1
     let apps = discoveredKeys.compactMap { key -> App? in
-      guard var app = knownApps[key] else { return nil }
+      guard var app = knownApps[key], app.isVisible else { return nil }
       app.isConnected = connections[key]?.isReady == true && !app.awaitingMetadata
       return app
     }.sorted {
@@ -166,19 +175,14 @@ actor ToolHTTPService {
     }
     retryAfter = retryAfter.filter { activeKeys.contains($0.key) && $0.value > .now }
 
-    await withTaskGroup(of: Void.self) { group in
-      for socket in sockets {
-        let reference = socket.reference
-        guard devicesByID[reference.deviceId] != nil, !Task.isCancelled, !isStopped else { continue }
-        let key = reference.key
-        guard retryAfter[key] == nil else { continue }
-        if connections[key] != nil {
-          checkHealth(for: key)
-        } else {
-          group.addTask {
-            await self.connect(reference: reference)
-          }
-        }
+    for socket in sockets {
+      let reference = socket.reference
+      guard devicesByID[reference.deviceId] != nil, !Task.isCancelled, !isStopped,
+            knownApps[reference.key]?.isVisible == true, retryAfter[reference.key] == nil else { continue }
+      if connections[reference.key] != nil {
+        checkHealth(for: reference.key)
+      } else {
+        connect(reference: reference)
       }
     }
 
@@ -226,13 +230,13 @@ actor ToolHTTPService {
     retryAfter.removeAll()
   }
 
-  private func connect(reference: ToolServerReference) async {
+  private func connect(reference: ToolServerReference) {
     let key = reference.key
     guard !Task.isCancelled, !isStopped, connections[key] == nil, retryAfter[key] == nil else {
       return
     }
 
-    guard knownApps[key] != nil else { return }
+    guard knownApps[key]?.isVisible == true else { return }
     connections[key] = Connection(id: UUID(), reference: reference)
     checkHealth(for: key)
   }
@@ -254,22 +258,16 @@ actor ToolHTTPService {
 
   private func loadMetadata(deviceID: String, sockets: [DiscoveredPluginSocket], using adb: ADBClient) async {
     defer { metadataTasks[deviceID] = nil }
-    var batches: [[DiscoveredPluginSocket]] = []
-    // Keep a process's visible tools together so every socket receives the same package metadata.
-    for process in Dictionary(grouping: sockets, by: \.pid).values {
-      if let last = batches.indices.last, batches[last].count + process.count <= 64 {
-        batches[last].append(contentsOf: process)
-      } else {
-        batches.append(process)
-      }
-    }
-    for batch in batches {
+    let socketsByPID = Dictionary(grouping: sockets, by: \.pid)
+    let pids = socketsByPID.keys.sorted()
+    for offset in stride(from: 0, to: pids.count, by: 64) {
+      let batch = Array(pids[offset ..< min(offset + 64, pids.count)])
       let records = try? await adb.pluginMetadata(
-        deviceID: deviceID, socketNames: batch.map(\.reference.socketName), helperURL: helperURL
+        deviceID: deviceID, processIDs: batch, helperURL: helperURL
       )
       guard !Task.isCancelled, !isStopped else { return }
       var changed = false
-      for socket in batch {
+      for socket in batch.flatMap({ socketsByPID[$0] ?? [] }) {
         let key = socket.reference.key
         guard var app = knownApps[key], app.socketInode == socket.inode,
               discoveredKeys.contains(key) else { continue }
@@ -279,9 +277,14 @@ actor ToolHTTPService {
         let updated = record.map { app.metadata.applyPackageMetadata($0, kind: app.kind) } ?? false
         app.metadataReadFailed = !updated
         if updated { app.awaitingMetadata = false }
-        let needsLegacy = app.metadata.needsLegacyProbe
+        let needsLegacy = app.supportsLegacyDiscovery && app.metadata.needsLegacyProbe
         app.checkingLegacy = needsLegacy && !hadResult
         knownApps[key] = app
+        if !app.isVisible {
+          connections.removeValue(forKey: key)?.healthTask?.cancel()
+        } else {
+          connect(reference: socket.reference)
+        }
         if needsLegacy, legacyTasks[key] == nil {
           legacyTasks[key] = Task { [weak self] in
             await self?.loadLegacyMetadata(socket: socket, using: adb)
@@ -306,7 +309,7 @@ actor ToolHTTPService {
   }
 
   private func checkHealth(for key: String) {
-    guard knownApps[key]?.metadata.isLegacy != true else { return }
+    guard let app = knownApps[key], app.isVisible, !app.metadata.isLegacy else { return }
     guard let connection = connections[key], connection.healthTask == nil else { return }
     connections[key]?.healthTask = Task { [weak self] in
       await self?.loadHealth(for: key, connectionID: connection.id)
@@ -345,7 +348,7 @@ actor ToolHTTPService {
   private func connection(for reference: ToolServerReference) throws -> Connection {
     guard let connection = connections[reference.key], connection.isReady,
           let app = knownApps[reference.key], !app.awaitingMetadata, let descriptor = app.descriptor,
-          descriptor.frontend == nil || descriptor.frontend?.hostApiVersion == 3 else {
+          descriptor.frontend?.isHostAPICompatible ?? true else {
       throw ToolError.serverNotConnected(reference)
     }
     return connection

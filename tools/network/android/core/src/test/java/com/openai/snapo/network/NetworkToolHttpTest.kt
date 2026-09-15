@@ -33,7 +33,7 @@ class NetworkToolHttpTest {
     fun `network owns its protocol endpoint`() {
         val (status, body) = request("/network/protocol")
         assertEquals("HTTP/1.1 200 OK", status)
-        assertEquals("4", ProtocolJson.parseToJsonElement(body).jsonObject.getValue("version").jsonPrimitive.content)
+        assertEquals("2", ProtocolJson.parseToJsonElement(body).jsonObject.getValue("version").jsonPrimitive.content)
         assertEquals("HTTP/1.1 405 Method Not Allowed", request("/network/protocol", method = "POST").first)
     }
 

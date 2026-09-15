@@ -35,7 +35,7 @@ public final class ADBClient: @unchecked Sendable {
   private var networkDisconnected = false
   private var propertiesRecovered = false
   private var metadataAvailable = false
-  private var metadataRequests: [[String]] = []
+  private var metadataRequests: [[Int]] = []
   private var metadataFailure: MetadataFailure?
   private var legacyKinds: Set<ToolID> = []
   private var legacyRequests = 0
@@ -107,18 +107,19 @@ public final class ADBClient: @unchecked Sendable {
     lock.withLock { metadataAvailable = available }
   }
 
-  public var metadataSocketRequests: [[String]] {
+  public var metadataProcessRequests: [[Int]] {
     lock.withLock { metadataRequests }
   }
 
-  public func pluginMetadata(deviceID: String, socketNames: [String], helperURL: URL) async throws -> [ToolProcessMetadata] {
-    lock.withLock { metadataRequests.append(socketNames) }
+  public func pluginMetadata(deviceID: String, processIDs: [Int], helperURL: URL) async throws -> [ToolProcessMetadata] {
+    precondition(!processIDs.isEmpty && processIDs.count <= 64)
+    lock.withLock { metadataRequests.append(processIDs) }
     while !lock.withLock({ metadataAvailable }) {
       try await Task.sleep(for: .milliseconds(10))
     }
     let failure = lock.withLock { metadataFailure }
     if failure == .request { throw ADBError.requestTimedOut("Test metadata timeout") }
-    let pids = Set(socketNames.compactMap { Int($0.split(separator: "_").last ?? "") })
+    let pids = Set(processIDs)
     if failure == .record {
       return try pids.map { pid in
         try JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: [
@@ -127,11 +128,11 @@ public final class ADBClient: @unchecked Sendable {
       }
     }
     let tools: [[String: Any]] = [
-      ["id": "network", "name": "Network", "frontend": ["assetPath": "network.zip", "hostApiVersion": 3]],
-      ["id": "tweaks", "name": "Tweaks", "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 3]]
+      ["id": "network", "name": "Network", "frontend": ["assetPath": "network.zip", "hostApiVersion": 1]],
+      ["id": "tweaks", "name": "Tweaks", "frontend": ["assetPath": "tweaks.zip", "hostApiVersion": 1]],
+      ["id": "sample", "name": "Sample", "frontend": ["assetPath": "sample.zip", "hostApiVersion": 1]]
     ].filter { descriptor in
       !lock.withLock { legacyKinds.contains(ToolID(rawValue: descriptor["id"] as! String)) }
-        && socketNames.contains { $0.hasPrefix("snapo_\(descriptor["id"]!)_") }
     }
     return try pids.map { pid in
       let record: [String: Any] = [

@@ -181,5 +181,5 @@ private val RequestPolicy = ToolHttpRequestPolicy(
     maxBodyBytes = 2 * 1024 * 1024,
     bodyMethods = setOf("POST", "PUT"),
 )
-internal const val NetworkProtocolVersion = 4
+internal const val NetworkProtocolVersion = 2
 internal const val MaxNetworkRecordBytes = 16 * 1024 * 1024

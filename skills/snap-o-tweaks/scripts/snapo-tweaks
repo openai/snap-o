@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 
 SOCKET_PREFIX = "snapo_tweaks_"
-TWEAKS_PROTOCOL_VERSION = 9
+TWEAKS_PROTOCOL_VERSION = 6
 MAX_RECORD_BYTES = 16 * 1024 * 1024
 
 

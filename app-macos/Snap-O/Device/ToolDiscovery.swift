@@ -133,7 +133,7 @@ public enum ToolDiscovery {
       let name = String(token.dropFirst())
       guard name.range(of: #"^snapo_[a-z][a-z0-9.-]{0,99}_[1-9][0-9]{0,9}$"#, options: .regularExpression) != nil,
             let separator = name.lastIndex(of: "_"),
-            let pid = Int(name[name.index(after: separator)...]),
+            let pid = Int(name[name.index(after: separator)...]), Int32(exactly: pid) != nil,
             seen.insert(name).inserted else { return nil }
       let id = String(name.dropFirst("snapo_".count).prefix(upTo: separator))
       return DiscoveredPluginSocket(

@@ -7,7 +7,7 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 | Request | Response |
 | --- | --- |
 | `OPTIONS /` | Empty readiness response. |
-| `GET /network/protocol` | Network compatibility metadata: `{"version":4}`. |
+| `GET /network/protocol` | Network compatibility metadata: `{"version":2}`. |
 | `GET /network` | A finite NDJSON snapshot, or live Server-Sent Events (SSE), selected by `Accept`. |
 | `GET /network/requests/{requestId}/request-body` | JSON with `postData`. |
 | `GET /network/requests/{requestId}/response-body` | JSON with `body` and `base64Encoded`. |
@@ -17,9 +17,9 @@ Network Tool serves HTTP on `snapo_network_<pid>`, an Android abstract Unix sock
 
 Percent-encode request ids as one path component. Body reads return `404` when the capture is unavailable. Successful updates return `{}`. HTTP errors use a JSON `error` string.
 
-The Network CLI calls `GET /network/protocol` and requires `{"version":4}` before reading data or opening a stream. The bundled frontend uses its matching Android server without a version check. This endpoint belongs to Network, not the shared tool SDK. The desktop gets app labels and icons from [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader.
+The Network CLI calls `GET /network/protocol` and requires `{"version":2}` before reading data or opening a stream. The bundled frontend uses its matching Android server without a version check. This endpoint belongs to Network, not the shared tool SDK. The desktop gets app labels and icons from [manifest discovery](../discovery/README.md). The CLI reads package and process identity through ADB without a reader.
 
-Protocol 4 moves the compatibility check out of discovery; history uses event sequence IDs instead of a snapshot header. Interception payloads are unchanged from protocol 3. Old clients and servers are unsupported: old servers lack the endpoint, and old clients require the removed descriptor field. There is no fallback.
+Protocol 2 replaces the protocol 1 newline transport released in Snap-O 8.0.0. It uses a tool-owned compatibility endpoint, HTTP history and body reads, and SSE for live events and interception. History uses event sequence IDs without a separate snapshot header. Old clients and servers are unsupported; there is no transport fallback.
 
 `GET /network` uses the standard `Accept` header to select its response:
 
@@ -35,7 +35,7 @@ The snapshot responds with `application/x-ndjson` and chunked HTTP framing. Each
 
 For a combined history and live view:
 
-1. Select the tool socket, then request `/network/protocol` and require version 4.
+1. Select the tool socket, then request `/network/protocol` and require version 2.
 2. Open `/network` with `Accept: text/event-stream` and buffer incoming events.
 3. After the SSE response headers arrive, fetch `/network` with `Accept: application/x-ndjson`.
 4. Process the snapshot events, retaining the last processed `snapoSequence`.
@@ -85,12 +85,12 @@ Desktop frontends call `snapo://tool/api/network` with `fetch` and `EventSource`
 
 ## Compatibility
 
-The version 3 API removes `NetworkInspectorConfig.modeLabel` and the `snapo.mode_label` manifest option. Remove these settings when updating the Android library. The label was descriptive and never changed capture behavior or release-build permissions.
+The updated Android API removes `NetworkInspectorConfig.modeLabel` and the `snapo.mode_label` manifest option. Remove these settings when updating the Android library. The label was descriptive and never changed capture behavior or release-build permissions.
 
-Version **2** is a breaking transport change. The newline command protocol and tool WebSocket endpoint are removed. Updated clients require HTTP + SSE and do not fall back to older transports. Interception decisions are never retried automatically after an uncertain result.
+Version **2** is a breaking transport change. Updated clients require HTTP + SSE instead of the released newline command protocol. They do not fall back to older transports. Interception decisions are never retried automatically after an uncertain result.
 
 The [history](v2/history.jsonl) fixture remains valid for the current protocol; metadata follows the [discovery contract](../discovery/README.md). Compatibility checks cover version rejection, HTTP framing, history/live ordering, body reads, and interception ownership and decisions. Before release, test the updated pair on a device and check older-server failures as required by the [release checklist](../../release/README.md).
 
 ### HTTP routing defaults
 
-Unknown paths return `404` for every method. A known path with an unsupported method returns `405`. Expired interception runners still return `410` on matching interception routes. This standardizes errors for invalid paths without changing protocol 4 requests or payloads.
+Unknown paths return `404` for every method. A known path with an unsupported method returns `405`. Expired interception runners still return `410` on matching interception routes.

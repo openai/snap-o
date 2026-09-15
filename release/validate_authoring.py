@@ -88,7 +88,7 @@ def verify_example(example):
         descriptor = ET.parse(path).getroot()
         assert "protocolVersion" not in descriptor.attrib, "Tool discovery must not define protocol versions"
         assert descriptor.get("icon") == "@drawable/example_tool_icon"
-        assert descriptor.get("hostApiVersion") == "3"
+        assert descriptor.get("hostApiVersion") == "1"
     android = "{http://schemas.android.com/apk/res/android}"
     for variant in ("debug", "release"):
         manifest = example / f"app/build/intermediates/merged_manifests/{variant}/process{variant.title()}Manifest/AndroidManifest.xml"
