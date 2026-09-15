@@ -29,9 +29,9 @@ A fast, tidy macOS app for Android developers: capture screenshots and recording
 Requires macOS 26+ and Android Platform Tools (`adb`).
 {.note}
 
-## Network {.product-title}
+## Network inspector {.product-title}
 
-Inspect HTTP and HTTPS requests, responses, JSON payloads, Server-Sent Events, and WebSocket messages from Android apps. Use Python handlers to edit or mock HTTP responses through the app's OkHttp connection.
+Inspect requests and override responses.
 {.product-copy}
 
 [Set up Network](network-inspector.md){.section-link}
