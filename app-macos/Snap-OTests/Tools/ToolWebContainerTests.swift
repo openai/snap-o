@@ -24,7 +24,7 @@ struct ToolWebContainerTests {
     }
     var ready = false
     container.pageReadinessChangedHandler = { ready = $0 }
-    container.start(frontend: try ToolFrontendBundle(files: ["index.html": Data("<p>Inspector fixture</p>".utf8)]))
+    try container.start(frontend: ToolFrontendBundle(files: ["index.html": Data("<p>Inspector fixture</p>".utf8)]))
     try await eventually { ready }
     container.showWebInspector()
     let inspector = try #require(
