@@ -88,3 +88,15 @@ Guides use the original light palette in `assets/guide.css` and their page style
 `theme/robot.html`, `assets/robot.css`, and `assets/robot.js` provide the shared robot and its click animation.
 Guides show the robot above page navigation when the viewport is at least 1200 pixels wide.
 Space artwork uses WebP images. The robot and rocket have twice their maximum display resolution for sharp rendering on Retina screens.
+
+The homepage uses `assets/planet.js` for procedural cloud bands, atmosphere, and nebula shading.
+Warped noise creates the planet's blue-teal wisps, with upper-right lighting based on the original artwork.
+Fine cloud detail fades below pixel size to limit shimmer during rotation. The sky shading comes from the Snap-O robot viewer.
+The globe follows the original WebP's silhouette and responsive CSS placement, with one rotation every four minutes.
+Cloud wisps drift and small storms curl gently through a separate four-minute cycle, starting one minute in.
+Its color fades toward the page background using the artwork's directional mask and responsive opacity.
+Drawing is limited to 30 frames per second and a buffer of at most 2560 × 1536 pixels.
+The nebula and stars render once per resize. The animated pass only draws the visible part of the planet.
+The opaque surface hides the nebula and stars. Only the atmosphere blends with the sky.
+Rendering pauses in hidden tabs. Reduced motion, data-saving mode, and graphics failures keep the original `assets/space-planet.webp` image.
+No surface texture, graphics library, or JavaScript build step is required.
