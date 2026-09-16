@@ -55,6 +55,7 @@ private fun createServer(): MockWebServer {
     val jpgImageBody by lazy {
         encodeImage(imageBody, Bitmap.CompressFormat.JPEG)
     }
+
     // WEBP_LOSSY requires API 30; the demos also run on API 24–29.
     @Suppress("DEPRECATION")
     val webpImageBody by lazy {
@@ -115,27 +116,29 @@ private fun createServer(): MockWebServer {
                     "/large-response-truncated" -> largeJsonResponse(TruncatedLargeBodyBytes)
                     "/slow-response" -> slowResponse(slowBody)
                     "/sse" -> sseResponse(sseBody)
-                    "/ws-echo" -> MockResponse.Builder()
-                        .webSocketUpgrade(
-                            object : WebSocketListener() {
-                                override fun onMessage(webSocket: WebSocket, text: String) {
-                                    webSocket.send(text)
-                                    webSocket.close(1000, "Echo complete")
-                                }
-
-                                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                                    webSocket.send(bytes)
-                                    webSocket.close(1000, "Echo complete")
-                                }
-                            }
-                        )
-                        .build()
+                    "/ws-echo" -> webSocketEchoResponse()
                     else -> MockResponse.Builder().code(404).build()
                 }
             }
         }
     }
 }
+
+private fun webSocketEchoResponse(): MockResponse = MockResponse.Builder()
+    .webSocketUpgrade(
+        object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                webSocket.send(text)
+                webSocket.close(1000, "Echo complete")
+            }
+
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                webSocket.send(bytes)
+                webSocket.close(1000, "Echo complete")
+            }
+        }
+    )
+    .build()
 
 private fun encodeImage(png: ByteString, format: Bitmap.CompressFormat): ByteString {
     val bytes = png.toByteArray()
