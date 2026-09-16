@@ -129,11 +129,14 @@ struct CaptureWindow: View {
   private func navigationTitle(for layout: WorkspaceLayout) -> String {
     switch layout {
     case .capture:
-      controller.navigationTitle
-    case .tool:
-      "Snap-O"
-    case .both:
-      "Snap-O"
+      return controller.navigationTitle
+    case .tool, .both:
+      guard let model = toolSession.model,
+            let toolName = model.selectedToolApp?.tools.first(where: {
+              $0.kind == model.preferredPluginID
+            })?.name.trimmingCharacters(in: .whitespacesAndNewlines),
+            !toolName.isEmpty else { return "Snap-O" }
+      return "Snap-O — \(toolName)"
     }
   }
 

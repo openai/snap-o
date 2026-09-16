@@ -23,17 +23,11 @@ struct AppToolPicker: View {
           statusSize: model.isWaiting || model.compatibilityExplanation != nil ? 0 : Metrics.statusSize
         )
 
-        HStack(spacing: 6) {
-          AppToolPickerText(
-            appName: selectedTitle,
-            deviceName: deviceTitle
-          )
-
-          Image(systemName: "chevron.down")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .rotationEffect(.degrees(isPresented ? 180 : 0))
-        }
+        AppToolPickerText(
+          appName: selectedTitle,
+          deviceName: deviceTitle,
+          isExpanded: isPresented
+        )
       }
       .frame(height: Metrics.height)
       .padding(.horizontal, 4)
@@ -304,13 +298,23 @@ private struct ToolToolIcon: View {
 private struct AppToolPickerText: View {
   let appName: String
   let deviceName: String
+  var isExpanded: Bool?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 1) {
-      Text(appName)
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(.primary)
-        .lineLimit(1)
+      HStack(spacing: 6) {
+        Text(appName)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(.primary)
+          .lineLimit(1)
+
+        if let isExpanded {
+          Image(systemName: "chevron.down")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+        }
+      }
 
       Text(deviceName)
         .font(.system(size: 12))
