@@ -8,6 +8,7 @@ import VideoToolbox
 
 enum MediaSaveKind {
   case image
+  case video
   var fileExtension: String {
     "png"
   }
@@ -77,7 +78,7 @@ struct LivePreviewFrameExportTests {
     precondition(pathA != pathB && pathA.lastPathComponent == pathB.lastPathComponent)
     if CommandLine.arguments.contains("--render") {
       hiddenPreviewRetainsLatestFrame(store: store)
-      print("Live preview hidden decoding test passed")
+      print("Live preview hidden decoding and copy tests passed")
     }
     print("Live preview frame export tests passed")
   }
@@ -105,6 +106,15 @@ struct LivePreviewFrameExportTests {
     let session = LivePreviewSession()
     let renderer = LivePreviewRenderer(operation: LivePreviewOperationHandle(session: session)) { _, _, _, _ in }
     view.update(with: renderer, isVisible: true)
+    var copyFeedbackCount = 0
+    view.imageCopied = { copyFeedbackCount += 1 }
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    pasteboard.setString("Keep clipboard when no frame is available", forType: .string)
+    view.copyFrame(to: pasteboard)
+    precondition(pasteboard.string(forType: .string) == "Keep clipboard when no frame is available")
+    precondition(!view.validateMenuItem(NSMenuItem()))
+    precondition(copyFeedbackCount == 0, "No frame must not report a successful copy")
     let samples = makeEncodedSamples()
     let imageContext = CIContext()
     func displays(red: Bool) -> Bool {
@@ -115,9 +125,22 @@ struct LivePreviewFrameExportTests {
       else { return false }
       return red ? color.redComponent > 0.8 : color.blueComponent > 0.8
     }
+    func copyAndCheck(red: Bool) {
+      precondition(view.validateMenuItem(NSMenuItem()))
+      view.copyFrame(to: pasteboard)
+      guard let data = pasteboard.data(forType: .tiff),
+            let bitmap = NSBitmapImageRep(data: data),
+            let color = bitmap.colorAt(x: 32, y: 32)?.usingColorSpace(.deviceRGB)
+      else { fatalError("Copy must write an image to the clipboard") }
+      precondition(bitmap.pixelsWide == 64 && bitmap.pixelsHigh == 64)
+      precondition(red ? color.redComponent > 0.8 : color.blueComponent > 0.8, "Copy must use the displayed frame")
+    }
 
     session.sampleBufferHandler?(samples[0])
     eventually("Initial frame must decode") { displays(red: true) }
+    copyAndCheck(red: true)
+    precondition(copyFeedbackCount == 1, "Successful copy must report feedback once")
+    let firstCopy = pasteboard.data(forType: .tiff)
     view.update(with: renderer, isVisible: false)
     precondition(layer.isHidden && session.sampleBufferHandler != nil)
     CMTimebaseSetTime(timebase, time: CMSampleBufferGetPresentationTimeStamp(samples[1]))
@@ -127,12 +150,20 @@ struct LivePreviewFrameExportTests {
     view.update(with: renderer, isVisible: true)
     precondition(!layer.isHidden)
     eventually("Uncover must show the latest frame without waiting for new video") { displays(red: false) }
+    precondition(pasteboard.data(forType: .tiff) == firstCopy, "Playback must not change a previously copied image")
+    copyAndCheck(red: false)
+    precondition(copyFeedbackCount == 2, "Repeated copies must each report feedback")
     CMTimebaseSetTime(timebase, time: CMSampleBufferGetPresentationTimeStamp(samples[2]))
     session.sampleBufferHandler?(samples[2])
     eventually("Decoding must continue after uncover without a new keyframe") { displays(red: true) }
     precondition(!layer.sampleBufferRenderer.requiresFlushToResumeDecoding)
     view.update(with: nil)
     precondition(session.sampleBufferHandler == nil, "Detaching must release the session callback")
+    precondition(!view.validateMenuItem(NSMenuItem()))
+    let lastCopy = pasteboard.data(forType: .tiff)
+    view.copyFrame(to: pasteboard)
+    precondition(pasteboard.data(forType: .tiff) == lastCopy, "A detached preview must leave the clipboard alone")
+    precondition(copyFeedbackCount == 2, "A detached preview must not report a successful copy")
     window.contentView = nil
   }
 

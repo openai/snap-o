@@ -1,11 +1,15 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ImageCaptureView: View {
   let url: URL
   var makeTempDragFile: () -> URL?
 
+  @Environment(\.captureImageCopied)
+  private var imageCopied
   @State private var loader = ImageLoader()
+  @FocusState private var isFocused: Bool
 
   var body: some View {
     if let nsImage = loader.image(url: url) {
@@ -13,10 +17,48 @@ struct ImageCaptureView: View {
         .resizable()
         .scaledToFill()
         .clipped()
+        .contentShape(Rectangle())
+        .focusable()
+        .focusEffectDisabled()
+        .focused($isFocused)
+        .focusedValue(\.captureImage, nsImage)
+        .onTapGesture { isFocused = true }
+        .onExitCommand { isFocused = false }
+        .contextMenu {
+          Button("Copy Image") {
+            NSPasteboard.general.clearContents()
+            if NSPasteboard.general.writeObjects([nsImage]) {
+              imageCopied()
+            }
+          }
+          Button("Save Image As…") { saveImage() }
+        }
+        .accessibilityLabel("Screenshot")
         .onDrag { dragItemProvider() }
         .onAppear { markPerfMilestones() }
     } else {
       Color.black
+    }
+  }
+
+  private func saveImage() {
+    let panel = NSSavePanel()
+    panel.title = "Save Image As"
+    panel.canCreateDirectories = true
+    panel.allowedContentTypes = [.png]
+    panel.nameFieldStringValue = url.lastPathComponent
+    panel.directoryURL = SaveLocation.defaultDirectory(for: .image)
+    guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+    do {
+      try Data(contentsOf: url).write(to: destination, options: .atomic)
+      SaveLocation.setLastDirectoryURL(destination.deletingLastPathComponent(), for: .image)
+    } catch {
+      let alert = NSAlert()
+      alert.alertStyle = .warning
+      alert.messageText = "Unable to Save Image"
+      alert.informativeText = error.localizedDescription
+      alert.runModal()
     }
   }
 

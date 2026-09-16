@@ -400,6 +400,10 @@ struct CaptureWindow: View {
     CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
       captureContent(controller: controller)
     }
+    .environment(\.captureImageCopied, controller.imageCopied)
+    .overlay {
+      CaptureCopyConfirmation(copyID: controller.imageCopyID)
+    }
     .background(captureAreaBackground)
   }
 
