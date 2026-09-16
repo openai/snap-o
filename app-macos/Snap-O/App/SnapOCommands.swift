@@ -20,7 +20,7 @@ struct SnapOCommands: Commands {
   let updaterController: SPUStandardUpdaterController
 
   var body: some Commands {
-    CommandGroup(before: .windowList) {
+    CommandGroup(before: .windowSize) {
       Button("Capture History") { openWindow(id: "capture-history") }
         .keyboardShortcut("h", modifiers: [.command, .shift])
       Divider()
