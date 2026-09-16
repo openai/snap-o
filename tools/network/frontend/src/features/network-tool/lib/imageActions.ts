@@ -1,8 +1,8 @@
 export async function copyImageToClipboard(dataUrl: string, mimeType: string): Promise<void> {
   const clipboardItem = window.ClipboardItem;
-  if (clipboardItem == null) return;
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
+  if (clipboardItem == null) throw new Error("Image copying is unavailable.");
+  // Start the clipboard write during the gesture, before the image finishes loading.
+  const blob = fetch(dataUrl).then((response) => response.blob());
   await navigator.clipboard.write([new clipboardItem({ [mimeType]: blob })]);
 }
 

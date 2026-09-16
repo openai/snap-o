@@ -15,7 +15,9 @@ export interface NetworkClient extends ToolContentClient {
   dispose(): void;
 }
 
-export type ToolContentClient = Pick<Host, "copyText" | "saveFile">;
+export interface ToolContentClient extends Pick<Host, "saveFile"> {
+  copyText(text: string): Promise<void>;
+}
 
 export function createNetworkClient(): NetworkClient {
   return new BrowserNetworkClient();
@@ -90,7 +92,7 @@ class BrowserNetworkClient implements NetworkClient {
     return () => this.closedListeners.delete(callback);
   }
   copyText(text: string): Promise<void> {
-    return host.copyText(text);
+    return navigator.clipboard.writeText(text);
   }
   saveFile: ToolContentClient["saveFile"] = (input) => host.saveFile(input);
 }
