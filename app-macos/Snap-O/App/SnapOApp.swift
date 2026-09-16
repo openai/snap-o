@@ -41,6 +41,7 @@ struct SnapOApp: App {
       }
     )
     .environment(settings)
+    .environment(runtime.captureHistory)
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 480, height: 480)
     .handlesExternalEvents(matching: Set(["record", "capture", "livepreview"]))
@@ -50,5 +51,12 @@ struct SnapOApp: App {
         updaterController: updateCoordinator.updaterController
       )
     }
+
+    Window("Capture History", id: "capture-history") {
+      CaptureHistoryWindow(history: runtime.captureHistory, fileStore: runtime.fileStore)
+    }
+    .defaultSize(width: 800, height: 650)
+    .windowResizability(.contentMinSize)
+    .commandsRemoved()
   }
 }

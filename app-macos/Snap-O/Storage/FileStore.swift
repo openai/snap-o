@@ -4,10 +4,20 @@ private let log = SnapOLog.storage
 
 final class FileStore: Sendable {
   private let baseDir: URL
+  private let frameExportHandler: (@MainActor @Sendable (URL, String, CGSize) -> Void)?
 
-  init(baseDir: URL = FileManager.default.temporaryDirectory.appendingPathComponent("Snap-O", isDirectory: true)) {
+  init(
+    baseDir: URL = FileManager.default.temporaryDirectory.appendingPathComponent("Snap-O", isDirectory: true),
+    frameExportHandler: (@MainActor @Sendable (URL, String, CGSize) -> Void)? = nil
+  ) {
     self.baseDir = baseDir
+    self.frameExportHandler = frameExportHandler
     purgeExistingFiles()
+  }
+
+  @MainActor
+  func recordExportedFrame(url: URL, deviceID: String, size: CGSize) {
+    frameExportHandler?(url, deviceID, size)
   }
 
   func purgeExistingFiles() {
@@ -25,7 +35,10 @@ final class FileStore: Sendable {
     capturedAt: Date,
     kind: MediaSaveKind
   ) -> URL {
-    makeDestination(prefix: deviceID, date: capturedAt, kind: kind)
+    let filename = makeDestination(prefix: deviceID, date: capturedAt, kind: kind).lastPathComponent
+    let directory = baseDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory.appendingPathComponent(filename)
   }
 
   func makeDragDestination(capturedAt: Date, kind: MediaSaveKind) -> URL {

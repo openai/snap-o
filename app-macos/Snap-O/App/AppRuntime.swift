@@ -8,6 +8,7 @@ final class AppRuntime {
   let deviceTracker: DeviceTracker
   let fileStore: FileStore
   let captureServices: CaptureServices
+  let captureHistory: CaptureHistory
 
   private let captureCoordinator: CaptureCoordinator
 
@@ -18,13 +19,20 @@ final class AppRuntime {
   init() {
     let adbService = ADBService()
     let deviceTracker = DeviceTracker(adbService: adbService)
-    let fileStore = FileStore()
+    let captureHistory = CaptureHistory()
+    let fileStore = FileStore { url, deviceID, size in
+      captureHistory.recordFrame(url: url, size: size) {
+        await deviceTracker.latestDevices.first { $0.id == deviceID }
+          ?? Device(id: deviceID, model: deviceID, androidVersion: "", vendorModel: nil, manufacturer: nil, avdName: nil)
+      }
+    }
     let captureCoordinator = CaptureCoordinator()
-    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore)
+    let screenshots = ScreenshotService(adb: adbService, fileStore: fileStore, history: captureHistory.repository)
     let recording = RecordingService(
       adb: adbService,
       fileStore: fileStore,
-      coordinator: captureCoordinator
+      coordinator: captureCoordinator,
+      history: captureHistory.repository
     )
     let livePreview = LivePreviewService(
       adb: adbService,
@@ -34,6 +42,7 @@ final class AppRuntime {
     self.adbService = adbService
     self.deviceTracker = deviceTracker
     self.fileStore = fileStore
+    self.captureHistory = captureHistory
     self.captureCoordinator = captureCoordinator
     captureServices = CaptureServices(
       screenshots: screenshots,
@@ -47,6 +56,7 @@ final class AppRuntime {
     guard startupTask == nil, shutdownTask == nil else { return }
 
     Perf.step(.appFirstSnapshot, "services start")
+    captureHistory.start()
     observeStartupSettings()
 
     let deviceTracker = deviceTracker
@@ -124,5 +134,7 @@ final class AppRuntime {
     }
     shutdownTask = task
     await task.value
+    await captureHistory.finishFrameExports()
+    captureHistory.stop()
   }
 }

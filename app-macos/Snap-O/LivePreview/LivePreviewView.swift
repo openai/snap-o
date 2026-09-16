@@ -279,7 +279,11 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
       return nil
     }
     do {
-      return try frameExporter.export(pixelBuffer, to: fileStore)
+      let frame = try frameExporter.export(pixelBuffer, to: fileStore)
+      if let renderer {
+        fileStore.recordExportedFrame(url: frame.url, deviceID: renderer.deviceID, size: frame.image.size)
+      }
+      return frame
     } catch {
       SnapOLog.ui.error("Unable to export live frame: \(error.localizedDescription, privacy: .public)")
       NSSound.beep()

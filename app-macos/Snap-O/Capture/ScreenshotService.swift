@@ -17,15 +17,17 @@ actor ScreenshotService {
 
   private let adb: ADBService
   private let fileStore: FileStore
+  private let history: CaptureHistoryRepository?
   private let timestampSource = CaptureTimestampSource()
 
   private var activeTasks: [UUID: Task<ScreenshotCaptureResult, Never>] = [:]
   private var isShuttingDown = false
   private var shutdownTask: Task<Void, Never>?
 
-  init(adb: ADBService, fileStore: FileStore) {
+  init(adb: ADBService, fileStore: FileStore, history: CaptureHistoryRepository? = nil) {
     self.adb = adb
     self.fileStore = fileStore
+    self.history = history
   }
 
   func capture(for devices: [Device]) async -> ScreenshotCaptureResult {
@@ -41,12 +43,14 @@ actor ScreenshotService {
     let adb = adb
     let fileStore = fileStore
     let timestampSource = timestampSource
+    let history = history
     let task = Task {
       await Self.capture(
         requests: requests,
         adb: adb,
         fileStore: fileStore,
-        timestampSource: timestampSource
+        timestampSource: timestampSource,
+        history: history
       )
     }
     activeTasks[taskID] = task
@@ -86,8 +90,10 @@ actor ScreenshotService {
     requests: [Request],
     adb: ADBService,
     fileStore: FileStore,
-    timestampSource: CaptureTimestampSource
+    timestampSource: CaptureTimestampSource,
+    history: CaptureHistoryRepository?
   ) async -> ScreenshotCaptureResult {
+    let historyID = await history?.begin(kind: .image, devices: requests.map(\.device))
     var outcomes: [Outcome] = []
     await withTaskGroup(of: Outcome.self) { group in
       for request in requests {
@@ -115,7 +121,14 @@ actor ScreenshotService {
       }
 
       for await outcome in group {
-        outcomes.append(outcome)
+        switch outcome.result {
+        case .success(let capture):
+          let stored = await history?.record(capture, in: historyID) ?? capture
+          outcomes.append(Outcome(index: outcome.index, device: outcome.device, result: .success(stored)))
+        case .failure(let error):
+          await history?.recordFailure(deviceID: outcome.device.id, message: error.localizedDescription, in: historyID)
+          outcomes.append(outcome)
+        }
       }
     }
 
@@ -129,6 +142,7 @@ actor ScreenshotService {
         failures.append(CaptureFailure(device: outcome.device, error: error))
       }
     }
+    await history?.finish(historyID)
     return ScreenshotCaptureResult(media: media, failures: failures)
   }
 

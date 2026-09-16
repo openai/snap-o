@@ -73,11 +73,13 @@ actor RecordingService {
     let lease: DeviceCaptureLease
     let completion: RecordingOperationCompletion
     var sessionMonitors: [SessionMonitor]
+    let historyID: UUID?
   }
 
   private let adb: ADBService
   private let fileStore: FileStore
   private let coordinator: CaptureCoordinator
+  private let history: CaptureHistoryRepository?
   private let timestampSource = CaptureTimestampSource()
 
   private var operations: [UUID: Operation] = [:]
@@ -89,11 +91,13 @@ actor RecordingService {
   init(
     adb: ADBService,
     fileStore: FileStore,
-    coordinator: CaptureCoordinator
+    coordinator: CaptureCoordinator,
+    history: CaptureHistoryRepository? = nil
   ) {
     self.adb = adb
     self.fileStore = fileStore
     self.coordinator = coordinator
+    self.history = history
   }
 
   func start(
@@ -128,6 +132,13 @@ actor RecordingService {
     }
 
     let completion = RecordingOperationCompletion()
+    let historyID = await history?.begin(kind: .video, devices: devices)
+    guard !Task.isCancelled, !isShuttingDown else {
+      await discard(entries)
+      await history?.discardEmpty(historyID)
+      await coordinator.release(lease)
+      throw CancellationError()
+    }
     let handle = RecordingOperationHandle(
       id: operationID,
       completion: completion
@@ -136,7 +147,8 @@ actor RecordingService {
       entries: entries,
       lease: lease,
       completion: completion,
-      sessionMonitors: []
+      sessionMonitors: [],
+      historyID: historyID
     )
     operations[operationID]?.sessionMonitors = entries.map { entry in
       SessionMonitor(
@@ -187,6 +199,7 @@ actor RecordingService {
     defer { cleanupOperationIDs.remove(handle.id) }
 
     await discard(operation.entries)
+    await history?.discardEmpty(operation.historyID)
     await coordinator.release(operation.lease)
     await operation.completion.resolve(.cancelled)
   }
@@ -253,12 +266,13 @@ actor RecordingService {
 
   private func collectMedia(
     from entries: [Entry],
+    historyID: UUID?,
     endedSession: RecordingSession? = nil
   ) async -> ([CaptureMedia], Error?) {
     var media: [CaptureMedia] = []
     var encounteredError: Error?
 
-    await withTaskGroup(of: Result<CaptureMedia?, Error>.self) { group in
+    await withTaskGroup(of: (Device, Result<CaptureMedia?, Error>).self) { group in
       for entry in entries {
         group.addTask {
           do {
@@ -266,21 +280,23 @@ actor RecordingService {
               entry,
               sessionHasEnded: entry.session === endedSession
             )
-            return .success(capture)
+            return (entry.device, .success(capture))
           } catch {
-            return .failure(error)
+            return (entry.device, .failure(error))
           }
         }
       }
 
-      for await result in group {
+      for await (device, result) in group {
         switch result {
         case .success(let capture?):
-          media.append(capture)
+          let stored = await history?.record(capture, in: historyID) ?? capture
+          media.append(stored)
         case .success(nil):
-          continue
+          await history?.recordFailure(deviceID: device.id, message: "No playable recording was received.", in: historyID)
         case .failure(let error):
           encounteredError = encounteredError ?? error
+          await history?.recordFailure(deviceID: device.id, message: error.localizedDescription, in: historyID)
         }
       }
     }
@@ -338,8 +354,10 @@ actor RecordingService {
 
     let (media, captureError) = await collectMedia(
       from: operation.entries,
+      historyID: operation.historyID,
       endedSession: endedSession
     )
+    await history?.finish(operation.historyID)
     await coordinator.release(operation.lease)
     await operation.completion.resolve(
       .completed(
@@ -431,6 +449,7 @@ actor RecordingService {
         monitor.task.cancel()
       }
       await discard(operation.entries)
+      await history?.discardEmpty(operation.historyID)
       await coordinator.release(operation.lease)
       await operation.completion.resolve(.cancelled)
     }
