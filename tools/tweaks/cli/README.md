@@ -15,4 +15,4 @@ From the repository root:
 python3 -m unittest discover -s tools/tweaks/cli/tests -p 'test_*.py'
 ```
 
-See [command-line inspection](../../../docs/cli.md) for installation and usage.
+See [Tweaks CLI setup](../../../docs/tweaks.md#cli) for installation and usage.

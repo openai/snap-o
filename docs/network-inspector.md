@@ -7,6 +7,7 @@ styles:
 - guide.css
 - network-inspector.css
 languages:
+- bash
 - kotlin
 - toml
 breadcrumbs:
@@ -258,6 +259,51 @@ Use the arrow keys to move between requests. Server-Sent Events show whether the
 ### Intercept requests {#python-overrides}
 
 Use `snapo-network intercept` to change a real API response or return mock data. The tool shows the response delivered to the app while your Python handlers run separately. Follow the [Network Interception guide](network-intercept.md) for requirements, examples, and supported traffic.
+
+## Command line {#cli}
+
+Use `snapo-network` to read requests and responses from your terminal. It works on macOS and Linux without the Mac app running.
+
+<details markdown="1">
+<summary>Install the command-line tool</summary>
+
+You'll need Python 3, Android Platform Tools, and Network enabled in your Android app.
+
+On macOS, the tool comes with Snap-O. Run this to make it available in your terminal:
+
+```bash
+export PATH="/Applications/Snap-O.app/Contents/MacOS:$PATH"
+```
+
+On Linux, or on macOS without Snap-O, download it directly:
+
+```bash
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-network-inspector/scripts/snapo-network -o ~/.local/bin/snapo-network
+chmod +x ~/.local/bin/snapo-network
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add the `export` line to your shell settings to keep it for future terminal sessions.
+
+</details>
+
+Find your app, list its requests, then open one:
+{style="margin-top: 18px"}
+
+```bash
+snapo-network list --json
+snapo-network requests -s SERIAL -n SOCKET --no-stream --json
+snapo-network show -s SERIAL -n SOCKET -r REQUEST_ID --json
+```
+
+Use the `deviceId` and `socketName` from the first command for `SERIAL` and `SOCKET`. Replace `REQUEST_ID` with an ID from the request list.
+
+Leave out `--no-stream` to watch new requests as they happen. To change or mock responses, see [Network Interception](network-intercept.md). Run `snapo-network --help` for more commands.
+
+## Codex skill {#agents}
+
+The [Network Inspector skill](https://github.com/openai/snap-o/tree/main/skills/snap-o-network-inspector) lives in `skills/snap-o-network-inspector`. It includes the CLI and instructions for inspecting traffic and changing or mocking responses.
 
 ## Troubleshooting {#troubleshoot data-step="5"}
 

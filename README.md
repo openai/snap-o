@@ -52,25 +52,12 @@ Tweaks are available through the Tool pane, an optional on-device panel, the CLI
 
 ## CLI and Codex
 
-The `snapo-network` and `snapo-tweaks` CLIs support inspection and live changes on macOS and Linux. Each requires only Python 3 and Android Platform Tools and runs independently of the macOS app.
+Network and Tweaks each have a standalone CLI and a Codex skill for macOS and Linux. They require Python 3, Android Platform Tools, and the matching Android integration. The macOS app does not need to be running.
 
-On macOS, the app includes both CLIs and a `snapo` entry point:
+See the feature guides for CLI setup and links to each skill:
 
-```bash
-/Applications/Snap-O.app/Contents/MacOS/snapo network list --json
-/Applications/Snap-O.app/Contents/MacOS/snapo tweaks apps --json
-```
-
-The Codex plugin bundles two self-contained skills, each with its own CLI:
-
-```bash
-codex plugin marketplace add openai/snap-o --ref main
-codex plugin add snap-o@snap-o
-```
-
-Start a new Codex session after installation.
-
-[CLI setup and commands](docs/cli.md) · [Linux installation](docs/cli.md#linux-and-standalone-macos) · [Plugin updates](docs/cli.md#codex-plugin)
+- [Network CLI](docs/network-inspector.md#cli) · [Network skill](docs/network-inspector.md#agents)
+- [Tweaks CLI](docs/tweaks.md#cli) · [Tweaks skill](docs/tweaks.md#agents)
 
 ## Plugins
 

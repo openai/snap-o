@@ -19,7 +19,6 @@ nav:
   - Tweaks: tweaks.md
   - Tweaks Protocol: tweaks-protocol.md
   - Build a tool: plugins.md
-  - Command-line inspection: cli.md
   - Screen capture: screen-capture.md
 
 exclude_docs: |

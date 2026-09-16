@@ -27,7 +27,7 @@ Start with the [Network setup](network-inspector.md). Your debug app must use `S
 
 Run the CLI on macOS or Linux with Python 3 and Android Platform Tools. No Python package installation is needed. The Snap-O desktop app can stay open for inspection, but the CLI does not require it to be running.
 
-The examples assume `snapo-network` is on your `PATH`. On macOS, you can use `/Applications/Snap-O.app/Contents/MacOS/snapo-network` instead. On Linux, follow the [CLI installation steps](cli.md#linux-and-standalone-macos).
+The examples assume `snapo-network` is on your `PATH`. On macOS, you can use `/Applications/Snap-O.app/Contents/MacOS/snapo-network` instead. On Linux, follow the [Network CLI installation steps](network-inspector.md#cli).
 
 Connect an authorized device or emulator and launch your debug app. List the available app processes:
 

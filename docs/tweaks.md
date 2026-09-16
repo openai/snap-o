@@ -8,6 +8,7 @@ styles:
 - guide.css
 - tweaks.css
 languages:
+- bash
 - kotlin
 - toml
 breadcrumbs:
@@ -519,62 +520,73 @@ The Tweaks server exposes a small HTTP API for reading registered controls, upda
 
 See the [Tweaks protocol reference](tweaks-protocol.md) for every endpoint, example requests and responses, live events, resets, and error handling.
 
-### Agents (e.g. Codex) {#agents}
+### Command line {#cli}
 
-Install the official Snap-O Codex plugin to give an agent the dedicated Tweaks skill and shared command-line client. The plugin requires Python 3 and Android Platform Tools.
-
-``` { .shell title="Terminal · install the Codex plugin" }
-codex plugin marketplace add openai/snap-o --ref main
-codex plugin add snap-o@snap-o
-```
+Use `snapo-tweaks` to read and change your app’s values from the terminal. It works on macOS and Linux without the Mac app running.
 
 <details markdown="1">
-<summary>Migrate an existing sparse marketplace installation</summary>
+<summary>Install the command-line tool</summary>
 
-If Snap-O was previously installed with sparse paths, remove and add its marketplace again so both tool CLIs and skills are available:
+You'll need Python 3, Android Platform Tools, and Tweaks enabled in your Android app.
 
-``` { .shell title="Terminal · migrate the Codex plugin" }
-codex plugin marketplace remove snap-o
-codex plugin marketplace add openai/snap-o --ref main
-codex plugin add snap-o@snap-o
+On macOS, the tool comes with Snap-O. Run this to make it available in your terminal:
+
+```bash
+export PATH="/Applications/Snap-O.app/Contents/MacOS:$PATH"
 ```
+
+On Linux, or on macOS without Snap-O, download it directly:
+
+```bash
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/openai/snap-o/main/skills/snap-o-tweaks/scripts/snapo-tweaks -o ~/.local/bin/snapo-tweaks
+chmod +x ~/.local/bin/snapo-tweaks
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add the `export` line to your shell settings to keep it for future terminal sessions.
 
 </details>
 
-Start a new Codex session after installation. Ask the agent to inspect the available controls, apply a requested design direction, or reset a value. For example: “Make this screen feel calmer; try the typography, color, and motion tweaks and tell me what changed.” The skill discovers the running app, reads typed descriptors, and changes or resets values only when requested.
-
-Snap-O for macOS also bundles the same CLI. Use it directly for discovery, automation, live snapshots, and explicitly requested updates:
-
-``` { .shell title="Terminal · inspect and update live tweaks" }
-SNAPO_BIN="/Applications/Snap-O.app/Contents/MacOS/snapo-tweaks"
-
-"$SNAPO_BIN" apps --json
-"$SNAPO_BIN" list -s emulator-5554 -n snapo_tweaks_12345 --json
-"$SNAPO_BIN" set 'Typography/Font size' 42 -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" action 'Motion/Toggle animation' -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" reset 'Typography/Font size' -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" watch -s emulator-5554 -n snapo_tweaks_12345 --once --json
-```
-
-The bundled `snapo` entry point also accepts these commands as `snapo tweaks <command>`.
-See [terminal setup](cli.md#macos) to add the bundled commands to your `PATH`.
-
-Pass a Bézier curve as one quoted JSON object. Updates and resets affect the complete curve:
+Find your app, list its tweaks, then change or reset a value:
+{style="margin-top: 18px"}
 
 ```bash
-"$SNAPO_BIN" set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s emulator-5554 -n snapo_tweaks_12345
-"$SNAPO_BIN" reset 'Motion/Curve' -s emulator-5554 -n snapo_tweaks_12345
+snapo-tweaks apps --json
+snapo-tweaks list -s SERIAL -n SOCKET --json
+snapo-tweaks set 'Typography/Font size' 42 -s SERIAL -n SOCKET
+snapo-tweaks reset 'Typography/Font size' -s SERIAL -n SOCKET
 ```
 
-Use `list --all` or `get NAME --all` to include previously adjusted values without active owners.
-These inactive snapshots remain read-only until their controls return.
+Use the `deviceId` and `socketName` from the first command for `SERIAL` and `SOCKET`. Replace the example tweak name with one from your app.
 
-Successful `set`, `reset`, and `action` commands produce no output and do not accept `--json`. For batch updates, replace the former `set --values-json` option with [PATCH /tweaks](tweaks-protocol.md#patch-tweaks).
+<details markdown="1">
+<summary>More commands</summary>
 
-The CLI manages Android socket discovery, forwarding, and cleanup. Device serials and socket names come from the discovery output and change when the app process restarts.
-{.notice}
+Watch values change or run an action your app provides:
 
-You can also ask an agent to create a small custom panel for a specific workflow, such as typography comparisons, animation tuning, or a curated set of design controls. The panel can read `GET /tweaks`, send `PATCH /tweaks`, and subscribe to `GET /tweaks/events`. No separate Snap-O agent API or automatic panel integration is required or implied.
+```bash
+snapo-tweaks watch -s SERIAL -n SOCKET --json
+snapo-tweaks action 'Motion/Toggle animation' -s SERIAL -n SOCKET
+```
+
+Use `list --all` to see values you changed on screens that are no longer open. You can read those values, but can only change them when their controls are available again.
+
+For a Bézier curve, pass all four coordinates together:
+
+```bash
+snapo-tweaks set 'Motion/Curve' '{"x1":0.25,"y1":0.1,"x2":0.25,"y2":1}' -s SERIAL -n SOCKET
+```
+
+The `set`, `reset`, and `action` commands are silent when they succeed and do not accept `--json`. To change several values at once, use [PATCH /tweaks](tweaks-protocol.md#patch-tweaks).
+
+Run `snapo-tweaks --help` for more commands, or add `--help` to any command for its options.
+
+</details>
+
+### Codex skill {#agents}
+
+The [Tweaks skill](https://github.com/openai/snap-o/tree/main/skills/snap-o-tweaks) lives in `skills/snap-o-tweaks`. It includes the CLI and instructions for reading, changing, and resetting your app’s tweaks.
 
 ## Apply tweaks to your codebase {#apply-tweaks data-step="7"}
 
