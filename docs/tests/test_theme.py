@@ -32,11 +32,19 @@ class DocumentationThemeTests(unittest.TestCase):
         cls.directory.cleanup()
 
     def test_public_urls_and_excluded_sources(self):
-        expected = {"index", "network-inspector", "network-intercept", "tweaks", "tweaks-protocol", "cli", "usage", "plugins"}
+        expected = {"index", "network-inspector", "network-intercept", "tweaks", "tweaks-protocol", "cli", "usage", "screen-capture", "plugins"}
         self.assertEqual(expected, {Path(name).stem for name in self.pages})
         self.assertTrue((self.output / ".nojekyll").is_file())
         for name in ("appcast.xml", "hooks.py", "requirements.txt", "README.html", "tests", ".venv"):
             self.assertFalse((self.output / name).exists(), name)
+
+    def test_legacy_usage_redirect(self):
+        soup = self.pages["usage.html"]
+        redirect = soup.find("meta", attrs={"http-equiv": "refresh"})
+        self.assertIsNotNone(redirect)
+        self.assertEqual("0; url=screen-capture.html", redirect["content"])
+        self.assertEqual("screen-capture.html", soup.find("link", rel="canonical")["href"])
+        self.assertEqual("screen-capture.html", soup.find("a")["href"])
 
     def test_template_links_and_tab_targets(self):
         # MkDocs validates Markdown links; this covers links and IDs added by the theme.
