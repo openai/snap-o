@@ -1,6 +1,7 @@
 import AppKit
 @preconcurrency import AVFoundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Connects a live-preview session to its interactive AppKit surface.
 struct LivePreviewRenderer {
@@ -21,6 +22,9 @@ struct LivePreviewRendererView: NSViewRepresentable {
   let fileStore: FileStore
   let isVisible: Bool
 
+  @Environment(\.captureImageCopied)
+  private var imageCopied
+
   func makeNSView(context: Context) -> LivePreviewDisplayView {
     let view = LivePreviewDisplayView(fileStore: fileStore)
     view.wantsLayer = true
@@ -29,15 +33,19 @@ struct LivePreviewRendererView: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: LivePreviewDisplayView, context: Context) {
+    nsView.imageCopied = imageCopied
     nsView.update(with: renderer, isVisible: isVisible)
   }
 
   static func dismantleNSView(_ nsView: LivePreviewDisplayView, coordinator: Void) {
+    nsView.imageCopied = {}
     nsView.update(with: nil)
   }
 }
 
-final class LivePreviewDisplayView: NSView, NSDraggingSource {
+final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidation {
+  var imageCopied: () -> Void = {}
+
   private let fileStore: FileStore
   private let frameExporter = LivePreviewFrameExporter()
   private var renderer: LivePreviewRenderer?
@@ -68,6 +76,61 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
 
   override var isFlipped: Bool {
     true
+  }
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    window?.makeFirstResponder(self)
+    let menu = NSMenu()
+    // A separate menu action avoids AppKit's automatic icon for the standard Copy action.
+    menu.addItem(withTitle: "Copy Image", action: #selector(copyPreviewFrame(_:)), keyEquivalent: "").target = self
+    menu.addItem(withTitle: "Save Image As…", action: #selector(saveImageAs(_:)), keyEquivalent: "").target = self
+    return menu
+  }
+
+  func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    renderer != nil && displayLayer.sampleBufferRenderer.displayedPixelBuffer() != nil
+  }
+
+  @objc
+  func copy(_ sender: Any?) {
+    copyFrame(to: .general)
+  }
+
+  @objc
+  private func copyPreviewFrame(_ sender: Any?) {
+    copy(sender)
+  }
+
+  func copyFrame(to pasteboard: NSPasteboard) {
+    guard let frame = exportCurrentFrame() else { return }
+    pasteboard.clearContents()
+    if pasteboard.writeObjects([frame.image]) {
+      imageCopied()
+    }
+  }
+
+  @objc
+  private func saveImageAs(_ sender: Any?) {
+    // Freeze the displayed frame before the save dialog opens while playback continues.
+    guard let frame = exportCurrentFrame() else { return }
+    let panel = NSSavePanel()
+    panel.title = "Save Image As"
+    panel.canCreateDirectories = true
+    panel.allowedContentTypes = [.png]
+    panel.nameFieldStringValue = frame.url.lastPathComponent
+    panel.directoryURL = SaveLocation.defaultDirectory(for: .image)
+    guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+    do {
+      try Data(contentsOf: frame.url).write(to: destination, options: .atomic)
+      SaveLocation.setLastDirectoryURL(destination.deletingLastPathComponent(), for: .image)
+    } catch {
+      let alert = NSAlert()
+      alert.alertStyle = .warning
+      alert.messageText = "Unable to Save Image"
+      alert.informativeText = error.localizedDescription
+      alert.runModal()
+    }
   }
 
   func update(with renderer: LivePreviewRenderer?, isVisible: Bool = false) {
@@ -166,6 +229,11 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
   }
 
   override func mouseDown(with event: NSEvent) {
+    window?.makeFirstResponder(self)
+    if event.modifierFlags.contains(.control) {
+      super.mouseDown(with: event)
+      return
+    }
     if event.modifierFlags.contains(.option) {
       isDraggingFrame = true
       if convertToDevicePoint(event: event) != nil {
@@ -199,18 +267,23 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource {
     guard hypot(point.x - origin.x, point.y - origin.y) >= 3 else { return }
     frameDragOrigin = nil
 
-    guard let pixelBuffer = displayLayer.sampleBufferRenderer.displayedPixelBuffer() else {
+    guard let frame = exportCurrentFrame() else { return }
+    let item = NSDraggingItem(pasteboardWriter: frame.url as NSURL)
+    item.setDraggingFrame(fittedMediaRect(contentSize: frame.image.size, in: bounds), contents: frame.image)
+    beginDraggingSession(with: [item], event: event, source: self)
+  }
+
+  private func exportCurrentFrame() -> LivePreviewFrameExporter.Frame? {
+    guard renderer != nil, let pixelBuffer = displayLayer.sampleBufferRenderer.displayedPixelBuffer() else {
       NSSound.beep()
-      return
+      return nil
     }
     do {
-      let frame = try frameExporter.export(pixelBuffer, to: fileStore)
-      let item = NSDraggingItem(pasteboardWriter: frame.url as NSURL)
-      item.setDraggingFrame(fittedMediaRect(contentSize: frame.image.size, in: bounds), contents: frame.image)
-      beginDraggingSession(with: [item], event: event, source: self)
+      return try frameExporter.export(pixelBuffer, to: fileStore)
     } catch {
       SnapOLog.ui.error("Unable to export live frame: \(error.localizedDescription, privacy: .public)")
       NSSound.beep()
+      return nil
     }
   }
 

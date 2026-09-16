@@ -7,6 +7,8 @@ struct SnapOCommands: Commands {
   private var openWindow
   @FocusedValue(\.captureController)
   var captureController: CaptureWindowController?
+  @FocusedValue(\.captureImage)
+  var captureImage: NSImage?
   @FocusedValue(\.workspaceController)
   var workspaceController: WorkspaceLayoutController?
   @FocusedValue(\.toolHost)
@@ -93,7 +95,19 @@ struct SnapOCommands: Commands {
     }
     if let captureController {
       CommandGroup(replacing: .pasteboard) {
+        Button("Cut") {
+          NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
+        }
+        .keyboardShortcut("x")
+
         Button("Copy") {
+          if let captureImage {
+            NSPasteboard.general.clearContents()
+            if NSPasteboard.general.writeObjects([captureImage]) {
+              captureController.imageCopied()
+            }
+            return
+          }
           let copiedFocusedContent = NSApp.sendAction(
             #selector(NSText.copy(_:)),
             to: nil,
@@ -104,6 +118,11 @@ struct SnapOCommands: Commands {
           }
         }
         .keyboardShortcut("c")
+
+        Button("Paste") {
+          NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+        }
+        .keyboardShortcut("v")
 
         Divider()
 

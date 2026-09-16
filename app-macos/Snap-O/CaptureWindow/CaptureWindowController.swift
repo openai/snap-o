@@ -21,6 +21,7 @@ final class CaptureWindowController {
   private(set) var isProcessing: Bool = false
   private(set) var lastError: String?
   private(set) var screenshotFailures: [CaptureFailure] = []
+  private(set) var imageCopyID: UUID?
   private(set) var mode: CaptureWindowMode
 
   private var knownDevices: [Device] = []
@@ -397,7 +398,13 @@ final class CaptureWindowController {
           let image = NSImage(contentsOf: url)
     else { return }
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.writeObjects([image])
+    if NSPasteboard.general.writeObjects([image]) {
+      imageCopied()
+    }
+  }
+
+  func imageCopied() {
+    imageCopyID = UUID()
   }
 
   private func applyScreenshotCaptureResult(_ result: ScreenshotCaptureResult) {
