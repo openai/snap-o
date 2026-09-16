@@ -1,5 +1,6 @@
 package com.openai.snapo.gradle
 
+import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.variant.AndroidComponentsExtension
 import com.github.gradle.node.NodeExtension
 import com.github.gradle.node.NodePlugin
@@ -94,7 +95,12 @@ class ToolPackagerPlugin : Plugin<Project> {
 
         listOf("com.android.application", "com.android.library").forEach { androidPlugin ->
             pluginManager.withPlugin(androidPlugin) {
-                extensions.getByType(AndroidComponentsExtension::class.java).onVariants { variant ->
+                val androidComponents = extensions.getByType(AndroidComponentsExtension::class.java)
+                androidComponents.finalizeDsl {
+                    // Lint must read the generated descriptor to find the icon reference.
+                    extensions.getByType(CommonExtension::class.java).lint.checkGeneratedSources = true
+                }
+                androidComponents.onVariants { variant ->
                     val suffix = variant.name.replaceFirstChar { it.uppercaseChar() }
                     val assets = tasks.register<ToolAssetsTask>("package${suffix}SnapoToolAssets") {
                         toolId.set(tool.id)

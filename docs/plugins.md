@@ -36,7 +36,7 @@ For a working starting point, use the [Example tool](https://github.com/openai/s
 
 Apply the Tool Packager Gradle Plugin in your tool’s Android library module. It builds the frontend and generates the metadata Snap-O needs to find your tool.
 
-<span id="the-build-plugin-comopenaisnapoplugin"></span>Add the plugin to your version catalog:
+<span id="the-build-plugin-comopenaisnapoplugin"></span>Add dependencies to your version catalog:
 
 ``` { .toml title="gradle/libs.versions.toml" }
 [versions]
@@ -44,6 +44,9 @@ snapo = "9.0.0"
 
 [plugins]
 snapo-tool-packager = { id = "com.openai.snapo.tool-packager", version.ref = "snapo" }
+
+[libraries]
+snapo-tool-core = { module = "com.openai.snapo:tool-core", version.ref = "snapo" }
 ```
 
 Make sure `pluginManagement.repositories` in `settings.gradle.kts` includes `mavenCentral()`.
@@ -121,14 +124,6 @@ node { distBaseUrl.set(null as String?) }
 
 <div class="dependency-tabs" data-label="Android Tool SDK dependency format" markdown="1">
 <div id="tool-sdk-catalog-panel" data-tab="Version catalog" markdown="1">
-
-``` { .toml title="gradle/libs.versions.toml" }
-[versions]
-snapo = "9.0.0"
-
-[libraries]
-snapo-tool-core = { module = "com.openai.snapo:tool-core", version.ref = "snapo" }
-```
 
 ``` { .kotlin title="Your Android module's build.gradle.kts" }
 dependencies {

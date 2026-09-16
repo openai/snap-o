@@ -10,6 +10,10 @@ description = "Shared Android components used by Snap-O network inspection integ
 
 android {
     namespace = "com.openai.snapo.network"
+    lint {
+        enable += "UnusedResources"
+        error += "UnusedResources"
+    }
 }
 
 // This build declares the Node repository in settings.gradle.kts.
