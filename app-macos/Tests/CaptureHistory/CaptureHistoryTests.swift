@@ -30,6 +30,7 @@ struct CaptureHistoryTests {
     try await retentionAndProtection()
     try await oversizedGrace()
     try await failureAndRecovery()
+    try await screenshotCancellation()
     print("Capture history tests passed")
   }
 
@@ -47,6 +48,65 @@ struct CaptureHistoryTests {
       capturedAt: Date(),
       display: DisplayInfo(size: CGSize(width: 100, height: 200), densityScale: 2)
     ))
+  }
+
+  static func screenshotCancellation() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    for keepsCompletedScreenshot in [false, true] {
+      let directory = root.appendingPathComponent(UUID().uuidString)
+      let repository = CaptureHistoryRepository(root: directory.appendingPathComponent("history"))
+      let adb = ADBService()
+      let service = ScreenshotService(
+        adb: adb,
+        fileStore: FileStore(baseDir: directory.appendingPathComponent("temporary")),
+        history: repository
+      )
+      let devices = keepsCompletedScreenshot ? [firstDevice, secondDevice] : [secondDevice]
+      let task = Task { await service.capture(for: devices) }
+      var ready = false
+      for _ in 0 ..< 2000 {
+        let snapshot = await repository.currentSnapshot()
+        let hasExpectedMedia = !keepsCompletedScreenshot || snapshot.entries.first?.availableItems.count == 1
+        if await adb.waitingForCancellation, hasExpectedMedia {
+          ready = true
+          break
+        }
+        try await Task.sleep(for: .milliseconds(1))
+      }
+      precondition(ready, "Reach the intended cancellation point before canceling")
+      task.cancel()
+      let result = await task.value
+      let snapshot = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
+      if keepsCompletedScreenshot {
+        precondition(result.media.count == 1 && snapshot.entries.count == 1)
+        precondition(snapshot.entries[0].availableItems.count == 1)
+        precondition(snapshot.entries[0].completedAt != nil)
+        precondition(FileManager.default.fileExists(atPath: result.media[0].media.url!.path))
+        precondition(snapshot.entries[0].items[1].failure == "Capture did not complete.")
+      } else {
+        precondition(result.media.isEmpty && snapshot.entries.isEmpty, "Canceled empty captures leave no history entry")
+      }
+    }
+
+    let repository = CaptureHistoryRepository(root: root.appendingPathComponent("failed-history"))
+    let service = ScreenshotService(
+      adb: ADBService(),
+      fileStore: FileStore(baseDir: root.appendingPathComponent("failed-temporary")),
+      history: repository
+    )
+    let device = Device(
+      id: "failed-device",
+      model: "Failed Device",
+      androidVersion: "16",
+      vendorModel: nil,
+      manufacturer: nil,
+      avdName: nil
+    )
+    let result = await service.capture(for: [device])
+    let snapshot = await repository.currentSnapshot()
+    precondition(result.failures.count == 1 && snapshot.entries.count == 1, "Genuine failures remain in history")
+    precondition(snapshot.entries[0].items[0].failure == ADBError.protocolFailure("Screenshot failed").localizedDescription)
   }
 
   static func persistenceAndSelection() async throws {

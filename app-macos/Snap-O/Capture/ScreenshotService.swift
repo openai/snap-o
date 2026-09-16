@@ -125,6 +125,8 @@ actor ScreenshotService {
         case .success(let capture):
           let stored = await history?.record(capture, in: historyID) ?? capture
           outcomes.append(Outcome(index: outcome.index, device: outcome.device, result: .success(stored)))
+        case .failure(let error) where error is CancellationError:
+          outcomes.append(outcome)
         case .failure(let error):
           await history?.recordFailure(deviceID: outcome.device.id, message: error.localizedDescription, in: historyID)
           outcomes.append(outcome)
@@ -142,6 +144,7 @@ actor ScreenshotService {
         failures.append(CaptureFailure(device: outcome.device, error: error))
       }
     }
+    if Task.isCancelled { await history?.discardEmpty(historyID) }
     await history?.finish(historyID)
     return ScreenshotCaptureResult(media: media, failures: failures)
   }
