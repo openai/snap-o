@@ -34,6 +34,7 @@ class ToolPackagerPlugin : Plugin<Project> {
             version.set("22.23.2")
             download.set(true)
             nodeProjectDir.set(tool.frontendDirectory)
+            npmInstallCommand.set("ci")
             enableTaskRules.set(false)
         }
         val downloadNode = extensions.getByType<NodeExtension>().download
@@ -59,6 +60,12 @@ class ToolPackagerPlugin : Plugin<Project> {
         }
         val install = tasks.named<NpmInstallTask>(NpmInstallTask.NAME) {
             dependsOn(sdk)
+        }
+        tasks.register<NpmTask>("installSnapoToolDependencies") {
+            group = "snapo"
+            description = "Installs frontend dependencies and updates the lockfile."
+            dependsOn(sdk)
+            npmCommand.set(listOf("install"))
         }
         tasks.register<NpmTask>("initSnapoToolFrontend") {
             group = "snapo"

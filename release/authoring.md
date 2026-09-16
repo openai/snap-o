@@ -31,7 +31,9 @@ The command stages three Maven publications, checks their metadata and embedded 
 
 The output includes `report.json`, the copied example, local Maven repository, and debug APK. The consumer build runs without Node or npm on `PATH` and verifies that its frontend uses the downloaded runtime.
 
-The SDK checks cover `npm install` with and without a lockfile, unchanged lockfiles on repeat builds, restoration after clean/deletion, and synthetic plugin upgrades and downgrades. The upgrade test changes SDK JavaScript and declarations, then verifies installed bytes and typechecking. Both unchanged and changed SDKs must leave the npm manifest and lockfile unchanged.
+The SDK checks cover `npm ci` builds, unchanged lockfiles on repeat builds, restoration after clean/deletion, and synthetic plugin upgrades and downgrades. The upgrade test changes SDK JavaScript and declarations, then verifies installed bytes and typechecking. Both unchanged and changed SDKs must leave the npm manifest and lockfile unchanged.
+
+A missing or incomplete lockfile must fail without being rewritten or falling back to `npm install`. The check then repairs it with `installSnapoToolDependencies` and retries the build. Dependency installation must preserve frontend sources.
 
 The validator also creates and builds the bundled frontend starter in a custom directory, checks that initialization preserves existing files, and verifies the development task. It checks configuration cache reuse, an explicit installed-Node override, and prebuilt assets that schedule no Node/npm tasks. It also builds without the centralized repository override to verify automatic Node repository setup.
 
