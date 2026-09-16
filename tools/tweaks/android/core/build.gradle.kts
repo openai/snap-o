@@ -7,7 +7,13 @@ plugins {
 
 description = "Compose-free live tweaks for Snap-O."
 
-android { namespace = "com.openai.snapo.tweaks.core" }
+android {
+    namespace = "com.openai.snapo.tweaks.core"
+    lint {
+        enable += "UnusedResources"
+        error += "UnusedResources"
+    }
+}
 
 // This build declares the Node repository in settings.gradle.kts.
 node { distBaseUrl.set(null as String?) }

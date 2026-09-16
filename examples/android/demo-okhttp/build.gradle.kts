@@ -15,6 +15,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    lint {
+        checkDependencies = true
+        enable += "UnusedResources"
+        error += "UnusedResources"
+    }
+
     buildFeatures {
         compose = true
     }
