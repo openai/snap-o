@@ -9,6 +9,18 @@ import { shouldRequestRequestBody, shouldRequestResponseBody } from "./records";
 const exportBodyLoadConcurrency = 3;
 
 export async function copyCurl(client: NetworkClient, request: RequestRecord, loadMissingBodies = true): Promise<void> {
+  const text = loadCurlCommand(client, request, loadMissingBodies).then(
+    (command) => new Blob([command], { type: "text/plain" })
+  );
+  // Request clipboard access during the gesture, before request-body loading finishes.
+  await navigator.clipboard.write([new ClipboardItem({ "text/plain": text })]);
+}
+
+async function loadCurlCommand(
+  client: NetworkClient,
+  request: RequestRecord,
+  loadMissingBodies: boolean
+): Promise<string> {
   let hydrated = request;
   if (loadMissingBodies && shouldRequestRequestBody(request)) {
     try {
@@ -25,7 +37,7 @@ export async function copyCurl(client: NetworkClient, request: RequestRecord, lo
       hydrated = request;
     }
   }
-  await client.copyText(makeCurlCommand(hydrated));
+  return makeCurlCommand(hydrated);
 }
 
 export async function exportAsHar(

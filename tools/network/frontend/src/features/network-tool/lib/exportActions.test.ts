@@ -1,15 +1,33 @@
 import { version } from "../../../../package.json";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NetworkClient } from "../../../network/client";
 import type { RequestBodies } from "../../../network/bridge-types";
 import type { ToolRecord, RequestRecord, StreamEventRecord } from "../../../network/cdp";
 import { copyCurl, exportAsHar, hydrateRecordsForHar } from "./exportActions";
 
 describe("export body readiness", () => {
+  const write = vi.fn(async (items: ClipboardItem[]) => {
+    await items[0].getType("text/plain");
+  });
+
+  beforeEach(() => {
+    write.mockClear();
+    vi.stubGlobal("navigator", { clipboard: { write } });
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(private data: Record<string, Promise<Blob>>) {}
+        getType(type: string): Promise<Blob> {
+          return this.data[type];
+        }
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
   it("copies and exports cached data without querying an offline processId", async () => {
     const client = {
       loadBodies: vi.fn(),
-      copyText: vi.fn(async () => {}),
       saveFile: vi.fn(async () => true)
     } as unknown as NetworkClient;
     const complete = request("offline", {
@@ -22,7 +40,7 @@ describe("export body readiness", () => {
     await copyCurl(client, complete, false);
     await exportAsHar(client, [complete], undefined, false);
     expect(client.loadBodies).not.toHaveBeenCalled();
-    expect(client.copyText).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledOnce();
     const { name, data } = vi.mocked(client.saveFile).mock.calls[0][0];
     expect(name).toMatch(/\.har$/u);
     expect(data.type).toBe("application/har+json");
@@ -32,8 +50,7 @@ describe("export body readiness", () => {
   });
   it("does not query a request body before its upload is known to be complete", async () => {
     const client = {
-      loadBodies: vi.fn(),
-      copyText: vi.fn(async () => undefined)
+      loadBodies: vi.fn()
     } as unknown as NetworkClient;
     const pending = request("pending", {
       method: "POST",
@@ -47,13 +64,12 @@ describe("export body readiness", () => {
     await copyCurl(client, pending);
 
     expect(client.loadBodies).not.toHaveBeenCalled();
-    expect(client.copyText).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledOnce();
   });
 
   it("loads only the request body when copying a completed request as curl", async () => {
     const client = {
-      loadBodies: vi.fn(async () => ({ requestId: "complete", requestBody: "body" })),
-      copyText: vi.fn(async () => undefined)
+      loadBodies: vi.fn(async () => ({ requestId: "complete", requestBody: "body" }))
     } as unknown as NetworkClient;
     const complete = request("complete", {
       method: "POST",
@@ -67,6 +83,39 @@ describe("export body readiness", () => {
     expect(client.loadBodies).toHaveBeenCalledWith(
       expect.objectContaining({ includeRequestBody: true, includeResponseBody: false })
     );
+  });
+
+  it("starts writing before a delayed body resolves and includes that body in the clipboard item", async () => {
+    const body = deferred<RequestBodies>();
+    const client = { loadBodies: vi.fn(() => body.promise) } as unknown as NetworkClient;
+    const complete = request("delayed", { method: "POST", hasReceivedResponse: true });
+
+    const copying = copyCurl(client, complete);
+
+    // The write must start in the calling event handler, without awaiting body loading.
+    expect(write).toHaveBeenCalledOnce();
+    const item = write.mock.calls[0][0][0];
+    const ready = vi.fn();
+    void copying.then(ready);
+    await nextTask();
+    expect(ready).not.toHaveBeenCalled();
+
+    body.resolve({ requestId: "delayed", requestBody: "late body" });
+    await copying;
+    const copied = await item.getType("text/plain");
+    expect(copied.type).toBe("text/plain");
+    expect(await copied.text()).toContain("--data-binary 'late body'");
+    expect(await copied.text()).toContain("--url 'https://example.com/delayed'");
+  });
+
+  it("still copies request metadata if loading the body fails", async () => {
+    const client = { loadBodies: vi.fn().mockRejectedValue(new Error("Body unavailable")) } as unknown as NetworkClient;
+
+    await copyCurl(client, request("expired", { method: "POST", hasReceivedResponse: true }));
+
+    const copied = await write.mock.calls[0][0][0].getType("text/plain");
+    expect(await copied.text()).toContain("--url 'https://example.com/expired'");
+    expect(await copied.text()).not.toContain("--data-binary");
   });
 });
 

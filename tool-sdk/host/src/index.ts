@@ -73,6 +73,7 @@ export interface Host extends EventTarget {
   ): void;
   setToolbar(toolbar: Toolbar): Promise<void>;
   openColorPicker(options: ColorPickerOptions): Promise<ColorPicker>;
+  /** @deprecated Use navigator.clipboard.writeText(text) directly. */
   copyText(text: string): Promise<void>;
   saveFile(options: { name: string; data: Blob }): Promise<boolean>;
 }
@@ -310,8 +311,9 @@ export class ToolHost extends EventTarget implements Host {
     };
   }
 
+  /** @deprecated Use navigator.clipboard.writeText(text) directly. */
   async copyText(text: string): Promise<void> {
-    await this.transport.request("copyText", { text });
+    await navigator.clipboard.writeText(text);
   }
 
   async saveFile({ name, data }: { name: string; data: Blob }): Promise<boolean> {

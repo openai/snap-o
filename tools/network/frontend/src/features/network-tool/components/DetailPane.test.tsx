@@ -46,6 +46,81 @@ describe("network empty state", () => {
 });
 
 describe("image export", () => {
+  it.each(["success", "rejected", "unavailable"])(
+    "shows copy feedback only after a successful write (%s)",
+    async (outcome) => {
+      vi.useFakeTimers();
+      let finishWrite!: () => void;
+      let rejectWrite!: (error: Error) => void;
+      const write = vi.fn(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            finishWrite = resolve;
+            rejectWrite = reject;
+          })
+      );
+      let finishLoad!: (response: Response) => void;
+      const fetchImage = vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishLoad = resolve;
+          })
+      );
+      vi.stubGlobal("fetch", fetchImage);
+      vi.stubGlobal("navigator", { clipboard: { write } });
+      vi.stubGlobal(
+        "ClipboardItem",
+        outcome === "unavailable"
+          ? undefined
+          : class {
+              constructor(readonly data: Record<string, Promise<Blob>>) {}
+            }
+      );
+      const client = { copyText: vi.fn(async () => {}), saveFile: vi.fn(async () => true) };
+      const payload = makeBodyPayload({
+        body: "AAH/",
+        headers: [{ name: "Content-Type", value: "image/png" }],
+        base64Encoded: true
+      })!;
+      function View() {
+        return <BodySection client={client} payload={payload} storageKey="image" uiState={useToolUiState()} />;
+      }
+      const container = document.createElement("div");
+      document.body.append(container);
+      try {
+        await act(() => renderInto(<View />, container));
+        const button = container.querySelector<HTMLButtonElement>('button[aria-label="Copy Image"]')!;
+        await act(async () => button.click());
+        expect(button.getAttribute("aria-label")).toBe("Copy Image");
+        if (outcome === "unavailable") {
+          expect(write).not.toHaveBeenCalled();
+          expect(fetchImage).not.toHaveBeenCalled();
+          return;
+        }
+        expect(write).toHaveBeenCalledOnce();
+        await act(async () => {
+          finishLoad(new Response(new Uint8Array([0, 1, 255])));
+        });
+        expect(button.getAttribute("aria-label")).toBe("Copy Image");
+        await act(async () => {
+          if (outcome === "success") finishWrite();
+          else rejectWrite(new DOMException("Clipboard write denied", "NotAllowedError"));
+          await write.mock.results[0].value.catch(() => {});
+        });
+        expect(button.getAttribute("aria-label")).toBe(outcome === "success" ? "Copied" : "Copy Image");
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1_000);
+        });
+        expect(button.getAttribute("aria-label")).toBe("Copy Image");
+      } finally {
+        await act(() => renderInto(null, container));
+        container.remove();
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+      }
+    }
+  );
+
   it.each([true, false])("saves decoded image bytes and shows feedback only on success (%s)", async (saved) => {
     const saveFile = vi.fn<ToolContentClient["saveFile"]>().mockResolvedValue(saved);
     const client = { copyText: vi.fn(async () => {}), saveFile };

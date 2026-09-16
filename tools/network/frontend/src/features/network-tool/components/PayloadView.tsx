@@ -477,8 +477,9 @@ function ImagePreview({ client, payload }: { client: ToolContentClient; payload:
   if (dataUrl == null) return null;
 
   const copyImage = () => {
-    copyFeedback.copyWithoutClipboard();
-    void copyImageToClipboard(dataUrl, payload.contentType ?? "image/png");
+    void copyImageToClipboard(dataUrl, payload.contentType ?? "image/png")
+      .then(copyFeedback.copyWithoutClipboard)
+      .catch(() => {});
   };
   const saveImage = () => {
     void client

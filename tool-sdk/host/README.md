@@ -64,7 +64,8 @@ Set `enabled: false` to disable an action. Clear the toolbar with `setToolbar({}
   cannot close a newer picker. Colors use hexadecimal RGBA strings. While an
   update is in flight, `setValue` keeps only the latest pending color. Its promise
   resolves when pending updates finish.
-- `copyText(text)` writes to the system clipboard.
+- `copyText(text)` is deprecated. Use `navigator.clipboard.writeText(text)` directly
+  from a user interaction handler; browser clipboard restrictions apply.
 - `saveFile({ name, data })` presents a save dialog for a `Blob` and returns whether
   the file was saved.
 

@@ -39,7 +39,9 @@ internal class OkHttpDemoClient : DemoClient {
         DemoAction.FormPost -> null
         DemoAction.UnknownLengthGzipPost -> ::sendUnknownLengthGzipPost
         DemoAction.NoContentTypeText -> ::sendNoContentTypeText
-        DemoAction.Image -> ::sendImage
+        DemoAction.Image -> suspend { sendImage("/image.png") }
+        DemoAction.ImageJpg -> suspend { sendImage("/image.jpg") }
+        DemoAction.ImageWebp -> suspend { sendImage("/image.webp") }
         DemoAction.CompleteLargeResponse -> suspend { sendLargeResponse(complete = true) }
         DemoAction.TruncatedLargeResponse -> suspend { sendLargeResponse(complete = false) }
         DemoAction.Sse -> ::sendSse
@@ -110,8 +112,8 @@ internal class OkHttpDemoClient : DemoClient {
         executeRequest(request)
     }
 
-    private suspend fun sendImage() {
-        val url = mockServer.resolveUrl("/image.png")
+    private suspend fun sendImage(path: String) {
+        val url = mockServer.resolveUrl(path)
         val request = Request.Builder()
             .url(url)
             .header("X-SnapO-Demo", "okhttp-image-response")

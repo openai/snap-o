@@ -43,8 +43,9 @@ describe("browser network client", () => {
     expect(() => client.addExclusionFilter("-example.test")).toThrow("Unavailable");
     expect(() => client.removeExclusionFilter("-example.test")).toThrow("Unavailable");
   });
-  it("uses the shared host for clipboard and file export", async () => {
-    const copy = vi.spyOn(host, "copyText").mockResolvedValue();
+  it("uses the browser clipboard and shared host file export", async () => {
+    const copy = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText: copy } });
     const save = vi.spyOn(host, "saveFile").mockResolvedValue(true);
     await client.copyText("request");
     expect(copy).toHaveBeenCalledWith("request");

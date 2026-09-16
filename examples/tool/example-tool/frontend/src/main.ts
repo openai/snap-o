@@ -77,8 +77,8 @@ void host
   .catch(report);
 
 copy.addEventListener("click", () => {
-  void host
-    .copyText(JSON.stringify(state.items, null, 2))
+  void navigator.clipboard
+    .writeText(JSON.stringify(state.items, null, 2))
     .then(() => {
       feedback.textContent = "Copied fake data.";
     })

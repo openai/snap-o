@@ -167,7 +167,7 @@ final class ToolWebBridge: NSObject, WKScriptMessageHandlerWithReply, NSWindowDe
       return nil
     case "copyText":
       let input = try Self.decode(ClipboardText.self, from: payload)
-      guard await confirm("Allow this tool to copy text?", detail: "This replaces the current clipboard contents.") else {
+      guard let window = presentationWindow, window.attachedSheet == nil, presentedSheet == nil else {
         throw CancellationError()
       }
       try Task.checkCancellation()
