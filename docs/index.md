@@ -38,8 +38,10 @@ Inspect HTTP and HTTPS requests, Server-Sent Events (SSE), and WebSocket message
 
 ## Screen capture {.product-title}
 
-Start in Live Preview and Option-drag the current frame to share a screenshot. Recordings open for immediate playback and frame-by-frame inspection. Drag screenshots or clips into pull requests, chats, or docs without saving them first.
+Capture screenshots and recordings, share them with drag and drop, and revisit them in Capture History. Play recordings frame by frame to inspect animations.
 {.product-copy}
+
+[Screen capture guide](screen-capture.md){.section-link}
 
 ## Tweaks {.product-title}
 

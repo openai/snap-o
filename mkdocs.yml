@@ -20,7 +20,7 @@ nav:
   - Tweaks Protocol: tweaks-protocol.md
   - Build a tool: plugins.md
   - Command-line inspection: cli.md
-  - Using the macOS app: usage.md
+  - Screen capture: screen-capture.md
 
 exclude_docs: |
   /README.md

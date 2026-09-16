@@ -20,11 +20,17 @@ If you don't already have `adb`, install Android Platform Tools through Android 
 
 Screen capture needs no library in your Android app. Network and Tweaks each require an Android integration; follow the guides below.
 
-For keyboard shortcuts and ADB setup, see [Using the macOS app](docs/usage.md).
+For capture controls and keyboard shortcuts, see the [Screen capture guide](docs/screen-capture.md).
 
 ## Screen capture
 
-Drag screenshots and recordings straight into a pull request, chat, or document without saving them first. Play recordings immediately and step through them frame by frame to check an animation. Work with multiple devices and keep captures open in separate windows.
+Snap-O automatically keeps screenshots and recordings in Capture History, including across app restarts. Open **Window → Capture History** (`⇧⌘H`) to browse captures by day and reopen them. Captures from multiple devices stay grouped together.
+
+Drag screenshots and recordings straight into a pull request, chat, or document. Play recordings immediately and step through them frame by frame to check an animation. Work with multiple devices and keep captures open in separate windows.
+
+History keeps captures for seven days by default, with a 5 GB storage limit. Change these limits in **History Storage**, or use **Save As…** (`⌘S`) to keep a permanent copy.
+
+[Capture History and storage](docs/screen-capture.md#capture-history)
 
 ## Network
 
