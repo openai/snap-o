@@ -277,7 +277,15 @@ The plugin expects your web project in `frontend/`, beside your tool module’s 
 
 This creates a Preact and TypeScript starter with the host SDK and installs its dependencies. Gradle manages Node/npm automatically. It uses `frontendDirectory` if configured and stops if the directory already contains files.
 
-Commit the generated source files, `package.json`, and `package-lock.json`. Subsequent Android builds and `devSnapoToolFrontend` runs prepare the SDK and dependencies automatically. For an existing web project, see [frontend configuration](https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#migrate-an-existing-frontend).
+Commit the generated source files, `package.json`, and `package-lock.json`. Subsequent Android builds and `devSnapoToolFrontend` runs prepare the SDK and use `npm ci` to install the locked dependencies. A missing or mismatched lockfile fails the build. For an existing web project, see [frontend configuration](https://github.com/openai/snap-o/blob/main/tool-sdk/gradle-plugin/README.md#migrate-an-existing-frontend).
+
+After editing dependencies in `package.json`, run:
+
+``` { .bash title="Update frontend dependencies" }
+./gradlew :your-tool:installSnapoToolDependencies
+```
+
+This uses managed `npm install` to update the lockfile. Review and commit the dependency changes, then build normally. Use the same task to finish a failed initialization after resolving the error; existing frontend sources stay intact.
 
 <span id="assets"></span>The Android build packages the frontend automatically. Include scripts, images, and fonts in the bundle; the packaged page cannot load remote scripts or call unrelated servers.
 

@@ -289,8 +289,55 @@ try {
         probe.unlink(missing_ok=True)
 
 
+def verify_frozen_install(example, command, managed_env):
+    frontend = example / "example-tool/frontend"
+    manifest = frontend / "package.json"
+    lockfile = frontend / "package-lock.json"
+    original_manifest = manifest.read_bytes()
+    original_lock = lockfile.read_bytes()
+    sources = {path: path.read_bytes() for path in (frontend / "src").rglob("*") if path.is_file()}
+    build = [*command, ":example-tool:buildSnapoToolFrontend"]
+    try:
+        shutil.rmtree(frontend / "node_modules")
+        shutil.rmtree(frontend / ".gradle/tool-host")
+        run(build, example, env=managed_env)
+        assert lockfile.read_bytes() == original_lock, "Frozen build rewrote the lockfile"
+
+        # A missing locked dependency must fail, not trigger an automatic repair.
+        lock = json.loads(original_lock)
+        del lock["packages"]["node_modules/typescript"]
+        stale_lock = json.dumps(lock, indent=2) + "\n"
+        lockfile.write_text(stale_lock)
+        refused = subprocess.run(build, cwd=example, text=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 env={**os.environ, "NPM_CONFIG_REGISTRY": REGISTRY, **managed_env})
+        assert refused.returncode != 0 and "Missing: typescript@" in refused.stdout, refused.stdout
+        assert lockfile.read_text() == stale_lock, "Failed frozen build rewrote the lockfile"
+        run([*command, ":example-tool:installSnapoToolDependencies"], example, env=managed_env)
+        repaired_lock = lockfile.read_bytes()
+        assert "node_modules/typescript" in json.loads(repaired_lock)["packages"]
+        run(build, example, env=managed_env)
+        assert lockfile.read_bytes() == repaired_lock, "Frozen build rewrote the repaired lockfile"
+
+        lockfile.unlink()
+        refused = subprocess.run(build, cwd=example, text=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 env={**os.environ, "NPM_CONFIG_REGISTRY": REGISTRY, **managed_env})
+        assert refused.returncode != 0 and "npm ci" in refused.stdout, refused.stdout
+        assert not lockfile.exists(), "Build created a missing lockfile"
+        run([*command, ":example-tool:installSnapoToolDependencies"], example, env=managed_env)
+        created_lock = lockfile.read_bytes()
+        run(build, example, env=managed_env)
+        assert lockfile.read_bytes() == created_lock, "Frozen build rewrote the new lockfile"
+        assert manifest.read_bytes() == original_manifest, "Frozen build rewrote the npm manifest"
+        assert all(path.read_bytes() == content for path, content in sources.items()), "Installation changed user sources"
+    finally:
+        lockfile.write_bytes(original_lock)
+
+
 def verify_frontend_modes(example, overrides, managed_env):
     command = [str(example / "gradlew"), "--daemon", "--build-cache", "--parallel", *overrides]
+    verify_frozen_install(example, command, managed_env)
     verify_dev_server(example, command, managed_env)
     verify_node_runtimes(example, command, managed_env)
     verify_prebuilt_frontend(example, command, managed_env)
@@ -396,13 +443,6 @@ def verify_host_upgrades(example, overrides, managed_env, repository, version, a
     assert (manifest.read_bytes(), lockfile.read_bytes()) == initial, "Downgrade did not restore npm files"
     assert all(path.read_bytes() == content for path, content in sources.items()), "Build changed user sources"
 
-    # Normal builds also install dependencies when no lockfile exists yet.
-    lockfile.unlink()
-    shutil.rmtree(frontend / "node_modules")
-    run(build, example, env=managed_env)
-    verify_host_dependency(frontend, archive)
-    assert manifest.read_bytes() == initial[0], "Installation changed the npm manifest"
-
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -479,7 +519,7 @@ assert(!relative.startsWith("..") && !path.isAbsolute(relative),
               "frontendModes": ["managed-node-without-path"], "published": False}
     if args.mode == "full":
         report["frontendModes"].extend(["installed-node", "prebuilt", "automatic-node-repository",
-                                        "frontend-initializer", "host-sdk-clean-restore",
+                                        "frontend-initializer", "frozen-install", "host-sdk-clean-restore",
                                         "host-sdk-upgrade", "host-sdk-downgrade"])
         report["configurationCacheReused"] = True
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
