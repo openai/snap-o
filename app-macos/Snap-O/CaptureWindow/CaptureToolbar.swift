@@ -257,7 +257,7 @@ struct CaptureToolbar: View {
         .symbolRenderingMode(.monochrome)
         .accessibilityLabel("Capture")
     }
-    .help(workspace.showsCapture ? "Hide Capture" : "Show Capture")
+    .help(workspace.showsCapture ? "Hide Capture Pane (⌘⌥C)" : "Show Capture Pane (⌘⌥C)")
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
     .disabled(!workspace.canToggleCapture)

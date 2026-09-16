@@ -150,14 +150,14 @@ struct SnapOCommands: Commands {
         .disabled(toolHost?.developmentURL == nil)
       if let url = toolHost?.developmentURL { Text(url.absoluteString) }
     }
-    CommandMenu("Tools") {
+    CommandGroup(after: .sidebar) {
       Button(workspaceController?.showsTool == true ? "Hide Tool Pane" : "Show Tool Pane") {
         workspaceController?.toggleTool()
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
       .disabled(workspaceController?.canToggleTool != true)
 
-      Button(workspaceController?.showsCapture == true ? "Hide Capture" : "Show Capture") {
+      Button(workspaceController?.showsCapture == true ? "Hide Capture Pane" : "Show Capture Pane") {
         workspaceController?.toggleCapture()
       }
       .keyboardShortcut("c", modifiers: [.command, .option])
