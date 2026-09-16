@@ -1,5 +1,7 @@
 package com.openai.snapo.demo.shared
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,6 +52,14 @@ private fun createServer(): MockWebServer {
     val gzipPostBody = """{"ok":true,"endpoint":"post-gzip-unknown-length","source":"mockwebserver"}"""
     val noTypeBody = """{"message":"Hello from Snap-O without Content-Type","source":"okhttp-demo"}"""
     val imageBody = checkNotNull(DemoAppIconPng.decodeBase64())
+    val jpgImageBody by lazy {
+        encodeImage(imageBody, Bitmap.CompressFormat.JPEG)
+    }
+    // WEBP_LOSSY requires API 30; the demos also run on API 24–29.
+    @Suppress("DEPRECATION")
+    val webpImageBody by lazy {
+        encodeImage(imageBody, Bitmap.CompressFormat.WEBP)
+    }
     val formBody = """{"ok":true,"endpoint":"form-post","source":"mockwebserver"}"""
     val slowBody = """{"message":"${"x".repeat(SlowBodyPayloadCharacters)}","source":"okhttp-demo"}"""
     val sseBody = """
@@ -98,7 +108,9 @@ private fun createServer(): MockWebServer {
                         .setHeader("Connection", "close")
                         .body(noTypeBody)
                         .build()
-                    "/image.png" -> imageResponse(imageBody)
+                    "/image.png" -> imageResponse(imageBody, "image/png")
+                    "/image.jpg" -> imageResponse(jpgImageBody, "image/jpeg")
+                    "/image.webp" -> imageResponse(webpImageBody, "image/webp")
                     "/large-response-complete" -> largeJsonResponse(CompleteLargeBodyBytes)
                     "/large-response-truncated" -> largeJsonResponse(TruncatedLargeBodyBytes)
                     "/slow-response" -> slowResponse(slowBody)
@@ -125,9 +137,17 @@ private fun createServer(): MockWebServer {
     }
 }
 
-private fun imageResponse(body: ByteString): MockResponse = MockResponse.Builder()
+private fun encodeImage(png: ByteString, format: Bitmap.CompressFormat): ByteString {
+    val bytes = png.toByteArray()
+    val bitmap = checkNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+    return Buffer().apply {
+        check(bitmap.compress(format, 90, outputStream()))
+    }.readByteString()
+}
+
+private fun imageResponse(body: ByteString, contentType: String): MockResponse = MockResponse.Builder()
     .code(200)
-    .setHeader("Content-Type", "image/png")
+    .setHeader("Content-Type", contentType)
     .setHeader("Connection", "close")
     .body(Buffer().write(body))
     .build()

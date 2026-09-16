@@ -55,6 +55,8 @@ internal class KtorDemoClient : DemoClient {
         DemoAction.UnknownLengthGzipPost,
         DemoAction.NoContentTypeText,
         DemoAction.Image,
+        DemoAction.ImageJpg,
+        DemoAction.ImageWebp,
         DemoAction.CompleteLargeResponse,
         DemoAction.TruncatedLargeResponse,
         DemoAction.Sse,
