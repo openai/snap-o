@@ -27,6 +27,9 @@ private struct CaptureWorkspaceMetricsKey: PreferenceKey {
 }
 
 struct CaptureWindow: View {
+  @Environment(CaptureHistory.self)
+  private var history
+  @State private var historyProtectionID = UUID()
   @Environment(\.colorScheme)
   private var colorScheme
 
@@ -69,6 +72,14 @@ struct CaptureWindow: View {
       .task {
         await controller.start()
       }
+      .task(id: controller.mediaList.map(\.id)) {
+        await history.repository.protect(Set(controller.mediaList.map(\.id)), owner: historyProtectionID)
+      }
+      .task(id: controller.currentCapture?.id) {
+        if let captureID = controller.currentCapture?.id {
+          await history.repository.recordCapturePaneSelection(captureID)
+        }
+      }
       .task(id: workspace.showsTool) {
         guard workspace.showsTool else {
           toolSession.model?.webContainer?.closeNativeColorPanel()
@@ -79,11 +90,18 @@ struct CaptureWindow: View {
       }
       .onDisappear {
         Task {
+          await history.repository.protect([], owner: historyProtectionID)
           await controller.tearDown()
           await toolSession.stop()
         }
       }
       .focusedSceneValue(\.captureController, controller)
+      .alert("Capture History", isPresented: Binding(
+        get: { history.errorMessage != nil },
+        set: { if !$0 { Task { await history.repository.clearError() } } }
+      )) {
+        Button("OK") { Task { await history.repository.clearError() } }
+      } message: { Text(history.errorMessage ?? "") }
       .focusedSceneValue(\.workspaceController, workspace)
       .focusedSceneValue(\.toolHost, workspace.showsTool ? toolSession.model : nil)
       .sheet(isPresented: Binding(

@@ -13,11 +13,19 @@ struct SnapOCommands: Commands {
   var workspaceController: WorkspaceLayoutController?
   @FocusedValue(\.toolHost)
   var toolHost: ToolHostModel?
+  @FocusedValue(\.captureHistoryActions)
+  var historyActions: CaptureHistoryActions?
 
   let settings: AppSettings
   let updaterController: SPUStandardUpdaterController
 
   var body: some Commands {
+    CommandGroup(before: .windowSize) {
+      Button("Capture History") { openWindow(id: "capture-history") }
+        .keyboardShortcut("h", modifiers: [.command, .shift])
+      Divider()
+    }
+
     CommandGroup(replacing: .newItem) {
       Button("New Window") {
         let workspace = workspaceController?.snapshot ?? .persisted()
@@ -66,6 +74,10 @@ struct SnapOCommands: Commands {
 
     CommandGroup(before: .saveItem) {
       Button("Save As…") {
+        if let historyActions {
+          historyActions.save()
+          return
+        }
         guard
           let media = captureController?.currentCapture?.media,
           let url = media.url,
@@ -90,7 +102,7 @@ struct SnapOCommands: Commands {
           }
         }
       }
-      .disabled(captureController?.currentCapture?.media.url == nil)
+      .disabled(captureController?.currentCapture?.media.url == nil && historyActions == nil)
       .keyboardShortcut("s")
     }
     if let captureController {
@@ -132,17 +144,31 @@ struct SnapOCommands: Commands {
         .keyboardShortcut("a")
       }
       CommandGroup(replacing: .undoRedo) {}
+    } else if let historyActions {
+      CommandGroup(replacing: .pasteboard) {
+        Button("Copy") { historyActions.copy?() }
+          .keyboardShortcut("c")
+          .disabled(historyActions.copy == nil)
+      }
     }
     CommandMenu("Device") {
-      let hasAlternativeMedia = captureController?.hasAlternativeMedia() ?? false
+      let hasAlternativeMedia = historyActions?.canNavigate ?? captureController?.hasAlternativeMedia() ?? false
 
       Button("Previous Device") {
+        if let historyActions {
+          historyActions.previous()
+          return
+        }
         captureController?.selectPreviousMedia()
       }
       .keyboardShortcut("[")
       .disabled(!hasAlternativeMedia)
 
       Button("Next Device") {
+        if let historyActions {
+          historyActions.next()
+          return
+        }
         captureController?.selectNextMedia()
       }
       .keyboardShortcut("]")
