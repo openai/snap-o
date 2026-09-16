@@ -448,10 +448,10 @@ Here, `clear`, `query`, and `setQuery` come from your component. Each call repla
 <details id="files" markdown="1">
 <summary>Copy text and save files</summary>
 
-Call these helpers from your frontend’s button handlers:
+Call these APIs from your frontend’s button handlers:
 
 ``` { .typescript title="Copy text" }
-await host.copyText("Hello, world!");
+await navigator.clipboard.writeText("Hello, world!");
 ```
 
 ``` { .typescript title="Open a save dialog" }

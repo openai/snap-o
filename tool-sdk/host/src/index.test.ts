@@ -70,7 +70,7 @@ describe("shared tool host", () => {
     host.onError(recovered);
     expect(recovered).not.toHaveBeenCalled();
     request.mockRejectedValueOnce(new Error("Native operation failed."));
-    await expect(host.copyText("test")).rejects.toThrow("Native operation failed.");
+    await expect(host.setToolbar({})).rejects.toThrow("Native operation failed.");
     expect(first).toHaveBeenCalledOnce();
     expect(late).toHaveBeenCalledOnce();
   });
