@@ -116,6 +116,16 @@ actor CaptureHistoryRepository {
     remove([entryID])
   }
 
+  func rename(_ entryID: UUID, to name: String) {
+    loadIfNeeded()
+    guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    var entry = entries[index]
+    entry.name = trimmed.isEmpty ? nil : trimmed
+    guard entry != entries[index] else { return }
+    persist(entry, at: index)
+  }
+
   func recordCapturePaneSelection(_ captureID: UUID) {
     guard !Task.isCancelled,
           let index = entries.firstIndex(where: { $0.items.contains { $0.captureID == captureID } }),
