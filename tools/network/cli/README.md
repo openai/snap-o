@@ -15,4 +15,4 @@ From the repository root:
 python3 -m unittest discover -s tools/network/cli/tests -p 'test_*.py'
 ```
 
-See [command-line inspection](../../../docs/cli.md) for installation and usage.
+See [Network CLI setup](../../../docs/network-inspector.md#cli) for installation and usage.
