@@ -201,7 +201,7 @@ struct CaptureHistoryWindow: View {
           } else {
             VideoCaptureView(
               url: url,
-              onFocus: { isVideoFocused = true },
+              onFocusChange: { isVideoFocused = $0 },
               makeTempDragFile: { dragFile(entry, item: item) }
             )
           }
