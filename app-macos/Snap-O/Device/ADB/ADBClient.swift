@@ -231,8 +231,19 @@ public struct ADBClient: Sendable {
     handle: TrackDevicesHandle,
     stream: AsyncThrowingStream<String, Error>
   ) {
-    let connection = try await makeConnection()
-    try connection.sendTrackDevices()
+    let connection = try await runWithRetry(maxAttempts: 3) { connection in
+      // Keep setup inside the cancellation handler so a stalled reply releases the socket.
+      try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          continuation.resume(with: Result {
+            try connection.withRequestTimeout(discoveryTimeout) {
+              try connection.sendTrackDevices()
+            }
+            return connection
+          })
+        }
+      }
+    }
 
     let stream = AsyncThrowingStream<String, Error> { continuation in
       let streamTask = Task.detached(priority: .userInitiated) {

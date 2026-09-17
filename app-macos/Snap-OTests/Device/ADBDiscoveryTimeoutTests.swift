@@ -48,6 +48,82 @@ struct ADBDiscoveryTimeoutTests {
     #expect(server.connectionCount == 1)
   }
 
+  @Test("cancelling device tracking interrupts the initial ADB reply")
+  func cancelsTrackingHandshake() async throws {
+    let server = FakeDiscoveryADB(stall: .transport)
+    defer { server.close() }
+    let rescue = Task {
+      try await Task.sleep(for: .seconds(2))
+      server.close()
+    }
+    defer { rescue.cancel() }
+    let task = Task {
+      let (handle, _) = try await server.client(timeout: .seconds(10)).trackDevices()
+      handle.cancel()
+    }
+    var requests = server.requests.stream.makeAsyncIterator()
+    #expect(await requests.next() == "host:track-devices-l")
+    let start = ContinuousClock.now
+    task.cancel()
+    do {
+      try await task.value
+      Issue.record("Expected cancellation")
+    } catch is CancellationError {
+      // Cancellation must interrupt the socket read, without waiting for its timeout.
+    } catch {
+      Issue.record("Expected cancellation, got \(error)")
+    }
+    #expect(start.duration(to: .now) < .seconds(1))
+    #expect(server.connectionCount == 1)
+  }
+
+  @Test("device tracking bounds its initial ADB reply")
+  func boundsTrackingHandshake() async throws {
+    let server = FakeDiscoveryADB(stall: .transport)
+    defer { server.close() }
+    let rescue = Task {
+      try await Task.sleep(for: .seconds(2))
+      server.close()
+    }
+    defer { rescue.cancel() }
+    let start = ContinuousClock.now
+    do {
+      let (handle, _) = try await server.client().trackDevices()
+      handle.cancel()
+      Issue.record("Expected tracking setup to time out")
+    } catch ADBError.requestTimedOut {
+      // A setup timeout must not restart the ADB connection.
+    } catch {
+      Issue.record("Expected timeout, got \(error)")
+    }
+    #expect(start.duration(to: .now) < .seconds(2))
+    #expect(server.connectionCount == 1)
+  }
+
+  @Test("idle device tracking remains open and cancels promptly")
+  func cancelsIdleTracking() async throws {
+    let server = FakeDiscoveryADB(stall: .output)
+    defer { server.close() }
+    let (handle, stream) = try await server.client().trackDevices()
+    defer { handle.cancel() }
+    let received = AsyncStream<Void>.makeStream()
+    let task = Task {
+      for try await _ in stream {
+        received.continuation.yield(())
+      }
+      return Task.isCancelled
+    }
+    var snapshots = received.stream.makeAsyncIterator()
+    _ = await snapshots.next()
+    // An unchanged device list can stay silent longer than the setup timeout.
+    try await Task.sleep(for: .milliseconds(700))
+    let start = ContinuousClock.now
+    task.cancel()
+    #expect(try await task.value)
+    #expect(start.duration(to: .now) < .seconds(1))
+    #expect(server.connectionCount == 1)
+  }
+
   @Test("connection setup deadlines do not limit subsequent streaming")
   func restoresStreamingReads() throws {
     var descriptors: [Int32] = [0, 0]
@@ -242,6 +318,11 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
       do {
         try peer.withRequestTimeout(.seconds(2)) {
           let transport = try Self.readRequest(peer)
+          if transport == "host:track-devices-l" {
+            if stall != .transport { Self.send("OKAY0000", to: descriptor) }
+            requests.continuation.yield(transport)
+            return
+          }
           if transport.hasPrefix("host-serial:stalled:") { return }
           let stalled = transport == "host:transport:stalled"
           if stalled, stall == .transport { return }
