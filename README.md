@@ -28,7 +28,7 @@ Snap-O automatically keeps screenshots and recordings in Capture History, includ
 
 Drag screenshots and recordings straight into a pull request, chat, or document. Play recordings immediately and step through them frame by frame to check an animation. Work with multiple devices and keep captures open in separate windows.
 
-History keeps captures for seven days by default, with a 5 GB storage limit. Change these limits in **History Storage**, or use **Save As…** (`⌘S`) to keep a permanent copy.
+History keeps captures for 30 days by default, with a 5 GB storage limit. Change these limits in **History Storage**, or use **Save As…** (`⌘S`) to keep a permanent copy.
 
 [Capture History and storage](docs/screen-capture.md#capture-history)
 

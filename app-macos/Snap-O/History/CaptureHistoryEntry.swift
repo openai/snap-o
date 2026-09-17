@@ -72,8 +72,19 @@ struct CaptureHistoryEntry: Codable, Identifiable, Equatable {
 }
 
 struct CaptureHistoryRetention: Codable, Equatable {
-  var days = 7
+  // Only an explicit choice overrides the current default.
+  private var daysOverride: Int?
   var limitBytes: Int64 = 5_000_000_000
+
+  private enum CodingKeys: String, CodingKey {
+    case daysOverride = "days"
+    case limitBytes
+  }
+
+  var days: Int {
+    get { daysOverride ?? 30 }
+    set { daysOverride = newValue }
+  }
 
   static let dayChoices = [1, 7, 30]
   static let sizeChoices: [Int64] = [1_000_000_000, 5_000_000_000, 10_000_000_000]

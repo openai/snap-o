@@ -53,7 +53,7 @@ Drag device thumbnails within a group or its thumbnail strip to reorder them. Th
 <details markdown="1" id="manage-history-storage">
 <summary>Manage history storage</summary>
 
-History keeps captures for seven days by default, with a 5 GB storage limit. Open **History Storage** in the history window's toolbar to see disk usage and change these limits.
+History keeps captures for 30 days by default, with a 5 GB storage limit. Open **History Storage** in the history window's toolbar to see disk usage and change these limits. If you have not chosen a retention period, it follows the current app default.
 
 Snap-O removes the oldest captures when either limit is reached. All devices in an entry are removed together. Captures that are recording or in use are kept. The newest capture is kept for 24 hours if it exceeds the storage limit, so usage can temporarily exceed the limit.
 
