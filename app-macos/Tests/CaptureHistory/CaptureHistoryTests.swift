@@ -27,6 +27,7 @@ struct CaptureHistoryTests {
     try await dragRepresentations()
     nativeDropLifecycle()
     nativeDropBelowLastRow()
+    try retentionPreferences()
     try await retentionAndProtection()
     try await oversizedGrace()
     try await failureAndRecovery()
@@ -354,6 +355,16 @@ struct CaptureHistoryTests {
     )
   }
 
+  static func retentionPreferences() throws {
+    var policy = CaptureHistoryRetention()
+    policy.limitBytes = 1_000_000_000
+    let data = try JSONEncoder().encode(policy)
+    let saved = try JSONDecoder().decode([String: Int64].self, from: data)
+    precondition(saved["days"] == nil, "Changing storage leaves retention unset")
+    let restored = try JSONDecoder().decode(CaptureHistoryRetention.self, from: data)
+    precondition(restored.days == 30 && restored.limitBytes == policy.limitBytes)
+  }
+
   static func retentionAndProtection() async throws {
     let root = try temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -364,8 +375,10 @@ struct CaptureHistoryTests {
     _ = try await repository.record(capture(device: secondDevice, in: root), in: id)
     await repository.finish(id, at: now)
     let owner = UUID()
+    let beforeExpiry = await repository.cleanupCandidates(now: now.addingTimeInterval(30 * 86400 - 1))
+    precondition(beforeExpiry.isEmpty, "The default keeps captures for the full 30 days")
+    let future = now.addingTimeInterval(30 * 86400)
     await repository.protect([first.id], owner: owner)
-    let future = now.addingTimeInterval(8 * 86400)
     let protected = await repository.cleanupCandidates(now: future)
     precondition(protected.isEmpty, "One viewed device protects the entire group")
     await repository.delete([id])
