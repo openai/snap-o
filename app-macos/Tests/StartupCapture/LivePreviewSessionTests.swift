@@ -178,9 +178,7 @@ struct LivePreviewSessionTests {
 
     try await streamCompletionFlushesOnce()
     await showTouchesRestoration()
-    try await startupOverlapsSettings()
-    try await failedStartupRestoresSettings()
-    try await cancelledStartupRestoresSettings()
+    try await startupRestoresSettings()
     print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
   }
 
@@ -218,69 +216,41 @@ struct LivePreviewSessionTests {
     precondition(restoredWrites == [true, false])
   }
 
-  static func startupOverlapsSettings() async throws {
-    let settingsGate = TestGate()
-    let adb = ADBService(settingsGate: settingsGate)
-    let coordinator = CaptureCoordinator()
-    let service = LivePreviewService(adb: adb, coordinator: coordinator)
-    var returned = false
-    let startup = Task {
-      let handle = try await service.start(for: "overlap", options: LivePreviewOptions(showsTouches: true))
-      returned = true
-      return handle
-    }
-    await eventually { await adb.settingsReadStarted }
-    await eventually { await adb.streamStarts == 1 }
-    precondition(!returned)
-    await settingsGate.open()
-    let handle = try await startup.value
-    let appliedWrites = await adb.writes
-    precondition(appliedWrites == [true])
-    _ = await service.stop(handle)
-    let restoredWrites = await adb.writes
-    precondition(restoredWrites == [true, false])
-    await coordinator.waitUntilIdle()
-  }
+  enum StartupOutcome: CaseIterable { case success, failure, cancellation }
 
-  static func failedStartupRestoresSettings() async throws {
-    let settingsGate = TestGate()
-    let adb = ADBService(settingsGate: settingsGate, failsToStart: true)
-    let coordinator = CaptureCoordinator()
-    let service = LivePreviewService(adb: adb, coordinator: coordinator)
-    let startup = Task { try await service.start(for: "failed", options: LivePreviewOptions(showsTouches: true)) }
-    await eventually { await adb.streamStarts == 1 }
-    await settingsGate.open()
-    do {
-      _ = try await startup.value
-      fatalError("Expected startup failure")
-    } catch TestError.expected {
-      // Expected.
+  static func startupRestoresSettings() async throws {
+    for outcome in StartupOutcome.allCases {
+      let settingsGate = TestGate()
+      let adb = ADBService(settingsGate: settingsGate, failsToStart: outcome == .failure)
+      let coordinator = CaptureCoordinator()
+      let service = LivePreviewService(adb: adb, coordinator: coordinator)
+      var returned = false
+      let startup = Task {
+        let handle = try await service.start(for: "phone", options: LivePreviewOptions(showsTouches: true))
+        returned = true
+        return handle
+      }
+      await eventually { await adb.settingsReadStarted }
+      await eventually { await adb.streamStarts == 1 }
+      precondition(!returned, "Stream startup must overlap the blocked settings read")
+      if outcome == .cancellation { startup.cancel() }
+      await settingsGate.open()
+      do {
+        let handle = try await startup.value
+        precondition(outcome == .success)
+        let applied = await adb.writes
+        precondition(applied == [true])
+        _ = await service.stop(handle)
+      } catch TestError.expected {
+        precondition(outcome == .failure)
+      } catch is CancellationError {
+        precondition(outcome == .cancellation)
+      }
+      let writes = await adb.writes
+      precondition(writes == [true, false], "Every exit must restore the previous device setting")
+      let lease = try await coordinator.acquire(deviceIDs: ["phone"], for: .livePreview)
+      await coordinator.release(lease)
     }
-    let writes = await adb.writes
-    precondition(writes == [true, false])
-    let lease = try await coordinator.acquire(deviceIDs: ["failed"], for: .livePreview)
-    await coordinator.release(lease)
-  }
-
-  static func cancelledStartupRestoresSettings() async throws {
-    let settingsGate = TestGate()
-    let adb = ADBService(settingsGate: settingsGate)
-    let coordinator = CaptureCoordinator()
-    let service = LivePreviewService(adb: adb, coordinator: coordinator)
-    let startup = Task { try await service.start(for: "cancelled-start", options: LivePreviewOptions(showsTouches: true)) }
-    await eventually { await adb.streamStarts == 1 }
-    startup.cancel()
-    await settingsGate.open()
-    do {
-      _ = try await startup.value
-      fatalError("Expected startup cancellation")
-    } catch is CancellationError {
-      // Expected.
-    }
-    let writes = await adb.writes
-    precondition(writes == [true, false])
-    let lease = try await coordinator.acquire(deviceIDs: ["cancelled-start"], for: .livePreview)
-    await coordinator.release(lease)
   }
 
   static func eventually(_ condition: () async -> Bool) async {

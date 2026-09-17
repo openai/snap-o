@@ -72,6 +72,7 @@ actor ToolHTTPService {
 
   private static let retryCooldown: Duration = .seconds(3)
 
+  private let now: @Sendable () -> ContinuousClock.Instant
   private let adbService: ADBService
   private var connections: [String: Connection] = [:]
   private var knownApps: [String: App] = [:]
@@ -85,7 +86,11 @@ actor ToolHTTPService {
   private var snapshotRevision: UInt64 = 0
   private var isStopped = false
 
-  init(adbService: ADBService, helperURL: URL? = nil) {
+  init(
+    adbService: ADBService, helperURL: URL? = nil,
+    now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }
+  ) {
+    self.now = now
     self.adbService = adbService
     self.helperURL = helperURL ?? (Bundle.main.resourceURL ?? Bundle.main.bundleURL.appending(path: "Contents/Resources"))
       .appending(path: "snapo-tool-reader.jar")
@@ -173,7 +178,7 @@ actor ToolHTTPService {
       knownApps[key]?.checkingLegacy = false
       metadataReadAt[key] = nil
     }
-    retryAfter = retryAfter.filter { activeKeys.contains($0.key) && $0.value > .now }
+    retryAfter = retryAfter.filter { activeKeys.contains($0.key) && $0.value > now() }
 
     for socket in sockets {
       let reference = socket.reference
@@ -246,7 +251,7 @@ actor ToolHTTPService {
       guard metadataTasks[deviceID] == nil else { continue }
       let pendingPIDs = Set(sockets.filter {
         guard let app = knownApps[$0.reference.key] else { return true }
-        return app.needsMetadataRead(lastAttempt: metadataReadAt[$0.reference.key], now: .now)
+        return app.needsMetadataRead(lastAttempt: metadataReadAt[$0.reference.key], now: now())
       }.map(\.pid))
       let pending = sockets.filter { pendingPIDs.contains($0.pid) }
       guard !pending.isEmpty else { continue }
@@ -271,7 +276,7 @@ actor ToolHTTPService {
         let key = socket.reference.key
         guard var app = knownApps[key], app.socketInode == socket.inode,
               discoveredKeys.contains(key) else { continue }
-        metadataReadAt[key] = .now
+        metadataReadAt[key] = now()
         let hadResult = app.metadata.process.verifiedIdentity != nil || app.metadata.compatibility != .unknown || app.metadataReadFailed
         let record = records?.first { $0.pid == socket.pid }
         let updated = record.map { app.metadata.applyPackageMetadata($0, kind: app.kind) } ?? false
@@ -338,7 +343,7 @@ actor ToolHTTPService {
       if changed { notifyChange() }
     } catch {
       if connections[key]?.id == connectionID {
-        retryAfter[key] = .now.advanced(by: Self.retryCooldown)
+        retryAfter[key] = now().advanced(by: Self.retryCooldown)
         connections.removeValue(forKey: key)
         notifyChange()
       }

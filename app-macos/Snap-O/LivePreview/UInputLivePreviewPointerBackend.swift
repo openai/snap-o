@@ -1,15 +1,31 @@
 import CoreGraphics
 import Foundation
 
+protocol LivePreviewTouchscreen: Sendable {
+  var supportsSynchronization: Bool { get }
+  var initialDisplayRotation: ADBDisplayRotation { get }
+  func send(_ event: LivePreviewPointerEvent, rotation: ADBDisplayRotation) throws
+  func close()
+}
+
+extension ADBVirtualTouchscreen: LivePreviewTouchscreen {
+  func send(_ event: LivePreviewPointerEvent, rotation: ADBDisplayRotation) throws {
+    try send(
+      action: event.virtualTouchAction, x: event.location.x, y: event.location.y,
+      displayWidth: event.displaySize.width, displayHeight: event.displaySize.height, rotation: rotation
+    )
+  }
+}
+
 /// Owns one persistent virtual touchscreen for one Android device.
 actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
   nonisolated var minimumMoveInterval: Duration {
     touchscreen.supportsSynchronization ? .nanoseconds(8_333_334) : .nanoseconds(16_666_667)
   }
 
-  private let adb: ADBService
+  private let readRotation: @Sendable () async throws -> ADBDisplayRotation
   private let deviceID: String
-  private let touchscreen: ADBVirtualTouchscreen
+  private let touchscreen: any LivePreviewTouchscreen
   private var displayRotation: ADBDisplayRotation
   private var isStopped = false
 
@@ -20,18 +36,20 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
     let exec = await adb.exec()
     let touchscreen = try await exec.startVirtualTouchscreen(deviceID: deviceID)
     return UInputLivePreviewPointerBackend(
-      adb: adb,
       deviceID: deviceID,
       touchscreen: touchscreen
-    )
+    ) {
+      let exec = await adb.exec()
+      return try await exec.displayRotation(deviceID: deviceID)
+    }
   }
 
-  private init(
-    adb: ADBService,
+  init(
     deviceID: String,
-    touchscreen: ADBVirtualTouchscreen
+    touchscreen: any LivePreviewTouchscreen,
+    readRotation: @escaping @Sendable () async throws -> ADBDisplayRotation
   ) {
-    self.adb = adb
+    self.readRotation = readRotation
     self.deviceID = deviceID
     self.touchscreen = touchscreen
     displayRotation = touchscreen.initialDisplayRotation
@@ -44,20 +62,12 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
     }
 
     if event.action == .down {
-      let exec = await adb.exec()
-      let refreshedRotation = try await exec.displayRotation(deviceID: deviceID)
+      let refreshedRotation = try await readRotation()
       guard !isStopped else { throw CancellationError() }
       displayRotation = refreshedRotation
     }
 
-    try touchscreen.send(
-      action: event.virtualTouchAction,
-      x: event.location.x,
-      y: event.location.y,
-      displayWidth: event.displaySize.width,
-      displayHeight: event.displaySize.height,
-      rotation: displayRotation
-    )
+    try touchscreen.send(event, rotation: displayRotation)
   }
 
   func stop() async {

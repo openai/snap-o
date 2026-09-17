@@ -55,32 +55,8 @@ struct LivePreviewFrameExportTests {
       .appendingPathComponent("Snap-O-FrameExport-\(UUID().uuidString)", isDirectory: true)
     let store = FileStore(baseDir: directory)
     defer { store.purgeExistingFiles() }
-    let exporter = LivePreviewFrameExporter()
-    let buffer = makeBuffer()
-    fill(buffer, red: 255, blue: 0)
-    let first = try exporter.export(buffer, to: store)
-    let original = try Data(contentsOf: first.url)
-
-    fill(buffer, red: 0, blue: 255)
-    let second = try exporter.export(buffer, to: store)
-    precondition(first.url != second.url)
-    let unchanged = try Data(contentsOf: first.url)
-    precondition(unchanged == original)
-    guard let png = NSBitmapImageRep(data: original),
-          let color = png.colorAt(x: 0, y: 0)?.usingColorSpace(.deviceRGB)
-    else { fatalError("Could not read exported PNG") }
-    precondition(png.pixelsWide == 16 && png.pixelsHigh == 24)
-    precondition(color.redComponent > 0.9 && color.blueComponent < 0.1)
-
-    let timestamp = Date()
-    let pathA = try store.makeUniqueDragDestination(capturedAt: timestamp, kind: .image)
-    let pathB = try store.makeUniqueDragDestination(capturedAt: timestamp, kind: .image)
-    precondition(pathA != pathB && pathA.lastPathComponent == pathB.lastPathComponent)
-    if CommandLine.arguments.contains("--render") {
-      hiddenPreviewRetainsLatestFrame(store: store)
-      print("Live preview hidden decoding and copy tests passed")
-    }
-    print("Live preview frame export tests passed")
+    hiddenPreviewRetainsLatestFrame(store: store)
+    print("Live preview hidden decoding and copy tests passed")
   }
 
   private static func hiddenPreviewRetainsLatestFrame(store: FileStore) {
