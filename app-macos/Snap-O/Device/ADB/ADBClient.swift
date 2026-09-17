@@ -254,10 +254,9 @@ public struct ADBClient: Sendable {
             continuation.yield(payloadString)
           }
           continuation.finish()
-        } catch is CancellationError {
-          // Stream cancelled intentionally; swallow.
         } catch {
-          continuation.finish(throwing: error)
+          // Closing a cancelled reader can also surface a socket error.
+          continuation.finish(throwing: Task.isCancelled ? nil : error)
         }
       }
 
