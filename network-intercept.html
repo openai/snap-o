@@ -5,33 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Network Interception</title>
     <meta name="description" content="Edit Android API responses and return mock data with Snap-O Python route handlers.">
-    
-    
+
+
     <link rel="icon" type="image/png" href="assets/icon-64.png">
-    
+
     <link rel="stylesheet" href="assets/robot.css">
     <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/network-intercept.css">
   </head>
   <body class="page-guide">
-    
-    
-    
+
+
+
     <button class="robot-flight guide-robot" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
-  
+
   <img class="space-robot" src="assets/space-robot-small.webp" alt="" width="224" height="224" loading="lazy" draggable="false">
-  
+
 </button>
-    
-    
+
+
 <main>
   <section class="guide-hero">
     <div class="wrap">
       <div class="hero-copy">
-        
+
         <a class="back-link" href="network-inspector.html">← Network</a>
-        
+
         <h1 id="network-interception">Network Interception</h1>
-        
+
 <p class="lead">Edit real API responses or return mock data with Python handlers. Test new app states, errors, and delays through your Android app's existing OkHttp integration.</p>
 <p class="prose">Run handlers with <code>snapo-network intercept</code> and inspect the results in Network.</p>
 
@@ -40,7 +40,7 @@
   </section>
   <div class="wrap guide-layout">
     <article>
-      
+
       <section class="guide-section" id="requirements">
         <div class="section-heading">
           <span class="step" aria-hidden="true">1</span>
@@ -49,13 +49,13 @@
         <div class="section-body">
 <p class="prose">Start with the <a href="network-inspector.html">Network setup</a>. Your debug app must use <code>SnapOOkHttpInterceptor</code> as an OkHttp application interceptor, including when using Ktor's OkHttp engine. Keep the no-op artifact in release builds.</p>
 <p class="prose">Run the CLI on macOS or Linux with Python 3 and Android Platform Tools. No Python package installation is needed. The Snap-O desktop app can stay open for inspection, but the CLI does not require it to be running.</p>
-<p class="prose">The examples assume <code>snapo-network</code> is on your <code>PATH</code>. On macOS, you can use <code>/Applications/Snap-O.app/Contents/MacOS/snapo-network</code> instead. On Linux, follow the <a href="cli.html#linux-and-standalone-macos">CLI installation steps</a>.</p>
+<p class="prose">The examples assume <code>snapo-network</code> is on your <code>PATH</code>. On macOS, you can use <code>/Applications/Snap-O.app/Contents/MacOS/snapo-network</code> instead. On Linux, follow the <a href="network-inspector.html#cli">Network CLI installation steps</a>.</p>
 <p class="prose">Connect an authorized device or emulator and launch your debug app. List the available app processes:</p>
 <div class="code-block"><div class="code-head"><span>Terminal</span><button class="copy-button" type="button">Copy</button></div><pre><code class="syntax-code" data-language="bash">snapo-network list --json</code></pre></div>
 <p class="prose" style="margin-top: 18px">Use the target app's <code>deviceId</code> and <code>socketName</code> as <code>SERIAL</code> and <code>SOCKET</code> below. A network socket looks like <code>snapo_network_12345</code>.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="first-request">
         <div class="section-heading">
           <span class="step" aria-hidden="true">2</span>
@@ -84,7 +84,7 @@ snapo-network intercept prototype.py -s SERIAL -n SOCKET</code></pre></div>
 <p class="prose" style="margin-top: 18px">Keep the runner open while testing. Press <strong>Ctrl+C</strong> to stop it and remove its routes. Requests already paused by that runner fail; later requests follow the normal network path unless another runner matches them.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="responses">
         <div class="section-heading">
           <span class="step" aria-hidden="true">3</span>
@@ -126,7 +126,7 @@ async def list_tasks(call):
 <p class="prose" style="margin-top: 18px">Handlers run concurrently. Use <code>await asyncio.sleep(...)</code> for delays; <code>time.sleep(...)</code> blocks every Python handler. To simulate an HTTP error response, return <code>call.json({"error": "Try again"}, status=503)</code>.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="matching">
         <div class="section-heading">
           <span class="step" aria-hidden="true">4</span>
@@ -150,7 +150,7 @@ async def tasks(call):
 <p class="prose" style="margin-top: 18px">Each file must contain unique method/path pairs and each handler must use <code>async def</code>. Multiple runners can coexist, but overlapping routes select one handler in an unspecified order. Handlers are not chained.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="reload">
         <div class="section-heading">
           <span class="step" aria-hidden="true">5</span>
@@ -184,7 +184,7 @@ async def tasks(call):
 <p class="prose">Each runner owns its routes and paused requests. Reloading or stopping one runner leaves others active. Ordinary network tools may remain connected throughout testing.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="limits">
         <div class="section-heading">
           <span class="step" aria-hidden="true">6</span>
@@ -202,7 +202,7 @@ async def tasks(call):
 <p class="prose" style="margin-top: 18px">Keep streaming and large-body endpoints outside your route set. Interception limits are separate from the tool's capture limits.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="troubleshooting">
         <div class="section-heading">
           <span class="step" aria-hidden="true">7</span>
@@ -225,28 +225,28 @@ async def tasks(call):
 
 <p class="prose">Read the runner's error output. Check body sizes, JSON shape, and the deadline. Return <code>call.json(...)</code> or a response from <code>await call.upstream()</code> from every handler. Look for a reload error if old behavior persists. <code>--check</code> validates loading, not handler execution.</p>
 </div></details>
-<p class="prose" style="margin-top: 26px">Try shared state and delays with the <a href="https://github.com/openai/snap-o/blob/9.0.0/examples/routes.py">route examples</a> and the <a href="https://github.com/openai/snap-o/blob/9.0.0/examples/android/README.md">OkHttp and Ktor Tasks demos</a>. See the <a href="https://github.com/openai/snap-o/blob/9.0.0/skills/snap-o-network-inspector/references/interception.md">handler API reference</a> and <a href="https://github.com/openai/snap-o/blob/9.0.0/contracts/network/interception.md">interception protocol</a> for more details.</p></div>
+<p class="prose" style="margin-top: 26px">Try shared state and delays with the <a href="https://github.com/openai/snap-o/blob/10.0.0/examples/routes.py">route examples</a> and the <a href="https://github.com/openai/snap-o/blob/10.0.0/examples/android/README.md">OkHttp and Ktor Tasks demos</a>. See the <a href="https://github.com/openai/snap-o/blob/10.0.0/skills/snap-o-network-inspector/references/interception.md">handler API reference</a> and <a href="https://github.com/openai/snap-o/blob/10.0.0/contracts/network/interception.md">interception protocol</a> for more details.</p></div>
       </section>
-      
+
     </article>
     <aside class="quick-jump" aria-label="On this page">
       <nav>
         <ol class="quick-jump-list">
-          
+
           <li><a class="quick-jump-link" href="#requirements">Check requirements</a></li>
-          
+
           <li><a class="quick-jump-link" href="#first-request">Intercept your first request</a></li>
-          
+
           <li><a class="quick-jump-link" href="#responses">Edit responses and mock state</a></li>
-          
+
           <li><a class="quick-jump-link" href="#matching">Match the intended requests</a></li>
-          
+
           <li><a class="quick-jump-link" href="#reload">Reload and stop handlers</a></li>
-          
+
           <li><a class="quick-jump-link" href="#limits">Supported traffic and limits</a></li>
-          
+
           <li><a class="quick-jump-link" href="#troubleshooting">Troubleshooting</a></li>
-          
+
         </ol>
       </nav>
     </aside>
@@ -255,23 +255,23 @@ async def tasks(call):
 
     <footer>
       <div class="wrap footer-row">
-        
+
         <span>© <span id="year"></span> OpenAI</span>
         <span>Apache 2.0</span>
-        
+
       </div>
     </footer>
     <script>window.Prism = { manual: true };</script>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-python.min.js"></script>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-bash.min.js"></script>
-    
-    
+
+
     <script src="assets/guide.js"></script>
     <script src="assets/robot.js?v=clockwise-1" defer></script>
-    
+
   </body>
 </html>

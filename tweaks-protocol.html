@@ -5,41 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tweaks Protocol</title>
     <meta name="description" content="Reference for the Snap-O Tweaks HTTP and event-stream protocol, including protocol versions, endpoints, JSON responses, updates, resets, actions, and errors.">
-    
-    
+
+
     <link rel="icon" type="image/png" href="assets/icon-64.png">
-    
+
     <link rel="stylesheet" href="assets/robot.css">
     <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/tweaks-protocol.css">
   </head>
   <body class="page-guide">
-    
-    
-    
+
+
+
     <button class="robot-flight guide-robot" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
-  
+
   <img class="space-robot" src="assets/space-robot-small.webp" alt="" width="224" height="224" loading="lazy" draggable="false">
-  
+
 </button>
-    
-    
+
+
 <main>
   <section class="guide-hero">
     <div class="wrap">
       <div class="hero-copy">
-        
+
         <nav class="back-link" aria-label="Breadcrumb">
-          
-          
+
+
           <a href="index.html">Snap-O</a>
-          
+
           <span aria-hidden="true">-</span>
           <a href="tweaks.html">Tweaks Guide</a>
-          
+
         </nav>
-        
+
         <h1 id="tweaks-protocol">Tweaks Protocol</h1>
-        
+
 <p class="lead">Read registered Android values, change or reset them, invoke app-owned actions, and subscribe to updates through the Snap-O Tweaks HTTP and event-stream protocol.</p>
 
       </div>
@@ -47,7 +47,7 @@
   </section>
   <div class="wrap guide-layout">
     <article>
-      
+
       <section class="guide-section" id="overview">
         <div class="section-heading">
           <span class="step" aria-hidden="true">1</span>
@@ -117,7 +117,7 @@ curl -fsS "$base/tweaks"</code></pre></div>
 <p class="notice"><strong>Registration determines visibility.</strong> Value tweaks and actions can be changed, invoked, or streamed only while they have active owners. Compose releases owners when they leave composition; other callers close their <code>TweakScope</code>. The adjusted-history endpoint can also return inactive, read-only value snapshots.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="get-app">
         <div class="section-heading">
           <span class="step" aria-hidden="true">2</span>
@@ -131,7 +131,7 @@ curl -fsS "$base/tweaks"</code></pre></div>
 <p class="prose">Protocol 6 replaces protocol 5, released in Snap-O 8.0.0. It requires HTTP/1.1 and uses chunked SSE responses. Preflight requests return 204, and responses use <code>Cache-Control: no-store</code>. Existing values, actions, curves, batch errors, modification flags, and null resets keep their behavior. Custom clients can follow the <a href="https://github.com/openai/snap-o/blob/main/contracts/discovery/README.md">discovery contract</a>. Use the reader when your client needs Android resource metadata or frontend assets.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="get-app-icon">
         <div class="section-heading">
           <span class="step" aria-hidden="true">3</span>
@@ -141,7 +141,7 @@ curl -fsS "$base/tweaks"</code></pre></div>
 <p class="prose">The macOS app uses the reader to load optional app icons from Android package resources. The Python CLI does not load icons. There is no HTTP icon endpoint. Custom interfaces should use a placeholder when no icon is available.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="get-tweaks">
         <div class="section-heading">
           <span class="step" aria-hidden="true">4</span>
@@ -220,7 +220,7 @@ Duplicate coordinate names are malformed requests. Arrays, nested objects, and o
 The numeric precision limits above also apply to coordinates.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="adjusted-tweaks">
         <div class="section-heading">
           <span class="step" aria-hidden="true">5</span>
@@ -256,7 +256,7 @@ Host: 127.0.0.1</code></pre></div>
 <p class="prose">Unchanged tweaks, no-op adjustments, and rejected updates do not create history entries. Plain <code>GET /tweaks</code> and event snapshots remain active-only. <code>GET /tweaks</code> accepts only <code>include=adjusted</code>, with URL escapes decoded. Unsupported, repeated, or additional parameters on this route return <code>400 Bad Request</code>. Other routes ignore query parameters.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="patch-tweaks">
         <div class="section-heading">
           <span class="step" aria-hidden="true">6</span>
@@ -330,7 +330,7 @@ Content-Length: 78
 <p class="prose">Ordinary tweaks reset to their original defaults. App-owned tweaks call their source’s <code>reset()</code> behavior, such as removing a stored override, and return its current effective value. That value can differ from the default first observed by Snap-O; writing the captured default would create an override instead of clearing it. Reset all only active, non-action values marked <code>"modified": true</code>.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="tweak-actions">
         <div class="section-heading">
           <span class="step" aria-hidden="true">7</span>
@@ -360,7 +360,7 @@ Content-Length: 39
 <p class="notice"><strong>Conflicting actions cannot run.</strong> Invoking one returns <code>409 Conflict</code> until exactly one owner remains. Register each shared action once at the composable that owns its behavior. The server never chooses between callbacks or executes arbitrary code.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="tweak-events">
         <div class="section-heading">
           <span class="step" aria-hidden="true">8</span>
@@ -389,7 +389,7 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 <p class="prose">CORS permits HTTP and HTTPS loopback origins and the desktop origin <code>snapo://tool</code>. Other origins, including <code>null</code>, are rejected. <code>OPTIONS</code> permits <code>GET</code>, <code>PATCH</code>, and <code>POST</code> with <code>Content-Type</code>. Native clients may omit <code>Origin</code>; credentials are not required.</p>
 </div>
       </section>
-      
+
       <section class="guide-section" id="errors">
         <div class="section-heading">
           <span class="step" aria-hidden="true">9</span>
@@ -452,30 +452,30 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 </table></div>
 <p class="notice"><strong>Inspect both the HTTP status and the response body.</strong> An invalid, unknown, inactive, or action update can appear in <code>errors</code> even when the response status is <code>200 OK</code>. Each item contains only <code>name</code> and <code>error</code>; it does not include a separate HTTP status or error code.</p></div>
       </section>
-      
+
     </article>
     <aside class="quick-jump" aria-label="On this page">
       <nav>
         <ol class="quick-jump-list">
-          
+
           <li><a class="quick-jump-link" href="#overview">Protocol overview</a></li>
-          
+
           <li><a class="quick-jump-link" href="#get-app">App discovery</a></li>
-          
+
           <li><a class="quick-jump-link" href="#get-app-icon">App icons</a></li>
-          
+
           <li><a class="quick-jump-link" href="#get-tweaks">GET /tweaks</a></li>
-          
+
           <li><a class="quick-jump-link" href="#adjusted-tweaks">Adjusted history</a></li>
-          
+
           <li><a class="quick-jump-link" href="#patch-tweaks">PATCH /tweaks</a></li>
-          
+
           <li><a class="quick-jump-link" href="#tweak-actions">POST /tweaks/action</a></li>
-          
+
           <li><a class="quick-jump-link" href="#tweak-events">GET /tweaks/events</a></li>
-          
+
           <li><a class="quick-jump-link" href="#errors">Error responses</a></li>
-          
+
         </ol>
       </nav>
     </aside>
@@ -484,23 +484,23 @@ data: {"tweaks":[{"name":"Typography/Font size","type":"int","default":36,"value
 
     <footer>
       <div class="wrap footer-row">
-        
+
         <span>© <span id="year"></span> OpenAI</span>
         <span>Apache 2.0</span>
-        
+
       </div>
     </footer>
     <script>window.Prism = { manual: true };</script>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-json.min.js"></script>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-http.min.js"></script>
-    
-    
+
+
     <script src="assets/guide.js"></script>
     <script src="assets/robot.js?v=clockwise-1" defer></script>
-    
+
   </body>
 </html>
