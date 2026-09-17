@@ -125,3 +125,7 @@ def on_page_context(context, page, config, nav):
         note=note,
     )
     return context
+
+
+def on_post_page(output, **kwargs):
+    return "\n".join(line if line.strip() else "" for line in output.split("\n"))
