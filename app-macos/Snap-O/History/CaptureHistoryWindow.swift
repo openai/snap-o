@@ -24,6 +24,9 @@ extension FocusedValues {
 struct CaptureHistoryWindow: View {
   let history: CaptureHistory
   let fileStore: FileStore
+  @Environment(\.calendar)
+  private var calendar
+  @State private var entriesByDay: [Date: [CaptureHistoryEntry]] = [:]
   @State private var selectedEntryID: UUID?
   @State private var selectedItemID: UUID?
   @State private var showsSettings = false
@@ -95,7 +98,11 @@ struct CaptureHistoryWindow: View {
         hasKeyboardFocus = true
         timestampsUpdatedAt = Date()
       }
-      .onChange(of: history.entries) { timestampsUpdatedAt = Date() }
+      .onChange(of: history.entries, initial: true) {
+        groupEntries()
+        timestampsUpdatedAt = Date()
+      }
+      .onChange(of: calendar) { groupEntries() }
       .onKeyPress(.leftArrow) { entry == nil ? .ignored : navigate(-1) }
       .onKeyPress(.rightArrow) { entry == nil ? .ignored : navigate(1) }
       .onKeyPress(.escape) {
@@ -148,10 +155,10 @@ struct CaptureHistoryWindow: View {
         } else { ProgressView().padding(80) }
       } else {
         LazyVStack(alignment: .leading, spacing: 24) {
-          ForEach(days, id: \.self) { day in
+          ForEach(entriesByDay.keys.sorted(by: >), id: \.self) { day in
             Section {
               LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 28) {
-                ForEach(history.entries.filter { Calendar.current.isDate($0.capturedAt, inSameDayAs: day) }) { entry in
+                ForEach(entriesByDay[day] ?? []) { entry in
                   CaptureHistoryStack(
                     entry: entry,
                     root: history.repository.root,
@@ -173,8 +180,8 @@ struct CaptureHistoryWindow: View {
     }
   }
 
-  private var days: [Date] {
-    Array(Set(history.entries.map { Calendar.current.startOfDay(for: $0.capturedAt) })).sorted(by: >)
+  private func groupEntries() {
+    entriesByDay = Dictionary(grouping: history.entries) { calendar.startOfDay(for: $0.capturedAt) }
   }
 
   private func dayTitle(_ date: Date) -> String {
