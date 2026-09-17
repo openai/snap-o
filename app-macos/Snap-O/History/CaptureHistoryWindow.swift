@@ -322,9 +322,13 @@ struct CaptureHistoryWindow: View {
 
   private func open(_ entry: CaptureHistoryEntry) {
     draggedMedia = nil
-    selectedEntryID = entry.id
-    selectedItemID = entry.frontItem?.id
-    hasKeyboardFocus = true
+    if let item = entry.frontItem {
+      select(item, in: entry)
+    } else {
+      selectedEntryID = entry.id
+      selectedItemID = nil
+      hasKeyboardFocus = true
+    }
   }
 
   private func select(_ item: CaptureHistoryEntry.Item, in entry: CaptureHistoryEntry) {
@@ -333,6 +337,7 @@ struct CaptureHistoryWindow: View {
       errorMessage = "The original file is unavailable."
       return
     }
+    selectedEntryID = entry.id
     selectedItemID = item.id
     hasKeyboardFocus = true
   }
