@@ -7,14 +7,20 @@ import SwiftUI
 private final class HistoryThumbnailCache {
   static let shared = HistoryThumbnailCache()
   private let images = NSCache<NSURL, NSImage>()
+  private var pending: Task<CGImage?, Never>?
 
   private init() {
     images.totalCostLimit = 32 * 1024 * 1024
   }
 
   func image(url: URL, kind: CaptureHistoryEntry.Kind) async -> NSImage? {
+    guard !Task.isCancelled else { return nil }
     if let image = images.object(forKey: url as NSURL) { return image }
-    let bitmap = await Task.detached(priority: .utility) {
+    let previous = pending
+    // Decode one thumbnail at a time; canceled requests skip their turn.
+    let task = Task.detached(priority: .utility) {
+      _ = await previous?.value
+      guard !Task.isCancelled else { return nil as CGImage? }
       if kind == .image {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil as CGImage? }
         return CGImageSourceCreateThumbnailAtIndex(source, 0, [
@@ -26,9 +32,20 @@ private final class HistoryThumbnailCache {
       let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
       generator.appliesPreferredTrackTransform = true
       generator.maximumSize = CGSize(width: 640, height: 640)
-      return try? await generator.image(at: .zero).image
-    }.value
-    guard let bitmap else { return nil }
+      return await withTaskCancellationHandler {
+        try? await generator.image(at: .zero).image
+      } onCancel: {
+        generator.cancelAllCGImageGeneration()
+      }
+    }
+    pending = task
+    let bitmap = await withTaskCancellationHandler {
+      await task.value
+    } onCancel: {
+      task.cancel()
+    }
+    if pending == task { pending = nil }
+    guard !Task.isCancelled, let bitmap else { return nil }
     let image = NSImage(cgImage: bitmap, size: .zero)
     images.setObject(image, forKey: url as NSURL, cost: bitmap.bytesPerRow * bitmap.height)
     return image
@@ -75,10 +92,14 @@ struct CaptureHistoryThumbnail: View {
       }
     }
     .task(id: item.captureID) {
+      finishedLoading = false
       guard item.isAvailable else { return }
-      image = await HistoryThumbnailCache.shared.image(url: entry.fileURL(for: item, in: root), kind: entry.kind)
+      let thumbnail = await HistoryThumbnailCache.shared.image(url: entry.fileURL(for: item, in: root), kind: entry.kind)
+      guard !Task.isCancelled else { return }
+      image = thumbnail
       finishedLoading = true
     }
+    .onDisappear { image = nil }
     .accessibilityHidden(true)
   }
 }

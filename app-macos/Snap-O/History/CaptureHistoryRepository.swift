@@ -239,9 +239,9 @@ actor CaptureHistoryRepository {
         guard let id = UUID(uuidString: directory.lastPathComponent) else { continue }
         do {
           let data = try Data(contentsOf: directory.appendingPathComponent("capture.json"))
-          var entry = try JSONDecoder().decode(CaptureHistoryEntry.self, from: data)
+          let saved = try JSONDecoder().decode(CaptureHistoryEntry.self, from: data)
+          var entry = saved
           guard entry.id == id else { continue }
-          let wasInterrupted = entry.completedAt == nil
           for index in entry.items.indices {
             let item = entry.items[index]
             try? manager.removeItem(at: entry.fileURL(for: item, in: root).appendingPathExtension("partial"))
@@ -252,8 +252,8 @@ actor CaptureHistoryRepository {
               entry.items[index].failure = "Capture was interrupted."
             }
           }
-          if wasInterrupted { entry.completedAt = entry.capturedAt }
-          try save(entry)
+          if entry.completedAt == nil { entry.completedAt = entry.capturedAt }
+          if entry != saved { try save(entry) }
           entries.append(entry)
         } catch { report(error) }
       }

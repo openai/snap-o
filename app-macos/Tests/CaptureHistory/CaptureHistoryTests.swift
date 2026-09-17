@@ -134,10 +134,15 @@ struct CaptureHistoryTests {
     )
     let selectedID = snapshot.entries[0].items[1].id
     await repository.recordCapturePaneSelection(storedB.id)
+    let metadata = repository.root.appendingPathComponent("\(id)/capture.json").path
+    let savedDate = Date(timeIntervalSince1970: 1_000_000)
+    try FileManager.default.setAttributes([.modificationDate: savedDate], ofItemAtPath: metadata)
     let reopened = CaptureHistoryRepository(root: repository.root)
     snapshot = await reopened.currentSnapshot()
     precondition(snapshot.entries[0].frontItem?.id == selectedID)
     precondition(snapshot.entries[0].byteCount == 200)
+    let attributes = try FileManager.default.attributesOfItem(atPath: metadata)
+    precondition(attributes[.modificationDate] as? Date == savedDate, "Reopening must not rewrite unchanged metadata")
     let export = root.appendingPathComponent("export.png")
     try FileManager.default.copyItem(at: storedA.media.url!, to: export)
     await reopened.delete([id])
