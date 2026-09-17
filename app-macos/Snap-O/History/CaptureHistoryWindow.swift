@@ -308,6 +308,9 @@ struct CaptureHistoryWindow: View {
       }
       .sharedBackgroundVisibility(.hidden)
     }
+    if entry == nil {
+      ToolbarSpacer(.flexible, placement: .primaryAction)
+    }
     ToolbarItemGroup(placement: .primaryAction) {
       if let entry {
         Button(action: saveSelection) { Label("Save As…", systemImage: "square.and.arrow.up") }
