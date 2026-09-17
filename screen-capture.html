@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Screen capture</title>
+    <meta name="description" content="Use Live Preview, take screenshots and recordings, and revisit captures in Snap-O.">
+
+
+    <link rel="icon" type="image/png" href="assets/icon-64.png">
+
+    <link rel="stylesheet" href="assets/robot.css">
+    <link rel="stylesheet" href="assets/guide.css"><link rel="stylesheet" href="assets/network-inspector.css"><link rel="stylesheet" href="assets/screen-capture.css">
+  </head>
+  <body class="page-guide">
+
+
+
+    <button class="robot-flight guide-robot" type="button" aria-label="Make Snap-O do a backflip" title="Make Snap-O do a backflip">
+
+  <img class="space-robot" src="assets/space-robot-small.webp" alt="" width="224" height="224" loading="lazy" draggable="false">
+
+</button>
+
+
+<main>
+  <section class="guide-hero">
+    <div class="wrap">
+      <div class="hero-copy">
+
+        <a class="back-link" href="index.html">Snap-O</a>
+
+        <h1 id="screen-capture">Screen capture</h1>
+
+<p class="lead">Snap-O makes it easier to capture and share Android screens, with instant previews and screenshots or recordings from all connected devices at once. Drag and drop captures into your work, and revisit them later in Capture History.</p>
+
+      </div>
+    </div>
+  </section>
+  <div class="wrap guide-layout">
+    <article>
+
+      <section class="guide-section" id="live-preview">
+        <div class="section-heading">
+
+          <h2>Live Preview</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use <code>⌘[</code> and <code>⌘]</code> to switch between connected devices.</p>
+<p class="prose">Option-drag the preview to share the current frame as a screenshot, or right-click for <strong>Copy Image</strong> and <strong>Save Image As…</strong>. Each action adds that frame to Capture History. Watching the preview alone does not.</p>
+<p class="prose">Press <code>Esc</code> to stop the preview, or <code>⇧⌘L</code> to start it again. Choose <strong>Device → Start With</strong> to change how new windows open.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="take-a-screenshot">
+        <div class="section-heading">
+
+          <h2>Take a screenshot</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Press <code>⌘R</code> to capture a screenshot from all connected Android devices. Use <code>⌘[</code> and <code>⌘]</code> to browse their captures. Press <code>⇧⌘L</code> to return to Live Preview.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="record-the-screen">
+        <div class="section-heading">
+
+          <h2>Record the screen</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Press <code>⇧⌘R</code> to record the screens of all connected Android devices, and <code>Esc</code> to stop. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="drag-and-drop">
+        <div class="section-heading">
+
+          <h2>Drag &amp; drop, and sharing</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Drag a screenshot or recording from the Capture pane or Capture History into any app that accepts images or video. Dragging shares a copy and leaves the original in history. Use <code>⌘C</code> to copy a screenshot to the clipboard.</p>
+<p class="prose">Choose <strong>Save As…</strong> (<code>⌘S</code>) to keep a permanent copy of the selected capture. Exported copies remain when history entries are deleted or expire.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="capture-history">
+        <div class="section-heading">
+
+          <h2>Capture History</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Capture History automatically keeps your recent screenshots and recordings on your Mac. They remain after you close their windows or restart Snap-O, so you can revisit them without the original device connected.</p>
+<p class="prose">Open <strong>Window → Capture History</strong> (<code>⇧⌘H</code>) to browse captures by day, newest first.</p>
+<p class="prose">Each capture action groups its devices into one entry. Open a capture to preview it immediately. Use the toolbar thumbnails, Left and Right Arrow keys, or <code>⌘[</code> and <code>⌘]</code> to switch devices. Press <code>Esc</code> to return to history.</p>
+<p class="prose">Captures start as <strong>Untitled</strong>. Click the name in the Capture pane or history preview to rename it. In the history grid, double-click the name or choose <strong>Rename…</strong> from the context menu. The name applies to all devices in that capture.</p>
+<details id="manage-history-storage"><summary>Manage history storage</summary><div class="details-body">
+
+<p class="prose">History keeps captures for 30 days by default, with a 5 GB storage limit. Open <strong>History Storage</strong> in the history window's toolbar to see disk usage and change these limits. If you have not chosen a retention period, it follows the current app default.</p>
+<p class="prose">Snap-O removes the oldest captures when either limit is reached. All devices in an entry are removed together. Captures that are recording or in use are kept. The newest capture is kept for 24 hours if it exceeds the storage limit, so usage can temporarily exceed the limit.</p>
+<p class="prose">To remove a group, open it and choose <strong>Delete Capture</strong>. <strong>Clear History…</strong> removes all entries that are no longer recording or in use. Close other viewers first if a capture cannot be deleted. Snap-O asks for confirmation before applying storage settings that remove older captures.</p>
+</div></details>
+</div>
+      </section>
+
+      <section class="guide-section" id="keyboard-shortcuts">
+        <div class="section-heading">
+
+          <h2>Keyboard shortcuts</h2>
+        </div>
+        <div class="section-body">
+<div class="table-scroll"><table class="config-table">
+<thead>
+<tr>
+<th>Action</th>
+<th>Shortcut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>New screenshot</td>
+<td><code>⌘R</code></td>
+</tr>
+<tr>
+<td>Start recording</td>
+<td><code>⇧⌘R</code></td>
+</tr>
+<tr>
+<td>Start live preview</td>
+<td><code>⇧⌘L</code></td>
+</tr>
+<tr>
+<td>Stop recording / preview</td>
+<td><code>⎋</code></td>
+</tr>
+<tr>
+<td>Open Capture History</td>
+<td><code>⇧⌘H</code></td>
+</tr>
+<tr>
+<td>Save as</td>
+<td><code>⌘S</code></td>
+</tr>
+<tr>
+<td>Copy image to clipboard</td>
+<td><code>⌘C</code></td>
+</tr>
+<tr>
+<td>Previous device</td>
+<td><code>⌘[</code></td>
+</tr>
+<tr>
+<td>Next device</td>
+<td><code>⌘]</code></td>
+</tr>
+<tr>
+<td>Show / hide Capture</td>
+<td><code>⌥⌘C</code></td>
+</tr>
+</tbody>
+</table></div></div>
+      </section>
+
+    </article>
+    <aside class="quick-jump" aria-label="On this page">
+      <nav>
+        <ol class="quick-jump-list">
+
+          <li><a class="quick-jump-link" href="#live-preview">Live Preview</a></li>
+
+          <li><a class="quick-jump-link" href="#take-a-screenshot">Take a screenshot</a></li>
+
+          <li><a class="quick-jump-link" href="#record-the-screen">Record the screen</a></li>
+
+          <li><a class="quick-jump-link" href="#drag-and-drop">Drag & drop, and sharing</a></li>
+
+          <li><a class="quick-jump-link" href="#capture-history">Capture History</a></li>
+
+          <li><a class="quick-jump-link" href="#keyboard-shortcuts">Keyboard shortcuts</a></li>
+
+        </ol>
+      </nav>
+    </aside>
+  </div>
+</main>
+
+    <footer>
+      <div class="wrap footer-row">
+
+        <span>© <span id="year"></span> OpenAI</span>
+        <span>Apache 2.0</span>
+
+      </div>
+    </footer>
+    <script>window.Prism = { manual: true };</script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-bash.min.js"></script>
+
+
+    <script src="assets/guide.js"></script>
+    <script src="assets/robot.js?v=clockwise-1" defer></script>
+
+  </body>
+</html>
