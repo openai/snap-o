@@ -36,6 +36,7 @@ struct CaptureHistoryWindow: View {
   @State private var timestampsUpdatedAt = Date()
   @State private var draggedMedia: CaptureHistoryDraggedMedia?
   @State private var insertion: CaptureHistoryInsertion?
+  @State private var isVideoFocused = false
   @FocusState private var hasKeyboardFocus: Bool
 
   private var entry: CaptureHistoryEntry? {
@@ -103,8 +104,8 @@ struct CaptureHistoryWindow: View {
         timestampsUpdatedAt = Date()
       }
       .onChange(of: calendar) { groupEntries() }
-      .onKeyPress(.leftArrow) { entry == nil ? .ignored : navigate(-1) }
-      .onKeyPress(.rightArrow) { entry == nil ? .ignored : navigate(1) }
+      .onKeyPress(.leftArrow) { isVideoFocused ? .ignored : navigate(-1) }
+      .onKeyPress(.rightArrow) { isVideoFocused ? .ignored : navigate(1) }
       .onKeyPress(.escape) {
         guard entry != nil else { return .ignored }
         goBack()
@@ -198,7 +199,11 @@ struct CaptureHistoryWindow: View {
           if entry.kind == .image {
             ImageCaptureView(url: url) { dragFile(entry, item: item) }
           } else {
-            VideoCaptureView(url: url) { dragFile(entry, item: item) }
+            VideoCaptureView(
+              url: url,
+              onFocus: { isVideoFocused = true },
+              makeTempDragFile: { dragFile(entry, item: item) }
+            )
           }
         }
         .aspectRatio(item.aspectRatio, contentMode: .fit)
@@ -227,7 +232,8 @@ struct CaptureHistoryWindow: View {
             .contentShape(Rectangle())
             .overlay {
               if candidate.id == item?.id {
-                RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 6)
+                  .stroke(hasKeyboardFocus && !isVideoFocused ? Color.accentColor : Color.secondary, lineWidth: 2)
               }
             }
           }
@@ -346,6 +352,7 @@ struct CaptureHistoryWindow: View {
     }
     selectedEntryID = entry.id
     selectedItemID = item.id
+    isVideoFocused = false
     hasKeyboardFocus = true
   }
 
@@ -362,6 +369,7 @@ struct CaptureHistoryWindow: View {
     draggedMedia = nil
     selectedEntryID = nil
     selectedItemID = nil
+    isVideoFocused = false
     hasKeyboardFocus = true
   }
 

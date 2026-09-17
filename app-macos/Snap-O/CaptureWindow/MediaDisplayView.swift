@@ -73,11 +73,12 @@ struct ImageCaptureView: View {
 
 struct VideoCaptureView: View {
   let url: URL
+  var onFocus: () -> Void = {}
   var makeTempDragFile: () -> URL?
 
   var body: some View {
     ZStack {
-      VideoLoopingView(url: url)
+      VideoLoopingView(url: url, onFocus: onFocus)
       Color.gray.opacity(0.01)
         .padding([.bottom], 40)
     }
