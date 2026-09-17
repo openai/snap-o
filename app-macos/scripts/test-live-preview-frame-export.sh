@@ -13,5 +13,5 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/LivePreview/LivePreviewView.swift Snap-O/Utilities/Perf.swift \
   Tests/LivePreviewFrameExport/LivePreviewFrameExportTests.swift \
   -o "$TEST_DIR/frame-export-tests"
-# Pass --render to also check hidden decoding in a small test window.
+# Export assertions run in Snap-OTests; this checks rendering in a test window.
 "$TEST_DIR/frame-export-tests" "$@"

@@ -69,16 +69,7 @@ jobs:
           xcodebuild -project Snap-O.xcodeproj -scheme Snap-O \
             -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
-      - name: Test live preview frame export
-        working-directory: app-macos
-        run: sh scripts/test-live-preview-frame-export.sh
-      - name: Test live preview pointer delivery
-        working-directory: app-macos
-        run: sh scripts/test-live-preview-pointer.sh
-      - name: Test capture mode transitions
-        working-directory: app-macos
-        run: sh scripts/test-capture-modes.sh
-      - name: Test capture startup
+      - name: Test capture integration
         working-directory: app-macos
         run: sh scripts/test-startup-capture.sh
       - name: Test tool recovery

@@ -30,12 +30,12 @@ public final class ADBClient: @unchecked Sendable {
 
   private let lock = NSLock()
   private var toolConnections = 0
+  private var connectionAttemptsByDevice: [String: Int] = [:]
   private var failedToolConnections = 0
   private var frozen = true
   private var networkDisconnected = false
   private var propertiesRecovered = false
   private var metadataAvailable = false
-  private var toolOrder: [String] = []
   private var metadataRequests: [[Int]] = []
   private var metadataFailure: MetadataFailure?
   private var legacyKinds: Set<ToolID> = []
@@ -68,6 +68,10 @@ public final class ADBClient: @unchecked Sendable {
   private var socketGeneration = 0
   private let trackedDevices = AsyncThrowingStream<String, Error>.makeStream()
   public init() {}
+  public func connectionAttempts(to deviceID: String) -> Int {
+    lock.withLock { connectionAttemptsByDevice[deviceID, default: 0] }
+  }
+
   public var toolConnectionCount: Int {
     lock.withLock { toolConnections }
   }
@@ -85,8 +89,10 @@ public final class ADBClient: @unchecked Sendable {
   }
 
   public func openLocalAbstract(deviceID: String, abstractSocket: String) async throws -> ADBSocketConnection {
-    lock.withLock { toolConnections += 1 }
-    if deviceID == "direct-failure" { throw ADBError.requestTimedOut("Test timeout") }
+    lock.withLock {
+      toolConnections += 1
+      connectionAttemptsByDevice[deviceID, default: 0] += 1
+    }
     let shouldFail = lock.withLock {
       let failed = deviceID == "frozen" && (frozen || abstractSocket.contains("network") && networkDisconnected)
       if failed { failedToolConnections += 1 }
@@ -106,10 +112,6 @@ public final class ADBClient: @unchecked Sendable {
 
   public func setMetadataAvailable(_ available: Bool) {
     lock.withLock { metadataAvailable = available }
-  }
-
-  public func setToolOrder(_ order: [String]) {
-    lock.withLock { toolOrder = order }
   }
 
   public var metadataProcessRequests: [[Int]] {
@@ -146,8 +148,7 @@ public final class ADBClient: @unchecked Sendable {
         "app": [
           "name": "Demo", "packageName": "com.example.demo", "revision": "1",
           "iconBase64": "icon-\(deviceID)",
-          "inspectors": tools,
-          "toolOrder": lock.withLock { toolOrder }
+          "inspectors": tools
         ]
       ]
       return try JSONDecoder().decode(ToolProcessMetadata.self, from: JSONSerialization.data(withJSONObject: record))

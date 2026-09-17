@@ -8,6 +8,7 @@ struct StartupCaptureTests {
   static let second = testDevice("second")
 
   static func main() async throws {
+    try await CaptureModeTests.run()
     await screenshotReuse()
     await screenshotFreshness()
     await livePreviewClaim()
@@ -20,7 +21,6 @@ struct StartupCaptureTests {
     try await managerDiscardsWrongDevice()
     await stopDuringRendererClaim()
     await disconnectWaitsForCleanup()
-    await overlappingDeviceUpdates()
     await commandDuringAutomaticPreview(recordsVideo: true)
     await commandDuringAutomaticPreview(recordsVideo: false)
     await tearDownDuringQueuedCommand(recordsVideo: true)
@@ -35,7 +35,7 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, deletesAll: true)
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
-    print("Startup capture tests passed (27 cases)")
+    print("Startup capture tests passed (26 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -49,14 +49,15 @@ struct StartupCaptureTests {
   static func prepare(
     _ service: LivePreviewService,
     device: Device = first,
-    lifetime: Duration = .seconds(5)
+    lifetime: Duration = .seconds(5),
+    sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   ) -> PreparedLivePreview {
     PreparedLivePreview(
       deviceID: device.id,
       options: options,
       operationTask: Task { try? await service.start(for: device.id, options: options) },
       service: service,
-      lifetime: lifetime
+      lifetime: lifetime, sleep: sleep
     )
   }
 
@@ -161,12 +162,17 @@ struct StartupCaptureTests {
 
   static func unusedPreviewExpires() async {
     let service = LivePreviewService()
-    let prepared = prepare(service, lifetime: .milliseconds(1))
-    try? await Task.sleep(for: .milliseconds(10))
-    await prepared.discard()
+    let expiration = TestGate()
+    let prepared = prepare(service) { _ in await expiration.wait() }
+    await eventually { await service.active.count == 1 }
+    await eventually { await expiration.waitCount == 1 }
+    precondition(prepared.isAvailable)
+    await expiration.open()
+    await eventually { !prepared.isAvailable }
     let handle = await prepared.take()
     let active = await service.active
-    precondition(handle == nil && active.isEmpty)
+    let stops = await service.stops
+    precondition(handle == nil && active.isEmpty && stops.count == 1)
   }
 
   static func cancelledClaimCleansUp() async {
@@ -310,24 +316,6 @@ struct StartupCaptureTests {
     await stop.value
     let active = await service.active
     precondition(result == nil && stopped && active.isEmpty)
-  }
-
-  static func overlappingDeviceUpdates() async {
-    let gate = TestGate()
-    var displayed: [String] = []
-    let manager = LivePreviewManager(
-      livePreviewService: LivePreviewService(), adbService: ADBService(displayGates: [first.id: gate]),
-      options: options, preparedLivePreview: nil
-    ) { displayed = $0.map(\.device.id) }
-    let start = Task { await manager.start(with: [first]) }
-    for _ in 0 ..< 20 {
-      await Task.yield()
-    }
-    await manager.updateDevices([second])
-    await gate.open()
-    await start.value
-    precondition(displayed == [second.id])
-    await manager.stop()
   }
 
   @MainActor

@@ -7,9 +7,7 @@ struct VideoLoopingView: View {
 
   @State private var player: AVQueuePlayer?
   @State private var looper: AVPlayerLooper?
-  @State private var isViewVisible = false
-  @State private var isWindowVisible = false
-  @State private var shouldResumeWhenVisible = true
+  @State private var visibility = PlaybackVisibility()
 
   var body: some View {
     Group {
@@ -27,14 +25,14 @@ struct VideoLoopingView: View {
       .frame(width: 0, height: 0)
     }
     .onAppear {
-      isViewVisible = true
+      visibility.isViewVisible = true
       if player == nil {
         setupPlayer()
       }
       updatePlayback()
     }
     .onDisappear {
-      isViewVisible = false
+      visibility.isViewVisible = false
       player?.pause()
     }
   }
@@ -48,20 +46,15 @@ struct VideoLoopingView: View {
   }
 
   private func updateWindowVisibility(_ isVisible: Bool) {
-    guard isVisible != isWindowVisible else { return }
-
-    if !isVisible, let player {
-      shouldResumeWhenVisible = player.timeControlStatus != .paused
-    }
-
-    isWindowVisible = isVisible
+    guard isVisible != visibility.isWindowVisible else { return }
+    visibility.updateWindowVisibility(isVisible, wasPlaying: player?.timeControlStatus != .paused)
     updatePlayback()
   }
 
   private func updatePlayback() {
     guard let player else { return }
 
-    if isViewVisible, isWindowVisible, shouldResumeWhenVisible {
+    if visibility.shouldPlay {
       player.play()
     } else {
       player.pause()

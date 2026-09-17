@@ -32,7 +32,8 @@ final class PreparedLivePreview {
     options: LivePreviewOptions,
     operationTask: Task<LivePreviewOperationHandle?, Never>,
     service: LivePreviewService,
-    lifetime: Duration = .seconds(5)
+    lifetime: Duration = .seconds(5),
+    sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   ) {
     self.deviceID = deviceID
     self.options = options
@@ -40,7 +41,7 @@ final class PreparedLivePreview {
     self.service = service
     expirationTask = Task { [weak self] in
       do {
-        try await Task.sleep(for: lifetime)
+        try await sleep(lifetime)
       } catch {
         return
       }

@@ -8,9 +8,11 @@ cd "$APP_DIR"
 
 # Use the same resolved networking dependencies as the app.
 BUILD_DIR=${SNAPO_DERIVED_DATA:-"$TEST_DIR/xcode"}
-xcodebuild -quiet -project Snap-O.xcodeproj -scheme Snap-O \
-  -derivedDataPath "$BUILD_DIR" \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+if [ -z "${SNAPO_DERIVED_DATA:-}" ]; then
+  xcodebuild -quiet -project Snap-O.xcodeproj -scheme Snap-O \
+    -derivedDataPath "$BUILD_DIR" \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+fi
 PRODUCTS="$BUILD_DIR/Build/Products/Debug"
 export LLVM_PROFILE_FILE="$TEST_DIR/%m.profraw"
 set --
@@ -33,8 +35,6 @@ xcrun swiftc -swift-version 6 -parse-as-library -profile-generate -D SNAPO_STAND
   Snap-O/Tools/ToolMetadata.swift \
   Snap-O/Tools/ToolHTTPTransport.swift \
   Snap-OTests/Tools/ToolTestFixtures.swift \
-  Snap-O/Tools/ToolSelection.swift \
-  Snap-O/Tools/AppToolModel.swift \
   Snap-O/Tools/ToolHTTPService.swift \
   Snap-O/Tools/ToolService.swift \
   Tests/ToolRecovery/ToolRecoveryTests.swift -o "$TEST_DIR/tool-recovery-tests"

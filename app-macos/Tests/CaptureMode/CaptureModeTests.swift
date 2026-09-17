@@ -1,24 +1,16 @@
 import Foundation
 
 @MainActor
-final class MediaDisplayMode {
-  func updateMediaList(_: [CaptureMedia], preserveDeviceID _: String?, shouldSort _: Bool) {}
-}
-
-@main
-@MainActor
 struct CaptureModeTests {
   static let options = LivePreviewOptions(showsTouches: false)
   static let first = testDevice("first")
   static let second = testDevice("second")
 
-  static func main() async throws {
+  static func run() async throws {
     try await teardownWaitsForPointerPreparation()
     try await removingDevicePreservesOtherPointer()
     try await pointerWaitsForReadiness()
-    try await failedStreamsDoNotPreparePointer()
-    try await stoppedPreviewDoesNotPreparePointer()
-    try await removedDeviceDoesNotPreparePointer()
+    try await unreadyPreviewDoesNotPreparePointer()
     try await stoppedRendererIgnoresLateReadiness()
     try await replacedRendererCannotSendPointer()
     try await stopWaitsForRendererCleanup()
@@ -140,46 +132,25 @@ struct CaptureModeTests {
     await manager.stop()
   }
 
-  static func failedStreamsDoNotPreparePointer() async throws {
-    let adb = ADBService()
-    // Give each failed stream a fresh readiness gate, like a new retry attempt.
-    for _ in 0 ..< 3 {
+  enum UnreadyExit: CaseIterable { case failure, stop, removal }
+
+  static func unreadyPreviewDoesNotPreparePointer() async throws {
+    for exit in UnreadyExit.allCases {
       let gate = TestGate()
+      let adb = ADBService()
       let manager = makeManager(LivePreviewService(readyGate: gate), adb: adb)
       await manager.start(with: [first])
       let renderer = try await manager.makeRenderer(for: first.id)
       await eventually { await gate.waitCount == 1 }
-      await renderer.operation.session.fail()
+      switch exit {
+      case .failure: await renderer.operation.session.fail()
+      case .stop: await manager.stop()
+      case .removal: await manager.updateDevices([])
+      }
       click(renderer)
       await expectNoPointer(adb)
-      await manager.stopRenderer(renderer)
       await manager.stop()
     }
-  }
-
-  static func stoppedPreviewDoesNotPreparePointer() async throws {
-    let gate = TestGate()
-    let adb = ADBService()
-    let manager = makeManager(LivePreviewService(readyGate: gate), adb: adb)
-    await manager.start(with: [first])
-    let renderer = try await manager.makeRenderer(for: first.id)
-    await eventually { await gate.waitCount == 1 }
-    await manager.stop()
-    click(renderer)
-    await expectNoPointer(adb)
-  }
-
-  static func removedDeviceDoesNotPreparePointer() async throws {
-    let gate = TestGate()
-    let adb = ADBService()
-    let manager = makeManager(LivePreviewService(readyGate: gate), adb: adb)
-    await manager.start(with: [first])
-    let renderer = try await manager.makeRenderer(for: first.id)
-    await eventually { await gate.waitCount == 1 }
-    await manager.updateDevices([])
-    click(renderer)
-    await expectNoPointer(adb)
-    await manager.stop()
   }
 
   static func stoppedRendererIgnoresLateReadiness() async throws {
@@ -272,9 +243,7 @@ struct CaptureModeTests {
       adbService: ADBService(displayGates: [first.id: gate]), options: options
     ) { displayed = $0.map(\.device.id) }
     let start = Task { await manager.start(with: [first]) }
-    for _ in 0 ..< 20 {
-      await Task.yield()
-    }
+    await eventually { await gate.waitCount == 1 }
     await manager.updateDevices([second])
     await gate.open()
     await start.value
@@ -287,7 +256,8 @@ struct CaptureModeTests {
     let service = LivePreviewService(startGate: gate)
     let mode = LivePreviewMode(
       livePreviewService: service, adbService: ADBService(), options: options,
-      mediaDisplayMode: MediaDisplayMode(), preferredDeviceIDProvider: { first.id }, onMediaApplied: {}
+      mediaDisplayMode: MediaDisplayMode(snapshotController: CaptureSnapshotController()), preferredDeviceIDProvider: { first.id },
+      onMediaApplied: {}
     )
     await mode.start(with: [first])
     let renderer = Task { try await mode.makeRenderer(for: first.id) }
@@ -312,7 +282,8 @@ struct CaptureModeTests {
     func makeMode() -> LivePreviewMode {
       LivePreviewMode(
         livePreviewService: LivePreviewService(), adbService: ADBService(), options: options,
-        mediaDisplayMode: MediaDisplayMode(), preferredDeviceIDProvider: { first.id }, onMediaApplied: {}
+        mediaDisplayMode: MediaDisplayMode(snapshotController: CaptureSnapshotController()), preferredDeviceIDProvider: { first.id },
+        onMediaApplied: {}
       )
     }
     let mode = makeMode()

@@ -248,6 +248,17 @@ struct ToolSelectionTests {
   }
 
   @Test
+  func supportedSiblingIsPreferredButLegacyRemainsSelectable() {
+    var app = selectionApp()
+    app.tools[0].compatibility = .legacy(protocolVersion: 1)
+    var selection = ToolSelection()
+    selection.reconcile([app])
+    #expect(selection.state.preferredKind == .tweaks)
+    selection.selectTool(app, option: app.tools[0])
+    #expect(selection.state.preferredKind == .network)
+  }
+
+  @Test
   func fallback() {
     for compatibility in [ToolCompatibility.metadataUnavailable, .legacy(protocolVersion: 1)] {
       var app = selectionApp(kinds: [.network])
