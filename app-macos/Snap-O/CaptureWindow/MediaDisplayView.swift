@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ImageCaptureView: View {
   let url: URL
+  var onDelete: (() -> Void)?
   var makeTempDragFile: () -> URL?
 
   @Environment(\.captureImageCopied)
@@ -32,6 +33,10 @@ struct ImageCaptureView: View {
             }
           }
           Button("Save Image As…") { saveImage() }
+          if let onDelete {
+            Divider()
+            Button("Delete…", role: .destructive, action: onDelete)
+          }
         }
         .accessibilityLabel("Screenshot")
         .onDrag { dragItemProvider() }
@@ -74,6 +79,7 @@ struct ImageCaptureView: View {
 struct VideoCaptureView: View {
   let url: URL
   var onFocusChange: (Bool) -> Void = { _ in }
+  var onDelete: (() -> Void)?
   var makeTempDragFile: () -> URL?
 
   var body: some View {
@@ -83,6 +89,11 @@ struct VideoCaptureView: View {
         .padding([.bottom], 40)
     }
     .clipped()
+    .contextMenu {
+      if let onDelete {
+        Button("Delete…", role: .destructive, action: onDelete)
+      }
+    }
     .onDrag { dragItemProvider() }
     .onAppear { markPerfMilestones() }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

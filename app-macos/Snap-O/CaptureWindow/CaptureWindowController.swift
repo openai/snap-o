@@ -98,6 +98,28 @@ final class CaptureWindowController {
     snapshotController.hasAlternativeMedia
   }
 
+  func synchronizeCaptureHistory(availableCaptureIDs: Set<UUID>, root: URL) {
+    guard !isTornDown, !isProcessing, case .displaying = mode else { return }
+    let remaining = mediaList.filter { capture in
+      guard let url = capture.media.url,
+            url.deletingLastPathComponent().deletingLastPathComponent().path == root.path else { return true }
+      return availableCaptureIDs.contains(capture.id)
+    }
+    guard remaining.count != mediaList.count else { return }
+    let deletedCurrentCapture = currentCapture.map { current in
+      !remaining.contains { $0.id == current.id }
+    } ?? remaining.isEmpty
+    if deletedCurrentCapture {
+      mediaDisplayMode.updateMediaList([], preserveDeviceID: nil, shouldSort: false)
+      mode = .idle
+      lastError = nil
+      screenshotFailures = []
+      Task { await startLivePreview() }
+    } else {
+      mediaDisplayMode.updateMediaList(remaining, preserveDeviceID: nil, shouldSort: false)
+    }
+  }
+
   func dismissScreenshotFailures() {
     screenshotFailures = []
     lastError = nil

@@ -200,16 +200,47 @@ actor CaptureHistoryRepository {
     } catch { report(error) }
   }
 
-  func delete(_ ids: Set<UUID>, excludingOwner: UUID? = nil) {
-    let protectedIDs = protections.filter { $0.key != excludingOwner }
-      .values.reduce(into: Set<UUID>()) { $0.formUnion($1) }
-    let eligible = entries.filter { entry in
-      ids.contains(entry.id) && entry.completedAt != nil
-        && !entry.items.contains { $0.captureID.map(protectedIDs.contains) == true }
+  func deleteItem(_ itemID: UUID, in entryID: UUID) {
+    loadIfNeeded()
+    guard let index = entries.firstIndex(where: { $0.id == entryID }),
+          let item = entries[index].items.first(where: { $0.id == itemID }) else { return }
+    let original = entries[index]
+    guard original.completedAt != nil else {
+      errorMessage = "This capture is still in progress. Wait for it to finish and try again."
+      publish()
+      return
     }
+    var entry = original
+    entry.items.removeAll { $0.id == itemID }
+    guard entry.items.contains(where: \.isAvailable) else {
+      delete([entryID])
+      return
+    }
+    if entry.capturePaneSelectionID == itemID {
+      entry.capturePaneSelectionID = entry.frontItem?.id
+    }
+    do {
+      // Save metadata before removing the file so a failed save keeps the media intact.
+      try save(entry)
+      let url = original.fileURL(for: item, in: root)
+      do {
+        if manager.fileExists(atPath: url.path) { try manager.removeItem(at: url) }
+      } catch {
+        try save(original)
+        throw error
+      }
+      entries[index] = entry
+      publish()
+    } catch { report(error) }
+  }
+
+  func delete(_ ids: Set<UUID>) {
+    loadIfNeeded()
+    // Viewer protections apply to automatic cleanup, not confirmed deletion.
+    let eligible = entries.filter { ids.contains($0.id) && $0.completedAt != nil }
     remove(eligible.map(\.id))
     if eligible.count < ids.count {
-      errorMessage = "Some captures are still in use. Close their viewers and try again."
+      errorMessage = "Some captures are still in progress. Wait for them to finish and try again."
       publish()
     }
   }

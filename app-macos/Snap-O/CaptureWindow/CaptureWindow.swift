@@ -74,6 +74,10 @@ struct CaptureWindow: View {
       }
       .task(id: controller.mediaList.map(\.id)) {
         await history.repository.protect(Set(controller.mediaList.map(\.id)), owner: historyProtectionID)
+        await synchronizeCaptureHistory()
+      }
+      .task(id: history.entries) {
+        await synchronizeCaptureHistory()
       }
       .task(id: controller.currentCapture?.id) {
         if let captureID = controller.currentCapture?.id {
@@ -573,6 +577,16 @@ struct CaptureWindow: View {
     return min(
       max(width, minimumWidth),
       max(totalWidth - 720, minimumWidth)
+    )
+  }
+
+  private func synchronizeCaptureHistory() async {
+    // Fetch current metadata so a newly displayed capture never uses an older UI snapshot.
+    let snapshot = await history.repository.currentSnapshot()
+    guard !Task.isCancelled else { return }
+    controller.synchronizeCaptureHistory(
+      availableCaptureIDs: Set(snapshot.entries.flatMap { $0.items.compactMap(\.captureID) }),
+      root: history.repository.root
     )
   }
 

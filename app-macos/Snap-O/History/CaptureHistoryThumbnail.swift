@@ -110,6 +110,7 @@ struct CaptureHistoryStack: View {
   let refreshedAt: Date
   let open: () -> Void
   let rename: (String) -> Void
+  let delete: () -> Void
   @State private var isRenaming = false
 
   private var items: [CaptureHistoryEntry.Item] {
@@ -154,7 +155,10 @@ struct CaptureHistoryStack: View {
     .help([entry.frontItem?.deviceName, entry.capturedAt.formatted(date: .abbreviated, time: .shortened)]
       .compactMap(\.self).joined(separator: " · "))
     .contextMenu {
-      Button("Rename…") { isRenaming = true }
+      Button("Rename") { isRenaming = true }
+      Divider()
+      Button("Delete…", role: .destructive, action: delete)
+        .disabled(entry.completedAt == nil)
     }
     .accessibilityElement(children: .contain)
     .accessibilityValue(entry.hasFailures ? "Some devices failed to capture" : "")

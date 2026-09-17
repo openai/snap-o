@@ -23,6 +23,9 @@ struct CaptureHistoryTests {
   static func main() async throws {
     try await naming()
     try await persistenceAndSelection()
+    try await mediaDeletion()
+    try await mediaDeletionWithFailures()
+    try await mediaDeletionSaveFailure()
     try await reordering()
     try await rememberedDisplayOrder()
     try await dragRepresentations()
@@ -148,6 +151,97 @@ struct CaptureHistoryTests {
     await reopened.delete([id])
     precondition(FileManager.default.fileExists(atPath: export.path))
     precondition(!FileManager.default.fileExists(atPath: storedA.media.url!.path))
+  }
+
+  static func mediaDeletion() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    for kind in [CaptureHistoryEntry.Kind.image, .video] {
+      for deletesSelectedItem in [false, true] {
+        let repository = CaptureHistoryRepository(root: root.appendingPathComponent(UUID().uuidString))
+        let id = await repository.begin(kind: kind, devices: [firstDevice, secondDevice])!
+        let first = try await repository.record(capture(device: firstDevice, in: root), in: id)
+        let second = try await repository.record(capture(device: secondDevice, in: root), in: id)
+        await repository.recordCapturePaneSelection(first.id)
+        var original = await repository.currentSnapshot().entries[0]
+        let deleted = original.items[deletesSelectedItem ? 0 : 1]
+        let kept = original.items[deletesSelectedItem ? 1 : 0]
+        let deletedURL = original.fileURL(for: deleted, in: repository.root)
+        let keptURL = original.fileURL(for: kept, in: repository.root)
+        let export = root.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.copyItem(at: deletedURL, to: export)
+
+        await repository.deleteItem(deleted.id, in: id)
+        await repository.delete([id])
+        var snapshot = await repository.currentSnapshot()
+        precondition(snapshot.entries[0] == original, "In-progress captures cannot be changed")
+        await repository.finish(id)
+        original = await repository.currentSnapshot().entries[0]
+        let owner = UUID()
+        let otherOwner = UUID()
+        await repository.protect([first.id, second.id], owner: owner)
+        await repository.protect([deleted.captureID!], owner: otherOwner)
+        await repository.clearError()
+        await repository.deleteItem(UUID(), in: id)
+        await repository.deleteItem(deleted.id, in: UUID())
+        snapshot = await repository.currentSnapshot()
+        precondition(snapshot.entries[0] == original, "Unknown IDs do not delete media")
+
+        let updates = await repository.updates()
+        var iterator = updates.makeAsyncIterator()
+        _ = await iterator.next()
+        await repository.deleteItem(deleted.id, in: id)
+        let updated = await iterator.next()!.entries[0]
+        precondition(updated.items == [kept] && updated.frontItem?.id == kept.id, "Confirmed deletion overrides viewer protection")
+        precondition(updated.capturePaneSelectionID == kept.id && updated.byteCount == kept.byteCount)
+        precondition(!FileManager.default.fileExists(atPath: deletedURL.path))
+        precondition(FileManager.default.fileExists(atPath: keptURL.path))
+        precondition(FileManager.default.fileExists(atPath: export.path), "Exports survive media deletion")
+        let reopened = CaptureHistoryRepository(root: repository.root)
+        snapshot = await reopened.currentSnapshot()
+        precondition(snapshot.entries == [updated], "Deletion and selection survive reopening")
+        await repository.deleteItem(kept.id, in: id)
+        let empty = await iterator.next()!
+        precondition(empty.entries.isEmpty, "Removing the last media publishes removal of the capture")
+        precondition(!FileManager.default.fileExists(atPath: keptURL.deletingLastPathComponent().path))
+        snapshot = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
+        precondition(snapshot.entries.isEmpty)
+      }
+    }
+  }
+
+  static func mediaDeletionWithFailures() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let repository = CaptureHistoryRepository(root: root.appendingPathComponent("history"))
+    let id = await repository.begin(kind: .image, devices: [firstDevice, secondDevice])!
+    _ = try await repository.record(capture(device: firstDevice, in: root), in: id)
+    await repository.recordFailure(deviceID: secondDevice.id, message: "Capture failed.", in: id)
+    await repository.finish(id)
+    let entry = await repository.currentSnapshot().entries[0]
+    await repository.deleteItem(entry.availableItems[0].id, in: id)
+    let snapshot = await repository.currentSnapshot()
+    precondition(snapshot.entries.isEmpty, "Failed device placeholders do not keep an empty capture open")
+  }
+
+  static func mediaDeletionSaveFailure() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let repository = CaptureHistoryRepository(root: root.appendingPathComponent("history"))
+    let id = await repository.begin(kind: .image, devices: [firstDevice, secondDevice])!
+    _ = try await repository.record(capture(device: firstDevice, in: root), in: id)
+    _ = try await repository.record(capture(device: secondDevice, in: root), in: id)
+    await repository.finish(id)
+    let entry = await repository.currentSnapshot().entries[0]
+    let metadata = repository.root.appendingPathComponent("\(id)/capture.json")
+    try FileManager.default.removeItem(at: metadata)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: false)
+    await repository.deleteItem(entry.items[0].id, in: id)
+    let snapshot = await repository.currentSnapshot()
+    precondition(snapshot.entries == [entry] && snapshot.errorMessage != nil)
+    for item in entry.items {
+      precondition(FileManager.default.fileExists(atPath: entry.fileURL(for: item, in: repository.root).path))
+    }
   }
 
   static func naming() async throws {
@@ -427,15 +521,16 @@ struct CaptureHistoryTests {
     await repository.protect([first.id], owner: owner)
     let protected = await repository.cleanupCandidates(now: future)
     precondition(protected.isEmpty, "One viewed device protects the entire group")
-    await repository.delete([id])
+    await repository.prune(now: future)
     let stillPresent = await repository.currentSnapshot()
-    precondition(stillPresent.entries.count == 1, "Manual deletion also respects active viewers")
+    precondition(stillPresent.entries.count == 1, "Automatic cleanup preserves active viewers")
     await repository.protect([], owner: owner)
     let expired = await repository.cleanupCandidates(now: future)
     precondition(expired.map(\.id) == [id])
-    await repository.prune(now: future)
+    await repository.protect([first.id], owner: owner)
+    await repository.delete([id])
     let empty = await repository.currentSnapshot()
-    precondition(empty.entries.isEmpty)
+    precondition(empty.entries.isEmpty, "Confirmed deletion overrides viewer protection")
 
     let older = await repository.begin(kind: .image, devices: [firstDevice, secondDevice], at: now.addingTimeInterval(-600))!
     _ = try await repository.record(capture(device: firstDevice, in: root), in: older)
