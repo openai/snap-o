@@ -48,8 +48,6 @@ Open **Window → Capture History** (`⇧⌘H`) to browse captures by day, newes
 
 Each capture action groups its devices into one entry. Open a capture to preview it immediately. Use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch devices. Press `Esc` to return to history.
 
-Drag device thumbnails in the toolbar to reorder them. The order is saved.
-
 Captures start as **Untitled**. Click the name in the Capture pane or history preview to rename it. In the history grid, double-click the name or choose **Rename…** from the context menu. The name applies to all devices in that capture.
 
 <details markdown="1" id="manage-history-storage">
