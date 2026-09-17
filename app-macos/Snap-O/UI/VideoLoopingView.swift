@@ -3,6 +3,7 @@ import SwiftUI
 
 struct VideoLoopingView: View {
   let url: URL
+  var onFocusChange: (Bool) -> Void = { _ in }
 
   @State private var player: AVQueuePlayer?
   @State private var looper: AVPlayerLooper?
@@ -13,7 +14,7 @@ struct VideoLoopingView: View {
   var body: some View {
     Group {
       if let player {
-        VideoPlayer(player: player)
+        CaptureVideoPlayer(player: player, onFocusChange: onFocusChange)
       } else {
         // very brief fallback while preparing
         Color.black
