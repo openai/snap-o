@@ -175,7 +175,7 @@ struct CaptureWindow: View {
               $0.kind == model.preferredPluginID
             })?.name.trimmingCharacters(in: .whitespacesAndNewlines),
             !toolName.isEmpty else { return "Snap-O" }
-      return "Snap-O — \(toolName)"
+      return toolName
     }
   }
 

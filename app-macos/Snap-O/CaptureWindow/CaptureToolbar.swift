@@ -40,6 +40,8 @@ struct CaptureToolbar: View {
 
   @Environment(AppSettings.self)
   private var settings
+  @Environment(\.openWindow)
+  private var openWindow
   @State private var isToolSearchPresented = false
 
   var body: some View {
@@ -86,19 +88,34 @@ struct CaptureToolbar: View {
     return min(max(toolPaneVisibleWidth / toolPaneWidth, 0), 1)
   }
 
+  private var captureToolbarControls: some View {
+    HStack(spacing: 15) {
+      captureControls()
+
+      if !controller.isRecording, let progress = controller.captureProgressText {
+        captureProgress(progress)
+      }
+    }
+    .controlSize(.extraLarge)
+    .snapOToolbarControlStyle()
+  }
+
   private var captureToolbarPane: some View {
-    ZStack {
+    let leadingSpace = 12 + (SnapOToolbarStyle.singleControlSize + 8) * toolVisibility
+    let trailingSpace = 20 + SnapOToolbarStyle.singleControlSize + (SnapOToolbarStyle.singleControlSize + 8) * (1 - toolVisibility)
+
+    return ZStack {
       CaptureToolbarBackground()
 
-      HStack(spacing: 15) {
-        captureControls()
-
-        if !controller.isRecording, let progress = controller.captureProgressText {
-          captureProgress(progress)
-        }
+      ViewThatFits(in: .horizontal) {
+        captureToolbarControls
+          .padding(.horizontal, max(leadingSpace, trailingSpace))
+        captureToolbarControls
+          .frame(maxWidth: .infinity)
+          .padding(.leading, leadingSpace)
+          .padding(.trailing, trailingSpace)
       }
-      .controlSize(.extraLarge)
-      .snapOToolbarControlStyle()
+      .frame(maxWidth: .infinity)
       .frame(height: Self.height)
       .offset(y: titlebarHeight / 2)
 
@@ -116,11 +133,14 @@ struct CaptureToolbar: View {
       }
 
       if presentedLayout.showsCapture {
-        HStack {
+        HStack(spacing: 0) {
           Spacer()
+          historyButton()
+            .padding(.trailing, 8 * (1 - toolVisibility))
           toolToggle()
             .opacity(1 - toolVisibility)
             .allowsHitTesting(toolVisibility < 0.5)
+            .frame(width: SnapOToolbarStyle.singleControlSize * (1 - toolVisibility), alignment: .trailing)
         }
         .frame(height: Self.height)
         .padding(.trailing, 12)
@@ -247,6 +267,20 @@ struct CaptureToolbar: View {
       .help("Stop Recording (⎋)")
       .keyboardShortcut(.escape, modifiers: [])
     }
+  }
+
+  private func historyButton() -> some View {
+    Button {
+      openWindow(id: "capture-history")
+    } label: {
+      Label("Capture History", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+        .labelStyle(.iconOnly)
+        .font(SnapOToolbarStyle.iconFont)
+        .frame(width: SnapOToolbarStyle.singleControlSize, height: SnapOToolbarStyle.singleControlSize)
+    }
+    .help("Capture History (⇧⌘H)")
+    .controlSize(.extraLarge)
+    .snapOToolbarSingleControlStyle()
   }
 
   private func captureToggle() -> some View {
