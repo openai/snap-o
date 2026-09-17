@@ -37,7 +37,8 @@ struct CaptureHistorySettings: View {
       }
       Text("Oldest captures are removed when either limit is reached. All devices in a capture are removed together.")
         .font(.callout).foregroundStyle(.secondary)
-      Text("Captures in use are protected. A new capture larger than the limit is kept for 24 hours. Use Save As to keep a permanent copy.")
+      Text("Captures in use are protected from automatic cleanup. "
+        + "A new capture larger than the limit is kept for 24 hours. Use Save As to keep a permanent copy.")
         .font(.callout).foregroundStyle(.secondary)
       HStack {
         Button("Clear History…", role: .destructive) { confirmsClear = true }
@@ -60,7 +61,7 @@ struct CaptureHistorySettings: View {
       Button("Apply and Remove", role: .destructive) { Task { await apply() } }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("\(removalCandidates.count) older captures will be removed. Exported copies are kept.")
+      Text("\(removalCandidates.count) older captures will be removed.")
     }
     .alert("Clear capture history?", isPresented: $confirmsClear) {
       Button("Clear History", role: .destructive) {
@@ -71,7 +72,7 @@ struct CaptureHistorySettings: View {
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("Captures that are recording or in use will be kept. Exported copies are never removed.")
+      Text("All completed captures will be permanently deleted, including captures in use.")
     }
   }
 

@@ -30,7 +30,12 @@ struct StartupCaptureTests {
     await cancelledQueuedCommand()
     await commandDuringAutomaticPreview(recordsVideo: true, previewReadyFirst: true)
     await commandDuringAutomaticPreview(recordsVideo: false, previewReadyFirst: true)
-    print("Startup capture tests passed (22 cases)")
+    await captureHistoryDeletion(deletesCurrent: true)
+    await captureHistoryDeletion(deletesCurrent: false)
+    await captureHistoryDeletion(deletesCurrent: true, deletesAll: true)
+    await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
+    await captureHistoryDeletion(deletesCurrent: true, managed: false)
+    print("Startup capture tests passed (27 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -379,6 +384,64 @@ struct StartupCaptureTests {
       let captures = await screenshots.requests
       precondition(recordings.isEmpty && captures.isEmpty)
     }
+  }
+
+  static func captureHistoryDeletion(
+    deletesCurrent: Bool,
+    deletesAll: Bool = false,
+    disconnects: Bool = false,
+    managed: Bool = true
+  ) async {
+    let fixture = ControllerFixture(devices: [first, second])
+    AppSettings.shared.startupCaptureMode = .screenshot
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    await fixture.controller.start()
+    await eventually { fixture.controller.currentCapture?.media.isImage == true && !fixture.controller.isProcessing }
+    let root = URL(fileURLWithPath: "/tmp/history-deletion-tests")
+    let captureDirectory = (managed ? root : URL(fileURLWithPath: "/tmp/unsaved-captures", isDirectory: true))
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let captures = fixture.controller.mediaList.map { capture in
+      CaptureMedia(id: capture.id, device: capture.device, media: .image(
+        url: captureDirectory.appendingPathComponent("\(capture.id).png"), data: capture.media.common
+      ))
+    }
+    fixture.controller.mediaDisplayMode.updateMediaList(captures, preserveDeviceID: second.id, shouldSort: false)
+    let currentID = fixture.controller.currentCapture!.id
+    let originalIDs = Set(captures.map(\.id))
+    fixture.controller.synchronizeCaptureHistory(availableCaptureIDs: originalIDs, root: root)
+    precondition(fixture.controller.currentCapture?.id == currentID && !fixture.controller.isLivePreviewActive)
+    if disconnects {
+      await fixture.tracker.updateDevices([])
+      await eventually { !fixture.controller.hasDevices }
+    }
+    let remainingIDs: Set<UUID> = if deletesAll {
+      []
+    } else if deletesCurrent {
+      originalIDs.subtracting([currentID])
+    } else {
+      [currentID]
+    }
+    fixture.controller.synchronizeCaptureHistory(availableCaptureIDs: remainingIDs, root: root)
+    if !managed {
+      precondition(Set(fixture.controller.mediaList.map(\.id)) == originalIDs, "Unsaved media is not part of history")
+      precondition(fixture.controller.currentCapture?.id == currentID && !fixture.controller.isLivePreviewActive)
+    } else if !deletesCurrent {
+      precondition(fixture.controller.mediaList.map(\.id) == [currentID])
+      precondition(fixture.controller.currentCapture?.id == currentID && !fixture.controller.isLivePreviewActive)
+    } else if disconnects {
+      precondition(fixture.controller.currentCapture == nil && fixture.controller.mediaList.isEmpty)
+      precondition(!fixture.controller.isLivePreviewActive, "No device leaves the pane waiting, without deleted media")
+    } else {
+      await eventually { fixture.controller.isLivePreviewActive && !fixture.controller.isProcessing }
+      precondition(fixture.controller.currentCapture?.device.id == second.id, "Live Preview keeps the selected device")
+      precondition(Set(fixture.controller.mediaList.map(\.id)).isDisjoint(with: originalIDs))
+      let previewID = fixture.controller.currentCapture?.id
+      fixture.controller.synchronizeCaptureHistory(availableCaptureIDs: [], root: root)
+      precondition(fixture.controller.currentCapture?.id == previewID, "History updates do not restart Live Preview")
+    }
+    await fixture.controller.tearDown()
   }
 
   static func commandDuringAutomaticPreview(recordsVideo: Bool, previewReadyFirst: Bool = false) async {

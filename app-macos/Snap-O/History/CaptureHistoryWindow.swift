@@ -31,6 +31,7 @@ struct CaptureHistoryWindow: View {
   @State private var selectedItemID: UUID?
   @State private var showsSettings = false
   @State private var confirmsDeletion = false
+  @State private var deletion: Deletion?
   @State private var errorMessage: String?
   @State private var protectionID = UUID()
   @State private var timestampsUpdatedAt = Date()
@@ -38,6 +39,26 @@ struct CaptureHistoryWindow: View {
   @State private var insertion: CaptureHistoryInsertion?
   @State private var isVideoFocused = false
   @FocusState private var hasKeyboardFocus: Bool
+
+  private struct Deletion {
+    let entryID: UUID
+    let itemID: UUID?
+    let kind: CaptureHistoryEntry.Kind
+    let itemCount: Int
+
+    private var name: String {
+      itemCount == 0 ? "capture" : kind.title.lowercased()
+    }
+
+    var title: String {
+      itemCount > 1 ? "Delete \(itemCount) \(name)s?" : "Delete \(name)?"
+    }
+
+    var message: String {
+      let subject = itemCount > 1 ? "This group" : "This \(name)"
+      return "\(subject) will be permanently deleted. This cannot be undone."
+    }
+  }
 
   private var entry: CaptureHistoryEntry? {
     history.entries.first { $0.id == selectedEntryID }
@@ -117,10 +138,16 @@ struct CaptureHistoryWindow: View {
       .onDisappear {
         Task { await history.repository.protect([], owner: protectionID) }
       }
-      .onChange(of: history.entries.map(\.id)) {
-        if entry == nil {
-          selectedEntryID = nil
-          selectedItemID = nil
+      .onChange(of: history.entries) {
+        guard selectedEntryID != nil else { return }
+        guard let entry else {
+          goBack()
+          return
+        }
+        if !entry.availableItems.contains(where: { $0.id == selectedItemID }) {
+          selectedItemID = entry.frontItem?.id
+          isVideoFocused = false
+          hasKeyboardFocus = true
         }
       }
       .focusedSceneValue(\.captureHistoryActions, actions)
@@ -129,11 +156,11 @@ struct CaptureHistoryWindow: View {
   var body: some View {
     interactiveContent
       .sheet(isPresented: $showsSettings) { CaptureHistorySettings(history: history) }
-      .alert("Delete capture?", isPresented: $confirmsDeletion) {
-        Button("Delete", role: .destructive) { deleteSelection() }
+      .alert(deletion?.title ?? "Delete capture?", isPresented: $confirmsDeletion, presenting: deletion) { deletion in
+        Button("Delete", role: .destructive) { delete(deletion) }
         Button("Cancel", role: .cancel) {}
-      } message: {
-        Text("All device files in this capture will be removed. Exported copies are kept.")
+      } message: { deletion in
+        Text(deletion.message)
       }
       .alert("Capture History", isPresented: Binding(
         get: { errorMessage != nil || history.errorMessage != nil },
@@ -167,7 +194,8 @@ struct CaptureHistoryWindow: View {
                     open: { open(entry) },
                     rename: { name in
                       Task { await history.repository.rename(entry.id, to: name) }
-                    }
+                    },
+                    delete: { requestDeletion(entry) }
                   )
                 }
               }
@@ -195,14 +223,20 @@ struct CaptureHistoryWindow: View {
     VStack(spacing: 12) {
       GeometryReader { geometry in
         let url = entry.fileURL(for: item, in: history.repository.root)
+        let makeTempDragFile = { dragFile(entry, item: item) }
         Group {
           if entry.kind == .image {
-            ImageCaptureView(url: url) { dragFile(entry, item: item) }
+            ImageCaptureView(
+              url: url,
+              onDelete: entry.completedAt == nil ? nil : { requestDeletion(entry, item: item) },
+              makeTempDragFile: makeTempDragFile
+            )
           } else {
             VideoCaptureView(
               url: url,
               onFocusChange: { isVideoFocused = $0 },
-              makeTempDragFile: { dragFile(entry, item: item) }
+              onDelete: entry.completedAt == nil ? nil : { requestDeletion(entry, item: item) },
+              makeTempDragFile: makeTempDragFile
             )
           }
         }
@@ -238,6 +272,10 @@ struct CaptureHistoryWindow: View {
             }
           }
           .buttonStyle(.plain)
+          .contextMenu {
+            Button("Delete…", role: .destructive) { requestDeletion(entry, item: candidate) }
+              .disabled(entry.completedAt == nil)
+          }
           .disabled(!candidate.isAvailable)
           .help(candidate.failure ?? candidate.deviceName)
           .accessibilityLabel(candidate.deviceName)
@@ -308,20 +346,19 @@ struct CaptureHistoryWindow: View {
       }
       .sharedBackgroundVisibility(.hidden)
     }
-    if entry == nil {
-      ToolbarSpacer(.flexible, placement: .primaryAction)
-    }
+    ToolbarSpacer(.flexible, placement: .primaryAction)
     ToolbarItemGroup(placement: .primaryAction) {
       if let entry {
         Button(action: saveSelection) { Label("Save As…", systemImage: "square.and.arrow.up") }
           .disabled(item?.isAvailable != true)
           .help("Save As… (⌘S)")
-        Button { confirmsDeletion = true } label: { Label("Delete Capture", systemImage: "trash") }
+        Button { requestDeletion(entry) } label: { Label("Delete Capture", systemImage: "trash") }
           .disabled(entry.completedAt == nil)
           .help("Delete Capture")
+      } else {
+        Button { showsSettings = true } label: { Label("History Storage", systemImage: "slider.horizontal.3") }
+          .help("History Storage")
       }
-      Button { showsSettings = true } label: { Label("History Storage", systemImage: "slider.horizontal.3") }
-        .help("History Storage")
     }
   }
 
@@ -419,11 +456,22 @@ struct CaptureHistoryWindow: View {
     }
   }
 
-  private func deleteSelection() {
-    guard let entry else { return }
-    selectedEntryID = nil
-    selectedItemID = nil
-    Task { await history.repository.delete([entry.id], excludingOwner: protectionID) }
+  private func requestDeletion(_ entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item? = nil) {
+    deletion = Deletion(
+      entryID: entry.id, itemID: item?.id, kind: entry.kind,
+      itemCount: item == nil ? entry.availableItems.count : 1
+    )
+    confirmsDeletion = true
+  }
+
+  private func delete(_ deletion: Deletion) {
+    Task {
+      if let itemID = deletion.itemID {
+        await history.repository.deleteItem(itemID, in: deletion.entryID)
+      } else {
+        await history.repository.delete([deletion.entryID])
+      }
+    }
   }
 
   private func clearError() {
