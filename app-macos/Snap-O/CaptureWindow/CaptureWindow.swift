@@ -154,8 +154,10 @@ struct CaptureWindow: View {
     let entry = captureHistoryEntry
     return CapturePaneTitle(
       entry: entry,
-      deviceTitle: controller.currentCaptureDeviceTitle,
-      fallbackTitle: controller.isLivePreviewActive ? "Live Preview" : controller.isRecording ? "Recording" : "Snap-O"
+      deviceTitle: controller.isLivePreviewActive ? nil : controller.currentCaptureDeviceTitle,
+      fallbackTitle: controller.isLivePreviewActive
+        ? controller.currentCaptureDeviceTitle ?? ""
+        : controller.isRecording ? "Recording" : "Snap-O"
     ) { name in
       guard let entry else { return }
       Task { await history.repository.rename(entry.id, to: name) }
