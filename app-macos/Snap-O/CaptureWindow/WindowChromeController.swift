@@ -29,6 +29,7 @@ enum WindowChromeMetrics {
 struct WindowChromeController: NSViewRepresentable {
   let title: String
   let dividerX: CGFloat?
+  let captureTitle: CapturePaneTitle?
 
   func makeCoordinator() -> Coordinator {
     Coordinator()
@@ -36,7 +37,7 @@ struct WindowChromeController: NSViewRepresentable {
 
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
-    context.coordinator.update(title: title, dividerX: dividerX)
+    context.coordinator.update(title: title, dividerX: dividerX, captureTitle: captureTitle)
     DispatchQueue.main.async {
       context.coordinator.attach(to: view.window)
     }
@@ -44,7 +45,7 @@ struct WindowChromeController: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {
-    context.coordinator.update(title: title, dividerX: dividerX)
+    context.coordinator.update(title: title, dividerX: dividerX, captureTitle: captureTitle)
     context.coordinator.attach(to: nsView.window)
   }
 
@@ -56,12 +57,13 @@ struct WindowChromeController: NSViewRepresentable {
     private var title = ""
     private var dividerX: CGFloat?
 
-    func update(title: String, dividerX: CGFloat?) {
+    func update(title: String, dividerX: CGFloat?, captureTitle: CapturePaneTitle?) {
       self.title = title
       self.dividerX = dividerX
       dividerOverlay.dividerX = dividerX
       titleOverlay.title = title
       titleOverlay.toolLeadingX = dividerX
+      titleOverlay.setCaptureTitle(captureTitle)
     }
 
     func attach(to window: NSWindow?) {
@@ -126,6 +128,42 @@ struct WindowChromeController: NSViewRepresentable {
 
 private final class WindowTitleOverlayView: NSView {
   private static let horizontalPadding: CGFloat = 8
+  private var captureTitleView: NSHostingView<CapturePaneTitle>?
+
+  func setCaptureTitle(_ title: CapturePaneTitle?) {
+    if let title {
+      if let captureTitleView {
+        captureTitleView.rootView = title
+      } else {
+        let view = NSHostingView(rootView: title)
+        view.sizingOptions = [.intrinsicContentSize]
+        // This view sits inside the title bar, outside the content safe area.
+        view.safeAreaRegions = []
+        captureTitleView = view
+        addSubview(view)
+      }
+    } else {
+      captureTitleView?.removeFromSuperview()
+      captureTitleView = nil
+    }
+    needsLayout = true
+    needsDisplay = true
+  }
+
+  override func layout() {
+    super.layout()
+    guard let captureTitleView, let contentView = window?.contentView else { return }
+    let left = overlayX(forContentX: contentView.bounds.minX, contentView: contentView)
+    let right = overlayX(forContentX: toolLeadingX ?? contentView.bounds.maxX, contentView: contentView)
+    let leading = max(left, windowControlsTrailingX) + Self.horizontalPadding
+    let trailing = right - Self.horizontalPadding
+    let center = (left + right) / 2
+    let width = min(ceil(captureTitleView.intrinsicContentSize.width), max(0, trailing - leading))
+    let titleX = max(leading, min(center - width / 2, trailing - width))
+    captureTitleView.frame = NSRect(
+      x: titleX, y: 0, width: width, height: WindowChromeMetrics.titlebarHeight
+    )
+  }
 
   var title = "" {
     didSet {
@@ -135,6 +173,7 @@ private final class WindowTitleOverlayView: NSView {
 
   var toolLeadingX: CGFloat? {
     didSet {
+      needsLayout = true
       needsDisplay = true
     }
   }
@@ -149,7 +188,8 @@ private final class WindowTitleOverlayView: NSView {
 
   override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
-    guard !title.isEmpty,
+    guard captureTitleView == nil || toolLeadingX != nil,
+          !title.isEmpty,
           let contentView = window?.contentView
     else {
       return
@@ -200,7 +240,8 @@ private final class WindowTitleOverlayView: NSView {
   }
 
   override func hitTest(_ point: NSPoint) -> NSView? {
-    nil
+    let hit = super.hitTest(point)
+    return hit === self ? nil : hit
   }
 
   private func overlayX(forContentX contentX: CGFloat, contentView: NSView) -> CGFloat {

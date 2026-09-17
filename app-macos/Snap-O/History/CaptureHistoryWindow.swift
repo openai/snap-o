@@ -26,7 +26,6 @@ struct CaptureHistoryWindow: View {
   let fileStore: FileStore
   @State private var selectedEntryID: UUID?
   @State private var selectedItemID: UUID?
-  @State private var isFocused = false
   @State private var showsSettings = false
   @State private var confirmsDeletion = false
   @State private var errorMessage: String?
@@ -55,38 +54,28 @@ struct CaptureHistoryWindow: View {
         .allowsHitTesting(entry == nil)
         .accessibilityHidden(entry != nil)
       if let entry {
-        if isFocused, let item, item.isAvailable {
-          focusedPreview(entry, item: item)
+        if let item, item.isAvailable {
+          capturePreview(entry, item: item)
+        } else if entry.completedAt == nil {
+          ProgressView("Capturing…")
         } else {
-          groupOverview(entry)
+          ContentUnavailableView {
+            Label("Capture unavailable", systemImage: "exclamationmark.triangle")
+          } description: {
+            ForEach(entry.items) { item in
+              if let failure = item.failure {
+                Text("\(item.deviceName): \(failure)")
+              }
+            }
+          }
         }
       }
     }
     .frame(minWidth: 460, minHeight: 380)
     .background(Color(nsColor: .windowBackgroundColor))
-    .overlayPreferenceValue(CaptureHistoryDropBounds.self) { anchors in
-      GeometryReader { geometry in
-        CaptureHistoryDropTarget(
-          sourceID: draggedMedia?.entryID == entry?.id ? draggedMedia?.itemID : nil,
-          targets: anchors.mapValues { geometry[$0] },
-          updateHint: { if insertion != $0 { insertion = $0 } },
-          performDrop: { destination in
-            guard let source = draggedMedia else { return }
-            draggedMedia = nil
-            insertion = nil
-            Task {
-              await history.repository.moveItem(
-                source.itemID, to: destination.itemID,
-                afterTarget: destination.afterTarget, in: source.entryID
-              )
-            }
-          }
-        )
-      }
-    }
     .onChange(of: draggedMedia?.itemID) { insertion = nil }
-    .navigationTitle("Capture History")
-    .navigationSubtitle(entry.map { $0.capturedAt.formatted(date: .abbreviated, time: .shortened) } ?? "")
+    .navigationTitle(entry?.displayName ?? "Capture History")
+    .toolbar(removing: .title)
     .toolbar { toolbar }
   }
 
@@ -124,7 +113,6 @@ struct CaptureHistoryWindow: View {
         if entry == nil {
           selectedEntryID = nil
           selectedItemID = nil
-          isFocused = false
         }
       }
       .focusedSceneValue(\.captureHistoryActions, actions)
@@ -164,11 +152,15 @@ struct CaptureHistoryWindow: View {
             Section {
               LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 28) {
                 ForEach(history.entries.filter { Calendar.current.isDate($0.capturedAt, inSameDayAs: day) }) { entry in
-                  Button { open(entry) } label: {
-                    CaptureHistoryStack(entry: entry, root: history.repository.root, refreshedAt: timestampsUpdatedAt)
-                  }
-                  .buttonStyle(.plain)
-                  .id(entry.id)
+                  CaptureHistoryStack(
+                    entry: entry,
+                    root: history.repository.root,
+                    refreshedAt: timestampsUpdatedAt,
+                    open: { open(entry) },
+                    rename: { name in
+                      Task { await history.repository.rename(entry.id, to: name) }
+                    }
+                  )
                 }
               }
             } header: {
@@ -191,42 +183,7 @@ struct CaptureHistoryWindow: View {
     return date.formatted(.dateTime.month(.wide).day())
   }
 
-  private func groupOverview(_ entry: CaptureHistoryEntry) -> some View {
-    ScrollView {
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 24)], spacing: 24) {
-        ForEach(entry.orderedItems) { item in
-          VStack(spacing: 10) {
-            Button { focus(item, in: entry) } label: {
-              CaptureHistoryThumbnail(entry: entry, item: item, root: history.repository.root)
-                .frame(height: 280)
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!item.isAvailable)
-            .accessibilityLabel("Open \(item.deviceName)")
-            .modifier(CaptureHistoryItemDrag(
-              entry: entry,
-              item: item,
-              draggedMedia: $draggedMedia,
-              dropPadding: 12,
-              insertion: insertion
-            ) {
-              dragFile(entry, item: item)
-            })
-            Text(item.deviceName).font(.callout)
-            if let failure = item.failure {
-              Text(failure).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            }
-          }
-        }
-      }
-      .animation(.easeOut(duration: 0.1), value: entry.orderedItems.map(\.id))
-      .padding(24)
-    }
-  }
-
-  private func focusedPreview(_ entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item) -> some View {
+  private func capturePreview(_ entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item) -> some View {
     VStack(spacing: 12) {
       GeometryReader { geometry in
         let url = entry.fileURL(for: item, in: history.repository.root)
@@ -242,56 +199,111 @@ struct CaptureHistoryWindow: View {
         .id(item.id)
       }
       Text(item.deviceName).font(.callout).foregroundStyle(.secondary)
-      if entry.items.count > 1 {
-        ScrollView(.horizontal) {
-          HStack(spacing: 16) {
-            ForEach(entry.orderedItems) { candidate in
-              Button { focus(candidate, in: entry) } label: {
-                CaptureHistoryThumbnail(entry: entry, item: candidate, root: history.repository.root)
-                  .frame(width: min(120, 70 * candidate.aspectRatio), height: 70)
-                  .padding(4)
-                  .overlay {
-                    if candidate.id == item.id {
-                      RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2)
-                    }
-                  }
-              }
-              .buttonStyle(.plain)
-              .disabled(!candidate.isAvailable)
-              .help(candidate.failure ?? candidate.deviceName)
-              .accessibilityLabel(candidate.deviceName)
-              .accessibilityAddTraits(candidate.id == item.id ? [.isSelected] : [])
-              .modifier(CaptureHistoryItemDrag(entry: entry, item: candidate, draggedMedia: $draggedMedia, insertion: insertion) {
-                dragFile(entry, item: candidate)
-              })
-            }
-          }
-          .animation(.easeOut(duration: 0.1), value: entry.orderedItems.map(\.id))
-          .padding(4)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .defaultScrollAnchor(.center)
-      }
     }
     .padding(20)
+  }
+
+  private func deviceSelector(_ entry: CaptureHistoryEntry) -> some View {
+    let thumbnailSize: CGFloat = 36
+    let padding: CGFloat = 3
+    let spacing: CGFloat = 8
+    let width = CGFloat(entry.items.count) * (thumbnailSize + 2 * padding + spacing)
+    return ScrollView(.horizontal) {
+      HStack(spacing: spacing) {
+        ForEach(entry.orderedItems) { candidate in
+          Button { select(candidate, in: entry) } label: {
+            CaptureHistoryThumbnail(
+              entry: entry, item: candidate, root: history.repository.root, squareSize: thumbnailSize
+            )
+            .frame(width: thumbnailSize, height: thumbnailSize)
+            .padding(padding)
+            .contentShape(Rectangle())
+            .overlay {
+              if candidate.id == item?.id {
+                RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2)
+              }
+            }
+          }
+          .buttonStyle(.plain)
+          .disabled(!candidate.isAvailable)
+          .help(candidate.failure ?? candidate.deviceName)
+          .accessibilityLabel(candidate.deviceName)
+          .accessibilityAddTraits(candidate.id == item?.id ? [.isSelected] : [])
+          .modifier(CaptureHistoryItemDrag(
+            entry: entry, item: candidate, draggedMedia: $draggedMedia, dropPadding: 4, insertion: insertion
+          ) {
+            dragFile(entry, item: candidate)
+          })
+        }
+      }
+      .animation(.easeOut(duration: 0.1), value: entry.orderedItems.map(\.id))
+      .padding(.horizontal, spacing / 2)
+      .padding(.vertical, 1)
+    }
+    .scrollIndicators(.hidden)
+    .frame(width: min(220, width), height: thumbnailSize + 2 * padding + 2)
+    .defaultScrollAnchor(.center)
+    .overlayPreferenceValue(CaptureHistoryDropBounds.self) { anchors in
+      GeometryReader { geometry in
+        CaptureHistoryDropTarget(
+          sourceID: draggedMedia?.entryID == entry.id ? draggedMedia?.itemID : nil,
+          targets: anchors.mapValues { geometry[$0] },
+          updateHint: { if insertion != $0 { insertion = $0 } },
+          performDrop: { destination in
+            guard let source = draggedMedia else { return }
+            draggedMedia = nil
+            insertion = nil
+            Task {
+              await history.repository.moveItem(
+                source.itemID, to: destination.itemID,
+                afterTarget: destination.afterTarget, in: source.entryID
+              )
+            }
+          }
+        )
+      }
+    }
   }
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     if entry != nil {
       ToolbarItem(placement: .navigation) {
         Button(action: goBack) { Label("Back", systemImage: "chevron.left") }
-          .help(isFocused && (entry?.items.count ?? 0) > 1 ? "Show all devices (Esc)" : "History (Esc)")
+          .help("History (Esc)")
       }
-      ToolbarItemGroup {
+    }
+    ToolbarItem(placement: .navigation) {
+      VStack(alignment: .leading, spacing: 1) {
+        if let entry {
+          CaptureNameButton(entry: entry) { name in
+            Task { await history.repository.rename(entry.id, to: name) }
+          }
+          .font(.headline)
+          Text(entry.capturedAt.formatted(date: .abbreviated, time: .shortened))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        } else {
+          Text("Capture History").font(.headline)
+        }
+      }
+    }
+    .sharedBackgroundVisibility(.hidden)
+    if let entry, entry.items.count > 1 {
+      ToolbarItem(placement: .principal) {
+        deviceSelector(entry)
+      }
+      .sharedBackgroundVisibility(.hidden)
+    }
+    ToolbarItemGroup(placement: .primaryAction) {
+      if let entry {
         Button(action: saveSelection) { Label("Save As…", systemImage: "square.and.arrow.up") }
           .disabled(item?.isAvailable != true)
           .help("Save As… (⌘S)")
         Button { confirmsDeletion = true } label: { Label("Delete Capture", systemImage: "trash") }
-          .disabled(entry?.completedAt == nil)
+          .disabled(entry.completedAt == nil)
           .help("Delete Capture")
       }
-    }
-    ToolbarItem {
       Button { showsSettings = true } label: { Label("History Storage", systemImage: "slider.horizontal.3") }
         .help("History Storage")
     }
@@ -310,20 +322,23 @@ struct CaptureHistoryWindow: View {
 
   private func open(_ entry: CaptureHistoryEntry) {
     draggedMedia = nil
-    selectedEntryID = entry.id
-    selectedItemID = entry.frontItem?.id
-    isFocused = entry.items.count == 1 && entry.frontItem != nil
-    hasKeyboardFocus = true
+    if let item = entry.frontItem {
+      select(item, in: entry)
+    } else {
+      selectedEntryID = entry.id
+      selectedItemID = nil
+      hasKeyboardFocus = true
+    }
   }
 
-  private func focus(_ item: CaptureHistoryEntry.Item, in entry: CaptureHistoryEntry) {
+  private func select(_ item: CaptureHistoryEntry.Item, in entry: CaptureHistoryEntry) {
     guard item.isAvailable else { return }
     guard FileManager.default.fileExists(atPath: entry.fileURL(for: item, in: history.repository.root).path) else {
       errorMessage = "The original file is unavailable."
       return
     }
+    selectedEntryID = entry.id
     selectedItemID = item.id
-    isFocused = true
     hasKeyboardFocus = true
   }
 
@@ -332,19 +347,14 @@ struct CaptureHistoryWindow: View {
     let items = entry.availableItems
     guard !items.isEmpty else { return .ignored }
     let index = items.firstIndex { $0.id == selectedItemID } ?? 0
-    focus(items[(index + offset + items.count) % items.count], in: entry)
+    select(items[(index + offset + items.count) % items.count], in: entry)
     return .handled
   }
 
   private func goBack() {
     draggedMedia = nil
-    if isFocused, (entry?.items.count ?? 0) > 1 {
-      isFocused = false
-    } else {
-      selectedEntryID = nil
-      selectedItemID = nil
-      isFocused = false
-    }
+    selectedEntryID = nil
+    selectedItemID = nil
     hasKeyboardFocus = true
   }
 
@@ -395,7 +405,6 @@ struct CaptureHistoryWindow: View {
     guard let entry else { return }
     selectedEntryID = nil
     selectedItemID = nil
-    isFocused = false
     Task { await history.repository.delete([entry.id], excludingOwner: protectionID) }
   }
 

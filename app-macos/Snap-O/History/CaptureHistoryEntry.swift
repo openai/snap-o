@@ -43,6 +43,11 @@ struct CaptureHistoryEntry: Codable, Identifiable, Equatable {
   var completedAt: Date?
   var items: [Item]
   var capturePaneSelectionID: UUID?
+  var name: String?
+
+  var displayName: String {
+    name ?? "Untitled"
+  }
 
   var byteCount: Int64 {
     items.reduce(0) { $0 + $1.byteCount }

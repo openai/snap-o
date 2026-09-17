@@ -144,9 +144,30 @@ struct CaptureWindow: View {
       )
   }
 
+  private var captureHistoryEntry: CaptureHistoryEntry? {
+    guard !controller.isLivePreviewActive, !controller.isRecording,
+          let captureID = controller.currentCapture?.id else { return nil }
+    return history.entries.first { $0.items.contains { $0.captureID == captureID } }
+  }
+
+  private var capturePaneTitle: CapturePaneTitle {
+    let entry = captureHistoryEntry
+    return CapturePaneTitle(
+      entry: entry,
+      deviceTitle: controller.currentCaptureDeviceTitle,
+      fallbackTitle: controller.isLivePreviewActive ? "Live Preview" : controller.isRecording ? "Recording" : "Snap-O"
+    ) { name in
+      guard let entry else { return }
+      Task { await history.repository.rename(entry.id, to: name) }
+    }
+  }
+
   private func navigationTitle(for layout: WorkspaceLayout) -> String {
     switch layout {
     case .capture:
+      if let entry = captureHistoryEntry {
+        return [entry.displayName, controller.currentCaptureDeviceTitle].compactMap(\.self).joined(separator: " — ")
+      }
       return controller.navigationTitle
     case .tool, .both:
       guard let model = toolSession.model,
@@ -236,7 +257,8 @@ struct CaptureWindow: View {
       .background(
         WindowChromeController(
           title: navigationTitle(for: displayedLayout),
-          dividerX: dividerX
+          dividerX: dividerX,
+          captureTitle: displayedLayout.showsCapture ? capturePaneTitle : nil
         )
         .frame(width: 0, height: 0)
       )

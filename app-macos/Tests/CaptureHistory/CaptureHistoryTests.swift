@@ -21,6 +21,7 @@ private let secondDevice = Device(
 @main
 struct CaptureHistoryTests {
   static func main() async throws {
+    try await naming()
     try await persistenceAndSelection()
     try await reordering()
     try await rememberedDisplayOrder()
@@ -142,6 +143,46 @@ struct CaptureHistoryTests {
     await reopened.delete([id])
     precondition(FileManager.default.fileExists(atPath: export.path))
     precondition(!FileManager.default.fileExists(atPath: storedA.media.url!.path))
+  }
+
+  static func naming() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let repository = CaptureHistoryRepository(root: root.appendingPathComponent("history"))
+    let id = await repository.begin(kind: .image, devices: [firstDevice, secondDevice])!
+    await repository.rename(id, to: "  Login flow  ")
+    let first = try await repository.record(capture(device: firstDevice, in: root), in: id)
+    _ = try await repository.record(capture(device: secondDevice, in: root), in: id)
+    await repository.finish(id)
+    await repository.recordCapturePaneSelection(first.id)
+    let original = await repository.currentSnapshot().entries[0]
+    precondition(original.displayName == "Login flow", "Completing a capture preserves its name")
+
+    let reopened = CaptureHistoryRepository(root: repository.root)
+    let saved = await reopened.currentSnapshot().entries[0]
+    precondition(saved == original, "Names and device metadata survive reopening")
+    let updates = await reopened.updates()
+    var iterator = updates.makeAsyncIterator()
+    _ = await iterator.next()
+    await reopened.rename(id, to: "Checkout")
+    let renamed = await iterator.next()!.entries[0]
+    precondition(renamed.displayName == "Checkout", "Renaming publishes to other windows")
+    precondition(renamed.items == saved.items && renamed.capturedAt == saved.capturedAt)
+    for item in renamed.items {
+      precondition(FileManager.default.fileExists(atPath: renamed.fileURL(for: item, in: repository.root).path))
+    }
+    await reopened.rename(id, to: " \n ")
+    let cleared = await CaptureHistoryRepository(root: repository.root).currentSnapshot().entries[0]
+    precondition(cleared.name == nil && cleared.displayName == "Untitled")
+
+    var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as! [String: Any]
+    legacy.removeValue(forKey: "name")
+    let decoded = try JSONDecoder().decode(CaptureHistoryEntry.self, from: JSONSerialization.data(withJSONObject: legacy))
+    precondition(decoded.name == nil && decoded.displayName == "Untitled", "Existing history needs no migration")
+    precondition(decoded.items == saved.items)
+    let nextID = await reopened.begin(kind: .video, devices: [firstDevice])!
+    let next = await reopened.currentSnapshot().entries.first { $0.id == nextID }!
+    precondition(next.displayName == "Untitled", "A new capture does not inherit the last name")
   }
 
   static func reordering() async throws {
