@@ -84,8 +84,9 @@ struct AVPlayerLooper {
   let templateItem: AVPlayerItem
 }
 
-struct VideoPlayer: View {
+struct CaptureVideoPlayer: View {
   let player: AVQueuePlayer
+  let onFocus: () -> Void
   var body: some View {
     Color.clear
   }
