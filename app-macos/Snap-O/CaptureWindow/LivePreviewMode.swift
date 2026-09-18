@@ -57,6 +57,8 @@ final class LivePreviewMode {
   }
 
   func updateDevices(_ devices: [Device]) async {
+    let connectedIDs = Set(devices.map(\.id))
+    connections = connections.filter { connectedIDs.contains($0.key) }
     await manager?.updateDevices(devices)
   }
 

@@ -149,6 +149,14 @@ struct ADBDiscoveryTimeoutTests {
     #expect(try connection.readLine() == "record")
   }
 
+  @Test("boot readiness requires Android's completed signal", arguments: ["", "0\n", "1\r\n", "true\n"])
+  func readsBootReadiness(output: String) async throws {
+    let server = FakeDiscoveryADB(stall: .output, bootOutput: output)
+    defer { server.close() }
+    let ready = try await server.client().isBootComplete(deviceID: "phone")
+    #expect(ready == (output == "1\r\n"))
+  }
+
   @Test("device properties and process metadata have bounded requests")
   func boundsMetadata() async throws {
     let server = FakeDiscoveryADB(stall: .output)
@@ -160,10 +168,14 @@ struct ADBDiscoveryTimeoutTests {
     } catch ADBError.requestTimedOut {
       // A device timeout must not trigger the ADB server retry path.
     }
+    do {
+      _ = try await adb.isBootComplete(deviceID: "stalled")
+      Issue.record("Expected boot readiness request to time out")
+    } catch ADBError.requestTimedOut {}
     let reference = ToolServerReference(deviceId: "stalled", socketName: "snapo_network_42")
     #expect(await DeviceDiscovery.processName(deviceID: reference.deviceId, using: adb, pid: 42) == nil)
     #expect(await DeviceDiscovery.androidUserID(deviceID: reference.deviceId, using: adb, pid: 42) == nil)
-    #expect(server.connectionCount == 3)
+    #expect(server.connectionCount == 4)
   }
 
   @Test("process metadata uses the explicit PID without a tool socket")
@@ -271,6 +283,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   }
 
   private let legacyReply: LegacyReply?
+  private let bootOutput: String
   let requests = AsyncStream<String>.makeStream()
   private let stall: Stall
   private let workers = DispatchGroup()
@@ -278,9 +291,10 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private var peers: [ADBSocketConnection] = []
   private var finishedLegacyStream = false
 
-  init(stall: Stall, legacyReply: LegacyReply? = nil) {
+  init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n") {
     self.stall = stall
     self.legacyReply = legacyReply
+    self.bootOutput = bootOutput
   }
 
   var connectionCount: Int {
@@ -313,7 +327,7 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
     _ = setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
     lock.withLock { peers.append(peer) }
     workers.enter()
-    DispatchQueue.global().async { [stall, workers, requests, legacyReply] in
+    DispatchQueue.global().async { [stall, workers, requests, legacyReply, bootOutput] in
       defer { workers.leave() }
       do {
         try peer.withRequestTimeout(.seconds(2)) {
@@ -368,6 +382,8 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
             return
           }
           switch command {
+          case "shell:getprop sys.boot_completed":
+            Self.send(bootOutput, to: descriptor)
           case "shell:" + ToolDiscovery.snapshotCommand:
             Self.send(
               "1: 00000002 00000000 00010000 0001 01 101 @snapo_network_42\n2: 00000002 00000000 00010000 0001 01 101 @snapo_tweaks_42\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n",

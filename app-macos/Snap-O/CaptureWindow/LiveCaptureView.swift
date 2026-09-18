@@ -37,6 +37,8 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
             .disabled(lifecycle.isConnecting)
         }
         .padding(16)
+      } else if lifecycle.isConnecting {
+        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: "Connecting to device")
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -147,6 +147,7 @@ actor ADBService {
   private var displayGates: [String: TestGate]
   private var displayFailures: [String: Int]
   private var densityFailures: [String: Int]
+  private var bootingDeviceIDs: Set<String> = []
   private(set) var displayRequests: [String] = []
   private let pointerPreparationGate: TestGate?
   private(set) var pointerPreparations: [String] = []
@@ -167,6 +168,14 @@ actor ADBService {
 
   func exec() -> ADBService {
     self
+  }
+
+  func isBootComplete(deviceID: String) throws -> Bool {
+    !bootingDeviceIDs.contains(deviceID)
+  }
+
+  func setBooting(_ booting: Bool, deviceID: String) {
+    if booting { bootingDeviceIDs.insert(deviceID) } else { bootingDeviceIDs.remove(deviceID) }
   }
 
   func displayDensity(deviceID: String) throws -> Int {

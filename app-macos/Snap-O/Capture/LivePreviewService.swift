@@ -42,6 +42,8 @@ actor LivePreviewService {
     pendingOperationIDs.insert(operationID)
     defer { pendingOperationIDs.remove(operationID) }
 
+    try await waitUntilBootComplete(for: deviceID)
+
     let lease = try await coordinator.acquire(
       deviceIDs: [deviceID],
       for: .livePreview
@@ -108,6 +110,17 @@ actor LivePreviewService {
     let task = Task { await performShutdown() }
     shutdownTask = task
     await task.value
+  }
+
+  private func waitUntilBootComplete(for deviceID: String) async throws {
+    let exec = await adb.exec()
+    // ADB and display metadata can be available before Android can sustain a preview stream.
+    while true {
+      try Task.checkCancellation()
+      guard !isShuttingDown else { throw CaptureCoordinationError.closed }
+      if try await exec.isBootComplete(deviceID: deviceID) { break }
+      try await Task.sleep(for: .seconds(1))
+    }
   }
 
   private func stop(_ operation: Operation) async -> Error? {

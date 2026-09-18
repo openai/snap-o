@@ -311,6 +311,7 @@ final class LivePreviewManager {
         group.addTask {
           do {
             let exec = await adbService.exec()
+            guard try await exec.isBootComplete(deviceID: device.id) else { return nil }
             async let densityTask = exec.displayDensity(deviceID: device.id)
             let sizeString = try await exec.displaySize(deviceID: device.id)
             guard let size = parseDisplaySize(sizeString) else { return nil }

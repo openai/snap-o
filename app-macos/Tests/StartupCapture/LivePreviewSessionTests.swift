@@ -52,6 +52,8 @@ actor ADBService {
   private let failsSettingRead: Bool
   private let failsSettingWrite: Bool
   private var showsTouches: Bool
+  private var bootComplete: Bool
+  private(set) var bootQueries = 0
   private(set) var settingsReadStarted = false
   private(set) var writes: [Bool] = []
   private(set) var streamStarts = 0
@@ -59,12 +61,14 @@ actor ADBService {
 
   init(
     showsTouches: Bool = false,
+    bootComplete: Bool = true,
     settingsGate: TestGate? = nil,
     failsToStart: Bool = false,
     failsSettingRead: Bool = false,
     failsSettingWrite: Bool = false
   ) {
     self.showsTouches = showsTouches
+    self.bootComplete = bootComplete
     self.settingsGate = settingsGate
     self.failsToStart = failsToStart
     self.failsSettingRead = failsSettingRead
@@ -73,6 +77,15 @@ actor ADBService {
 
   func exec() -> ADBService {
     self
+  }
+
+  func isBootComplete(deviceID _: String) throws -> Bool {
+    bootQueries += 1
+    return bootComplete
+  }
+
+  func finishBoot() {
+    bootComplete = true
   }
 
   func displayDensity(deviceID _: String) throws -> Int {
@@ -179,7 +192,46 @@ struct LivePreviewSessionTests {
     try await streamCompletionFlushesOnce()
     await showTouchesRestoration()
     try await startupRestoresSettings()
+    try await startupWaitsForBoot()
+    try await bootWaitCancels(shutdown: false)
+    try await bootWaitCancels(shutdown: true)
     print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
+  }
+
+  static func startupWaitsForBoot() async throws {
+    let adb = ADBService(bootComplete: false)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
+    await eventually { await adb.bootQueries > 0 }
+    let earlyStarts = await adb.streamStarts
+    let earlySettingsRead = await adb.settingsReadStarted
+    precondition(earlyStarts == 0 && !earlySettingsRead, "Boot wait must precede streams and settings changes")
+    await adb.finishBoot()
+    let handle = try await task.value
+    let starts = await adb.streamStarts
+    precondition(starts == 1)
+    _ = await service.stop(handle)
+  }
+
+  static func bootWaitCancels(shutdown: Bool) async throws {
+    let adb = ADBService(bootComplete: false)
+    let coordinator = CaptureCoordinator()
+    let service = LivePreviewService(adb: adb, coordinator: coordinator)
+    let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
+    await eventually { await adb.bootQueries > 0 }
+    if shutdown { await service.shutdown() } else { task.cancel() }
+    do {
+      _ = try await task.value
+      fatalError("Boot wait should have ended without starting a stream")
+    } catch is CancellationError {
+      precondition(!shutdown)
+    } catch CaptureCoordinationError.closed {
+      precondition(shutdown)
+    }
+    let starts = await adb.streamStarts
+    precondition(starts == 0)
+    let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .livePreview)
+    await coordinator.release(lease)
   }
 
   static func streamCompletionFlushesOnce() async throws {

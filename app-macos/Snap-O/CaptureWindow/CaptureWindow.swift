@@ -485,7 +485,7 @@ struct CaptureWindow: View {
           livePreviewHost: controller
         )
       } else if controller.isLivePreviewActive, controller.hasDevices {
-        ProgressView("Connecting to device")
+        WaitingForDeviceView(isDeviceListInitialized: true, deviceMessage: "Connecting to device")
       } else if controller.isDeviceListInitialized {
         IdleOverlayView(
           hasDevices: controller.hasDevices,

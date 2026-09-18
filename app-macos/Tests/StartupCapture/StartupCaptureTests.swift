@@ -24,6 +24,7 @@ struct StartupCaptureTests {
     await displayRetryCancellation(stops: false)
     await displayRetryCancellation(stops: true)
     try await deviceBootsAfterWindowOpens()
+    await discoveryWaitsForBootComplete()
     await stopDuringRendererClaim()
     await disconnectWaitsForCleanup()
     await commandDuringAutomaticPreview(recordsVideo: true)
@@ -40,7 +41,7 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, deletesAll: true)
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
-    print("Startup capture tests passed (31 cases)")
+    print("Startup capture tests passed (32 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -302,6 +303,26 @@ struct StartupCaptureTests {
     await manager.stop()
   }
 
+  static func discoveryWaitsForBootComplete() async {
+    let retryGate = TestGate()
+    let adb = ADBService()
+    await adb.setBooting(true, deviceID: first.id)
+    var displayed: [String] = []
+    let manager = LivePreviewManager(
+      livePreviewService: LivePreviewService(), adbService: adb, options: options,
+      displayRetrySleep: { _ in await retryGate.wait() },
+      mediaDidChange: { displayed = $0.map(\.device.id) }
+    )
+    await manager.start(with: [first, second])
+    precondition(displayed == [second.id])
+    let requestsBeforeBoot = await adb.displayRequests
+    precondition(requestsBeforeBoot == [second.id], "Booting devices must not receive display queries")
+    await adb.setBooting(false, deviceID: first.id)
+    await retryGate.open()
+    await eventually { displayed == [first.id, second.id] }
+    await manager.stop()
+  }
+
   static func deviceBootsAfterWindowOpens() async throws {
     AppSettings.shared.startupCaptureMode = .livePreview
     let tracker = DeviceTracker(devices: [])
@@ -343,8 +364,9 @@ struct StartupCaptureTests {
     var displayed: [String] = []
     let manager = LivePreviewManager(
       livePreviewService: LivePreviewService(), adbService: adb, options: options,
-      displayRetrySleep: { _ in await retryGate.wait() }
-    ) { displayed = $0.map(\.device.id) }
+      displayRetrySleep: { _ in await retryGate.wait() },
+      mediaDidChange: { displayed = $0.map(\.device.id) }
+    )
     await manager.start(with: [first])
     await adb.setDisplayGate(queryGate, for: first.id)
     await retryGate.open()
