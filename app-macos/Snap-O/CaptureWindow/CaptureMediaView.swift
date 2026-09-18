@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct CaptureMediaView<Host: LivePreviewHosting>: View {
+  @Environment(CaptureHistory.self)
+  private var history
   let fileStore: FileStore
   let livePreviewHost: Host
   let capture: CaptureMedia
@@ -11,7 +13,10 @@ struct CaptureMediaView<Host: LivePreviewHosting>: View {
         switch capture.media {
         case .image(let url, _):
           ImageCaptureView(
-            url: url
+            url: url,
+            exportFilename: FileStore.exportFilename(
+              capturedAt: capture.media.capturedAt, kind: .image, name: history.name(for: capture.id)
+            )
           ) { makeTempDragFile() }
 
         case .video(let url, _):
@@ -33,13 +38,12 @@ struct CaptureMediaView<Host: LivePreviewHosting>: View {
     guard let kind = capture.media.saveKind, let url = capture.media.url else { return nil }
 
     do {
-      let fileURL = fileStore.makeDragDestination(
+      let fileURL = try fileStore.makeUniqueDragDestination(
         capturedAt: capture.media.capturedAt,
-        kind: kind
+        kind: kind,
+        name: history.name(for: capture.id)
       )
-      if !FileManager.default.fileExists(atPath: fileURL.path) {
-        try FileManager.default.copyItem(at: url, to: fileURL)
-      }
+      try FileManager.default.copyItem(at: url, to: fileURL)
       return fileURL
     } catch {
       return nil

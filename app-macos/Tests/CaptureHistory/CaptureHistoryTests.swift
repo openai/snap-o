@@ -22,6 +22,7 @@ private let secondDevice = Device(
 struct CaptureHistoryTests {
   static func main() async throws {
     try await naming()
+    try exportFilenames()
     try await persistenceAndSelection()
     try await mediaDeletion()
     try await mediaDeletionWithFailures()
@@ -260,12 +261,14 @@ struct CaptureHistoryTests {
     let reopened = CaptureHistoryRepository(root: repository.root)
     let saved = await reopened.currentSnapshot().entries[0]
     precondition(saved == original, "Names and device metadata survive reopening")
+    precondition(FileStore.exportFilename(capturedAt: saved.capturedAt, kind: .image, name: saved.name) == "Login flow.png")
     let updates = await reopened.updates()
     var iterator = updates.makeAsyncIterator()
     _ = await iterator.next()
     await reopened.rename(id, to: "Checkout")
     let renamed = await iterator.next()!.entries[0]
     precondition(renamed.displayName == "Checkout", "Renaming publishes to other windows")
+    precondition(FileStore.exportFilename(capturedAt: renamed.capturedAt, kind: .image, name: renamed.name) == "Checkout.png")
     precondition(renamed.items == saved.items && renamed.capturedAt == saved.capturedAt)
     for item in renamed.items {
       precondition(FileManager.default.fileExists(atPath: renamed.fileURL(for: item, in: repository.root).path))
@@ -282,6 +285,41 @@ struct CaptureHistoryTests {
     let nextID = await reopened.begin(kind: .video, devices: [firstDevice])!
     let next = await reopened.currentSnapshot().entries.first { $0.id == nextID }!
     precondition(next.displayName == "Untitled", "A new capture does not inherit the last name")
+  }
+
+  static func exportFilenames() throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = FileStore(baseDir: root.appendingPathComponent("exports"))
+    let date = Date(timeIntervalSince1970: 1_000_000)
+    for kind: MediaSaveKind in [.image, .video] {
+      let suffix = ".\(kind.fileExtension)"
+      let fallback = store.makeDragDestination(capturedAt: date, kind: kind).lastPathComponent
+      for name: String? in [nil, "", " \n ", ".."] {
+        precondition(FileStore.exportFilename(capturedAt: date, kind: kind, name: name) == fallback)
+      }
+      for (name, expected) in [
+        ("  Login flow  ", "Login flow"),
+        ("Checkout\(suffix.uppercased())", "Checkout"),
+        ("Écran 📱", "Écran 📱"),
+        ("Login/Step:1\nDone", "Login-Step-1-Done")
+      ] {
+        precondition(FileStore.exportFilename(capturedAt: date, kind: kind, name: name) == expected + suffix)
+      }
+      let first = try store.makeUniqueDragDestination(capturedAt: date, kind: kind, name: "Login flow")
+      let second = try store.makeUniqueDragDestination(capturedAt: date, kind: kind, name: "Login flow")
+      precondition(first != second && first.lastPathComponent == "Login flow" + suffix)
+      precondition(second.lastPathComponent == first.lastPathComponent)
+      try Data([1]).write(to: first)
+      try Data([2]).write(to: second)
+      let original = try Data(contentsOf: first)
+      precondition(original == Data([1]), "Same-named exports must retain their own media")
+      let longName = try store.makeUniqueDragDestination(
+        capturedAt: date, kind: kind, name: String(repeating: "📱", count: 100)
+      )
+      precondition(longName.lastPathComponent.utf8.count <= 255)
+      try Data([3]).write(to: longName)
+    }
   }
 
   static func reordering() async throws {

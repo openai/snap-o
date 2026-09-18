@@ -16,6 +16,7 @@ struct SnapOCommands: Commands {
   @FocusedValue(\.captureHistoryActions)
   var historyActions: CaptureHistoryActions?
 
+  let history: CaptureHistory
   let settings: AppSettings
   let updaterController: SPUStandardUpdaterController
 
@@ -79,14 +80,16 @@ struct SnapOCommands: Commands {
           return
         }
         guard
-          let media = captureController?.currentCapture?.media,
-          let url = media.url,
-          let saveKind = media.saveKind
+          let capture = captureController?.currentCapture,
+          let url = capture.media.url,
+          let saveKind = capture.media.saveKind
         else { return }
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
         savePanel.title = "Save As"
-        savePanel.nameFieldStringValue = url.lastPathComponent
+        savePanel.nameFieldStringValue = FileStore.exportFilename(
+          capturedAt: capture.media.capturedAt, kind: saveKind, name: history.name(for: capture.id)
+        )
         savePanel.directoryURL = SaveLocation.defaultDirectory(for: saveKind)
 
         if savePanel.runModal() == .OK, let dest = savePanel.url {

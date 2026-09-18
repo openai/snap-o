@@ -47,6 +47,7 @@ struct SnapOApp: App {
     .handlesExternalEvents(matching: Set(["record", "capture", "livepreview"]))
     .commands {
       SnapOCommands(
+        history: runtime.captureHistory,
         settings: settings,
         updaterController: updateCoordinator.updaterController
       )

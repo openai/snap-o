@@ -21,6 +21,10 @@ final class CaptureHistory {
     entries.reduce(0) { $0 + $1.byteCount }
   }
 
+  func name(for captureID: UUID) -> String? {
+    entries.first { $0.items.contains { $0.captureID == captureID } }?.name
+  }
+
   func start() {
     guard observationTask == nil else { return }
     let repository = repository

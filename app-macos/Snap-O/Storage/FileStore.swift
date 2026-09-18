@@ -45,8 +45,25 @@ final class FileStore: Sendable {
     makeDestination(prefix: "Snap-O", date: capturedAt, kind: kind)
   }
 
-  func makeUniqueDragDestination(capturedAt: Date, kind: MediaSaveKind) throws -> URL {
-    let filename = makeDragDestination(capturedAt: capturedAt, kind: kind).lastPathComponent
+  static func exportFilename(capturedAt: Date, kind: MediaSaveKind, name: String? = nil) -> String {
+    let invalid = CharacterSet.controlCharacters.union(CharacterSet(charactersIn: "/:"))
+    let trimmedName = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    var basename = String(trimmedName.unicodeScalars.map { invalid.contains($0) ? "-" : Character($0) })
+    let suffix = ".\(kind.fileExtension)"
+    if basename.lowercased().hasSuffix(suffix) {
+      basename.removeLast(suffix.count)
+    }
+    basename = basename.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+    // Leave room for the extension within the filesystem's 255-byte filename limit.
+    while basename.utf8.count > 240 {
+      basename.removeLast()
+    }
+    if basename.isEmpty { basename = "Snap-O \(timestamp(from: capturedAt))" }
+    return basename + suffix
+  }
+
+  func makeUniqueDragDestination(capturedAt: Date, kind: MediaSaveKind, name: String? = nil) throws -> URL {
+    let filename = Self.exportFilename(capturedAt: capturedAt, kind: kind, name: name)
     let directory = baseDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appendingPathComponent(filename)
