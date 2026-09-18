@@ -154,7 +154,9 @@ struct CaptureWindow: View {
     return history.entries.first { $0.items.contains { $0.captureID == captureID } }
   }
 
-  private var capturePaneTitle: CapturePaneTitle {
+  private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
+    guard layout.showsCapture else { return nil }
+    if layout.showsTool, controller.currentCapture == nil, !controller.isRecording { return nil }
     let entry = captureHistoryEntry
     return CapturePaneTitle(
       entry: entry,
@@ -264,7 +266,7 @@ struct CaptureWindow: View {
         WindowChromeController(
           title: navigationTitle(for: displayedLayout),
           dividerX: dividerX,
-          captureTitle: displayedLayout.showsCapture ? capturePaneTitle : nil
+          captureTitle: capturePaneTitle(for: displayedLayout)
         )
         .frame(width: 0, height: 0)
       )
