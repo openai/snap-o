@@ -88,24 +88,26 @@ final class CommandDiagnostics {
   func record(_ reason: String) {
     recordSequence += 1
     let sequence = recordSequence
+    let sessionID = session
     let now = ProcessInfo.processInfo.systemUptime
     let recent = history.drain()
     if recent.droppedCount > 0 {
       SnapOLog.commands.notice(
-        "session=\(self.session, privacy: .public) event=\(sequence) older-context-dropped=\(recent.droppedCount)"
+        "session=\(sessionID, privacy: .public) event=\(sequence) older-context-dropped=\(recent.droppedCount)"
       )
     }
     for entry in recent.entries {
       let age = Int(max(0, now - entry.uptime) * 1000)
       SnapOLog.commands.notice(
-        "session=\(self.session, privacy: .public) event=\(sequence) context-age-ms=\(age) \(entry.message, privacy: .public)"
+        "session=\(sessionID, privacy: .public) event=\(sequence) context-age-ms=\(age) \(entry.message, privacy: .public)"
       )
     }
+    let focus = focusState()
     // Persist in release builds. Split context to stay below unified logging's per-string limit.
-    SnapOLog.commands.notice("session=\(self.session, privacy: .public) event=\(sequence) \(reason, privacy: .public)")
-    SnapOLog.commands.notice("session=\(self.session, privacy: .public) event=\(sequence) focus \(self.focusState(), privacy: .public)")
+    SnapOLog.commands.notice("session=\(sessionID, privacy: .public) event=\(sequence) \(reason, privacy: .public)")
+    SnapOLog.commands.notice("session=\(sessionID, privacy: .public) event=\(sequence) focus \(focus, privacy: .public)")
     SnapOLog.commands.notice(
-      "session=\(self.session, privacy: .public) event=\(sequence) menu \(Self.menuState(NSApp.mainMenu), privacy: .public)"
+      "session=\(sessionID, privacy: .public) event=\(sequence) menu \(Self.menuState(NSApp.mainMenu), privacy: .public)"
     )
   }
 
@@ -118,7 +120,7 @@ final class CommandDiagnostics {
     return event.isARepeat
   }
 
-  // AppKit sends menu actions on the main thread.
+  /// AppKit sends menu actions on the main thread.
   @objc
   private func menuActionSent(_ notification: Notification) {
     guard !Self.isRepeatingKeyEvent,
@@ -225,7 +227,7 @@ final class CommandDiagnostics {
   }
 }
 
-// Focus changes stay in memory until a relevant command needs their context.
+/// Focus changes stay in memory until a relevant command needs their context.
 struct CommandDiagnosticHistory {
   struct Entry {
     let message: String
