@@ -20,6 +20,8 @@ actor LivePreviewService {
 
   private let adb: ADBService
   private let coordinator: CaptureCoordinator
+  private let bootRetrySleep: @Sendable (Duration) async throws -> Void
+  private var bootWaitTasks: [UUID: Task<Void, Error>] = [:]
 
   private var operations: [UUID: Operation] = [:]
   private var pendingOperationIDs: Set<UUID> = []
@@ -27,9 +29,14 @@ actor LivePreviewService {
   private var isShuttingDown = false
   private var shutdownTask: Task<Void, Never>?
 
-  init(adb: ADBService, coordinator: CaptureCoordinator) {
+  init(
+    adb: ADBService,
+    coordinator: CaptureCoordinator,
+    bootRetrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+  ) {
     self.adb = adb
     self.coordinator = coordinator
+    self.bootRetrySleep = bootRetrySleep
   }
 
   func start(
@@ -41,6 +48,8 @@ actor LivePreviewService {
     let operationID = UUID()
     pendingOperationIDs.insert(operationID)
     defer { pendingOperationIDs.remove(operationID) }
+
+    try await waitUntilBootComplete(for: deviceID)
 
     let lease = try await coordinator.acquire(
       deviceIDs: [deviceID],
@@ -105,9 +114,41 @@ actor LivePreviewService {
     }
 
     isShuttingDown = true
+    for task in bootWaitTasks.values {
+      task.cancel()
+    }
     let task = Task { await performShutdown() }
     shutdownTask = task
     await task.value
+  }
+
+  private func waitUntilBootComplete(for deviceID: String) async throws {
+    guard !isShuttingDown else { throw CaptureCoordinationError.closed }
+    let id = UUID()
+    // Keep discovery cancellable during both ADB requests and retry delays.
+    let task = Task { [adb, sleep = bootRetrySleep] in
+      let exec = await adb.exec()
+      var delay = Duration.seconds(1)
+      while true {
+        try Task.checkCancellation()
+        do {
+          if try await exec.isBootComplete(deviceID: deviceID) { return }
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch {
+          // ADB can reject commands or time out while Android is booting.
+        }
+        try await sleep(delay)
+        delay = min(delay * 2, .seconds(10))
+      }
+    }
+    bootWaitTasks[id] = task
+    defer { bootWaitTasks.removeValue(forKey: id) }
+    try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   private func stop(_ operation: Operation) async -> Error? {

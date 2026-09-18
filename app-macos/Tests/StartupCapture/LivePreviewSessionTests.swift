@@ -46,12 +46,25 @@ final class ScreenStreamSession: @unchecked Sendable {
   }
 }
 
+actor RetryDelays {
+  private(set) var values: [Duration] = []
+
+  func append(_ delay: Duration) -> Int {
+    values.append(delay)
+    return values.count
+  }
+}
+
 actor ADBService {
   private let settingsGate: TestGate?
   private let failsToStart: Bool
   private let failsSettingRead: Bool
   private let failsSettingWrite: Bool
   private var showsTouches: Bool
+  private var bootComplete: Bool
+  private var bootFailures: Int
+  private let blocksBootQuery: Bool
+  private(set) var bootQueries = 0
   private(set) var settingsReadStarted = false
   private(set) var writes: [Bool] = []
   private(set) var streamStarts = 0
@@ -59,12 +72,18 @@ actor ADBService {
 
   init(
     showsTouches: Bool = false,
+    bootComplete: Bool = true,
+    bootFailures: Int = 0,
+    blocksBootQuery: Bool = false,
     settingsGate: TestGate? = nil,
     failsToStart: Bool = false,
     failsSettingRead: Bool = false,
     failsSettingWrite: Bool = false
   ) {
     self.showsTouches = showsTouches
+    self.bootComplete = bootComplete
+    self.bootFailures = bootFailures
+    self.blocksBootQuery = blocksBootQuery
     self.settingsGate = settingsGate
     self.failsToStart = failsToStart
     self.failsSettingRead = failsSettingRead
@@ -73,6 +92,20 @@ actor ADBService {
 
   func exec() -> ADBService {
     self
+  }
+
+  func isBootComplete(deviceID _: String) async throws -> Bool {
+    bootQueries += 1
+    if blocksBootQuery { try await Task.sleep(for: .seconds(60)) }
+    if bootFailures > 0 {
+      bootFailures -= 1
+      throw TestError.expected
+    }
+    return bootComplete
+  }
+
+  func finishBoot() {
+    bootComplete = true
   }
 
   func displayDensity(deviceID _: String) throws -> Int {
@@ -179,7 +212,90 @@ struct LivePreviewSessionTests {
     try await streamCompletionFlushesOnce()
     await showTouchesRestoration()
     try await startupRestoresSettings()
+    try await startupWaitsForBoot()
+    try await readyDeviceDoesNotWait()
+    try await bootQueriesRetryWithBackoff()
+    for shutdown in [false, true] {
+      try await bootWaitCancels(shutdown: shutdown, blocksQuery: false)
+      try await bootWaitCancels(shutdown: shutdown, blocksQuery: true)
+    }
     print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
+  }
+
+  static func startupWaitsForBoot() async throws {
+    let adb = ADBService(bootComplete: false)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
+    await eventually { await adb.bootQueries > 0 }
+    let earlyStarts = await adb.streamStarts
+    let earlySettingsRead = await adb.settingsReadStarted
+    precondition(earlyStarts == 0 && !earlySettingsRead, "Boot wait must precede streams and settings changes")
+    await adb.finishBoot()
+    let handle = try await task.value
+    let starts = await adb.streamStarts
+    precondition(starts == 1)
+    _ = await service.stop(handle)
+  }
+
+  static func readyDeviceDoesNotWait() async throws {
+    let adb = ADBService()
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator()) { _ in
+      fatalError("A ready device must not wait before connecting")
+    }
+    let handle = try await service.start(for: "ready", options: LivePreviewOptions(showsTouches: false))
+    let queries = await adb.bootQueries
+    precondition(queries == 1)
+    _ = await service.stop(handle)
+  }
+
+  static func bootQueriesRetryWithBackoff() async throws {
+    let adb = ADBService(bootComplete: false, bootFailures: 2)
+    let delays = RetryDelays()
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator()) { delay in
+      if await delays.append(delay) == 6 { await adb.finishBoot() }
+    }
+    let handle = try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: false))
+    let observedDelays = await delays.values
+    precondition(observedDelays == [1, 2, 4, 8, 10, 10].map { .seconds($0) })
+    let queries = await adb.bootQueries
+    let starts = await adb.streamStarts
+    precondition(queries == 7 && starts == 1, "Failed queries must recover automatically once Android is ready")
+    _ = await service.stop(handle)
+  }
+
+  static func bootWaitCancels(shutdown: Bool, blocksQuery: Bool) async throws {
+    let adb = ADBService(bootComplete: false, blocksBootQuery: blocksQuery)
+    let coordinator = CaptureCoordinator()
+    let delays = RetryDelays()
+    let service = LivePreviewService(adb: adb, coordinator: coordinator) { delay in
+      _ = await delays.append(delay)
+      if delay == .seconds(10) { try await Task.sleep(for: .seconds(60)) }
+    }
+    let task = Task { try await service.start(for: "booting", options: LivePreviewOptions(showsTouches: true)) }
+    if blocksQuery {
+      await eventually { await adb.bootQueries > 0 }
+    } else {
+      await eventually { await delays.values.last == .seconds(10) }
+    }
+    let rescue = Task {
+      try await Task.sleep(for: .seconds(2))
+      task.cancel()
+    }
+    defer { rescue.cancel() }
+    let start = ContinuousClock.now
+    if shutdown { await service.shutdown() } else { task.cancel() }
+    do {
+      _ = try await task.value
+      fatalError("Boot wait should have ended without starting a stream")
+    } catch is CancellationError {
+      // Both caller cancellation and shutdown must interrupt discovery immediately.
+    }
+    precondition(start.duration(to: .now) < .seconds(1), "Cancellation must interrupt the probe or backoff sleep")
+    let starts = await adb.streamStarts
+    let settingsRead = await adb.settingsReadStarted
+    precondition(starts == 0 && !settingsRead)
+    let lease = try await coordinator.acquire(deviceIDs: ["booting"], for: .livePreview)
+    await coordinator.release(lease)
   }
 
   static func streamCompletionFlushesOnce() async throws {

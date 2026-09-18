@@ -86,6 +86,9 @@ final class LivePreviewSession {
 }
 
 actor LivePreviewService {
+  enum StartError: Error { case notReady }
+
+  private var startFailures: Int
   private let startGate: TestGate?
   private let stopGate: TestGate?
   private let readyGate: TestGate?
@@ -93,7 +96,8 @@ actor LivePreviewService {
   private(set) var stops: [UUID] = []
   private(set) var active: Set<UUID> = []
 
-  init(startGate: TestGate? = nil, stopGate: TestGate? = nil, readyGate: TestGate? = nil) {
+  init(startGate: TestGate? = nil, stopGate: TestGate? = nil, readyGate: TestGate? = nil, startFailures: Int = 0) {
+    self.startFailures = startFailures
     self.startGate = startGate
     self.stopGate = stopGate
     self.readyGate = readyGate
@@ -102,6 +106,10 @@ actor LivePreviewService {
   func start(for deviceID: String, options _: LivePreviewOptions) async throws -> LivePreviewOperationHandle {
     starts.append(deviceID)
     await startGate?.wait()
+    if startFailures > 0 {
+      startFailures -= 1
+      throw StartError.notReady
+    }
     let handle = await LivePreviewOperationHandle(
       id: UUID(), deviceID: deviceID, session: LivePreviewSession(readyGate: readyGate)
     )
@@ -134,14 +142,28 @@ actor ScreenshotService {
 }
 
 actor ADBService {
-  private let displayGates: [String: TestGate]
+  enum DisplayError: Error { case notReady }
+
+  private var displayGates: [String: TestGate]
+  private var displayFailures: [String: Int]
+  private var densityFailures: [String: Int]
+  private var bootingDeviceIDs: Set<String> = []
+  private(set) var displayRequests: [String] = []
+  private(set) var retryDelays: [Duration] = []
   private let pointerPreparationGate: TestGate?
   private(set) var pointerPreparations: [String] = []
   private(set) var pointerEvents: [LivePreviewPointerEvent] = []
   private(set) var activePointerDeviceIDs: Set<String> = []
 
-  init(displayGates: [String: TestGate] = [:], pointerPreparationGate: TestGate? = nil) {
+  init(
+    displayGates: [String: TestGate] = [:],
+    pointerPreparationGate: TestGate? = nil,
+    displayFailures: [String: Int] = [:],
+    densityFailures: [String: Int] = [:]
+  ) {
     self.displayGates = displayGates
+    self.displayFailures = displayFailures
+    self.densityFailures = densityFailures
     self.pointerPreparationGate = pointerPreparationGate
   }
 
@@ -149,13 +171,38 @@ actor ADBService {
     self
   }
 
-  func displayDensity(deviceID _: String) throws -> Int {
-    3
+  func isBootComplete(deviceID: String) throws -> Bool {
+    !bootingDeviceIDs.contains(deviceID)
+  }
+
+  func recordRetryDelay(_ delay: Duration) {
+    retryDelays.append(delay)
+  }
+
+  func setBooting(_ booting: Bool, deviceID: String) {
+    if booting { bootingDeviceIDs.insert(deviceID) } else { bootingDeviceIDs.remove(deviceID) }
+  }
+
+  func displayDensity(deviceID: String) throws -> Int {
+    if densityFailures[deviceID, default: 0] > 0 {
+      densityFailures[deviceID, default: 0] -= 1
+      throw DisplayError.notReady
+    }
+    return 3
   }
 
   func displaySize(deviceID: String) async throws -> String {
+    displayRequests.append(deviceID)
     await displayGates[deviceID]?.wait()
+    if displayFailures[deviceID, default: 0] > 0 {
+      displayFailures[deviceID, default: 0] -= 1
+      throw DisplayError.notReady
+    }
     return "1080x2400"
+  }
+
+  func setDisplayGate(_ gate: TestGate, for deviceID: String) {
+    displayGates[deviceID] = gate
   }
 
   func recordPointerPreparation(deviceID: String) async {

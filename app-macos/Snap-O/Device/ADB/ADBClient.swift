@@ -140,6 +140,11 @@ public struct ADBClient: Sendable {
     )
   }
 
+  func isBootComplete(deviceID: String) async throws -> Bool {
+    let value = try await runDiscoveryShellString(deviceID: deviceID, command: "getprop sys.boot_completed")
+    return value.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+  }
+
   public func displaySize(deviceID: String) async throws -> String {
     let result = try await runShellString(deviceID: deviceID, command: "dumpsys window displays")
     guard let match = result.firstMatch(of: /cur=(?<size>\d+x\d+)/) else {

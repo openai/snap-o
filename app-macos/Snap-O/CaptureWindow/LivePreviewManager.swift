@@ -14,6 +14,8 @@ final class LivePreviewManager {
   private let pointerInjector: LivePreviewPointerInjector
   private var preparedLivePreview: PreparedLivePreview?
   private var preparedMediaTask: Task<Void, Never>?
+  private var displayRetryTask: Task<Void, Never>?
+  private let displayRetrySleep: @Sendable (Duration) async throws -> Void
 
   private var deviceOrder: [String] = []
   private var deviceInfo: [String: Device] = [:]
@@ -32,12 +34,14 @@ final class LivePreviewManager {
     adbService: ADBService,
     options: LivePreviewOptions,
     preparedLivePreview: PreparedLivePreview? = nil,
+    displayRetrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
     mediaDidChange: @escaping @MainActor ([CaptureMedia]) -> Void
   ) {
     self.livePreviewService = livePreviewService
     self.adbService = adbService
     self.options = options
     self.preparedLivePreview = preparedLivePreview
+    self.displayRetrySleep = displayRetrySleep
     self.mediaDidChange = mediaDidChange
     pointerInjector = LivePreviewPointerInjector(adb: adbService)
   }
@@ -172,6 +176,8 @@ final class LivePreviewManager {
   func stop() async {
     guard !isStopped else { return }
     isStopped = true
+    displayRetryTask?.cancel()
+    displayRetryTask = nil
     preparedMediaTask?.cancel()
     preparedMediaTask = nil
     let prepared = preparedLivePreview
@@ -205,6 +211,8 @@ final class LivePreviewManager {
   private func syncDevices(with devices: [Device]) async {
     let syncID = UUID()
     deviceSyncID = syncID
+    displayRetryTask?.cancel()
+    displayRetryTask = nil
     let currentIDs = Set(devices.map(\.id))
     let removedDeviceIDs = Set(deviceInfo.keys).subtracting(currentIDs)
     let removedOperations = activeOperations.values.filter { !currentIDs.contains($0.deviceID) }
@@ -235,19 +243,30 @@ final class LivePreviewManager {
       await pointerInjector.stopDevice(deviceID)
     }
 
-    guard !isStopped, deviceSyncID == syncID else { return }
+    guard await refreshDisplayInfos(for: devices, syncID: syncID) else { return }
 
-    let devicesToFetch = devices.filter { lastDisplayInfo[$0.id] == nil }
-
-    if !devicesToFetch.isEmpty {
-      let fetched = await fetchDisplayInfos(for: devicesToFetch)
-      guard !isStopped, deviceSyncID == syncID else { return }
-      for (id, info) in fetched where deviceInfo[id] != nil && lastDisplayInfo[id] == nil {
-        lastDisplayInfo[id] = info
+    // ADB can connect before Android's display services are ready, without another device update.
+    displayRetryTask = Task { [weak self, sleep = displayRetrySleep] in
+      var delay = Duration.seconds(1)
+      while true {
+        do { try await sleep(delay) } catch { return }
+        guard await self?.refreshDisplayInfos(for: devices, syncID: syncID) == true else { return }
+        delay = min(delay * 2, .seconds(10))
       }
     }
+  }
 
+  /// Returns whether this device update still needs another discovery attempt.
+  private func refreshDisplayInfos(for devices: [Device], syncID: UUID) async -> Bool {
+    guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return false }
+    let missing = devices.filter { lastDisplayInfo[$0.id] == nil }
+    let fetched = await fetchDisplayInfos(for: missing)
+    guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return false }
+    for (id, info) in fetched where lastDisplayInfo[id] == nil {
+      lastDisplayInfo[id] = info
+    }
     rebuildMedia()
+    return devices.contains { lastDisplayInfo[$0.id] == nil }
   }
 
   private func storeMedia(_ media: Media, for device: Device) {
@@ -294,11 +313,11 @@ final class LivePreviewManager {
         group.addTask {
           do {
             let exec = await adbService.exec()
-            async let densityTask = try? await exec.displayDensity(deviceID: device.id)
+            guard try await exec.isBootComplete(deviceID: device.id) else { return nil }
+            async let densityTask = exec.displayDensity(deviceID: device.id)
             let sizeString = try await exec.displaySize(deviceID: device.id)
             guard let size = parseDisplaySize(sizeString) else { return nil }
-            let densityValue = await densityTask
-            let density = densityValue.map { CGFloat($0) }
+            let density = try await CGFloat(densityTask)
             return (device.id, DisplayInfo(size: size, densityScale: density))
           } catch {
             await MainActor.run {

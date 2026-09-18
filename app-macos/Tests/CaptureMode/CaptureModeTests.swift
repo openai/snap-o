@@ -17,7 +17,7 @@ struct CaptureModeTests {
     await stopDuringRendererStart()
     await overlappingDeviceUpdates()
     await modePropagatesCancellation()
-    await modeRetainsPerDeviceFailures()
+    await modeRetainsFailuresUntilDisconnect()
     print("Capture mode tests passed (13 cases)")
   }
 
@@ -278,7 +278,7 @@ struct CaptureModeTests {
     precondition(active.isEmpty)
   }
 
-  static func modeRetainsPerDeviceFailures() async {
+  static func modeRetainsFailuresUntilDisconnect() async {
     func makeMode() -> LivePreviewMode {
       LivePreviewMode(
         livePreviewService: LivePreviewService(), adbService: ADBService(), options: options,
@@ -294,12 +294,16 @@ struct CaptureModeTests {
     precondition(!secondConnection.hasFailed, "Failures must be isolated per device")
     secondConnection.hasFailed = true
 
-    await mode.updateDevices([second])
     await mode.updateDevices([first, second])
     precondition(mode.connection(for: first.id) === firstConnection)
-    precondition(firstConnection.hasFailed, "Device updates must retain failures for this mode")
-    firstConnection.hasFailed = false
-    precondition(mode.connection(for: second.id).hasFailed, "Retry clears only the selected device")
+    precondition(firstConnection.hasFailed, "An unchanged connection must preserve manual retry state")
+    await mode.updateDevices([second])
+    await mode.updateDevices([first, second])
+    let reconnected = mode.connection(for: first.id)
+    precondition(reconnected !== firstConnection && !reconnected.hasFailed, "A reconnected device must get a fresh attempt")
+    firstConnection.hasFailed = true
+    precondition(!reconnected.hasFailed, "Late failures from the old connection must not affect the new one")
+    precondition(mode.connection(for: second.id) === secondConnection && secondConnection.hasFailed)
     await mode.stop()
 
     let nextMode = makeMode()

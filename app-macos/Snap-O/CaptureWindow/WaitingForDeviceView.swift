@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WaitingForDeviceView: View {
   let isDeviceListInitialized: Bool
+  var deviceMessage = "Waiting for device"
 
   var body: some View {
     VStack(spacing: 12) {
@@ -21,7 +22,7 @@ struct WaitingForDeviceView: View {
           .multilineTextAlignment(.center)
           .transition(.opacity)
       } else {
-        Text("Waiting for device")
+        Text(deviceMessage)
           .foregroundStyle(.gray)
           .transition(.opacity)
       }
