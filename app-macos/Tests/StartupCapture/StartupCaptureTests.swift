@@ -19,6 +19,11 @@ struct StartupCaptureTests {
     await discardSharesCleanup()
     try await managerReusesWarmup()
     try await managerDiscardsWrongDevice()
+    try await managerRetriesBootingDevice(densityUnavailable: false)
+    try await managerRetriesBootingDevice(densityUnavailable: true)
+    await displayRetryCancellation(stops: false)
+    await displayRetryCancellation(stops: true)
+    try await deviceBootsAfterWindowOpens()
     await stopDuringRendererClaim()
     await disconnectWaitsForCleanup()
     await commandDuringAutomaticPreview(recordsVideo: true)
@@ -35,7 +40,7 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, deletesAll: true)
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
-    print("Startup capture tests passed (26 cases)")
+    print("Startup capture tests passed (31 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -264,6 +269,98 @@ struct StartupCaptureTests {
     precondition(active == [renderer.operation.id])
     let starts = await service.starts
     precondition(starts == [first.id, second.id])
+    await manager.stop()
+  }
+
+  static func managerRetriesBootingDevice(densityUnavailable: Bool) async throws {
+    let retryGate = TestGate()
+    let adb = ADBService(
+      displayFailures: densityUnavailable ? [:] : [first.id: 2],
+      densityFailures: densityUnavailable ? [first.id: 2] : [:]
+    )
+    let service = LivePreviewService()
+    let failedWarmup = PreparedLivePreview(
+      deviceID: first.id, options: options, operationTask: Task { nil }, service: service
+    )
+    var displayed: [String] = []
+    let manager = LivePreviewManager(
+      livePreviewService: service, adbService: adb, options: options,
+      preparedLivePreview: failedWarmup,
+      displayRetrySleep: { _ in await retryGate.wait() }
+    ) { displayed = $0.map(\.device.id) }
+    await manager.start(with: [first, second])
+    precondition(displayed == [second.id], "A booting device must not block a ready device")
+    await retryGate.open()
+    await eventually("Retry must create media without another device update") { displayed == [first.id, second.id] }
+    let requests = await adb.displayRequests
+    precondition(requests.count(where: { $0 == first.id }) == 3)
+    precondition(requests.count(where: { $0 == second.id }) == 1, "Ready devices must not be queried again")
+    let renderer = try await manager.makeRenderer(for: first.id)
+    await eventually { renderer.operation.session.isReady }
+    let starts = await service.starts
+    precondition(starts == [first.id], "A failed warmup must allow a fresh preview stream")
+    await manager.stop()
+  }
+
+  static func deviceBootsAfterWindowOpens() async throws {
+    AppSettings.shared.startupCaptureMode = .livePreview
+    let tracker = DeviceTracker(devices: [])
+    let live = LivePreviewService(startFailures: 1)
+    let screenshots = ScreenshotService()
+    let controller = CaptureWindowController(
+      captureServices: CaptureServices(
+        screenshots: screenshots, recording: RecordingService(), livePreview: live,
+        startup: StartupCapturePreparation(screenshots: screenshots, livePreview: live)
+      ),
+      deviceTracker: tracker, fileStore: FileStore(),
+      adbService: ADBService(displayFailures: [first.id: 3])
+    )
+    await controller.start()
+    await eventually { controller.isDeviceListInitialized }
+    precondition(!controller.hasDevices && controller.currentCapture == nil)
+    await tracker.updateDevices([first])
+    await eventually { controller.isLivePreviewActive }
+    precondition(controller.currentCapture == nil)
+    let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+    while controller.currentCapture == nil, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    precondition(controller.currentCapture?.device.id == first.id, "Preview must appear after boot without another device event")
+    precondition(!controller.isProcessing)
+    guard let renderer = await controller.startLivePreviewStream(for: first.id) else {
+      fatalError("Preview must start after the boot-time warmup failed")
+    }
+    await eventually { renderer.operation.session.isReady }
+    await controller.tearDown()
+    let active = await live.active
+    precondition(active.isEmpty)
+  }
+
+  static func displayRetryCancellation(stops: Bool) async {
+    let retryGate = TestGate()
+    let queryGate = TestGate()
+    let adb = ADBService(displayFailures: [first.id: 1])
+    var displayed: [String] = []
+    let manager = LivePreviewManager(
+      livePreviewService: LivePreviewService(), adbService: adb, options: options,
+      displayRetrySleep: { _ in await retryGate.wait() }
+    ) { displayed = $0.map(\.device.id) }
+    await manager.start(with: [first])
+    await adb.setDisplayGate(queryGate, for: first.id)
+    await retryGate.open()
+    await eventually { await queryGate.waitCount == 1 }
+    if stops {
+      await manager.stop()
+    } else {
+      await manager.updateDevices([])
+    }
+    await queryGate.open()
+    for _ in 0 ..< 100 {
+      await Task.yield()
+    }
+    precondition(displayed.isEmpty, "A late display response must not restore a disconnected or stopped preview")
+    let requests = await adb.displayRequests
+    precondition(requests.count == 2, "Canceled discovery must not schedule more queries")
     await manager.stop()
   }
 
