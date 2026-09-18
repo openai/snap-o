@@ -22,6 +22,10 @@ Snap-O makes it easier to capture and share Android screens, with instant previe
 
 Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use `⌘[` and `⌘]` to switch between connected devices.
 
+The device picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.
+
+When Android is still booting, Snap-O waits for it to be ready and retries display discovery automatically.
+
 Option-drag the preview to share the current frame as a screenshot, or right-click for **Copy Image** and **Save Image As…**. Each action adds that frame to Capture History. Watching the preview alone does not.
 
 Press `Esc` to stop the preview, or `⇧⌘L` to start it again. Choose **Device → Start With** to change how new windows open.
@@ -38,7 +42,7 @@ Press `⇧⌘R` to record the screens of all connected Android devices, and `Esc
 
 Drag a screenshot or recording from the Capture pane or Capture History into any app that accepts images or video. Dragging shares a copy and leaves the original in history. Use `⌘C` to copy a screenshot to the clipboard.
 
-Choose **Save As…** (`⌘S`) to keep a permanent copy of the selected capture. Exported copies remain when history entries are deleted or expire.
+Choose **Save As…** (`⌘S`) to keep a permanent copy of the selected capture. Saved and dragged files use the capture name when you have assigned one. Exported copies remain when history entries are deleted or expire.
 
 ## Capture History {#capture-history}
 
