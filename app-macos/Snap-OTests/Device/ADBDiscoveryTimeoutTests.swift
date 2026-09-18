@@ -29,12 +29,17 @@ struct ADBDiscoveryTimeoutTests {
     #expect(recovered == sockets)
   }
 
-  @Test("cancelling discovery interrupts a blocked read")
-  func cancelsBlockedRead() async throws {
+  @Test("cancelling discovery interrupts a blocked read", arguments: [false, true])
+  func cancelsBlockedRead(bootReadiness: Bool) async throws {
     let server = FakeDiscoveryADB(stall: .output)
     defer { server.close() }
     let task = Task {
-      try await server.client(timeout: .seconds(10)).listUnixSockets(deviceID: "stalled")
+      let adb = server.client(timeout: .seconds(10))
+      if bootReadiness {
+        _ = try await adb.isBootComplete(deviceID: "stalled")
+      } else {
+        _ = try await adb.listUnixSockets(deviceID: "stalled")
+      }
     }
     var requests = server.requests.stream.makeAsyncIterator()
     _ = await requests.next()

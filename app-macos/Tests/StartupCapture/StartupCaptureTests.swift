@@ -25,6 +25,7 @@ struct StartupCaptureTests {
     await displayRetryCancellation(stops: true)
     try await deviceBootsAfterWindowOpens()
     await discoveryWaitsForBootComplete()
+    await discoveryBacksOffStalledDevice()
     await stopDuringRendererClaim()
     await disconnectWaitsForCleanup()
     await commandDuringAutomaticPreview(recordsVideo: true)
@@ -41,7 +42,7 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, deletesAll: true)
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
-    print("Startup capture tests passed (32 cases)")
+    print("Startup capture tests passed (33 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -323,6 +324,23 @@ struct StartupCaptureTests {
     await manager.stop()
   }
 
+  static func discoveryBacksOffStalledDevice() async {
+    let adb = ADBService(displayFailures: [first.id: 7])
+    var displayed: [String] = []
+    let manager = LivePreviewManager(
+      livePreviewService: LivePreviewService(), adbService: adb, options: options,
+      displayRetrySleep: { await adb.recordRetryDelay($0) },
+      mediaDidChange: { displayed = $0.map(\.device.id) }
+    )
+    await manager.start(with: [first, second])
+    await eventually { displayed == [first.id, second.id] }
+    let delays = await adb.retryDelays
+    precondition(delays == [1, 2, 4, 8, 10, 10, 10].map { .seconds($0) })
+    let requests = await adb.displayRequests
+    precondition(requests.count { $0 == second.id } == 1, "Healthy devices must not be rediscovered while another retries")
+    await manager.stop()
+  }
+
   static func deviceBootsAfterWindowOpens() async throws {
     AppSettings.shared.startupCaptureMode = .livePreview
     let tracker = DeviceTracker(devices: [])
@@ -342,7 +360,7 @@ struct StartupCaptureTests {
     await tracker.updateDevices([first])
     await eventually { controller.isLivePreviewActive }
     precondition(controller.currentCapture == nil)
-    let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
     while controller.currentCapture == nil, ContinuousClock.now < deadline {
       try await Task.sleep(for: .milliseconds(10))
     }

@@ -149,6 +149,7 @@ actor ADBService {
   private var densityFailures: [String: Int]
   private var bootingDeviceIDs: Set<String> = []
   private(set) var displayRequests: [String] = []
+  private(set) var retryDelays: [Duration] = []
   private let pointerPreparationGate: TestGate?
   private(set) var pointerPreparations: [String] = []
   private(set) var pointerEvents: [LivePreviewPointerEvent] = []
@@ -172,6 +173,10 @@ actor ADBService {
 
   func isBootComplete(deviceID: String) throws -> Bool {
     !bootingDeviceIDs.contains(deviceID)
+  }
+
+  func recordRetryDelay(_ delay: Duration) {
+    retryDelays.append(delay)
   }
 
   func setBooting(_ booting: Bool, deviceID: String) {

@@ -247,9 +247,11 @@ final class LivePreviewManager {
 
     // ADB can connect before Android's display services are ready, without another device update.
     displayRetryTask = Task { [weak self, sleep = displayRetrySleep] in
+      var delay = Duration.seconds(1)
       while true {
-        do { try await sleep(.seconds(1)) } catch { return }
+        do { try await sleep(delay) } catch { return }
         guard await self?.refreshDisplayInfos(for: devices, syncID: syncID) == true else { return }
+        delay = min(delay * 2, .seconds(10))
       }
     }
   }
