@@ -83,14 +83,7 @@ final class CaptureSnapshotController {
       dismissPreviewHintImmediately()
     }
 
-    var ordered = shouldSort ? newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle } : newMedia
-
-    if let preserve = preserveDeviceID,
-       let index = ordered.firstIndex(where: { $0.device.id == preserve }),
-       index != ordered.startIndex {
-      let preferred = ordered.remove(at: index)
-      ordered.insert(preferred, at: ordered.startIndex)
-    }
+    let ordered = shouldSort ? newMedia.sorted { $0.device.displayTitle < $1.device.displayTitle } : newMedia
 
     mediaList = ordered
 
