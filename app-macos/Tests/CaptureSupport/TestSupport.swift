@@ -171,6 +171,10 @@ actor ADBService {
     self
   }
 
+  func screencapPNG(deviceID: String) throws -> Data {
+    Data()
+  }
+
   func isBootComplete(deviceID: String) throws -> Bool {
     !bootingDeviceIDs.contains(deviceID)
   }

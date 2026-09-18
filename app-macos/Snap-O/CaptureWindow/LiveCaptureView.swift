@@ -7,6 +7,7 @@ protocol LivePreviewHosting: AnyObject {
   func livePreviewConnection(for deviceID: String) -> LivePreviewConnection?
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer?
   func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async
+  func livePreviewScreenshot(for deviceID: String) async throws -> Data
 }
 
 struct LiveCaptureView<Host: LivePreviewHosting>: View {
@@ -27,7 +28,12 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     ZStack {
       Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
       if let renderer = lifecycle.renderer {
-        LivePreviewRendererView(renderer: renderer, fileStore: fileStore, isVisible: lifecycle.isWindowVisible)
+        LivePreviewRendererView(
+          renderer: renderer,
+          fileStore: fileStore,
+          isVisible: lifecycle.isWindowVisible,
+          thumbnail: lifecycle.connection?.thumbnail
+        )
       } else if lifecycle.connection?.hasFailed == true {
         VStack(spacing: 8) {
           Text("Live preview unavailable")

@@ -2,13 +2,14 @@ import AppKit
 import AVFoundation
 import SwiftUI
 
-struct CapturePreviewStrip: View {
+struct CapturePreviewStrip<Host: LivePreviewHosting>: View {
   @Environment(CaptureHistory.self)
   private var history
   let captures: [CaptureMedia]
   let selectedID: CaptureMedia.ID?
   let onSelect: (CaptureMedia.ID) -> Void
   let fileStore: FileStore
+  let livePreviewHost: Host
 
   var body: some View {
     HStack(spacing: 16) {
@@ -18,7 +19,8 @@ struct CapturePreviewStrip: View {
         } label: {
           CapturePreviewThumbnail(
             capture: capture,
-            isSelected: capture.id == selectedID
+            isSelected: capture.id == selectedID,
+            livePreviewHost: livePreviewHost
           ) { dragItemProvider(for: capture) }
         }
         .buttonStyle(.plain)
@@ -43,9 +45,10 @@ struct CapturePreviewStrip: View {
   }
 }
 
-private struct CapturePreviewThumbnail: View {
+private struct CapturePreviewThumbnail<Host: LivePreviewHosting>: View {
   let capture: CaptureMedia
   let isSelected: Bool
+  let livePreviewHost: Host
   var dragItemProvider: () -> NSItemProvider
 
   private let height: CGFloat = 80
@@ -93,7 +96,12 @@ private struct CapturePreviewThumbnail: View {
       VideoPreviewThumbnail(url: url)
 
     case .livePreview:
-      Color.black
+      LivePreviewThumbnailView(
+        host: livePreviewHost,
+        deviceID: capture.device.id,
+        isSelected: isSelected,
+        size: CGSize(width: targetWidth, height: height)
+      )
     }
   }
 

@@ -106,4 +106,8 @@ private final class FailedPreviewHost: LivePreviewHosting {
   }
 
   func stopLivePreviewStream(_: LivePreviewRenderer) async {}
+
+  func livePreviewScreenshot(for _: String) async throws -> Data {
+    Data()
+  }
 }
