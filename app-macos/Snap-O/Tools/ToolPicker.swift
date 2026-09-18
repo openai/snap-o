@@ -45,7 +45,7 @@ struct AppToolPicker: View {
 
   private var selectedTitle: String {
     guard let app = model.selectedToolApp else {
-      return model.toolApps.isEmpty ? "No Apps Found" : "Select an App"
+      return model.toolApps.isEmpty ? "No apps found" : "Select an app"
     }
 
     return app.name
@@ -136,7 +136,7 @@ private struct AppToolPickerPopover: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       if model.toolApps.isEmpty {
-        Text("No Apps Found")
+        Text("No apps found")
           .font(.system(size: 13))
           .foregroundStyle(.secondary)
           .frame(maxWidth: .infinity, alignment: .leading)
