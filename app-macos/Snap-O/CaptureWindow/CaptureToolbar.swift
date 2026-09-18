@@ -285,6 +285,7 @@ struct CaptureToolbar: View {
 
   private func captureToggle() -> some View {
     Button {
+      CommandDiagnostics.shared.paneAction("toggle-capture", source: "toolbar", workspace: workspace)
       workspace.toggleCapture()
     } label: {
       toggleIcon("iphone")
@@ -299,6 +300,7 @@ struct CaptureToolbar: View {
 
   private func toolToggle() -> some View {
     Button {
+      CommandDiagnostics.shared.paneAction("toggle-tool", source: "toolbar", workspace: workspace)
       workspace.toggleTool()
     } label: {
       toggleIcon("sidebar.right")

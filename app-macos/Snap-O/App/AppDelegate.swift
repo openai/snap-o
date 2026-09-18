@@ -12,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   private var hasRepliedToTermination = false
 
   func applicationWillFinishLaunching(_ notification: Notification) {
+    CommandDiagnostics.shared.start()
     NSWindow.allowsAutomaticWindowTabbing = false
     UserDefaults.standard.register(defaults: [
       "NSInitialToolTipDelay": 500
@@ -38,6 +39,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    CommandDiagnostics.shared.record(
+      "application-should-terminate replied=\(hasRepliedToTermination) cleanupPending=\(terminationCleanupTask != nil)"
+    )
     if hasRepliedToTermination { return .terminateNow }
     if terminationCleanupTask != nil { return .terminateLater }
 
@@ -50,6 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     terminationTimeoutTask = Task { [weak self] in
       try? await Task.sleep(for: .seconds(Self.terminationCleanupTimeoutSeconds))
       guard !Task.isCancelled else { return }
+      CommandDiagnostics.shared.record("termination-cleanup-timeout")
       Perf.end(.appShutdown, finalLabel: "cleanup timeout")
       self?.completeTermination(for: sender)
     }
@@ -70,6 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     terminationCleanupTask = nil
     terminationTimeoutTask?.cancel()
     terminationTimeoutTask = nil
+    CommandDiagnostics.shared.record("termination-reply allow=true")
     application.reply(toApplicationShouldTerminate: true)
   }
 }

@@ -21,6 +21,9 @@ struct SnapOCommands: Commands {
   let updaterController: SPUStandardUpdaterController
 
   var body: some Commands {
+    // CommandsBuilder needs a declaration for this diagnostic side effect.
+    // swiftlint:disable:next redundant_discardable_let
+    let _ = CommandDiagnostics.shared.focusedWorkspaceEvaluated(workspaceController)
     CommandGroup(before: .windowSize) {
       Button("Capture History") { openWindow(id: "capture-history") }
         .keyboardShortcut("h", modifiers: [.command, .shift])
@@ -200,12 +203,14 @@ struct SnapOCommands: Commands {
     }
     CommandGroup(after: .sidebar) {
       Button(workspaceController?.showsTool == true ? "Hide Tool Pane" : "Show Tool Pane") {
+        CommandDiagnostics.shared.paneAction("toggle-tool", source: "menu", workspace: workspaceController)
         workspaceController?.toggleTool()
       }
       .keyboardShortcut("i", modifiers: [.command, .option])
       .disabled(workspaceController?.canToggleTool != true)
 
       Button(workspaceController?.showsCapture == true ? "Hide Capture Pane" : "Show Capture Pane") {
+        CommandDiagnostics.shared.paneAction("toggle-capture", source: "menu", workspace: workspaceController)
         workspaceController?.toggleCapture()
       }
       .keyboardShortcut("c", modifiers: [.command, .option])

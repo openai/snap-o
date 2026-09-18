@@ -108,6 +108,7 @@ struct WindowSizingController: NSViewRepresentable {
     func attach(to window: NSWindow) {
       guard self.window !== window else { return }
       self.window = window
+      CommandDiagnostics.shared.replacingDelegate(of: window, with: self)
       window.delegate = self
       update(
         layout: pendingLayout,
