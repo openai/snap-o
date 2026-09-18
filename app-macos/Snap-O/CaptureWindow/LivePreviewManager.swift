@@ -243,38 +243,28 @@ final class LivePreviewManager {
       await pointerInjector.stopDevice(deviceID)
     }
 
-    guard !isStopped, deviceSyncID == syncID else { return }
-
-    let devicesToFetch = devices.filter { lastDisplayInfo[$0.id] == nil }
-
-    if !devicesToFetch.isEmpty {
-      let fetched = await fetchDisplayInfos(for: devicesToFetch)
-      guard !isStopped, deviceSyncID == syncID else { return }
-      for (id, info) in fetched where deviceInfo[id] != nil && lastDisplayInfo[id] == nil {
-        lastDisplayInfo[id] = info
-      }
-    }
-
-    rebuildMedia()
+    guard await refreshDisplayInfos(for: devices, syncID: syncID) else { return }
 
     // ADB can connect before Android's display services are ready, without another device update.
-    guard devices.contains(where: { lastDisplayInfo[$0.id] == nil }) else { return }
-    displayRetryTask = Task { [weak self] in
-      guard let self else { return }
-      while !Task.isCancelled, !isStopped, deviceSyncID == syncID {
-        do { try await displayRetrySleep(.seconds(1)) } catch { return }
-        guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return }
-        let missing = devices.filter { lastDisplayInfo[$0.id] == nil }
-        guard !missing.isEmpty else { return }
-        let fetched = await fetchDisplayInfos(for: missing)
-        guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return }
-        for (id, info) in fetched where lastDisplayInfo[id] == nil {
-          lastDisplayInfo[id] = info
-        }
-        rebuildMedia()
-        if devices.allSatisfy({ lastDisplayInfo[$0.id] != nil }) { return }
+    displayRetryTask = Task { [weak self, sleep = displayRetrySleep] in
+      while true {
+        do { try await sleep(.seconds(1)) } catch { return }
+        guard await self?.refreshDisplayInfos(for: devices, syncID: syncID) == true else { return }
       }
     }
+  }
+
+  /// Returns whether this device update still needs another discovery attempt.
+  private func refreshDisplayInfos(for devices: [Device], syncID: UUID) async -> Bool {
+    guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return false }
+    let missing = devices.filter { lastDisplayInfo[$0.id] == nil }
+    let fetched = await fetchDisplayInfos(for: missing)
+    guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return false }
+    for (id, info) in fetched where lastDisplayInfo[id] == nil {
+      lastDisplayInfo[id] = info
+    }
+    rebuildMedia()
+    return devices.contains { lastDisplayInfo[$0.id] == nil }
   }
 
   private func storeMedia(_ media: Media, for device: Device) {
