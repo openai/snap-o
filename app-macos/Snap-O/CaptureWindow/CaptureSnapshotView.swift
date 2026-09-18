@@ -24,7 +24,8 @@ struct CaptureSnapshotView<Host: LivePreviewHosting>: View {
           captures: captures,
           selectedID: controller.selectedMediaID,
           onSelect: { controller.selectMedia(id: $0) },
-          fileStore: fileStore
+          fileStore: fileStore,
+          livePreviewHost: livePreviewHost
         )
         .padding(.top, 12)
         .onHover { controller.setPreviewHintHovering($0) }

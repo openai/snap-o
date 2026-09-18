@@ -17,6 +17,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/CaptureWindow/CaptureWindowMode.swift Snap-O/CaptureWindow/RecordingMode.swift \
   Snap-O/CaptureWindow/LivePreviewMode.swift Snap-O/CaptureWindow/MediaDisplayMode.swift \
   Snap-O/CaptureWindow/LivePreviewConnection.swift \
+  Snap-O/LivePreview/LivePreviewThumbnail.swift \
   Snap-O/CaptureWindow/CaptureSnapshotController.swift \
   Tests/CaptureSupport/TestSupport.swift Tests/CaptureMode/CaptureModeTests.swift \
   Tests/StartupCapture/StartupCaptureTests.swift \

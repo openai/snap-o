@@ -573,6 +573,11 @@ final class CaptureWindowController {
     }
   }
 
+  func livePreviewScreenshot(for deviceID: String) async throws -> Data {
+    let exec = await adbService.exec()
+    return try await exec.screencapPNG(deviceID: deviceID)
+  }
+
   func setPreviewHintHovering(_ isHovering: Bool) {
     mediaDisplayMode.setPreviewHintHovering(isHovering)
   }

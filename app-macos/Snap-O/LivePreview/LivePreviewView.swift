@@ -21,6 +21,7 @@ struct LivePreviewRendererView: NSViewRepresentable {
   let renderer: LivePreviewRenderer
   let fileStore: FileStore
   let isVisible: Bool
+  var thumbnail: LivePreviewThumbnail?
 
   @Environment(\.captureImageCopied)
   private var imageCopied
@@ -34,7 +35,7 @@ struct LivePreviewRendererView: NSViewRepresentable {
 
   func updateNSView(_ nsView: LivePreviewDisplayView, context: Context) {
     nsView.imageCopied = imageCopied
-    nsView.update(with: renderer, isVisible: isVisible)
+    nsView.update(with: renderer, isVisible: isVisible, thumbnail: thumbnail)
   }
 
   static func dismantleNSView(_ nsView: LivePreviewDisplayView, coordinator: Void) {
@@ -49,6 +50,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private let fileStore: FileStore
   private let frameExporter = LivePreviewFrameExporter()
   private var renderer: LivePreviewRenderer?
+  private weak var thumbnail: LivePreviewThumbnail?
   private var trackingArea: NSTrackingArea?
   private let displayLayer = AVSampleBufferDisplayLayer()
   private var endedLivePreviewTrace = false
@@ -133,7 +135,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     }
   }
 
-  func update(with renderer: LivePreviewRenderer?, isVisible: Bool = false) {
+  func update(with renderer: LivePreviewRenderer?, isVisible: Bool = false, thumbnail: LivePreviewThumbnail? = nil) {
     // Keep decoding and retaining the latest frame without compositing hidden previews.
     CATransaction.begin()
     CATransaction.setDisableActions(true)
@@ -148,7 +150,12 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     if shouldDetach {
       detachSession()
     }
+    if self.thumbnail !== thumbnail {
+      detachThumbnail()
+      self.thumbnail = thumbnail
+    }
     self.renderer = renderer
+    thumbnail?.videoRenderer = renderer == nil ? nil : displayLayer.sampleBufferRenderer
     if shouldDetach {
       attachSession()
     }
@@ -184,7 +191,14 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     }
   }
 
+  private func detachThumbnail() {
+    guard thumbnail?.videoRenderer === displayLayer.sampleBufferRenderer else { return }
+    thumbnail?.cacheLiveFrame()
+    thumbnail?.videoRenderer = nil
+  }
+
   private func detachSession() {
+    detachThumbnail()
     frameDragOrigin = nil
     isDraggingFrame = false
     pointerState = PointerState()
