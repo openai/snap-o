@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ImageCaptureView: View {
   let url: URL
+  var exportFilename: String?
   var onDelete: (() -> Void)?
   var makeTempDragFile: () -> URL?
 
@@ -51,7 +52,7 @@ struct ImageCaptureView: View {
     panel.title = "Save Image As"
     panel.canCreateDirectories = true
     panel.allowedContentTypes = [.png]
-    panel.nameFieldStringValue = url.lastPathComponent
+    panel.nameFieldStringValue = exportFilename ?? url.lastPathComponent
     panel.directoryURL = SaveLocation.defaultDirectory(for: .image)
     guard panel.runModal() == .OK, let destination = panel.url else { return }
 

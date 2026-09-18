@@ -228,6 +228,7 @@ struct CaptureHistoryWindow: View {
           if entry.kind == .image {
             ImageCaptureView(
               url: url,
+              exportFilename: FileStore.exportFilename(capturedAt: entry.capturedAt, kind: .image, name: entry.name),
               onDelete: entry.completedAt == nil ? nil : { requestDeletion(entry, item: item) },
               makeTempDragFile: makeTempDragFile
             )
@@ -417,7 +418,7 @@ struct CaptureHistoryWindow: View {
     guard let entry, let item, item.isAvailable else { return }
     let panel = NSSavePanel()
     let kind: MediaSaveKind = entry.kind == .image ? .image : .video
-    panel.nameFieldStringValue = fileStore.makeDragDestination(capturedAt: entry.capturedAt, kind: kind).lastPathComponent
+    panel.nameFieldStringValue = FileStore.exportFilename(capturedAt: entry.capturedAt, kind: kind, name: entry.name)
     panel.directoryURL = SaveLocation.defaultDirectory(for: kind)
     panel.canCreateDirectories = true
     guard panel.runModal() == .OK, let destination = panel.url else { return }
@@ -444,7 +445,7 @@ struct CaptureHistoryWindow: View {
   private func dragFile(_ entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item) -> URL? {
     do {
       let kind: MediaSaveKind = entry.kind == .image ? .image : .video
-      let destination = try fileStore.makeUniqueDragDestination(capturedAt: entry.capturedAt, kind: kind)
+      let destination = try fileStore.makeUniqueDragDestination(capturedAt: entry.capturedAt, kind: kind, name: entry.name)
       let source = entry.fileURL(for: item, in: history.repository.root)
       // Copy-on-write avoids copying large recordings while starting a drag.
       if clonefile(source.path, destination.path, 0) != 0 {
