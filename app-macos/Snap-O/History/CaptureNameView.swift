@@ -38,6 +38,7 @@ private struct CaptureNamePopover: View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Capture name").font(.headline)
       TextField("", text: $name)
+        .textFieldStyle(.roundedBorder)
         .accessibilityLabel("Capture name")
         .focused($isFocused)
         .onSubmit(save)
@@ -46,7 +47,10 @@ private struct CaptureNamePopover: View {
         Button("Cancel") { dismiss() }
         Button("Save", action: save).keyboardShortcut(.defaultAction)
       }
+      .buttonStyle(.bordered)
     }
+    .font(.body)
+    .controlSize(.regular)
     .padding(16)
     .frame(width: 280)
     .background(CaptureRenameEscapeHandler { dismiss() })
