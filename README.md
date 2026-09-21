@@ -16,7 +16,7 @@ If you don't already have `adb`, install Android Platform Tools through Android 
 
 1. [Download Snap-O](https://github.com/openai/snap-o/releases/latest/download/Snap-O.dmg) and move it to Applications.
 2. Connect a device with USB debugging enabled, or start an emulator.
-3. Open Snap-O. Live Preview starts automatically. Option-drag the preview to share a screenshot, or press `⇧⌘R` to record.
+3. Open Snap-O. Live Preview starts automatically. Command-drag the preview to share a screenshot, or press `⇧⌘R` to record.
 
 Screen capture needs no library in your Android app. Network and Tweaks each require an Android integration; follow the guides below.
 
