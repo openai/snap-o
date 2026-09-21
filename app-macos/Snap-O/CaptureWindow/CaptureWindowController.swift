@@ -87,10 +87,12 @@ final class CaptureWindowController {
 
   func selectDevice(id: String) {
     guard selectedDeviceID != id else { return }
-    pendingPreferredDeviceID = id
     mediaDisplayMode.updateLastViewedDeviceID(id)
     if let media = mediaList.first(where: { $0.device.id == id }) {
+      pendingPreferredDeviceID = nil
       mediaDisplayMode.selectMedia(id: media.id)
+    } else {
+      pendingPreferredDeviceID = id
     }
   }
 

@@ -42,7 +42,8 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, deletesAll: true)
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
-    print("Startup capture tests passed (33 cases)")
+    await deviceManagerOpenPreservesLaterSelection()
+    print("Startup capture tests passed (34 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -509,6 +510,29 @@ struct StartupCaptureTests {
       let captures = await screenshots.requests
       precondition(recordings.isEmpty && captures.isEmpty)
     }
+  }
+
+  static func deviceManagerOpenPreservesLaterSelection() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    let controller = fixture.controller
+    await controller.start()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    let firstMediaID = controller.mediaList.first { $0.device.id == first.id }?.id
+    controller.selectMedia(id: firstMediaID)
+    await eventually { controller.selectedDeviceID == first.id }
+    await controller.showLivePreview(deviceID: second.id)
+    await eventually { controller.selectedDeviceID == second.id }
+    controller.selectMedia(id: firstMediaID)
+    await eventually { controller.selectedDeviceID == first.id }
+
+    let third = testDevice("third")
+    await fixture.tracker.updateDevices([first, second, third])
+    await eventually { controller.mediaList.count == 3 }
+    precondition(controller.selectedDeviceID == first.id, "Device Manager must not override a later selection")
+    await controller.tearDown()
   }
 
   static func captureHistoryDeletion(
