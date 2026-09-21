@@ -39,7 +39,7 @@ final class EmulatorHost {
     return androidHome.appendingPathComponent("avd")
   }
 
-  private func sdk() throws -> URL {
+  private func sdk(requiring executable: String = "emulator/emulator") throws -> URL {
     let candidates: [String?] = [
       environment["ANDROID_HOME"],
       environment["ANDROID_SDK_ROOT"],
@@ -47,18 +47,18 @@ final class EmulatorHost {
     ]
     for path in candidates.compactMap(\.self) where !path.isEmpty {
       let directory = URL(fileURLWithPath: path)
-      if FileManager.default.isExecutableFile(atPath: directory.appendingPathComponent("emulator/emulator").path) {
+      if FileManager.default.isExecutableFile(atPath: directory.appendingPathComponent(executable).path) {
         return directory
       }
     }
-    throw EmulatorServiceError(message: "Android SDK not found. Install the Emulator package in ~/Library/Android/sdk.")
+    let message = executable == "platform-tools/adb"
+      ? "Install Android SDK Platform Tools to start the ADB server."
+      : "Android SDK not found. Install the Emulator package in ~/Library/Android/sdk."
+    throw EmulatorServiceError(message: message)
   }
 
   func startADBServer() throws {
-    let adb = try sdk().appendingPathComponent("platform-tools/adb")
-    guard FileManager.default.isExecutableFile(atPath: adb.path) else {
-      throw EmulatorServiceError(message: "Install Android SDK Platform Tools to start the ADB server.")
-    }
+    let adb = try sdk(requiring: "platform-tools/adb").appendingPathComponent("platform-tools/adb")
     _ = try EmulatorCommand(executable: adb, arguments: ["start-server"]).run()
   }
 
