@@ -4,13 +4,18 @@ import SwiftUI
 @MainActor
 private protocol SnapOCommandTarget: AnyObject {
   func perform(_ command: SnapOCommand)
+  func showLivePreview(deviceID: String)
+  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail?
 }
 
 @MainActor
 final class SnapOCommandCoordinator {
   static let shared = SnapOCommandCoordinator()
 
+  private let targets = NSHashTable<AnyObject>.weakObjects()
   private weak var focusedTarget: (any SnapOCommandTarget)?
+  private weak var lastTarget: (any SnapOCommandTarget)?
+  private var pendingPreviewDeviceID: String?
   private var pendingCommands: [SnapOCommand] = []
 
   private init() {}
@@ -26,8 +31,39 @@ final class SnapOCommandCoordinator {
     return true
   }
 
+  @discardableResult
+  func showLivePreview(deviceID: String) -> Bool {
+    guard let target = focusedTarget ?? lastTarget else {
+      pendingPreviewDeviceID = deviceID
+      return false
+    }
+    target.showLivePreview(deviceID: deviceID)
+    return true
+  }
+
+  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
+    for case let target as any SnapOCommandTarget in targets.allObjects {
+      if let thumbnail = target.liveThumbnail(deviceID: deviceID), thumbnail.videoRenderer != nil {
+        return thumbnail
+      }
+    }
+    return nil
+  }
+
+  fileprivate func remove(_ target: any SnapOCommandTarget) {
+    targets.remove(target)
+    deactivate(target)
+    if lastTarget === target { lastTarget = nil }
+  }
+
   fileprivate func activate(_ target: any SnapOCommandTarget) {
+    targets.add(target)
     focusedTarget = target
+    lastTarget = target
+    if let deviceID = pendingPreviewDeviceID {
+      pendingPreviewDeviceID = nil
+      target.showLivePreview(deviceID: deviceID)
+    }
     let commands = pendingCommands
     pendingCommands.removeAll()
     for command in commands {
@@ -52,13 +88,17 @@ extension SnapOCommand {
 
 struct WindowCommandRegistration: NSViewRepresentable {
   let perform: @MainActor (SnapOCommand) -> Void
+  let preview: @MainActor (String) -> Void
+  let thumbnail: @MainActor (String) -> LivePreviewThumbnail?
 
   func makeNSView(context: Context) -> WindowCommandTargetView {
-    WindowCommandTargetView(perform: perform)
+    WindowCommandTargetView(perform: perform, preview: preview, thumbnail: thumbnail)
   }
 
   func updateNSView(_ nsView: WindowCommandTargetView, context: Context) {
     nsView.performCommand = perform
+    nsView.previewDevice = preview
+    nsView.thumbnailForDevice = thumbnail
     nsView.attach(to: nsView.window)
   }
 
@@ -70,12 +110,20 @@ struct WindowCommandRegistration: NSViewRepresentable {
 @MainActor
 final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   var performCommand: @MainActor (SnapOCommand) -> Void
+  var previewDevice: @MainActor (String) -> Void
+  var thumbnailForDevice: @MainActor (String) -> LivePreviewThumbnail?
 
   private weak var observedWindow: NSWindow?
   private var notificationTokens: [NSObjectProtocol] = []
 
-  init(perform: @escaping @MainActor (SnapOCommand) -> Void) {
+  init(
+    perform: @escaping @MainActor (SnapOCommand) -> Void,
+    preview: @escaping @MainActor (String) -> Void,
+    thumbnail: @escaping @MainActor (String) -> LivePreviewThumbnail?
+  ) {
     performCommand = perform
+    previewDevice = preview
+    thumbnailForDevice = thumbnail
     super.init(frame: .zero)
   }
 
@@ -91,6 +139,15 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
 
   func perform(_ command: SnapOCommand) {
     performCommand(command)
+  }
+
+  func showLivePreview(deviceID: String) {
+    window?.makeKeyAndOrderFront(nil)
+    previewDevice(deviceID)
+  }
+
+  func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
+    thumbnailForDevice(deviceID)
   }
 
   func attach(to window: NSWindow?) {
@@ -145,7 +202,7 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   }
 
   func detach() {
-    SnapOCommandCoordinator.shared.deactivate(self)
+    SnapOCommandCoordinator.shared.remove(self)
     for token in notificationTokens {
       NotificationCenter.default.removeObserver(token)
     }

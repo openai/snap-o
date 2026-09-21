@@ -53,6 +53,13 @@ struct SnapOApp: App {
       )
     }
 
+    Window("Device Manager", id: "device-manager") {
+      DeviceManagerWindow(manager: runtime.deviceManager)
+    }
+    .defaultSize(width: 680, height: 420)
+    .windowResizability(.contentMinSize)
+    .commandsRemoved()
+
     Window("Capture History", id: "capture-history") {
       CaptureHistoryWindow(history: runtime.captureHistory, fileStore: runtime.fileStore)
     }

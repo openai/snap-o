@@ -7,13 +7,22 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = F40000022F70000100C0FFEE /* NIOHTTP1 */; };
 		32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 32C837092E6A5AD10003BDFA /* Sparkle */; };
 		32D6DEB22E395E0B001A7DEE /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 32D6DEB12E395E0B001A7DEE /* AVKit.framework */; };
+		A60000012F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60000022F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift */; };
+		A60000032F70000100C0FFEE /* EmulatorService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A60000042F70000100C0FFEE /* EmulatorService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
+		F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = F40000022F70000100C0FFEE /* NIOHTTP1 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		A600000A2F70000100C0FFEE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3234F4492E2EC5030057AE77 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A60000072F70000100C0FFEE;
+			remoteInfo = EmulatorService;
+		};
 		E30000032F70000100C0FFEE /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 3234F4492E2EC5030057AE77 /* Project object */;
@@ -23,11 +32,27 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		A600000C2F70000100C0FFEE /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				A60000032F70000100C0FFEE /* EmulatorService.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		3234F4512E2EC5030057AE77 /* Snap-O.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Snap-O.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		32AECEFA2E56725E00AA18F0 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		32AECEFC2E56725E00AA18F0 /* Signing.xcconfig.sample */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.xcconfig.sample; sourceTree = "<group>"; };
 		32D6DEB12E395E0B001A7DEE /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
+		A60000022F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snap-O/Device/Emulators/EmulatorServiceProtocol.swift"; sourceTree = SOURCE_ROOT; };
+		A60000042F70000100C0FFEE /* EmulatorService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = EmulatorService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		E30000012F70000100C0FFEE /* Snap-OTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Snap-OTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -48,6 +73,11 @@
 				32AECE392E56513200AA18F0 /* Exceptions for "Snap-O" folder in "Snap-O" target */,
 			);
 			path = "Snap-O";
+			sourceTree = "<group>";
+		};
+		A60000052F70000100C0FFEE /* EmulatorService */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = EmulatorService;
 			sourceTree = "<group>";
 		};
 		E30000022F70000100C0FFEE /* Snap-OTests */ = {
@@ -82,6 +112,8 @@
 		3234F4482E2EC5030057AE77 = {
 			isa = PBXGroup;
 			children = (
+				A60000052F70000100C0FFEE /* EmulatorService */,
+				A60000022F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift */,
 				E30000022F70000100C0FFEE /* Snap-OTests */,
 				3234F4532E2EC5030057AE77 /* Snap-O */,
 				32D6DEB02E395E0A001A7DEE /* Frameworks */,
@@ -92,6 +124,7 @@
 		3234F4522E2EC5030057AE77 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				A60000042F70000100C0FFEE /* EmulatorService.xpc */,
 				E30000012F70000100C0FFEE /* Snap-OTests.xctest */,
 				3234F4512E2EC5030057AE77 /* Snap-O.app */,
 			);
@@ -127,10 +160,12 @@
 				3234F44E2E2EC5030057AE77 /* Frameworks */,
 				3234F44F2E2EC5030057AE77 /* Resources */,
 				A100000B2F5B123400C0FFEE /* Embed tool CLIs */,
+				A600000C2F70000100C0FFEE /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A600000B2F70000100C0FFEE /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				3234F4532E2EC5030057AE77 /* Snap-O */,
@@ -144,6 +179,24 @@
 			productName = "Snap-O";
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A60000072F70000100C0FFEE /* EmulatorService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A60000082F70000100C0FFEE /* Build configuration list for PBXNativeTarget "EmulatorService" */;
+			buildPhases = (
+				A60000092F70000100C0FFEE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A60000052F70000100C0FFEE /* EmulatorService */,
+			);
+			name = EmulatorService;
+			productName = EmulatorService;
+			productReference = A60000042F70000100C0FFEE /* EmulatorService.xpc */;
+			productType = "com.apple.product-type.xpc-service";
 		};
 		E30000082F70000100C0FFEE /* Snap-OTests */ = {
 			isa = PBXNativeTarget;
@@ -200,6 +253,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				A60000072F70000100C0FFEE /* EmulatorService */,
 				E30000082F70000100C0FFEE /* Snap-OTests */,
 				3234F4502E2EC5030057AE77 /* Snap-O */,
 			);
@@ -258,6 +312,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A60000092F70000100C0FFEE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A60000012F70000100C0FFEE /* Snap-O/Device/Emulators/EmulatorServiceProtocol.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E30000052F70000100C0FFEE /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -268,6 +330,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A600000B2F70000100C0FFEE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A60000072F70000100C0FFEE /* EmulatorService */;
+			targetProxy = A600000A2F70000100C0FFEE /* PBXContainerItemProxy */;
+		};
 		E30000042F70000100C0FFEE /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 3234F4502E2EC5030057AE77 /* Snap-O */;
@@ -336,6 +403,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				SNAPO_APP_BUNDLE_IDENTIFIER = com.openai.snapo;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -395,6 +463,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				SNAPO_APP_BUNDLE_IDENTIFIER = com.openai.snapo;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -429,7 +498,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = "$(VERSION)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
@@ -474,7 +543,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = "$(VERSION)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
@@ -484,6 +553,42 @@
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A600000D2F70000100C0FFEE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = EmulatorService/Info.plist;
+				MARKETING_VERSION = "$(VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).EmulatorService";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A600000E2F70000100C0FFEE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = EmulatorService/Info.plist;
+				MARKETING_VERSION = "$(VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).EmulatorService";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
@@ -545,6 +650,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A60000082F70000100C0FFEE /* Build configuration list for PBXNativeTarget "EmulatorService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A600000D2F70000100C0FFEE /* Debug */,
+				A600000E2F70000100C0FFEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		E30000092F70000100C0FFEE /* Build configuration list for PBXNativeTarget "Snap-OTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -557,14 +671,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-nio.git";
-			requirement = {
-				kind = exactVersion;
-				version = 2.100.0;
-			};
-		};
 		32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -581,14 +687,17 @@
 				minimumVersion = 0.9.20;
 			};
 		};
+		F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.100.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F40000022F70000100C0FFEE /* NIOHTTP1 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */;
-			productName = NIOHTTP1;
-		};
 		32C837092E6A5AD10003BDFA /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */;
@@ -598,6 +707,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
 			productName = ZIPFoundation;
+		};
+		F40000022F70000100C0FFEE /* NIOHTTP1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOHTTP1;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

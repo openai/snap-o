@@ -1,0 +1,187 @@
+import SwiftUI
+
+struct DeviceManagerWindow: View {
+  @Environment(\.openWindow)
+  private var openWindow
+  @State private var deviceToDelete: ManagedEmulator?
+  @Bindable var manager: DeviceManager
+
+  var body: some View {
+    VStack(spacing: 0) {
+      if let error = manager.loadError {
+        HStack(alignment: .top, spacing: 10) {
+          Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+          Text(error).textSelection(.enabled)
+          Spacer(minLength: 0)
+        }
+        .padding()
+        Divider()
+      }
+      if !manager.hasLoaded, manager.entries.isEmpty {
+        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else if manager.entries.isEmpty {
+        ContentUnavailableView {
+          Label("No Devices", systemImage: "iphone.gen3")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        ScrollView {
+          LazyVStack(spacing: 0) {
+            ForEach(manager.entries) { device in
+              row(device)
+              Divider().padding(.leading, 56)
+            }
+          }
+          .padding(.horizontal, 20)
+        }
+      }
+    }
+    .frame(minWidth: 620, minHeight: 300)
+    .navigationTitle("Device Manager")
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button {
+          Task { await manager.refresh() }
+        } label: {
+          Label("Refresh", systemImage: "arrow.clockwise")
+            .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.plain)
+        .disabled(manager.isRefreshing)
+        .help("Refresh Devices")
+      }
+      .sharedBackgroundVisibility(.hidden)
+    }
+    .task {
+      manager.showPreview = showPreview
+      await manager.observe()
+    }
+    .alert("Device Manager", isPresented: Binding(
+      get: { manager.actionError != nil },
+      set: { if !$0 { manager.actionError = nil } }
+    )) {
+      Button("OK") { manager.actionError = nil }
+    } message: {
+      Text(manager.actionError ?? "")
+    }
+    .alert("Delete Emulator?", isPresented: Binding(
+      get: { deviceToDelete != nil },
+      set: { if !$0 { deviceToDelete = nil } }
+    ), presenting: deviceToDelete) { device in
+      Button("Cancel", role: .cancel) { deviceToDelete = nil }
+      Button("Delete", role: .destructive) {
+        manager.delete(device)
+        deviceToDelete = nil
+      }
+    } message: { device in
+      Text("“\(device.title)” and its data will move to Trash.")
+    }
+  }
+
+  private func row(_ entry: DeviceManagerEntry) -> some View {
+    let emulator: ManagedEmulator? = if case .emulator(let device) = entry { device } else { nil }
+    let action = emulator.flatMap { manager.actions[$0.id] }
+    let isBusy = action != nil || entry.isTransitioning
+    return HStack(alignment: .center, spacing: 16) {
+      DeviceThumbnailView(device: entry, action: action, manager: manager)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+          guard !isBusy else { return }
+          if entry.isRunning, let serial = entry.serial {
+            showPreview(serial)
+          } else if let device = emulator, device.canStart, manager.loadError == nil {
+            manager.start(device)
+          }
+        }
+      VStack(alignment: .leading, spacing: 5) {
+        Text(entry.title).font(.headline)
+        Text(entry.subtitle)
+          .font(.subheadline).foregroundStyle(.secondary)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      if let serial = entry.serial {
+        Button { showPreview(serial) } label: {
+          Text("Open")
+            .frame(height: 28)
+            .contentShape(Rectangle())
+        }
+        .help("Open in Live Preview")
+        .disabled(!entry.isRunning || action != nil)
+      }
+      if let device = emulator {
+        emulatorControls(device, action: action, isBusy: isBusy)
+      } else {
+        Color.clear.frame(width: 72, height: 28)
+      }
+    }
+    .buttonStyle(.plain)
+    .padding(.vertical, 14)
+    .contextMenu {
+      if let device = emulator {
+        actions(for: device).disabled(action != nil || manager.loadError != nil)
+      }
+    }
+  }
+
+  private func emulatorControls(_ device: ManagedEmulator, action: String?, isBusy: Bool) -> some View {
+    HStack(spacing: 16) {
+      if isBusy {
+        ProgressView()
+          .controlSize(.small)
+          .frame(width: 28, height: 28)
+          .accessibilityLabel(action ?? device.state.title)
+          .help(action ?? device.state.title)
+      } else if device.canStart {
+        Button { manager.start(device) } label: {
+          actionIcon("Start", symbol: "play.fill")
+        }
+        .help("Start")
+      } else if device.canStop {
+        Button { manager.stop(device) } label: {
+          actionIcon("Stop", symbol: "stop.fill")
+        }
+        .help("Stop")
+      } else {
+        Color.clear.frame(width: 28, height: 28)
+      }
+      Menu {
+        actions(for: device)
+      } label: {
+        actionIcon("Emulator Actions", symbol: "ellipsis")
+      }
+      .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
+      .frame(width: 28, height: 28)
+      .disabled(action != nil)
+      .help("Emulator Actions")
+    }
+    .frame(width: 72, height: 28)
+    .disabled(manager.loadError != nil)
+  }
+
+  @ViewBuilder
+  private func actions(for device: ManagedEmulator) -> some View {
+    Button("Cold Boot", systemImage: "arrow.counterclockwise") { manager.start(device, coldBoot: true) }
+      .disabled(!device.canColdBoot)
+    Button("Reveal in Finder", systemImage: "folder") {
+      NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: device.id)])
+    }
+    Divider()
+    Button("Delete…", systemImage: "trash", role: .destructive) { deviceToDelete = device }
+      .disabled(!device.canDelete)
+  }
+
+  private func actionIcon(_ title: String, symbol: String) -> some View {
+    Label(title, systemImage: symbol)
+      .labelStyle(.iconOnly)
+      .font(SnapOToolbarStyle.iconFont)
+      .frame(width: 28, height: 28)
+      .contentShape(Rectangle())
+  }
+
+  private func showPreview(_ serial: String) {
+    if !SnapOCommandCoordinator.shared.showLivePreview(deviceID: serial) {
+      openWindow(id: WorkspaceWindowID.main, value: WorkspaceWindowConfiguration(workspace: .persisted()))
+    }
+  }
+}

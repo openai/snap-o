@@ -162,6 +162,27 @@ struct ADBDiscoveryTimeoutTests {
     #expect(ready == (output == "1\r\n"))
   }
 
+  @Test("emulator discovery ignores boot results from a reused transport")
+  func ignoresBootResultAfterTransportReuse() async throws {
+    let server = FakeDiscoveryADB(stall: .output, deviceLists: [
+      "emulator-5554 device transport_id:2\n",
+      "emulator-5554 device transport_id:4\n"
+    ])
+    defer { server.close() }
+    let connections = try await server.client().emulatorConnections()
+    #expect(connections.first?.state == .starting)
+  }
+
+  @Test("device list requests time out")
+  func boundsDeviceList() async throws {
+    let server = FakeDiscoveryADB(stall: .transport)
+    defer { server.close() }
+    do {
+      _ = try await server.client().devicesList()
+      Issue.record("Expected device list timeout")
+    } catch ADBError.requestTimedOut {}
+  }
+
   @Test("device properties and process metadata have bounded requests")
   func boundsMetadata() async throws {
     let server = FakeDiscoveryADB(stall: .output)
@@ -289,6 +310,8 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
 
   private let legacyReply: LegacyReply?
   private let bootOutput: String
+  private let deviceLists: [String]
+  private var listRequests = 0
   let requests = AsyncStream<String>.makeStream()
   private let stall: Stall
   private let workers = DispatchGroup()
@@ -296,10 +319,11 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
   private var peers: [ADBSocketConnection] = []
   private var finishedLegacyStream = false
 
-  init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n") {
+  init(stall: Stall, legacyReply: LegacyReply? = nil, bootOutput: String = "1\n", deviceLists: [String] = []) {
     self.stall = stall
     self.legacyReply = legacyReply
     self.bootOutput = bootOutput
+    self.deviceLists = deviceLists
   }
 
   var connectionCount: Int {
@@ -337,6 +361,17 @@ private final class FakeDiscoveryADB: @unchecked Sendable {
       do {
         try peer.withRequestTimeout(.seconds(2)) {
           let transport = try Self.readRequest(peer)
+          if transport == "host:devices-l" {
+            if stall == .transport { return }
+            let payload = self.lock.withLock {
+              let payload = self.deviceLists.indices.contains(self.listRequests) ? self.deviceLists[self.listRequests] : ""
+              self.listRequests += 1
+              return payload
+            }
+            Self.send("OKAY" + String(format: "%04X", payload.utf8.count) + payload, to: descriptor)
+            peer.close()
+            return
+          }
           if transport == "host:track-devices-l" {
             if stall != .transport { Self.send("OKAY0000", to: descriptor) }
             requests.continuation.yield(transport)

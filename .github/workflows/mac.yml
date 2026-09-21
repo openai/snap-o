@@ -78,6 +78,9 @@ jobs:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-tool-recovery.sh
 
+      - name: Device Manager tests
+        run: bash app-macos/Tests/DeviceManager/test.sh
+
   style:
     name: Mac style
     runs-on: macos-26

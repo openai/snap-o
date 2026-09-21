@@ -25,6 +25,7 @@ struct SnapOCommands: Commands {
     // swiftlint:disable:next redundant_discardable_let
     let _ = CommandDiagnostics.shared.focusedWorkspaceEvaluated(workspaceController)
     CommandGroup(before: .windowSize) {
+      Button("Device Manager") { openWindow(id: "device-manager") }
       Button("Capture History") { openWindow(id: "capture-history") }
         .keyboardShortcut("h", modifiers: [.command, .shift])
       Divider()
@@ -158,6 +159,8 @@ struct SnapOCommands: Commands {
       }
     }
     CommandMenu("Device") {
+      Button("Device Manager…") { openWindow(id: "device-manager") }
+      Divider()
       let hasAlternativeMedia = historyActions?.canNavigate ?? captureController?.hasAlternativeMedia() ?? false
 
       Button("Previous Device") {
