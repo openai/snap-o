@@ -49,8 +49,22 @@
 <p class="prose">Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use <code>⌘[</code> and <code>⌘]</code> to switch between connected devices.</p>
 <p class="prose">The device picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.</p>
 <p class="prose">When Android is still booting, Snap-O waits for it to be ready and retries display discovery automatically.</p>
-<p class="prose">Option-drag the preview to share the current frame as a screenshot, or right-click for <strong>Copy Image</strong> and <strong>Save Image As…</strong>. Each action adds that frame to Capture History. Watching the preview alone does not.</p>
+<p class="prose">Command-drag the preview to share the current frame as a screenshot, or right-click for <strong>Copy Image</strong> and <strong>Save Image As…</strong>. Each action adds that frame to Capture History. Watching the preview alone does not.</p>
 <p class="prose">Press <code>Esc</code> to stop the preview, or <code>⇧⌘L</code> to start it again. Choose <strong>Device → Start With</strong> to change how new windows open.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="device-manager">
+        <div class="section-heading">
+
+          <h2>Device Manager</h2>
+        </div>
+        <div class="section-body">
+<p class="prose"><a href="https://github.com/openai/snap-o/releases/tag/11.0.0">Snap-O 11.0.0</a> adds Device Manager for existing Android emulators and connected devices. Open <strong>Device → Device Manager</strong>, or use the Capture title's ellipsis menu.</p>
+<p class="prose">Click <strong>Start</strong> beside a stopped emulator. Snap-O opens it in Live Preview after Android finishes booting. Click <strong>Open</strong> for a running emulator or connected phone. Double-clicking a thumbnail also opens a running device or starts a stopped emulator.</p>
+<p class="prose">Use <strong>Stop</strong> to shut down an emulator, or <strong>Cold Boot</strong> in its actions menu to start without loading a saved snapshot. <strong>Reveal in Finder</strong> opens its files. <strong>Delete</strong> asks for confirmation before moving a stopped emulator and its data to Trash. Connected phones have no emulator lifecycle controls.</p>
+<p class="prose">Device Manager uses your installed Android SDK and existing AVDs. The default SDK location is <code>~/Library/Android/sdk</code>. It also checks <code>ANDROID_HOME</code> and <code>ANDROID_SDK_ROOT</code> when available to the app; apps opened from Finder do not inherit shell startup variables. This version does not install SDK packages, create or edit AVDs, or offer a custom SDK location picker.</p>
+<p class="prose">Quitting Snap-O leaves running emulators available to other tools.</p>
 </div>
       </section>
 
@@ -168,6 +182,8 @@
         <ol class="quick-jump-list">
 
           <li><a class="quick-jump-link" href="#live-preview">Live Preview</a></li>
+
+          <li><a class="quick-jump-link" href="#device-manager">Device Manager</a></li>
 
           <li><a class="quick-jump-link" href="#take-a-screenshot">Take a screenshot</a></li>
 
