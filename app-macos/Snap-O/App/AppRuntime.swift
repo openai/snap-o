@@ -4,6 +4,7 @@ import Observation
 /// App-scoped services and their startup lifecycle.
 @MainActor
 final class AppRuntime {
+  let deviceManager: DeviceManager
   let adbService: ADBService
   let deviceTracker: DeviceTracker
   let fileStore: FileStore
@@ -39,6 +40,7 @@ final class AppRuntime {
       coordinator: captureCoordinator
     )
 
+    deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker)
     self.adbService = adbService
     self.deviceTracker = deviceTracker
     self.fileStore = fileStore
@@ -99,6 +101,7 @@ final class AppRuntime {
       return
     }
 
+    deviceManager.shutdown()
     let activeStartupTask = startupTask
     activeStartupTask?.cancel()
     startupTask = nil

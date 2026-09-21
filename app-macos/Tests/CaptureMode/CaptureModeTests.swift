@@ -9,6 +9,7 @@ struct CaptureModeTests {
   static func run() async throws {
     try await teardownWaitsForPointerPreparation()
     try await removingDevicePreservesOtherPointer()
+    try await disconnectedPreviewDisappearsBeforeCleanup()
     try await pointerWaitsForReadiness()
     try await unreadyPreviewDoesNotPreparePointer()
     try await stoppedRendererIgnoresLateReadiness()
@@ -18,7 +19,7 @@ struct CaptureModeTests {
     await overlappingDeviceUpdates()
     await modePropagatesCancellation()
     await modeRetainsFailuresUntilDisconnect()
-    print("Capture mode tests passed (13 cases)")
+    print("Capture mode tests passed (14 cases)")
   }
 
   static func eventually(_ condition: () async -> Bool) async {
@@ -112,6 +113,31 @@ struct CaptureModeTests {
     await manager.updateDevices([second])
     let activeDevices = await adb.activePointerDeviceIDs
     precondition(activeDevices == [second.id])
+    await manager.stop()
+  }
+
+  static func disconnectedPreviewDisappearsBeforeCleanup() async throws {
+    let stopGate = TestGate()
+    let service = LivePreviewService(stopGate: stopGate)
+    var displayed: [String] = []
+    let manager = LivePreviewManager(
+      livePreviewService: service, adbService: ADBService(), options: options
+    ) { displayed = $0.map(\.device.id) }
+    await manager.start(with: [first, second])
+    _ = try await manager.makeRenderer(for: first.id)
+    precondition(displayed == [first.id, second.id])
+
+    var finished = false
+    let disconnect = Task {
+      await manager.updateDevices([second])
+      finished = true
+    }
+    await eventually { await stopGate.waitCount == 1 }
+    precondition(!finished, "Disconnect must still await stream cleanup")
+    precondition(displayed == [second.id], "Disconnected previews must disappear before cleanup finishes")
+    await stopGate.open()
+    await disconnect.value
+    precondition(displayed == [second.id], "Cleanup must not restore the disconnected preview")
     await manager.stop()
   }
 

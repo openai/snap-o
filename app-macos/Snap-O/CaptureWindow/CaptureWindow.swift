@@ -27,6 +27,8 @@ private struct CaptureWorkspaceMetricsKey: PreferenceKey {
 }
 
 struct CaptureWindow: View {
+  @Environment(\.openWindow)
+  private var openWindow
   @Environment(CaptureHistory.self)
   private var history
   @State private var historyProtectionID = UUID()
@@ -143,6 +145,11 @@ struct CaptureWindow: View {
         WindowCommandRegistration { command in
           workspace.revealCapture()
           Task { await handle(command, controller: controller) }
+        } preview: { deviceID in
+          workspace.revealCapture()
+          Task { await controller.showLivePreview(deviceID: deviceID) }
+        } thumbnail: { deviceID in
+          controller.livePreviewConnection(for: deviceID)?.thumbnail
         }
         .frame(width: 0, height: 0)
       )
@@ -156,18 +163,19 @@ struct CaptureWindow: View {
 
   private func capturePaneTitle(for layout: WorkspaceLayout) -> CapturePaneTitle? {
     guard layout.showsCapture else { return nil }
-    if layout.showsTool, controller.currentCapture == nil, !controller.isRecording { return nil }
     let entry = captureHistoryEntry
     return CapturePaneTitle(
       entry: entry,
       deviceTitle: controller.isLivePreviewActive ? nil : controller.currentCaptureDeviceTitle,
       fallbackTitle: controller.isLivePreviewActive
         ? controller.currentCaptureDeviceTitle ?? ""
-        : controller.isRecording ? "Recording" : "Snap-O"
-    ) { name in
-      guard let entry else { return }
-      Task { await history.repository.rename(entry.id, to: name) }
-    }
+        : controller.isRecording ? "Recording" : "Snap-O",
+      openDeviceManager: { openWindow(id: "device-manager") },
+      rename: { name in
+        guard let entry else { return }
+        Task { await history.repository.rename(entry.id, to: name) }
+      }
+    )
   }
 
   private func navigationTitle(for layout: WorkspaceLayout) -> String {

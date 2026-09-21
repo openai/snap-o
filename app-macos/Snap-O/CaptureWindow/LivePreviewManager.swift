@@ -228,6 +228,9 @@ final class LivePreviewManager {
       captureIDs.removeValue(forKey: id)
     }
 
+    // Remove disconnected previews before stream cleanup or new-device discovery can suspend.
+    rebuildMedia()
+
     if let prepared = preparedLivePreview, !currentIDs.contains(prepared.deviceID) {
       preparedLivePreview = nil
       let cleanupID = UUID()

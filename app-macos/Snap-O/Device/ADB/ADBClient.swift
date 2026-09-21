@@ -280,10 +280,36 @@ public struct ADBClient: Sendable {
 
   public func devicesList() async throws -> String {
     try await withConnection { connection in
-      try connection.sendDevicesList()
-      guard let payload = try connection.readLengthPrefixedPayload() else { return "" }
-      return String(data: payload, encoding: .utf8) ?? ""
+      try connection.withRequestTimeout(discoveryTimeout) {
+        try connection.sendDevicesList()
+        guard let payload = try connection.readLengthPrefixedPayload() else { return "" }
+        return String(data: payload, encoding: .utf8) ?? ""
+      }
     }
+  }
+
+  func emulatorConnections() async throws -> [EmulatorConnection] {
+    let connections = try await EmulatorConnection.parse(devicesList())
+    let checked = await withTaskGroup(of: EmulatorConnection.self) { group in
+      for connection in connections {
+        group.addTask {
+          var connection = connection
+          if connection.state == .starting,
+             await (try? isBootComplete(deviceID: connection.serial)) == true {
+            connection.state = .running
+          }
+          return connection
+        }
+      }
+      var result: [EmulatorConnection] = []
+      for await connection in group {
+        result.append(connection)
+      }
+      return result
+    }
+    try Task.checkCancellation()
+    let current = try await EmulatorConnection.parse(devicesList())
+    return EmulatorConnection.reconcileBootChecks(checked, current: current)
   }
 
   public func connectedDeviceIDs() async throws -> [String] {

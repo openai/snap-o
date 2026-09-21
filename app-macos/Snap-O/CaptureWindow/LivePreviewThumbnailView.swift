@@ -70,6 +70,11 @@ private struct LivePreviewThumbnailMirror: NSViewRepresentable {
 final class LivePreviewThumbnailDisplayView: NSView {
   weak var thumbnail: LivePreviewThumbnail?
   private let displayLayer = AVSampleBufferDisplayLayer()
+  var videoGravity: AVLayerVideoGravity {
+    get { displayLayer.videoGravity }
+    set { displayLayer.videoGravity = newValue }
+  }
+
   private var displayLink: CADisplayLink?
   private var lastPixelBuffer: CVPixelBuffer?
 

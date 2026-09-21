@@ -321,13 +321,31 @@ final class CaptureWindowController {
     await recordingMode.finish()
   }
 
-  func startLivePreview(useStartupPreparation: Bool = false) async {
+  func showLivePreview(deviceID: String) async {
+    let deadline = Date().addingTimeInterval(20)
+    while !isTornDown, !Task.isCancelled, Date() < deadline {
+      if isRecording {
+        lastError = "Stop the screen recording before switching to Live Preview."
+        return
+      }
+      if !isProcessing, knownDevices.contains(where: { $0.id == deviceID }) {
+        await startLivePreview(preferredDeviceID: deviceID)
+        selectDevice(id: deviceID)
+        return
+      }
+      do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+    }
+    if !isTornDown { lastError = "The emulator is not available for Live Preview yet. Try again shortly." }
+  }
+
+  func startLivePreview(useStartupPreparation: Bool = false, preferredDeviceID: String? = nil) async {
     guard canStartLivePreviewNow else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     lastError = nil
     screenshotFailures = []
-    let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices.first?.id
+    let preferredDeviceID = preferredDeviceID ?? pendingPreferredDeviceID ?? currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices
+      .first?.id
     pendingPreferredDeviceID = preferredDeviceID
     let options = LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
     let prepared: PreparedLivePreview? = if useStartupPreparation, let device = knownDevices.first(where: { $0.id == preferredDeviceID }) {
@@ -361,7 +379,9 @@ final class CaptureWindowController {
       onMediaApplied: { [weak self] in
         guard let self, !isTornDown, !isStoppingLivePreview else { return }
         isProcessing = false
-        pendingPreferredDeviceID = nil
+        if let pending = pendingPreferredDeviceID, mediaList.contains(where: { $0.device.id == pending }) {
+          pendingPreferredDeviceID = nil
+        }
         resumeInitialCaptureWaiters()
       }
     )
