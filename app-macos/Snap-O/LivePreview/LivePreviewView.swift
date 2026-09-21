@@ -64,7 +64,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     self.fileStore = fileStore
     super.init(frame: .zero)
     configureLayerIfNeeded()
-    toolTip = "Option-drag to capture the current frame"
+    toolTip = "Command-drag to capture the current frame"
   }
 
   @available(*, unavailable)
@@ -248,7 +248,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
       super.mouseDown(with: event)
       return
     }
-    if event.modifierFlags.contains(.option) {
+    if event.modifierFlags.contains(.command) {
       isDraggingFrame = true
       if convertToDevicePoint(event: event) != nil {
         frameDragOrigin = convert(event.locationInWindow, from: nil)

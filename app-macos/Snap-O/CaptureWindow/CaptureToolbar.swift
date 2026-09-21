@@ -412,7 +412,7 @@ struct CaptureActionToolbarControls: View {
           .frame(width: 34, height: 32)
           .modifier(CaptureSelectionHighlight(isSelected: isLivePreviewActive))
       }
-      .help("Live Preview (⌘⇧L). Option-drag the preview to capture a frame.")
+      .help("Live Preview (⌘⇧L). Command-drag the preview to capture a frame.")
       .disabled(!canSelectLivePreview)
     }
     .labelStyle(.iconOnly)

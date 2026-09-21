@@ -26,7 +26,7 @@ The device picker shows a live thumbnail for the selected device and cached scre
 
 When Android is still booting, Snap-O waits for it to be ready and retries display discovery automatically.
 
-Option-drag the preview to share the current frame as a screenshot, or right-click for **Copy Image** and **Save Image As…**. Each action adds that frame to Capture History. Watching the preview alone does not.
+Command-drag the preview to share the current frame as a screenshot, or right-click for **Copy Image** and **Save Image As…**. Each action adds that frame to Capture History. Watching the preview alone does not.
 
 Press `Esc` to stop the preview, or `⇧⌘L` to start it again. Choose **Device → Start With** to change how new windows open.
 
