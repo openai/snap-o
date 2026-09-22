@@ -474,7 +474,7 @@ public struct ADBClient: Sendable {
     return output
   }
 
-  private func withConnection<T: Sendable>(
+  func withConnection<T: Sendable>(
     maxAttempts: Int = 3,
     _ body: @escaping @Sendable (ADBSocketConnection) throws -> T
   ) async throws -> T {
