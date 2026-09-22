@@ -6,6 +6,7 @@ Snap-O is a public, open-source Android inspection tool.
 - `tools/`: Network and Tweaks, each with Android libraries, a frontend, and CLI tests.
 - `tool-sdk/`: tool plugin authoring APIs, runtime, and Gradle integration.
 - `tool-reader/`: Android helper used by the macOS app to read tool plugin metadata and frontend assets.
+- `device-helper/`: session-scoped Android clipboard helper bundled with the macOS app.
 - `skills/`: installable Network and Tweaks skills, each bundling its standalone Python CLI.
 - `examples/`: Android demo apps, an independent tool plugin project, and CLI examples.
 - `build-logic/` and `gradle/`: internal Gradle conventions and root build tooling.

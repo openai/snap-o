@@ -3,7 +3,7 @@ import Foundation
 import OSLog
 
 enum StartupCaptureMode { case screenshot, livePreview }
-final class EmulatorClipboardSync {}
+final class ClipboardSync {}
 enum SnapOLog {
   static let ui = Logger(subsystem: "Snap-O.StartupTests", category: "test")
 }

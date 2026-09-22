@@ -363,10 +363,10 @@ print_protocol_evidence() {
 
 print_protocol_evidence 'Android servers' "$ANDROID_BASE" \
   print_android_protocol_declarations \
-  contracts docs/tweaks-protocol.md tool-sdk tool-reader tools sdk plugin-reader build-logic gradle build.gradle.kts settings.gradle.kts gradle.properties examples/android plugins/discovery android-discovery scripts/snapo-discovery.jar snapo-link-android plugins
+  contracts docs/tweaks-protocol.md tool-sdk tool-reader device-helper tools sdk plugin-reader build-logic gradle build.gradle.kts settings.gradle.kts gradle.properties examples/android plugins/discovery android-discovery scripts/snapo-discovery.jar snapo-link-android plugins
 print_protocol_evidence 'Mac/web/CLI clients' "$MAC_BASE" \
   print_client_protocol_declarations \
-  contracts docs/tweaks-protocol.md app-macos cli skills tool-sdk/host tool-reader examples/tool tools/network/frontend tools/tweaks/frontend sdk/host plugin-reader examples/plugin plugins/tweaks/frontend plugins/discovery android-discovery snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
+  contracts docs/tweaks-protocol.md app-macos cli skills tool-sdk/host tool-reader device-helper examples/tool tools/network/frontend tools/tweaks/frontend sdk/host plugin-reader examples/plugin plugins/tweaks/frontend plugins/discovery android-discovery snapo-app-mac/SnapODeviceClient snapo-app-mac/Snap-O/NetworkInspector \
   snapo-app-mac/Snap-O/Inspectors snapo-app-mac/Snap-O/Tools snapo-network-inspector-web inspectors tools plugin-host plugins/host snapo-link-android/tweaks-core/frontend snapo-link-android/network/frontend plugins/tweaks-core/frontend plugins/network/frontend plugins/implementations/tweaks/frontend plugins/implementations/network/frontend scripts snapo-link-android/example plugins/example
 printf '%s\n' 'Protocol review must be recorded for this source SHA before the version bump; this report does not approve compatibility.'
 

@@ -3,7 +3,7 @@ import GRPCCore
 import GRPCNIOTransportHTTP2TransportServices
 import SwiftProtobuf
 
-struct EmulatorClipboardTransport {
+struct EmulatorClipboardTransport: ClipboardTransport {
   private let client: GRPCClient<HTTP2ClientTransport.TransportServices>
   private let authentication: EmulatorClipboardAuthentication
 

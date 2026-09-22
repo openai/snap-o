@@ -19,6 +19,7 @@ on:
       - 'release/validate_authoring.py'
       - 'release/tests/test_authoring.py'
       - 'tool-reader/**'
+      - 'device-helper/**'
       - 'contracts/**'
       - '.github/workflows/android.yml'
       - 'VERSION'
@@ -80,10 +81,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Verify bundled Android discovery reader
+      - name: Verify bundled Android helpers
         run: |
           "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
           python3 tool-reader/build.py --check
+          python3 device-helper/build.py --check
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
