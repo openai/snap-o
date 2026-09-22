@@ -20,13 +20,9 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
     defer { client.close() }
     while true {
       try Task.checkCancellation()
-      do {
-        return try await client.previewEndpoint(deviceID)
-      } catch {
-        try Task.checkCancellation()
-        // Registration and authentication can lag behind ADB discovery.
-        try await Task.sleep(for: .milliseconds(250))
-      }
+      if let endpoint = try await client.previewEndpoint(deviceID) { return endpoint }
+      // Registration and authentication can lag behind ADB discovery.
+      try await Task.sleep(for: .milliseconds(250))
     }
   }
 
