@@ -3,6 +3,7 @@ import Foundation
 import OSLog
 
 enum StartupCaptureMode { case screenshot, livePreview }
+final class EmulatorClipboardSync {}
 enum SnapOLog {
   static let ui = Logger(subsystem: "Snap-O.StartupTests", category: "test")
 }
@@ -174,6 +175,10 @@ actor ADBService {
 
   func screencapPNG(deviceID: String) throws -> Data {
     Data()
+  }
+
+  func keyEvent(deviceID: String, keyCode: String) throws -> String {
+    ""
   }
 
   func isBootComplete(deviceID: String) throws -> Bool {

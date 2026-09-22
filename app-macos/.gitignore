@@ -17,3 +17,9 @@ xcuserdata/
 Package.resolved
 timeline.xctimeline
 playground.xcworkspace
+
+# Track the app's dependency lockfile without committing other workspace state.
+!Snap-O.xcodeproj/project.xcworkspace/
+Snap-O.xcodeproj/project.xcworkspace/**
+!Snap-O.xcodeproj/project.xcworkspace/**/
+!Snap-O.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved

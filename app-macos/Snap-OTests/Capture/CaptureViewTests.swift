@@ -6,6 +6,10 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct CaptureViewTests {
+  init() {
+    NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
+  }
+
   @Test
   func sizingPreservesMountedContent() async throws {
     var mounted: [NSView] = []
@@ -54,10 +58,12 @@ struct CaptureViewTests {
       ("Volume Down", "KEYCODE_VOLUME_DOWN"), ("Volume Up", "KEYCODE_VOLUME_UP"), ("Power/Wake", "KEYCODE_POWER")
     ]
     for (index, action) in actions.enumerated() {
-      try await eventually { element(named: action.0, in: view)?.isAccessibilityEnabled?() == true }
+      try await eventually("Waiting for enabled \(action.0) button (\(placement))") {
+        element(named: action.0, in: view)?.isAccessibilityEnabled?() == true
+      }
       let button = try #require(element(named: action.0, in: view))
       #expect(button.accessibilityPerformPress?() == true)
-      try await eventually { sent.count == index + 1 }
+      try await eventually("Waiting for \(action.0) input (\(placement))") { sent.count == index + 1 }
       #expect(sent.last == action.1)
     }
     #expect(element(named: "Sync clipboard", in: view) == nil)
@@ -66,7 +72,6 @@ struct CaptureViewTests {
 
   @Test
   func connectButtonClearsTheSelectedConnectionFailure() async throws {
-    NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
     let host = FailedPreviewHost()
     host.connection.hasFailed = true
     let capture = CaptureMedia(
@@ -105,12 +110,16 @@ struct CaptureViewTests {
     return nil
   }
 
-  private func eventually(_ condition: () -> Bool) async throws {
+  private func eventually(
+    _ message: String = "Waiting for view state",
+    sourceLocation: SourceLocation = #_sourceLocation,
+    _ condition: () -> Bool
+  ) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(3))
     while !condition(), ContinuousClock.now < deadline {
       try await Task.sleep(for: .milliseconds(1))
     }
-    try #require(condition())
+    try #require(condition(), "\(message)", sourceLocation: sourceLocation)
   }
 }
 
