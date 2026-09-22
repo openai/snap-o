@@ -58,7 +58,16 @@ enum DeviceManagerEntry: Identifiable {
   }
 
   static func list(emulators: [ManagedEmulator], connectedDevices: [Device]) -> [Self] {
-    let emulatorSerials = Set(emulators.compactMap(\.serial))
+    var emulatorSerials = Set(emulators.compactMap(\.serial))
+    // Hide early ADB duplicates only while startup is progressing without an error or timeout.
+    for emulator in emulators where emulator.serial == nil && emulator.state == .starting && emulator.detail == nil {
+      let avdName = emulator.avdName.replacingOccurrences(of: "_", with: " ")
+      if let device = connectedDevices.first(where: {
+        $0.id.hasPrefix("emulator-") && !emulatorSerials.contains($0.id) && $0.avdName == avdName
+      }) {
+        emulatorSerials.insert(device.id)
+      }
+    }
     let connectedIDs = Set(connectedDevices.map(\.id))
     let entries = connectedDevices.filter { !emulatorSerials.contains($0.id) }.map(Self.connected)
       + emulators.map(Self.emulator)

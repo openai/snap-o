@@ -53,7 +53,6 @@ struct DeviceManagerWindow: View {
       .sharedBackgroundVisibility(.hidden)
     }
     .task {
-      manager.showPreview = showPreview
       await manager.observe()
     }
     .alert("Device Manager", isPresented: Binding(
@@ -81,12 +80,12 @@ struct DeviceManagerWindow: View {
   private func row(_ entry: DeviceManagerEntry) -> some View {
     let emulator: ManagedEmulator? = if case .emulator(let device) = entry { device } else { nil }
     let action = emulator.flatMap { manager.actions[$0.id] }
-    let isBusy = action != nil || entry.isTransitioning
+    let status = emulator.flatMap { manager.startupStatus(for: $0) }
     return HStack(alignment: .center, spacing: 16) {
-      DeviceThumbnailView(device: entry, action: action, manager: manager)
+      DeviceThumbnailView(device: entry, action: status, manager: manager)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-          guard !isBusy else { return }
+          guard status == nil else { return }
           if entry.isRunning, let serial = entry.serial {
             showPreview(serial)
           } else if let device = emulator, device.canStart, manager.loadError == nil {
@@ -95,21 +94,28 @@ struct DeviceManagerWindow: View {
         }
       VStack(alignment: .leading, spacing: 5) {
         Text(entry.title).font(.headline)
+          .lineLimit(1)
         Text(entry.subtitle)
           .font(.subheadline).foregroundStyle(.secondary)
+          .lineLimit(1)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      if let serial = entry.serial {
+      if let status {
+        Text(status)
+          .foregroundStyle(Color(nsColor: .disabledControlTextColor))
+          .fixedSize()
+          .frame(height: 28)
+      } else if let serial = entry.serial {
         Button { showPreview(serial) } label: {
           Text("Open")
             .frame(height: 28)
             .contentShape(Rectangle())
         }
         .help("Open in Live Preview")
-        .disabled(!entry.isRunning || action != nil)
+        .disabled(!entry.isRunning)
       }
       if let device = emulator {
-        emulatorControls(device, action: action, isBusy: isBusy)
+        emulatorControls(device, action: action, status: status)
       } else {
         Color.clear.frame(width: 72, height: 28)
       }
@@ -123,24 +129,24 @@ struct DeviceManagerWindow: View {
     }
   }
 
-  private func emulatorControls(_ device: ManagedEmulator, action: String?, isBusy: Bool) -> some View {
+  private func emulatorControls(_ device: ManagedEmulator, action: String?, status: String?) -> some View {
     HStack(spacing: 16) {
-      if isBusy {
+      if action == nil, device.canStop {
+        Button { manager.stop(device) } label: {
+          actionIcon("Stop", symbol: "stop.fill")
+        }
+        .help("Stop")
+      } else if let status {
         ProgressView()
           .controlSize(.small)
           .frame(width: 28, height: 28)
-          .accessibilityLabel(action ?? device.state.title)
-          .help(action ?? device.state.title)
+          .accessibilityLabel(status)
+          .help(status)
       } else if device.canStart {
         Button { manager.start(device) } label: {
           actionIcon("Start", symbol: "play.fill")
         }
         .help("Start")
-      } else if device.canStop {
-        Button { manager.stop(device) } label: {
-          actionIcon("Stop", symbol: "stop.fill")
-        }
-        .help("Stop")
       } else {
         Color.clear.frame(width: 28, height: 28)
       }

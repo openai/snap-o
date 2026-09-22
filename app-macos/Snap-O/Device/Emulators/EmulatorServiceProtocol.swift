@@ -20,10 +20,10 @@ struct ManagedEmulator: Codable, Identifiable, Equatable {
     var title: String {
       switch self {
       case .stopped: "Stopped"
-      case .starting: "Starting…"
+      case .starting: "Starting"
       case .running: "Running"
       case .offline: "Offline"
-      case .stopping: "Stopping…"
+      case .stopping: "Stopping"
       case .unavailable: "Unavailable"
       }
     }

@@ -29,9 +29,12 @@ The following checks exercise the production service through the normal UI:
 
 1. Open the test app. Confirm the capture title's ellipsis opens Device Manager.
 2. Confirm configured AVDs appear without a separate helper installation.
-3. Open Device → Device Manager. Start an existing AVD. Confirm Live Preview
-   selects that emulator after Android finishes booting.
-4. Stop it, then cold boot it. Also cold boot a running emulator.
+3. Open Device → Device Manager. Start an existing AVD. Confirm the row shows
+   startup progress (Starting, Connecting, Booting) until Open becomes available.
+   Confirm Start preserves the current Capture selection and window focus.
+   Click Open and confirm Capture selects that emulator in Live Preview and gains focus.
+4. Stop it, then cold boot it. Also cold boot a running emulator. Confirm Cold Boot
+   shows startup progress without selecting the emulator or focusing Capture.
 5. Check that rows show screenshots, or mirrored frames from active Live Preview.
    Double-click a thumbnail: running devices should open; stopped emulators should start.
    Stop a disposable AVD and check Delete confirmation and moving its files to Trash.
