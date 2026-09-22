@@ -45,8 +45,16 @@ struct EmulatorFooterSizingTests {
 
   @Test(arguments: [WorkspaceLayout.capture, .both])
   func footerHeightChangesPreserveUserWindowSize(layout: WorkspaceLayout) async throws {
+    let screen = try #require(NSScreen.main)
+    let available = screen.visibleFrame.insetBy(dx: 0, dy: 20)
+    // Leave room for the footer, including on smaller CI screens.
+    let frame = NSRect(
+      x: available.minX, y: available.minY + EmulatorFooter.height,
+      width: min(layout == .capture ? 340 : 1100, available.width),
+      height: min(700, available.height - EmulatorFooter.height)
+    )
     let window = NSWindow(
-      contentRect: NSRect(x: 100, y: 100, width: 1100, height: 700),
+      contentRect: frame,
       styleMask: [.titled, .resizable], backing: .buffered, defer: false
     )
     window.isReleasedWhenClosed = false
@@ -62,10 +70,7 @@ struct EmulatorFooterSizingTests {
     }
     update(footerHeight: 0, density: 3)
     coordinator.attach(to: window)
-    window.setFrame(
-      NSRect(x: 100, y: 100, width: layout == .capture ? 340 : 1100, height: 700),
-      display: false
-    )
+    window.setFrame(frame, display: false)
     let original = window.frame
     // Switching capture modes can update display metadata in the same render as the footer.
     update(footerHeight: EmulatorFooter.height, density: 2.75)
