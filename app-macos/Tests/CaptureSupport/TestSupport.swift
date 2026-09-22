@@ -53,6 +53,7 @@ struct LivePreviewOperationHandle {
 @MainActor
 final class LivePreviewSession {
   var mediaDidChange: ((Media) -> Void)?
+  var media: Media? = .livePreview(capturedAt: Date(), display: testDisplay)
   enum StreamError: Error { case failed }
 
   private let readyGate: TestGate?
@@ -69,11 +70,12 @@ final class LivePreviewSession {
   }
 
   func waitUntilReady() async throws -> Media {
+    let initialMedia = media!
     await readyGate?.wait()
     if let stopError { throw stopError }
     guard !isStopped else { throw CancellationError() }
     hasFormat = true
-    return .livePreview(capturedAt: Date(), display: testDisplay)
+    return initialMedia
   }
 
   func cancel() async {

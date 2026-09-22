@@ -136,19 +136,19 @@ final class LivePreviewManager {
     let session = operation.session
     readinessTasks[operation.id] = Task { [weak self] in
       do {
-        let media = try await session.waitUntilReady()
+        _ = try await session.waitUntilReady()
         guard let self,
               !isStopped,
               activeOperations[operation.id] != nil,
               session.isReady,
               let device = deviceInfo[deviceID]
         else { return }
-        storeMedia(media, for: device)
         session.mediaDidChange = { [weak self] media in
           guard let self, !isStopped, activeOperations[operation.id] != nil,
                 let device = deviceInfo[deviceID] else { return }
           storeMedia(media, for: device)
         }
+        if let media = session.media { storeMedia(media, for: device) }
         guard await livePreviewService.waitUntilInteractive(operation),
               !isStopped, activeOperations[operation.id] != nil, session.isReady else { return }
         await pointerInjector.prepare(deviceID: deviceID)

@@ -23,6 +23,7 @@ struct StartupCaptureTests {
     await stoppingEmulatorBeforeFirstFrame()
     await emulatorReconnectDiscardsOldWarmup()
     try await emulatorInputWaitsForAndroid()
+    try await rendererUsesLatestMediaAfterReadiness()
     await emulatorWarmupPreservesMatchingPreparedStream()
     try await managerRetriesBootingDevice(densityUnavailable: false)
     try await managerRetriesBootingDevice(densityUnavailable: true)
@@ -467,6 +468,22 @@ struct StartupCaptureTests {
     await eventually { await service.stops.count == 2 }
     let active = await service.active
     precondition(active.isEmpty, "Both the stale and unclaimed replacement warmups must release their streams")
+    await manager.stop()
+  }
+
+  static func rendererUsesLatestMediaAfterReadiness() async throws {
+    let gate = TestGate()
+    let service = LivePreviewService(readyGate: gate)
+    var captures: [CaptureMedia] = []
+    let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { captures = $0 }
+    await manager.start(with: [first])
+    let renderer = try await manager.makeRenderer(for: first.id)
+    await eventually { await gate.waitCount == 1 }
+    renderer.operation.session.media = .livePreview(
+      capturedAt: Date(), display: DisplayInfo(size: testDisplay.size, densityScale: 4)
+    )
+    await gate.open()
+    await eventually { captures.first?.media.densityScale == 4 }
     await manager.stop()
   }
 
