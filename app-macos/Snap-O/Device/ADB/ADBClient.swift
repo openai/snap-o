@@ -102,6 +102,10 @@ public struct ADBClient: Sendable {
   public func cancelScreenrecord(session: RecordingSession) async {
     await sendSigInt(deviceID: session.deviceID, pid: session.pid)
     _ = try? await session.waitUntilStopped()
+    await discardScreenrecord(session: session)
+  }
+
+  func discardScreenrecord(session: RecordingSession) async {
     await removeRemoteRecording(session)
     session.close()
   }

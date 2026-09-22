@@ -72,6 +72,9 @@ jobs:
       - name: Test capture integration
         working-directory: app-macos
         run: sh scripts/test-startup-capture.sh
+      - name: Test recording failures
+        working-directory: app-macos
+        run: sh scripts/test-recording.sh
       - name: Test tool recovery
         working-directory: app-macos
         env:
