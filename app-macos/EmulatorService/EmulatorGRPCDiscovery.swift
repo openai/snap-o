@@ -2,7 +2,18 @@ import CryptoKit
 import Foundation
 
 /// Reads host registration files without granting the sandboxed app filesystem access.
-final class EmulatorPreviewDiscovery {
+final class EmulatorGRPCDiscovery {
+  enum Access {
+    case screenshot, clipboard
+
+    var methods: [String] {
+      switch self {
+      case .screenshot: ["streamScreenshot"]
+      case .clipboard: ["getClipboard", "setClipboard", "streamClipboard"]
+      }
+    }
+  }
+
   private let directory: URL
   private let isProcessRunning: (Int32) -> Bool
   private let signingKey = P256.Signing.PrivateKey()
@@ -18,7 +29,7 @@ final class EmulatorPreviewDiscovery {
     self.isProcessRunning = isProcessRunning
   }
 
-  func endpoint(for serial: String) throws -> EmulatorGRPCEndpoint {
+  func endpoint(for serial: String, access: Access = .screenshot) throws -> EmulatorGRPCEndpoint {
     guard EmulatorGRPCEndpoint.isEmulator(serial) else {
       throw EmulatorServiceError(message: "This device is not a local Android emulator.")
     }
@@ -27,10 +38,14 @@ final class EmulatorPreviewDiscovery {
     for file in files where file.pathExtension == "ini" && file.lastPathComponent.hasPrefix("pid_") {
       guard let pid = Int32(file.deletingPathExtension().lastPathComponent.dropFirst(4)),
             pid > 0, isProcessRunning(pid),
+            let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+            attributes[.type] as? FileAttributeType == .typeRegular,
+            (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid(),
+            let size = attributes[.size] as? NSNumber, size.intValue <= 65536,
             let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
       let properties = ManagedEmulator.properties(text)
       guard properties["port.serial"] == port else { continue }
-      guard let grpcPort = properties["grpc.port"].flatMap(Int.init), (1 ... 65535).contains(grpcPort) else {
+      guard let grpcPort = properties["grpc.port"].flatMap(Int.init), (1024 ... 65535).contains(grpcPort) else {
         throw unavailable()
       }
       guard properties["grpc.server_cert"] == nil, properties["grpc.certificate"] == nil else {
@@ -40,19 +55,20 @@ final class EmulatorPreviewDiscovery {
         return EmulatorGRPCEndpoint(port: grpcPort, token: token)
       }
       if let jwks = properties["grpc.jwks"], let active = properties["grpc.jwk_active"] {
-        let token = try jwtToken(keyDirectory: URL(fileURLWithPath: jwks), activeFile: URL(fileURLWithPath: active))
-        return EmulatorGRPCEndpoint(port: grpcPort, token: token)
+        let credentials = try jwtToken(keyDirectory: URL(fileURLWithPath: jwks), activeFile: URL(fileURLWithPath: active), access: access)
+        return EmulatorGRPCEndpoint(port: grpcPort, token: credentials.token, expiresAt: credentials.expiresAt)
       }
+      guard access != .clipboard else { throw unavailable() }
       return EmulatorGRPCEndpoint(port: grpcPort, token: nil)
     }
     throw unavailable()
   }
 
   private func unavailable() -> EmulatorServiceError {
-    EmulatorServiceError(message: "The emulator's gRPC preview is unavailable. Restart the emulator from Snap-O and try again.")
+    EmulatorServiceError(message: "The emulator's gRPC connection is unavailable. Restart the emulator from Snap-O and try again.")
   }
 
-  private func jwtToken(keyDirectory: URL, activeFile: URL) throws -> String {
+  private func jwtToken(keyDirectory: URL, activeFile: URL, access: Access) throws -> (token: String, expiresAt: Date) {
     let publicKey = signingKey.publicKey.rawRepresentation
     let jwk: [String: Any] = [
       "kty": "EC", "crv": "P-256", "alg": "ES256", "use": "sig",
@@ -71,7 +87,7 @@ final class EmulatorPreviewDiscovery {
     while !Self.containsKey(keyID, in: activeFile) {
       guard Date() < deadline else {
         try? FileManager.default.removeItem(at: keyFile)
-        throw EmulatorServiceError(message: "The emulator did not accept the preview authentication key. Try again.")
+        throw EmulatorServiceError(message: "The emulator did not accept the authentication key. Try again.")
       }
       Thread.sleep(forTimeInterval: 0.05)
     }
@@ -80,11 +96,11 @@ final class EmulatorPreviewDiscovery {
     let header = try Self.encodedJSON(["alg": "ES256", "typ": "JWT", "kid": keyID])
     let claims = try Self.encodedJSON([
       "iss": "Snap-O", "iat": now, "exp": now + 900,
-      "aud": ["/android.emulation.control.EmulatorController/streamScreenshot"]
+      "aud": access.methods.map { "/android.emulation.control.EmulatorController/" + $0 }
     ])
     let content = header + "." + claims
     let signature = try signingKey.signature(for: Data(content.utf8))
-    return content + "." + Self.base64URL(signature.rawRepresentation)
+    return (content + "." + Self.base64URL(signature.rawRepresentation), Date(timeIntervalSince1970: TimeInterval(now + 900)))
   }
 
   private static func containsKey(_ id: String, in file: URL) -> Bool {

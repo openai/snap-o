@@ -5,7 +5,7 @@ import Security
 final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
   private let worker = DispatchQueue(label: "com.openai.snapo.emulators")
   private let host = EmulatorHost()
-  private let previewDiscovery = EmulatorPreviewDiscovery()
+  private let discovery = EmulatorGRPCDiscovery()
   private let clientRequirement: String?
 
   override init() {
@@ -38,6 +38,14 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
     perform(reply: reply) { try $0.snapshot(serials: serials) }
   }
 
+  func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    worker.async { [self] in
+      do {
+        try reply(JSONEncoder().encode(discovery.endpoint(for: serial, access: .clipboard)), nil)
+      } catch { reply(nil, "The emulator's authenticated clipboard connection is unavailable.") }
+    }
+  }
+
   func start(_ avdID: String, coldBoot: Bool, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void) {
     perform(reply: reply) { try $0.start(avdID, coldBoot: coldBoot, serials: serials) }
   }
@@ -53,7 +61,7 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
     worker.async { [self] in
       do {
-        let endpoint = try previewDiscovery.endpoint(for: serial)
+        let endpoint = try discovery.endpoint(for: serial)
         try reply(JSONEncoder().encode(endpoint), nil)
       } catch { reply(nil, error.localizedDescription) }
     }

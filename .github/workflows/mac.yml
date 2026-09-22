@@ -56,36 +56,82 @@ jobs:
   test:
     name: Mac tests
     runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      XCODE_VERSION: '26.1.1'
+    defaults:
+      run:
+        working-directory: app-macos
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: '26.1.1'
-      - name: Build and test macOS app
-        working-directory: app-macos
+          xcode-version: ${{ env.XCODE_VERSION }}
+      - name: Restore Swift packages and compiler cache
+        id: swift-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        timeout-minutes: 2
+        with:
+          path: |
+            ${{ runner.temp }}/snap-o-derived-data/SourcePackages
+            ${{ runner.temp }}/snap-o-derived-data/CompilationCache.noindex
+          key: mac-swift-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_VERSION }}-${{ hashFiles('app-macos/**/Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            mac-swift-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODE_VERSION }}-${{ hashFiles('app-macos/**/Package.resolved') }}-
+      - name: Resolve locked Swift packages
+        timeout-minutes: 3
         run: |
-          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O \
+          xcodebuild -resolvePackageDependencies -project Snap-O.xcodeproj -scheme Snap-O \
+            -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
+            -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates
+      - name: Build macOS tests
+        id: build-tests
+        timeout-minutes: 8
+        run: |
+          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -configuration Local \
             -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
+            -disableAutomaticPackageResolution -skipPackageUpdates -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            COMPILATION_CACHE_ENABLE_CACHING=YES build-for-testing
+      - name: Run macOS tests
+        timeout-minutes: 2
+        run: |
+          xcodebuild -project Snap-O.xcodeproj -scheme Snap-O -configuration Local \
+            -destination "platform=macOS" -derivedDataPath "$RUNNER_TEMP/snap-o-derived-data" \
+            -disableAutomaticPackageResolution -skipPackageUpdates \
+            -resultBundlePath "$RUNNER_TEMP/snap-o-tests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test-without-building
+      - name: Save Swift packages and compiler cache
+        if: always() && steps.build-tests.outcome == 'success' && steps.swift-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        timeout-minutes: 2
+        with:
+          path: |
+            ${{ runner.temp }}/snap-o-derived-data/SourcePackages
+            ${{ runner.temp }}/snap-o-derived-data/CompilationCache.noindex
+          key: ${{ steps.swift-cache.outputs.cache-primary-key }}
+      - name: Upload failed test results
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mac-test-results
+          path: ${{ runner.temp }}/snap-o-tests.xcresult
+          if-no-files-found: ignore
       - name: Test capture integration
-        working-directory: app-macos
         run: sh scripts/test-startup-capture.sh
       - name: Test recording failures
-        working-directory: app-macos
         run: sh scripts/test-recording.sh
       - name: Test emulator preview
-        working-directory: app-macos
         run: sh scripts/test-emulator-preview.sh
       - name: Test tool recovery
-        working-directory: app-macos
         env:
           SNAPO_DERIVED_DATA: ${{ runner.temp }}/snap-o-derived-data
         run: sh scripts/test-tool-recovery.sh
 
       - name: Device Manager tests
-        run: bash app-macos/Tests/DeviceManager/test.sh
+        run: bash Tests/DeviceManager/test.sh
 
   style:
     name: Mac style

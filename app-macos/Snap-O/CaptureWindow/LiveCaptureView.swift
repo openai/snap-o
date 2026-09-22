@@ -12,13 +12,17 @@ protocol LivePreviewHosting: AnyObject {
 }
 
 struct LiveCaptureView<Host: LivePreviewHosting>: View {
+  @Environment(AppSettings.self)
+  private var settings
   let fileStore: FileStore
+  private let deviceID: String
   @State private var lifecycle: LivePreviewLifecycle<LivePreviewRenderer>
   @State private var fileDrop: DeviceFileDrop
 
   init(host: Host, capture: CaptureMedia, fileStore: FileStore) {
     self.fileStore = fileStore
     _fileDrop = State(initialValue: DeviceFileDrop(device: capture.device))
+    deviceID = capture.device.id
     _lifecycle = State(initialValue: LivePreviewLifecycle(
       connection: host.livePreviewConnection(for: capture.device.id),
       start: { await host.startLivePreviewStream(for: capture.device.id) },
@@ -27,6 +31,11 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       readyAt: { $0.session.readyAt },
       canReconnect: { host.canReconnectLivePreview(for: capture.device.id) }
     ))
+  }
+
+  private var clipboardTarget: String? {
+    settings.syncClipboard && deviceID.hasPrefix("emulator-")
+      && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
   }
 
   var body: some View {
@@ -86,6 +95,13 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     .onDisappear {
       lifecycle.disappear()
       fileDrop.cancel()
+    }
+    .task(id: clipboardTarget) {
+      lifecycle.connection?.clipboard = nil
+      guard let serial = clipboardTarget else { return }
+      let sync = EmulatorClipboardSync(settings: settings)
+      lifecycle.connection?.clipboard = sync
+      await sync.run(serial: serial)
     }
   }
 }

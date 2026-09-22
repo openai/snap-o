@@ -13,7 +13,9 @@ struct EmulatorPreviewTests {
     try discoversUnauthenticatedEndpoint()
     try rejectsStoppedEmulator()
     try rejectsUnsupportedEndpoints()
-    try signsJWTForScreenshotOnly()
+    try signsJWTForRequestedMethods()
+    try rejectsUnauthenticatedClipboard()
+    try rejectsUnsafeRegistrations()
     print("Emulator preview tests passed (pixels, buffer limits, resize, and endpoint discovery)")
   }
 
@@ -65,7 +67,7 @@ struct EmulatorPreviewTests {
     }
   }
 
-  static func signsJWTForScreenshotOnly() throws {
+  static func signsJWTForRequestedMethods() throws {
     let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: home) }
     let directory = home.appendingPathComponent("Library/Caches/TemporaryItems/avd/running")
@@ -90,27 +92,37 @@ struct EmulatorPreviewTests {
       }
     }
     defer { worker.wait() }
-    let discovery = EmulatorPreviewDiscovery(home: home, isProcessRunning: { $0 == 123 })
-    let endpoint = try discovery.endpoint(for: "emulator-5554")
-    let parts = endpoint.token!.split(separator: ".").map(String.init)
-    precondition(parts.count == 3)
+    let discovery = EmulatorGRPCDiscovery(home: home, isProcessRunning: { $0 == 123 })
     func decode(_ value: String) -> Data {
       let padded = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
       return Data(base64Encoded: padded + String(repeating: "=", count: (4 - padded.count % 4) % 4))!
     }
-    let claims = try JSONSerialization.jsonObject(with: decode(parts[1])) as! [String: Any]
-    precondition(claims["aud"] as? [String] == ["/android.emulation.control.EmulatorController/streamScreenshot"])
-    let keySet = try JSONSerialization.jsonObject(with: Data(contentsOf: active)) as! [String: Any]
-    let key = (keySet["keys"] as! [[String: Any]])[0]
-    let publicKey = try P256.Signing.PublicKey(rawRepresentation: decode(key["x"] as! String) + decode(key["y"] as! String))
-    let signature = try P256.Signing.ECDSASignature(rawRepresentation: decode(parts[2]))
-    precondition(publicKey.isValidSignature(signature, for: Data((parts[0] + "." + parts[1]).utf8)))
+    for (access, methods): (EmulatorGRPCDiscovery.Access, [String]) in [
+      (.screenshot, ["streamScreenshot"]), (.clipboard, ["getClipboard", "setClipboard", "streamClipboard"])
+    ] {
+      let endpoint = try discovery.endpoint(for: "emulator-5554", access: access)
+      let parts = endpoint.token!.split(separator: ".").map(String.init)
+      precondition(parts.count == 3)
+      let claims = try JSONSerialization.jsonObject(with: decode(parts[1])) as! [String: Any]
+      precondition(claims["aud"] as? [String] == methods.map { "/android.emulation.control.EmulatorController/" + $0 })
+      let expiry = claims["exp"] as! Int
+      precondition(expiry - (claims["iat"] as! Int) == 900)
+      precondition(endpoint.expiresAt == Date(timeIntervalSince1970: TimeInterval(expiry)))
+      let keySet = try JSONSerialization.jsonObject(with: Data(contentsOf: active)) as! [String: Any]
+      let key = (keySet["keys"] as! [[String: Any]])[0]
+      let publicKey = try P256.Signing.PublicKey(rawRepresentation: decode(key["x"] as! String) + decode(key["y"] as! String))
+      let signature = try P256.Signing.ECDSASignature(rawRepresentation: decode(parts[2]))
+      precondition(publicKey.isValidSignature(signature, for: Data((parts[0] + "." + parts[1]).utf8)))
+    }
   }
 
   static func discoversAuthenticatedEndpoint() throws {
     try withRegistration("port.serial=5554\ngrpc.port=8554\ngrpc.token=synthetic-token\n") { discovery in
       let endpoint = try discovery.endpoint(for: "emulator-5554")
       precondition(endpoint.port == 8554 && endpoint.token == "synthetic-token")
+      let clipboard = try discovery.endpoint(for: "emulator-5554", access: .clipboard)
+      precondition(clipboard.port == 8554 && clipboard.token == "synthetic-token" && clipboard.expiresAt == nil)
+      try expectUnavailable(discovery, serial: "emulator-5556", access: .clipboard)
     }
   }
 
@@ -128,16 +140,35 @@ struct EmulatorPreviewTests {
   }
 
   static func rejectsUnsupportedEndpoints() throws {
-    for settings in ["grpc.port=0", "grpc.port=8554\ngrpc.server_cert=test", "grpc.port=8554\ngrpc.certificate=test"] {
+    for settings in ["grpc.port=0", "grpc.port=65536", "grpc.port=8554\ngrpc.server_cert=test", "grpc.port=8554\ngrpc.certificate=test"] {
       try withRegistration("port.serial=5554\n" + settings) { discovery in
         try expectUnavailable(discovery)
+        try expectUnavailable(discovery, access: .clipboard)
       }
     }
   }
 
-  private static func expectUnavailable(_ discovery: EmulatorPreviewDiscovery) throws {
+  static func rejectsUnauthenticatedClipboard() throws {
+    try withRegistration("port.serial=5554\ngrpc.port=8554\n") { discovery in
+      try expectUnavailable(discovery, access: .clipboard)
+    }
+  }
+
+  static func rejectsUnsafeRegistrations() throws {
+    let registration = "port.serial=5554\ngrpc.port=8554\ngrpc.token=synthetic-token\n"
+    try withRegistration(registration + String(repeating: "x", count: 65536)) { discovery in
+      try expectUnavailable(discovery, access: .clipboard)
+    }
+    try withRegistration(registration, symlink: true) { discovery in
+      try expectUnavailable(discovery, access: .clipboard)
+    }
+  }
+
+  private static func expectUnavailable(
+    _ discovery: EmulatorGRPCDiscovery, serial: String = "emulator-5554", access: EmulatorGRPCDiscovery.Access = .screenshot
+  ) throws {
     do {
-      _ = try discovery.endpoint(for: "emulator-5554")
+      _ = try discovery.endpoint(for: serial, access: access)
       fatalError("Unavailable endpoint accepted")
     } catch is EmulatorServiceError {}
   }
@@ -145,13 +176,21 @@ struct EmulatorPreviewTests {
   private static func withRegistration(
     _ registration: String,
     running: Bool = true,
-    test: (EmulatorPreviewDiscovery) throws -> Void
+    symlink: Bool = false,
+    test: (EmulatorGRPCDiscovery) throws -> Void
   ) throws {
     let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: home) }
     let directory = home.appendingPathComponent("Library/Caches/TemporaryItems/avd/running")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    try registration.write(to: directory.appendingPathComponent("pid_123.ini"), atomically: true, encoding: .utf8)
-    try test(EmulatorPreviewDiscovery(home: home, isProcessRunning: { $0 == 123 && running }))
+    let file = directory.appendingPathComponent("pid_123.ini")
+    if symlink {
+      let target = directory.appendingPathComponent("registration.txt")
+      try registration.write(to: target, atomically: true, encoding: .utf8)
+      try FileManager.default.createSymbolicLink(at: file, withDestinationURL: target)
+    } else {
+      try registration.write(to: file, atomically: true, encoding: .utf8)
+    }
+    try test(EmulatorGRPCDiscovery(home: home, isProcessRunning: { $0 == 123 && running }))
   }
 }

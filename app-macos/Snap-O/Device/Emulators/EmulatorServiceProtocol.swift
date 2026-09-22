@@ -3,6 +3,7 @@ import Foundation
 @objc(EmulatorServiceProtocol)
 protocol EmulatorServiceProtocol {
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func startADBServer(reply: @escaping @Sendable (Data?, String?) -> Void)
   func snapshot(_ serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
   func start(_ avdID: String, coldBoot: Bool, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
@@ -217,6 +218,7 @@ struct ManagedEmulator: Codable, Identifiable, Equatable {
 struct EmulatorGRPCEndpoint: Codable {
   let port: Int
   let token: String?
+  var expiresAt: Date?
 
   static func isEmulator(_ deviceID: String) -> Bool {
     guard deviceID.hasPrefix("emulator-"),

@@ -47,7 +47,7 @@ struct CaptureViewTests {
     )
     let store = FileStore(baseDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
     defer { store.purgeExistingFiles() }
-    let view = NSHostingView(rootView: LiveCaptureView(host: host, capture: capture, fileStore: store))
+    let view = NSHostingView(rootView: LiveCaptureView(host: host, capture: capture, fileStore: store).environment(AppSettings.shared))
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 240, height: 120),
       styleMask: [.borderless],

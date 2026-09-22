@@ -9,7 +9,6 @@ struct WindowSizingController: NSViewRepresentable {
   let displayInfo: DisplayInfo?
   let layout: WorkspaceLayout
   let capturePaneWidth: CGFloat
-  var captureFooterHeight: CGFloat = 0
   let capturePaneWidthChanged: @MainActor (CGFloat) -> Void
   let presentationChanged: @MainActor (WorkspaceLayoutPresentationEvent) -> Void
 
@@ -47,7 +46,6 @@ struct WindowSizingController: NSViewRepresentable {
         layout: layout,
         displayInfo: displayInfo,
         capturePaneWidth: capturePaneWidth,
-        captureFooterHeight: captureFooterHeight,
         capturePaneWidthChanged: capturePaneWidthChanged,
         presentationChanged: presentationChanged
       )
@@ -60,7 +58,6 @@ struct WindowSizingController: NSViewRepresentable {
       layout: layout,
       displayInfo: displayInfo,
       capturePaneWidth: capturePaneWidth,
-      captureFooterHeight: captureFooterHeight,
       capturePaneWidthChanged: capturePaneWidthChanged,
       presentationChanged: presentationChanged
     )
@@ -100,12 +97,10 @@ struct WindowSizingController: NSViewRepresentable {
     private var currentLayout: WorkspaceLayout?
     private var currentDisplayInfo: DisplayInfo?
     private var currentCapturePaneWidth = WorkspaceLayoutController.defaultCapturePaneWidth
-    private var currentCaptureFooterHeight: CGFloat = 0
     private var rememberedToolPaneWidth = Constants.defaultToolPaneWidth
     private var pendingLayout: WorkspaceLayout = .capture
     private var pendingDisplayInfo: DisplayInfo?
     private var pendingCapturePaneWidth = WorkspaceLayoutController.defaultCapturePaneWidth
-    private var pendingCaptureFooterHeight: CGFloat = 0
     private var capturePaneWidthChanged: (@MainActor (CGFloat) -> Void)?
     private var presentationChanged: (@MainActor (WorkspaceLayoutPresentationEvent) -> Void)?
     private var transitionGeneration = 0
@@ -124,7 +119,6 @@ struct WindowSizingController: NSViewRepresentable {
         layout: pendingLayout,
         displayInfo: pendingDisplayInfo,
         capturePaneWidth: pendingCapturePaneWidth,
-        captureFooterHeight: pendingCaptureFooterHeight,
         capturePaneWidthChanged: capturePaneWidthChanged ?? { _ in },
         presentationChanged: presentationChanged ?? { _ in }
       )
@@ -134,14 +128,12 @@ struct WindowSizingController: NSViewRepresentable {
       layout: WorkspaceLayout,
       displayInfo: DisplayInfo?,
       capturePaneWidth: CGFloat,
-      captureFooterHeight: CGFloat = 0,
       capturePaneWidthChanged: @escaping @MainActor (CGFloat) -> Void,
       presentationChanged: @escaping @MainActor (WorkspaceLayoutPresentationEvent) -> Void
     ) {
       pendingLayout = layout
       pendingDisplayInfo = displayInfo
       pendingCapturePaneWidth = capturePaneWidth
-      pendingCaptureFooterHeight = captureFooterHeight
       self.capturePaneWidthChanged = capturePaneWidthChanged
       self.presentationChanged = presentationChanged
       guard let window else { return }
@@ -149,13 +141,11 @@ struct WindowSizingController: NSViewRepresentable {
       let previousLayout = currentLayout
       let layoutChanged = previousLayout != nil && previousLayout != layout
       let displayChanged = currentDisplayInfo != displayInfo
-      let footerHeightChange = captureFooterHeight - currentCaptureFooterHeight
       currentCapturePaneWidth = capturePaneWidth
 
       if isApplyingLayoutTransition, !layoutChanged {
         return
       }
-      currentCaptureFooterHeight = captureFooterHeight
 
       if currentLayout == nil {
         currentLayout = layout
@@ -240,34 +230,6 @@ struct WindowSizingController: NSViewRepresentable {
           }
         }
         return
-      } else if layout.showsCapture, footerHeightChange != 0 {
-        let previousFrame = window.frame
-        applyMinimumSize(layout: layout, displayInfo: displayInfo, to: window)
-        let height: CGFloat
-        if layout == .capture, let displayInfo, abs(displayInfo.aspectRatio - currentAspect) > 0.001 {
-          updateAspect(for: displayInfo)
-          height = WindowChromeMetrics.totalToolbarHeight + captureFooterHeight + previousFrame.width / currentAspect
-        } else {
-          height = previousFrame.height + footerHeightChange
-        }
-        let frame = NSRect(
-          x: previousFrame.minX,
-          y: previousFrame.maxY - height,
-          width: previousFrame.width,
-          height: height
-        )
-        currentDisplayInfo = displayInfo
-        transitionGeneration += 1
-        let generation = transitionGeneration
-        isApplyingLayoutTransition = true
-        animate(window: window, to: constrained(frame, for: window)) { [weak self, weak window] in
-          guard let self, let window, transitionGeneration == generation else { return }
-          isApplyingLayoutTransition = false
-          ensureMinimumBothContentSize(displayInfo: displayInfo, window: window)
-          saveFrame(window.frame, layout: layout)
-          applyPendingUpdate()
-        }
-        return
       } else if layout == .capture, displayChanged, let displayInfo {
         applyMinimumSize(layout: layout, displayInfo: displayInfo, to: window)
         sizeCaptureWindow(for: displayInfo, window: window, anchor: .center)
@@ -288,7 +250,7 @@ struct WindowSizingController: NSViewRepresentable {
       let aspect = max(currentAspect, 0.0001)
       return NSSize(
         width: width,
-        height: (WindowChromeMetrics.totalToolbarHeight + currentCaptureFooterHeight + (width / aspect)).rounded()
+        height: (WindowChromeMetrics.totalToolbarHeight + (width / aspect)).rounded()
       )
     }
 
@@ -429,7 +391,7 @@ struct WindowSizingController: NSViewRepresentable {
           frameFor(
             contentSize: CGSize(
               width: captureWidth,
-              height: captureWidth / max(currentAspect, 0.0001) + currentCaptureFooterHeight
+              height: captureWidth / max(currentAspect, 0.0001)
             ),
             anchor: .trailing,
             relativeTo: snapshot.frame
@@ -544,13 +506,13 @@ struct WindowSizingController: NSViewRepresentable {
       displayInfo: DisplayInfo?
     ) -> CGSize? {
       guard let displayInfo else { return nil }
-      return capturePaneSize(for: captureContentSizeRespectingMinimum(
+      return captureContentSizeRespectingMinimum(
         fittedCapturePreviewSize(
           paneWidth: actualCapturePaneWidth(totalWidth: workspaceSize.width),
-          paneHeight: max(workspaceSize.height - currentCaptureFooterHeight, 1),
+          paneHeight: max(workspaceSize.height, 1),
           aspectRatio: displayInfo.aspectRatio
         )
-      ))
+      )
     }
 
     private func frameByAdjustingWorkspaceEdges(
@@ -640,9 +602,9 @@ struct WindowSizingController: NSViewRepresentable {
       switch layout {
       case .capture:
         window.contentMinSize = sizeIncludingWindowChrome(
-          capturePaneSize(for: WindowSizingController.minimumCaptureContentSize(
+          WindowSizingController.minimumCaptureContentSize(
             aspectRatio: displayInfo?.aspectRatio
-          ))
+          )
         )
       case .tool:
         window.contentMinSize = sizeIncludingWindowChrome(Constants.minimumToolContentSize)
@@ -665,7 +627,7 @@ struct WindowSizingController: NSViewRepresentable {
           Constants.minimumBothContentSize.width,
           captureWidth + Constants.dividerWidth + Constants.minimumToolContentSize.width
         ),
-        height: max(Constants.minimumBothContentSize.height, captureSize.height + currentCaptureFooterHeight)
+        height: max(Constants.minimumBothContentSize.height, captureSize.height)
       )
     }
 
@@ -689,24 +651,20 @@ struct WindowSizingController: NSViewRepresentable {
       window: NSWindow,
       anchor: HorizontalAnchor
     ) {
-      let targetContentSize = capturePaneSize(for: scaledContentSize(for: displayInfo))
+      let targetContentSize = scaledContentSize(for: displayInfo)
       updateAspect(for: displayInfo)
       setContentSize(targetContentSize, for: window, anchor: anchor)
     }
 
     private func reshapeCaptureWindow(_ window: NSWindow, anchor: HorizontalAnchor) {
       let contentWidth = window.frame.width
-      let contentSize = capturePaneSize(for: CGSize(width: contentWidth, height: contentWidth / max(currentAspect, 0.0001)))
+      let contentSize = CGSize(width: contentWidth, height: contentWidth / max(currentAspect, 0.0001))
       setContentSize(contentSize, for: window, anchor: anchor)
     }
 
     private func updateAspect(for displayInfo: DisplayInfo) {
       let contentSize = scaledContentSize(for: displayInfo)
       currentAspect = contentSize.width / max(contentSize.height, 1)
-    }
-
-    private func capturePaneSize(for previewSize: CGSize) -> CGSize {
-      CGSize(width: previewSize.width, height: previewSize.height + currentCaptureFooterHeight)
     }
 
     private func setContentSize(
