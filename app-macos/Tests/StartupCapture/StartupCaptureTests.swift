@@ -43,7 +43,10 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
     await deviceManagerOpenPreservesLaterSelection()
-    print("Startup capture tests passed (34 cases)")
+    await automaticPreviewRequiresReadyLivePreview()
+    await automaticPreviewPreservesCapture(recordsVideo: false)
+    await automaticPreviewPreservesCapture(recordsVideo: true)
+    print("Startup capture tests passed (37 cases)")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -532,6 +535,61 @@ struct StartupCaptureTests {
     await fixture.tracker.updateDevices([first, second, third])
     await eventually { controller.mediaList.count == 3 }
     precondition(controller.selectedDeviceID == first.id, "Device Manager must not override a later selection")
+    await controller.tearDown()
+  }
+
+  static func automaticPreviewRequiresReadyLivePreview() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    let controller = fixture.controller
+    precondition(!controller.selectDeviceInLivePreview(id: second.id))
+    await fixture.start()
+    precondition(!controller.selectDeviceInLivePreview(id: second.id), "Do not interrupt preview setup")
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    precondition(controller.selectDeviceInLivePreview(id: second.id))
+    await eventually { controller.selectedDeviceID == second.id }
+    precondition(controller.selectedDeviceID == second.id && controller.isLivePreviewActive)
+    precondition(controller.lastError == nil)
+    await controller.tearDown()
+    precondition(!controller.selectDeviceInLivePreview(id: first.id))
+  }
+
+  static func automaticPreviewPreservesCapture(recordsVideo: Bool) async {
+    let fixture = ControllerFixture(devices: [first, second])
+    let controller = fixture.controller
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await controller.start()
+    await eventually { controller.mediaList.count == 2 && !controller.isProcessing }
+    controller.selectDevice(id: first.id)
+    await eventually { controller.selectedDeviceID == first.id }
+    let capture = await fixture.request(recordsVideo: recordsVideo)
+    await eventually { await fixture.stopGate.waitCount > 0 }
+    precondition(controller.isProcessing)
+    precondition(!controller.selectDeviceInLivePreview(id: second.id), "Do not interrupt an active capture")
+    await fixture.stopGate.open()
+    await capture.value
+    await eventually { !controller.isProcessing }
+    precondition(!controller.selectDeviceInLivePreview(id: second.id))
+    precondition(controller.lastError == nil && !controller.isLivePreviewActive)
+    if recordsVideo {
+      precondition(controller.isRecording)
+    } else {
+      guard let screenshot = controller.currentCapture else { fatalError("Missing completed screenshot") }
+      precondition(screenshot.media.isImage && screenshot.device.id == first.id)
+      let video = CaptureMedia(device: first, media: .video(
+        url: URL(fileURLWithPath: "/tmp/recorded-preview-test.mp4"), data: screenshot.media.common
+      ))
+      controller.mediaDisplayMode.updateMediaList([video], preserveDeviceID: first.id, shouldSort: false)
+      await eventually { controller.currentCapture?.id == video.id }
+      precondition(!controller.selectDeviceInLivePreview(id: second.id), "Do not replace a recorded video")
+      precondition(controller.currentCapture?.id == video.id && controller.lastError == nil)
+      await controller.showLivePreview(deviceID: second.id)
+      await eventually { controller.selectedDeviceID == second.id }
+      precondition(controller.isLivePreviewActive && controller.selectedDeviceID == second.id)
+    }
     await controller.tearDown()
   }
 

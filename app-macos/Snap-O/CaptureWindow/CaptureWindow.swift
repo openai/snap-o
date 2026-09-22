@@ -146,8 +146,10 @@ struct CaptureWindow: View {
           workspace.revealCapture()
           Task { await handle(command, controller: controller) }
         } preview: { deviceID, focus in
-          guard focus || workspace.showsCapture else { return false }
-          if focus { workspace.revealCapture() }
+          if !focus {
+            return workspace.showsCapture && controller.selectDeviceInLivePreview(id: deviceID)
+          }
+          workspace.revealCapture()
           Task { await controller.showLivePreview(deviceID: deviceID) }
           return true
         } thumbnail: { deviceID in

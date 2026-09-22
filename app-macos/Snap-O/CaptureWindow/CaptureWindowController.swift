@@ -323,6 +323,12 @@ final class CaptureWindowController {
     await recordingMode.finish()
   }
 
+  func selectDeviceInLivePreview(id: String) -> Bool {
+    guard isLivePreviewActive, canCaptureNow else { return false }
+    selectDevice(id: id)
+    return true
+  }
+
   func showLivePreview(deviceID: String) async {
     let deadline = Date().addingTimeInterval(20)
     while !isTornDown, !Task.isCancelled, Date() < deadline {
