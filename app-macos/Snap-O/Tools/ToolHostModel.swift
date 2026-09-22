@@ -69,7 +69,7 @@ final class ToolHostModel {
     preferredPluginID.flatMap { pages[$0] }
   }
 
-  private struct PageIdentity: Equatable {
+  struct PageIdentity: Equatable {
     let appID: String?
     let server: ToolServerReference?
     let processIdentity: String?
@@ -80,7 +80,10 @@ final class ToolHostModel {
     let compatibility: ToolCompatibility
   }
 
-  private struct Page {
+  /// Toolbar and connection updates must not invalidate commands that only read page readiness.
+  @Observable
+  @MainActor
+  final class Page {
     let identity: PageIdentity
     let container: ToolWebContainer
     var isReady = false
@@ -88,6 +91,11 @@ final class ToolHostModel {
     var endpointID: UUID?
     var connection = ToolConnectionState()
     var toolbar = ToolToolbar(revision: 0, actions: [])
+
+    init(identity: PageIdentity, container: ToolWebContainer) {
+      self.identity = identity
+      self.container = container
+    }
   }
 
   private var pages: [ToolID: Page] = [:]
@@ -153,7 +161,7 @@ final class ToolHostModel {
 
   func activateToolbarAction(_ id: String, value: String? = nil) {
     guard let kind = preferredPluginID else { return }
-    guard var page = pages[kind], page.isReady,
+    guard let page = pages[kind], page.isReady,
           let index = page.toolbar.actions.firstIndex(where: { $0.id == id }),
           page.toolbar.actions[index].enabled != false else { return }
     var event = ToolToolbarEvent(revision: page.toolbar.revision, id: id)
@@ -164,7 +172,6 @@ final class ToolHostModel {
       page.toolbar.actions[index].inputRevision = revision
       event.value = value
       event.inputRevision = revision
-      pages[kind] = page
     }
     page.container.sendPageEvent(name: "host:toolbar", payload: event)
   }
@@ -225,7 +232,7 @@ final class ToolHostModel {
   }
 
   private func setEndpoint(_ endpoint: ToolHTTPService.Endpoint?, kind: ToolID) {
-    guard var page = pages[kind] else { return }
+    guard let page = pages[kind] else { return }
     page.container.setServer(endpoint)
     let state = appTool.snapshot.pageState(for: kind)
     let app = state.selectedApp?.id == page.identity.appID
@@ -239,7 +246,6 @@ final class ToolHostModel {
     page.endpointID = endpoint?.id
     page.connection.revision += 1
     page.connection.connected = endpoint != nil
-    pages[kind] = page
     page.container.sendPageEvent(name: "host:connection", payload: page.connection)
   }
 
@@ -262,7 +268,7 @@ final class ToolHostModel {
       return pages[kind]?.connection ?? ToolConnectionState()
     }
     bridge.toolbarHandler = { [weak self, weak container] toolbar in
-      guard let self, let container, var page = pages[kind], page.container === container,
+      guard let self, let container, let page = pages[kind], page.container === container,
             toolbar.revision > page.toolbar.revision else { return }
       var toolbar = toolbar
       for index in toolbar.actions.indices where toolbar.actions[index].type == .search {
@@ -273,7 +279,6 @@ final class ToolHostModel {
         }
       }
       page.toolbar = toolbar
-      pages[kind] = page
     }
     container.pageReadinessChangedHandler = { [weak self, weak container] isReady in
       guard let self, let container, pages[kind]?.container === container else { return }
