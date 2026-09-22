@@ -8,12 +8,13 @@ cd "$APP_DIR"
 
 # Use the same resolved networking dependencies as the app.
 BUILD_DIR=${SNAPO_DERIVED_DATA:-"$TEST_DIR/xcode"}
+CONFIGURATION=${SNAPO_TEST_CONFIGURATION:-Local}
 if [ -z "${SNAPO_DERIVED_DATA:-}" ]; then
   xcodebuild -quiet -project Snap-O.xcodeproj -scheme Snap-O \
-    -derivedDataPath "$BUILD_DIR" \
+    -configuration "$CONFIGURATION" -derivedDataPath "$BUILD_DIR" \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 fi
-PRODUCTS="$BUILD_DIR/Build/Products/Debug"
+PRODUCTS="$BUILD_DIR/Build/Products/$CONFIGURATION"
 export LLVM_PROFILE_FILE="$TEST_DIR/%m.profraw"
 set --
 for modulemap in "$BUILD_DIR/Build/Intermediates.noindex/GeneratedModuleMaps/"*.modulemap \
