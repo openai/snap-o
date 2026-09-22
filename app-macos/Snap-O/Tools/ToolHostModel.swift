@@ -5,13 +5,12 @@ import Observation
 @MainActor
 final class ToolHostModel {
   private(set) var toolApps: [InspectableApp] = []
+  private(set) var presentation = AppToolPresentation.findingApps
   private(set) var selectedTool: SelectedAppTool?
   private(set) var selectedToolApp: InspectableApp?
   private(set) var replacementApp: InspectableApp?
   private(set) var preferredPluginID: ToolID?
-  private(set) var isRestoringTool = false
   private(set) var appLaunch: AppLaunchState?
-  private(set) var isWaiting = true
   var isDevelopmentServerPresented = false
 
   var selectedCompatibility: ToolCompatibility {
@@ -56,8 +55,12 @@ final class ToolHostModel {
     apply(appTool.snapshot)
   }
 
+  func retryDiscovery() {
+    appTool.refresh()
+  }
+
   func retryFrontend() {
-    guard let kind = preferredPluginID, let identity = pages[kind]?.identity else { return }
+    guard let kind = preferredPluginID, let identity = activePage?.identity else { return }
     replacePage(kind: kind, identity: identity)
   }
 
@@ -66,8 +69,12 @@ final class ToolHostModel {
   }
 
   private var activePage: Page? {
-    preferredPluginID.flatMap { pages[$0] }
+    guard let kind = preferredPluginID, let identity = activePageIdentity,
+          let page = pages[kind], page.identity == identity else { return nil }
+    return page
   }
+
+  private var activePageIdentity: PageIdentity?
 
   struct PageIdentity: Equatable {
     let appID: String?
@@ -106,16 +113,17 @@ final class ToolHostModel {
   @ObservationIgnored private let appTool: AppToolModel
   @ObservationIgnored private let preferences: UserDefaults
 
-  init(service: ToolService, preferences: UserDefaults = .standard) {
+  init(service: ToolService, preferences: UserDefaults = .standard, appTool: AppToolModel? = nil) {
     self.service = service
     self.preferences = preferences
-    appTool = AppToolModel(
+    let appTool = appTool ?? AppToolModel(
       preferences: preferences,
-      discover: { await service.discoverPlugins() },
+      discover: { try await service.discoverPlugins() },
       changes: { await service.changes() },
       currentDiscovery: { await service.currentPlugins() },
       openApp: { try await service.openApp($0) }
     )
+    self.appTool = appTool
     appTool.stateChanged = { [weak self] snapshot in self?.apply(snapshot) }
     apply(appTool.snapshot)
     appTool.start()
@@ -132,15 +140,10 @@ final class ToolHostModel {
       task.cancel()
     }
     bindings.removeAll()
-    for (kind, page) in pages {
-      page.container.stop()
-      let transition = pageTransitions[kind]
-      pageTransitions[kind] = Task {
-        await transition?.value
-        await page.container.finishStopping()
-      }
+    for kind in Array(pages.keys) {
+      removePage(kind: kind)
     }
-    pages.removeAll()
+    activePageIdentity = nil
   }
 
   func selectApp(_ app: InspectableApp) {
@@ -160,8 +163,7 @@ final class ToolHostModel {
   }
 
   func activateToolbarAction(_ id: String, value: String? = nil) {
-    guard let kind = preferredPluginID else { return }
-    guard let page = pages[kind], page.isReady,
+    guard let page = activePage, page.isReady,
           let index = page.toolbar.actions.firstIndex(where: { $0.id == id }),
           page.toolbar.actions[index].enabled != false else { return }
     var event = ToolToolbarEvent(revision: page.toolbar.revision, id: id)
@@ -182,28 +184,41 @@ final class ToolHostModel {
     if selectedTool?.kind != state.selection?.kind || selectedTool?.server != state.selection?.server {
       webContainer?.closeNativeColorPanel()
     }
+    presentation = snapshot.presentation
     toolApps = state.apps
     selectedTool = state.selection
     selectedToolApp = state.selectedApp
     replacementApp = state.replacementApp
     preferredPluginID = state.preferredKind
-    isRestoringTool = state.isRestoring
     appLaunch = snapshot.appLaunch
-    guard let kind = state.preferredKind else { return }
-    let pageState = snapshot.pageState(for: kind)
-    isWaiting = pageState.isWaiting
-    let scope = ToolWebPolicy.storageIdentifier(app: pageState.selectedApp, tool: kind)
+    reconcilePages(snapshot)
+  }
+
+  private func pageIdentity(for kind: ToolID, snapshot: AppToolSnapshot) -> PageIdentity? {
+    guard let app = snapshot.state.selectedApp,
+          let selection = snapshot.state.displayed[kind], selection.appId == app.id else { return nil }
+    let scope = ToolWebPolicy.storageIdentifier(app: app, tool: kind)
     let developmentURL = scope
       .flatMap { preferences.string(forKey: "inspectorDevelopmentServer." + $0.uuidString) }
       .flatMap(ToolWebPolicy.developmentURL)
-    let identity = PageIdentity(
-      appID: pageState.selectedApp?.id, server: pageState.selection?.server,
-      processIdentity: pageState.selectedApp?.metadata?.verifiedIdentity?.processIdentity,
-      storageIdentifier: scope, packageRevision: pageState.selectedApp?.metadata?.verifiedIdentity?.revision,
-      frontend: pageState.selectedApp?.metadata?.tools.first { $0.id == kind }?.frontend,
-      developmentURL: developmentURL, compatibility: selectedCompatibility
+    return PageIdentity(
+      appID: app.id, server: selection.server,
+      processIdentity: app.metadata?.verifiedIdentity?.processIdentity,
+      storageIdentifier: scope, packageRevision: app.metadata?.verifiedIdentity?.revision,
+      frontend: app.metadata?.tools.first { $0.id == kind }?.frontend,
+      developmentURL: developmentURL,
+      compatibility: app.tools.first { $0.kind == kind }?.compatibility ?? .unknown
     )
-    if pages[kind]?.identity != identity { replacePage(kind: kind, identity: identity) }
+  }
+
+  private func reconcilePages(_ snapshot: AppToolSnapshot) {
+    activePageIdentity = preferredPluginID.flatMap { pageIdentity(for: $0, snapshot: snapshot) }
+    for kind in Array(pages.keys) where pages[kind]?.identity != pageIdentity(for: kind, snapshot: snapshot) {
+      removePage(kind: kind)
+    }
+    if presentation == .tool, let kind = preferredPluginID, let identity = activePageIdentity, pages[kind] == nil {
+      replacePage(kind: kind, identity: identity)
+    }
     for kind in pages.keys {
       synchronizeConnection(kind: kind)
     }
@@ -237,7 +252,6 @@ final class ToolHostModel {
     let state = appTool.snapshot.pageState(for: kind)
     let app = state.selectedApp?.id == page.identity.appID
       ? state.selectedApp : toolApps.first { $0.id == page.identity.appID }
-    // Hidden pages retain their own app's metadata when another app is selected.
     let metadata = app?.metadata ?? page.connection.metadata
     let tool = metadata?.tools.first { $0.id == kind }
     guard page.endpointID != endpoint?.id || page.connection.metadata != metadata || page.connection.tool != tool else { return }
@@ -249,11 +263,21 @@ final class ToolHostModel {
     page.container.sendPageEvent(name: "host:connection", payload: page.connection)
   }
 
+  private func removePage(kind: ToolID) {
+    guard let page = pages.removeValue(forKey: kind) else { return }
+    page.container.stop()
+    bindings.removeValue(forKey: kind)?.cancel()
+    let transition = pageTransitions[kind]
+    transition?.cancel()
+    pageTransitions[kind] = Task {
+      await transition?.value
+      await page.container.finishStopping()
+    }
+  }
+
   private func replacePage(kind: ToolID, identity: PageIdentity) {
     let metadata = appTool.snapshot.pageState(for: kind).selectedApp?.metadata
-    let previous = pages[kind]?.container
-    previous?.stop()
-    bindings[kind]?.cancel()
+    removePage(kind: kind)
     let bridge = ToolWebBridge()
     let container = ToolWebContainer(
       bridge: bridge,
@@ -261,7 +285,7 @@ final class ToolHostModel {
     )
     bridge.isActiveHandler = { [weak self, weak container] in
       guard let self, let container else { return false }
-      return !isStopped && preferredPluginID == kind && pages[kind]?.container === container
+      return !isStopped && activePage?.container === container
     }
     bridge.hostStateHandler = { [weak self, weak container] in
       guard let self, let container, pages[kind]?.container === container else { return ToolConnectionState() }
@@ -296,7 +320,6 @@ final class ToolHostModel {
     transition?.cancel()
     pageTransitions[kind] = Task { [weak self] in
       await transition?.value
-      await previous?.finishStopping()
       guard let self, !Task.isCancelled, !isStopped, pages[kind]?.container === container else { return }
       defer {
         if pages[kind]?.container === container { pageTransitions[kind] = nil }

@@ -392,15 +392,9 @@ struct CaptureWindow: View {
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(nsColor: .textBackgroundColor))
-                  } else if toolModel.isWaiting || toolModel.selectedTool == nil {
+                  } else if toolModel.presentation != .tool {
                     VStack(spacing: 12) {
-                      if let app = toolModel.selectedToolApp {
-                        Text("Waiting for \(app.name)")
-                          .foregroundStyle(.secondary)
-                      } else {
-                        Text("Waiting for app")
-                          .foregroundStyle(.secondary)
-                      }
+                      AppToolPlaceholder(presentation: toolModel.presentation, retry: toolModel.retryDiscovery)
                       if let launch = toolModel.appLaunch {
                         Button(launch.pending ? "Opening…" : "Open App") { toolModel.openSelectedApp() }
                           .disabled(launch.pending)

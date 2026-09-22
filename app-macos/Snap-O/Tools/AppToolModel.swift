@@ -18,12 +18,16 @@ struct ToolHostState: Encodable {
 struct AppToolSnapshot {
   let revision: Int
   let state: AppToolState
-  let loading: Bool
+  let discovery: AppDiscoveryPhase
   let appLaunch: AppLaunchState?
+
+  var presentation: AppToolPresentation {
+    AppToolPresentation(discovery: discovery, selection: state)
+  }
 
   func pageState(for kind: ToolID) -> ToolHostState {
     let displayed = state.displayed[kind]
-    let waiting = loading || state.isRestoring || state.selection == nil
+    let waiting = presentation != .tool
     let active = state.preferredKind == kind
     let connected = active && !waiting && state.selection?.kind == kind
     return ToolHostState(
@@ -47,7 +51,7 @@ final class AppToolModel {
   private var selection: ToolSelection
   private var savedPreferences: String?
   private var revision = 0
-  private var loading = true
+  private var discovery = AppDiscoveryPhase.searching
   private var running = false
   private var refreshTask: Task<Void, Never>?
   private var pollingTask: Task<Void, Never>?
@@ -80,7 +84,7 @@ final class AppToolModel {
 
   var snapshot: AppToolSnapshot {
     AppToolSnapshot(
-      revision: revision, state: selection.state, loading: loading,
+      revision: revision, state: selection.state, discovery: discovery,
       appLaunch: launchInput == nil ? nil : AppLaunchState(
         pending: launchOpening || launchWaiting, error: launchError
       )
@@ -124,21 +128,33 @@ final class AppToolModel {
 
   func refresh() {
     guard running, refreshTask == nil else { return }
+    if discovery == .failed {
+      discovery = .searching
+      publish()
+    }
     refreshTask = Task { [weak self] in
-      guard let self else { return }
+      guard let self, running, !Task.isCancelled else { return }
       defer { if !Task.isCancelled { refreshTask = nil } }
       do {
-        let discovery = try await discover()
+        let result = try await discover()
         guard !Task.isCancelled, running else { return }
-        applyDiscovery(discovery)
+        discovery = .ready
+        applyDiscovery(result)
       } catch {
-        // A failed scan does not prove the selected app has disconnected.
+        guard !Task.isCancelled, running else { return }
+        // Keep established results when a later scan fails.
+        if discovery != .ready {
+          discovery = .failed
+          publish()
+        }
       }
     }
   }
 
   private func applyDiscovery(_ discovery: ToolDiscoverySnapshot) {
     guard running else { return }
+    // Scan completion must publish even if a newer pushed snapshot already supplied the data.
+    defer { publish() }
     if let revision = discovery.revision {
       guard discoveryRevision.map({ revision > $0 }) ?? true else { return }
       discoveryRevision = revision
@@ -146,8 +162,6 @@ final class AppToolModel {
     let previous = launchKey
     selection.reconcile(discovery.apps)
     if previous != launchKey { cancelLaunch() }
-    loading = false
-    publish()
   }
 
   func selectApp(_ app: InspectableApp) {
