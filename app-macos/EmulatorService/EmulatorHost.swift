@@ -93,6 +93,22 @@ final class EmulatorHost {
     )
   }
 
+  func clipboardEndpoint(serial: String) throws -> EmulatorClipboardEndpoint {
+    let directory = home.appendingPathComponent("Library/Caches/TemporaryItems/avd/running")
+    let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+    for file in files where file.lastPathComponent.hasPrefix("pid_") && file.pathExtension == "ini" {
+      let name = file.deletingPathExtension().lastPathComponent.dropFirst(4)
+      guard let pid = Int32(name), pid > 0, kill(pid, 0) == 0,
+            let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+            attributes[.type] as? FileAttributeType == .typeRegular,
+            (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid(),
+            let size = attributes[.size] as? NSNumber, size.intValue <= 65536,
+            let endpoint = EmulatorClipboardEndpoint(properties: properties(at: file), serial: serial) else { continue }
+      return endpoint
+    }
+    throw EmulatorServiceError(message: "The emulator's authenticated clipboard connection is unavailable.")
+  }
+
   func snapshot(serials: [String]) throws -> EmulatorInventory {
     var devices = try configurations(sdk: sdk())
     for serial in Set(serials) {

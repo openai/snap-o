@@ -12,13 +12,18 @@ protocol LivePreviewHosting: AnyObject {
 }
 
 struct LiveCaptureView<Host: LivePreviewHosting>: View {
+  @Environment(AppSettings.self)
+  private var settings
   let fileStore: FileStore
+  private let deviceID: String
   @State private var lifecycle: LivePreviewLifecycle<LivePreviewRenderer>
   @State private var fileDrop: DeviceFileDrop
+  @State private var clipboard = EmulatorClipboardSync()
 
   init(host: Host, capture: CaptureMedia, fileStore: FileStore) {
     self.fileStore = fileStore
     _fileDrop = State(initialValue: DeviceFileDrop(device: capture.device))
+    deviceID = capture.device.id
     _lifecycle = State(initialValue: LivePreviewLifecycle(
       connection: host.livePreviewConnection(for: capture.device.id),
       start: { await host.startLivePreviewStream(for: capture.device.id) },
@@ -30,6 +35,50 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   }
 
   var body: some View {
+    VStack(spacing: 0) {
+      preview
+      if deviceID.hasPrefix("emulator-") {
+        clipboardFooter
+      }
+    }
+    .task(id: clipboardTarget) {
+      guard let serial = clipboardTarget else { return }
+      await clipboard.run(serial: serial)
+    }
+    .onDisappear { clipboard.stop() }
+  }
+
+  private var clipboardTarget: String? {
+    settings.syncClipboard && deviceID.hasPrefix("emulator-")
+      && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
+  }
+
+  private var clipboardFooter: some View {
+    @Bindable var settings = settings
+    return HStack {
+      Spacer()
+      Toggle(isOn: $settings.syncClipboard) {
+        Image(systemName: "clipboard")
+          .foregroundStyle(settings.syncClipboard ? Color.accentColor : Color.secondary)
+      }
+      .toggleStyle(.button)
+      .buttonStyle(.borderless)
+      .accessibilityLabel("Sync clipboard")
+      .accessibilityValue(settings.syncClipboard ? "On" : "Off")
+      .help(clipboardHelp)
+    }
+    .controlSize(.small)
+    .padding(.horizontal, 8)
+    .frame(height: 28)
+    .background(.bar)
+  }
+
+  private var clipboardHelp: String {
+    if !settings.syncClipboard { return "Sync clipboard: Off" }
+    return clipboard.isUnavailable ? "Sync clipboard: Connection unavailable. Retrying…" : "Sync clipboard: On"
+  }
+
+  private var preview: some View {
     ZStack {
       Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
       if let renderer = lifecycle.renderer {

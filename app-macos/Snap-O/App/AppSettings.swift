@@ -23,19 +23,32 @@ enum StartupCaptureMode: String, CaseIterable, Identifiable {
 @Observable
 final class AppSettings {
   static let shared = AppSettings()
+  @ObservationIgnored private let defaults: UserDefaults
 
-  var startupCaptureMode: StartupCaptureMode = UserDefaults.standard.string(forKey: "startupCaptureMode")
-    .flatMap(StartupCaptureMode.init(rawValue:)) ?? .livePreview {
-    didSet { UserDefaults.standard.set(startupCaptureMode.rawValue, forKey: "startupCaptureMode") }
+  var startupCaptureMode: StartupCaptureMode {
+    didSet { defaults.set(startupCaptureMode.rawValue, forKey: "startupCaptureMode") }
   }
 
-  var showTouchesDuringCapture: Bool = UserDefaults.standard.bool(forKey: "showTouchesDuringCapture") {
-    didSet { UserDefaults.standard.set(showTouchesDuringCapture, forKey: "showTouchesDuringCapture") }
+  var showTouchesDuringCapture: Bool {
+    didSet { defaults.set(showTouchesDuringCapture, forKey: "showTouchesDuringCapture") }
   }
 
-  var recordAsBugReport: Bool = UserDefaults.standard.bool(forKey: "recordAsBugReport") {
-    didSet { UserDefaults.standard.set(recordAsBugReport, forKey: "recordAsBugReport") }
+  var recordAsBugReport: Bool {
+    didSet { defaults.set(recordAsBugReport, forKey: "recordAsBugReport") }
+  }
+
+  var syncClipboard: Bool {
+    didSet { defaults.set(syncClipboard, forKey: "syncClipboard") }
   }
 
   var isAppTerminating: Bool = false
+
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+    startupCaptureMode = defaults.string(forKey: "startupCaptureMode")
+      .flatMap(StartupCaptureMode.init(rawValue:)) ?? .livePreview
+    showTouchesDuringCapture = defaults.bool(forKey: "showTouchesDuringCapture")
+    recordAsBugReport = defaults.bool(forKey: "recordAsBugReport")
+    syncClipboard = defaults.object(forKey: "syncClipboard") as? Bool ?? true
+  }
 }

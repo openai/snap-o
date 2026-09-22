@@ -3,6 +3,7 @@ import Foundation
 @objc(EmulatorServiceProtocol)
 protocol EmulatorServiceProtocol {
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func startADBServer(reply: @escaping @Sendable (Data?, String?) -> Void)
   func snapshot(_ serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
   func start(_ avdID: String, coldBoot: Bool, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
@@ -152,6 +153,20 @@ struct EmulatorDisplayMode: Codable {
             seen.insert(id).inserted else { return nil }
       return Self(action: action, width: width, height: height)
     }
+  }
+}
+
+struct EmulatorClipboardEndpoint: Codable {
+  let port: Int
+  let token: String
+
+  init?(properties: [String: String], serial: String) {
+    guard let serialPort = properties["port.serial"], serial == "emulator-" + serialPort,
+          let port = properties["grpc.port"].flatMap(Int.init), (1024 ... 65535).contains(port),
+          let token = properties["grpc.token"], !token.isEmpty,
+          properties["grpc.server_cert"] == nil else { return nil }
+    self.port = port
+    self.token = token
   }
 }
 

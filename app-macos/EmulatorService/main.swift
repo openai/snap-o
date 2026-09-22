@@ -38,6 +38,14 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
     perform(reply: reply) { try $0.snapshot(serials: serials) }
   }
 
+  func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    worker.async { [self] in
+      do {
+        try reply(JSONEncoder().encode(host.clipboardEndpoint(serial: serial)), nil)
+      } catch { reply(nil, "The emulator's authenticated clipboard connection is unavailable.") }
+    }
+  }
+
   func start(_ avdID: String, coldBoot: Bool, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void) {
     perform(reply: reply) { try $0.start(avdID, coldBoot: coldBoot, serials: serials) }
   }
