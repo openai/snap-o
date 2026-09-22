@@ -145,9 +145,11 @@ struct CaptureWindow: View {
         WindowCommandRegistration { command in
           workspace.revealCapture()
           Task { await handle(command, controller: controller) }
-        } preview: { deviceID in
-          workspace.revealCapture()
+        } preview: { deviceID, focus in
+          guard focus || workspace.showsCapture else { return false }
+          if focus { workspace.revealCapture() }
           Task { await controller.showLivePreview(deviceID: deviceID) }
+          return true
         } thumbnail: { deviceID in
           controller.livePreviewConnection(for: deviceID)?.thumbnail
         }

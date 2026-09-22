@@ -11,7 +11,7 @@ final class DeviceManager {
   private(set) var loadError: String?
   private(set) var actions: [String: String] = [:]
   var actionError: String?
-  @ObservationIgnored var showPreview: ((String) -> Void)?
+  @ObservationIgnored var showPreview: ((String) -> Bool)?
 
   var entries: [DeviceManagerEntry] {
     DeviceManagerEntry.list(emulators: emulators, connectedDevices: connectedDevices)
@@ -28,6 +28,17 @@ final class DeviceManager {
   init(adb: ADBService, deviceTracker: DeviceTracker) {
     self.adb = adb
     self.deviceTracker = deviceTracker
+  }
+
+  func startupStatus(for device: ManagedEmulator) -> String? {
+    if let action = actions[device.id] { return action }
+    switch device.state {
+    case .starting: return device.serial == nil ? "Connecting..." : "Booting..."
+    case .offline: return "Connecting..."
+    case .running: return previewAVD == device.id ? "Starting preview..." : nil
+    case .stopping: return device.state.title
+    case .stopped, .unavailable: return nil
+    }
   }
 
   func screenshot(for serial: String) async throws -> Data {
@@ -113,7 +124,7 @@ final class DeviceManager {
     previewTask?.cancel()
     previewAVD = device.id
     inventoryGeneration += 1
-    actions[device.id] = coldBoot ? "Cold booting…" : "Starting…"
+    actions[device.id] = "Starting..."
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
       defer {
@@ -129,6 +140,7 @@ final class DeviceManager {
       } catch is CancellationError {
         return
       } catch {
+        if previewAVD == device.id { previewAVD = nil }
         actionError = error.localizedDescription
       }
     }
@@ -162,6 +174,7 @@ final class DeviceManager {
   func shutdown() {
     previewTask?.cancel()
     previewTask = nil
+    previewAVD = nil
     for task in actionTasks.values {
       task.cancel()
     }
@@ -194,6 +207,9 @@ final class DeviceManager {
   private func waitForPreview(_ id: String) {
     previewTask = Task { [weak self] in
       guard let self else { return }
+      defer {
+        if !Task.isCancelled, previewAVD == id { previewAVD = nil }
+      }
       let deadline = Date().addingTimeInterval(180)
       while !Task.isCancelled, Date() < deadline {
         await refresh()
@@ -201,8 +217,9 @@ final class DeviceManager {
         if let device = emulators.first(where: { $0.id == id }) {
           if device.state == .running, let serial = device.serial,
              connectedDevices.contains(where: { $0.id == serial }) {
-            showPreview?(serial)
-            previewAVD = nil
+            if showPreview?(serial) == true {
+              await waitForPreviewFrame(serial)
+            }
             return
           }
           if device.state == .stopped, let detail = device.detail {
@@ -214,5 +231,15 @@ final class DeviceManager {
       }
       if !Task.isCancelled { actionError = "The emulator has not finished booting. You can open Live Preview once it is running." }
     }
+  }
+
+  private func waitForPreviewFrame(_ serial: String) async {
+    let deadline = Date().addingTimeInterval(30)
+    while !Task.isCancelled, Date() < deadline {
+      if SnapOCommandCoordinator.shared.hasLivePreviewFrame(deviceID: serial) { return }
+      guard connectedDevices.contains(where: { $0.id == serial }) else { return }
+      do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+    }
+    if !Task.isCancelled { actionError = "Live Preview has not started. You can try opening it again." }
   }
 }
