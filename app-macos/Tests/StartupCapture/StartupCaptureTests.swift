@@ -19,12 +19,11 @@ struct StartupCaptureTests {
     await discardSharesCleanup()
     try await managerReusesWarmup()
     try await emulatorFramesCreatePreviewBeforeBoot()
-    try await emulatorRendererReusesEarlyStream()
-    try await emulatorWarmupHasOneOwner()
+    await unusedEmulatorWarmupReleasesStream()
     await stoppingEmulatorBeforeFirstFrame()
     await emulatorReconnectDiscardsOldWarmup()
     try await emulatorInputWaitsForAndroid()
-    try await managerDiscardsWrongDevice()
+    await emulatorWarmupPreservesMatchingPreparedStream()
     try await managerRetriesBootingDevice(densityUnavailable: false)
     try await managerRetriesBootingDevice(densityUnavailable: true)
     await displayRetryCancellation(stops: false)
@@ -266,18 +265,18 @@ struct StartupCaptureTests {
     precondition(active.isEmpty)
   }
 
-  static func managerDiscardsWrongDevice() async throws {
+  static func emulatorWarmupPreservesMatchingPreparedStream() async {
+    let devices = [testDevice("emulator-5554"), testDevice("emulator-5556")]
     let service = LivePreviewService()
+    var visible = 0
     let manager = LivePreviewManager(
       livePreviewService: service, adbService: ADBService(), options: options,
-      preparedLivePreview: prepare(service)
-    ) { _ in }
-    await manager.start(with: [first, second])
-    let renderer = try await manager.makeRenderer(for: second.id)
-    let active = await service.active
-    precondition(active == [renderer.operation.id])
+      preparedLivePreview: prepare(service, device: devices[1])
+    ) { visible = $0.count }
+    await manager.start(with: devices)
+    await eventually { visible == 2 }
     let starts = await service.starts
-    precondition(starts == [first.id, second.id])
+    precondition(starts.count(where: { $0 == devices[1].id }) == 1, "The matching warmup must reuse the prepared stream")
     await manager.stop()
   }
 
@@ -426,36 +425,15 @@ struct StartupCaptureTests {
     await manager.stop()
   }
 
-  static func emulatorRendererReusesEarlyStream() async throws {
+  static func unusedEmulatorWarmupReleasesStream() async {
     let emulator = testDevice("emulator-5554")
     let service = LivePreviewService()
     var visible = false
     let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { visible = !$0.isEmpty }
     await manager.start(with: [emulator])
     await eventually { visible }
-    _ = try await manager.makeRenderer(for: emulator.id)
-    let starts = await service.starts
-    precondition(starts == [emulator.id], "Attaching the renderer must retain the boot preview stream")
-    await manager.stop()
-  }
-
-  static func emulatorWarmupHasOneOwner() async throws {
-    let emulator = testDevice("emulator-5554")
-    let gate = TestGate()
-    let service = LivePreviewService(readyGate: gate)
-    let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { _ in }
-    await manager.start(with: [emulator])
-    await eventually { await gate.waitCount == 1 }
-    let firstRenderer = Task { try await manager.makeRenderer(for: emulator.id) }
-    for _ in 0 ..< 20 {
-      await Task.yield()
-    }
-    let secondRenderer = Task { try await manager.makeRenderer(for: emulator.id) }
-    await eventually { await service.starts.count == 2 }
-    await gate.open()
-    let first = try await firstRenderer.value
-    let second = try await secondRenderer.value
-    precondition(first.operation.id != second.operation.id, "Renderers must not share ownership of one session")
+    let active = await service.active
+    precondition(active.isEmpty, "Discovering dimensions must release the unselected emulator")
     await manager.stop()
   }
 
@@ -486,9 +464,9 @@ struct StartupCaptureTests {
     await eventually { await service.starts.count == 2 }
     await gate.open()
     await disconnect.value
-    await eventually { await service.stops.count == 1 }
+    await eventually { await service.stops.count == 2 }
     let active = await service.active
-    precondition(active.count == 1, "Only the reconnected emulator's warmup may survive")
+    precondition(active.isEmpty, "Both the stale and unclaimed replacement warmups must release their streams")
     await manager.stop()
   }
 

@@ -25,8 +25,7 @@ final class LivePreviewManager {
   private var activeOperations: [UUID: LivePreviewOperationHandle] = [:]
   private struct EmulatorWarmup {
     let id: UUID
-    let task: Task<LivePreviewOperationHandle?, Never>
-    var isClaimed = false
+    let task: Task<Void, Never>
   }
 
   private var emulatorWarmups: [String: EmulatorWarmup] = [:]
@@ -103,24 +102,14 @@ final class LivePreviewManager {
       }
     }
 
-    let operation: LivePreviewOperationHandle
-    if var warmup = emulatorWarmups[deviceID], !warmup.isClaimed {
-      warmup.isClaimed = true
-      emulatorWarmups[deviceID] = warmup
-      let task = warmup.task
-      let prepared = await withTaskCancellationHandler {
-        await task.value
+    if let warmup = emulatorWarmups[deviceID] {
+      await withTaskCancellationHandler {
+        await warmup.task.value
       } onCancel: {
-        task.cancel()
+        warmup.task.cancel()
       }
-      if emulatorWarmups[deviceID]?.id == warmup.id {
-        emulatorWarmups.removeValue(forKey: deviceID)
-      }
-      guard let prepared else { throw CancellationError() }
-      operation = prepared
-    } else {
-      operation = try await takeOrStartOperation(for: deviceID)
     }
+    let operation = try await takeOrStartOperation(for: deviceID)
     guard !isStopped,
           !Task.isCancelled,
           deviceInfo[deviceID] != nil
@@ -181,37 +170,38 @@ final class LivePreviewManager {
     for device in devices where EmulatorGRPCEndpoint.isEmulator(device.id) {
       guard lastDisplayInfo[device.id] == nil, emulatorWarmups[device.id] == nil else { continue }
       let id = UUID()
-      let task = Task<LivePreviewOperationHandle?, Never> { [weak self] in
-        guard let self else { return nil }
+      let task = Task<Void, Never> { [weak self] in
+        guard let self else { return }
         var operation: LivePreviewOperationHandle?
+        var media: Media?
         do {
           let started = try await takeOrStartOperation(for: device.id)
           operation = started
-          guard !Task.isCancelled, !isStopped, deviceInfo[device.id] != nil,
-                emulatorWarmups[device.id]?.id == id else { throw CancellationError() }
-          activeOperations[started.id] = started
-          let media = try await started.session.waitUntilReady()
-          guard !Task.isCancelled, !isStopped, let device = deviceInfo[device.id],
-                emulatorWarmups[device.id]?.id == id else { throw CancellationError() }
-          storeMedia(media, for: device)
-          return started
-        } catch {
-          if let operation {
-            activeOperations.removeValue(forKey: operation.id)
-            _ = await livePreviewService.stop(operation)
+          guard !Task.isCancelled, !isStopped, emulatorWarmups[device.id]?.id == id else {
+            throw CancellationError()
           }
-          if emulatorWarmups[device.id]?.id == id { emulatorWarmups.removeValue(forKey: device.id) }
-          return nil
+          activeOperations[started.id] = started
+          media = try await started.session.waitUntilReady()
+        } catch {
+          // Normal display discovery can retry after an unsuccessful warmup.
         }
+        if let operation {
+          activeOperations.removeValue(forKey: operation.id)
+          _ = await livePreviewService.stop(operation)
+        }
+        guard emulatorWarmups[device.id]?.id == id else { return }
+        emulatorWarmups.removeValue(forKey: device.id)
+        guard !Task.isCancelled, !isStopped, let device = deviceInfo[device.id], let media else { return }
+        storeMedia(media, for: device)
       }
       emulatorWarmups[device.id] = EmulatorWarmup(id: id, task: task)
     }
   }
 
   private func takeOrStartOperation(for deviceID: String) async throws -> LivePreviewOperationHandle {
-    if let prepared = preparedLivePreview {
+    if let prepared = preparedLivePreview, prepared.deviceID == deviceID {
       preparedLivePreview = nil
-      if prepared.deviceID == deviceID, prepared.options == options {
+      if prepared.options == options {
         if let operation = await prepared.take() {
           Perf.step(.appFirstSnapshot, "reuse preloaded live preview")
           return operation
@@ -263,7 +253,7 @@ final class LivePreviewManager {
       await stopOperation(operation)
     }
     for warmup in warmups {
-      _ = await warmup.task.value
+      await warmup.task.value
     }
     while !inFlightRendererRequestIDs.isEmpty || !stoppingRendererIDs.isEmpty {
       await Task.yield()
@@ -328,7 +318,7 @@ final class LivePreviewManager {
     }
 
     for warmup in removedWarmups.values {
-      _ = await warmup.task.value
+      await warmup.task.value
     }
     guard !isStopped, deviceSyncID == syncID else { return }
     startEmulatorWarmups(for: devices)

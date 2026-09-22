@@ -135,7 +135,6 @@ actor LivePreviewService {
   func stop(_ handle: LivePreviewOperationHandle) async -> Error? {
     stops.append(handle.id)
     await stopGate?.wait()
-    await interactiveGate?.open()
     await handle.session.cancel()
     active.remove(handle.id)
     return nil
