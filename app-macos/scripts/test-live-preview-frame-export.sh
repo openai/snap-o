@@ -10,6 +10,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Storage/FileStore.swift Snap-O/Storage/SaveLocation.swift \
   Snap-O/LivePreview/LivePreviewFrameExporter.swift \
   Snap-O/LivePreview/LivePreviewThumbnail.swift \
+  Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   Snap-O/CaptureWindow/CaptureCopyConfirmation.swift \
   Snap-O/LivePreview/LivePreviewView.swift Snap-O/Utilities/Perf.swift \
   Tests/LivePreviewFrameExport/LivePreviewFrameExportTests.swift \

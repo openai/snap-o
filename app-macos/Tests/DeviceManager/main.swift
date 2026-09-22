@@ -75,7 +75,7 @@ func launchesResizableWithHiddenUI(_ fixture: HostFixture) throws {
     }
     let arguments = try String(contentsOf: output, encoding: .utf8).split(separator: "\n")
     try expect(
-      arguments == ["-avd", "Test", Substring(expected)],
+      arguments == ["-avd", "Test", Substring(expected), "-grpc-use-token"],
       "Resizable devices need the hidden UI backend; other devices remain headless"
     )
   }

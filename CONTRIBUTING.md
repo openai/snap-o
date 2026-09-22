@@ -33,6 +33,17 @@ Thank you for considering contributing to Snap-O! We welcome improvements, bug f
 
 Open the repository root in Android Studio. Gradle downloads Node.js and uses its bundled npm to build the tool frontends. No local Node installation is needed for Android builds. Run `./gradlew` from the repository root; published Android artifact names are independent of folder names.
 
+The shared macOS scheme uses the `Local` configuration for Run, Test, and Analyze.
+It keeps app, helper, and test code unoptimized, with `DEBUG`, debug symbols,
+and testability enabled. Swift package dependencies use Release optimization,
+which improves emulator preview throughput. Initial dependency builds take longer,
+and stepping through dependency code is less precise.
+
+The configuration name matters: Xcode maps `Local` to Release for Swift packages.
+Keep the app's Debug settings when editing this configuration. Use `Debug` instead
+when debugging dependency internals. Profile and Archive still use `Release`.
+Code coverage is off by default; enable it in the scheme when collecting coverage.
+
 The macOS app owns its device code under `Snap-O/Device/`. Run its unit tests with:
 
 ```sh

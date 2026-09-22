@@ -13,6 +13,9 @@
 		A60000032F70000100C0FFEE /* EmulatorService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A60000042F70000100C0FFEE /* EmulatorService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
 		F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = F40000022F70000100C0FFEE /* NIOHTTP1 */; };
+		B70100032F70000100C0FFEE /* GRPCCore in Frameworks */ = {isa = PBXBuildFile; productRef = B70100022F70000100C0FFEE /* GRPCCore */; };
+		B70200032F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices in Frameworks */ = {isa = PBXBuildFile; productRef = B70200022F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices */; };
+		B70300032F70000100C0FFEE /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = B70300022F70000100C0FFEE /* SwiftProtobuf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -96,6 +99,9 @@
 				32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */,
 				D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */,
 				F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */,
+				B70300032F70000100C0FFEE /* SwiftProtobuf in Frameworks */,
+				B70200032F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices in Frameworks */,
+				B70100032F70000100C0FFEE /* GRPCCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -175,6 +181,9 @@
 				32C837092E6A5AD10003BDFA /* Sparkle */,
 				D20000022F70000100C0FFEE /* ZIPFoundation */,
 				F40000022F70000100C0FFEE /* NIOHTTP1 */,
+				B70300022F70000100C0FFEE /* SwiftProtobuf */,
+				B70200022F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices */,
+				B70100022F70000100C0FFEE /* GRPCCore */,
 			);
 			productName = "Snap-O";
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
@@ -245,6 +254,9 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */,
+				B70300012F70000100C0FFEE /* swift-protobuf */,
+				B70200012F70000100C0FFEE /* grpc-swift-nio-transport */,
+				B70100012F70000100C0FFEE /* grpc-swift-2 */,
 				32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */,
 				D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
@@ -409,6 +421,73 @@
 			};
 			name = Debug;
 		};
+		B70000012F70000100C0FFEE /* Local */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 32AECEFA2E56725E00AA18F0 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2NKS52LMC8;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SNAPO_APP_BUNDLE_IDENTIFIER = com.openai.snapo;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			// Xcode maps Local to Release for packages; app targets retain Debug settings.
+			name = Local;
+		};
 		3234F45C2E2EC5040057AE77 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 32AECEFA2E56725E00AA18F0 /* Base.xcconfig */;
@@ -513,6 +592,51 @@
 			};
 			name = Debug;
 		};
+		B70000022F70000100C0FFEE /* Local */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = "Snap-O/SnapO.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = "$(BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Snap-O/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Snap-O";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = "$(VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited) PERF_TRACING";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Local;
+		};
 		3234F45F2E2EC5040057AE77 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -575,6 +699,24 @@
 			};
 			name = Debug;
 		};
+		B70000032F70000100C0FFEE /* Local */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = "$(SNAPO_DEVELOPMENT_TEAM)";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = EmulatorService/Info.plist;
+				MARKETING_VERSION = "$(VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SNAPO_APP_BUNDLE_IDENTIFIER).EmulatorService";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Local;
+		};
 		A600000E2F70000100C0FFEE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -611,6 +753,24 @@
 			};
 			name = Debug;
 		};
+		B70000042F70000100C0FFEE /* Local */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.openai.snapo.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Snap-O.app/Contents/MacOS/Snap-O";
+			};
+			name = Local;
+		};
 		E300000B2F70000100C0FFEE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -636,6 +796,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3234F45B2E2EC5040057AE77 /* Debug */,
+				B70000012F70000100C0FFEE /* Local */,
 				3234F45C2E2EC5040057AE77 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -645,6 +806,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3234F45E2E2EC5040057AE77 /* Debug */,
+				B70000022F70000100C0FFEE /* Local */,
 				3234F45F2E2EC5040057AE77 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -654,6 +816,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A600000D2F70000100C0FFEE /* Debug */,
+				B70000032F70000100C0FFEE /* Local */,
 				A600000E2F70000100C0FFEE /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -663,6 +826,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E300000A2F70000100C0FFEE /* Debug */,
+				B70000042F70000100C0FFEE /* Local */,
 				E300000B2F70000100C0FFEE /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -695,6 +859,9 @@
 				version = 2.100.0;
 			};
 		};
+		B70100012F70000100C0FFEE /* grpc-swift-2 */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/grpc/grpc-swift-2.git"; requirement = {kind = exactVersion; version = 2.4.3; }; };
+		B70200012F70000100C0FFEE /* grpc-swift-nio-transport */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/grpc/grpc-swift-nio-transport.git"; requirement = {kind = exactVersion; version = 2.10.0; }; };
+		B70300012F70000100C0FFEE /* swift-protobuf */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/apple/swift-protobuf.git"; requirement = {kind = exactVersion; version = 1.38.1; }; };
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -713,6 +880,9 @@
 			package = F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOHTTP1;
 		};
+		B70100022F70000100C0FFEE /* GRPCCore */ = {isa = XCSwiftPackageProductDependency; package = B70100012F70000100C0FFEE /* grpc-swift-2 */; productName = GRPCCore; };
+		B70200022F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices */ = {isa = XCSwiftPackageProductDependency; package = B70200012F70000100C0FFEE /* grpc-swift-nio-transport */; productName = GRPCNIOTransportHTTP2TransportServices; };
+		B70300022F70000100C0FFEE /* SwiftProtobuf */ = {isa = XCSwiftPackageProductDependency; package = B70300012F70000100C0FFEE /* swift-protobuf */; productName = SwiftProtobuf; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3234F4492E2EC5030057AE77 /* Project object */;

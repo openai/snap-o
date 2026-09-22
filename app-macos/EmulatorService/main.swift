@@ -5,6 +5,7 @@ import Security
 final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDelegate, @unchecked Sendable {
   private let worker = DispatchQueue(label: "com.openai.snapo.emulators")
   private let host = EmulatorHost()
+  private let previewDiscovery = EmulatorPreviewDiscovery()
   private let clientRequirement: String?
 
   override init() {
@@ -47,6 +48,15 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
 
   func delete(_ avdID: String, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void) {
     perform(reply: reply) { try $0.delete(avdID, serials: serials) }
+  }
+
+  func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    worker.async { [self] in
+      do {
+        let endpoint = try previewDiscovery.endpoint(for: serial)
+        try reply(JSONEncoder().encode(endpoint), nil)
+      } catch { reply(nil, error.localizedDescription) }
+    }
   }
 
   func startADBServer(reply: @escaping @Sendable (Data?, String?) -> Void) {

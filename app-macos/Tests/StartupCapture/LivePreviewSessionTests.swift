@@ -108,6 +108,8 @@ actor ADBService {
     bootComplete = true
   }
 
+  func keyEvent(deviceID _: String, keyCode _: String) throws {}
+
   func displayDensity(deviceID _: String) throws -> Int {
     3
   }
@@ -176,43 +178,13 @@ final class H264StreamDecoder: @unchecked Sendable {
 @MainActor
 struct LivePreviewSessionTests {
   static func main() async throws {
-    let session = try await LivePreviewSession(deviceID: "ready", adb: ADBService())
-    precondition(!session.isReady)
-    precondition(session.readyAt == nil)
-    guard let decoder = H264StreamDecoder.latest else { fatalError("Missing decoder") }
-    let first = Task { try await session.waitUntilReady() }
-    let second = Task { try await session.waitUntilReady() }
-    for _ in 0 ..< 20 {
-      await Task.yield()
-    }
-    H264StreamDecoder.latest?.emitFormat()
-    let firstMedia = try await first.value
-    let secondMedia = try await second.value
-    precondition(firstMedia == secondMedia)
-    precondition(firstMedia.size == CGSize(width: 1080, height: 2400))
-    precondition(session.isReady)
-    let readyAt = session.readyAt
-    precondition(readyAt != nil)
-    session.cancel()
-    precondition(!session.isReady)
-    precondition(session.readyAt == readyAt)
-    await expectCancellation(Task { try await session.waitUntilReady() })
-    _ = await session.waitUntilStop()
-    await eventually { decoder.finishCount == 1 }
-
-    let cancelled = try await LivePreviewSession(deviceID: "cancelled", adb: ADBService())
-    let pendingFirst = Task { try await cancelled.waitUntilReady() }
-    let pendingSecond = Task { try await cancelled.waitUntilReady() }
-    for _ in 0 ..< 20 {
-      await Task.yield()
-    }
-    cancelled.cancel()
-    precondition(!cancelled.isReady)
-    await expectCancellation(pendingFirst)
-    await expectCancellation(pendingSecond)
-    await expectCancellation(Task { try await cancelled.waitUntilReady() })
-    _ = await cancelled.waitUntilStop()
-
+    try await readinessWaitersReceiveFirstFormat()
+    await cancellationReleasesReadinessWaiters()
+    try await independentFramesKeepLatest()
+    try formatChangesUpdateMedia()
+    try await emulatorStartupSelectsGRPC()
+    try await sourceFailureReleasesReadinessWaiters()
+    cancellationStopsSourceOnce()
     try await streamCompletionFlushesOnce()
     await showTouchesRestoration()
     try await startupRestoresSettings()
@@ -224,6 +196,106 @@ struct LivePreviewSessionTests {
       try await bootWaitCancels(shutdown: shutdown, blocksQuery: true)
     }
     print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
+  }
+
+  static func makeSession(stream: ScreenStreamSession = ScreenStreamSession()) -> LivePreviewSession {
+    LivePreviewSession(deviceID: "test", densityScale: 3, source: ADBPreviewFrameSource(stream: stream))
+  }
+
+  static func readinessWaitersReceiveFirstFormat() async throws {
+    let session = makeSession()
+    precondition(!session.isReady)
+    precondition(session.readyAt == nil)
+    defer { session.cancel() }
+    let first = Task { try await session.waitUntilReady() }
+    let second = Task { try await session.waitUntilReady() }
+    for _ in 0 ..< 20 {
+      await Task.yield()
+    }
+    H264StreamDecoder.latest?.emitFormat()
+    let firstMedia = try await first.value
+    let secondMedia = try await second.value
+    precondition(firstMedia == secondMedia)
+    precondition(firstMedia.size == CGSize(width: 1080, height: 2400))
+    precondition(session.isReady)
+    precondition(session.readyAt != nil)
+  }
+
+  static func cancellationReleasesReadinessWaiters() async {
+    let cancelled = makeSession()
+    let pendingFirst = Task { try await cancelled.waitUntilReady() }
+    let pendingSecond = Task { try await cancelled.waitUntilReady() }
+    for _ in 0 ..< 20 {
+      await Task.yield()
+    }
+    cancelled.cancel()
+    precondition(!cancelled.isReady)
+    await expectCancellation(pendingFirst)
+    await expectCancellation(pendingSecond)
+    await expectCancellation(Task { try await cancelled.waitUntilReady() })
+    _ = await cancelled.waitUntilStop()
+  }
+
+  static func independentFramesKeepLatest() async throws {
+    let source = TestRawFrameSource()
+    let session = LivePreviewSession(deviceID: "emulator-5554", densityScale: 3, source: source)
+    let builder = EmulatorPreviewFrameBuilder()
+    let pixels = Data(repeating: 255, count: 1080 * 2400 * 4)
+    for timestamp: UInt64 in [1, 2, 3] {
+      let sample = try builder.makeSample(rgba: pixels, width: 1080, height: 2400, timestamp: timestamp)!
+      source.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
+      source.deliver?(.sample(sample, isKeyFrame: true))
+    }
+    var received: [CMSampleBuffer] = []
+    session.sampleBufferHandler = { received.append($0) }
+    precondition(received.count == 1, "Only the latest independent frame should be retained")
+    precondition(CMSampleBufferGetPresentationTimeStamp(received[0]).value == 3)
+    session.cancel()
+  }
+
+  static func formatChangesUpdateMedia() throws {
+    let source = TestRawFrameSource()
+    let session = LivePreviewSession(deviceID: "test", densityScale: 3, source: source)
+    defer { session.cancel() }
+    var sizes: [CGSize] = []
+    session.mediaDidChange = { sizes.append($0.size) }
+    let builder = EmulatorPreviewFrameBuilder()
+    for (width, height) in [(2, 3), (3, 2)] {
+      let sample = try builder.makeSample(rgba: Data(count: 24), width: width, height: height, timestamp: 0)!
+      source.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
+    }
+    precondition(sizes == [CGSize(width: 2, height: 3), CGSize(width: 3, height: 2)])
+    precondition(session.media?.size == sizes.last)
+  }
+
+  static func emulatorStartupSelectsGRPC() async throws {
+    let adb = ADBService()
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: false))
+    precondition(EmulatorPreviewFrameSource.connectedDeviceID == "emulator-5554")
+    let adbStreams = await adb.streamStarts
+    precondition(adbStreams == 0)
+    _ = await service.stop(handle)
+  }
+
+  static func cancellationStopsSourceOnce() {
+    let source = TestRawFrameSource()
+    let session = LivePreviewSession(deviceID: "test", densityScale: 3, source: source)
+    session.cancel()
+    session.cancel()
+    precondition(source.stops == 1)
+  }
+
+  static func sourceFailureReleasesReadinessWaiters() async throws {
+    let failedSource = TestRawFrameSource()
+    let failed = LivePreviewSession(deviceID: "emulator-5554", densityScale: 3, source: failedSource)
+    let waiting = Task { try await failed.waitUntilReady() }
+    await Task.yield()
+    failedSource.deliver?(.stopped(TestError.expected))
+    do {
+      _ = try await waiting.value
+      fatalError("A failed source must release readiness waiters")
+    } catch TestError.expected {}
   }
 
   static func startupWaitsForBoot() async throws {
@@ -303,10 +375,10 @@ struct LivePreviewSessionTests {
   }
 
   static func streamCompletionFlushesOnce() async throws {
-    let adb = ADBService()
-    let session = try await LivePreviewSession(deviceID: "completed", adb: adb)
+    let stream = ScreenStreamSession()
+    let session = makeSession(stream: stream)
     guard let decoder = H264StreamDecoder.latest else { fatalError("Missing decoder") }
-    await adb.latestStream?.close()
+    stream.close()
     _ = await session.waitUntilStop()
     session.cancel()
     precondition(decoder.finishCount == 1)
@@ -391,5 +463,30 @@ struct LivePreviewSessionTests {
     } catch {
       fatalError("Unexpected error: \(error)")
     }
+  }
+}
+
+@MainActor
+final class TestRawFrameSource: LivePreviewFrameSource {
+  let hasIndependentFrames = true
+  var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
+  var stops = 0
+
+  func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
+    self.deliver = deliver
+  }
+
+  func stop() {
+    stops += 1
+  }
+}
+
+@MainActor
+enum EmulatorPreviewFrameSource {
+  static var connectedDeviceID: String?
+  @MainActor
+  static func connect(deviceID: String) async throws -> any LivePreviewFrameSource {
+    connectedDeviceID = deviceID
+    return TestRawFrameSource()
   }
 }

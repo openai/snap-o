@@ -56,8 +56,9 @@ struct LivePreviewFrameExportTests {
     let store = FileStore(baseDir: directory)
     defer { store.purgeExistingFiles() }
     focusLossReleasesBothContacts(store: store)
-    hiddenPreviewRetainsLatestFrame(store: store)
-    print("Live preview multitouch, hidden decoding and copy tests passed")
+    hiddenPreviewRetainsLatestFrame(store: store, raw: false)
+    hiddenPreviewRetainsLatestFrame(store: store, raw: true)
+    print("Live preview multitouch, hidden rendering and copy tests passed (H.264 and raw frames)")
   }
 
   private static func focusLossReleasesBothContacts(store: FileStore) {
@@ -84,7 +85,7 @@ struct LivePreviewFrameExportTests {
     precondition(cancelledContacts == [CGPoint(x: 40, y: 32), CGPoint(x: 24, y: 32)])
   }
 
-  private static func hiddenPreviewRetainsLatestFrame(store: FileStore) {
+  private static func hiddenPreviewRetainsLatestFrame(store: FileStore, raw: Bool) {
     _ = NSApplication.shared
     let view = LivePreviewDisplayView(fileStore: store)
     let window = NSWindow(
@@ -116,7 +117,7 @@ struct LivePreviewFrameExportTests {
     precondition(pasteboard.string(forType: .string) == "Keep clipboard when no frame is available")
     precondition(!view.validateMenuItem(NSMenuItem()))
     precondition(copyFeedbackCount == 0, "No frame must not report a successful copy")
-    let samples = makeEncodedSamples()
+    let samples = raw ? makeRawSamples() : makeEncodedSamples()
     let imageContext = CIContext()
     func displays(red: Bool) -> Bool {
       precondition(layer.sampleBufferRenderer.status != .failed, "Renderer failed: \(String(describing: layer.sampleBufferRenderer.error))")
@@ -166,6 +167,15 @@ struct LivePreviewFrameExportTests {
     precondition(pasteboard.data(forType: .tiff) == lastCopy, "A detached preview must leave the clipboard alone")
     precondition(copyFeedbackCount == 2, "A detached preview must not report a successful copy")
     window.contentView = nil
+  }
+
+  private static func makeRawSamples() -> [CMSampleBuffer] {
+    let builder = EmulatorPreviewFrameBuilder()
+    return (0 ..< 3).map { index in
+      let pixel: [UInt8] = index == 1 ? [0, 0, 255, 255] : [255, 0, 0, 255]
+      let rgba = Data((0 ..< 64 * 64).flatMap { _ in pixel })
+      return try! builder.makeSample(rgba: rgba, width: 64, height: 64, timestamp: UInt64(index) * 33333)!
+    }
   }
 
   private static func makeEncodedSamples() -> [CMSampleBuffer] {

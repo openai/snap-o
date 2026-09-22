@@ -1,7 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
 
-/// Owns one device-side live-preview process and its decoded frame stream.
+/// Owns a preview source, readiness, and samples awaiting a renderer.
 @MainActor
 final class LivePreviewSession {
   private static let maxPendingSampleCount = 60
@@ -15,6 +15,7 @@ final class LivePreviewSession {
   }
 
   var media: Media?
+  var mediaDidChange: ((Media) -> Void)?
   var sampleBufferHandler: ((CMSampleBuffer) -> Void)? {
     didSet {
       guard let sampleBufferHandler else {
@@ -32,12 +33,10 @@ final class LivePreviewSession {
   }
 
   private let densityScale: CGFloat
-  private let screenStream: ScreenStreamSession
-  private var decoder: H264StreamDecoder?
+  private let source: any LivePreviewFrameSource
   private var pendingSampleBuffers: [CMSampleBuffer] = []
   private var pendingSampleByteCount = 0
   private var needsKeyFrame = true
-  private var streamTask: Task<Void, Never>?
   private var hasStopped = false
 
   private var readyContinuations: [CheckedContinuation<Media, Error>] = []
@@ -45,17 +44,11 @@ final class LivePreviewSession {
   private var readyResult: Media?
   private var stopResult: Error??
 
-  init(deviceID: String, adb: ADBService) async throws {
+  init(deviceID: String, densityScale: CGFloat, source: any LivePreviewFrameSource) {
     self.deviceID = deviceID
-
-    let exec = await adb.exec()
-    async let densityValue = exec.displayDensity(deviceID: deviceID)
-    async let startedStream = exec.startScreenStream(deviceID: deviceID)
-    densityScale = try await CGFloat(densityValue)
-    screenStream = try await startedStream
-
-    setupDecoder()
-    startStreamTask()
+    self.densityScale = densityScale
+    self.source = source
+    source.start { [weak self] event in self?.receive(event) }
   }
 
   func waitUntilReady() async throws -> Media {
@@ -77,35 +70,29 @@ final class LivePreviewSession {
     finish(with: nil)
   }
 
-  private func setupDecoder() {
-    let decoder = H264StreamDecoder { [weak self] sample, isKeyFrame in
-      guard let self else { return }
-      let boxed = UnsafeSendable(value: sample)
-      DispatchQueue.main.async {
-        self.receiveSample(boxed.value, isKeyFrame: isKeyFrame)
-      }
-    } formatHandler: { [weak self] format in
-      guard let self else { return }
+  private func receive(_ event: LivePreviewFrameEvent) {
+    guard !hasStopped else { return }
+    switch event {
+    case .format(let format):
       let dims = CMVideoFormatDescriptionGetDimensions(format)
-      DispatchQueue.main.async {
-        guard !self.hasStopped else { return }
-        let size = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
-        let display = DisplayInfo(size: size, densityScale: self.densityScale)
-        let media = Media.livePreview(
-          capturedAt: Date(),
-          display: display
-        )
-        self.media = media
-        self.readyAt = self.readyAt ?? .now
-        self.readyResult = media
-        let continuations = self.readyContinuations
-        self.readyContinuations.removeAll()
-        for continuation in continuations {
-          continuation.resume(returning: media)
-        }
+      let size = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
+      let display = DisplayInfo(size: size, densityScale: densityScale)
+      let media = Media.livePreview(capturedAt: Date(), display: display)
+      let changed = self.media?.common.display != display
+      self.media = media
+      readyAt = readyAt ?? .now
+      readyResult = media
+      if changed { mediaDidChange?(media) }
+      let continuations = readyContinuations
+      readyContinuations.removeAll()
+      for continuation in continuations {
+        continuation.resume(returning: media)
       }
+    case .sample(let sample, let isKeyFrame):
+      receiveSample(sample, isKeyFrame: isKeyFrame)
+    case .stopped(let error):
+      finish(with: error)
     }
-    self.decoder = decoder
   }
 
   private func receiveSample(_ sample: CMSampleBuffer, isKeyFrame: Bool) {
@@ -121,6 +108,12 @@ final class LivePreviewSession {
 
     if let sampleBufferHandler {
       sampleBufferHandler(sample)
+      return
+    }
+
+    // Raw frames are independent and may exceed the compressed-stream byte limit.
+    if source.hasIndependentFrames {
+      pendingSampleBuffers = [sample]
       return
     }
 
@@ -142,38 +135,13 @@ final class LivePreviewSession {
     pendingSampleByteCount = 0
   }
 
-  private func startStreamTask() {
-    guard let decoder else { return }
-    let session = screenStream
-    streamTask = Task.detached(priority: .userInitiated) { [weak self] in
-      guard let self else { return }
-      let streamError: Error?
-      do {
-        while !Task.isCancelled {
-          guard let chunk = try session.read(maxLength: 64 * 1024), !chunk.isEmpty else { break }
-          decoder.append(chunk)
-        }
-        streamError = nil
-      } catch {
-        streamError = error
-      }
-
-      decoder.finish()
-      DispatchQueue.main.async {
-        self.finish(with: streamError)
-      }
-    }
-  }
-
   private func finish(with error: Error?) {
     guard !hasStopped else { return }
     hasStopped = true
 
-    streamTask?.cancel()
-    streamTask = nil
-    screenStream.close()
-    decoder = nil
+    source.stop()
     sampleBufferHandler = nil
+    mediaDidChange = nil
 
     stopResult = error
     stopContinuation?.resume(returning: error)
@@ -187,8 +155,4 @@ final class LivePreviewSession {
       }
     }
   }
-}
-
-private struct UnsafeSendable<T>: @unchecked Sendable {
-  let value: T
 }

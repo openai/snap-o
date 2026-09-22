@@ -169,7 +169,7 @@ final class EmulatorHost {
     let isResizable = config["hw.device.name"] == "resizable" || !(config["hw.resizable.configs"] ?? "").isEmpty
     // Display-mode switching requires the UI backend, even when its window is hidden.
     let windowOption = isResizable ? "-qt-hide-window" : "-no-window"
-    process.arguments = ["-avd", device.avdName, windowOption] + (coldBoot ? ["-no-snapshot-load"] : [])
+    process.arguments = ["-avd", device.avdName, windowOption, "-grpc-use-token"] + (coldBoot ? ["-no-snapshot-load"] : [])
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = log
     process.standardError = log
