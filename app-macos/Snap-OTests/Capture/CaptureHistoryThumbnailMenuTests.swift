@@ -31,22 +31,22 @@ struct CaptureHistoryThumbnailMenuTests {
       ))
     }
 
-    #expect(view.shouldOpenMenu(for: try event(.rightMouseDown)))
-    #expect(view.shouldOpenMenu(for: try event(.leftMouseDown, modifiers: .control)))
-    #expect(!view.shouldOpenMenu(for: try event(.leftMouseDown)))
-    #expect(!view.shouldOpenMenu(for: try event(.leftMouseDragged)))
-    #expect(!view.shouldOpenMenu(for: try event(.rightMouseDown, at: NSPoint(x: 80, y: 30))))
+    #expect(try view.shouldOpenMenu(for: event(.rightMouseDown)))
+    #expect(try view.shouldOpenMenu(for: event(.leftMouseDown, modifiers: .control)))
+    #expect(try !view.shouldOpenMenu(for: event(.leftMouseDown)))
+    #expect(try !view.shouldOpenMenu(for: event(.leftMouseDragged)))
+    #expect(try !view.shouldOpenMenu(for: event(.rightMouseDown, at: NSPoint(x: 80, y: 30))))
     #expect(view.hitTest(NSPoint(x: 30, y: 30)) == nil)
 
     container.isHidden = true
-    #expect(!view.shouldOpenMenu(for: try event(.rightMouseDown)))
+    #expect(try !view.shouldOpenMenu(for: event(.rightMouseDown)))
     container.isHidden = false
 
     // A scrolled thumbnail may extend beyond its visible container.
     container.setFrameSize(NSSize(width: 40, height: 100))
-    #expect(!view.shouldOpenMenu(for: try event(.rightMouseDown, at: NSPoint(x: 50, y: 30))))
+    #expect(try !view.shouldOpenMenu(for: event(.rightMouseDown, at: NSPoint(x: 50, y: 30))))
     view.removeFromSuperview()
-    #expect(!view.shouldOpenMenu(for: try event(.rightMouseDown)))
+    #expect(try !view.shouldOpenMenu(for: event(.rightMouseDown)))
   }
 
   @Test
