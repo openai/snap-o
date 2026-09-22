@@ -324,9 +324,15 @@ final class CaptureWindowController {
   }
 
   func selectDeviceInLivePreview(id: String) -> Bool {
-    guard isLivePreviewActive, canCaptureNow else { return false }
+    guard isLivePreviewActive, canCaptureNow, knownDevices.contains(where: { $0.id == id }) else { return false }
     selectDevice(id: id)
     return true
+  }
+
+  func isDeviceSelectedInLivePreview(id: String) -> Bool {
+    guard isLivePreviewActive, canCaptureNow, knownDevices.contains(where: { $0.id == id }) else { return false }
+    // Selection can still be queued while display metadata or the media view catches up.
+    return (pendingPreferredDeviceID ?? lastViewedDeviceID) == id
   }
 
   func showLivePreview(deviceID: String) async {

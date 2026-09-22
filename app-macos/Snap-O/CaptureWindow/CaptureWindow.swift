@@ -152,6 +152,8 @@ struct CaptureWindow: View {
           workspace.revealCapture()
           Task { await controller.showLivePreview(deviceID: deviceID) }
           return true
+        } previewIsSelected: { deviceID in
+          workspace.showsCapture && controller.isDeviceSelectedInLivePreview(id: deviceID)
         } thumbnail: { deviceID in
           controller.livePreviewConnection(for: deviceID)?.thumbnail
         }

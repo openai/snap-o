@@ -53,8 +53,8 @@ struct DeviceManagerWindow: View {
       .sharedBackgroundVisibility(.hidden)
     }
     .task {
-      manager.showPreview = { serial in
-        SnapOCommandCoordinator.shared.showLivePreview(deviceID: serial, focus: false)
+      manager.selectPreview = { serial in
+        SnapOCommandCoordinator.shared.selectLivePreview(deviceID: serial)
       }
       await manager.observe()
     }

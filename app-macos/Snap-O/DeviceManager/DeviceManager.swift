@@ -11,7 +11,7 @@ final class DeviceManager {
   private(set) var loadError: String?
   private(set) var actions: [String: String] = [:]
   var actionError: String?
-  @ObservationIgnored var showPreview: ((String) -> Bool)?
+  @ObservationIgnored var selectPreview: ((String) -> LivePreviewRequest?)?
 
   var entries: [DeviceManagerEntry] {
     DeviceManagerEntry.list(emulators: emulators, connectedDevices: connectedDevices)
@@ -217,8 +217,14 @@ final class DeviceManager {
         if let device = emulators.first(where: { $0.id == id }) {
           if device.state == .running, let serial = device.serial,
              connectedDevices.contains(where: { $0.id == serial }) {
-            if showPreview?(serial) == true {
-              await waitForPreviewFrame(serial)
+            if let request = selectPreview?(serial) {
+              do {
+                try await request.waitForFrame()
+              } catch is CancellationError {
+                return
+              } catch {
+                actionError = error.localizedDescription
+              }
             }
             return
           }
@@ -231,15 +237,5 @@ final class DeviceManager {
       }
       if !Task.isCancelled { actionError = "The emulator has not finished booting. You can open Live Preview once it is running." }
     }
-  }
-
-  private func waitForPreviewFrame(_ serial: String) async {
-    let deadline = Date().addingTimeInterval(30)
-    while !Task.isCancelled, Date() < deadline {
-      if SnapOCommandCoordinator.shared.hasLivePreviewFrame(deviceID: serial) { return }
-      guard connectedDevices.contains(where: { $0.id == serial }) else { return }
-      do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-    }
-    if !Task.isCancelled { actionError = "Live Preview has not started. You can try opening it again." }
   }
 }
