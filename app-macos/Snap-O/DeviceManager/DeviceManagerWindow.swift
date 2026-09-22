@@ -134,7 +134,12 @@ struct DeviceManagerWindow: View {
 
   private func emulatorControls(_ device: ManagedEmulator, action: String?, status: String?) -> some View {
     HStack(spacing: 16) {
-      if let status {
+      if action == nil, device.canStop {
+        Button { manager.stop(device) } label: {
+          actionIcon("Stop", symbol: "stop.fill")
+        }
+        .help("Stop")
+      } else if let status {
         ProgressView()
           .controlSize(.small)
           .frame(width: 28, height: 28)
@@ -145,11 +150,6 @@ struct DeviceManagerWindow: View {
           actionIcon("Start", symbol: "play.fill")
         }
         .help("Start")
-      } else if device.canStop {
-        Button { manager.stop(device) } label: {
-          actionIcon("Stop", symbol: "stop.fill")
-        }
-        .help("Stop")
       } else {
         Color.clear.frame(width: 28, height: 28)
       }
