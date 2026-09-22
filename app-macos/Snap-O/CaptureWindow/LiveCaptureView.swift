@@ -14,6 +14,10 @@ protocol LivePreviewHosting: AnyObject {
 struct LiveCaptureView<Host: LivePreviewHosting>: View {
   @Environment(AppSettings.self)
   private var settings
+  @Environment(\.appearsActive)
+  private var appearsActive
+  @Environment(\.scenePhase)
+  private var scenePhase
   let fileStore: FileStore
   private let deviceID: String
   @State private var lifecycle: LivePreviewLifecycle<LivePreviewRenderer>
@@ -36,7 +40,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
 
   private var clipboardTarget: String? {
     settings.syncClipboard
-      && clipboardFocus.isFocused && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
+      && clipboardFocus.isActive && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
   }
 
   var body: some View {
@@ -93,10 +97,9 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
         lifecycle.updateWindowVisibility(visible)
       }
       .frame(width: 0, height: 0)
-      WindowFocusReader { focused in
-        clipboardFocus.update(focused: focused)
-      }
-      .frame(width: 0, height: 0)
+    }
+    .onChange(of: appearsActive && scenePhase == .active, initial: true) {
+      clipboardFocus.update(focused: appearsActive, appActive: scenePhase == .active)
     }
     .onAppear { lifecycle.appear() }
     .onChange(of: lifecycle.connection?.restartID) { lifecycle.restart() }

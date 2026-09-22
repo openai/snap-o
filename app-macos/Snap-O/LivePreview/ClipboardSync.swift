@@ -109,13 +109,13 @@ final class ClipboardSync {
 @MainActor
 @Observable
 final class ClipboardSyncFocus {
-  private(set) var isFocused = false
+  private(set) var isActive = false
   private(set) var revision = UUID()
   var sync: ClipboardSync?
 
-  func update(focused: Bool) {
-    if !focused { stop() }
-    isFocused = focused
+  func update(focused: Bool, appActive: Bool) {
+    isActive = focused && appActive
+    if !isActive { stop() }
   }
 
   func stop() {
