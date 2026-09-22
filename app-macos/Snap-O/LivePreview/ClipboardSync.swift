@@ -7,11 +7,17 @@ final class ClipboardSync {
   private(set) var isUnavailable = false
   private let settings: AppSettings
   private let pasteboard: NSPasteboard
+  @ObservationIgnored private var isStopped = false
   @ObservationIgnored private var state = ClipboardSyncState()
 
   init(settings: AppSettings, pasteboard: NSPasteboard = .general) {
     self.settings = settings
     self.pasteboard = pasteboard
+  }
+
+  func stop() {
+    // Reject queued transport callbacks before SwiftUI cancels the session task.
+    isStopped = true
   }
 
   func run(serial: String) async {
@@ -83,6 +89,7 @@ final class ClipboardSync {
   }
 
   func synchronizeInitialClipboard(with previousText: String) -> String? {
+    guard isActive else { return nil }
     let hasHostItems = pasteboard.pasteboardItems?.isEmpty == false
     let text = hostText()
     if hasHostItems {
@@ -95,6 +102,25 @@ final class ClipboardSync {
   }
 
   private var isActive: Bool {
-    !Task.isCancelled && settings.syncClipboard
+    !isStopped && !Task.isCancelled && settings.syncClipboard
+  }
+}
+
+@MainActor
+@Observable
+final class ClipboardSyncFocus {
+  private(set) var isActive = false
+  private(set) var revision = UUID()
+  var sync: ClipboardSync?
+
+  func update(focused: Bool, appActive: Bool) {
+    isActive = focused && appActive
+    if !isActive { stop() }
+  }
+
+  func stop() {
+    sync?.stop()
+    // A rapid focus loss and regain must start a fresh session.
+    revision = UUID()
   }
 }
