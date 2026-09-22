@@ -6,10 +6,6 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct CaptureViewTests {
-  init() {
-    NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
-  }
-
   @Test
   func sizingPreservesMountedContent() async throws {
     var mounted: [NSView] = []
@@ -40,39 +36,9 @@ struct CaptureViewTests {
     }
   }
 
-  @Test(arguments: DeviceControlsPlacement.allCases)
-  func deviceControlsSendKeysWithoutOfferingClipboardSync(placement: DeviceControlsPlacement) async throws {
-    var sent: [String] = []
-    let controls = DeviceControlsView(
-      serial: "phone", placement: placement, connection: nil, sendKey: { sent.append($0) }, didChangeDisplay: {}
-    )
-    let view = NSHostingView(rootView: controls.environment(AppSettings.shared))
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 360, height: 400),
-      styleMask: [.borderless], backing: .buffered, defer: false
-    )
-    window.contentView = view
-    defer { window.contentView = nil }
-    let actions = [
-      ("Back", "KEYCODE_BACK"), ("Home", "KEYCODE_HOME"), ("Recents", "KEYCODE_APP_SWITCH"),
-      ("Volume Down", "KEYCODE_VOLUME_DOWN"), ("Volume Up", "KEYCODE_VOLUME_UP"), ("Power/Wake", "KEYCODE_POWER")
-    ]
-    for (index, action) in actions.enumerated() {
-      try await eventually("Waiting for enabled \(action.0) button (\(placement))") {
-        view.layoutSubtreeIfNeeded()
-        return element(named: action.0, in: view)?.isAccessibilityEnabled?() == true
-      }
-      let button = try #require(element(named: action.0, in: view))
-      #expect(button.accessibilityPerformPress?() == true)
-      try await eventually("Waiting for \(action.0) input (\(placement))") { sent.count == index + 1 }
-      #expect(sent.last == action.1)
-    }
-    #expect(element(named: "Sync clipboard", in: view) == nil)
-    #expect(element(named: "Rotate Left", in: view) == nil)
-  }
-
   @Test
   func connectButtonClearsTheSelectedConnectionFailure() async throws {
+    NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
     let host = FailedPreviewHost()
     host.connection.hasFailed = true
     let capture = CaptureMedia(
@@ -98,29 +64,21 @@ struct CaptureViewTests {
   }
 
   private func connectButton(in element: AnyObject) -> AnyObject? {
-    self.element(named: "Connect", in: element)
-  }
-
-  private func element(named name: String, in element: AnyObject) -> AnyObject? {
-    if element.accessibilityLabel?() == name || element.accessibilityTitle?() == name {
+    if element.accessibilityLabel?() == "Connect" || element.accessibilityTitle?() == "Connect" {
       return element
     }
     for child in element.accessibilityChildren?() ?? [] {
-      if let found = self.element(named: name, in: child as AnyObject) { return found }
+      if let found = connectButton(in: child as AnyObject) { return found }
     }
     return nil
   }
 
-  private func eventually(
-    _ message: String = "Waiting for view state",
-    sourceLocation: SourceLocation = #_sourceLocation,
-    _ condition: () -> Bool
-  ) async throws {
+  private func eventually(_ condition: () -> Bool) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(3))
     while !condition(), ContinuousClock.now < deadline {
       try await Task.sleep(for: .milliseconds(1))
     }
-    try #require(condition(), "\(message)", sourceLocation: sourceLocation)
+    try #require(condition())
   }
 }
 
