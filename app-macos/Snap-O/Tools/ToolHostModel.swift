@@ -203,7 +203,10 @@ final class ToolHostModel {
       frontend: pageState.selectedApp?.metadata?.tools.first { $0.id == kind }?.frontend,
       developmentURL: developmentURL, compatibility: selectedCompatibility
     )
-    if pages[kind]?.identity != identity { replacePage(kind: kind, identity: identity) }
+    // Restored tool preferences can exist before their app is available.
+    if pageState.isConnected, pageState.selectedApp != nil, pages[kind]?.identity != identity {
+      replacePage(kind: kind, identity: identity)
+    }
     for kind in pages.keys {
       synchronizeConnection(kind: kind)
     }

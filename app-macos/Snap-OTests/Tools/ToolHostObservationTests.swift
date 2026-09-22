@@ -53,6 +53,36 @@ struct ToolHostObservationTests {
     #expect(page.toolbar.actions.map(\.id) == ["clear"])
   }
 
+  @Test(arguments: [false, true])
+  func waitingForAnAppDoesNotCreateAWebView(restoreSelection: Bool) throws {
+    let suite = "ToolHostWaitingTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let app = selectionApp()
+    if restoreSelection {
+      var selection = ToolSelection()
+      selection.reconcile([app])
+      defaults.set(selection.serialized, forKey: "inspectorPreferences")
+    }
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let host = ToolHostModel(service: service, preferences: defaults)
+    defer { host.stop() }
+
+    #expect(host.preferredPluginID == (restoreSelection ? .network : nil))
+    #expect(host.selectedTool == nil)
+    #expect(host.isWaiting)
+    #expect(host.webContainer == nil)
+    #expect(!host.isPageReady)
+
+    // A remembered app or toolbar choice does not mean its process is available.
+    host.selectTool(app, option: app.tools[0])
+    #expect(host.selectedToolApp?.id == app.id)
+    #expect(host.selectedTool == nil)
+    #expect(host.isWaiting)
+    #expect(host.webContainer == nil)
+  }
+
   private func makePage() -> ToolHostModel.Page {
     ToolHostModel.Page(
       identity: ToolHostModel.PageIdentity(
