@@ -59,7 +59,8 @@ struct CaptureViewTests {
     ]
     for (index, action) in actions.enumerated() {
       try await eventually("Waiting for enabled \(action.0) button (\(placement))") {
-        element(named: action.0, in: view)?.isAccessibilityEnabled?() == true
+        view.layoutSubtreeIfNeeded()
+        return element(named: action.0, in: view)?.isAccessibilityEnabled?() == true
       }
       let button = try #require(element(named: action.0, in: view))
       #expect(button.accessibilityPerformPress?() == true)

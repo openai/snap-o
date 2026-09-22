@@ -156,20 +156,6 @@ struct EmulatorDisplayMode: Codable {
   }
 }
 
-struct EmulatorClipboardEndpoint: Codable {
-  let port: Int
-  let token: String
-
-  init?(properties: [String: String], serial: String) {
-    guard let serialPort = properties["port.serial"], serial == "emulator-" + serialPort,
-          let port = properties["grpc.port"].flatMap(Int.init), (1024 ... 65535).contains(port),
-          let token = properties["grpc.token"], !token.isEmpty,
-          properties["grpc.server_cert"] == nil else { return nil }
-    self.port = port
-    self.token = token
-  }
-}
-
 struct EmulatorInventory: Codable {
   let devices: [ManagedEmulator]
 }
@@ -232,6 +218,7 @@ struct ManagedEmulator: Codable, Identifiable, Equatable {
 struct EmulatorGRPCEndpoint: Codable {
   let port: Int
   let token: String?
+  var expiresAt: Date?
 
   static func isEmulator(_ deviceID: String) -> Bool {
     guard deviceID.hasPrefix("emulator-"),

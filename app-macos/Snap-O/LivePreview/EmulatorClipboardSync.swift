@@ -6,10 +6,12 @@ import Observation
 final class EmulatorClipboardSync {
   private(set) var isUnavailable = false
   private let settings: AppSettings
+  private let pasteboard: NSPasteboard
   @ObservationIgnored private var state = ClipboardSyncState()
 
-  init(settings: AppSettings) {
+  init(settings: AppSettings, pasteboard: NSPasteboard = .general) {
     self.settings = settings
+    self.pasteboard = pasteboard
   }
 
   func run(serial: String) async {
@@ -20,9 +22,12 @@ final class EmulatorClipboardSync {
         state = ClipboardSyncState()
         let endpoint = try await emulator.clipboardEndpoint(serial: serial)
         guard isActive else { return }
-        try await EmulatorClipboardTransport.connect(endpoint: endpoint) { transport in
-          try await synchronize(transport)
+        let authentication = EmulatorClipboardAuthentication(endpoint: endpoint) {
+          try await emulator.clipboardEndpoint(serial: serial)
         }
+        try await EmulatorClipboardTransport.connect(endpoint: endpoint, token: { try await authentication.token() }, body: { transport in
+          try await synchronize(transport)
+        })
       } catch {
         guard isActive else { return }
         // Transport errors may contain metadata; never log clipboard text or authentication tokens.
@@ -35,11 +40,8 @@ final class EmulatorClipboardSync {
   private func synchronize(_ transport: EmulatorClipboardTransport) async throws {
     let previousText = try await transport.getText()
     guard isActive else { return }
-    if let initialText = hostText() {
-      state.ignoreInitialSnapshot(matching: previousText)
+    if let initialText = synchronizeInitialClipboard(with: previousText) {
       try await transport.setText(initialText)
-    } else {
-      receive(previousText)
     }
     guard isActive else { return }
     isUnavailable = false
@@ -61,19 +63,29 @@ final class EmulatorClipboardSync {
   }
 
   private func hostText() -> String? {
-    let pasteboard = NSPasteboard.general
     let changeCount = pasteboard.changeCount
     guard state.changeCount != changeCount else { return nil }
     return state.hostText(pasteboard.string(forType: .string), changeCount: changeCount)
   }
 
-  private func receive(_ text: String) {
+  func receive(_ text: String) {
     guard isActive else { return }
-    let pasteboard = NSPasteboard.general
     guard state.shouldReceive(text, hostChangeCount: pasteboard.changeCount) else { return }
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
     state.received(text, changeCount: pasteboard.changeCount)
+  }
+
+  func synchronizeInitialClipboard(with previousText: String) -> String? {
+    let hasHostItems = pasteboard.pasteboardItems?.isEmpty == false
+    let text = hostText()
+    if hasHostItems {
+      // The stream can repeat this snapshot; it must not replace unsupported Mac contents either.
+      state.ignoreInitialSnapshot(matching: previousText)
+    } else {
+      receive(previousText)
+    }
+    return text
   }
 
   private var isActive: Bool {

@@ -60,7 +60,7 @@ struct DeviceControlsView: View {
       } catch {
         if !Task.isCancelled { inputFailed = true }
       }
-      if !Task.isCancelled { self.pendingKey = nil }
+      if !Task.isCancelled, self.pendingKey == pendingKey { self.pendingKey = nil }
     }
     .alert("Couldn’t Send Device Input", isPresented: $inputFailed) {
       Button("OK", role: .cancel) {}

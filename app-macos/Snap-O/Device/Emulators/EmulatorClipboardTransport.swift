@@ -5,10 +5,11 @@ import SwiftProtobuf
 
 struct EmulatorClipboardTransport {
   private let client: GRPCClient<HTTP2ClientTransport.TransportServices>
-  private let metadata: Metadata
+  private let token: @Sendable () async throws -> String
 
   static func connect(
-    endpoint: EmulatorClipboardEndpoint,
+    endpoint: EmulatorGRPCEndpoint,
+    token: @escaping @Sendable () async throws -> String,
     isolation: isolated (any Actor)? = #isolation,
     body: (Self) async throws -> Void
   ) async throws {
@@ -16,7 +17,7 @@ struct EmulatorClipboardTransport {
       target: .ipv4(address: "127.0.0.1", port: endpoint.port), transportSecurity: .plaintext
     )
     try await withGRPCClient(transport: transport, isolation: isolation) { client in
-      try await body(Self(client: client, metadata: ["authorization": .string("Bearer " + endpoint.token)]))
+      try await body(Self(client: client, token: token))
     }
   }
 
@@ -25,7 +26,7 @@ struct EmulatorClipboardTransport {
     var message = Google_Protobuf_StringValue()
     message.value = text
     try await client.unary(
-      request: ClientRequest(message: message, metadata: metadata),
+      request: ClientRequest(message: message, metadata: metadata()),
       descriptor: Self.method("setClipboard"),
       serializer: ClipboardProtobufCodec<Google_Protobuf_StringValue>(),
       deserializer: ClipboardProtobufCodec<Google_Protobuf_Empty>(),
@@ -35,7 +36,7 @@ struct EmulatorClipboardTransport {
 
   func getText() async throws -> String {
     try await client.unary(
-      request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata),
+      request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata()),
       descriptor: Self.method("getClipboard"),
       serializer: ClipboardProtobufCodec<Google_Protobuf_Empty>(),
       deserializer: ClipboardProtobufCodec<Google_Protobuf_StringValue>(),
@@ -45,7 +46,7 @@ struct EmulatorClipboardTransport {
 
   func receive(_ onText: @escaping @Sendable (String) async -> Void) async throws {
     try await client.serverStreaming(
-      request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata),
+      request: ClientRequest(message: Google_Protobuf_Empty(), metadata: metadata()),
       descriptor: Self.method("streamClipboard"),
       serializer: ClipboardProtobufCodec<Google_Protobuf_Empty>(),
       deserializer: ClipboardProtobufCodec<Google_Protobuf_StringValue>(),
@@ -56,6 +57,10 @@ struct EmulatorClipboardTransport {
         await onText(message.value)
       }
     }
+  }
+
+  private func metadata() async throws -> Metadata {
+    try await ["authorization": .string("Bearer " + token())]
   }
 
   private static func options(timeout: Duration? = nil) -> CallOptions {

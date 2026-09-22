@@ -9,6 +9,6 @@ cd "$APP_DIR"
 xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Device/Emulators/EmulatorServiceProtocol.swift \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
-  EmulatorService/EmulatorCommand.swift EmulatorService/EmulatorPreviewDiscovery.swift \
+  EmulatorService/EmulatorCommand.swift EmulatorService/EmulatorGRPCDiscovery.swift \
   Tests/EmulatorPreview/EmulatorPreviewTests.swift -o "$TEST_DIR/tests"
 "$TEST_DIR/tests"
