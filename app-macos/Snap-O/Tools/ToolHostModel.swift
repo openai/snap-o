@@ -118,7 +118,7 @@ final class ToolHostModel {
     self.preferences = preferences
     let appTool = appTool ?? AppToolModel(
       preferences: preferences,
-      discover: { await service.discoverPlugins() },
+      discover: { try await service.discoverPlugins() },
       changes: { await service.changes() },
       currentDiscovery: { await service.currentPlugins() },
       openApp: { try await service.openApp($0) }

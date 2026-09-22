@@ -5,7 +5,7 @@ actor ToolService {
   private let deviceTracker: DeviceTracker
   private let httpService: ToolHTTPService
   private var toolAppOrder: [String: Int] = [:]
-  private var refreshTask: Task<Void, Never>?
+  private var refreshTask: Task<Void, Error>?
   private var isStopped = false
   private var frontends: [(key: [String], bundle: ToolFrontendBundle)] = []
 
@@ -15,8 +15,8 @@ actor ToolService {
     httpService = ToolHTTPService(adbService: adbService)
   }
 
-  func discoverPlugins() async -> ToolDiscoverySnapshot {
-    await refresh()
+  func discoverPlugins() async throws -> ToolDiscoverySnapshot {
+    try await refresh()
     return await currentPlugins()
   }
 
@@ -122,29 +122,29 @@ actor ToolService {
     isStopped = true
     frontends.removeAll()
     refreshTask?.cancel()
-    await refreshTask?.value
+    try? await refreshTask?.value
     refreshTask = nil
     await httpService.stop()
   }
 
-  private func refresh() async {
+  private func refresh() async throws {
     guard !isStopped, !Task.isCancelled else { return }
     if let refreshTask {
-      await refreshTask.value
+      try await refreshTask.value
       return
     }
-    let task = Task { await refreshNow() }
+    let task = Task { try await refreshNow() }
     refreshTask = task
-    await task.value
-    refreshTask = nil
+    defer { refreshTask = nil }
+    try await task.value
   }
 
-  private func refreshNow() async {
+  private func refreshNow() async throws {
     let deviceUpdates = await deviceTracker.deviceStream()
     guard let devices = await deviceUpdates.first(where: { _ in true }),
           !Task.isCancelled, !isStopped else { return }
     let adb = await adbService.exec()
-    let sockets = await ToolDiscovery.discover(on: devices.map(\.id), using: adb)
+    let sockets = try await ToolDiscovery.discover(on: devices.map(\.id), using: adb)
     guard !Task.isCancelled, !isStopped else { return }
     await httpService.refresh(devices: devices, sockets: sockets, using: adb)
   }

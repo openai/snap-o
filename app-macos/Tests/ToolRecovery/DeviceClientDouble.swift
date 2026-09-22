@@ -63,6 +63,12 @@ public final class ADBClient: @unchecked Sendable {
     lock.withLock { legacyRequests }
   }
 
+  private var discoveryFailures: Set<String> = []
+
+  public func setDiscoveryFailures(_ devices: Set<String>) {
+    lock.withLock { discoveryFailures = devices }
+  }
+
   private var socketDevices: [String] = []
   private var socketsByDevice: [String: [String]] = [:]
   private var socketGeneration = 0
@@ -224,6 +230,7 @@ public final class ADBClient: @unchecked Sendable {
 
   public func runDiscoveryShellString(deviceID: String, command: String) async throws -> String {
     if command == ToolDiscovery.snapshotCommand {
+      if lock.withLock({ discoveryFailures.contains(deviceID) }) { throw POSIXError(.EIO) }
       return try await listUnixSockets(deviceID: deviceID) + "\n\n---snapo-processes---\nPID NAME\n42 com.example.demo\n43 com.example.demo:worker\n"
     }
     return command.contains("cmdline") ? "com.example.demo" : "Uid: 10000"

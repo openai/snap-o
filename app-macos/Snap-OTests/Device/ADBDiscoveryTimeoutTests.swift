@@ -11,11 +11,11 @@ struct ADBDiscoveryTimeoutTests {
     .timeLimit(.minutes(1)),
     arguments: FakeDiscoveryADB.Stall.allCases.filter { $0 != .trickle }
   )
-  private func discoversHealthyDevice(stall: FakeDiscoveryADB.Stall) async {
+  private func discoversHealthyDevice(stall: FakeDiscoveryADB.Stall) async throws {
     let server = FakeDiscoveryADB(stall: stall)
     defer { server.close() }
     let adb = server.client()
-    let sockets = await ToolDiscovery.discover(
+    let sockets = try await ToolDiscovery.discover(
       on: ["stalled", "phone"],
       using: adb
     )
@@ -24,11 +24,22 @@ struct ADBDiscoveryTimeoutTests {
     #expect(sockets.allSatisfy { $0.processName == "com.example.demo" })
     #expect(server.connectionCount == 2)
 
-    let recovered = await ToolDiscovery.discover(
+    let recovered = try await ToolDiscovery.discover(
       on: ["phone"],
       using: adb
     )
     #expect(recovered == sockets)
+  }
+
+  @Test("a failed scan is not an empty result")
+  func reportsFailedScan() async throws {
+    let server = FakeDiscoveryADB(stall: .output)
+    defer { server.close() }
+    await #expect(throws: ADBError.self) {
+      try await ToolDiscovery.discover(on: ["stalled"], using: server.client())
+    }
+    let empty = try await ToolDiscovery.discover(on: [], using: server.client())
+    #expect(empty.isEmpty)
   }
 
   @Test("cancelling discovery interrupts a blocked read", arguments: [false, true])
