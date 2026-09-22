@@ -106,16 +106,17 @@ final class ToolHostModel {
   @ObservationIgnored private let appTool: AppToolModel
   @ObservationIgnored private let preferences: UserDefaults
 
-  init(service: ToolService, preferences: UserDefaults = .standard) {
+  init(service: ToolService, preferences: UserDefaults = .standard, appTool: AppToolModel? = nil) {
     self.service = service
     self.preferences = preferences
-    appTool = AppToolModel(
+    let appTool = appTool ?? AppToolModel(
       preferences: preferences,
       discover: { await service.discoverPlugins() },
       changes: { await service.changes() },
       currentDiscovery: { await service.currentPlugins() },
       openApp: { try await service.openApp($0) }
     )
+    self.appTool = appTool
     appTool.stateChanged = { [weak self] snapshot in self?.apply(snapshot) }
     apply(appTool.snapshot)
     appTool.start()
@@ -204,8 +205,12 @@ final class ToolHostModel {
       developmentURL: developmentURL, compatibility: selectedCompatibility
     )
     // Restored tool preferences can exist before their app is available.
-    if pageState.isConnected, pageState.selectedApp != nil, pages[kind]?.identity != identity {
-      replacePage(kind: kind, identity: identity)
+    if pages[kind]?.identity != identity {
+      if pageState.isConnected, pageState.selectedApp != nil {
+        replacePage(kind: kind, identity: identity)
+      } else {
+        removePage(kind: kind)
+      }
     }
     for kind in pages.keys {
       synchronizeConnection(kind: kind)
@@ -250,6 +255,18 @@ final class ToolHostModel {
     page.connection.revision += 1
     page.connection.connected = endpoint != nil
     page.container.sendPageEvent(name: "host:connection", payload: page.connection)
+  }
+
+  private func removePage(kind: ToolID) {
+    guard let page = pages.removeValue(forKey: kind) else { return }
+    page.container.stop()
+    bindings.removeValue(forKey: kind)?.cancel()
+    let transition = pageTransitions[kind]
+    transition?.cancel()
+    pageTransitions[kind] = Task {
+      await transition?.value
+      await page.container.finishStopping()
+    }
   }
 
   private func replacePage(kind: ToolID, identity: PageIdentity) {

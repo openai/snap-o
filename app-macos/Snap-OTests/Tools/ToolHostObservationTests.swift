@@ -83,6 +83,63 @@ struct ToolHostObservationTests {
     #expect(host.webContainer == nil)
   }
 
+  @Test(arguments: [false, true])
+  func switchingToAnUnavailableAppRemovesThePreviousPage(reusePID: Bool) async throws {
+    let suite = "ToolHostSwitchTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var first = selectionApp(kinds: [.network], processIdentity: "boot:10:1")
+    first.tools[0].compatibility = .unknown
+    var next = selectionApp(
+      reusePID ? 10 : 20, kinds: [.network],
+      process: reusePID ? "com.example.demo" : "com.example.other",
+      processIdentity: reusePID ? "boot:10:2" : "boot:20:1"
+    )
+    next.tools[0].compatibility = .unknown
+    var apps = [first]
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    defer { host.stop() }
+    try await eventually { host.webContainer != nil }
+    let previous = try #require(host.webContainer)
+    previous.pageReadinessChangedHandler?(true)
+    #expect(host.isPageReady)
+
+    apps = []
+    appTool.refresh()
+    try await eventually { host.isWaiting }
+    #expect(host.webContainer === previous, "Keep cached content when the same app disconnects")
+
+    host.selectTool(next, option: next.tools[0])
+    #expect(host.selectedTool == nil)
+    #expect(host.webContainer == nil)
+    #expect(!host.isPageReady)
+    #expect(host.toolbarActions.isEmpty)
+    #expect(!host.canConfigureDevelopmentServer)
+    #expect(host.developmentURL == nil)
+    previous.pageReadinessChangedHandler?(true)
+    #expect(!host.isPageReady, "Callbacks from the removed page must not restore its readiness")
+
+    apps = [next]
+    appTool.refresh()
+    try await eventually { host.webContainer != nil }
+    #expect(host.webContainer !== previous)
+    #expect(host.selectedTool?.appId == next.id)
+    #expect(!host.isPageReady)
+  }
+
+  private func eventually(_ condition: () -> Bool) async throws {
+    for _ in 0 ..< 100 {
+      if condition() { return }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(condition())
+  }
+
   private func makePage() -> ToolHostModel.Page {
     ToolHostModel.Page(
       identity: ToolHostModel.PageIdentity(
