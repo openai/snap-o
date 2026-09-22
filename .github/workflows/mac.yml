@@ -75,6 +75,9 @@ jobs:
       - name: Test recording failures
         working-directory: app-macos
         run: sh scripts/test-recording.sh
+      - name: Test emulator preview
+        working-directory: app-macos
+        run: sh scripts/test-emulator-preview.sh
       - name: Test tool recovery
         working-directory: app-macos
         env:

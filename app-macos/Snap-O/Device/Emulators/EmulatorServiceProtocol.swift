@@ -2,6 +2,7 @@ import Foundation
 
 @objc(EmulatorServiceProtocol)
 protocol EmulatorServiceProtocol {
+  func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func startADBServer(reply: @escaping @Sendable (Data?, String?) -> Void)
   func snapshot(_ serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
   func start(_ avdID: String, coldBoot: Bool, serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
@@ -209,5 +210,17 @@ struct ManagedEmulator: Codable, Identifiable, Equatable {
       result[key] = value
     }
     return result
+  }
+}
+
+/// Credentials stay in memory and are used only for the local emulator connection.
+struct EmulatorGRPCEndpoint: Codable {
+  let port: Int
+  let token: String?
+
+  static func isEmulator(_ deviceID: String) -> Bool {
+    guard deviceID.hasPrefix("emulator-"),
+          let port = UInt16(deviceID.dropFirst(9)) else { return false }
+    return port >= 1024
   }
 }

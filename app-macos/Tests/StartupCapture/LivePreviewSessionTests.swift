@@ -108,6 +108,8 @@ actor ADBService {
     bootComplete = true
   }
 
+  func keyEvent(deviceID _: String, keyCode _: String) {}
+
   func displayDensity(deviceID _: String) throws -> Int {
     3
   }
@@ -213,6 +215,7 @@ struct LivePreviewSessionTests {
     await expectCancellation(Task { try await cancelled.waitUntilReady() })
     _ = await cancelled.waitUntilStop()
 
+    try await independentFramesKeepLatest()
     try await streamCompletionFlushesOnce()
     await showTouchesRestoration()
     try await startupRestoresSettings()
@@ -224,6 +227,37 @@ struct LivePreviewSessionTests {
       try await bootWaitCancels(shutdown: shutdown, blocksQuery: true)
     }
     print("Live preview session tests passed (readiness, cancellation, cleanup, and overlapping startup)")
+  }
+
+  static func independentFramesKeepLatest() async throws {
+    let source = TestRawFrameSource()
+    let session = LivePreviewSession(deviceID: "emulator-5554", densityScale: 3, source: source)
+    let builder = EmulatorPreviewFrameBuilder()
+    let pixels = Data(repeating: 255, count: 1080 * 2400 * 4)
+    for timestamp: UInt64 in [1, 2, 3] {
+      let sample = try builder.makeSample(rgba: pixels, width: 1080, height: 2400, timestamp: timestamp)!
+      source.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
+      source.deliver?(.sample(sample, isKeyFrame: true))
+    }
+    let media = try await session.waitUntilReady()
+    precondition(media.size == CGSize(width: 1080, height: 2400))
+    var received: [CMSampleBuffer] = []
+    session.sampleBufferHandler = { received.append($0) }
+    precondition(received.count == 1, "Only the latest independent frame should be retained")
+    precondition(CMSampleBufferGetPresentationTimeStamp(received[0]).value == 3)
+    precondition(CMSampleBufferGetImageBuffer(received[0]) != nil)
+    session.cancel()
+    session.cancel()
+    precondition(source.stops == 1)
+
+    let failedSource = TestRawFrameSource()
+    let failed = LivePreviewSession(deviceID: "emulator-5554", densityScale: 3, source: failedSource)
+    failedSource.deliver?(.stopped(TestError.expected))
+    do {
+      _ = try await failed.waitUntilReady()
+      fatalError("A failed source must release readiness waiters")
+    } catch TestError.expected {}
+    precondition(failedSource.stops == 1)
   }
 
   static func startupWaitsForBoot() async throws {
@@ -391,5 +425,28 @@ struct LivePreviewSessionTests {
     } catch {
       fatalError("Unexpected error: \(error)")
     }
+  }
+}
+
+@MainActor
+final class TestRawFrameSource: LivePreviewFrameSource {
+  let hasIndependentFrames = true
+  var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
+  var stops = 0
+
+  func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
+    self.deliver = deliver
+  }
+
+  func stop() {
+    stops += 1
+  }
+}
+
+/// Real gRPC transport is tested separately; physical-device tests must not select it.
+enum EmulatorPreviewFrameSource {
+  @MainActor
+  static func connect(deviceID: String) async throws -> any LivePreviewFrameSource {
+    preconditionFailure("Unexpected emulator source for \(deviceID)")
   }
 }

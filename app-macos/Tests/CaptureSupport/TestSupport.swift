@@ -51,6 +51,7 @@ struct LivePreviewOperationHandle {
 
 @MainActor
 final class LivePreviewSession {
+  var mediaDidChange: ((Media) -> Void)?
   enum StreamError: Error { case failed }
 
   private let readyGate: TestGate?

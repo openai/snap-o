@@ -1,0 +1,24 @@
+syntax = "proto3";
+package android.emulation.control;
+option swift_prefix = "EmulatorPreview_";
+
+// Wire-compatible subset of the Android Emulator screenshot API:
+// https://android.googlesource.com/platform/tools/base/+/mirror-goog-studio-main/emulator/proto/emulator_controller.proto
+// Unused response fields are preserved by SwiftProtobuf.
+message ImageFormat {
+  enum ImgFormat {
+    PNG = 0;
+    RGBA8888 = 1;
+    RGB888 = 2;
+  }
+  ImgFormat format = 1;
+  uint32 width = 3;
+  uint32 height = 4;
+  uint32 display = 5;
+}
+message Image {
+  ImageFormat format = 1;
+  bytes image = 4;
+  uint32 seq = 5;
+  uint64 timestampUs = 6;
+}

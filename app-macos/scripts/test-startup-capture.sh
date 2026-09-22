@@ -25,6 +25,9 @@ xcrun swiftc -swift-version 6 -parse-as-library \
 "$TEST_DIR/startup-tests"
 xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Device/Device.swift Snap-O/Models/Media.swift Snap-O/LivePreview/LivePreviewSession.swift \
+  Snap-O/LivePreview/LivePreviewFrameSource.swift Snap-O/Device/ADB/ADBPreviewFrameSource.swift \
+  Snap-O/Device/Emulators/EmulatorServiceProtocol.swift \
+  Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   Snap-O/Capture/ShowTouchesOverride.swift Snap-O/Capture/LivePreviewService.swift \
   Snap-O/Capture/CaptureCoordinator.swift \
   Tests/StartupCapture/LivePreviewSessionTests.swift -o "$TEST_DIR/session-tests"

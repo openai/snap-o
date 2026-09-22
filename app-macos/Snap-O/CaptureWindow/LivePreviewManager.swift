@@ -130,6 +130,11 @@ final class LivePreviewManager {
               let device = deviceInfo[deviceID]
         else { return }
         storeMedia(media, for: device)
+        session.mediaDidChange = { [weak self] media in
+          guard let self, !isStopped, activeOperations[operation.id] != nil,
+                let device = deviceInfo[deviceID] else { return }
+          storeMedia(media, for: device)
+        }
         // Failed stream startups must not add and remove Android input devices.
         await pointerInjector.prepare(deviceID: deviceID)
       } catch {

@@ -13,6 +13,9 @@
 		A60000032F70000100C0FFEE /* EmulatorService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A60000042F70000100C0FFEE /* EmulatorService.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D20000022F70000100C0FFEE /* ZIPFoundation */; };
 		F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = F40000022F70000100C0FFEE /* NIOHTTP1 */; };
+		B70100032F70000100C0FFEE /* GRPCCore in Frameworks */ = {isa = PBXBuildFile; productRef = B70100022F70000100C0FFEE /* GRPCCore */; };
+		B70200032F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices in Frameworks */ = {isa = PBXBuildFile; productRef = B70200022F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices */; };
+		B70300032F70000100C0FFEE /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = B70300022F70000100C0FFEE /* SwiftProtobuf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -96,6 +99,9 @@
 				32C8370A2E6A5AD10003BDFA /* Sparkle in Frameworks */,
 				D20000042F70000100C0FFEE /* ZIPFoundation in Frameworks */,
 				F40000032F70000100C0FFEE /* NIOHTTP1 in Frameworks */,
+				B70300032F70000100C0FFEE /* SwiftProtobuf in Frameworks */,
+				B70200032F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices in Frameworks */,
+				B70100032F70000100C0FFEE /* GRPCCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -175,6 +181,9 @@
 				32C837092E6A5AD10003BDFA /* Sparkle */,
 				D20000022F70000100C0FFEE /* ZIPFoundation */,
 				F40000022F70000100C0FFEE /* NIOHTTP1 */,
+				B70300022F70000100C0FFEE /* SwiftProtobuf */,
+				B70200022F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices */,
+				B70100022F70000100C0FFEE /* GRPCCore */,
 			);
 			productName = "Snap-O";
 			productReference = 3234F4512E2EC5030057AE77 /* Snap-O.app */;
@@ -245,6 +254,9 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */,
+				B70300012F70000100C0FFEE /* swift-protobuf */,
+				B70200012F70000100C0FFEE /* grpc-swift-nio-transport */,
+				B70100012F70000100C0FFEE /* grpc-swift-2 */,
 				32C837082E6A5AD10003BDFA /* XCRemoteSwiftPackageReference "Sparkle" */,
 				D20000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
@@ -695,6 +707,9 @@
 				version = 2.100.0;
 			};
 		};
+		B70100012F70000100C0FFEE /* grpc-swift-2 */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/grpc/grpc-swift-2.git"; requirement = {kind = exactVersion; version = 2.4.3; }; };
+		B70200012F70000100C0FFEE /* grpc-swift-nio-transport */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/grpc/grpc-swift-nio-transport.git"; requirement = {kind = exactVersion; version = 2.10.0; }; };
+		B70300012F70000100C0FFEE /* swift-protobuf */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/apple/swift-protobuf.git"; requirement = {kind = exactVersion; version = 1.38.1; }; };
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -713,6 +728,9 @@
 			package = F40000012F70000100C0FFEE /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOHTTP1;
 		};
+		B70100022F70000100C0FFEE /* GRPCCore */ = {isa = XCSwiftPackageProductDependency; package = B70100012F70000100C0FFEE /* grpc-swift-2 */; productName = GRPCCore; };
+		B70200022F70000100C0FFEE /* GRPCNIOTransportHTTP2TransportServices */ = {isa = XCSwiftPackageProductDependency; package = B70200012F70000100C0FFEE /* grpc-swift-nio-transport */; productName = GRPCNIOTransportHTTP2TransportServices; };
+		B70300022F70000100C0FFEE /* SwiftProtobuf */ = {isa = XCSwiftPackageProductDependency; package = B70300012F70000100C0FFEE /* swift-protobuf */; productName = SwiftProtobuf; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3234F4492E2EC5030057AE77 /* Project object */;
