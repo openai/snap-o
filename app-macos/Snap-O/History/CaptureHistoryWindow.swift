@@ -187,16 +187,7 @@ struct CaptureHistoryWindow: View {
             Section {
               LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 28) {
                 ForEach(entriesByDay[day] ?? []) { entry in
-                  CaptureHistoryStack(
-                    entry: entry,
-                    root: history.repository.root,
-                    refreshedAt: timestampsUpdatedAt,
-                    open: { open(entry) },
-                    rename: { name in
-                      Task { await history.repository.rename(entry.id, to: name) }
-                    },
-                    delete: { requestDeletion(entry) }
-                  )
+                  historyStack(entry)
                 }
               }
             } header: {
@@ -206,6 +197,29 @@ struct CaptureHistoryWindow: View {
         }
         .padding(24)
       }
+    }
+  }
+
+  @ViewBuilder
+  private func historyStack(_ entry: CaptureHistoryEntry) -> some View {
+    let stack = CaptureHistoryStack(
+      entry: entry,
+      root: history.repository.root,
+      refreshedAt: timestampsUpdatedAt,
+      open: { open(entry) },
+      rename: { name in
+        Task { await history.repository.rename(entry.id, to: name) }
+      },
+      delete: { requestDeletion(entry) }
+    )
+    if entry.availableItems.count == 1, let item = entry.frontItem {
+      stack.modifier(CaptureHistoryItemDrag(
+        entry: entry, item: item, draggedMedia: $draggedMedia, dropPadding: 0, insertion: nil
+      ) {
+        dragFile(entry, item: item)
+      })
+    } else {
+      stack
     }
   }
 
