@@ -24,11 +24,39 @@ Snap-O opens in Live Preview by default. Click and drag within the preview to in
 
 The device picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.
 
-When Android is still booting, Snap-O waits for it to be ready and retries display discovery automatically.
+You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.
+
+Hold Option and drag to use two touch points for pinch or rotation gestures. Hold Option-Shift while dragging to move both points together. The touch markers show where the gesture will act.
 
 Command-drag the preview to share the current frame as a screenshot, or right-click for **Copy Image** and **Save Image As…**. Each action adds that frame to Capture History. Watching the preview alone does not.
 
 Press `Esc` to stop the preview, or `⇧⌘L` to start it again. Choose **Device → Start With** to change how new windows open.
+
+## Device and emulator controls
+
+Live Preview shows floating controls beside the Capture window. Use **Back**, **Home**, **Recents**, **Volume Down**, **Volume Up**, and **Power/Wake** to control the selected device.
+
+Emulators also offer **Rotate Left** and **Rotate Right**. Supported emulators show **Display Mode** and **Posture** menus. Available choices depend on the emulator. These controls can remain unavailable during boot; Snap-O retries automatically.
+
+Right-click the controls and choose **Position → Left of Window** or **Position → Below Capture Pane**. Snap-O remembers this position and keeps the controls within the screen. They hide when Snap-O becomes inactive.
+
+## Clipboard sync
+
+The **Sync clipboard** button in the floating controls toggles text sync between Mac and Android. This is a global setting, shared by every Capture window. It is on by default, and Snap-O remembers your choice after restarting.
+
+Only the focused Capture window in Live Preview can sync its selected device. Visible background windows do not sync. Sync stops when the window loses focus, Snap-O becomes inactive, the preview closes, or the toggle is turned off. Focusing another Live Preview window switches sync to that window's device.
+
+When sync starts, supported text already on the Mac takes priority. Android text fills an empty Mac clipboard. Images, files, empty text, and text larger than 1 MiB are not synced. Existing Mac clipboard items are preserved when sync starts, even if they cannot be synced. A newer Mac copy takes priority over an incoming Android update.
+
+If the clipboard connection is unavailable, Snap-O retries. Hover over the clipboard button to check its status.
+
+## Send files and install APKs
+
+Drop regular files from Finder onto Live Preview to copy them into the selected device's **Downloads** folder. Folders and symbolic links are not supported. If a filename already exists, choose **Keep Both**, **Replace**, or **Skip**.
+
+Dropping APK files opens a prompt. Choose **Install** to install them, **Copy to Downloads** to copy them without installing, or **Cancel**. When a drop contains APKs and other files, **Install** installs the APKs and copies the remaining files to Downloads.
+
+Progress and transfer errors appear at the bottom of the preview. Device policy can block transfers. Closing the preview cancels the remaining work.
 
 ## Device Manager {#device-manager}
 

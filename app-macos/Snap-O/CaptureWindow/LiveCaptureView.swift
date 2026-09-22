@@ -18,6 +18,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   private let deviceID: String
   @State private var lifecycle: LivePreviewLifecycle<LivePreviewRenderer>
   @State private var fileDrop: DeviceFileDrop
+  @State private var clipboardFocus = ClipboardSyncFocus()
 
   init(host: Host, capture: CaptureMedia, fileStore: FileStore) {
     self.fileStore = fileStore
@@ -35,7 +36,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
 
   private var clipboardTarget: String? {
     settings.syncClipboard
-      && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
+      && clipboardFocus.isFocused && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
   }
 
   var body: some View {
@@ -87,20 +88,33 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       Button("Skip", role: .cancel) { fileDrop.answerConflict(.skip) }
     }
     .background {
-      WindowVisibilityReader { lifecycle.updateWindowVisibility($0) }
-        .frame(width: 0, height: 0)
+      WindowVisibilityReader { visible in
+        if !visible { clipboardFocus.stop() }
+        lifecycle.updateWindowVisibility(visible)
+      }
+      .frame(width: 0, height: 0)
+      WindowFocusReader { focused in
+        clipboardFocus.update(focused: focused)
+      }
+      .frame(width: 0, height: 0)
     }
     .onAppear { lifecycle.appear() }
     .onChange(of: lifecycle.connection?.restartID) { lifecycle.restart() }
     .onDisappear {
+      clipboardFocus.sync?.stop()
       lifecycle.disappear()
       fileDrop.cancel()
     }
-    .task(id: clipboardTarget) {
+    .task(id: clipboardTarget.map { "\($0):\(clipboardFocus.revision)" }) {
+      guard !Task.isCancelled else { return }
+      clipboardFocus.sync?.stop()
+      clipboardFocus.sync = nil
       lifecycle.connection?.clipboard = nil
       guard let serial = clipboardTarget else { return }
       let sync = ClipboardSync(settings: settings)
+      clipboardFocus.sync = sync
       lifecycle.connection?.clipboard = sync
+      defer { sync.stop() }
       await sync.run(serial: serial)
     }
   }
