@@ -9,6 +9,7 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
   let hasIndependentFrames = true
   private let deviceID: String
   private var task: Task<Void, Never>?
+  private var startupTimeout: Task<Void, Never>?
 
   init(deviceID: String) {
     self.deviceID = deviceID
@@ -17,14 +18,12 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
   private static func endpoint(for deviceID: String) async throws -> EmulatorGRPCEndpoint {
     let client = EmulatorClient()
     defer { client.close() }
-    let deadline = ContinuousClock.now + .seconds(15)
     while true {
       try Task.checkCancellation()
       do {
         return try await client.previewEndpoint(deviceID)
       } catch {
         try Task.checkCancellation()
-        guard ContinuousClock.now < deadline else { throw error }
         // Registration and authentication can lag behind ADB discovery.
         try await Task.sleep(for: .milliseconds(250))
       }
@@ -33,20 +32,35 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
 
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
     let deviceID = deviceID
+    // Bound startup without limiting a healthy stream’s lifetime.
+    startupTimeout = Task { [weak self] in
+      do { try await Task.sleep(for: .seconds(15)) } catch { return }
+      self?.stop()
+      deliver(.stopped(EmulatorPreviewError(message: "The emulator did not provide a preview frame in time.")))
+    }
+    let receive: @MainActor @Sendable (LivePreviewFrameEvent) -> Void = { [weak self] event in
+      switch event {
+      case .sample, .stopped: self?.startupTimeout?.cancel()
+      case .format: break
+      }
+      deliver(event)
+    }
     task = Task.detached(priority: .userInitiated) {
       do {
         let endpoint = try await Self.endpoint(for: deviceID)
-        try await Self.stream(endpoint: endpoint, deliver: deliver)
+        try await Self.stream(endpoint: endpoint, deliver: receive)
         if !Task.isCancelled {
-          await deliver(.stopped(EmulatorPreviewError(message: "The emulator preview stream ended.")))
+          await receive(.stopped(EmulatorPreviewError(message: "The emulator preview stream ended.")))
         }
       } catch {
-        await deliver(.stopped(Task.isCancelled ? nil : error))
+        await receive(.stopped(Task.isCancelled ? nil : error))
       }
     }
   }
 
   func stop() {
+    startupTimeout?.cancel()
+    startupTimeout = nil
     task?.cancel()
     task = nil
   }

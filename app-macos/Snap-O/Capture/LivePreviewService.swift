@@ -138,8 +138,14 @@ actor LivePreviewService {
       do { try await waitUntilBootComplete(for: deviceID) } catch { return nil }
       guard !Task.isCancelled else { return nil }
       let exec = await adb.exec()
-      if let density = try? await exec.displayDensity(deviceID: deviceID) {
-        await session.updateDensityScale(CGFloat(density))
+      while !Task.isCancelled {
+        do {
+          let density = try await exec.displayDensity(deviceID: deviceID)
+          await session.updateDensityScale(CGFloat(density))
+          break
+        } catch {
+          do { try await bootRetrySleep(.seconds(1)) } catch { return nil }
+        }
       }
       guard !Task.isCancelled else { return nil }
       _ = try? await exec.keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")

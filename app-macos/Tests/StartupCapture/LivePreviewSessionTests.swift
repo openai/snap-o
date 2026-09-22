@@ -62,6 +62,7 @@ actor ADBService {
   private let failsSettingWrite: Bool
   private var showsTouches: Bool
   private var bootComplete: Bool
+  private var densityFailures: Int
   private var bootFailures: Int
   private let blocksBootQuery: Bool
   private(set) var bootQueries = 0
@@ -74,6 +75,7 @@ actor ADBService {
     showsTouches: Bool = false,
     bootComplete: Bool = true,
     bootFailures: Int = 0,
+    densityFailures: Int = 0,
     blocksBootQuery: Bool = false,
     settingsGate: TestGate? = nil,
     failsToStart: Bool = false,
@@ -83,6 +85,7 @@ actor ADBService {
     self.showsTouches = showsTouches
     self.bootComplete = bootComplete
     self.bootFailures = bootFailures
+    self.densityFailures = densityFailures
     self.blocksBootQuery = blocksBootQuery
     self.settingsGate = settingsGate
     self.failsToStart = failsToStart
@@ -111,7 +114,11 @@ actor ADBService {
   func keyEvent(deviceID _: String, keyCode _: String) throws {}
 
   func displayDensity(deviceID _: String) throws -> Int {
-    3
+    if densityFailures > 0 {
+      densityFailures -= 1
+      throw TestError.expected
+    }
+    return 3
   }
 
   func startScreenStream(deviceID _: String) throws -> ScreenStreamSession {
@@ -285,7 +292,7 @@ struct LivePreviewSessionTests {
 
   static func emulatorDensityUpdatesAfterBoot() async throws {
     let retryGate = TestGate()
-    let adb = ADBService(bootComplete: false)
+    let adb = ADBService(bootComplete: false, densityFailures: 1)
     let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator()) { _ in await retryGate.wait() }
     let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: false))
     let sample = try EmulatorPreviewFrameBuilder().makeSample(rgba: Data(count: 4), width: 1, height: 1, timestamp: 0)!
