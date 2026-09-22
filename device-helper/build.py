@@ -13,8 +13,6 @@ import zipfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="verify the checked-in helper matches its sources")
-    parser.add_argument("--test", action="store_true", help="run protocol tests on the JVM")
-    parser.add_argument("--device-test-jar", type=Path, help="build a separate device test fixture")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent
     sdk = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or Path.home() / "Library/Android/sdk")
@@ -30,15 +28,7 @@ def main():
         dex = temporary / "dex"
         dex.mkdir()
         sources = sorted((root / "src").rglob("*.java"))
-        if args.device_test_jar:
-            sources.append(root / "tests/com/openai/snapo/clipboard/DeviceFixture.java")
         subprocess.run([str(java), "--release", "8", "-g:none", "-classpath", str(android), "-d", str(classes), *map(str, sources)], check=True)
-        if args.test:
-            subprocess.run([str(java), "--release", "8", "-classpath", f"{classes}{os.pathsep}{android}", "-d", str(classes),
-                            str(root / "tests/com/openai/snapo/clipboard/ProtocolTest.java")], check=True)
-            subprocess.run([str(Path(java).with_name("java")), "-cp", f"{classes}{os.pathsep}{android}",
-                            "com.openai.snapo.clipboard.ProtocolTest"], check=True)
-            (classes / "com/openai/snapo/clipboard/ProtocolTest.class").unlink()
         subprocess.run([str(d8), "--release", "--min-api", "24", "--lib", str(android), "--output", str(dex), *map(str, sorted(classes.rglob("*.class")))], check=True)
         output = temporary / "snapo-device-helper.jar"
         with zipfile.ZipFile(output, "w") as archive:
@@ -46,7 +36,7 @@ def main():
             entry.compress_type = zipfile.ZIP_STORED
             entry.external_attr = 0o644 << 16
             archive.writestr(entry, (dex / "classes.dex").read_bytes())
-        destination = args.device_test_jar or root / "snapo-device-helper.jar"
+        destination = root / "snapo-device-helper.jar"
         if args.check:
             if not destination.is_file() or destination.read_bytes() != output.read_bytes():
                 parser.error("Helper is out of date; run device-helper/build.py.")

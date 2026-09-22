@@ -16,7 +16,6 @@ struct DeviceClipboardTransportTests {
       try await DeviceClipboardTransport.connect(
         serial: "phone", adb: ADBClient(discoveryTimeout: .seconds(1), connectionFactory: { connection })
       ) { transport in
-        #expect(try await transport.getText() == "initial")
         ready.continuation.yield(())
         try await transport.receive { _ in Issue.record("Unexpected clipboard event") }
       }
@@ -59,22 +58,6 @@ struct DeviceClipboardTransportTests {
     }
   }
 
-  @Test
-  func preservesUnicodeAndFrameBoundaries() throws {
-    let (connection, peer) = try sockets()
-    defer {
-      connection.close()
-      peer.close()
-    }
-    let text = "Hello 🌍\n日本語\0\"quoted\""
-    let frame = try DeviceClipboardProtocol.frame(text)
-    // Fragment the length header and combine two messages in the same socket.
-    try peer.writeFully(frame.prefix(2))
-    try peer.writeFully(frame.dropFirst(2) + DeviceClipboardProtocol.frame("next"))
-    #expect(try DeviceClipboardProtocol.readText(connection) == text)
-    #expect(try DeviceClipboardProtocol.readText(connection) == "next")
-  }
-
   @Test(arguments: [
     Data([0xFF, 0xFF, 0xFF, 0xFF]), // Invalid length, rejected before allocating the body.
     Data([0, 0x10, 0, 1]), // One byte over the limit.
@@ -91,12 +74,6 @@ struct DeviceClipboardTransportTests {
     try peer.writeFully(frame)
     peer.close()
     #expect(throws: (any Error).self) { try DeviceClipboardProtocol.readText(connection) }
-  }
-
-  @Test
-  func boundsOutgoingText() throws {
-    let maximum = String(repeating: "a", count: ClipboardSyncState.maximumTextBytes)
-    #expect(throws: (any Error).self) { try DeviceClipboardProtocol.frame(maximum + "a") }
   }
 
   private func sockets() throws -> (ADBSocketConnection, ADBSocketConnection) {

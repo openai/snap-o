@@ -28,18 +28,15 @@ clipboard operation, allowing the desktop to reconnect for the new user.
 Install JDK 17, Android SDK platform 36, and build-tools 36.0.0. Then run:
 
 ```sh
-python3 device-helper/build.py --test
-python3 device-helper/build.py --check --test
-python3 device-helper/test-device.py --serial DEVICE
+python3 device-helper/build.py
+python3 device-helper/build.py --check
 ```
 
 The reproducible JAR is checked in and copied into the macOS app's Resources directory.
-Desktop users do not need Java or the Android SDK. Java protocol tests run during Android CI.
+Desktop users do not need Java or the Android SDK. Android CI checks that the JAR matches its sources.
 
-The device smoke test requires an unlocked Android 9+ device. It saves the full original `ClipData`
-inside a separate test process, exercises synthetic Unicode in both directions, and restores the
-original clipboard afterward. It also checks echo suppression, overlay suppression, disconnects,
-and temporary-file cleanup. The fixture is compiled separately and is never bundled with the app.
-Do not disconnect the device or copy other content during this test.
+To verify on a device, open Live Preview with Sync clipboard enabled. Copy synthetic text in each
+direction, then turn sync off and check that further copies stay local. On Android 13+, host writes
+should not show the bottom clipboard preview. Android may still show a clipboard read-access toast.
 
 See the [internal clipboard contract](../contracts/device-clipboard/README.md).
