@@ -104,7 +104,7 @@ struct LivePreviewPointerTests {
       deviceID: "test-device",
       action: action,
       source: source,
-      location: CGPoint(x: x, y: 10),
+      locations: [CGPoint(x: x, y: 10)],
       displaySize: size
     )
   }
@@ -124,6 +124,25 @@ struct LivePreviewPointerTests {
     }
   }
 
+  @Test
+  static func shellFallbackDoesNotTurnMultitouchIntoSingleTouch() async throws {
+    let backend = RecordingBackend()
+    let clock = TestClock()
+    let sender = injector(backend, clock: clock)
+    for action in [LivePreviewPointerAction.down, .move, .up] {
+      var touch = event(action)
+      touch.locations.append(CGPoint(x: 50, y: 50))
+      await sender.enqueue(touch)
+    }
+    clock.advance(by: .seconds(1))
+    await sender.enqueue(event(.down))
+    try await waitUntil { await backend.events.count == 1 }
+    let sent = await backend.events
+    #expect(sent[0].locations.count == 1)
+    #expect(sent[0].action == .down)
+    await sender.stopAll()
+  }
+
   @Test(arguments: [Duration.nanoseconds(8_333_334), .nanoseconds(16_666_667)])
   static func latestMoveSurvivesSlowSend(interval: Duration) async throws {
     let clock = TestClock()
@@ -139,7 +158,7 @@ struct LivePreviewPointerTests {
     try await waitUntil { await backend.events.count == 2 }
     let sent = await backend.events
     #expect(sent.map(\.action) == [.down, .move])
-    #expect(sent.last?.location.x == 100)
+    #expect(sent.last?.locations.first?.x == 100)
     await sender.enqueue(event(.move, x: 101))
     try await waitUntil { clock.isSleeping }
     clock.advance(by: interval)
@@ -160,7 +179,7 @@ struct LivePreviewPointerTests {
     clock.advance()
     try await waitUntil { await backend.events.count == 2 }
     let sent = await backend.events
-    #expect(sent.last?.location.x == 2)
+    #expect(sent.last?.locations.first?.x == 2)
     // No later input is needed to deliver a move that arrived inside the pacing interval.
     await sender.enqueue(event(.up, x: 3))
     try await waitUntil { await backend.events.count == 3 }
@@ -187,7 +206,7 @@ struct LivePreviewPointerTests {
     try await waitUntil { await backend.events.count == 6 }
     let sent = await backend.events
     #expect(sent.map(\.action) == [.down, .move, .up, .down, .move, .cancel])
-    #expect(sent.map(\.location.x) == [0, 1, 2, 3, 4, 5])
+    #expect(sent.map { $0.locations[0].x } == [0, 1, 2, 3, 4, 5])
     await sender.stopAll()
   }
 

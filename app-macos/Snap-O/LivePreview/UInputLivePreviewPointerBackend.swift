@@ -11,7 +11,7 @@ protocol LivePreviewTouchscreen: Sendable {
 extension ADBVirtualTouchscreen: LivePreviewTouchscreen {
   func send(_ event: LivePreviewPointerEvent, rotation: ADBDisplayRotation) throws {
     try send(
-      action: event.virtualTouchAction, x: event.location.x, y: event.location.y,
+      action: event.virtualTouchAction, locations: event.locations,
       displayWidth: event.displaySize.width, displayHeight: event.displaySize.height, rotation: rotation
     )
   }

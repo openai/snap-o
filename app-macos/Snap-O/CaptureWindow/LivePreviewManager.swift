@@ -107,13 +107,13 @@ final class LivePreviewManager {
 
     let renderer = LivePreviewRenderer(
       operation: operation
-    ) { [weak self] action, source, location, displaySize in
+    ) { [weak self] action, source, locations, displaySize in
       Task {
         await self?.sendPointerEvent(
           operation: operation,
           action: action,
           source: source,
-          location: location,
+          locations: locations,
           displaySize: displaySize
         )
       }
@@ -376,7 +376,7 @@ final class LivePreviewManager {
     operation: LivePreviewOperationHandle,
     action: LivePreviewPointerAction,
     source: LivePreviewPointerSource,
-    location: CGPoint,
+    locations: [CGPoint],
     displaySize: CGSize
   ) async {
     guard !isStopped,
@@ -386,7 +386,7 @@ final class LivePreviewManager {
       deviceID: operation.deviceID,
       action: action,
       source: source,
-      location: location,
+      locations: locations,
       displaySize: displaySize
     )
     await pointerInjector.enqueue(event)

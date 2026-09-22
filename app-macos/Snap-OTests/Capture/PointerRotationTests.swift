@@ -11,7 +11,7 @@ struct PointerRotationTests {
       deviceID: "test-device",
       action: action,
       source: .touchscreen,
-      location: CGPoint(x: 10, y: 10),
+      locations: [CGPoint(x: 10, y: 10)],
       displaySize: size
     )
   }

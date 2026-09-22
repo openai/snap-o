@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 public enum ADBDisplayRotation: Int, Sendable {
@@ -21,6 +22,7 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
 
   private let connection: ADBSocketConnection
   private var activeGeometry: UInputTouchscreenProtocol.Geometry?
+  private var activeContactCount = 0
   private var nextTrackingID = 1
   private var synchronizationSequence: UInt64 = 0
   private var isClosed = false
@@ -35,12 +37,9 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
     self.supportsSynchronization = supportsSynchronization
   }
 
-  // Coordinates and display geometry travel together in each input event.
-  // swiftlint:disable:next function_parameter_count
   public func send(
     action: ADBVirtualTouchAction,
-    x: Double,
-    y: Double,
+    locations: [CGPoint],
     displayWidth: Double,
     displayHeight: Double,
     rotation: ADBDisplayRotation
@@ -48,52 +47,45 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
     guard !isClosed else {
       throw ADBError.protocolFailure("virtual touchscreen is closed")
     }
+    guard (1 ... 10).contains(locations.count) else {
+      throw ADBError.protocolFailure("virtual touchscreen requires one to ten contacts")
+    }
 
     switch action {
     case .down:
       guard activeGeometry == nil else {
-        throw ADBError.protocolFailure("virtual touchscreen already has an active pointer")
+        throw ADBError.protocolFailure("virtual touchscreen already has an active gesture")
       }
-
       let geometry = try UInputTouchscreenProtocol.Geometry(
-        displayWidth: displayWidth,
-        displayHeight: displayHeight,
-        rotation: rotation
+        displayWidth: displayWidth, displayHeight: displayHeight, rotation: rotation
       )
-      let point = geometry.rawPoint(x: x, y: y)
-      let trackingID = nextTrackingID
-      nextTrackingID = trackingID == UInputTouchscreenProtocol.maximumTrackingID ? 1 : trackingID + 1
-      try sendCommand(
-        UInputTouchscreenProtocol.injectCommand(
-          action: .down,
-          point: point,
-          trackingID: trackingID
-        )
-      )
+      let trackingIDs = locations.map { _ in
+        let id = nextTrackingID
+        nextTrackingID = id == UInputTouchscreenProtocol.maximumTrackingID ? 1 : id + 1
+        return id
+      }
+      try sendCommand(UInputTouchscreenProtocol.injectCommand(
+        action: .down,
+        points: locations.map { geometry.rawPoint(x: $0.x, y: $0.y) },
+        trackingIDs: trackingIDs, contactCount: locations.count
+      ))
       activeGeometry = geometry
+      activeContactCount = locations.count
 
-    case .move:
-      guard let activeGeometry else { return }
-      let point = activeGeometry.rawPoint(x: x, y: y)
-      try sendCommand(
-        UInputTouchscreenProtocol.injectCommand(
-          action: .move,
-          point: point,
-          trackingID: nil
-        )
-      )
-
-    case .up, .cancel:
-      guard let activeGeometry else { return }
-      let finalPoint = action == .up ? activeGeometry.rawPoint(x: x, y: y) : nil
-      try sendCommand(
-        UInputTouchscreenProtocol.injectCommand(
-          action: action,
-          point: finalPoint,
-          trackingID: nil
-        )
-      )
-      self.activeGeometry = nil
+    case .move, .up, .cancel:
+      guard let geometry = activeGeometry else { return }
+      guard action == .cancel || locations.count == activeContactCount else {
+        throw ADBError.protocolFailure("contact count changed during a gesture")
+      }
+      try sendCommand(UInputTouchscreenProtocol.injectCommand(
+        action: action,
+        points: locations.map { geometry.rawPoint(x: $0.x, y: $0.y) },
+        trackingIDs: [], contactCount: activeContactCount
+      ))
+      if action == .up || action == .cancel {
+        activeGeometry = nil
+        activeContactCount = 0
+      }
     }
   }
 
@@ -117,12 +109,13 @@ public final class ADBVirtualTouchscreen: @unchecked Sendable {
       try? connection.writeLine(
         UInputTouchscreenProtocol.injectCommand(
           action: .cancel,
-          point: nil,
-          trackingID: nil
+          points: [],
+          trackingIDs: [], contactCount: activeContactCount
         )
       )
     }
     activeGeometry = nil
+    activeContactCount = 0
     isClosed = true
     connection.close()
   }
@@ -303,46 +296,35 @@ enum UInputTouchscreenProtocol {
     point: Point?,
     trackingID: Int?
   ) -> String {
-    let liftEvents = [
-      3, 47, 0,
-      3, 57, -1,
-      1, 330, 0,
-      1, 325, 0,
-      0, 0, 0
-    ]
-    let events: [Int] = switch action {
-    case .down:
-      if let point, let trackingID {
-        [
-          3, 47, 0,
-          3, 57, trackingID,
-          3, 53, point.x,
-          3, 54, point.y,
-          1, 330, 1,
-          1, 325, 1,
-          0, 0, 0
-        ]
-      } else {
-        []
+    injectCommand(
+      action: action, points: point.map { [$0] } ?? [],
+      trackingIDs: trackingID.map { [$0] } ?? [], contactCount: 1
+    )
+  }
+
+  static func injectCommand(
+    action: ADBVirtualTouchAction,
+    points: [Point],
+    trackingIDs: [Int],
+    contactCount: Int
+  ) -> String {
+    // Array indices are stable slots for the lifetime of this gesture.
+    var events: [Int] = []
+    if action != .cancel {
+      for (slot, point) in points.enumerated() {
+        events += [3, 47, slot]
+        if action == .down { events += [3, 57, trackingIDs[slot]] }
+        events += [3, 53, point.x, 3, 54, point.y]
       }
-    case .move:
-      if let point {
-        [
-          3, 47, 0,
-          3, 53, point.x,
-          3, 54, point.y,
-          0, 0, 0
-        ]
-      } else {
-        []
+      if action == .down { events += [1, 330, 1, 1, 325, 1] }
+      if !events.isEmpty { events += [0, 0, 0] }
+    }
+    if action == .up || action == .cancel {
+      // Deliver final positions before lifting all contacts in the next frame.
+      for slot in 0 ..< contactCount {
+        events += [3, 47, slot, 3, 57, -1]
       }
-    case .up, .cancel:
-      if action == .up, let point {
-        // InputReader must see the final position while the contact is still active.
-        [3, 47, 0, 3, 53, point.x, 3, 54, point.y, 0, 0, 0] + liftEvents
-      } else {
-        liftEvents
-      }
+      events += [1, 330, 0, 1, 325, 0, 0, 0, 0]
     }
     let values = events.map(String.init).joined(separator: ",")
     return #"{"id":1,"command":"inject","events":["# + values + "]}"
