@@ -273,11 +273,12 @@ struct CaptureHistoryWindow: View {
             }
           }
           .buttonStyle(.plain)
-          .contextMenu {
-            Button("Delete…", role: .destructive) { requestDeletion(entry, item: candidate) }
-              .disabled(entry.completedAt == nil)
-          }
           .disabled(!candidate.isAvailable)
+          .overlay {
+            CaptureHistoryThumbnailMenu(canDelete: entry.completedAt != nil) {
+              requestDeletion(entry, item: candidate)
+            }
+          }
           .help(candidate.failure ?? candidate.deviceName)
           .accessibilityLabel(candidate.deviceName)
           .accessibilityAddTraits(candidate.id == item?.id ? [.isSelected] : [])
