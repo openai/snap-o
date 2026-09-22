@@ -7,34 +7,56 @@ import SwiftProtobuf
 @MainActor
 final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
   let hasIndependentFrames = true
-  private let endpoint: EmulatorGRPCEndpoint
+  private let deviceID: String
   private var task: Task<Void, Never>?
+  private var startupTimeout: Task<Void, Never>?
 
-  init(endpoint: EmulatorGRPCEndpoint) {
-    self.endpoint = endpoint
+  init(deviceID: String) {
+    self.deviceID = deviceID
   }
 
-  static func connect(deviceID: String) async throws -> EmulatorPreviewFrameSource {
+  private static func endpoint(for deviceID: String) async throws -> EmulatorGRPCEndpoint {
     let client = EmulatorClient()
     defer { client.close() }
-    return try await EmulatorPreviewFrameSource(endpoint: client.previewEndpoint(deviceID))
+    while true {
+      try Task.checkCancellation()
+      if let endpoint = try await client.previewEndpoint(deviceID) { return endpoint }
+      // Registration and authentication can lag behind ADB discovery.
+      try await Task.sleep(for: .milliseconds(250))
+    }
   }
 
   func start(deliver: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) {
-    let endpoint = endpoint
+    let deviceID = deviceID
+    // Bound startup without limiting a healthy stream’s lifetime.
+    startupTimeout = Task { [weak self] in
+      do { try await Task.sleep(for: .seconds(15)) } catch { return }
+      self?.stop()
+      deliver(.stopped(EmulatorPreviewError(message: "The emulator did not provide a preview frame in time.")))
+    }
+    let receive: @MainActor @Sendable (LivePreviewFrameEvent) -> Void = { [weak self] event in
+      switch event {
+      case .sample, .stopped: self?.startupTimeout?.cancel()
+      case .format: break
+      }
+      deliver(event)
+    }
     task = Task.detached(priority: .userInitiated) {
       do {
-        try await Self.stream(endpoint: endpoint, deliver: deliver)
+        let endpoint = try await Self.endpoint(for: deviceID)
+        try await Self.stream(endpoint: endpoint, deliver: receive)
         if !Task.isCancelled {
-          await deliver(.stopped(EmulatorPreviewError(message: "The emulator preview stream ended.")))
+          await receive(.stopped(EmulatorPreviewError(message: "The emulator preview stream ended.")))
         }
       } catch {
-        await deliver(.stopped(Task.isCancelled ? nil : error))
+        await receive(.stopped(Task.isCancelled ? nil : error))
       }
     }
   }
 
   func stop() {
+    startupTimeout?.cancel()
+    startupTimeout = nil
     task?.cancel()
     task = nil
   }
@@ -56,7 +78,7 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
         request.metadata.addString("Bearer " + token, forKey: "authorization")
       }
       var options = CallOptions.defaults
-      options.waitForReady = false
+      options.waitForReady = true
       options.maxResponseMessageBytes = 64 * 1024 * 1024 + 4096
       // NIO transport 2.10 also uses the request limit when decoding responses.
       options.maxRequestMessageBytes = options.maxResponseMessageBytes

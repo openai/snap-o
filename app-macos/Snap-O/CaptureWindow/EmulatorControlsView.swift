@@ -7,8 +7,7 @@ struct EmulatorControlsView: View {
   @State private var client = EmulatorClient()
   @State private var controls: EmulatorControls?
   @State private var pendingAction: EmulatorControlAction?
-  @State private var failure: (action: EmulatorControlAction?, message: String)?
-  @State private var reloadID = UUID()
+  @State private var failure: (action: EmulatorControlAction, message: String)?
 
   var body: some View {
     let stack = isVertical ? AnyLayout(VStackLayout(spacing: 4)) : AnyLayout(HStackLayout(spacing: 4))
@@ -22,7 +21,7 @@ struct EmulatorControlsView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Emulator controls")
-    .task(id: reloadID) {
+    .task(id: serial) {
       await loadControls()
     }
     .task(id: pendingAction) {
@@ -43,28 +42,32 @@ struct EmulatorControlsView: View {
       controls = nil
       failure = nil
     }
-    .alert(failure?.action?.failureTitle ?? "Couldn’t Load Emulator Controls", isPresented: Binding(
+    .alert(failure?.action.failureTitle ?? "Emulator Controls", isPresented: Binding(
       get: { failure != nil },
       set: { if !$0 { failure = nil } }
     ), presenting: failure) { failure in
       Button("Try Again") {
-        if let action = failure.action {
-          pendingAction = action
-        } else {
-          reloadID = UUID()
-        }
+        pendingAction = failure.action
       }
       Button("Cancel", role: .cancel) {}
     } message: { failure in Text(failure.message) }
   }
 
   private func loadControls() async {
-    do {
-      let result = try await client.controls(serial: serial)
-      try Task.checkCancellation()
-      controls = result
-    } catch {
-      if !Task.isCancelled { failure = (nil, error.localizedDescription) }
+    var delay = 1
+    while !Task.isCancelled {
+      do {
+        let result = try await client.controls(serial: serial)
+        try Task.checkCancellation()
+        controls = result
+        return
+      } catch {
+        guard !Task.isCancelled else { return }
+        // Preview can start before Android's window service is ready.
+        controls = nil
+        do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+        delay = min(delay * 2, 5)
+      }
     }
   }
 

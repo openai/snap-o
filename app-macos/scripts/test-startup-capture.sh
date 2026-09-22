@@ -8,7 +8,7 @@ cd "$APP_DIR"
 
 # Compile the production startup code against deterministic device-service doubles.
 xcrun swiftc -swift-version 6 -parse-as-library \
-  Snap-O/Device/Device.swift \
+  Snap-O/Device/Device.swift Snap-O/Device/Emulators/EmulatorServiceProtocol.swift \
   Snap-O/Models/Media.swift Snap-O/Models/Device+Formatting.swift \
   Snap-O/Capture/CaptureMedia.swift Snap-O/Utilities/Perf.swift \
   Snap-O/Capture/PreparedLivePreview.swift Snap-O/Capture/StartupCapturePreparation.swift \

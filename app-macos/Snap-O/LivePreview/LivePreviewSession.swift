@@ -11,10 +11,10 @@ final class LivePreviewSession {
   private(set) var readyAt: ContinuousClock.Instant?
 
   var isReady: Bool {
-    readyResult != nil && !hasStopped
+    media != nil && !hasStopped
   }
 
-  var media: Media?
+  private(set) var media: Media?
   var mediaDidChange: ((Media) -> Void)?
   var sampleBufferHandler: ((CMSampleBuffer) -> Void)? {
     didSet {
@@ -32,7 +32,7 @@ final class LivePreviewSession {
     }
   }
 
-  private let densityScale: CGFloat
+  private var densityScale: CGFloat?
   private let source: any LivePreviewFrameSource
   private var pendingSampleBuffers: [CMSampleBuffer] = []
   private var pendingSampleByteCount = 0
@@ -41,19 +41,30 @@ final class LivePreviewSession {
 
   private var readyContinuations: [CheckedContinuation<Media, Error>] = []
   private var stopContinuation: CheckedContinuation<Error?, Never>?
-  private var readyResult: Media?
   private var stopResult: Error??
 
-  init(deviceID: String, densityScale: CGFloat, source: any LivePreviewFrameSource) {
+  init(deviceID: String, densityScale: CGFloat?, source: any LivePreviewFrameSource) {
     self.deviceID = deviceID
     self.densityScale = densityScale
     self.source = source
     source.start { [weak self] event in self?.receive(event) }
   }
 
+  func updateDensityScale(_ densityScale: CGFloat) {
+    guard !hasStopped, self.densityScale != densityScale else { return }
+    self.densityScale = densityScale
+    guard let media else { return }
+    let updated = Media.livePreview(
+      capturedAt: media.capturedAt,
+      display: DisplayInfo(size: media.size, densityScale: densityScale)
+    )
+    self.media = updated
+    mediaDidChange?(updated)
+  }
+
   func waitUntilReady() async throws -> Media {
     if let stopResult { throw stopResult ?? CancellationError() }
-    if let readyResult { return readyResult }
+    if let media { return media }
     return try await withCheckedThrowingContinuation { continuation in
       readyContinuations.append(continuation)
     }
@@ -81,7 +92,6 @@ final class LivePreviewSession {
       let changed = self.media?.common.display != display
       self.media = media
       readyAt = readyAt ?? .now
-      readyResult = media
       if changed { mediaDidChange?(media) }
       let continuations = readyContinuations
       readyContinuations.removeAll()
@@ -147,7 +157,7 @@ final class LivePreviewSession {
     stopContinuation?.resume(returning: error)
     stopContinuation = nil
 
-    if readyResult == nil {
+    if media == nil {
       let continuations = readyContinuations
       readyContinuations.removeAll()
       for continuation in continuations {

@@ -40,6 +40,14 @@ enum DeviceManagerEntry: Identifiable {
     }
   }
 
+  var canOpenPreview: Bool {
+    guard serial != nil else { return false }
+    return switch self {
+    case .connected: true
+    case .emulator(let device): device.state == .starting || device.state == .running
+    }
+  }
+
   var isTransitioning: Bool {
     guard case .emulator(let device) = self else { return false }
     return device.state == .starting || device.state == .stopping
@@ -58,17 +66,24 @@ enum DeviceManagerEntry: Identifiable {
   }
 
   static func list(emulators: [ManagedEmulator], connectedDevices: [Device]) -> [Self] {
+    let connectedIDs = Set(connectedDevices.map(\.id))
     var emulatorSerials = Set(emulators.compactMap(\.serial))
-    // Hide early ADB duplicates only while startup is progressing without an error or timeout.
-    for emulator in emulators where emulator.serial == nil && emulator.state == .starting && emulator.detail == nil {
+    // Use early ADB discovery while the emulator inventory is still learning its serial.
+    let emulators = emulators.map { emulator in
+      var emulator = emulator
+      if emulator.state == .offline, let serial = emulator.serial, connectedIDs.contains(serial) {
+        emulator.state = .starting
+      }
+      guard emulator.serial == nil, emulator.state == .starting, emulator.detail == nil else { return emulator }
       let avdName = emulator.avdName.replacingOccurrences(of: "_", with: " ")
       if let device = connectedDevices.first(where: {
         $0.id.hasPrefix("emulator-") && !emulatorSerials.contains($0.id) && $0.avdName == avdName
       }) {
         emulatorSerials.insert(device.id)
+        emulator.serial = device.id
       }
+      return emulator
     }
-    let connectedIDs = Set(connectedDevices.map(\.id))
     let entries = connectedDevices.filter { !emulatorSerials.contains($0.id) }.map(Self.connected)
       + emulators.map(Self.emulator)
     func isConnected(_ entry: Self) -> Bool {

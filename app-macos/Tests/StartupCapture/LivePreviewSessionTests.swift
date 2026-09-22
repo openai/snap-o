@@ -62,6 +62,7 @@ actor ADBService {
   private let failsSettingWrite: Bool
   private var showsTouches: Bool
   private var bootComplete: Bool
+  private var densityFailures: Int
   private var bootFailures: Int
   private let blocksBootQuery: Bool
   private(set) var bootQueries = 0
@@ -74,6 +75,7 @@ actor ADBService {
     showsTouches: Bool = false,
     bootComplete: Bool = true,
     bootFailures: Int = 0,
+    densityFailures: Int = 0,
     blocksBootQuery: Bool = false,
     settingsGate: TestGate? = nil,
     failsToStart: Bool = false,
@@ -83,6 +85,7 @@ actor ADBService {
     self.showsTouches = showsTouches
     self.bootComplete = bootComplete
     self.bootFailures = bootFailures
+    self.densityFailures = densityFailures
     self.blocksBootQuery = blocksBootQuery
     self.settingsGate = settingsGate
     self.failsToStart = failsToStart
@@ -111,7 +114,11 @@ actor ADBService {
   func keyEvent(deviceID _: String, keyCode _: String) throws {}
 
   func displayDensity(deviceID _: String) throws -> Int {
-    3
+    if densityFailures > 0 {
+      densityFailures -= 1
+      throw TestError.expected
+    }
+    return 3
   }
 
   func startScreenStream(deviceID _: String) throws -> ScreenStreamSession {
@@ -182,7 +189,10 @@ struct LivePreviewSessionTests {
     await cancellationReleasesReadinessWaiters()
     try await independentFramesKeepLatest()
     try formatChangesUpdateMedia()
-    try await emulatorStartupSelectsGRPC()
+    try await emulatorFramesDoNotWaitForBoot()
+    try await emulatorDensityUpdatesAfterBoot()
+    try await emulatorTouchSettingsAreRestored()
+    try await stoppingEmulatorCancelsBootSetup()
     try await sourceFailureReleasesReadinessWaiters()
     cancellationStopsSourceOnce()
     try await streamCompletionFlushesOnce()
@@ -268,14 +278,51 @@ struct LivePreviewSessionTests {
     precondition(session.media?.size == sizes.last)
   }
 
-  static func emulatorStartupSelectsGRPC() async throws {
+  static func emulatorFramesDoNotWaitForBoot() async throws {
+    let adb = ADBService(bootComplete: false, blocksBootQuery: true)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: true))
+    let source = EmulatorPreviewFrameSource.latest!
+    let sample = try EmulatorPreviewFrameBuilder().makeSample(rgba: Data(count: 24), width: 2, height: 3, timestamp: 0)!
+    source.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
+    let media = try await handle.session.waitUntilReady()
+    precondition(media.size == CGSize(width: 2, height: 3) && media.densityScale == nil)
+    _ = await service.stop(handle)
+  }
+
+  static func emulatorDensityUpdatesAfterBoot() async throws {
+    let retryGate = TestGate()
+    let adb = ADBService(bootComplete: false, densityFailures: 1)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator()) { _ in await retryGate.wait() }
+    let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: false))
+    let sample = try EmulatorPreviewFrameBuilder().makeSample(rgba: Data(count: 4), width: 1, height: 1, timestamp: 0)!
+    EmulatorPreviewFrameSource.latest?.deliver?(.format(CMSampleBufferGetFormatDescription(sample)!))
+    await eventually { await adb.bootQueries > 0 }
+    await adb.finishBoot()
+    await retryGate.open()
+    _ = await service.waitUntilInteractive(handle)
+    precondition(handle.session.media?.densityScale == 3)
+    _ = await service.stop(handle)
+  }
+
+  static func emulatorTouchSettingsAreRestored() async throws {
     let adb = ADBService()
     let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
-    let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: false))
-    precondition(EmulatorPreviewFrameSource.connectedDeviceID == "emulator-5554")
-    let adbStreams = await adb.streamStarts
-    precondition(adbStreams == 0)
+    let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: true))
+    _ = await service.waitUntilInteractive(handle)
     _ = await service.stop(handle)
+    let writes = await adb.writes
+    precondition(writes == [true, false])
+  }
+
+  static func stoppingEmulatorCancelsBootSetup() async throws {
+    let adb = ADBService(bootComplete: false, blocksBootQuery: true)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    let handle = try await service.start(for: "emulator-5554", options: LivePreviewOptions(showsTouches: true))
+    await eventually { await adb.bootQueries > 0 }
+    _ = await service.stop(handle)
+    let writes = await adb.writes
+    precondition(writes.isEmpty, "Stopping during boot must cancel deferred Android setup")
   }
 
   static func cancellationStopsSourceOnce() {
@@ -467,7 +514,7 @@ struct LivePreviewSessionTests {
 }
 
 @MainActor
-final class TestRawFrameSource: LivePreviewFrameSource {
+class TestRawFrameSource: LivePreviewFrameSource {
   let hasIndependentFrames = true
   var deliver: (@MainActor @Sendable (LivePreviewFrameEvent) -> Void)?
   var stops = 0
@@ -482,11 +529,11 @@ final class TestRawFrameSource: LivePreviewFrameSource {
 }
 
 @MainActor
-enum EmulatorPreviewFrameSource {
-  static var connectedDeviceID: String?
-  @MainActor
-  static func connect(deviceID: String) async throws -> any LivePreviewFrameSource {
-    connectedDeviceID = deviceID
-    return TestRawFrameSource()
+final class EmulatorPreviewFrameSource: TestRawFrameSource {
+  static var latest: EmulatorPreviewFrameSource?
+
+  init(deviceID _: String) {
+    super.init()
+    Self.latest = self
   }
 }

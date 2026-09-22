@@ -53,6 +53,7 @@ struct LivePreviewOperationHandle {
 @MainActor
 final class LivePreviewSession {
   var mediaDidChange: ((Media) -> Void)?
+  var media: Media? = .livePreview(capturedAt: Date(), display: testDisplay)
   enum StreamError: Error { case failed }
 
   private let readyGate: TestGate?
@@ -69,11 +70,12 @@ final class LivePreviewSession {
   }
 
   func waitUntilReady() async throws -> Media {
+    let initialMedia = media!
     await readyGate?.wait()
     if let stopError { throw stopError }
     guard !isStopped else { throw CancellationError() }
     hasFormat = true
-    return .livePreview(capturedAt: Date(), display: testDisplay)
+    return initialMedia
   }
 
   func cancel() async {
@@ -92,14 +94,22 @@ actor LivePreviewService {
 
   private var startFailures: Int
   private let startGate: TestGate?
+  private let interactiveGate: TestGate?
   private let stopGate: TestGate?
   private let readyGate: TestGate?
   private(set) var starts: [String] = []
   private(set) var stops: [UUID] = []
   private(set) var active: Set<UUID> = []
 
-  init(startGate: TestGate? = nil, stopGate: TestGate? = nil, readyGate: TestGate? = nil, startFailures: Int = 0) {
+  init(
+    interactiveGate: TestGate? = nil,
+    startGate: TestGate? = nil,
+    stopGate: TestGate? = nil,
+    readyGate: TestGate? = nil,
+    startFailures: Int = 0
+  ) {
     self.startFailures = startFailures
+    self.interactiveGate = interactiveGate
     self.startGate = startGate
     self.stopGate = stopGate
     self.readyGate = readyGate
@@ -117,6 +127,11 @@ actor LivePreviewService {
     )
     active.insert(handle.id)
     return handle
+  }
+
+  func waitUntilInteractive(_ handle: LivePreviewOperationHandle) async -> Bool {
+    await interactiveGate?.wait()
+    return active.contains(handle.id)
   }
 
   func stop(_ handle: LivePreviewOperationHandle) async -> Error? {

@@ -9,7 +9,9 @@ struct DeviceManagerTests {
     unmatchedDevicesRemainVisible()
     additionalEmulatorInstancesRemainVisible()
     devicesWithUnknownConsoleIdentityRemainVisible()
-    print("Device Manager list tests passed (6 tests)")
+    earlyADBDiscoveryEnablesOpen()
+    connectedEmulatorsDoNotWaitForInventoryRefresh()
+    print("Device Manager list tests passed")
   }
 
   private static func connectedDevicesComeFirst() {
@@ -76,6 +78,25 @@ struct DeviceManagerTests {
         "A usable ADB connection must retain its Open action when console identity is unknown"
       )
     }
+  }
+
+  private static func earlyADBDiscoveryEnablesOpen() {
+    var device = emulator(serial: nil)
+    device.state = .starting
+    let entries = DeviceManagerEntry.list(
+      emulators: [device], connectedDevices: [phone("emulator-5554", avdName: "Test Device")]
+    )
+    precondition(
+      entries.first?.canOpenPreview == true && entries.first?.serial == "emulator-5554",
+      "Open must work with the serial discovered by ADB"
+    )
+  }
+
+  private static func connectedEmulatorsDoNotWaitForInventoryRefresh() {
+    var device = emulator(serial: "emulator-5554")
+    device.state = .offline
+    let entries = DeviceManagerEntry.list(emulators: [device], connectedDevices: [phone("emulator-5554")])
+    precondition(entries.first?.canOpenPreview == true, "ADB discovery must enable Open before the next inventory refresh")
   }
 
   private static func phone(_ id: String, avdName: String? = nil) -> Device {

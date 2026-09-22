@@ -29,7 +29,7 @@ final class EmulatorGRPCDiscovery {
     self.isProcessRunning = isProcessRunning
   }
 
-  func endpoint(for serial: String, access: Access = .screenshot) throws -> EmulatorGRPCEndpoint {
+  func endpoint(for serial: String, access: Access = .screenshot) throws -> EmulatorGRPCEndpoint? {
     guard EmulatorGRPCEndpoint.isEmulator(serial) else {
       throw EmulatorServiceError(message: "This device is not a local Android emulator.")
     }
@@ -46,7 +46,7 @@ final class EmulatorGRPCDiscovery {
       let properties = ManagedEmulator.properties(text)
       guard properties["port.serial"] == port else { continue }
       guard let grpcPort = properties["grpc.port"].flatMap(Int.init), (1024 ... 65535).contains(grpcPort) else {
-        throw unavailable()
+        return try pendingEndpoint(access: access)
       }
       guard properties["grpc.server_cert"] == nil, properties["grpc.certificate"] == nil else {
         throw EmulatorServiceError(message: "This emulator requires gRPC TLS. Start it from Snap-O to use Live Preview.")
@@ -55,20 +55,30 @@ final class EmulatorGRPCDiscovery {
         return EmulatorGRPCEndpoint(port: grpcPort, token: token)
       }
       if let jwks = properties["grpc.jwks"], let active = properties["grpc.jwk_active"] {
-        let credentials = try jwtToken(keyDirectory: URL(fileURLWithPath: jwks), activeFile: URL(fileURLWithPath: active), access: access)
+        guard let credentials = try jwtToken(
+          keyDirectory: URL(fileURLWithPath: jwks),
+          activeFile: URL(fileURLWithPath: active),
+          access: access
+        )
+        else { return try pendingEndpoint(access: access) }
         return EmulatorGRPCEndpoint(port: grpcPort, token: credentials.token, expiresAt: credentials.expiresAt)
       }
       guard access != .clipboard else { throw unavailable() }
       return EmulatorGRPCEndpoint(port: grpcPort, token: nil)
     }
-    throw unavailable()
+    return try pendingEndpoint(access: access)
+  }
+
+  private func pendingEndpoint(access: Access) throws -> EmulatorGRPCEndpoint? {
+    guard access == .screenshot else { throw unavailable() }
+    return nil
   }
 
   private func unavailable() -> EmulatorServiceError {
     EmulatorServiceError(message: "The emulator's gRPC connection is unavailable. Restart the emulator from Snap-O and try again.")
   }
 
-  private func jwtToken(keyDirectory: URL, activeFile: URL, access: Access) throws -> (token: String, expiresAt: Date) {
+  private func jwtToken(keyDirectory: URL, activeFile: URL, access: Access) throws -> (token: String, expiresAt: Date)? {
     let publicKey = signingKey.publicKey.rawRepresentation
     let jwk: [String: Any] = [
       "kty": "EC", "crv": "P-256", "alg": "ES256", "use": "sig",
@@ -87,7 +97,7 @@ final class EmulatorGRPCDiscovery {
     while !Self.containsKey(keyID, in: activeFile) {
       guard Date() < deadline else {
         try? FileManager.default.removeItem(at: keyFile)
-        throw EmulatorServiceError(message: "The emulator did not accept the authentication key. Try again.")
+        return nil
       }
       Thread.sleep(forTimeInterval: 0.05)
     }

@@ -100,7 +100,7 @@ struct EmulatorPreviewTests {
     for (access, methods): (EmulatorGRPCDiscovery.Access, [String]) in [
       (.screenshot, ["streamScreenshot"]), (.clipboard, ["getClipboard", "setClipboard", "streamClipboard"])
     ] {
-      let endpoint = try discovery.endpoint(for: "emulator-5554", access: access)
+      let endpoint = try discovery.endpoint(for: "emulator-5554", access: access)!
       let parts = endpoint.token!.split(separator: ".").map(String.init)
       precondition(parts.count == 3)
       let claims = try JSONSerialization.jsonObject(with: decode(parts[1])) as! [String: Any]
@@ -118,9 +118,9 @@ struct EmulatorPreviewTests {
 
   static func discoversAuthenticatedEndpoint() throws {
     try withRegistration("port.serial=5554\ngrpc.port=8554\ngrpc.token=synthetic-token\n") { discovery in
-      let endpoint = try discovery.endpoint(for: "emulator-5554")
+      let endpoint = try discovery.endpoint(for: "emulator-5554")!
       precondition(endpoint.port == 8554 && endpoint.token == "synthetic-token")
-      let clipboard = try discovery.endpoint(for: "emulator-5554", access: .clipboard)
+      let clipboard = try discovery.endpoint(for: "emulator-5554", access: .clipboard)!
       precondition(clipboard.port == 8554 && clipboard.token == "synthetic-token" && clipboard.expiresAt == nil)
       try expectUnavailable(discovery, serial: "emulator-5556", access: .clipboard)
     }
@@ -128,21 +128,27 @@ struct EmulatorPreviewTests {
 
   static func discoversUnauthenticatedEndpoint() throws {
     try withRegistration("port.serial=5554\ngrpc.port=8554\n") { discovery in
-      let endpoint = try discovery.endpoint(for: "emulator-5554")
+      let endpoint = try discovery.endpoint(for: "emulator-5554")!
       precondition(endpoint.port == 8554 && endpoint.token == nil)
     }
   }
 
   static func rejectsStoppedEmulator() throws {
     try withRegistration("port.serial=5554\ngrpc.port=8554\n", running: false) { discovery in
-      try expectUnavailable(discovery)
+      let endpoint = try discovery.endpoint(for: "emulator-5554")
+      precondition(endpoint == nil)
     }
   }
 
   static func rejectsUnsupportedEndpoints() throws {
     for settings in ["grpc.port=0", "grpc.port=65536", "grpc.port=8554\ngrpc.server_cert=test", "grpc.port=8554\ngrpc.certificate=test"] {
       try withRegistration("port.serial=5554\n" + settings) { discovery in
-        try expectUnavailable(discovery)
+        if settings == "grpc.port=0" || settings == "grpc.port=65536" {
+          let endpoint = try discovery.endpoint(for: "emulator-5554")
+          precondition(endpoint == nil)
+        } else {
+          try expectUnavailable(discovery)
+        }
         try expectUnavailable(discovery, access: .clipboard)
       }
     }

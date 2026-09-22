@@ -23,6 +23,13 @@ final class LivePreviewManager {
   private var captureIDs: [String: UUID] = [:]
   private var lastDisplayInfo: [String: DisplayInfo] = [:]
   private var activeOperations: [UUID: LivePreviewOperationHandle] = [:]
+  private struct EmulatorWarmup {
+    let id: UUID
+    let task: Task<Void, Never>
+  }
+
+  private var emulatorWarmups: [String: EmulatorWarmup] = [:]
+  private var interactiveOperationIDs: Set<UUID> = []
   private var readinessTasks: [UUID: Task<Void, Never>] = [:]
   private var inFlightRendererRequestIDs: Set<UUID> = []
   private var stoppingRendererIDs: Set<UUID> = []
@@ -52,7 +59,7 @@ final class LivePreviewManager {
     for device in devices {
       deviceInfo[device.id] = device
     }
-    if let prepared = preparedLivePreview {
+    if let prepared = preparedLivePreview, !EmulatorGRPCEndpoint.isEmulator(prepared.deviceID) {
       preparedMediaTask = Task { [weak self] in
         guard let media = await prepared.waitUntilReady(),
               !Task.isCancelled,
@@ -83,7 +90,7 @@ final class LivePreviewManager {
       throw LivePreviewError.unknownDevice
     }
 
-    if lastDisplayInfo[deviceID] == nil {
+    if lastDisplayInfo[deviceID] == nil, !EmulatorGRPCEndpoint.isEmulator(deviceID) {
       let fetched = await fetchDisplayInfos(for: [device])
       guard !isStopped,
             !Task.isCancelled,
@@ -95,6 +102,13 @@ final class LivePreviewManager {
       }
     }
 
+    if let warmup = emulatorWarmups[deviceID] {
+      await withTaskCancellationHandler {
+        await warmup.task.value
+      } onCancel: {
+        warmup.task.cancel()
+      }
+    }
     let operation = try await takeOrStartOperation(for: deviceID)
     guard !isStopped,
           !Task.isCancelled,
@@ -122,21 +136,24 @@ final class LivePreviewManager {
     let session = operation.session
     readinessTasks[operation.id] = Task { [weak self] in
       do {
-        let media = try await session.waitUntilReady()
+        _ = try await session.waitUntilReady()
         guard let self,
               !isStopped,
               activeOperations[operation.id] != nil,
               session.isReady,
               let device = deviceInfo[deviceID]
         else { return }
-        storeMedia(media, for: device)
         session.mediaDidChange = { [weak self] media in
           guard let self, !isStopped, activeOperations[operation.id] != nil,
                 let device = deviceInfo[deviceID] else { return }
           storeMedia(media, for: device)
         }
-        // Failed stream startups must not add and remove Android input devices.
+        if let media = session.media { storeMedia(media, for: device) }
+        guard await livePreviewService.waitUntilInteractive(operation),
+              !isStopped, activeOperations[operation.id] != nil, session.isReady else { return }
         await pointerInjector.prepare(deviceID: deviceID)
+        guard !isStopped, activeOperations[operation.id] != nil else { return }
+        interactiveOperationIDs.insert(operation.id)
       } catch {
         if !(error is CancellationError) {
           SnapOLog.ui.error(
@@ -149,10 +166,42 @@ final class LivePreviewManager {
     return renderer
   }
 
+  private func startEmulatorWarmups(for devices: [Device]) {
+    for device in devices where EmulatorGRPCEndpoint.isEmulator(device.id) {
+      guard lastDisplayInfo[device.id] == nil, emulatorWarmups[device.id] == nil else { continue }
+      let id = UUID()
+      let task = Task<Void, Never> { [weak self] in
+        guard let self else { return }
+        var operation: LivePreviewOperationHandle?
+        var media: Media?
+        do {
+          let started = try await takeOrStartOperation(for: device.id)
+          operation = started
+          guard !Task.isCancelled, !isStopped, emulatorWarmups[device.id]?.id == id else {
+            throw CancellationError()
+          }
+          activeOperations[started.id] = started
+          media = try await started.session.waitUntilReady()
+        } catch {
+          // Normal display discovery can retry after an unsuccessful warmup.
+        }
+        if let operation {
+          activeOperations.removeValue(forKey: operation.id)
+          _ = await livePreviewService.stop(operation)
+        }
+        guard emulatorWarmups[device.id]?.id == id else { return }
+        emulatorWarmups.removeValue(forKey: device.id)
+        guard !Task.isCancelled, !isStopped, let device = deviceInfo[device.id], let media else { return }
+        storeMedia(media, for: device)
+      }
+      emulatorWarmups[device.id] = EmulatorWarmup(id: id, task: task)
+    }
+  }
+
   private func takeOrStartOperation(for deviceID: String) async throws -> LivePreviewOperationHandle {
-    if let prepared = preparedLivePreview {
+    if let prepared = preparedLivePreview, prepared.deviceID == deviceID {
       preparedLivePreview = nil
-      if prepared.deviceID == deviceID, prepared.options == options {
+      if prepared.options == options {
         if let operation = await prepared.take() {
           Perf.step(.appFirstSnapshot, "reuse preloaded live preview")
           return operation
@@ -187,6 +236,11 @@ final class LivePreviewManager {
     preparedMediaTask = nil
     let prepared = preparedLivePreview
     preparedLivePreview = nil
+    let warmups = Array(emulatorWarmups.values)
+    emulatorWarmups.removeAll()
+    for warmup in warmups {
+      warmup.task.cancel()
+    }
     let operations = Array(activeOperations.values)
     activeOperations.removeAll()
     mediaByDeviceID.removeAll()
@@ -198,6 +252,9 @@ final class LivePreviewManager {
     for operation in operations {
       await stopOperation(operation)
     }
+    for warmup in warmups {
+      await warmup.task.value
+    }
     while !inFlightRendererRequestIDs.isEmpty || !stoppingRendererIDs.isEmpty {
       await Task.yield()
     }
@@ -205,6 +262,7 @@ final class LivePreviewManager {
   }
 
   private func stopOperation(_ operation: LivePreviewOperationHandle) async {
+    interactiveOperationIDs.remove(operation.id)
     let readinessTask = readinessTasks.removeValue(forKey: operation.id)
     // Stopping the session releases readiness waiters before we await queued input setup.
     _ = await livePreviewService.stop(operation)
@@ -220,6 +278,14 @@ final class LivePreviewManager {
     displayRetryTask = nil
     let currentIDs = Set(devices.map(\.id))
     let removedDeviceIDs = Set(deviceInfo.keys).subtracting(currentIDs)
+    let removedWarmups = emulatorWarmups.filter { !currentIDs.contains($0.key) }
+    let warmupCleanupID = UUID()
+    if !removedWarmups.isEmpty { stoppingRendererIDs.insert(warmupCleanupID) }
+    defer { stoppingRendererIDs.remove(warmupCleanupID) }
+    for (id, warmup) in removedWarmups {
+      emulatorWarmups.removeValue(forKey: id)
+      warmup.task.cancel()
+    }
     let removedOperations = activeOperations.values.filter { !currentIDs.contains($0.deviceID) }
     for operation in removedOperations {
       activeOperations.removeValue(forKey: operation.id)
@@ -251,6 +317,12 @@ final class LivePreviewManager {
       await pointerInjector.stopDevice(deviceID)
     }
 
+    for warmup in removedWarmups.values {
+      await warmup.task.value
+    }
+    guard !isStopped, deviceSyncID == syncID else { return }
+    startEmulatorWarmups(for: devices)
+
     guard await refreshDisplayInfos(for: devices, syncID: syncID) else { return }
 
     // ADB can connect before Android's display services are ready, without another device update.
@@ -267,7 +339,7 @@ final class LivePreviewManager {
   /// Returns whether this device update still needs another discovery attempt.
   private func refreshDisplayInfos(for devices: [Device], syncID: UUID) async -> Bool {
     guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return false }
-    let missing = devices.filter { lastDisplayInfo[$0.id] == nil }
+    let missing = devices.filter { lastDisplayInfo[$0.id] == nil && emulatorWarmups[$0.id] == nil }
     let fetched = await fetchDisplayInfos(for: missing)
     guard !Task.isCancelled, !isStopped, deviceSyncID == syncID else { return false }
     for (id, info) in fetched where lastDisplayInfo[id] == nil {
@@ -386,7 +458,8 @@ final class LivePreviewManager {
   ) async {
     guard !isStopped,
           activeOperations[operation.id] != nil,
-          operation.session.isReady else { return }
+          operation.session.isReady,
+          interactiveOperationIDs.contains(operation.id) else { return }
     let event = LivePreviewPointerEvent(
       deviceID: operation.deviceID,
       action: action,

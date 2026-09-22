@@ -7,8 +7,8 @@ final class EmulatorClient {
   private var pending: [UUID: CheckedContinuation<Data, Error>] = [:]
   private var timeouts: [UUID: Task<Void, Never>] = [:]
 
-  func previewEndpoint(_ serial: String) async throws -> EmulatorGRPCEndpoint {
-    try await JSONDecoder().decode(EmulatorGRPCEndpoint.self, from: request { proxy, reply in
+  func previewEndpoint(_ serial: String) async throws -> EmulatorGRPCEndpoint? {
+    try await JSONDecoder().decode(EmulatorGRPCEndpoint?.self, from: request { proxy, reply in
       proxy.previewEndpoint(serial, reply: reply)
     })
   }
