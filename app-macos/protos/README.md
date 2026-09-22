@@ -13,3 +13,4 @@ protoc --proto_path=app-macos/protos \
 ```
 
 Keep the generated file's `swiftformat:disable all` directive after regeneration.
+Add `swiftlint:enable all` at the end to close the generator's lint suppression.

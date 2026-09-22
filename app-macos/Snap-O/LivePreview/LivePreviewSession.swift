@@ -44,28 +44,6 @@ final class LivePreviewSession {
   private var readyResult: Media?
   private var stopResult: Error??
 
-  convenience init(deviceID: String, adb: ADBService) async throws {
-    let exec = await adb.exec()
-    async let densityValue = exec.displayDensity(deviceID: deviceID)
-    let isEmulator = EmulatorGRPCEndpoint.isEmulator(deviceID)
-    let source: any LivePreviewFrameSource = if isEmulator {
-      try await EmulatorPreviewFrameSource.connect(deviceID: deviceID)
-    } else {
-      try await ADBPreviewFrameSource(stream: exec.startScreenStream(deviceID: deviceID))
-    }
-    if isEmulator {
-      _ = try? await exec.keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
-    }
-    do {
-      let densityScale = try await CGFloat(densityValue)
-      try Task.checkCancellation()
-      self.init(deviceID: deviceID, densityScale: densityScale, source: source)
-    } catch {
-      source.stop()
-      throw error
-    }
-  }
-
   init(deviceID: String, densityScale: CGFloat, source: any LivePreviewFrameSource) {
     self.deviceID = deviceID
     self.densityScale = densityScale

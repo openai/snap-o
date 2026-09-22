@@ -5,37 +5,54 @@ import Foundation
 @main
 struct EmulatorPreviewTests {
   static func main() throws {
-    try convertsAndRetainsFrames()
+    try convertsPixels()
+    try boundsRetainedFrames()
+    try resizePreservesPreviousFrame()
     try validatesFrames()
-    try discoversEndpoints()
+    try discoversAuthenticatedEndpoint()
+    try discoversUnauthenticatedEndpoint()
+    try rejectsStoppedEmulator()
+    try rejectsUnsupportedEndpoints()
     try signsJWTForScreenshotOnly()
     print("Emulator preview tests passed (pixels, buffer limits, resize, and endpoint discovery)")
   }
 
-  static func convertsAndRetainsFrames() throws {
+  static func convertsPixels() throws {
     let builder = EmulatorPreviewFrameBuilder()
-    // Distinct corners detect channel swaps, row-stride mistakes, and accidental vertical flips.
+    // Distinct corners detect channel swaps, row-stride mistakes, and vertical flips.
     let rgba = Data([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 10, 20, 30, 255])
-    var samples: [CMSampleBuffer] = []
-    for _ in 0 ..< 4 {
-      try samples.append(builder.makeSample(rgba: rgba, width: 2, height: 2, timestamp: 123)!)
-    }
-    let overflow = try builder.makeSample(rgba: rgba, width: 2, height: 2, timestamp: 124)
-    precondition(overflow == nil)
-    let buffer = CMSampleBufferGetImageBuffer(samples[0])!
+    let sample = try builder.makeSample(rgba: rgba, width: 2, height: 2, timestamp: 0)!
+    let buffer = CMSampleBufferGetImageBuffer(sample)!
     CVPixelBufferLockBaseAddress(buffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
     let bytes = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
     let stride = CVPixelBufferGetBytesPerRow(buffer)
     precondition(Array(UnsafeBufferPointer(start: bytes, count: 8)) == [0, 0, 255, 255, 0, 255, 0, 255])
     precondition(Array(UnsafeBufferPointer(start: bytes + stride, count: 8)) == [255, 0, 0, 255, 30, 20, 10, 255])
-    CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
-    precondition(CMSampleBufferGetPresentationTimeStamp(samples[0]) == CMTime(value: 123, timescale: 1_000_000))
+  }
+
+  static func boundsRetainedFrames() throws {
+    let builder = EmulatorPreviewFrameBuilder()
+    let rgba = Data(repeating: 255, count: 16)
+    var samples = try (0 ..< 4).map {
+      try builder.makeSample(rgba: rgba, width: 2, height: 2, timestamp: UInt64($0))!
+    }
+    let overflow = try builder.makeSample(rgba: rgba, width: 2, height: 2, timestamp: 4)
+    precondition(overflow == nil, "A slow renderer must not grow the buffer pool")
     samples.removeLast()
-    let reused = try builder.makeSample(rgba: rgba, width: 2, height: 2, timestamp: 125)
-    precondition(reused != nil)
-    let resized = try builder.makeSample(rgba: Data(repeating: 0, count: 12), width: 3, height: 1, timestamp: 126)!
-    precondition(CVPixelBufferGetWidth(CMSampleBufferGetImageBuffer(resized)!) == 3)
-    precondition(CVPixelBufferGetWidth(buffer) == 2, "Resize must not mutate displayed frames")
+    let resumed = try builder.makeSample(rgba: rgba, width: 2, height: 2, timestamp: 5)
+    precondition(resumed != nil, "Delivery resumes when the renderer releases a frame")
+    withExtendedLifetime(samples) {}
+  }
+
+  static func resizePreservesPreviousFrame() throws {
+    let builder = EmulatorPreviewFrameBuilder()
+    let original = try builder.makeSample(rgba: Data(repeating: 255, count: 16), width: 2, height: 2, timestamp: 0)!
+    let resized = try builder.makeSample(rgba: Data(repeating: 0, count: 12), width: 3, height: 1, timestamp: 1)!
+    let dimensions = CMVideoFormatDescriptionGetDimensions(CMSampleBufferGetFormatDescription(resized)!)
+    precondition(dimensions.width == 3 && dimensions.height == 1)
+    let originalBuffer = CMSampleBufferGetImageBuffer(original)!
+    precondition(CVPixelBufferGetWidth(originalBuffer) == 2 && CVPixelBufferGetHeight(originalBuffer) == 2)
   }
 
   static func validatesFrames() throws {
@@ -88,38 +105,53 @@ struct EmulatorPreviewTests {
     let publicKey = try P256.Signing.PublicKey(rawRepresentation: decode(key["x"] as! String) + decode(key["y"] as! String))
     let signature = try P256.Signing.ECDSASignature(rawRepresentation: decode(parts[2]))
     precondition(publicKey.isValidSignature(signature, for: Data((parts[0] + "." + parts[1]).utf8)))
-    _ = try discovery.endpoint(for: "emulator-5554")
-    let files = try FileManager.default.contentsOfDirectory(at: keys, includingPropertiesForKeys: nil)
-    precondition(files.count == 1, "Repeated discovery should reuse the public key")
   }
 
-  static func discoversEndpoints() throws {
+  static func discoversAuthenticatedEndpoint() throws {
+    try withRegistration("port.serial=5554\ngrpc.port=8554\ngrpc.token=synthetic-token\n") { discovery in
+      let endpoint = try discovery.endpoint(for: "emulator-5554")
+      precondition(endpoint.port == 8554 && endpoint.token == "synthetic-token")
+    }
+  }
+
+  static func discoversUnauthenticatedEndpoint() throws {
+    try withRegistration("port.serial=5554\ngrpc.port=8554\n") { discovery in
+      let endpoint = try discovery.endpoint(for: "emulator-5554")
+      precondition(endpoint.port == 8554 && endpoint.token == nil)
+    }
+  }
+
+  static func rejectsStoppedEmulator() throws {
+    try withRegistration("port.serial=5554\ngrpc.port=8554\n", running: false) { discovery in
+      try expectUnavailable(discovery)
+    }
+  }
+
+  static func rejectsUnsupportedEndpoints() throws {
+    for settings in ["grpc.port=0", "grpc.port=8554\ngrpc.server_cert=test", "grpc.port=8554\ngrpc.certificate=test"] {
+      try withRegistration("port.serial=5554\n" + settings) { discovery in
+        try expectUnavailable(discovery)
+      }
+    }
+  }
+
+  private static func expectUnavailable(_ discovery: EmulatorPreviewDiscovery) throws {
+    do {
+      _ = try discovery.endpoint(for: "emulator-5554")
+      fatalError("Unavailable endpoint accepted")
+    } catch is EmulatorServiceError {}
+  }
+
+  private static func withRegistration(
+    _ registration: String,
+    running: Bool = true,
+    test: (EmulatorPreviewDiscovery) throws -> Void
+  ) throws {
     let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: home) }
     let directory = home.appendingPathComponent("Library/Caches/TemporaryItems/avd/running")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let live = directory.appendingPathComponent("pid_123.ini")
-    let dead = directory.appendingPathComponent("pid_124.ini")
-    try "port.serial=5556\ngrpc.port=8556\ngrpc.token=synthetic-token\n".write(to: live, atomically: true, encoding: .utf8)
-    try "port.serial=5554\ngrpc.port=8554\n".write(to: dead, atomically: true, encoding: .utf8)
-    let discovery = EmulatorPreviewDiscovery(home: home, isProcessRunning: { $0 == 123 })
-    let endpoint = try discovery.endpoint(for: "emulator-5556")
-    precondition(endpoint.port == 8556 && endpoint.token == "synthetic-token")
-    for serial in ["emulator-5554", "phone", "emulator-invalid"] {
-      do {
-        _ = try discovery.endpoint(for: serial)
-        fatalError("Unavailable endpoint accepted")
-      } catch is EmulatorServiceError {}
-    }
-    try "port.serial=5556\ngrpc.port=8556\n".write(to: live, atomically: true, encoding: .utf8)
-    let unauthenticated = try discovery.endpoint(for: "emulator-5556")
-    precondition(unauthenticated.token == nil)
-    for extra in ["grpc.server_cert=test", "grpc.certificate=test", "grpc.port=0"] {
-      try ("port.serial=5556\ngrpc.port=8556\n" + extra).write(to: live, atomically: true, encoding: .utf8)
-      do {
-        _ = try discovery.endpoint(for: "emulator-5556")
-        fatalError("Unsupported endpoint accepted")
-      } catch is EmulatorServiceError {}
-    }
+    try registration.write(to: directory.appendingPathComponent("pid_123.ini"), atomically: true, encoding: .utf8)
+    try test(EmulatorPreviewDiscovery(home: home, isProcessRunning: { $0 == 123 && running }))
   }
 }

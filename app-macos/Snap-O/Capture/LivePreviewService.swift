@@ -67,7 +67,7 @@ actor LivePreviewService {
     )
     let session: LivePreviewSession
     do {
-      session = try await LivePreviewSession(deviceID: deviceID, adb: adb)
+      session = try await makeSession(for: deviceID)
     } catch {
       let showTouchesOverride = await applyingShowTouches
       await showTouchesOverride.restore(using: adb)
@@ -95,6 +95,29 @@ actor LivePreviewService {
       deviceID: deviceID,
       session: session
     )
+  }
+
+  @MainActor
+  private func makeSession(for deviceID: String) async throws -> LivePreviewSession {
+    let exec = await adb.exec()
+    async let densityValue = exec.displayDensity(deviceID: deviceID)
+    let isEmulator = EmulatorGRPCEndpoint.isEmulator(deviceID)
+    let source: any LivePreviewFrameSource = if isEmulator {
+      try await EmulatorPreviewFrameSource.connect(deviceID: deviceID)
+    } else {
+      try await ADBPreviewFrameSource(stream: exec.startScreenStream(deviceID: deviceID))
+    }
+    if isEmulator {
+      _ = try? await exec.keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
+    }
+    do {
+      let densityScale = try await CGFloat(densityValue)
+      try Task.checkCancellation()
+      return LivePreviewSession(deviceID: deviceID, densityScale: densityScale, source: source)
+    } catch {
+      source.stop()
+      throw error
+    }
   }
 
   func stop(_ handle: LivePreviewOperationHandle) async -> Error? {

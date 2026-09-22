@@ -213,3 +213,5 @@ nonisolated extension EmulatorPreview_Image: SwiftProtobuf.Message, SwiftProtobu
     return true
   }
 }
+
+// swiftlint:enable all
