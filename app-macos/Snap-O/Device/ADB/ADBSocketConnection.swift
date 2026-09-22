@@ -273,6 +273,40 @@ public final class ADBSocketConnection {
     }
   }
 
+  func sendFile(_ file: FileHandle, remotePath: String, progress: (Int64) -> Void) throws {
+    func packet(_ id: String, value: UInt32, payload: Data = Data()) throws {
+      var number = value.littleEndian
+      var data = Data(id.utf8)
+      withUnsafeBytes(of: &number) { data.append(contentsOf: $0) }
+      data.append(payload)
+      try writeFully(data)
+    }
+
+    let path = Data("\(remotePath),33188".utf8)
+    guard path.count <= 1024 else { throw ADBError.protocolFailure("The destination path is too long.") }
+    try packet("SEND", value: UInt32(path.count), payload: path)
+    var sent: Int64 = 0
+    var lastUpdate = ContinuousClock.now
+    while let chunk = try file.read(upToCount: 64 * 1024), !chunk.isEmpty {
+      try packet("DATA", value: UInt32(chunk.count), payload: chunk)
+      sent += Int64(chunk.count)
+      if lastUpdate.duration(to: .now) >= .milliseconds(100) {
+        progress(sent)
+        lastUpdate = .now
+      }
+    }
+    progress(sent)
+    try packet("DONE", value: UInt32(clamping: Int64(Date().timeIntervalSince1970)))
+    let status = try readExact(4)
+    let length = try readLittleEndianLength()
+    if status == Data("OKAY".utf8), length == 0 { return }
+    if status == Data("FAIL".utf8), length <= 64 * 1024 {
+      let message = try String(bytes: readExact(length), encoding: .utf8) ?? "File upload failed."
+      throw ADBError.protocolFailure(message)
+    }
+    throw ADBError.protocolFailure("Invalid file upload response.")
+  }
+
   func writeFully(_ data: Data) throws {
     try data.withUnsafeBytes { buffer in
       guard let start = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
