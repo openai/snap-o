@@ -44,9 +44,13 @@ struct DeviceControlsView: View {
     .contextMenu {
       @Bindable var settings = settings
       Picker("Position", selection: $settings.deviceControlsPlacement) {
-        ForEach(DeviceControlsPlacement.allCases) { placement in
+        ForEach(DeviceControlsPlacement.allCases.filter { $0 != .hidden }) { placement in
           Text(placement.title).tag(placement)
         }
+      }
+      Divider()
+      Button("Hide") {
+        settings.deviceControlsPlacement = .hidden
       }
     }
     .accessibilityElement(children: .contain)

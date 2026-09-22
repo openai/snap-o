@@ -25,7 +25,7 @@ struct DeviceControlsPanelTests {
     #expect(below.midX == capture.midX)
   }
 
-  @Test(arguments: DeviceControlsPlacement.allCases)
+  @Test(arguments: [DeviceControlsPlacement.left, .below])
   func controlsRemainOnScreenNearEdges(_ placement: DeviceControlsPlacement) {
     // A second screen can have negative coordinates.
     let screen = CGRect(x: -1440, y: -300, width: 1440, height: 900)
@@ -49,6 +49,8 @@ struct DeviceControlsPanelTests {
     #expect(AppSettings(defaults: defaults).deviceControlsPlacement == .below)
     settings.deviceControlsPlacement = .left
     #expect(AppSettings(defaults: defaults).deviceControlsPlacement == .left)
+    settings.deviceControlsPlacement = .hidden
+    #expect(AppSettings(defaults: defaults).deviceControlsPlacement == .hidden)
     defaults.set("unknown", forKey: "deviceControlsPlacement")
     #expect(AppSettings(defaults: defaults).deviceControlsPlacement == .left)
   }
@@ -73,7 +75,7 @@ struct DeviceControlsPanelTests {
     window.contentView = host
     let originalFrame = window.frame
     let originalContentSize = host.frame.size
-    for placement: DeviceControlsPlacement? in [.left, .below, nil] {
+    for placement: DeviceControlsPlacement? in [.left, .below, .hidden, .left, nil] {
       host.rootView = content(placement)
       host.layoutSubtreeIfNeeded()
       try await Task.sleep(for: .milliseconds(20))
