@@ -96,6 +96,10 @@ private struct SurfaceProbe: NSViewRepresentable {
 @MainActor
 private final class FailedPreviewHost: LivePreviewHosting {
   let connection = LivePreviewConnection()
+  func canReconnectLivePreview(for _: String) -> Bool {
+    true
+  }
+
   func livePreviewConnection(for deviceID: String) -> LivePreviewConnection? {
     #expect(deviceID == "phone")
     return connection

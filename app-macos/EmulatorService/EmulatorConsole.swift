@@ -6,9 +6,100 @@ struct EmulatorConsole {
   let home: URL
   var connect: (UInt16) throws -> Int32 = EmulatorConsole.open
   var timeout: Duration = .seconds(2)
+  var displayChangeTimeout: TimeInterval = 15
+  var sleep: (TimeInterval) -> Void = Thread.sleep(forTimeInterval:)
 
   func path(serial: String) throws -> String {
     try withSession(serial: serial) { try $0.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines) }
+  }
+
+  func controls(serial: String, displaySize: (() throws -> String)? = nil) throws -> EmulatorControls {
+    try withSession(serial: serial) { session in
+      let path = try session.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines)
+      return try controls(path: path, session: session, displaySize: displaySize)
+    }
+  }
+
+  func control(
+    serial: String,
+    expectedPath: String,
+    action: EmulatorControlAction,
+    displaySize: (() throws -> String)? = nil,
+    rotateDisplay: (Int) throws -> Void
+  ) throws {
+    let deadline = Date().addingTimeInterval(30)
+    try withSession(serial: serial) { session in
+      let path = try session.command("avd path").trimmingCharacters(in: .whitespacesAndNewlines)
+      guard URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path == expectedPath else {
+        throw EmulatorServiceError(message: "The emulator connection changed. Reopen Live Preview and try again.")
+      }
+      let controls = try controls(path: path, session: session, displaySize: displaySize)
+      guard controls.actions.contains(action) else {
+        throw EmulatorServiceError(message: "This emulator does not support that control.")
+      }
+      if action.isRotation {
+        // Android's launcher can ignore the sensor changes made by console rotation.
+        try rotateDisplay(action.quarterTurns)
+      } else if let mode = controls.displayModes.first(where: { $0.action == action }) {
+        if try changeDisplayMode(mode, session: session, displaySize: displaySize, deadline: deadline) { return }
+        // The emulator can remember a mode Android never applied and ignore the same request.
+        if let previous = controls.displayModes.first(where: { $0.action == controls.currentDisplayMode && $0.action != action }),
+           try changeDisplayMode(previous, session: session, displaySize: displaySize, deadline: deadline),
+           try changeDisplayMode(mode, session: session, displaySize: displaySize, deadline: deadline) { return }
+        throw EmulatorServiceError(
+          message: "Android did not apply the requested display mode. Try another display mode or restart the emulator."
+        )
+      } else {
+        _ = try session.command(action.consoleCommand)
+      }
+    }
+  }
+
+  private func changeDisplayMode(
+    _ mode: EmulatorDisplayMode,
+    session: Session,
+    displaySize: (() throws -> String)?,
+    deadline: Date
+  ) throws -> Bool {
+    guard Date() < deadline else { return false }
+    _ = try session.command(mode.action.consoleCommand)
+    // The console acknowledges the request before Android updates the display.
+    guard let displaySize else { return true }
+    let deadline = min(deadline, Date().addingTimeInterval(displayChangeTimeout))
+    repeat {
+      if try mode.matches(displaySize()) {
+        // The UI backend rejects further changes during its two-second transition.
+        sleep(2.1)
+        return true
+      }
+      sleep(0.2)
+    } while Date() < deadline
+    return false
+  }
+
+  private func controls(path: String, session: Session, displaySize: (() throws -> String)?) throws -> EmulatorControls {
+    let directory = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+    // The runtime configuration includes emulator defaults missing from config.ini.
+    let configuration = ["config.ini", "hardware-qemu.ini"].reduce(into: [String: String]()) { properties, name in
+      if let text = try? String(contentsOf: directory.appendingPathComponent(name), encoding: .utf8) {
+        properties.merge(ManagedEmulator.properties(text)) { _, runtime in runtime }
+      }
+    }
+    let commands = try session.command("help")
+    var hingeAngle: Double?
+    if ["yes", "true", "1"].contains(configuration["hw.sensor.hinge"] ?? ""), configuration["hw.sensor.hinge.count"] == "1",
+       let response = try? session.command("sensor get hinge-angle0"),
+       let value = response.split(separator: "=").last {
+      hingeAngle = Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+    let size = try configuration["hw.resizable.configs"] == nil ? nil : displaySize?()
+    return EmulatorControls(
+      avdPath: directory.path,
+      commands: commands,
+      properties: configuration,
+      displaySize: size,
+      hingeAngle: hingeAngle
+    )
   }
 
   func stop(serial: String, expectedPath: String) throws {
@@ -33,7 +124,7 @@ struct EmulatorConsole {
     guard setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &enabled, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
       throw failure()
     }
-    let session = Session(socket: socket, deadline: .now.advanced(by: timeout))
+    let session = Session(socket: socket, timeout: timeout)
     let greeting = try session.response()
     if greeting.contains("Authentication required") {
       let token = try String(contentsOf: home.appendingPathComponent(".emulator_console_auth_token"), encoding: .utf8)
@@ -69,7 +160,7 @@ struct EmulatorConsole {
         throw failure()
       }
       do {
-        let session = Session(socket: socket, deadline: .now.advanced(by: .seconds(2)))
+        let session = Session(socket: socket, timeout: .seconds(2))
         try session.wait(Int16(POLLOUT))
         var error: Int32 = 0
         var length = socklen_t(MemoryLayout<Int32>.size)
@@ -92,15 +183,18 @@ struct EmulatorConsole {
 
   private final class Session {
     let socket: Int32
-    let deadline: ContinuousClock.Instant
+    let timeout: Duration
+    var deadline: ContinuousClock.Instant
     var buffer = Data()
 
-    init(socket: Int32, deadline: ContinuousClock.Instant) {
+    init(socket: Int32, timeout: Duration) {
       self.socket = socket
-      self.deadline = deadline
+      self.timeout = timeout
+      deadline = .now.advanced(by: timeout)
     }
 
     func command(_ command: String) throws -> String {
+      deadline = .now.advanced(by: timeout)
       let data = Data((command + "\n").utf8)
       try data.withUnsafeBytes { bytes in
         guard let base = bytes.baseAddress else { throw EmulatorConsole.failure() }

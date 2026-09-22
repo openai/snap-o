@@ -564,6 +564,10 @@ final class CaptureWindowController {
     return livePreviewMode.connection(for: deviceID)
   }
 
+  func canReconnectLivePreview(for deviceID: String) -> Bool {
+    !isTornDown && isLivePreviewActive && !isStoppingLivePreview && knownDevices.contains { $0.id == deviceID }
+  }
+
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer? {
     guard case .livePreview(let livePreviewMode) = mode else { return nil }
     guard !livePreviewMode.isStopping else { return nil }

@@ -62,6 +62,37 @@ final class EmulatorHost {
     _ = try EmulatorCommand(executable: adb, arguments: ["start-server"]).run()
   }
 
+  func controls(serial: String) throws -> EmulatorControls {
+    try EmulatorConsole(home: home).controls(serial: serial) { try self.displaySize(serial: serial) }
+  }
+
+  private func displaySize(serial: String) throws -> String {
+    let adb = try sdk(requiring: "platform-tools/adb").appendingPathComponent("platform-tools/adb")
+    let timeoutMessage = "The emulator did not respond while Snap-O was reading its display. Check that it is running, then try again."
+    let size = try EmulatorCommand(executable: adb, arguments: ["-s", serial, "shell", "wm", "size"]).run(timeoutMessage: timeoutMessage)
+    let display = try EmulatorCommand(executable: adb, arguments: ["-s", serial, "shell", "dumpsys", "display"])
+      .run(timeoutMessage: timeoutMessage)
+    return size + "\n" + display
+  }
+
+  func control(serial: String, avdPath: String, action: String) throws {
+    guard let action = EmulatorControlAction(rawValue: action) else {
+      throw EmulatorServiceError(message: "Unknown emulator control.")
+    }
+    try EmulatorConsole(home: home).control(
+      serial: serial, expectedPath: avdPath, action: action,
+      displaySize: { try self.displaySize(serial: serial) },
+      rotateDisplay: { quarterTurns in
+        let adb = try self.sdk(requiring: "platform-tools/adb").appendingPathComponent("platform-tools/adb")
+        try EmulatorDisplayRotation { arguments in
+          try EmulatorCommand(executable: adb, arguments: ["-s", serial, "shell"] + arguments).run(
+            timeoutMessage: "The emulator did not respond to the rotation request. Check that it is running, then try again."
+          )
+        }.rotate(quarterTurns: quarterTurns)
+      }
+    )
+  }
+
   func snapshot(serials: [String]) throws -> EmulatorInventory {
     var devices = try configurations(sdk: sdk())
     for serial in Set(serials) {
@@ -134,7 +165,11 @@ final class EmulatorHost {
     defer { try? log.close() }
     let process = Process()
     process.executableURL = sdk.appendingPathComponent("emulator/emulator")
-    process.arguments = ["-avd", device.avdName, "-no-window"] + (coldBoot ? ["-no-snapshot-load"] : [])
+    let config = properties(at: URL(fileURLWithPath: device.id).appendingPathComponent("config.ini"))
+    let isResizable = config["hw.device.name"] == "resizable" || !(config["hw.resizable.configs"] ?? "").isEmpty
+    // Display-mode switching requires the UI backend, even when its window is hidden.
+    let windowOption = isResizable ? "-qt-hide-window" : "-no-window"
+    process.arguments = ["-avd", device.avdName, windowOption] + (coldBoot ? ["-no-snapshot-load"] : [])
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = log
     process.standardError = log
