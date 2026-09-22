@@ -74,6 +74,7 @@ actor RecordingService {
     let completion: RecordingOperationCompletion
     var sessionMonitors: [SessionMonitor]
     let historyID: UUID?
+    var endedDeviceErrors: [String: String] = [:]
   }
 
   private let adb: ADBService
@@ -173,20 +174,18 @@ actor RecordingService {
     for handle: RecordingOperationHandle
   ) async {
     guard let operation = operations[handle.id] else { return }
-    guard let disconnectedEntry = operation.entries.first(where: {
-      !connectedDeviceIDs.contains($0.device.id)
-    }) else { return }
-
-    await complete(
-      handle.id,
-      error: RecordingLifecycleError(
-        errorDescription: "Recording ended because \(disconnectedEntry.device.displayTitle) disconnected."
+    for entry in operation.entries where !connectedDeviceIDs.contains(entry.device.id) {
+      entry.session.close()
+      await sessionEnded(
+        operationID: handle.id,
+        entry: entry,
+        message: "Recording ended because \(entry.device.displayTitle) disconnected."
       )
-    )
+    }
   }
 
   func finish(_ handle: RecordingOperationHandle) async {
-    await complete(handle.id, error: nil)
+    await complete(handle.id)
     _ = await handle.completion.wait()
   }
 
@@ -267,10 +266,10 @@ actor RecordingService {
   private func collectMedia(
     from entries: [Entry],
     historyID: UUID?,
-    endedSession: RecordingSession? = nil
+    endedDeviceErrors: [String: String]
   ) async -> ([CaptureMedia], Error?) {
     var media: [CaptureMedia] = []
-    var encounteredError: Error?
+    var errors = endedDeviceErrors
 
     await withTaskGroup(of: (Device, Result<CaptureMedia?, Error>).self) { group in
       for entry in entries {
@@ -278,7 +277,7 @@ actor RecordingService {
           do {
             let capture = try await self.stop(
               entry,
-              sessionHasEnded: entry.session === endedSession
+              sessionHasEnded: endedDeviceErrors[entry.device.id] != nil
             )
             return (entry.device, .success(capture))
           } catch {
@@ -293,14 +292,21 @@ actor RecordingService {
           let stored = await history?.record(capture, in: historyID) ?? capture
           media.append(stored)
         case .success(nil):
-          await history?.recordFailure(deviceID: device.id, message: "No playable recording was received.", in: historyID)
+          let message = errors[device.id] ?? "\(device.displayTitle): No playable recording was received."
+          errors[device.id] = message
+          await history?.recordFailure(deviceID: device.id, message: message, in: historyID)
         case .failure(let error):
-          encounteredError = encounteredError ?? error
-          await history?.recordFailure(deviceID: device.id, message: error.localizedDescription, in: historyID)
+          let detail = "\(device.displayTitle): \(error.localizedDescription)"
+          let message = errors[device.id].map { "\($0)\n\(detail)" } ?? detail
+          errors[device.id] = message
+          await history?.recordFailure(deviceID: device.id, message: message, in: historyID)
         }
       }
     }
-    return (media, encounteredError)
+    let error = errors.isEmpty ? nil : RecordingLifecycleError(
+      errorDescription: errors.sorted { $0.key < $1.key }.map(\.value).joined(separator: "\n")
+    )
+    return (media, error)
   }
 
   private func monitorSession(
@@ -329,20 +335,33 @@ actor RecordingService {
     entry: Entry,
     failureDescription: String?
   ) async {
-    guard operations[operationID] != nil else { return }
     let detail = failureDescription.map { " (\($0))" } ?? ""
-    await complete(
-      operationID,
-      error: RecordingLifecycleError(
-        errorDescription: "Recording on \(entry.device.displayTitle) ended unexpectedly\(detail)."
-      ),
-      endedSession: entry.session
+    await sessionEnded(
+      operationID: operationID,
+      entry: entry,
+      message: "Recording on \(entry.device.displayTitle) ended unexpectedly\(detail)."
     )
+  }
+
+  private func sessionEnded(
+    operationID: UUID,
+    entry: Entry,
+    message: String
+  ) async {
+    guard var operation = operations[operationID],
+          operation.endedDeviceErrors[entry.device.id] == nil else { return }
+    operation.endedDeviceErrors[entry.device.id] = message
+    operations[operationID] = operation
+    await history?.recordFailure(deviceID: entry.device.id, message: message, in: operation.historyID)
+
+    // Keep Stop available until every device has ended or the user finishes the group.
+    if operation.endedDeviceErrors.count == operation.entries.count {
+      await complete(operationID, endedSession: entry.session)
+    }
   }
 
   private func complete(
     _ operationID: UUID,
-    error lifecycleError: Error?,
     endedSession: RecordingSession? = nil
   ) async {
     guard let operation = takeOperation(
@@ -355,7 +374,7 @@ actor RecordingService {
     let (media, captureError) = await collectMedia(
       from: operation.entries,
       historyID: operation.historyID,
-      endedSession: endedSession
+      endedDeviceErrors: operation.endedDeviceErrors
     )
     await history?.finish(operation.historyID)
     await coordinator.release(operation.lease)
@@ -363,7 +382,7 @@ actor RecordingService {
       .completed(
         RecordingOperationResult(
           media: media,
-          error: lifecycleError ?? captureError
+          error: captureError
         )
       )
     )
