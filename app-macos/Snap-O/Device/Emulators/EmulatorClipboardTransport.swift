@@ -5,19 +5,18 @@ import SwiftProtobuf
 
 struct EmulatorClipboardTransport {
   private let client: GRPCClient<HTTP2ClientTransport.TransportServices>
-  private let token: @Sendable () async throws -> String
+  private let authentication: EmulatorClipboardAuthentication
 
   static func connect(
-    endpoint: EmulatorGRPCEndpoint,
-    token: @escaping @Sendable () async throws -> String,
+    authentication: EmulatorClipboardAuthentication,
     isolation: isolated (any Actor)? = #isolation,
     body: (Self) async throws -> Void
   ) async throws {
-    let transport = try HTTP2ClientTransport.TransportServices(
-      target: .ipv4(address: "127.0.0.1", port: endpoint.port), transportSecurity: .plaintext
+    let transport = try await HTTP2ClientTransport.TransportServices(
+      target: .ipv4(address: "127.0.0.1", port: authentication.port), transportSecurity: .plaintext
     )
     try await withGRPCClient(transport: transport, isolation: isolation) { client in
-      try await body(Self(client: client, token: token))
+      try await body(Self(client: client, authentication: authentication))
     }
   }
 
@@ -60,7 +59,7 @@ struct EmulatorClipboardTransport {
   }
 
   private func metadata() async throws -> Metadata {
-    try await ["authorization": .string("Bearer " + token())]
+    try await ["authorization": .string("Bearer " + authentication.token())]
   }
 
   private static func options(timeout: Duration? = nil) -> CallOptions {

@@ -25,9 +25,9 @@ final class EmulatorClipboardSync {
         let authentication = EmulatorClipboardAuthentication(endpoint: endpoint) {
           try await emulator.clipboardEndpoint(serial: serial)
         }
-        try await EmulatorClipboardTransport.connect(endpoint: endpoint, token: { try await authentication.token() }, body: { transport in
+        try await EmulatorClipboardTransport.connect(authentication: authentication) { transport in
           try await synchronize(transport)
-        })
+        }
       } catch {
         guard isActive else { return }
         // Transport errors may contain metadata; never log clipboard text or authentication tokens.

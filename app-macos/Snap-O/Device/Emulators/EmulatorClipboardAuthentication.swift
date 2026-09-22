@@ -5,6 +5,10 @@ final class EmulatorClipboardAuthentication {
   private var endpoint: EmulatorGRPCEndpoint
   private let refresh: () async throws -> EmulatorGRPCEndpoint
 
+  var port: Int {
+    endpoint.port
+  }
+
   init(endpoint: EmulatorGRPCEndpoint, refresh: @escaping () async throws -> EmulatorGRPCEndpoint) {
     self.endpoint = endpoint
     self.refresh = refresh
