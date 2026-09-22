@@ -18,6 +18,12 @@ struct StartupCaptureTests {
     await cancelledClaimCleansUp()
     await discardSharesCleanup()
     try await managerReusesWarmup()
+    try await emulatorFramesCreatePreviewBeforeBoot()
+    try await emulatorRendererReusesEarlyStream()
+    try await emulatorWarmupHasOneOwner()
+    await stoppingEmulatorBeforeFirstFrame()
+    await emulatorReconnectDiscardsOldWarmup()
+    try await emulatorInputWaitsForAndroid()
     try await managerDiscardsWrongDevice()
     try await managerRetriesBootingDevice(densityUnavailable: false)
     try await managerRetriesBootingDevice(densityUnavailable: true)
@@ -43,7 +49,7 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
     await deviceManagerOpenPreservesLaterSelection()
-    print("Startup capture tests passed (34 cases)")
+    print("Startup capture tests passed")
   }
 
   static func eventually(_ message: String = "Condition did not become true", _ condition: () async -> Bool) async {
@@ -402,6 +408,112 @@ struct StartupCaptureTests {
     precondition(displayed.isEmpty, "A late display response must not restore a disconnected or stopped preview")
     let requests = await adb.displayRequests
     precondition(requests.count == 2, "Canceled discovery must not schedule more queries")
+    await manager.stop()
+  }
+
+  static func emulatorFramesCreatePreviewBeforeBoot() async throws {
+    let emulator = testDevice("emulator-5554")
+    let adb = ADBService()
+    await adb.setBooting(true, deviceID: emulator.id)
+    let service = LivePreviewService()
+    var captures: [CaptureMedia] = []
+    let manager = LivePreviewManager(livePreviewService: service, adbService: adb, options: options) { captures = $0 }
+    await manager.start(with: [emulator])
+    await eventually { captures.count == 1 }
+    precondition(captures[0].media.size == testDisplay.size)
+    let requests = await adb.displayRequests
+    precondition(requests.isEmpty, "First-frame sizing must not require Android display services")
+    await manager.stop()
+  }
+
+  static func emulatorRendererReusesEarlyStream() async throws {
+    let emulator = testDevice("emulator-5554")
+    let service = LivePreviewService()
+    var visible = false
+    let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { visible = !$0.isEmpty }
+    await manager.start(with: [emulator])
+    await eventually { visible }
+    _ = try await manager.makeRenderer(for: emulator.id)
+    let starts = await service.starts
+    precondition(starts == [emulator.id], "Attaching the renderer must retain the boot preview stream")
+    await manager.stop()
+  }
+
+  static func emulatorWarmupHasOneOwner() async throws {
+    let emulator = testDevice("emulator-5554")
+    let gate = TestGate()
+    let service = LivePreviewService(readyGate: gate)
+    let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { _ in }
+    await manager.start(with: [emulator])
+    await eventually { await gate.waitCount == 1 }
+    let firstRenderer = Task { try await manager.makeRenderer(for: emulator.id) }
+    for _ in 0 ..< 20 {
+      await Task.yield()
+    }
+    let secondRenderer = Task { try await manager.makeRenderer(for: emulator.id) }
+    await eventually { await service.starts.count == 2 }
+    await gate.open()
+    let first = try await firstRenderer.value
+    let second = try await secondRenderer.value
+    precondition(first.operation.id != second.operation.id, "Renderers must not share ownership of one session")
+    await manager.stop()
+  }
+
+  static func stoppingEmulatorBeforeFirstFrame() async {
+    let emulator = testDevice("emulator-5554")
+    let service = LivePreviewService(readyGate: TestGate())
+    var captures: [CaptureMedia] = []
+    let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { captures = $0 }
+    await manager.start(with: [emulator])
+    await eventually { await service.active.count == 1 }
+    await manager.stop()
+    let active = await service.active
+    precondition(active.isEmpty && captures.isEmpty)
+  }
+
+  static func emulatorReconnectDiscardsOldWarmup() async {
+    let emulator = testDevice("emulator-5554")
+    let gate = TestGate()
+    let service = LivePreviewService(startGate: gate)
+    let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { _ in }
+    await manager.start(with: [emulator])
+    await eventually { await service.starts.count == 1 }
+    let disconnect = Task { await manager.updateDevices([]) }
+    for _ in 0 ..< 20 {
+      await Task.yield()
+    }
+    await manager.updateDevices([emulator])
+    await eventually { await service.starts.count == 2 }
+    await gate.open()
+    await disconnect.value
+    await eventually { await service.stops.count == 1 }
+    let active = await service.active
+    precondition(active.count == 1, "Only the reconnected emulator's warmup may survive")
+    await manager.stop()
+  }
+
+  static func emulatorInputWaitsForAndroid() async throws {
+    let emulator = testDevice("emulator-5554")
+    let gate = TestGate()
+    let adb = ADBService()
+    let service = LivePreviewService(interactiveGate: gate)
+    var visible = false
+    let manager = LivePreviewManager(livePreviewService: service, adbService: adb, options: options) { visible = !$0.isEmpty }
+    await manager.start(with: [emulator])
+    await eventually { visible }
+    let renderer = try await manager.makeRenderer(for: emulator.id)
+    await eventually { await gate.waitCount == 1 }
+    renderer.sendPointer(.down, .touchscreen, [.zero], testDisplay.size)
+    for _ in 0 ..< 20 {
+      await Task.yield()
+    }
+    let before = await adb.pointerEvents
+    let preparedBefore = await adb.pointerPreparations
+    precondition(before.isEmpty && preparedBefore.isEmpty)
+    await gate.open()
+    await eventually { await adb.pointerPreparations == [emulator.id] }
+    renderer.sendPointer(.down, .touchscreen, [.zero], testDisplay.size)
+    await eventually { await adb.pointerEvents.count == 1 }
     await manager.stop()
   }
 

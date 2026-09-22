@@ -85,8 +85,8 @@ struct DeviceManagerWindow: View {
       DeviceThumbnailView(device: entry, action: status, manager: manager)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-          guard status == nil else { return }
-          if entry.isRunning, let serial = entry.serial {
+          guard action == nil else { return }
+          if entry.canOpenPreview, let serial = entry.serial {
             showPreview(serial)
           } else if let device = emulator, device.canStart, manager.loadError == nil {
             manager.start(device)
@@ -105,14 +105,15 @@ struct DeviceManagerWindow: View {
           .foregroundStyle(Color(nsColor: .disabledControlTextColor))
           .fixedSize()
           .frame(height: 28)
-      } else if let serial = entry.serial {
+      }
+      if entry.canOpenPreview, let serial = entry.serial {
         Button { showPreview(serial) } label: {
           Text("Open")
             .frame(height: 28)
             .contentShape(Rectangle())
         }
         .help("Open in Live Preview")
-        .disabled(!entry.isRunning)
+        .disabled(action != nil)
       }
       if let device = emulator {
         emulatorControls(device, action: action, status: status)

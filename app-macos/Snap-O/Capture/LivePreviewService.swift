@@ -14,7 +14,8 @@ actor LivePreviewService {
   private struct Operation {
     let deviceID: String
     let session: LivePreviewSession
-    let showTouchesOverride: ShowTouchesOverride
+    let showTouchesOverride: ShowTouchesOverride?
+    let setupTask: Task<ShowTouchesOverride?, Never>?
     let lease: DeviceCaptureLease
   }
 
@@ -49,7 +50,8 @@ actor LivePreviewService {
     pendingOperationIDs.insert(operationID)
     defer { pendingOperationIDs.remove(operationID) }
 
-    try await waitUntilBootComplete(for: deviceID)
+    let isEmulator = EmulatorGRPCEndpoint.isEmulator(deviceID)
+    if !isEmulator { try await waitUntilBootComplete(for: deviceID) }
 
     let lease = try await coordinator.acquire(
       deviceIDs: [deviceID],
@@ -58,6 +60,10 @@ actor LivePreviewService {
     guard !Task.isCancelled, !isShuttingDown else {
       await coordinator.release(lease)
       throw CancellationError()
+    }
+
+    if isEmulator {
+      return try await startEmulator(deviceID: deviceID, operationID: operationID, lease: lease, options: options)
     }
 
     async let applyingShowTouches = ShowTouchesOverride.apply(
@@ -88,6 +94,7 @@ actor LivePreviewService {
       deviceID: deviceID,
       session: session,
       showTouchesOverride: showTouchesOverride,
+      setupTask: nil,
       lease: lease
     )
     return LivePreviewOperationHandle(
@@ -101,15 +108,7 @@ actor LivePreviewService {
   private func makeSession(for deviceID: String) async throws -> LivePreviewSession {
     let exec = await adb.exec()
     async let densityValue = exec.displayDensity(deviceID: deviceID)
-    let isEmulator = EmulatorGRPCEndpoint.isEmulator(deviceID)
-    let source: any LivePreviewFrameSource = if isEmulator {
-      try await EmulatorPreviewFrameSource.connect(deviceID: deviceID)
-    } else {
-      try await ADBPreviewFrameSource(stream: exec.startScreenStream(deviceID: deviceID))
-    }
-    if isEmulator {
-      _ = try? await exec.keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
-    }
+    let source = try await ADBPreviewFrameSource(stream: exec.startScreenStream(deviceID: deviceID))
     do {
       let densityScale = try await CGFloat(densityValue)
       try Task.checkCancellation()
@@ -118,6 +117,45 @@ actor LivePreviewService {
       source.stop()
       throw error
     }
+  }
+
+  private func startEmulator(
+    deviceID: String,
+    operationID: UUID,
+    lease: DeviceCaptureLease,
+    options: LivePreviewOptions
+  ) async throws -> LivePreviewOperationHandle {
+    let session = await LivePreviewSession(
+      deviceID: deviceID, densityScale: nil, source: EmulatorPreviewFrameSource(deviceID: deviceID)
+    )
+    guard !Task.isCancelled, !isShuttingDown else {
+      await session.cancel()
+      await coordinator.release(lease)
+      throw CancellationError()
+    }
+    // Frames can arrive while Android services are still booting.
+    let setup = Task<ShowTouchesOverride?, Never> {
+      do { try await waitUntilBootComplete(for: deviceID) } catch { return nil }
+      guard !Task.isCancelled else { return nil }
+      let exec = await adb.exec()
+      if let density = try? await exec.displayDensity(deviceID: deviceID) {
+        await session.updateDensityScale(CGFloat(density))
+      }
+      guard !Task.isCancelled else { return nil }
+      _ = try? await exec.keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
+      guard !Task.isCancelled else { return nil }
+      return await ShowTouchesOverride.apply(deviceID: deviceID, enabled: options.showsTouches, using: adb)
+    }
+    operations[operationID] = Operation(
+      deviceID: deviceID, session: session, showTouchesOverride: nil, setupTask: setup, lease: lease
+    )
+    return LivePreviewOperationHandle(id: operationID, deviceID: deviceID, session: session)
+  }
+
+  func waitUntilInteractive(_ handle: LivePreviewOperationHandle) async -> Bool {
+    guard let operation = operations[handle.id] else { return false }
+    if let setup = operation.setupTask, await setup.value == nil { return false }
+    return !Task.isCancelled && operations[handle.id] != nil
   }
 
   func stop(_ handle: LivePreviewOperationHandle) async -> Error? {
@@ -175,9 +213,11 @@ actor LivePreviewService {
   }
 
   private func stop(_ operation: Operation) async -> Error? {
+    operation.setupTask?.cancel()
     await operation.session.cancel()
     let error = await operation.session.waitUntilStop()
-    await operation.showTouchesOverride.restore(using: adb)
+    let showTouchesOverride = await operation.setupTask?.value ?? operation.showTouchesOverride
+    await showTouchesOverride?.restore(using: adb)
     return error
   }
 

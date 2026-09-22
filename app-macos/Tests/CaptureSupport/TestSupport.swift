@@ -92,14 +92,22 @@ actor LivePreviewService {
 
   private var startFailures: Int
   private let startGate: TestGate?
+  private let interactiveGate: TestGate?
   private let stopGate: TestGate?
   private let readyGate: TestGate?
   private(set) var starts: [String] = []
   private(set) var stops: [UUID] = []
   private(set) var active: Set<UUID> = []
 
-  init(startGate: TestGate? = nil, stopGate: TestGate? = nil, readyGate: TestGate? = nil, startFailures: Int = 0) {
+  init(
+    interactiveGate: TestGate? = nil,
+    startGate: TestGate? = nil,
+    stopGate: TestGate? = nil,
+    readyGate: TestGate? = nil,
+    startFailures: Int = 0
+  ) {
     self.startFailures = startFailures
+    self.interactiveGate = interactiveGate
     self.startGate = startGate
     self.stopGate = stopGate
     self.readyGate = readyGate
@@ -119,9 +127,15 @@ actor LivePreviewService {
     return handle
   }
 
+  func waitUntilInteractive(_ handle: LivePreviewOperationHandle) async -> Bool {
+    await interactiveGate?.wait()
+    return active.contains(handle.id)
+  }
+
   func stop(_ handle: LivePreviewOperationHandle) async -> Error? {
     stops.append(handle.id)
     await stopGate?.wait()
+    await interactiveGate?.open()
     await handle.session.cancel()
     active.remove(handle.id)
     return nil

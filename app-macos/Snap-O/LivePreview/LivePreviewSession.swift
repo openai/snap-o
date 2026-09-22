@@ -32,7 +32,7 @@ final class LivePreviewSession {
     }
   }
 
-  private let densityScale: CGFloat
+  private var densityScale: CGFloat?
   private let source: any LivePreviewFrameSource
   private var pendingSampleBuffers: [CMSampleBuffer] = []
   private var pendingSampleByteCount = 0
@@ -44,11 +44,24 @@ final class LivePreviewSession {
   private var readyResult: Media?
   private var stopResult: Error??
 
-  init(deviceID: String, densityScale: CGFloat, source: any LivePreviewFrameSource) {
+  init(deviceID: String, densityScale: CGFloat?, source: any LivePreviewFrameSource) {
     self.deviceID = deviceID
     self.densityScale = densityScale
     self.source = source
     source.start { [weak self] event in self?.receive(event) }
+  }
+
+  func updateDensityScale(_ densityScale: CGFloat) {
+    guard !hasStopped, self.densityScale != densityScale else { return }
+    self.densityScale = densityScale
+    guard let media else { return }
+    let updated = Media.livePreview(
+      capturedAt: media.capturedAt,
+      display: DisplayInfo(size: media.size, densityScale: densityScale)
+    )
+    self.media = updated
+    readyResult = updated
+    mediaDidChange?(updated)
   }
 
   func waitUntilReady() async throws -> Media {
