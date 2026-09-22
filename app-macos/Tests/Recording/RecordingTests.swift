@@ -24,7 +24,9 @@ struct RecordingTests {
     try await failedDeviceLeavesHealthyRecordingActive(root: root, video: video)
     try await collectionFailurePreservesHealthyRecording(root: root, video: video)
     try await disconnectedDeviceLeavesHealthyRecordingActive(root: root, video: video)
-    print("Recording tests passed (3 cases)")
+    try await cancellationDoesNotSignalEndedSession(root: root, video: video)
+    try await endedSessionRestoresTouchIndicators(root: root, video: video)
+    print("Recording tests passed (5 cases)")
   }
 
   struct Fixture {
@@ -80,6 +82,30 @@ struct RecordingTests {
     await fixture.service.updateConnectedDeviceIDs([devices[1].id], for: handle)
     let stops = await fixture.adb.stops
     precondition(stops.isEmpty, "Disconnect must leave the other recording active")
+    await fixture.service.cancel(handle)
+  }
+
+  static func cancellationDoesNotSignalEndedSession(root: URL, video: URL) async throws {
+    let fixture = Fixture(root: root, video: video)
+    let handle = try await fixture.service.start(for: devices, options: options)
+    await fixture.adb.endUnexpectedly(devices[0].id)
+    await fixture.waitForFailure()
+
+    await fixture.service.cancel(handle)
+    let cancellations = await fixture.adb.cancellations
+    precondition(cancellations == [devices[1].id], "Only the active recording may receive a stop signal")
+  }
+
+  static func endedSessionRestoresTouchIndicators(root: URL, video: URL) async throws {
+    let fixture = Fixture(root: root, video: video)
+    let handle = try await fixture.service.start(
+      for: devices, options: RecordingOptions(recordsBugReport: false, showsTouches: true)
+    )
+    await fixture.adb.endUnexpectedly(devices[0].id)
+    await fixture.waitForFailure()
+
+    let settings = await fixture.adb.touchSettings
+    precondition(settings == [devices[0].id: false, devices[1].id: true], "Restore only the ended device's setting")
     await fixture.service.cancel(handle)
   }
 

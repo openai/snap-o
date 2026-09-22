@@ -41,6 +41,8 @@ actor ADBService {
   private var sessions: [String: RecordingSession] = [:]
   private var unavailable: Set<String> = []
   private(set) var stops: [String] = []
+  private(set) var cancellations: [String] = []
+  private(set) var touchSettings: [String: Bool] = [:]
 
   init(video: URL) {
     self.video = video
@@ -54,11 +56,13 @@ actor ADBService {
     160
   }
 
-  func getShowTouches(deviceID _: String) throws -> Bool {
-    false
+  func getShowTouches(deviceID: String) throws -> Bool {
+    touchSettings[deviceID] ?? false
   }
 
-  func setShowTouches(deviceID _: String, enabled _: Bool) throws {}
+  func setShowTouches(deviceID: String, enabled: Bool) throws {
+    touchSettings[deviceID] = enabled
+  }
 
   func startScreenrecord(deviceID: String, bugReport _: Bool) throws -> RecordingSession {
     let session = RecordingSession(deviceID: deviceID)
@@ -89,6 +93,11 @@ actor ADBService {
   }
 
   func cancelScreenrecord(session: RecordingSession) {
+    cancellations.append(session.deviceID)
+    discardScreenrecord(session: session)
+  }
+
+  func discardScreenrecord(session: RecordingSession) {
     session.close()
   }
 }

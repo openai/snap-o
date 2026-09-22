@@ -61,6 +61,15 @@ actor RecordingService {
     let device: Device
     let session: RecordingSession
     let showTouchesOverride: ShowTouchesOverride
+    var touchRestoration: Task<Void, Never>?
+
+    func restoreTouches(using adb: ADBService) async {
+      if let touchRestoration {
+        await touchRestoration.value
+      } else {
+        await showTouchesOverride.restore(using: adb)
+      }
+    }
   }
 
   private struct SessionMonitor {
@@ -69,7 +78,7 @@ actor RecordingService {
   }
 
   private struct Operation {
-    let entries: [Entry]
+    var entries: [Entry]
     let lease: DeviceCaptureLease
     let completion: RecordingOperationCompletion
     var sessionMonitors: [SessionMonitor]
@@ -197,7 +206,7 @@ actor RecordingService {
     cleanupOperationIDs.insert(handle.id)
     defer { cleanupOperationIDs.remove(handle.id) }
 
-    await discard(operation.entries)
+    await discard(operation.entries, endedDeviceIDs: Set(operation.endedDeviceErrors.keys))
     await history?.discardEmpty(operation.historyID)
     await coordinator.release(operation.lease)
     await operation.completion.resolve(.cancelled)
@@ -350,8 +359,13 @@ actor RecordingService {
   ) async {
     guard var operation = operations[operationID],
           operation.endedDeviceErrors[entry.device.id] == nil else { return }
+    guard let index = operation.entries.firstIndex(where: { $0.device.id == entry.device.id }) else { return }
+    let restoration = Task { await entry.showTouchesOverride.restore(using: adb) }
+    operation.entries[index].touchRestoration = restoration
     operation.endedDeviceErrors[entry.device.id] = message
     operations[operationID] = operation
+    await restoration.value
+    guard operations[operationID] != nil else { return }
     await history?.recordFailure(deviceID: entry.device.id, message: message, in: operation.historyID)
 
     // Keep Stop available until every device has ended or the user finishes the group.
@@ -418,10 +432,10 @@ actor RecordingService {
         try await exec.stopScreenrecord(session: entry.session, savingTo: destination)
       }
     } catch {
-      await entry.showTouchesOverride.restore(using: adb)
+      await entry.restoreTouches(using: adb)
       throw error
     }
-    await entry.showTouchesOverride.restore(using: adb)
+    await entry.restoreTouches(using: adb)
 
     let asset = AVURLAsset(url: destination)
     let duration = try await asset.load(.duration)
@@ -444,14 +458,19 @@ actor RecordingService {
     return CaptureMedia(device: device, media: media)
   }
 
-  private func discard(_ entries: [Entry]) async {
+  private func discard(_ entries: [Entry], endedDeviceIDs: Set<String> = []) async {
     let adb = adb
     let cleanupTask = Task.detached(priority: .utility) {
       await withTaskGroup(of: Void.self) { group in
         for entry in entries {
           group.addTask {
-            await adb.exec().cancelScreenrecord(session: entry.session)
-            await entry.showTouchesOverride.restore(using: adb)
+            let exec = await adb.exec()
+            if endedDeviceIDs.contains(entry.device.id) {
+              await exec.discardScreenrecord(session: entry.session)
+            } else {
+              await exec.cancelScreenrecord(session: entry.session)
+            }
+            await entry.restoreTouches(using: adb)
           }
         }
       }
@@ -467,7 +486,7 @@ actor RecordingService {
       for monitor in operation.sessionMonitors {
         monitor.task.cancel()
       }
-      await discard(operation.entries)
+      await discard(operation.entries, endedDeviceIDs: Set(operation.endedDeviceErrors.keys))
       await history?.discardEmpty(operation.historyID)
       await coordinator.release(operation.lease)
       await operation.completion.resolve(.cancelled)
