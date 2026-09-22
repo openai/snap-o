@@ -34,7 +34,7 @@ Press `Esc` to stop the preview, or `⇧⌘L` to start it again. Choose **Device
 
 [Snap-O 11.0.0](https://github.com/openai/snap-o/releases/tag/11.0.0) adds Device Manager for existing Android emulators and connected devices. Open **Device → Device Manager**, or use the Capture title's ellipsis menu.
 
-Click **Start** beside a stopped emulator. Snap-O opens it in Live Preview after Android finishes booting. Click **Open** for a running emulator or connected phone. Double-clicking a thumbnail also opens a running device or starts a stopped emulator.
+Click **Start** beside a stopped emulator. The row shows startup progress until Android finishes booting. Click **Open** to select a running emulator or connected phone in Live Preview and focus Capture. Start and Cold Boot do not select a device or focus Capture. Double-clicking a thumbnail also opens a running device or starts a stopped emulator.
 
 Use **Stop** to shut down an emulator, or **Cold Boot** in its actions menu to start without loading a saved snapshot. **Reveal in Finder** opens its files. **Delete** asks for confirmation before moving a stopped emulator and its data to Trash. Connected phones have no emulator lifecycle controls.
 
