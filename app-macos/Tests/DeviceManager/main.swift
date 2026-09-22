@@ -55,6 +55,32 @@ func ignoresDeadProcessLock(_ fixture: HostFixture) throws {
   try expect(try fixture.host().snapshot(serials: []).devices.first?.canStart == true, "A stale lock must not prevent restarting")
 }
 
+func launchesResizableWithHiddenUI(_ fixture: HostFixture) throws {
+  try fixture.write("sdk/emulator/emulator", """
+  #!/bin/sh
+  if [ "$1" = "-list-avds" ]; then
+    printf 'Test\\n'
+  else
+    printf '%s\\n' "$@" > "$0.arguments"
+  fi
+  """)
+  let output = fixture.root.appendingPathComponent("sdk/emulator/emulator.arguments")
+  for (configuration, expected) in [("hw.device.name=resizable", "-qt-hide-window"), ("", "-no-window")] {
+    try fixture.write("avds/Test.avd/config.ini", "avd.ini.displayname=Test\n" + configuration)
+    try? FileManager.default.removeItem(at: output)
+    _ = try fixture.host().start(fixture.avd.path, coldBoot: false, serials: [])
+    let deadline = Date().addingTimeInterval(2)
+    while !FileManager.default.fileExists(atPath: output.path), Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.01)
+    }
+    let arguments = try String(contentsOf: output, encoding: .utf8).split(separator: "\n")
+    try expect(
+      arguments == ["-avd", "Test", Substring(expected)],
+      "Resizable devices need the hidden UI backend; other devices remain headless"
+    )
+  }
+}
+
 struct HostFixture {
   let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
   var avd: URL {
@@ -97,7 +123,7 @@ struct HostFixture {
 
 for test in [
   startsADBWithoutEmulatorPackage, rejectsDeletingRunningEmulator, restoresAVDAfterTrashFailure,
-  preservesDeletedDataInTrash, ignoresDeadProcessLock
+  preservesDeletedDataInTrash, ignoresDeadProcessLock, launchesResizableWithHiddenUI
 ] {
   let fixture = try HostFixture()
   defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -105,4 +131,5 @@ for test in [
 }
 
 try runConsoleTests()
-print("Emulator helper tests passed (8 tests)")
+try runDisplayRotationTests()
+print("Emulator helper tests passed (console, rotation, and device lifecycle)")

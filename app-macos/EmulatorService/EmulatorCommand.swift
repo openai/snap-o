@@ -12,7 +12,7 @@ struct EmulatorCommand {
   let executable: URL
   let arguments: [String]
 
-  func run(timeout: TimeInterval = 5) throws -> String {
+  func run(timeout: TimeInterval = 5, timeoutMessage: String = "The Android SDK command timed out. Try again.") throws -> String {
     let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     FileManager.default.createFile(atPath: outputURL.path, contents: nil)
     defer { try? FileManager.default.removeItem(at: outputURL) }
@@ -34,7 +34,7 @@ struct EmulatorCommand {
       Thread.sleep(forTimeInterval: 0.1)
       if process.isRunning { kill(process.processIdentifier, SIGKILL) }
       process.waitUntilExit()
-      throw EmulatorServiceError(message: "The Android SDK command timed out. Try again.")
+      throw EmulatorServiceError(message: timeoutMessage)
     }
     process.waitUntilExit()
     let input = try FileHandle(forReadingFrom: outputURL)

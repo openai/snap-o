@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor
 protocol LivePreviewHosting: AnyObject {
   func livePreviewConnection(for deviceID: String) -> LivePreviewConnection?
+  func canReconnectLivePreview(for deviceID: String) -> Bool
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer?
   func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async
   func livePreviewScreenshot(for deviceID: String) async throws -> Data
@@ -20,7 +21,9 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       connection: host.livePreviewConnection(for: capture.device.id),
       start: { await host.startLivePreviewStream(for: capture.device.id) },
       stop: { await host.stopLivePreviewStream($0) },
-      waitUntilStop: { await $0.session.waitUntilStop() }
+      waitUntilStop: { await $0.session.waitUntilStop() },
+      readyAt: { $0.session.readyAt },
+      canReconnect: { host.canReconnectLivePreview(for: capture.device.id) }
     ))
   }
 
@@ -53,6 +56,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
         .frame(width: 0, height: 0)
     }
     .onAppear { lifecycle.appear() }
+    .onChange(of: lifecycle.connection?.restartID) { lifecycle.restart() }
     .onDisappear { lifecycle.disappear() }
   }
 }

@@ -196,6 +196,10 @@ struct LivePreviewThumbnailTests {
 
 @MainActor
 private final class ThumbnailHost: LivePreviewHosting {
+  func canReconnectLivePreview(for _: String) -> Bool {
+    true
+  }
+
   let selected = LivePreviewConnection()
   let other = LivePreviewConnection()
   let png: Data

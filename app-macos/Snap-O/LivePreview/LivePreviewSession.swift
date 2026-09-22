@@ -8,6 +8,7 @@ final class LivePreviewSession {
   private static let maxPendingSampleByteCount = 2 * 1024 * 1024
 
   let deviceID: String
+  private(set) var readyAt: ContinuousClock.Instant?
 
   var isReady: Bool {
     readyResult != nil && !hasStopped
@@ -95,6 +96,7 @@ final class LivePreviewSession {
           display: display
         )
         self.media = media
+        self.readyAt = self.readyAt ?? .now
         self.readyResult = media
         let continuations = self.readyContinuations
         self.readyContinuations.removeAll()

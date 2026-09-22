@@ -75,32 +75,27 @@ struct LivePreviewLifecycleTests {
   }
 
   @Test
-  func droppedStreamRetainsFailureAndCleansUpOnce() async throws {
+  func droppedStreamReconnectsAfterCleanup() async throws {
     let host = LifecycleHost()
-    let lifecycle = host.makeLifecycle()
-    lifecycle.appear()
-    lifecycle.updateWindowVisibility(true)
-    try await eventually { lifecycle.renderer == 1 }
+    let lifecycle = try await host.startPreview()
+    host.stopGate = LifecycleGate()
     host.streamEnded.open()
-    try await eventually { !lifecycle.isConnecting }
-    #expect(host.connection.hasFailed && lifecycle.renderer == nil)
-    lifecycle.updateWindowVisibility(false)
-    lifecycle.updateWindowVisibility(true)
+    try await eventually { host.stopGate?.entered == true }
     #expect(host.starts == 1)
+    host.stopGate?.open()
+    try await eventually { lifecycle.renderer == 2 }
+    #expect(!host.connection.hasFailed)
     lifecycle.disappear()
     await host.connection.cleanupTask?.value
-    #expect(host.stops == [1])
   }
 
   @Test(arguments: [false, true])
   func remountWaitsForPreviousCleanup(afterFailure: Bool) async throws {
     let host = LifecycleHost()
     host.stopGate = LifecycleGate()
-    let first = host.makeLifecycle()
-    first.appear()
-    first.updateWindowVisibility(true)
-    try await eventually { first.renderer == 1 }
+    let first = try await host.startPreview()
     if afterFailure {
+      host.isConnected = false
       host.streamEnded.open()
       try await eventually { host.stopGate?.entered == true }
       #expect(host.connection.hasFailed)
@@ -110,24 +105,130 @@ struct LivePreviewLifecycleTests {
     let second = host.makeLifecycle()
     second.appear()
     second.updateWindowVisibility(true)
-    if afterFailure { second.connect() }
+    if afterFailure {
+      host.isConnected = true
+      second.connect()
+    }
     try await eventually { second.phase == .waitingForCleanup }
     #expect(host.starts == 1)
     host.stopGate?.open()
     try await eventually { second.renderer == 2 }
-    #expect(host.events.prefix(4).elementsEqual(["start", "stop", "stopped", "start"]))
     second.disappear()
     await host.connection.cleanupTask?.value
     #expect(host.stops == [1, 2])
   }
 
-  private func eventually(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-    while !condition(), ContinuousClock.now < deadline {
-      await Task.yield()
-    }
-    try #require(condition(), "Lifecycle did not reach the expected state")
+  @Test
+  func displayChangeRestartsAfterCleanup() async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    host.stopGate = LifecycleGate()
+    lifecycle.restart()
+    try await eventually { lifecycle.phase == .waitingForCleanup }
+    #expect(host.starts == 1)
+    host.stopGate?.open()
+    try await eventually { lifecycle.renderer == 2 }
+    lifecycle.disappear()
+    await host.connection.cleanupTask?.value
   }
+
+  @Test
+  func displayChangeRetriesTransientStartupFailures() async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    host.startFailuresRemaining = 2
+    lifecycle.restart()
+    try await eventually { lifecycle.renderer == 4 }
+    #expect(!host.connection.hasFailed)
+    lifecycle.disappear()
+    await host.connection.cleanupTask?.value
+  }
+
+  @Test
+  func displayChangeStopsRetryingPersistentFailures() async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    host.failsToStart = true
+    lifecycle.restart()
+    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    #expect(host.starts == 5)
+  }
+
+  @Test
+  func repeatedUnexpectedDisconnectsExhaustRecovery() async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    host.earlyDisconnectsRemaining = 10
+    host.streamEnded.open()
+    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    #expect(host.starts == 5)
+    #expect(host.stops == [1, 2, 3, 4, 5])
+  }
+
+  @Test
+  func disconnectingDeviceDuringRetryStopsRecovery() async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    host.reconnectGate = LifecycleGate()
+    host.streamEnded.open()
+    try await eventually { host.reconnectGate?.entered == true }
+    host.isConnected = false
+    host.reconnectGate?.open()
+    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    #expect(host.starts == 1 && host.stops == [1])
+  }
+
+  @Test(arguments: [false, true])
+  func startupTimeDoesNotResetRecovery(becomesReadyBeforeDisconnect: Bool) async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    for attempt in 1 ... 5 {
+      try await eventually { lifecycle.renderer == attempt }
+      host.clock = host.clock.advanced(by: .seconds(60))
+      host.readyAt = becomesReadyBeforeDisconnect ? host.clock : nil
+      host.streamEnded.open()
+    }
+    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    #expect(host.starts == 5)
+  }
+
+  @Test
+  func stableStreamGetsFreshRecoveryForLaterDisconnect() async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    host.earlyDisconnectsRemaining = 3
+    host.streamEnded.open()
+    try await eventually { lifecycle.renderer == 5 }
+    host.clock = host.clock.advanced(by: .seconds(60))
+    host.streamEnded.open()
+    try await eventually { lifecycle.renderer == 6 }
+    #expect(!host.connection.hasFailed)
+    lifecycle.disappear()
+    await host.connection.cleanupTask?.value
+  }
+
+  @Test
+  func leavingPreviewCancelsUnexpectedDisconnectRecovery() async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    host.reconnectGate = LifecycleGate()
+    host.streamEnded.open()
+    try await eventually { host.reconnectGate?.entered == true }
+    lifecycle.disappear()
+    host.reconnectGate?.open()
+    await host.connection.cleanupTask?.value
+    #expect(host.starts == 1 && host.stops == [1])
+    #expect(lifecycle.phase == .idle)
+  }
+}
+
+@MainActor
+private func eventually(_ condition: () -> Bool) async throws {
+  let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+  while !condition(), ContinuousClock.now < deadline {
+    await Task.yield()
+  }
+  try #require(condition(), "Lifecycle did not reach the expected state")
 }
 
 @MainActor
@@ -155,30 +256,52 @@ private final class LifecycleGate {
 @MainActor
 private final class LifecycleHost {
   let connection = LivePreviewConnection()
+  var isConnected = true
+  var clock = ContinuousClock.now
+  var readyAt: ContinuousClock.Instant?
   var starts = 0
   var stops: [Int] = []
-  var events: [String] = []
   var failsToStart = false
+  var startFailuresRemaining = 0
+  var earlyDisconnectsRemaining = 0
+  var reconnectGate: LifecycleGate?
   var startGate: LifecycleGate?
   var stopGate: LifecycleGate?
   var streamEnded = LifecycleGate()
 
+  func startPreview() async throws -> LivePreviewLifecycle<Int> {
+    let lifecycle = makeLifecycle()
+    lifecycle.appear()
+    lifecycle.updateWindowVisibility(true)
+    try await eventually { lifecycle.renderer == 1 }
+    return lifecycle
+  }
+
   func makeLifecycle() -> LivePreviewLifecycle<Int> {
     LivePreviewLifecycle(connection: connection, start: {
       self.starts += 1
-      self.events.append("start")
       await self.startGate?.wait()
       self.streamEnded = LifecycleGate()
+      self.readyAt = self.clock
+      if self.startFailuresRemaining > 0 {
+        self.startFailuresRemaining -= 1
+        return nil
+      }
+      if self.earlyDisconnectsRemaining > 0 {
+        self.earlyDisconnectsRemaining -= 1
+        self.streamEnded.open()
+      }
       return self.failsToStart ? nil : self.starts
     }, stop: { renderer in
-      self.events.append("stop")
       self.stops.append(renderer)
       self.streamEnded.open()
       await self.stopGate?.wait()
-      self.events.append("stopped")
     }, waitUntilStop: { _ in
       await self.streamEnded.wait()
       return nil
-    })
+    }, readyAt: { _ in self.readyAt }, canReconnect: { self.isConnected }, waitBeforeReconnect: { _ in
+      await self.reconnectGate?.wait()
+      try Task.checkCancellation()
+    }, now: { self.clock })
   }
 }

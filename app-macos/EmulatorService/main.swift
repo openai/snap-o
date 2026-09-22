@@ -58,6 +58,23 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
     }
   }
 
+  func controls(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    worker.async { [self] in
+      do {
+        try reply(JSONEncoder().encode(host.controls(serial: serial)), nil)
+      } catch { reply(nil, error.localizedDescription) }
+    }
+  }
+
+  func control(_ serial: String, avdPath: String, action: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    worker.async { [self] in
+      do {
+        try host.control(serial: serial, avdPath: avdPath, action: action)
+        reply(Data(), nil)
+      } catch { reply(nil, error.localizedDescription) }
+    }
+  }
+
   private func perform(
     reply: @escaping @Sendable (Data?, String?) -> Void,
     action: @escaping @Sendable (EmulatorHost) throws -> EmulatorInventory

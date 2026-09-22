@@ -11,6 +11,18 @@ final class EmulatorClient {
     _ = try await request { proxy, reply in proxy.startADBServer(reply: reply) }
   }
 
+  func controls(serial: String) async throws -> EmulatorControls {
+    try await JSONDecoder().decode(EmulatorControls.self, from: request { proxy, reply in
+      proxy.controls(serial, reply: reply)
+    })
+  }
+
+  func control(serial: String, avdPath: String, action: EmulatorControlAction) async throws {
+    _ = try await request { proxy, reply in
+      proxy.control(serial, avdPath: avdPath, action: action.rawValue, reply: reply)
+    }
+  }
+
   func snapshot(serials: [String]) async throws -> EmulatorInventory {
     try await inventory { proxy, reply in proxy.snapshot(serials, reply: reply) }
   }
