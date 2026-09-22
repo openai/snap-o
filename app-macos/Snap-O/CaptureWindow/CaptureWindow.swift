@@ -27,6 +27,8 @@ private struct CaptureWorkspaceMetricsKey: PreferenceKey {
 }
 
 struct CaptureWindow: View {
+  @Environment(AppSettings.self)
+  private var settings
   @Environment(\.openWindow)
   private var openWindow
   @Environment(CaptureHistory.self)
@@ -122,8 +124,7 @@ struct CaptureWindow: View {
         WindowSizingController(
           displayInfo: controller.displayInfoForSizing,
           layout: workspace.layout,
-          capturePaneWidth: workspace.capturePaneWidth,
-          captureFooterHeight: emulatorSerial == nil ? 0 : EmulatorFooter.height
+          capturePaneWidth: workspace.capturePaneWidth
         ) { width in
           workspace.resizeCapturePane(to: width)
           workspace.persistCapturePaneWidth()
@@ -464,34 +465,36 @@ struct CaptureWindow: View {
     controller: CaptureWindowController,
     layout: WorkspaceLayout
   ) -> some View {
-    VStack(spacing: 0) {
-      CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
-        captureContent(controller: controller)
-      }
-      .environment(\.captureImageCopied, controller.imageCopied)
-      .overlay {
-        CaptureCopyConfirmation(copyID: controller.imageCopyID)
-      }
-      if let serial = emulatorSerial {
-        EmulatorFooter(serial: serial) {
-          controller.livePreviewConnection(for: serial)?.restartID = UUID()
+    CaptureSurfaceView(aspectRatio: layout.showsTool ? controller.displayInfoForSizing?.aspectRatio : nil) {
+      captureContent(controller: controller)
+    }
+    .environment(\.captureImageCopied, controller.imageCopied)
+    .overlay {
+      CaptureCopyConfirmation(copyID: controller.imageCopyID)
+    }
+    .background {
+      if let serial = livePreviewSerial, workspace.showsCapture {
+        DeviceControlsPanel(placement: settings.deviceControlsPlacement) {
+          DeviceControlsView(
+            serial: serial, placement: settings.deviceControlsPlacement,
+            connection: controller.livePreviewConnection(for: serial)
+          ) { key in
+            try await controller.sendLivePreviewKey(key, deviceID: serial)
+          } didChangeDisplay: {
+            controller.livePreviewConnection(for: serial)?.restartID = UUID()
+          }
+          .environment(settings)
+          .id(controller.currentCapture?.id)
         }
-        .id(controller.currentCapture?.id)
-        .transition(.move(edge: .bottom))
       }
     }
-    .animation(
-      reduceMotion ? nil : .easeInOut(duration: WindowSizingController.transitionDuration),
-      value: emulatorSerial != nil
-    )
     .clipped()
     .background(captureAreaBackground)
   }
 
-  private var emulatorSerial: String? {
+  private var livePreviewSerial: String? {
     guard controller.isLivePreviewActive, !controller.isStoppingLivePreview,
-          let serial = controller.currentCapture?.device.id,
-          serial.hasPrefix("emulator-") else { return nil }
+          let serial = controller.currentCapture?.device.id else { return nil }
     return serial
   }
 
@@ -580,11 +583,9 @@ struct CaptureWindow: View {
           },
           doubleClicked: {
             guard let aspectRatio, aspectRatio > 0 else { return }
-            let footerHeight = emulatorSerial == nil ? 0 : EmulatorFooter.height
-            let imageHeight = max(previewHeight - footerHeight, 0)
             workspace.resizeCapturePane(
               to: constrainedCaptureWidth(
-                imageHeight * aspectRatio,
+                previewHeight * aspectRatio,
                 totalWidth: totalWidth,
                 aspectRatio: aspectRatio
               )

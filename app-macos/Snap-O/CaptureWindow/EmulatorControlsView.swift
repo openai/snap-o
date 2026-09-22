@@ -1,9 +1,8 @@
 import SwiftUI
 
-struct EmulatorFooter: View {
-  static let height: CGFloat = 44
-
+struct EmulatorControlsView: View {
   let serial: String
+  var isVertical = false
   let didChangeDisplay: () -> Void
   @State private var client = EmulatorClient()
   @State private var controls: EmulatorControls?
@@ -12,24 +11,15 @@ struct EmulatorFooter: View {
   @State private var reloadID = UUID()
 
   var body: some View {
-    HStack(spacing: 8) {
+    let stack = isVertical ? AnyLayout(VStackLayout(spacing: 4)) : AnyLayout(HStackLayout(spacing: 4))
+    stack {
       button(.rotateLeft)
       button(.rotateRight)
       if let controls {
-        if !controls.displayModes.isEmpty || !controls.postures.isEmpty {
-          Divider().frame(height: 14)
-        }
         menu("Display Mode", actions: controls.displayModes.map(\.action), selected: controls.currentDisplayMode, fallbackSymbol: "display")
         menu("Posture", actions: controls.postures, selected: controls.currentPosture, fallbackSymbol: "questionmark.square")
       }
     }
-    .buttonStyle(.plain)
-    .controlSize(.regular)
-    .padding(.horizontal, 10)
-    .frame(maxWidth: .infinity)
-    .frame(height: Self.height)
-    .background(.bar)
-    .overlay(alignment: .top) { Divider() }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Emulator controls")
     .task(id: reloadID) {
@@ -96,12 +86,12 @@ struct EmulatorFooter: View {
           }
         }
       } label: {
-        HStack(spacing: 2) {
-          icon(selected?.symbol ?? fallbackSymbol)
-          Image(systemName: "chevron.down")
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(.secondary)
-        }
+        icon(selected?.symbol ?? fallbackSymbol)
+          .overlay(alignment: .trailing) {
+            Image(systemName: "chevron.down")
+              .font(.system(size: 8, weight: .semibold))
+              .foregroundStyle(.secondary)
+          }
       }
       .menuStyle(.button)
       .menuIndicator(.hidden)
@@ -129,10 +119,10 @@ struct EmulatorFooter: View {
     Image(systemName: symbol)
       .resizable()
       .scaledToFit()
-      .frame(width: 18, height: 18)
-      .foregroundStyle(.secondary)
+      .frame(width: 15, height: 15)
+      .foregroundStyle(.primary)
       .offset(y: verticalOffset)
-      .frame(width: 32, height: 32)
+      .frame(width: 32, height: 36)
       .contentShape(Rectangle())
   }
 }

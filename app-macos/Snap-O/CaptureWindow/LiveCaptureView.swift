@@ -18,7 +18,6 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   private let deviceID: String
   @State private var lifecycle: LivePreviewLifecycle<LivePreviewRenderer>
   @State private var fileDrop: DeviceFileDrop
-  @State private var clipboard = EmulatorClipboardSync()
 
   init(host: Host, capture: CaptureMedia, fileStore: FileStore) {
     self.fileStore = fileStore
@@ -34,51 +33,12 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     ))
   }
 
-  var body: some View {
-    VStack(spacing: 0) {
-      preview
-      if deviceID.hasPrefix("emulator-") {
-        clipboardFooter
-      }
-    }
-    .task(id: clipboardTarget) {
-      guard let serial = clipboardTarget else { return }
-      await clipboard.run(serial: serial)
-    }
-    .onDisappear { clipboard.stop() }
-  }
-
   private var clipboardTarget: String? {
     settings.syncClipboard && deviceID.hasPrefix("emulator-")
       && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
   }
 
-  private var clipboardFooter: some View {
-    @Bindable var settings = settings
-    return HStack {
-      Spacer()
-      Toggle(isOn: $settings.syncClipboard) {
-        Image(systemName: "clipboard")
-          .foregroundStyle(settings.syncClipboard ? Color.accentColor : Color.secondary)
-      }
-      .toggleStyle(.button)
-      .buttonStyle(.borderless)
-      .accessibilityLabel("Sync clipboard")
-      .accessibilityValue(settings.syncClipboard ? "On" : "Off")
-      .help(clipboardHelp)
-    }
-    .controlSize(.small)
-    .padding(.horizontal, 8)
-    .frame(height: 28)
-    .background(.bar)
-  }
-
-  private var clipboardHelp: String {
-    if !settings.syncClipboard { return "Sync clipboard: Off" }
-    return clipboard.isUnavailable ? "Sync clipboard: Connection unavailable. Retrying…" : "Sync clipboard: On"
-  }
-
-  private var preview: some View {
+  var body: some View {
     ZStack {
       Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
       if let renderer = lifecycle.renderer {
@@ -135,6 +95,13 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     .onDisappear {
       lifecycle.disappear()
       fileDrop.cancel()
+    }
+    .task(id: clipboardTarget) {
+      lifecycle.connection?.clipboard = nil
+      guard let serial = clipboardTarget else { return }
+      let sync = EmulatorClipboardSync(settings: settings)
+      lifecycle.connection?.clipboard = sync
+      await sync.run(serial: serial)
     }
   }
 }

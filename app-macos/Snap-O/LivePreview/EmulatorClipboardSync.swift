@@ -5,47 +5,26 @@ import Observation
 @Observable
 final class EmulatorClipboardSync {
   private(set) var isUnavailable = false
-  @ObservationIgnored private var sessionID: UUID?
+  private let settings: AppSettings
   @ObservationIgnored private var state = ClipboardSyncState()
 
+  init(settings: AppSettings) {
+    self.settings = settings
+  }
+
   func run(serial: String) async {
-    let id = UUID()
-    sessionID = id
     let emulator = EmulatorClient()
-    defer {
-      emulator.close()
-      if sessionID == id { stop() }
-    }
-    while isActive(id) {
+    defer { emulator.close() }
+    while isActive {
       do {
-        let endpoint = try await emulator.clipboardEndpoint(serial: serial)
-        guard isActive(id) else { return }
         state = ClipboardSyncState()
+        let endpoint = try await emulator.clipboardEndpoint(serial: serial)
+        guard isActive else { return }
         try await EmulatorClipboardTransport.connect(endpoint: endpoint) { transport in
-          let previousText = try await transport.getText()
-          guard isActive(id) else { return }
-          let initialText = hostText()
-          if let initialText {
-            state.ignoreInitialSnapshot(matching: previousText)
-            try await transport.setText(initialText)
-          } else {
-            receive(previousText, sessionID: id)
-          }
-          guard isActive(id) else { return }
-          isUnavailable = false
-          try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-              try await transport.receive { [weak self] text in
-                await self?.receive(text, sessionID: id)
-              }
-            }
-            group.addTask { try await self.sendChanges(transport: transport, sessionID: id) }
-            defer { group.cancelAll() }
-            try await group.next()
-          }
+          try await synchronize(transport)
         }
       } catch {
-        guard isActive(id) else { return }
+        guard isActive else { return }
         // Transport errors may contain metadata; never log clipboard text or authentication tokens.
         isUnavailable = true
       }
@@ -53,14 +32,29 @@ final class EmulatorClipboardSync {
     }
   }
 
-  func stop() {
-    sessionID = nil
+  private func synchronize(_ transport: EmulatorClipboardTransport) async throws {
+    let previousText = try await transport.getText()
+    guard isActive else { return }
+    if let initialText = hostText() {
+      state.ignoreInitialSnapshot(matching: previousText)
+      try await transport.setText(initialText)
+    } else {
+      receive(previousText)
+    }
+    guard isActive else { return }
     isUnavailable = false
-    state = ClipboardSyncState()
+    try await withThrowingTaskGroup(of: Void.self) { group in
+      group.addTask {
+        try await transport.receive { text in await self.receive(text) }
+      }
+      group.addTask { try await self.sendChanges(transport: transport) }
+      defer { group.cancelAll() }
+      try await group.next()
+    }
   }
 
-  private func sendChanges(transport: EmulatorClipboardTransport, sessionID: UUID) async throws {
-    while isActive(sessionID) {
+  private func sendChanges(transport: EmulatorClipboardTransport) async throws {
+    while isActive {
       if let text = hostText() { try await transport.setText(text) }
       try await Task.sleep(for: .milliseconds(300))
     }
@@ -73,8 +67,8 @@ final class EmulatorClipboardSync {
     return state.hostText(pasteboard.string(forType: .string), changeCount: changeCount)
   }
 
-  private func receive(_ text: String, sessionID: UUID) {
-    guard isActive(sessionID) else { return }
+  private func receive(_ text: String) {
+    guard isActive else { return }
     let pasteboard = NSPasteboard.general
     guard state.shouldReceive(text, hostChangeCount: pasteboard.changeCount) else { return }
     pasteboard.clearContents()
@@ -82,7 +76,7 @@ final class EmulatorClipboardSync {
     state.received(text, changeCount: pasteboard.changeCount)
   }
 
-  private func isActive(_ id: UUID) -> Bool {
-    !Task.isCancelled && sessionID == id && AppSettings.shared.syncClipboard
+  private var isActive: Bool {
+    !Task.isCancelled && settings.syncClipboard
   }
 }

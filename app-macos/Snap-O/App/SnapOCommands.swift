@@ -184,6 +184,12 @@ struct SnapOCommands: Commands {
       .disabled(!hasAlternativeMedia)
       Divider()
       @Bindable var settings = settings
+      Picker("Device Controls", selection: $settings.deviceControlsPlacement) {
+        ForEach(DeviceControlsPlacement.allCases) { placement in
+          Text(placement.title).tag(placement)
+        }
+      }
+      Divider()
       Picker("Start With", selection: $settings.startupCaptureMode) {
         ForEach(StartupCaptureMode.allCases) { mode in
           Text(mode.title).tag(mode)

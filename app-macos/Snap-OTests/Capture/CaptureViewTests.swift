@@ -36,6 +36,34 @@ struct CaptureViewTests {
     }
   }
 
+  @Test(arguments: DeviceControlsPlacement.allCases)
+  func deviceControlsSendKeysWithoutOfferingClipboardSync(placement: DeviceControlsPlacement) async throws {
+    var sent: [String] = []
+    let controls = DeviceControlsView(
+      serial: "phone", placement: placement, connection: nil, sendKey: { sent.append($0) }, didChangeDisplay: {}
+    )
+    let view = NSHostingView(rootView: controls.environment(AppSettings.shared))
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 360, height: 400),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.contentView = view
+    defer { window.contentView = nil }
+    let actions = [
+      ("Back", "KEYCODE_BACK"), ("Home", "KEYCODE_HOME"), ("Recents", "KEYCODE_APP_SWITCH"),
+      ("Volume Down", "KEYCODE_VOLUME_DOWN"), ("Volume Up", "KEYCODE_VOLUME_UP"), ("Power/Wake", "KEYCODE_POWER")
+    ]
+    for (index, action) in actions.enumerated() {
+      try await eventually { element(named: action.0, in: view)?.isAccessibilityEnabled?() == true }
+      let button = try #require(element(named: action.0, in: view))
+      #expect(button.accessibilityPerformPress?() == true)
+      try await eventually { sent.count == index + 1 }
+      #expect(sent.last == action.1)
+    }
+    #expect(element(named: "Sync clipboard", in: view) == nil)
+    #expect(element(named: "Rotate Left", in: view) == nil)
+  }
+
   @Test
   func connectButtonClearsTheSelectedConnectionFailure() async throws {
     NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
@@ -64,11 +92,15 @@ struct CaptureViewTests {
   }
 
   private func connectButton(in element: AnyObject) -> AnyObject? {
-    if element.accessibilityLabel?() == "Connect" || element.accessibilityTitle?() == "Connect" {
+    self.element(named: "Connect", in: element)
+  }
+
+  private func element(named name: String, in element: AnyObject) -> AnyObject? {
+    if element.accessibilityLabel?() == name || element.accessibilityTitle?() == name {
       return element
     }
     for child in element.accessibilityChildren?() ?? [] {
-      if let found = connectButton(in: child as AnyObject) { return found }
+      if let found = self.element(named: name, in: child as AnyObject) { return found }
     }
     return nil
   }

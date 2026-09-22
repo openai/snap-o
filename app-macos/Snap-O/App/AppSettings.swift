@@ -1,7 +1,5 @@
-import Combine
 import Foundation
 import Observation
-import SwiftUI
 
 enum StartupCaptureMode: String, CaseIterable, Identifiable {
   case livePreview
@@ -41,6 +39,10 @@ final class AppSettings {
     didSet { defaults.set(syncClipboard, forKey: "syncClipboard") }
   }
 
+  var deviceControlsPlacement: DeviceControlsPlacement {
+    didSet { defaults.set(deviceControlsPlacement.rawValue, forKey: "deviceControlsPlacement") }
+  }
+
   var isAppTerminating: Bool = false
 
   init(defaults: UserDefaults = .standard) {
@@ -50,5 +52,23 @@ final class AppSettings {
     showTouchesDuringCapture = defaults.bool(forKey: "showTouchesDuringCapture")
     recordAsBugReport = defaults.bool(forKey: "recordAsBugReport")
     syncClipboard = defaults.object(forKey: "syncClipboard") as? Bool ?? true
+    deviceControlsPlacement = defaults.string(forKey: "deviceControlsPlacement")
+      .flatMap(DeviceControlsPlacement.init(rawValue:)) ?? .left
+  }
+}
+
+enum DeviceControlsPlacement: String, CaseIterable, Identifiable {
+  case left
+  case below
+
+  var id: Self {
+    self
+  }
+
+  var title: String {
+    switch self {
+    case .left: "Left of Window"
+    case .below: "Below Capture Pane"
+    }
   }
 }

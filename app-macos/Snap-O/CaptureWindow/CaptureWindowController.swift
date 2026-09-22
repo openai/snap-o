@@ -604,6 +604,14 @@ final class CaptureWindowController {
     return try await exec.screencapPNG(deviceID: deviceID)
   }
 
+  func sendLivePreviewKey(_ key: String, deviceID: String) async throws {
+    let exec = await adbService.exec()
+    let output = try await exec.keyEvent(deviceID: deviceID, keyCode: key)
+    guard output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw ADBError.protocolFailure("Device input failed")
+    }
+  }
+
   func setPreviewHintHovering(_ isHovering: Bool) {
     mediaDisplayMode.setPreviewHintHovering(isHovering)
   }
