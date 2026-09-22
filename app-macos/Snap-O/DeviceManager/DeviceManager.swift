@@ -11,8 +11,6 @@ final class DeviceManager {
   private(set) var loadError: String?
   private(set) var actions: [String: String] = [:]
   var actionError: String?
-  @ObservationIgnored var selectPreview: ((String) -> Void)?
-  @ObservationIgnored var isPreviewStarting: ((String) -> Bool)?
 
   var entries: [DeviceManagerEntry] {
     DeviceManagerEntry.list(emulators: emulators, connectedDevices: connectedDevices)
@@ -22,8 +20,6 @@ final class DeviceManager {
   @ObservationIgnored private let adb: ADBService
   @ObservationIgnored private let client = EmulatorClient()
   @ObservationIgnored private var actionTasks: [String: Task<Void, Never>] = [:]
-  @ObservationIgnored private var bootTask: Task<Void, Never>?
-  private var bootingAVD: String?
   private var inventoryGeneration = 0
 
   init(adb: ADBService, deviceTracker: DeviceTracker) {
@@ -36,9 +32,8 @@ final class DeviceManager {
     switch device.state {
     case .starting: return device.serial == nil ? "Connecting" : "Booting"
     case .offline: return "Connecting"
-    case .running: return device.serial.flatMap { isPreviewStarting?($0) == true ? "Starting preview" : nil }
     case .stopping: return device.state.title
-    case .stopped, .unavailable: return nil
+    case .stopped, .running, .unavailable: return nil
     }
   }
 
@@ -122,8 +117,6 @@ final class DeviceManager {
 
   func start(_ device: ManagedEmulator, coldBoot: Bool = false) {
     guard actions[device.id] == nil else { return }
-    bootTask?.cancel()
-    bootingAVD = device.id
     inventoryGeneration += 1
     actions[device.id] = "Starting"
     actionTasks[device.id] = Task { [weak self] in
@@ -137,11 +130,9 @@ final class DeviceManager {
         let inventory = try await client.start(device.id, coldBoot: coldBoot, serials: connections.map(\.serial))
         // A cold boot invalidates the old transport and its boot-completion result.
         applyAction(inventory, id: device.id)
-        if bootingAVD == device.id { waitForBoot(device.id) }
       } catch is CancellationError {
         return
       } catch {
-        if bootingAVD == device.id { bootingAVD = nil }
         actionError = error.localizedDescription
       }
     }
@@ -150,10 +141,6 @@ final class DeviceManager {
   func stop(_ device: ManagedEmulator) {
     guard actions[device.id] == nil, let serial = device.serial else { return }
     inventoryGeneration += 1
-    if bootingAVD == device.id {
-      bootTask?.cancel()
-      bootingAVD = nil
-    }
     actions[device.id] = "Stopping"
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
@@ -173,9 +160,6 @@ final class DeviceManager {
   }
 
   func shutdown() {
-    bootTask?.cancel()
-    bootTask = nil
-    bootingAVD = nil
     for task in actionTasks.values {
       task.cancel()
     }
@@ -202,33 +186,6 @@ final class DeviceManager {
       try Task.checkCancellation()
       try await client.startADBServer()
       return try await exec.emulatorConnections()
-    }
-  }
-
-  private func waitForBoot(_ id: String) {
-    bootTask = Task { [weak self] in
-      guard let self else { return }
-      defer {
-        if !Task.isCancelled, bootingAVD == id { bootingAVD = nil }
-      }
-      let deadline = Date().addingTimeInterval(180)
-      while !Task.isCancelled, Date() < deadline {
-        await refresh()
-        guard !Task.isCancelled else { return }
-        if let device = emulators.first(where: { $0.id == id }) {
-          if device.state == .running, let serial = device.serial,
-             connectedDevices.contains(where: { $0.id == serial }) {
-            selectPreview?(serial)
-            return
-          }
-          if device.state == .stopped, let detail = device.detail {
-            actionError = detail
-            return
-          }
-        }
-        do { try await Task.sleep(for: .seconds(2)) } catch { return }
-      }
-      if !Task.isCancelled { actionError = "The emulator has not finished booting. You can open Live Preview once it is running." }
     }
   }
 }

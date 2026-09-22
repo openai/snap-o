@@ -41,11 +41,12 @@ final class CaptureSnapshotController {
 
   func selectMedia(id: CaptureMedia.ID?) {
     guard selectedMediaID != id else { return }
-    selectedMediaID = id
-    let baseCapture = capture(for: id) ?? mediaList.first
-    updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
     Task { @MainActor [weak self] in
-      await self?.showPreviewHintIfNeeded(transient: true)
+      guard let self else { return }
+      selectedMediaID = id
+      let baseCapture = capture(for: id) ?? mediaList.first
+      updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
+      await showPreviewHintIfNeeded(transient: true)
     }
   }
 

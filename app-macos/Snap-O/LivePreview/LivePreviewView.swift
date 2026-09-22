@@ -150,8 +150,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     if shouldDetach {
       detachSession()
     }
-    let thumbnailChanged = self.thumbnail !== thumbnail
-    if thumbnailChanged {
+    if self.thumbnail !== thumbnail {
       detachThumbnail()
       self.thumbnail = thumbnail
     }
@@ -160,7 +159,6 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     if shouldDetach {
       attachSession()
     }
-    if shouldDetach || thumbnailChanged { publishFrameState() }
   }
 
   private func configureLayerIfNeeded() {
@@ -197,10 +195,6 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     guard thumbnail?.videoRenderer === displayLayer.sampleBufferRenderer else { return }
     thumbnail?.cacheLiveFrame()
     thumbnail?.videoRenderer = nil
-    Task { [weak thumbnail] in
-      guard thumbnail?.videoRenderer == nil else { return }
-      thumbnail?.hasLiveFrame = false
-    }
   }
 
   private func detachSession() {
@@ -217,19 +211,9 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     displayLayer.sampleBufferRenderer.enqueue(sample)
     if !endedLivePreviewTrace {
       endedLivePreviewTrace = true
-      publishFrameState()
       Perf.step(.appFirstSnapshot, "after: Start Live Preview")
       Perf.end(.livePreviewStart, finalLabel: "first frame enqueued")
       Perf.end(.appFirstSnapshot, finalLabel: "first media appeared (live)")
-    }
-  }
-
-  private func publishFrameState() {
-    // Buffered frames can arrive during updateNSView; publish the latest state after that update.
-    Task { [weak self] in
-      guard let self, let thumbnail, thumbnail.videoRenderer === displayLayer.sampleBufferRenderer else { return }
-      let hasFrame = renderer != nil && endedLivePreviewTrace
-      if thumbnail.hasLiveFrame != hasFrame { thumbnail.hasLiveFrame = hasFrame }
     }
   }
 
