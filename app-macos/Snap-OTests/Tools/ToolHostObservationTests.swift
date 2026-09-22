@@ -132,6 +132,46 @@ struct ToolHostObservationTests {
     #expect(!host.isPageReady)
   }
 
+  @Test
+  func appDiscoveryIsNotLoadedUntilTheFirstSuccessfulScan() async throws {
+    let suite = "ToolHostDiscoveryTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var selection = ToolSelection()
+    selection.reconcile([selectionApp()])
+    defaults.set(selection.serialized, forKey: "inspectorPreferences")
+    var scans = 0
+    var shouldFail = true
+    var apps: [InspectableApp] = []
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      scans += 1
+      if shouldFail { throw NSError(domain: "ToolHostDiscoveryTests", code: 1) }
+      return ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    defer { host.stop() }
+
+    #expect(!host.hasLoadedApps)
+    try await eventually { scans == 1 }
+    #expect(!host.hasLoadedApps, "A failed scan does not establish that no apps exist")
+    #expect(host.webContainer == nil)
+
+    shouldFail = false
+    appTool.refresh()
+    try await eventually { host.hasLoadedApps }
+    #expect(host.toolApps.isEmpty)
+    #expect(host.selectedToolApp == nil)
+
+    apps = [selectionApp(20, process: "com.example.other")]
+    appTool.refresh()
+    try await eventually { !host.toolApps.isEmpty }
+    #expect(host.hasLoadedApps)
+    #expect(host.selectedToolApp == nil, "An unmatched saved preference still needs an explicit selection")
+    #expect(host.webContainer == nil)
+  }
+
   private func eventually(_ condition: () -> Bool) async throws {
     for _ in 0 ..< 100 {
       if condition() { return }

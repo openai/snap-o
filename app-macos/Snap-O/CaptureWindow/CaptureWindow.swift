@@ -397,6 +397,9 @@ struct CaptureWindow: View {
                       if let app = toolModel.selectedToolApp {
                         Text("Waiting for \(app.name)")
                           .foregroundStyle(.secondary)
+                      } else if !toolModel.hasLoadedApps {
+                        Text("Finding apps…")
+                          .foregroundStyle(.secondary)
                       } else {
                         Text(toolModel.toolApps.isEmpty ? "No apps found" : "Select an app to inspect")
                           .foregroundStyle(.secondary)

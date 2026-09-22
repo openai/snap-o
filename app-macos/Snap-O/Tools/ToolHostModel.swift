@@ -5,6 +5,7 @@ import Observation
 @MainActor
 final class ToolHostModel {
   private(set) var toolApps: [InspectableApp] = []
+  private(set) var hasLoadedApps = false
   private(set) var selectedTool: SelectedAppTool?
   private(set) var selectedToolApp: InspectableApp?
   private(set) var replacementApp: InspectableApp?
@@ -183,6 +184,7 @@ final class ToolHostModel {
     if selectedTool?.kind != state.selection?.kind || selectedTool?.server != state.selection?.server {
       webContainer?.closeNativeColorPanel()
     }
+    hasLoadedApps = !snapshot.loading
     toolApps = state.apps
     selectedTool = state.selection
     selectedToolApp = state.selectedApp
