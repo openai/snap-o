@@ -53,7 +53,10 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .onDrop(of: [.fileURL], delegate: DeviceFileDropDelegate(model: fileDrop))
+    .dropDestination(for: URL.self, isEnabled: fileDrop.canAcceptDrop) { urls, _ in
+      fileDrop.receive(urls)
+    }
+    .dropConfiguration { _ in DropConfiguration(operation: .copy) }
     .overlay(alignment: .bottom) {
       if fileDrop.isBusy || fileDrop.status != nil || !fileDrop.failures.isEmpty {
         DeviceFileDropStatus(model: fileDrop)
@@ -67,7 +70,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       if !fileDrop.installMessage.isEmpty { Text(fileDrop.installMessage) }
     }
     .alert(
-      "“\(fileDrop.conflict?.name ?? "")” already exists",
+      "“\(fileDrop.conflictName)” already exists",
       isPresented: $fileDrop.asksAboutConflict
     ) {
       Button("Keep Both") { fileDrop.answerConflict(.keepBoth) }

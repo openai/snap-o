@@ -147,7 +147,7 @@ extension ADBClient {
 
   func installAPK(
     deviceID: String, localURL: URL, progress: @escaping @Sendable (Int64) -> Void
-  ) async throws -> Int {
+  ) async throws {
     let staging = "/data/local/tmp/snap-o-\(UUID().uuidString).apk"
     do {
       let userOutput = try await fileCommand(deviceID: deviceID, command: "am get-current-user")
@@ -161,7 +161,6 @@ extension ADBClient {
         throw ADBError.protocolFailure(output.isEmpty ? "Installation did not report success." : output)
       }
       await removeTransferFile(deviceID: deviceID, path: staging)
-      return user
     } catch {
       await removeTransferFile(deviceID: deviceID, path: staging)
       throw error

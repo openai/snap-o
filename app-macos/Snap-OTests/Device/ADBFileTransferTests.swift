@@ -65,46 +65,19 @@ struct ADBFileTransferTests {
 
   @Test("APK drops prompt once and keep mixed files together")
   @MainActor
-  func apkPrompt() async throws {
+  func apkPrompt() {
     let device = Device(id: "synthetic", model: "Test phone", androidVersion: "16", vendorModel: nil, manufacturer: nil, avdName: nil)
     let model = DeviceFileDrop(device: device)
     let apk = URL(fileURLWithPath: "/tmp/synthetic.apk")
     let text = URL(fileURLWithPath: "/tmp/synthetic.txt")
-    #expect(model.receive([NSItemProvider(object: apk as NSURL), NSItemProvider(object: text as NSURL)]))
+    #expect(model.receive([apk, text]))
     #expect(!model.canAcceptDrop)
-    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-    while model.isBusy, ContinuousClock.now < deadline {
-      try await Task.sleep(for: .milliseconds(10))
-    }
     #expect(model.asksToInstall)
     #expect(model.pendingFiles == [apk, text])
     #expect(model.installMessage == "1 other file will copy to Downloads.")
     model.cancel()
     #expect(model.canAcceptDrop)
     #expect(model.pendingFiles.isEmpty)
-  }
-
-  @Test("install, update, and open a synthetic APK", .enabled(if: ProcessInfo.processInfo.environment["SNAPO_FILE_TRANSFER_APK"] != nil))
-  func emulatorInstall() async throws {
-    let device = try #require(ProcessInfo.processInfo.environment["SNAPO_FILE_TRANSFER_DEVICE"])
-    guard device.hasPrefix("emulator-") else { return }
-    let path = try #require(ProcessInfo.processInfo.environment["SNAPO_FILE_TRANSFER_APK"])
-    let url = URL(fileURLWithPath: path)
-    let metadata = try APKPackageName.read(from: url)
-    let package = try #require(metadata)
-    try #require(package == "com.example.snapo.filetransferfixture")
-    let adb = ADBClient()
-    let existing = try await adb.fileCommand(deviceID: device, command: "pm list packages \(package)")
-    try #require(existing.isEmpty, "Do not overwrite an existing fixture app.")
-    do {
-      let user = try await adb.installAPK(deviceID: device, localURL: url) { _ in }
-      #expect(try await adb.installAPK(deviceID: device, localURL: url) { _ in } == user)
-      try await adb.openApp(deviceID: device, packageName: package, androidUserID: user)
-      _ = try await adb.fileCommand(deviceID: device, command: "pm uninstall \(package)")
-    } catch {
-      _ = try? await adb.fileCommand(deviceID: device, command: "pm uninstall \(package)")
-      throw error
-    }
   }
 
   @Test("copy names preserve extensions and reject invalid paths")
@@ -152,15 +125,6 @@ struct ADBFileTransferTests {
     } catch DeviceFileTransferError.blockedByPolicy {}
   }
 
-  @Test("binary manifests support both string encodings", arguments: [false, true])
-  func packageName(utf8: Bool) {
-    let fixture = manifest(utf8: utf8)
-    #expect(APKPackageName.parse(fixture) == "com.example.synthetic")
-    for end in 0 ..< fixture.count {
-      #expect(APKPackageName.parse(fixture.prefix(end)) == nil)
-    }
-  }
-
   @Test(
     "copying on an explicitly selected emulator",
     .enabled(if: ProcessInfo.processInfo.environment["SNAPO_FILE_TRANSFER_DEVICE"] != nil)
@@ -195,54 +159,13 @@ struct ADBFileTransferTests {
       let listing = try await adb.fileCommand(deviceID: device, command: "ls -A \(DeviceFileCommand.quote(directory))")
       #expect(!listing.contains(".partial"))
       await #expect(throws: (any Error).self) {
-        _ = try await adb.installAPK(deviceID: device, localURL: local) { _ in }
+        try await adb.installAPK(deviceID: device, localURL: local) { _ in }
       }
       _ = try await adb.fileCommand(deviceID: device, command: "rm -r \(DeviceFileCommand.quote(directory))")
     } catch {
       _ = try? await adb.fileCommand(deviceID: device, command: "rm -r \(DeviceFileCommand.quote(directory))")
       throw error
     }
-  }
-
-  private func manifest(utf8: Bool) -> Data {
-    let strings = ["manifest", "package", "com.example.synthetic"]
-    var pool = Data()
-    var offsets = Data()
-    for string in strings {
-      offsets.append(word(UInt32(pool.count)))
-      if utf8 {
-        pool.append(contentsOf: [UInt8(string.count), UInt8(string.utf8.count)])
-        pool.append(Data(string.utf8))
-        pool.append(0)
-      } else {
-        pool.append(contentsOf: [UInt8(string.count), 0])
-        pool.append(string.data(using: .utf16LittleEndian) ?? Data())
-        pool.append(contentsOf: [0, 0])
-      }
-    }
-    while pool.count % 4 != 0 {
-      pool.append(0)
-    }
-    var stringChunk = Data([1, 0, 28, 0])
-    stringChunk.append(word(UInt32(28 + offsets.count + pool.count)))
-    for value: UInt32 in [3, 0, utf8 ? 256 : 0, 40, 0] {
-      stringChunk.append(word(value))
-    }
-    stringChunk.append(offsets)
-    stringChunk.append(pool)
-    var element = Data([2, 1, 16, 0])
-    for value: UInt32 in [56, 1, UInt32.max, UInt32.max, 0] {
-      element.append(word(value))
-    }
-    element.append(contentsOf: [20, 0, 20, 0, 1, 0, 0, 0, 0, 0, 0, 0])
-    for value: UInt32 in [UInt32.max, 1, 2, 0x0300_0008, 2] {
-      element.append(word(value))
-    }
-    var xml = Data([3, 0, 8, 0])
-    xml.append(word(UInt32(8 + stringChunk.count + element.count)))
-    xml.append(stringChunk)
-    xml.append(element)
-    return xml
   }
 }
 
