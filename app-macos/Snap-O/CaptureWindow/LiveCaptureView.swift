@@ -22,6 +22,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
       start: { await host.startLivePreviewStream(for: capture.device.id) },
       stop: { await host.stopLivePreviewStream($0) },
       waitUntilStop: { await $0.session.waitUntilStop() },
+      readyAt: { $0.session.readyAt },
       canReconnect: { host.canReconnectLivePreview(for: capture.device.id) }
     ))
   }

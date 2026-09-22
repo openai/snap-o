@@ -19,6 +19,7 @@ final class LivePreviewLifecycle<Renderer> {
   @ObservationIgnored private let start: @MainActor () async -> Renderer?
   @ObservationIgnored private let stop: @MainActor (Renderer) async -> Void
   @ObservationIgnored private let waitUntilStop: @MainActor (Renderer) async -> Error?
+  @ObservationIgnored private let readyAt: @MainActor (Renderer) -> ContinuousClock.Instant?
   @ObservationIgnored private let canReconnect: @MainActor () -> Bool
   @ObservationIgnored private let now: @MainActor () -> ContinuousClock.Instant
   @ObservationIgnored private let waitBeforeReconnect: @MainActor (Duration) async throws -> Void
@@ -32,6 +33,7 @@ final class LivePreviewLifecycle<Renderer> {
     start: @escaping @MainActor () async -> Renderer?,
     stop: @escaping @MainActor (Renderer) async -> Void,
     waitUntilStop: @escaping @MainActor (Renderer) async -> Error?,
+    readyAt: @escaping @MainActor (Renderer) -> ContinuousClock.Instant?,
     canReconnect: @escaping @MainActor () -> Bool,
     waitBeforeReconnect: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
     now: @escaping @MainActor () -> ContinuousClock.Instant = { .now }
@@ -40,6 +42,7 @@ final class LivePreviewLifecycle<Renderer> {
     self.start = start
     self.stop = stop
     self.waitUntilStop = waitUntilStop
+    self.readyAt = readyAt
     self.canReconnect = canReconnect
     self.now = now
     self.waitBeforeReconnect = waitBeforeReconnect
@@ -141,12 +144,11 @@ final class LivePreviewLifecycle<Renderer> {
         if let newRenderer {
           renderer = newRenderer
           phase = .streaming
-          let streamStarted = now()
           streamError = await waitUntilStop(newRenderer)
           guard isActive(id) else { return }
           renderer = nil
-          // A later disconnect gets a fresh budget after a stable stream, not after every retry.
-          if streamStarted.duration(to: now()) >= .seconds(10) {
+          // Startup time does not count toward a stable preview.
+          if let readyAt = readyAt(newRenderer), readyAt.duration(to: now()) >= .seconds(10) {
             retryIndex = 0
           }
           isRecovering = true

@@ -178,6 +178,7 @@ struct LivePreviewSessionTests {
   static func main() async throws {
     let session = try await LivePreviewSession(deviceID: "ready", adb: ADBService())
     precondition(!session.isReady)
+    precondition(session.readyAt == nil)
     guard let decoder = H264StreamDecoder.latest else { fatalError("Missing decoder") }
     let first = Task { try await session.waitUntilReady() }
     let second = Task { try await session.waitUntilReady() }
@@ -190,8 +191,11 @@ struct LivePreviewSessionTests {
     precondition(firstMedia == secondMedia)
     precondition(firstMedia.size == CGSize(width: 1080, height: 2400))
     precondition(session.isReady)
+    let readyAt = session.readyAt
+    precondition(readyAt != nil)
     session.cancel()
     precondition(!session.isReady)
+    precondition(session.readyAt == readyAt)
     await expectCancellation(Task { try await session.waitUntilReady() })
     _ = await session.waitUntilStop()
     await eventually { decoder.finishCount == 1 }

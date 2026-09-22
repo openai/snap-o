@@ -178,6 +178,20 @@ struct LivePreviewLifecycleTests {
     #expect(host.starts == 1 && host.stops == [1])
   }
 
+  @Test(arguments: [false, true])
+  func startupTimeDoesNotResetRecovery(becomesReadyBeforeDisconnect: Bool) async throws {
+    let host = LifecycleHost()
+    let lifecycle = try await host.startPreview()
+    for attempt in 1 ... 5 {
+      try await eventually { lifecycle.renderer == attempt }
+      host.clock = host.clock.advanced(by: .seconds(60))
+      host.readyAt = becomesReadyBeforeDisconnect ? host.clock : nil
+      host.streamEnded.open()
+    }
+    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    #expect(host.starts == 5)
+  }
+
   @Test
   func stableStreamGetsFreshRecoveryForLaterDisconnect() async throws {
     let host = LifecycleHost()
@@ -244,6 +258,7 @@ private final class LifecycleHost {
   let connection = LivePreviewConnection()
   var isConnected = true
   var clock = ContinuousClock.now
+  var readyAt: ContinuousClock.Instant?
   var starts = 0
   var stops: [Int] = []
   var failsToStart = false
@@ -267,6 +282,7 @@ private final class LifecycleHost {
       self.starts += 1
       await self.startGate?.wait()
       self.streamEnded = LifecycleGate()
+      self.readyAt = self.clock
       if self.startFailuresRemaining > 0 {
         self.startFailuresRemaining -= 1
         return nil
@@ -283,7 +299,7 @@ private final class LifecycleHost {
     }, waitUntilStop: { _ in
       await self.streamEnded.wait()
       return nil
-    }, canReconnect: { self.isConnected }, waitBeforeReconnect: { _ in
+    }, readyAt: { _ in self.readyAt }, canReconnect: { self.isConnected }, waitBeforeReconnect: { _ in
       await self.reconnectGate?.wait()
       try Task.checkCancellation()
     }, now: { self.clock })
