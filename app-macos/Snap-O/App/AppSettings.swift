@@ -60,6 +60,7 @@ final class AppSettings {
 enum DeviceControlsPlacement: String, CaseIterable, Identifiable {
   case left
   case below
+  case hidden
 
   var id: Self {
     self
@@ -69,6 +70,7 @@ enum DeviceControlsPlacement: String, CaseIterable, Identifiable {
     switch self {
     case .left: "Left of Window"
     case .below: "Below Capture Pane"
+    case .hidden: "Hide"
     }
   }
 }

@@ -102,7 +102,7 @@ final class DeviceControlsAnchorView: NSView {
 
   private func updatePanel() {
     guard isAttached, let window, let host else { return }
-    guard NSApp.isActive, window.isVisible, !window.isMiniaturized, window.occlusionState.contains(.visible),
+    guard placement != .hidden, NSApp.isActive, window.isVisible, !window.isMiniaturized, window.occlusionState.contains(.visible),
           !isHiddenOrHasHiddenAncestor, bounds.width > 0, bounds.height > 0 else {
       panel?.orderOut(nil)
       return
@@ -140,11 +140,14 @@ final class DeviceControlsAnchorView: NSView {
     windowFrame: CGRect, captureFrame: CGRect, screenFrame: CGRect
   ) -> CGRect {
     let gap: CGFloat = 8
-    let origin = switch placement {
+    let origin: CGPoint
+    switch placement {
     case .left:
-      CGPoint(x: windowFrame.minX - gap - size.width, y: captureFrame.maxY - size.height)
+      origin = CGPoint(x: windowFrame.minX - gap - size.width, y: captureFrame.maxY - size.height)
+    case .hidden:
+      return .zero
     case .below:
-      CGPoint(x: captureFrame.midX - size.width / 2, y: windowFrame.minY - gap - size.height)
+      origin = CGPoint(x: captureFrame.midX - size.width / 2, y: windowFrame.minY - gap - size.height)
     }
     // Keep the controls reachable at screen edges without resizing or moving the capture window.
     return CGRect(
