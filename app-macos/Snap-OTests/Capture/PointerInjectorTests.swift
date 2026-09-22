@@ -125,6 +125,52 @@ struct LivePreviewPointerTests {
   }
 
   @Test
+  static func multitouchWaitsForPreparation() async throws {
+    let preparation = RecordingBackend(holdFirstSend: true)
+    let preferred = RecordingBackend(minimumMoveInterval: .zero)
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in
+      try await preparation.send(event(.down))
+      return preferred
+    }, fallbackBackend: RecordingBackend())
+    var down = event(.down)
+    down.locations.append(CGPoint(x: 50, y: 50))
+    await sender.enqueue(down)
+    try await waitUntil { await preparation.events.count == 1 }
+    for action in [LivePreviewPointerAction.move, .up] {
+      var touch = event(action)
+      touch.locations = down.locations
+      await sender.enqueue(touch)
+    }
+
+    await preparation.release()
+
+    try await waitUntil { await preferred.events.count == 3 }
+    let sent = await preferred.events
+    #expect(sent.map(\.action) == [.down, .move, .up])
+    await sender.stopAll()
+  }
+
+  @Test
+  static func stoppingDuringPreparationDiscardsPendingMultitouch() async throws {
+    let preparation = RecordingBackend(holdFirstSend: true)
+    let preferred = RecordingBackend()
+    let sender = LivePreviewPointerInjector(makePreferredBackend: { _ in
+      try await preparation.send(event(.down))
+      return preferred
+    }, fallbackBackend: RecordingBackend())
+    var down = event(.down)
+    down.locations.append(CGPoint(x: 50, y: 50))
+    await sender.enqueue(down)
+    try await waitUntil { await preparation.events.count == 1 }
+
+    await sender.stopDevice("test-device")
+    await preparation.release()
+
+    try await waitUntil { await preferred.isStopped }
+    #expect(await preferred.events.isEmpty)
+  }
+
+  @Test
   static func shellFallbackDoesNotTurnMultitouchIntoSingleTouch() async throws {
     let backend = RecordingBackend()
     let clock = TestClock()

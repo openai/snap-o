@@ -271,6 +271,11 @@ actor LivePreviewPointerInjector {
     if deviceStates[event.deviceID] == nil {
       prepare(deviceID: event.deviceID)
     }
+    if event.locations.count > 1,
+       case .preparing(let generation, let task) = deviceStates[event.deviceID] {
+      await task.value
+      guard deviceStates[event.deviceID]?.generation == generation else { return }
+    }
     guard let state = deviceStates[event.deviceID] else { return }
 
     switch state {
