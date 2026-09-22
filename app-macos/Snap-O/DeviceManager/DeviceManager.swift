@@ -33,9 +33,9 @@ final class DeviceManager {
   func startupStatus(for device: ManagedEmulator) -> String? {
     if let action = actions[device.id] { return action }
     switch device.state {
-    case .starting: return device.serial == nil ? "Connecting..." : "Booting..."
-    case .offline: return "Connecting..."
-    case .running: return previewAVD == device.id ? "Starting preview..." : nil
+    case .starting: return device.serial == nil ? "Connecting" : "Booting"
+    case .offline: return "Connecting"
+    case .running: return previewAVD == device.id ? "Starting preview" : nil
     case .stopping: return device.state.title
     case .stopped, .unavailable: return nil
     }
@@ -58,7 +58,7 @@ final class DeviceManager {
   func delete(_ device: ManagedEmulator) {
     guard actions[device.id] == nil, device.canDelete else { return }
     inventoryGeneration += 1
-    actions[device.id] = "Deleting…"
+    actions[device.id] = "Deleting"
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
       defer {
@@ -124,7 +124,7 @@ final class DeviceManager {
     previewTask?.cancel()
     previewAVD = device.id
     inventoryGeneration += 1
-    actions[device.id] = "Starting..."
+    actions[device.id] = "Starting"
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
       defer {
@@ -153,7 +153,7 @@ final class DeviceManager {
       previewTask?.cancel()
       previewAVD = nil
     }
-    actions[device.id] = "Stopping…"
+    actions[device.id] = "Stopping"
     actionTasks[device.id] = Task { [weak self] in
       guard let self else { return }
       defer {
