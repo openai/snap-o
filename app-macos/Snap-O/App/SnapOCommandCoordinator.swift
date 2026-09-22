@@ -4,8 +4,9 @@ import SwiftUI
 @MainActor
 private protocol SnapOCommandTarget: AnyObject {
   func perform(_ command: SnapOCommand)
-  func showLivePreview(deviceID: String, focus: Bool) -> Bool
-  func isLivePreviewSelected(deviceID: String) -> Bool
+  func showLivePreview(deviceID: String)
+  func selectLivePreview(deviceID: String)
+  func isStartingLivePreview(deviceID: String) -> Bool
   func liveThumbnail(deviceID: String) -> LivePreviewThumbnail?
 }
 
@@ -38,16 +39,19 @@ final class SnapOCommandCoordinator {
       pendingPreviewDeviceID = deviceID
       return false
     }
-    return target.showLivePreview(deviceID: deviceID, focus: true)
+    target.showLivePreview(deviceID: deviceID)
+    return true
   }
 
-  func selectLivePreview(deviceID: String) -> LivePreviewRequest? {
-    guard let target = focusedTarget ?? lastTarget,
-          target.showLivePreview(deviceID: deviceID, focus: false) else { return nil }
-    return LivePreviewRequest { [weak target] in
-      guard let target, target.isLivePreviewSelected(deviceID: deviceID) else { return .inactive }
-      return target.liveThumbnail(deviceID: deviceID)?.videoRenderer?.displayedPixelBuffer() == nil ? .waiting : .ready
+  func selectLivePreview(deviceID: String) {
+    (focusedTarget ?? lastTarget)?.selectLivePreview(deviceID: deviceID)
+  }
+
+  func isStartingLivePreview(deviceID: String) -> Bool {
+    for case let target as any SnapOCommandTarget in targets.allObjects where target.isStartingLivePreview(deviceID: deviceID) {
+      return true
     }
+    return false
   }
 
   func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
@@ -71,7 +75,7 @@ final class SnapOCommandCoordinator {
     lastTarget = target
     if let deviceID = pendingPreviewDeviceID {
       pendingPreviewDeviceID = nil
-      _ = target.showLivePreview(deviceID: deviceID, focus: true)
+      target.showLivePreview(deviceID: deviceID)
     }
     let commands = pendingCommands
     pendingCommands.removeAll()
@@ -97,18 +101,26 @@ extension SnapOCommand {
 
 struct WindowCommandRegistration: NSViewRepresentable {
   let perform: @MainActor (SnapOCommand) -> Void
-  let preview: @MainActor (String, Bool) -> Bool
-  let previewIsSelected: @MainActor (String) -> Bool
+  let preview: @MainActor (String) -> Void
+  let selectPreview: @MainActor (String) -> Void
+  let previewIsStarting: @MainActor (String) -> Bool
   let thumbnail: @MainActor (String) -> LivePreviewThumbnail?
 
   func makeNSView(context: Context) -> WindowCommandTargetView {
-    WindowCommandTargetView(perform: perform, preview: preview, previewIsSelected: previewIsSelected, thumbnail: thumbnail)
+    WindowCommandTargetView(
+      perform: perform,
+      preview: preview,
+      selectPreview: selectPreview,
+      previewIsStarting: previewIsStarting,
+      thumbnail: thumbnail
+    )
   }
 
   func updateNSView(_ nsView: WindowCommandTargetView, context: Context) {
     nsView.performCommand = perform
     nsView.previewDevice = preview
-    nsView.previewIsSelected = previewIsSelected
+    nsView.selectPreviewDevice = selectPreview
+    nsView.previewIsStarting = previewIsStarting
     nsView.thumbnailForDevice = thumbnail
     nsView.attach(to: nsView.window)
   }
@@ -121,8 +133,9 @@ struct WindowCommandRegistration: NSViewRepresentable {
 @MainActor
 final class WindowCommandTargetView: NSView, SnapOCommandTarget {
   var performCommand: @MainActor (SnapOCommand) -> Void
-  var previewDevice: @MainActor (String, Bool) -> Bool
-  var previewIsSelected: @MainActor (String) -> Bool
+  var previewDevice: @MainActor (String) -> Void
+  var selectPreviewDevice: @MainActor (String) -> Void
+  var previewIsStarting: @MainActor (String) -> Bool
   var thumbnailForDevice: @MainActor (String) -> LivePreviewThumbnail?
 
   private weak var observedWindow: NSWindow?
@@ -130,13 +143,15 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
 
   init(
     perform: @escaping @MainActor (SnapOCommand) -> Void,
-    preview: @escaping @MainActor (String, Bool) -> Bool,
-    previewIsSelected: @escaping @MainActor (String) -> Bool,
+    preview: @escaping @MainActor (String) -> Void,
+    selectPreview: @escaping @MainActor (String) -> Void,
+    previewIsStarting: @escaping @MainActor (String) -> Bool,
     thumbnail: @escaping @MainActor (String) -> LivePreviewThumbnail?
   ) {
     performCommand = perform
     previewDevice = preview
-    self.previewIsSelected = previewIsSelected
+    selectPreviewDevice = selectPreview
+    self.previewIsStarting = previewIsStarting
     thumbnailForDevice = thumbnail
     super.init(frame: .zero)
   }
@@ -155,19 +170,22 @@ final class WindowCommandTargetView: NSView, SnapOCommandTarget {
     performCommand(command)
   }
 
-  func showLivePreview(deviceID: String, focus: Bool) -> Bool {
-    // A hidden window cannot start rendering until it becomes visible.
-    guard focus || window?.occlusionState.contains(.visible) == true else { return false }
-    if focus { window?.makeKeyAndOrderFront(nil) }
-    return previewDevice(deviceID, focus)
+  func showLivePreview(deviceID: String) {
+    window?.makeKeyAndOrderFront(nil)
+    previewDevice(deviceID)
+  }
+
+  func selectLivePreview(deviceID: String) {
+    guard window?.occlusionState.contains(.visible) == true else { return }
+    selectPreviewDevice(deviceID)
   }
 
   func liveThumbnail(deviceID: String) -> LivePreviewThumbnail? {
     thumbnailForDevice(deviceID)
   }
 
-  func isLivePreviewSelected(deviceID: String) -> Bool {
-    observedWindow != nil && window?.occlusionState.contains(.visible) == true && previewIsSelected(deviceID)
+  func isStartingLivePreview(deviceID: String) -> Bool {
+    observedWindow != nil && window?.occlusionState.contains(.visible) == true && previewIsStarting(deviceID)
   }
 
   func attach(to window: NSWindow?) {

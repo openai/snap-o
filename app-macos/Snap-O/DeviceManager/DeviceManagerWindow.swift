@@ -56,6 +56,9 @@ struct DeviceManagerWindow: View {
       manager.selectPreview = { serial in
         SnapOCommandCoordinator.shared.selectLivePreview(deviceID: serial)
       }
+      manager.isPreviewStarting = { serial in
+        SnapOCommandCoordinator.shared.isStartingLivePreview(deviceID: serial)
+      }
       await manager.observe()
     }
     .alert("Device Manager", isPresented: Binding(

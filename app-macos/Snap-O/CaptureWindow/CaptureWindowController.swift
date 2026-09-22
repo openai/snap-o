@@ -27,6 +27,7 @@ final class CaptureWindowController {
   private var knownDevices: [Device] = []
   @ObservationIgnored private var deviceStreamTask: Task<Void, Never>?
   private var pendingPreferredDeviceID: String?
+  private var pendingPreviewDeviceID: String?
   @ObservationIgnored private var hasStartedInitialCapture = false
   @ObservationIgnored private var initialCaptureTask: Task<Void, Never>?
   @ObservationIgnored private var initialCaptureWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
@@ -70,22 +71,26 @@ final class CaptureWindowController {
   }
 
   func selectMedia(id: CaptureMedia.ID) {
-    snapshotController.selectMedia(id: id)
+    selectMedia(id: Optional(id))
   }
 
   func selectMedia(id: CaptureMedia.ID?) {
+    cancelPendingPreviewSelection()
     snapshotController.selectMedia(id: id)
   }
 
   func selectNextMedia() {
+    cancelPendingPreviewSelection()
     snapshotController.selectNextMedia()
   }
 
   func selectPreviousMedia() {
+    cancelPendingPreviewSelection()
     snapshotController.selectPreviousMedia()
   }
 
   func selectDevice(id: String) {
+    cancelPendingPreviewSelection()
     guard selectedDeviceID != id else { return }
     mediaDisplayMode.updateLastViewedDeviceID(id)
     if let media = mediaList.first(where: { $0.device.id == id }) {
@@ -226,6 +231,7 @@ final class CaptureWindowController {
   }
 
   func captureScreenshots(useStartupPreparation: Bool = false) async {
+    cancelPendingPreviewSelection()
     if !useStartupPreparation {
       guard await waitForInitialCaptureSetup() else { return }
     }
@@ -266,6 +272,7 @@ final class CaptureWindowController {
   }
 
   func startRecording() async {
+    cancelPendingPreviewSelection()
     guard await waitForInitialCaptureSetup(), canStartRecordingNow else { return }
     hasStartedInitialCapture = true
     isProcessing = true
@@ -323,19 +330,38 @@ final class CaptureWindowController {
     await recordingMode.finish()
   }
 
+  private var canSelectDeviceInLivePreview: Bool {
+    isLivePreviewActive && !isTornDown && !isProcessing && !isStoppingLivePreview
+  }
+
   func selectDeviceInLivePreview(id: String) -> Bool {
-    guard isLivePreviewActive, canCaptureNow, knownDevices.contains(where: { $0.id == id }) else { return false }
-    selectDevice(id: id)
+    guard canSelectDeviceInLivePreview else { return false }
+    // Device Manager can see a booted device before Capture receives it or its display metadata.
+    pendingPreviewDeviceID = id
+    applyPendingPreviewSelection()
     return true
   }
 
-  func isDeviceSelectedInLivePreview(id: String) -> Bool {
-    guard isLivePreviewActive, canCaptureNow, knownDevices.contains(where: { $0.id == id }) else { return false }
-    // Selection can still be queued while display metadata or the media view catches up.
-    return (pendingPreferredDeviceID ?? lastViewedDeviceID) == id
+  func cancelPendingPreviewSelection() {
+    pendingPreviewDeviceID = nil
+  }
+
+  private func applyPendingPreviewSelection() {
+    guard let id = pendingPreviewDeviceID, canSelectDeviceInLivePreview,
+          knownDevices.contains(where: { $0.id == id }), mediaList.contains(where: { $0.device.id == id }) else { return }
+    selectDevice(id: id)
+  }
+
+  func isStartingLivePreview(deviceID: String) -> Bool {
+    guard canSelectDeviceInLivePreview else { return false }
+    if pendingPreviewDeviceID == deviceID { return true }
+    guard selectedDeviceID == deviceID, knownDevices.contains(where: { $0.id == deviceID }),
+          let connection = livePreviewConnection(for: deviceID) else { return false }
+    return !connection.hasFailed && !connection.thumbnail.hasLiveFrame
   }
 
   func showLivePreview(deviceID: String) async {
+    cancelPendingPreviewSelection()
     let deadline = Date().addingTimeInterval(20)
     while !isTornDown, !Task.isCancelled, Date() < deadline {
       if isRecording {
@@ -396,6 +422,7 @@ final class CaptureWindowController {
         if let pending = pendingPreferredDeviceID, mediaList.contains(where: { $0.device.id == pending }) {
           pendingPreferredDeviceID = nil
         }
+        applyPendingPreviewSelection()
         resumeInitialCaptureWaiters()
       }
     )
@@ -426,6 +453,7 @@ final class CaptureWindowController {
   func tearDown() async {
     guard !isTornDown else { return }
     isTornDown = true
+    cancelPendingPreviewSelection()
     initialCaptureTask?.cancel()
     initialCaptureTask = nil
     resumeInitialCaptureWaiters()
@@ -504,6 +532,10 @@ final class CaptureWindowController {
 
   private func handleDeviceUpdate(_ devices: [Device]) {
     guard !isTornDown else { return }
+    if let pending = pendingPreviewDeviceID,
+       knownDevices.contains(where: { $0.id == pending }), !devices.contains(where: { $0.id == pending }) {
+      cancelPendingPreviewSelection()
+    }
     knownDevices = devices
     if mediaList.isEmpty {
       mediaDisplayMode.clearSelection()

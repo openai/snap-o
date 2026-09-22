@@ -11,6 +11,7 @@ final class LivePreviewThumbnail {
   private(set) var image: CGImage?
   private(set) var isLoading = false
   private(set) var hasFailed = false
+  var hasLiveFrame = false
   @ObservationIgnored weak var videoRenderer: AVSampleBufferVideoRenderer?
   @ObservationIgnored var pixelSize = CGSize(width: 160, height: 160)
   @ObservationIgnored private var requestID: UUID?

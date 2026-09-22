@@ -95,11 +95,21 @@ struct CaptureWindow: View {
         toolSession.startIfNeeded()
       }
       .onDisappear {
+        controller.cancelPendingPreviewSelection()
         Task {
           await history.repository.protect([], owner: historyProtectionID)
           await controller.tearDown()
           await toolSession.stop()
         }
+      }
+      .onChange(of: workspace.showsCapture) { _, showsCapture in
+        if !showsCapture { controller.cancelPendingPreviewSelection() }
+      }
+      .background {
+        WindowVisibilityReader { visible in
+          if !visible { controller.cancelPendingPreviewSelection() }
+        }
+        .frame(width: 0, height: 0)
       }
       .focusedSceneValue(\.captureController, controller)
       .alert("Capture History", isPresented: Binding(
@@ -145,15 +155,13 @@ struct CaptureWindow: View {
         WindowCommandRegistration { command in
           workspace.revealCapture()
           Task { await handle(command, controller: controller) }
-        } preview: { deviceID, focus in
-          if !focus {
-            return workspace.showsCapture && controller.selectDeviceInLivePreview(id: deviceID)
-          }
+        } preview: { deviceID in
           workspace.revealCapture()
           Task { await controller.showLivePreview(deviceID: deviceID) }
-          return true
-        } previewIsSelected: { deviceID in
-          workspace.showsCapture && controller.isDeviceSelectedInLivePreview(id: deviceID)
+        } selectPreview: { deviceID in
+          if workspace.showsCapture { _ = controller.selectDeviceInLivePreview(id: deviceID) }
+        } previewIsStarting: { deviceID in
+          workspace.showsCapture && controller.isStartingLivePreview(deviceID: deviceID)
         } thumbnail: { deviceID in
           controller.livePreviewConnection(for: deviceID)?.thumbnail
         }
