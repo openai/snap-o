@@ -41,7 +41,7 @@ struct CaptureModeTests {
   }
 
   static func click(_ renderer: LivePreviewRenderer) {
-    renderer.sendPointer(.down, .touchscreen, .zero, testDisplay.size)
+    renderer.sendPointer(.down, .touchscreen, [.zero], testDisplay.size)
   }
 
   static func expectNoPointer(_ adb: ADBService) async {

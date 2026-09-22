@@ -235,7 +235,7 @@ struct LivePreviewPointerEvent {
   let deviceID: String
   let action: LivePreviewPointerAction
   let source: LivePreviewPointerSource
-  let location: CGPoint
+  var locations: [CGPoint]
   let displaySize: CGSize
 }
 
@@ -266,14 +266,14 @@ actor LivePreviewPointerInjector {
 @MainActor
 final class LivePreviewRenderer {
   let operation: LivePreviewOperationHandle
-  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
+  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, [CGPoint], CGSize) -> Void
   var deviceID: String {
     operation.deviceID
   }
 
   init(
     operation: LivePreviewOperationHandle,
-    pointerHandler: @escaping (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
+    pointerHandler: @escaping (LivePreviewPointerAction, LivePreviewPointerSource, [CGPoint], CGSize) -> Void
   ) {
     self.operation = operation
     sendPointer = pointerHandler

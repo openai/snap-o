@@ -10,6 +10,9 @@ struct ShellLivePreviewPointerBackend: LivePreviewPointerBackend {
   }
 
   func send(_ event: LivePreviewPointerEvent) async throws {
+    guard event.locations.count == 1 else {
+      throw ADBError.protocolFailure("shell input does not support multiple contacts")
+    }
     let exec = await adb.exec()
     var lastError: Error?
 
@@ -37,8 +40,8 @@ private extension LivePreviewPointerEvent {
   func shellCommand() -> String {
     let maximumX = max(0, Int(displaySize.width.rounded()) - 1)
     let maximumY = max(0, Int(displaySize.height.rounded()) - 1)
-    let roundedX = min(max(0, Int(location.x.rounded())), maximumX)
-    let roundedY = min(max(0, Int(location.y.rounded())), maximumY)
+    let roundedX = min(max(0, Int(locations[0].x.rounded())), maximumX)
+    let roundedY = min(max(0, Int(locations[0].y.rounded())), maximumY)
 
     let components: [String] = [
       "input",

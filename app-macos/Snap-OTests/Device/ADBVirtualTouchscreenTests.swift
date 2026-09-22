@@ -250,6 +250,41 @@ struct ADBVirtualTouchscreenTests {
     #expect(cancel.events == Array(up.events.suffix(15)))
   }
 
+  @Test("starts both contacts in one frame")
+  func multitouchDown() throws {
+    let command = UInputTouchscreenProtocol.injectCommand(
+      action: .down, points: [.init(x: 100, y: 200), .init(x: 300, y: 400)],
+      trackingIDs: [7, 8], contactCount: 2
+    )
+    #expect(try decodeInject(command).events == [
+      3, 47, 0, 3, 57, 7, 3, 53, 100, 3, 54, 200,
+      3, 47, 1, 3, 57, 8, 3, 53, 300, 3, 54, 400,
+      1, 330, 1, 1, 325, 1, 0, 0, 0
+    ])
+  }
+
+  @Test("moves both contacts in one frame")
+  func multitouchMove() throws {
+    let command = UInputTouchscreenProtocol.injectCommand(
+      action: .move, points: [.init(x: 100, y: 200), .init(x: 300, y: 400)],
+      trackingIDs: [], contactCount: 2
+    )
+    #expect(try decodeInject(command).events == [
+      3, 47, 0, 3, 53, 100, 3, 54, 200,
+      3, 47, 1, 3, 53, 300, 3, 54, 400, 0, 0, 0
+    ])
+  }
+
+  @Test("releases both slots", arguments: [ADBVirtualTouchAction.up, .cancel])
+  func multitouchRelease(_ action: ADBVirtualTouchAction) throws {
+    let command = UInputTouchscreenProtocol.injectCommand(
+      action: action, points: [], trackingIDs: [], contactCount: 2
+    )
+    #expect(try decodeInject(command).events == [
+      3, 47, 0, 3, 57, -1, 3, 47, 1, 3, 57, -1, 1, 330, 0, 1, 325, 0, 0, 0, 0
+    ])
+  }
+
   private func decodeInject(_ value: String) throws -> InjectCommand {
     try JSONDecoder().decode(InjectCommand.self, from: Data(value.utf8))
   }

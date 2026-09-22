@@ -55,8 +55,33 @@ struct LivePreviewFrameExportTests {
       .appendingPathComponent("Snap-O-FrameExport-\(UUID().uuidString)", isDirectory: true)
     let store = FileStore(baseDir: directory)
     defer { store.purgeExistingFiles() }
+    focusLossReleasesBothContacts(store: store)
     hiddenPreviewRetainsLatestFrame(store: store)
-    print("Live preview hidden decoding and copy tests passed")
+    print("Live preview multitouch, hidden decoding and copy tests passed")
+  }
+
+  private static func focusLossReleasesBothContacts(store: FileStore) {
+    _ = NSApplication.shared
+    let view = LivePreviewDisplayView(fileStore: store)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 256, height: 256),
+      styleMask: [.borderless], backing: .buffered, defer: false
+    )
+    window.contentView = view
+    defer { window.contentView = nil }
+    var cancelledContacts: [CGPoint] = []
+    let renderer = LivePreviewRenderer(operation: LivePreviewOperationHandle(session: LivePreviewSession())) { action, _, points, _ in
+      if action == .cancel { cancelledContacts = points }
+    }
+    view.update(with: renderer, isVisible: true)
+    view.mouseDown(with: NSEvent.mouseEvent(
+      with: .leftMouseDown, location: view.convert(CGPoint(x: 160, y: 128), to: nil), modifierFlags: [.option],
+      timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+    )!)
+
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+
+    precondition(cancelledContacts == [CGPoint(x: 40, y: 32), CGPoint(x: 24, y: 32)])
   }
 
   private static func hiddenPreviewRetainsLatestFrame(store: FileStore) {

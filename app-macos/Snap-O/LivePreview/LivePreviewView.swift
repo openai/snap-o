@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// Connects a live-preview session to its interactive AppKit surface.
 struct LivePreviewRenderer {
   let operation: LivePreviewOperationHandle
-  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, CGPoint, CGSize) -> Void
+  let sendPointer: (LivePreviewPointerAction, LivePreviewPointerSource, [CGPoint], CGSize) -> Void
 
   var session: LivePreviewSession {
     operation.session
@@ -56,6 +56,10 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private var endedLivePreviewTrace = false
 
   private var pointerState = PointerState()
+  private var multitouch: LivePreviewMultitouch?
+  private var gestureDisplaySize: CGSize?
+  private var modifierMonitor: Any?
+  private let touchOverlay = CAShapeLayer()
   private let hoverThrottleInterval: TimeInterval = 1.0 / 45.0
   private var frameDragOrigin: CGPoint?
   private var isDraggingFrame = false
@@ -136,6 +140,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   func update(with renderer: LivePreviewRenderer?, isVisible: Bool = false, thumbnail: LivePreviewThumbnail? = nil) {
+    if !isVisible { cancelPointerGesture() }
     // Keep decoding and retaining the latest frame without compositing hidden previews.
     CATransaction.begin()
     CATransaction.setDisableActions(true)
@@ -165,6 +170,15 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     guard displayLayer.superlayer == nil else { return }
     wantsLayer = true
     layer?.addSublayer(displayLayer)
+    layer?.addSublayer(touchOverlay)
+    touchOverlay.strokeColor = NSColor.white.cgColor
+    touchOverlay.fillColor = NSColor.black.withAlphaComponent(0.25).cgColor
+    touchOverlay.lineWidth = 1.5
+    touchOverlay.shadowColor = NSColor.black.cgColor
+    touchOverlay.shadowOpacity = 0.6
+    touchOverlay.shadowRadius = 2
+    touchOverlay.shadowOffset = .zero
+    touchOverlay.isHidden = true
     displayLayer.videoGravity = .resizeAspect
     updateDisplayLayerBackgroundColor()
     displayLayer.frame = bounds
@@ -198,6 +212,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   private func detachSession() {
+    cancelPointerGesture()
     detachThumbnail()
     frameDragOrigin = nil
     isDraggingFrame = false
@@ -228,6 +243,138 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     )
     trackingArea = area
     addTrackingArea(area)
+  }
+
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    cancelPointerGesture()
+    if let modifierMonitor { NSEvent.removeMonitor(modifierMonitor) }
+    modifierMonitor = nil
+    NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: window)
+    super.viewWillMove(toWindow: newWindow)
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    guard let window else { return }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window
+    )
+    modifierMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+      guard let self, event.window === self.window, !displayLayer.isHidden else { return event }
+      if event.type == .flagsChanged {
+        flagsChanged(with: event)
+      } else if event.keyCode == 53, multitouch != nil {
+        cancelPointerGesture()
+        return nil
+      }
+      return event
+    }
+  }
+
+  @objc
+  private func windowResignedKey() {
+    cancelPointerGesture()
+  }
+
+  override func layout() {
+    super.layout()
+    updateTouchOverlay()
+  }
+
+  override func flagsChanged(with event: NSEvent) {
+    let modifiers = event.modifierFlags
+    guard !isDraggingFrame else { return }
+    guard modifiers.contains(.option), !modifiers.contains(.command), !modifiers.contains(.control) else {
+      if multitouch != nil { cancelPointerGesture() }
+      return
+    }
+    guard !pointerState.isPointerDown, let window else { return }
+    let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+    if multitouch == nil, let normalized = normalizedPoint(point) {
+      multitouch = LivePreviewMultitouch(pointer: normalized)
+    }
+    updateTouchOverlay()
+  }
+
+  private func cancelPointerGesture() {
+    if gestureDisplaySize != nil {
+      sendMultitouch(.cancel)
+    } else if pointerState.isPointerDown, let point = pointerState.lastDeviceLocation {
+      sendPointer(.cancel, .touchscreen, point)
+    }
+    gestureDisplaySize = nil
+    multitouch = nil
+    pointerState = PointerState()
+    updateTouchOverlay()
+  }
+
+  private func updateTouchOverlay() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    defer { CATransaction.commit() }
+    guard let multitouch, !displayLayer.isHidden, let size = renderer?.session.media?.size else {
+      touchOverlay.isHidden = true
+      return
+    }
+    let rect = fittedMediaRect(contentSize: size, in: bounds)
+    func local(_ point: CGPoint) -> CGPoint {
+      CGPoint(x: rect.minX + point.x * rect.width, y: rect.minY + point.y * rect.height)
+    }
+    let touches = CGMutablePath()
+    for point in multitouch.locations {
+      let point = local(point)
+      touches.addEllipse(in: CGRect(x: point.x - 9, y: point.y - 9, width: 18, height: 18))
+    }
+    let center = local(multitouch.center)
+    touches.addEllipse(in: CGRect(x: center.x - 3, y: center.y - 3, width: 6, height: 6))
+    touchOverlay.path = touches
+    touchOverlay.opacity = gestureDisplaySize == nil ? 0.65 : 1
+    touchOverlay.isHidden = false
+  }
+
+  private func normalizedPoint(_ point: CGPoint, clamp: Bool = false) -> CGPoint? {
+    guard let size = renderer?.session.media?.size, size.width > 0, size.height > 0 else { return nil }
+    let rect = fittedMediaRect(contentSize: size, in: bounds)
+    guard rect.width > 0, rect.height > 0, clamp || rect.contains(point) else { return nil }
+    return CGPoint(
+      x: min(1, max(0, (point.x - rect.minX) / rect.width)),
+      y: min(1, max(0, (point.y - rect.minY) / rect.height))
+    )
+  }
+
+  private func handleMultitouch(_ phase: PointerPhase, event: NSEvent) {
+    if phase == .hoverExit, gestureDisplaySize == nil {
+      multitouch = nil
+      updateTouchOverlay()
+      return
+    }
+    if let gestureDisplaySize, gestureDisplaySize != renderer?.session.media?.size {
+      cancelPointerGesture()
+      return
+    }
+    let local = convert(event.locationInWindow, from: nil)
+    guard let point = normalizedPoint(local, clamp: gestureDisplaySize != nil) else { return }
+    if multitouch == nil { multitouch = LivePreviewMultitouch(pointer: point) }
+    multitouch?.move(to: point, translating: event.modifierFlags.contains(.shift))
+    switch phase {
+    case .down:
+      gestureDisplaySize = renderer?.session.media?.size
+      sendMultitouch(.down)
+    case .drag:
+      if gestureDisplaySize != nil { sendMultitouch(.move) }
+    case .up:
+      if gestureDisplaySize != nil { sendMultitouch(.up) }
+      gestureDisplaySize = nil
+    case .hoverEnter, .hoverMove, .hoverExit:
+      break
+    }
+    updateTouchOverlay()
+  }
+
+  private func sendMultitouch(_ action: LivePreviewPointerAction) {
+    guard let renderer, let multitouch, let size = gestureDisplaySize ?? renderer.session.media?.size else { return }
+    let locations = multitouch.locations.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+    renderer.sendPointer(action, .touchscreen, locations, size)
   }
 
   override func mouseEntered(with event: NSEvent) {
@@ -322,6 +469,16 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 
   private func handlePointer(_ phase: PointerPhase, event: NSEvent) {
     guard renderer != nil, !isDraggingFrame else { return }
+    let wantsMultitouch = event.modifierFlags.contains(.option) &&
+      !event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control)
+    if gestureDisplaySize != nil || (wantsMultitouch && !pointerState.isPointerDown) {
+      handleMultitouch(phase, event: event)
+      return
+    }
+    if multitouch != nil {
+      multitouch = nil
+      updateTouchOverlay()
+    }
     let devicePoint = convertToDevicePoint(event: event)
 
     switch phase {
@@ -377,7 +534,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     _ location: CGPoint
   ) {
     guard let renderer, let size = renderer.session.media?.size else { return }
-    renderer.sendPointer(action, source, location, size)
+    renderer.sendPointer(action, source, [location], size)
   }
 
   private func convertToDevicePoint(event: NSEvent) -> CGPoint? {
@@ -402,5 +559,38 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     var isPointerDown = false
     var lastHoverTimestamp: TimeInterval = 0
     var lastDeviceLocation: CGPoint?
+  }
+}
+
+/// Normalized positions keep the gesture independent of the preview's scale.
+struct LivePreviewMultitouch {
+  private(set) var center = CGPoint(x: 0.5, y: 0.5)
+  private var offset: CGPoint
+  private var lastPointer: CGPoint
+
+  init(pointer: CGPoint) {
+    offset = CGPoint(x: pointer.x - 0.5, y: pointer.y - 0.5)
+    lastPointer = pointer
+  }
+
+  var locations: [CGPoint] {
+    [
+      CGPoint(x: center.x + offset.x, y: center.y + offset.y),
+      CGPoint(x: center.x - offset.x, y: center.y - offset.y)
+    ]
+  }
+
+  mutating func move(to pointer: CGPoint, translating: Bool) {
+    let delta = CGPoint(x: pointer.x - lastPointer.x, y: pointer.y - lastPointer.y)
+    lastPointer = pointer
+    if translating {
+      center.x = min(1 - abs(offset.x), max(abs(offset.x), center.x + delta.x))
+      center.y = min(1 - abs(offset.y), max(abs(offset.y), center.y + delta.y))
+    } else {
+      let limitX = min(center.x, 1 - center.x)
+      let limitY = min(center.y, 1 - center.y)
+      offset.x = min(limitX, max(-limitX, offset.x + delta.x))
+      offset.y = min(limitY, max(-limitY, offset.y + delta.y))
+    }
   }
 }

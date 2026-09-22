@@ -18,7 +18,7 @@ struct LivePreviewPointerEvent {
   let deviceID: String
   let action: LivePreviewPointerAction
   let source: LivePreviewPointerSource
-  let location: CGPoint
+  var locations: [CGPoint]
   let displaySize: CGSize
 }
 

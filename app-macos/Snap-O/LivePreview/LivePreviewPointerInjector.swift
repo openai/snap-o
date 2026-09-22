@@ -111,7 +111,8 @@ actor LivePreviewPointerInjector {
     }
     if event.action == .move,
        let index = pendingTouchEvents.lastIndex(where: { $0.deviceID == event.deviceID }),
-       pendingTouchEvents[index].action == .move {
+       pendingTouchEvents[index].action == .move,
+       pendingTouchEvents[index].locations.count == event.locations.count {
       pendingTouchEvents[index] = event
     } else {
       pendingTouchEvents.append(event)
@@ -270,6 +271,11 @@ actor LivePreviewPointerInjector {
     if deviceStates[event.deviceID] == nil {
       prepare(deviceID: event.deviceID)
     }
+    if event.locations.count > 1,
+       case .preparing(let generation, let task) = deviceStates[event.deviceID] {
+      await task.value
+      guard deviceStates[event.deviceID]?.generation == generation else { return }
+    }
     guard let state = deviceStates[event.deviceID] else { return }
 
     switch state {
@@ -295,6 +301,10 @@ actor LivePreviewPointerInjector {
       )
 
     case .preparing(let generation, _), .fallback(let generation):
+      guard event.locations.count == 1 else {
+        touchRoutes[event.deviceID] = .discarded(generation: generation)
+        return
+      }
       try await fallbackBackend.send(event)
       guard deviceStates[event.deviceID]?.generation == generation,
             touchRoutes[event.deviceID] == nil else { return }
