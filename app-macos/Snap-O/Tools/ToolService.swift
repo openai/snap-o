@@ -128,7 +128,7 @@ actor ToolService {
   }
 
   private func refresh() async {
-    guard !isStopped else { return }
+    guard !isStopped, !Task.isCancelled else { return }
     if let refreshTask {
       await refreshTask.value
       return
@@ -140,7 +140,9 @@ actor ToolService {
   }
 
   private func refreshNow() async {
-    let devices = await deviceTracker.latestDevices
+    let deviceUpdates = await deviceTracker.deviceStream()
+    guard let devices = await deviceUpdates.first(where: { _ in true }),
+          !Task.isCancelled, !isStopped else { return }
     let adb = await adbService.exec()
     let sockets = await ToolDiscovery.discover(on: devices.map(\.id), using: adb)
     guard !Task.isCancelled, !isStopped else { return }

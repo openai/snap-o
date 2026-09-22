@@ -364,7 +364,7 @@ struct ToolSelectionTests {
     model.stateChanged = { snapshots.append($0) }
     model.start()
     await settle()
-    #expect(scans == 1 && !model.snapshot.loading, "Scan immediately and finish loading")
+    #expect(scans == 1 && model.snapshot.discovery == .ready, "Scan immediately and finish loading")
     #expect(model.snapshot.state.selection?.kind == .tweaks, "Hydrate preferences before discovery")
     let firstRevision = model.snapshot.revision
     failScan = true
@@ -560,7 +560,7 @@ struct ToolSelectionTests {
     #expect(replies.count == 2, "Start a new scan after cancellation")
     replies[0].resume(returning: ToolDiscoverySnapshot(apps: [selectionApp()]))
     await settle()
-    #expect(model.snapshot.loading, "Ignore the canceled scan's result")
+    #expect(model.snapshot.discovery == .searching, "Ignore the canceled scan's result")
     model.refresh()
     await settle()
     #expect(replies.count == 2, "The canceled scan must not clear the new scan")

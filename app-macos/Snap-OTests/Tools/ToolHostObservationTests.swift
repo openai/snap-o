@@ -71,7 +71,7 @@ struct ToolHostObservationTests {
 
     #expect(host.preferredPluginID == (restoreSelection ? .network : nil))
     #expect(host.selectedTool == nil)
-    #expect(host.isWaiting)
+    #expect(host.presentation != .tool)
     #expect(host.webContainer == nil)
     #expect(!host.isPageReady)
 
@@ -79,7 +79,7 @@ struct ToolHostObservationTests {
     host.selectTool(app, option: app.tools[0])
     #expect(host.selectedToolApp?.id == app.id)
     #expect(host.selectedTool == nil)
-    #expect(host.isWaiting)
+    #expect(host.presentation != .tool)
     #expect(host.webContainer == nil)
   }
 
@@ -106,12 +106,13 @@ struct ToolHostObservationTests {
     defer { host.stop() }
     try await eventually { host.webContainer != nil }
     let previous = try #require(host.webContainer)
+    let lateReadiness = previous.pageReadinessChangedHandler
     previous.pageReadinessChangedHandler?(true)
     #expect(host.isPageReady)
 
     apps = []
     appTool.refresh()
-    try await eventually { host.isWaiting }
+    try await eventually { host.presentation != .tool }
     #expect(host.webContainer === previous, "Keep cached content when the same app disconnects")
 
     host.selectTool(next, option: next.tools[0])
@@ -121,7 +122,7 @@ struct ToolHostObservationTests {
     #expect(host.toolbarActions.isEmpty)
     #expect(!host.canConfigureDevelopmentServer)
     #expect(host.developmentURL == nil)
-    previous.pageReadinessChangedHandler?(true)
+    lateReadiness?(true)
     #expect(!host.isPageReady, "Callbacks from the removed page must not restore its readiness")
 
     apps = [next]
@@ -153,23 +154,104 @@ struct ToolHostObservationTests {
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
 
-    #expect(!host.hasLoadedApps)
+    #expect(host.presentation == .findingApps)
     try await eventually { scans == 1 }
-    #expect(!host.hasLoadedApps, "A failed scan does not establish that no apps exist")
+    #expect(host.presentation == .discoveryFailed, "A failed scan does not establish that no apps exist")
     #expect(host.webContainer == nil)
 
     shouldFail = false
     appTool.refresh()
-    try await eventually { host.hasLoadedApps }
+    try await eventually { host.presentation == .noApps }
     #expect(host.toolApps.isEmpty)
     #expect(host.selectedToolApp == nil)
 
     apps = [selectionApp(20, process: "com.example.other")]
     appTool.refresh()
     try await eventually { !host.toolApps.isEmpty }
-    #expect(host.hasLoadedApps)
+    #expect(host.presentation == .needsSelection)
     #expect(host.selectedToolApp == nil, "An unmatched saved preference still needs an explicit selection")
     #expect(host.webContainer == nil)
+  }
+
+  @Test
+  func cachedUpdatesDoNotCompleteDiscoveryOrClearFailure() async throws {
+    let suite = "ToolHostCachedDiscoveryTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let (updates, continuation) = AsyncStream<Void>.makeStream()
+    defer { continuation.finish() }
+    var reply: CheckedContinuation<ToolDiscoverySnapshot, Error>?
+    var reads = 0
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      try await withCheckedThrowingContinuation { reply = $0 }
+    }, changes: {
+      continuation.yield(())
+      return updates
+    }, currentDiscovery: {
+      reads += 1
+      return ToolDiscoverySnapshot(apps: [], revision: UInt64(reads + 10))
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    defer { host.stop() }
+
+    try await eventually { reads == 1 && reply != nil }
+    #expect(host.presentation == .findingApps)
+    #expect(host.webContainer == nil)
+    reply?.resume(throwing: NSError(domain: "DiscoveryTests", code: 1))
+    reply = nil
+    try await eventually { host.presentation == .discoveryFailed }
+    continuation.yield(())
+    try await eventually { reads == 2 }
+    #expect(host.presentation == .discoveryFailed)
+
+    host.retryDiscovery()
+    #expect(host.presentation == .findingApps)
+    try await eventually { reply != nil }
+    // Finishing a scan establishes the empty state even when its data revision is older.
+    reply?.resume(returning: ToolDiscoverySnapshot(apps: [], revision: 1))
+    reply = nil
+    try await eventually { host.presentation == .noApps }
+    #expect(host.webContainer == nil)
+  }
+
+  @Test
+  func switchingAppsDiscardsHiddenToolPages() async throws {
+    let suite = "ToolHostHiddenPageTests." + UUID().uuidString
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var first = selectionApp()
+    for index in first.tools.indices {
+      first.tools[index].compatibility = .unknown
+    }
+    var next = selectionApp(20, process: "com.example.other")
+    for index in next.tools.indices {
+      next.tools[index].compatibility = .unknown
+    }
+    let apps = [first, next]
+    let appTool = AppToolModel(preferences: defaults, discover: {
+      ToolDiscoverySnapshot(apps: apps)
+    }, openApp: { _ in })
+    let adb = ADBService()
+    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
+    defer { host.stop() }
+    try await eventually { host.webContainer != nil }
+    let network = try #require(host.webContainer)
+    let lateReadiness = network.pageReadinessChangedHandler
+    host.selectTool(first, option: first.tools[1])
+    let tweaks = try #require(host.webContainer)
+    #expect(tweaks !== network)
+    host.selectTool(first, option: first.tools[0])
+    #expect(host.webContainer === network, "Switching tools preserves the same app's page")
+    host.selectTool(next, option: next.tools[1])
+    #expect(host.webContainer !== tweaks)
+    lateReadiness?(true)
+    #expect(!host.isPageReady)
+    host.selectTool(first, option: first.tools[0])
+    #expect(host.webContainer !== network, "A hidden page cannot outlive its selected app")
+    #expect(!host.isPageReady)
   }
 
   private func eventually(_ condition: () -> Bool) async throws {

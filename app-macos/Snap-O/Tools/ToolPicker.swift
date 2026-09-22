@@ -20,12 +20,12 @@ struct AppToolPicker: View {
         AppToolIcon(
           app: model.selectedToolApp,
           size: Metrics.iconSize,
-          statusSize: model.isWaiting || model.compatibilityExplanation != nil ? 0 : Metrics.statusSize
+          statusSize: model.presentation != .tool || model.compatibilityExplanation != nil ? 0 : Metrics.statusSize
         )
 
         AppToolPickerText(
-          appName: selectedTitle,
-          deviceName: deviceTitle,
+          appName: model.selectedToolApp?.name ?? model.presentation.message ?? "Select an app",
+          deviceName: model.selectedToolApp?.deviceDisplayTitle,
           isExpanded: isPresented
         )
       }
@@ -41,23 +41,6 @@ struct AppToolPicker: View {
       }
     }
     .help("Select an app")
-  }
-
-  private var selectedTitle: String {
-    guard let app = model.selectedToolApp else {
-      return model.toolApps.isEmpty ? "No apps found" : "Select an app"
-    }
-
-    return app.name
-  }
-
-  private var deviceTitle: String {
-    guard let title = model.selectedToolApp?.deviceDisplayTitle,
-          !title.isEmpty
-    else {
-      return model.toolApps.isEmpty ? "No devices detected" : "Choose a device"
-    }
-    return title
   }
 }
 
@@ -136,9 +119,8 @@ private struct AppToolPickerPopover: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       if model.toolApps.isEmpty {
-        Text("No apps found")
+        AppToolPlaceholder(presentation: model.presentation, retry: model.retryDiscovery)
           .font(.system(size: 13))
-          .foregroundStyle(.secondary)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(14)
       } else {
@@ -297,7 +279,7 @@ private struct ToolToolIcon: View {
 
 private struct AppToolPickerText: View {
   let appName: String
-  let deviceName: String
+  let deviceName: String?
   var isExpanded: Bool?
 
   var body: some View {
@@ -316,10 +298,12 @@ private struct AppToolPickerText: View {
         }
       }
 
-      Text(deviceName)
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
+      if let deviceName, !deviceName.isEmpty {
+        Text(deviceName)
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
     }
   }
 }

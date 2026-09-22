@@ -16,6 +16,7 @@ enum SnapOLog {
 struct ToolRecoveryTests {
   static func main() async throws {
     try await reconnectsAfterCooldown()
+    try await waitsForInitialDevices()
     try await cachesOnlyTheSameProcess()
     try await retriesFailedDeviceProperties()
     try await refreshesSiblingDescriptors()
@@ -78,6 +79,36 @@ struct ToolRecoveryTests {
       fatalError("Stopped services must reject endpoints")
     } catch ToolError.serverNotConnected {}
     print("Connection and metadata changes publish independently; failed sockets retry only after cooldown")
+  }
+
+  static func waitsForInitialDevices() async throws {
+    let adbService = ADBService()
+    let adb = await adbService.exec()
+    let tracker = DeviceTracker(adbService: adbService)
+    let service = ToolService(adbService: adbService, deviceTracker: tracker)
+    var completed = false
+    let scan = Task {
+      let snapshot = await service.discoverPlugins()
+      completed = true
+      return snapshot
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    precondition(!completed, "An uninitialized tracker is not an empty device scan")
+    await tracker.startTracking()
+    adb.emitDevices("healthy device transport_id:1")
+    let snapshot = await scan.value
+    precondition(snapshot.apps.count == 1 && snapshot.apps[0].deviceId == "healthy")
+    await service.stop()
+    await tracker.stopTracking()
+
+    let idleTracker = DeviceTracker(adbService: adbService)
+    let idleService = ToolService(adbService: adbService, deviceTracker: idleTracker)
+    let pending = Task { await idleService.discoverPlugins() }
+    try await Task.sleep(for: .milliseconds(50))
+    await idleService.stop()
+    let stopped = await pending.value
+    precondition(stopped.apps.isEmpty, "Shutdown cancels discovery waiting for the first device update")
+    print("Discovery waits for initial device tracking and cancels cleanly during shutdown")
   }
 
   static func cachesOnlyTheSameProcess() async throws {
