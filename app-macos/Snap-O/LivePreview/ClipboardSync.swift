@@ -3,7 +3,7 @@ import Observation
 
 @MainActor
 @Observable
-final class EmulatorClipboardSync {
+final class ClipboardSync {
   private(set) var isUnavailable = false
   private let settings: AppSettings
   private let pasteboard: NSPasteboard
@@ -20,13 +20,19 @@ final class EmulatorClipboardSync {
     while isActive {
       do {
         state = ClipboardSyncState()
-        let endpoint = try await emulator.clipboardEndpoint(serial: serial)
-        guard isActive else { return }
-        let authentication = EmulatorClipboardAuthentication(endpoint: endpoint) {
-          try await emulator.clipboardEndpoint(serial: serial)
-        }
-        try await EmulatorClipboardTransport.connect(authentication: authentication) { transport in
-          try await synchronize(transport)
+        if serial.hasPrefix("emulator-") {
+          let endpoint = try await emulator.clipboardEndpoint(serial: serial)
+          guard isActive else { return }
+          let authentication = EmulatorClipboardAuthentication(endpoint: endpoint) {
+            try await emulator.clipboardEndpoint(serial: serial)
+          }
+          try await EmulatorClipboardTransport.connect(authentication: authentication) { transport in
+            try await synchronize(transport)
+          }
+        } else {
+          try await DeviceClipboardTransport.connect(serial: serial) { transport in
+            try await synchronize(transport)
+          }
         }
       } catch {
         guard isActive else { return }
@@ -37,7 +43,7 @@ final class EmulatorClipboardSync {
     }
   }
 
-  private func synchronize(_ transport: EmulatorClipboardTransport) async throws {
+  private func synchronize(_ transport: any ClipboardTransport) async throws {
     let previousText = try await transport.getText()
     guard isActive else { return }
     if let initialText = synchronizeInitialClipboard(with: previousText) {
@@ -55,7 +61,7 @@ final class EmulatorClipboardSync {
     }
   }
 
-  private func sendChanges(transport: EmulatorClipboardTransport) async throws {
+  private func sendChanges(transport: any ClipboardTransport) async throws {
     while isActive {
       if let text = hostText() { try await transport.setText(text) }
       try await Task.sleep(for: .milliseconds(300))

@@ -34,7 +34,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   }
 
   private var clipboardTarget: String? {
-    settings.syncClipboard && deviceID.hasPrefix("emulator-")
+    settings.syncClipboard
       && lifecycle.renderer != nil && lifecycle.isWindowVisible ? deviceID : nil
   }
 
@@ -99,7 +99,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     .task(id: clipboardTarget) {
       lifecycle.connection?.clipboard = nil
       guard let serial = clipboardTarget else { return }
-      let sync = EmulatorClipboardSync(settings: settings)
+      let sync = ClipboardSync(settings: settings)
       lifecycle.connection?.clipboard = sync
       await sync.run(serial: serial)
     }

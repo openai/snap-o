@@ -77,7 +77,7 @@ struct ClipboardSyncTests {
       pasteboard.clearContents()
       #expect(pasteboard.setData(data, forType: type))
       let changeCount = pasteboard.changeCount
-      let sync = EmulatorClipboardSync(settings: AppSettings(defaults: defaults), pasteboard: pasteboard)
+      let sync = ClipboardSync(settings: AppSettings(defaults: defaults), pasteboard: pasteboard)
       #expect(sync.synchronizeInitialClipboard(with: "Old emulator text") == nil)
       sync.receive("Old emulator text")
       #expect(pasteboard.changeCount == changeCount)
@@ -96,13 +96,13 @@ struct ClipboardSyncTests {
     let pasteboard = NSPasteboard(name: .init(suite))
     defer { pasteboard.releaseGlobally() }
     let settings = AppSettings(defaults: defaults)
-    let sync = EmulatorClipboardSync(settings: settings, pasteboard: pasteboard)
+    let sync = ClipboardSync(settings: settings, pasteboard: pasteboard)
     #expect(sync.synchronizeInitialClipboard(with: "Emulator text") == nil)
     #expect(pasteboard.string(forType: .string) == "Emulator text")
 
     pasteboard.clearContents()
     pasteboard.setString("Mac text", forType: .string)
-    let nextSync = EmulatorClipboardSync(settings: settings, pasteboard: pasteboard)
+    let nextSync = ClipboardSync(settings: settings, pasteboard: pasteboard)
     #expect(nextSync.synchronizeInitialClipboard(with: "Old emulator text") == "Mac text")
     #expect(pasteboard.string(forType: .string) == "Mac text")
   }

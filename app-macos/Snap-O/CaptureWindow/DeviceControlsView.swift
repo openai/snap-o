@@ -28,10 +28,8 @@ struct DeviceControlsView: View {
         key("Volume Up", symbol: "speaker.plus", code: "KEYCODE_VOLUME_UP")
         key("Power/Wake", symbol: "power", code: "KEYCODE_POWER")
       }
-      if serial.hasPrefix("emulator-") {
-        divider
-        clipboardButton
-      }
+      divider
+      clipboardButton
     }
     .padding(8)
     .fixedSize()
