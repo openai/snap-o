@@ -472,7 +472,11 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
       }
       return
     }
-    keyboardArmed = keyboardEnabled && convertToDevicePoint(event: event) != nil
+    if keyboardEnabled, convertToDevicePoint(event: event) != nil {
+      keyboardArmed = true
+    } else {
+      releaseKeyboardFocus()
+    }
     handlePointer(.down, event: event)
   }
 
