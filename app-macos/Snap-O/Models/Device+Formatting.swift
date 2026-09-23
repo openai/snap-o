@@ -1,9 +1,11 @@
 import Foundation
 
 extension Device {
-  /// Primary display name prefers vendor model when available.
+  /// Prefer the resolved emulator name, then Android properties.
   var displayTitle: String {
-    // Prefer emulator AVD name when available
+    if let displayName, !displayName.isEmpty {
+      return displayName
+    }
     if let avdName, !avdName.isEmpty {
       return avdName
     }

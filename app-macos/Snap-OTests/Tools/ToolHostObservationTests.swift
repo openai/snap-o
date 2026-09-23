@@ -66,7 +66,7 @@ struct ToolHostObservationTests {
       defaults.set(selection.serialized, forKey: "inspectorPreferences")
     }
     let adb = ADBService()
-    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults)
     defer { host.stop() }
 
@@ -102,7 +102,7 @@ struct ToolHostObservationTests {
       ToolDiscoverySnapshot(apps: apps)
     }, openApp: { _ in }, sleep: suspendUntilCancelled)
     let adb = ADBService()
-    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
     try await waitForState { host.webContainer != nil }
@@ -151,7 +151,7 @@ struct ToolHostObservationTests {
       return ToolDiscoverySnapshot(apps: apps)
     }, openApp: { _ in }, sleep: suspendUntilCancelled)
     let adb = ADBService()
-    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
 
@@ -207,7 +207,7 @@ struct ToolHostObservationTests {
       try Task.checkCancellation()
     })
     let adb = ADBService()
-    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
     let applySnapshot = appTool.stateChanged
@@ -260,7 +260,7 @@ struct ToolHostObservationTests {
       ToolDiscoverySnapshot(apps: apps)
     }, openApp: { _ in }, sleep: suspendUntilCancelled)
     let adb = ADBService()
-    let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
+    let service = ToolService(adbService: adb, deviceManager: DeviceManager(adb: adb, deviceTracker: DeviceTracker(adbService: adb)))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
     try await waitForState { host.webContainer != nil }

@@ -8,22 +8,6 @@ enum SnapOLog {
 
 enum TestError: Error { case expected }
 
-actor TestGate {
-  private var isOpen = false
-  private var continuation: CheckedContinuation<Void, Never>?
-
-  func wait() async {
-    guard !isOpen else { return }
-    await withCheckedContinuation { continuation = $0 }
-  }
-
-  func open() {
-    isOpen = true
-    continuation?.resume()
-    continuation = nil
-  }
-}
-
 /// A blocking stream that only ends when the production session closes it.
 final class ScreenStreamSession: @unchecked Sendable {
   private let condition = NSCondition()

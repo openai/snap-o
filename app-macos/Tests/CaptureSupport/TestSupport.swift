@@ -8,27 +8,6 @@ enum SnapOLog {
   static let ui = Logger(subsystem: "Snap-O.StartupTests", category: "test")
 }
 
-actor TestGate {
-  private var isOpen = false
-  private var waiters: [CheckedContinuation<Void, Never>] = []
-  private(set) var waitCount = 0
-
-  func wait() async {
-    waitCount += 1
-    guard !isOpen else { return }
-    await withCheckedContinuation { waiters.append($0) }
-  }
-
-  func open() {
-    isOpen = true
-    let pending = waiters
-    waiters.removeAll()
-    for waiter in pending {
-      waiter.resume()
-    }
-  }
-}
-
 let testDisplay = DisplayInfo(size: CGSize(width: 1080, height: 2400), densityScale: 3)
 
 func testDevice(_ id: String) -> Device {
@@ -317,31 +296,6 @@ protocol LivePreviewHosting: AnyObject {
   func livePreviewConnection(for deviceID: String) -> LivePreviewConnection?
   func startLivePreviewStream(for deviceID: String) async -> LivePreviewRenderer?
   func stopLivePreviewStream(_ renderer: LivePreviewRenderer) async
-}
-
-actor DeviceTracker {
-  func previewDeviceStream() -> AsyncStream<[Device]> {
-    deviceStream()
-  }
-
-  private(set) var latestDevices: [Device]
-  private var continuation: AsyncStream<[Device]>.Continuation?
-
-  init(devices: [Device]) {
-    latestDevices = devices
-  }
-
-  func deviceStream() -> AsyncStream<[Device]> {
-    let (stream, continuation) = AsyncStream<[Device]>.makeStream()
-    self.continuation = continuation
-    continuation.yield(latestDevices)
-    return stream
-  }
-
-  func updateDevices(_ devices: [Device]) {
-    latestDevices = devices
-    continuation?.yield(devices)
-  }
 }
 
 struct RecordingOptions {

@@ -29,6 +29,7 @@ struct StartupCaptureTests {
     await emulatorReconnectDiscardsOldWarmup()
     try await emulatorInputWaitsForAndroid()
     try await rendererUsesLatestMediaAfterReadiness()
+    try await deviceNameUpdatesPreservePreview()
     await emulatorWarmupPreservesMatchingPreparedStream()
     try await managerRetriesBootingDevice(densityUnavailable: false)
     try await managerRetriesBootingDevice(densityUnavailable: true)
@@ -409,7 +410,7 @@ struct StartupCaptureTests {
 
   static func deviceBootsAfterWindowOpens() async throws {
     AppSettings.shared.startupCaptureMode = .livePreview
-    let tracker = DeviceTracker(devices: [])
+    let tracker = DeviceManager(devices: [])
     let live = LivePreviewService(startFailures: 1)
     let screenshots = ScreenshotService()
     let controller = CaptureWindowController(
@@ -417,7 +418,7 @@ struct StartupCaptureTests {
         screenshots: screenshots, recording: RecordingService(), livePreview: live,
         startup: StartupCapturePreparation(screenshots: screenshots, livePreview: live)
       ),
-      deviceTracker: tracker, fileStore: FileStore(),
+      deviceManager: tracker, fileStore: FileStore(),
       adbService: ADBService(displayFailures: [first.id: 3])
     )
     await controller.start()
@@ -605,6 +606,42 @@ struct StartupCaptureTests {
     await manager.stop()
   }
 
+  static func deviceNameUpdatesPreservePreview() async throws {
+    AppSettings.shared.startupCaptureMode = .livePreview
+    let devices = DeviceManager(devices: [first])
+    let service = LivePreviewService()
+    let screenshots = ScreenshotService()
+    let controller = CaptureWindowController(
+      captureServices: CaptureServices(
+        screenshots: screenshots, recording: RecordingService(), livePreview: service,
+        startup: StartupCapturePreparation(screenshots: screenshots, livePreview: service)
+      ),
+      deviceManager: devices, fileStore: FileStore(), adbService: ADBService()
+    )
+    await controller.start()
+    await eventually { controller.currentCapture != nil }
+    guard let renderer = await controller.startLivePreviewStream(for: first.id) else {
+      fatalError("Expected live preview renderer")
+    }
+    let capture = controller.currentCapture!
+    let viewID = controller.snapshotController.currentCaptureViewID
+    let starts = await service.starts
+    let renamed = Device(
+      id: first.id, model: first.model, androidVersion: first.androidVersion,
+      vendorModel: first.vendorModel, manufacturer: first.manufacturer, avdName: first.avdName,
+      displayName: "Renamed device"
+    )
+    await devices.updateDevices([renamed])
+    await eventually { controller.currentCaptureDeviceTitle == "Renamed device" }
+    precondition(controller.currentCapture?.id == capture.id)
+    precondition(controller.snapshotController.currentCaptureViewID == viewID)
+    let updatedStarts = await service.starts
+    precondition(updatedStarts == starts, "A name update must not restart the preview")
+    precondition(capture.device == first, "Previously captured device values must not change")
+    await controller.stopLivePreviewStream(renderer)
+    await controller.tearDown()
+  }
+
   static func emulatorInputWaitsForAndroid() async throws {
     let emulator = testDevice("emulator-5554")
     let gate = TestGate()
@@ -703,14 +740,14 @@ struct StartupCaptureTests {
     let stopGate = TestGate()
     let screenshots = ScreenshotService()
     let recording = RecordingService()
-    let tracker: DeviceTracker
+    let tracker: DeviceManager
     let live: LivePreviewService
     let controller: CaptureWindowController
 
     init(devices: [Device] = [first], blockedDisplayDevice: Device = first) {
       AppSettings.shared.lastViewedDeviceID = nil
       AppSettings.shared.startupCaptureMode = .livePreview
-      tracker = DeviceTracker(devices: devices)
+      tracker = DeviceManager(devices: devices)
       live = LivePreviewService(stopGate: stopGate, readyGate: readyGate)
       controller = CaptureWindowController(
         captureServices: CaptureServices(
@@ -719,7 +756,7 @@ struct StartupCaptureTests {
           livePreview: live,
           startup: StartupCapturePreparation(screenshots: screenshots, livePreview: live)
         ),
-        deviceTracker: tracker,
+        deviceManager: tracker,
         fileStore: FileStore(),
         adbService: ADBService(displayGates: [blockedDisplayDevice.id: displayGate])
       )

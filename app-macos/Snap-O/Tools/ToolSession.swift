@@ -6,17 +6,17 @@ final class ToolSession {
   private(set) var model: ToolHostModel?
 
   @ObservationIgnored private let adbService: ADBService
-  @ObservationIgnored private let deviceTracker: DeviceTracker
+  @ObservationIgnored private let deviceManager: DeviceManager
   @ObservationIgnored private var service: ToolService?
 
-  init(adbService: ADBService, deviceTracker: DeviceTracker) {
+  init(adbService: ADBService, deviceManager: DeviceManager) {
     self.adbService = adbService
-    self.deviceTracker = deviceTracker
+    self.deviceManager = deviceManager
   }
 
   func startIfNeeded() {
     guard model == nil else { return }
-    let service = ToolService(adbService: adbService, deviceTracker: deviceTracker)
+    let service = ToolService(adbService: adbService, deviceManager: deviceManager)
     self.service = service
     model = ToolHostModel(service: service)
   }

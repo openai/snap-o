@@ -10,7 +10,7 @@ final class CaptureWindowController {
   @ObservationIgnored private let recordingService: RecordingService
   @ObservationIgnored private let livePreviewService: LivePreviewService
   @ObservationIgnored private let startupPreparation: StartupCapturePreparation
-  @ObservationIgnored private let deviceTracker: DeviceTracker
+  @ObservationIgnored private let deviceManager: DeviceManager
   @ObservationIgnored private let adbService: ADBService
   let fileStore: FileStore
 
@@ -35,7 +35,7 @@ final class CaptureWindowController {
 
   init(
     captureServices: CaptureServices,
-    deviceTracker: DeviceTracker,
+    deviceManager: DeviceManager,
     fileStore: FileStore,
     adbService: ADBService
   ) {
@@ -43,7 +43,7 @@ final class CaptureWindowController {
     recordingService = captureServices.recording
     livePreviewService = captureServices.livePreview
     startupPreparation = captureServices.startup
-    self.deviceTracker = deviceTracker
+    self.deviceManager = deviceManager
     self.fileStore = fileStore
     self.adbService = adbService
     mediaDisplayMode = MediaDisplayMode(snapshotController: snapshotController)
@@ -56,22 +56,20 @@ final class CaptureWindowController {
     #endif
     isTornDown = false
     deviceStreamTask?.cancel()
-    let tracker = deviceTracker
-    let latestDevices = await tracker.latestDevices
+    let manager = deviceManager
+    let latestDevices = manager.latestDevices
     isDeviceListInitialized = !latestDevices.isEmpty
 
     deviceStreamTask = Task { [weak self] in
       guard let self else { return }
       let stream = if AppSettings.shared.startupCaptureMode == .livePreview {
-        await tracker.previewDeviceStream()
+        manager.previewDeviceStream()
       } else {
-        await tracker.deviceStream()
+        manager.deviceStream()
       }
       for await devices in stream {
-        await MainActor.run {
-          self.handleDeviceUpdate(devices)
-          if !self.isDeviceListInitialized { self.isDeviceListInitialized = true }
-        }
+        handleDeviceUpdate(devices)
+        if !isDeviceListInitialized { isDeviceListInitialized = true }
       }
     }
   }

@@ -38,5 +38,6 @@ xcrun swiftc -swift-version 6 -parse-as-library -profile-generate -D SNAPO_STAND
   Snap-OTests/Tools/ToolTestFixtures.swift \
   Snap-O/Tools/ToolHTTPService.swift \
   Snap-O/Tools/ToolService.swift \
+  Tests/Support/DeviceManagerFake.swift \
   Tests/ToolRecovery/ToolRecoveryTests.swift -o "$TEST_DIR/tool-recovery-tests"
 "$TEST_DIR/tool-recovery-tests"
