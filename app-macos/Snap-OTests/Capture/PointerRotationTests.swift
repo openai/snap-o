@@ -2,6 +2,7 @@ import Foundation
 @testable import Snap_O
 import Testing
 
+@Suite(.timeLimit(.minutes(1)))
 struct PointerRotationTests {
   private static func event(
     _ action: LivePreviewPointerAction,
@@ -14,14 +15,6 @@ struct PointerRotationTests {
       locations: [CGPoint(x: 10, y: 10)],
       displaySize: size
     )
-  }
-
-  private static func waitUntil(_ condition: () async -> Bool) async throws {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-    while await !condition() {
-      try #require(ContinuousClock.now < deadline, "Timed out waiting for test state")
-      try? await Task.sleep(for: .milliseconds(1))
-    }
   }
 
   @Test(arguments: [ADBDisplayRotation.rotation90, .rotation180])
@@ -55,7 +48,7 @@ struct PointerRotationTests {
     await client.holdQuery()
     let backend = client.makeBackend()
     let send = Task { try await backend.send(event(.down)) }
-    try await waitUntil { await client.queryCount == 1 }
+    await client.waitForHeldQuery()
     await backend.stop()
     await client.releaseQuery()
     do {
@@ -125,6 +118,7 @@ private actor PointerDevice {
   private(set) var queryCount = 0
   private var rotation = ADBDisplayRotation.rotation0
   private var queryGate: CheckedContinuation<Void, Never>?
+  private var queryObservers: [CheckedContinuation<Void, Never>] = []
   private var shouldHoldQuery = false
   private var shouldFail = false
 
@@ -148,6 +142,11 @@ private actor PointerDevice {
     shouldFail = true
   }
 
+  func waitForHeldQuery() async {
+    if queryGate != nil { return }
+    await withCheckedContinuation { queryObservers.append($0) }
+  }
+
   func releaseQuery() {
     shouldHoldQuery = false
     queryGate?.resume()
@@ -157,7 +156,14 @@ private actor PointerDevice {
   func displayRotation() async throws -> ADBDisplayRotation {
     queryCount += 1
     if shouldHoldQuery {
-      await withCheckedContinuation { queryGate = $0 }
+      await withCheckedContinuation {
+        queryGate = $0
+        let observers = queryObservers
+        queryObservers.removeAll()
+        for observer in observers {
+          observer.resume()
+        }
+      }
     }
     try Task.checkCancellation()
     if shouldFail { throw ADBError.protocolFailure("Test rotation unavailable") }
