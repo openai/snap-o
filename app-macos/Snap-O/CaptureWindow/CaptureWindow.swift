@@ -48,14 +48,14 @@ struct CaptureWindow: View {
 
   init(
     captureServices: CaptureServices,
-    deviceTracker: DeviceTracker,
+    deviceManager: DeviceManager,
     fileStore: FileStore,
     adbService: ADBService,
     initialWorkspace: WorkspaceLayoutSnapshot? = nil
   ) {
     let captureController = CaptureWindowController(
       captureServices: captureServices,
-      deviceTracker: deviceTracker,
+      deviceManager: deviceManager,
       fileStore: fileStore,
       adbService: adbService
     )
@@ -65,7 +65,7 @@ struct CaptureWindow: View {
     _toolSession = State(
       initialValue: ToolSession(
         adbService: adbService,
-        deviceTracker: deviceTracker
+        deviceManager: deviceManager
       )
     )
     _presentedLayout = State(initialValue: workspace.layout)

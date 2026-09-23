@@ -17,7 +17,7 @@ struct DeviceManagerWindow: View {
         .padding()
         Divider()
       }
-      if !manager.hasLoaded, manager.entries.isEmpty {
+      if !manager.hasLoaded || !manager.matchingSerials.isEmpty, manager.entries.isEmpty {
         ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if manager.entries.isEmpty {
         ContentUnavailableView {
@@ -51,9 +51,6 @@ struct DeviceManagerWindow: View {
         .help("Refresh Devices")
       }
       .sharedBackgroundVisibility(.hidden)
-    }
-    .task {
-      await manager.observe()
     }
     .alert("Device Manager", isPresented: Binding(
       get: { manager.actionError != nil },

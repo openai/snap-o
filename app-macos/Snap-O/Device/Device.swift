@@ -8,6 +8,8 @@ public struct Device: Identifiable, Hashable, Sendable {
   public let vendorModel: String?
   public let manufacturer: String?
   public let avdName: String?
+  public let displayName: String?
+  public let transportID: String?
 
   public init(
     id: String,
@@ -15,7 +17,9 @@ public struct Device: Identifiable, Hashable, Sendable {
     androidVersion: String,
     vendorModel: String?,
     manufacturer: String?,
-    avdName: String?
+    avdName: String?,
+    displayName: String? = nil,
+    transportID: String? = nil
   ) {
     self.id = id
     self.model = model
@@ -23,6 +27,8 @@ public struct Device: Identifiable, Hashable, Sendable {
     self.vendorModel = vendorModel
     self.manufacturer = manufacturer
     self.avdName = avdName
+    self.displayName = displayName
+    self.transportID = transportID
   }
 }
 

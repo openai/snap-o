@@ -6,7 +6,7 @@ import Observation
 final class AppRuntime {
   let deviceManager: DeviceManager
   let adbService: ADBService
-  let deviceTracker: DeviceTracker
+  private let deviceTracker: DeviceTracker
   let fileStore: FileStore
   let captureServices: CaptureServices
   let captureHistory: CaptureHistory
@@ -20,10 +20,11 @@ final class AppRuntime {
   init() {
     let adbService = ADBService()
     let deviceTracker = DeviceTracker(adbService: adbService)
+    let deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker)
     let captureHistory = CaptureHistory()
     let fileStore = FileStore { url, deviceID, size in
       captureHistory.recordFrame(url: url, size: size) {
-        await deviceTracker.latestDevices.first { $0.id == deviceID }
+        await deviceManager.connectedDevices.first { $0.id == deviceID }
           ?? Device(id: deviceID, model: deviceID, androidVersion: "", vendorModel: nil, manufacturer: nil, avdName: nil)
       }
     }
@@ -40,7 +41,7 @@ final class AppRuntime {
       coordinator: captureCoordinator
     )
 
-    deviceManager = DeviceManager(adb: adbService, deviceTracker: deviceTracker)
+    self.deviceManager = deviceManager
     self.adbService = adbService
     self.deviceTracker = deviceTracker
     self.fileStore = fileStore
@@ -58,15 +59,14 @@ final class AppRuntime {
     guard startupTask == nil, shutdownTask == nil else { return }
 
     Perf.step(.appFirstSnapshot, "services start")
-    let tracker = deviceTracker
-    let discovery = Task.detached(priority: .userInitiated) { await tracker.startTracking() }
+    deviceManager.start()
+    let manager = deviceManager
     if AppSettings.shared.startupCaptureMode == .livePreview {
       let preferredID = AppSettings.shared.lastViewedDeviceID
       captureServices.startup.prepareEarlyPreview(
         options: LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
       ) {
-        await discovery.value
-        let stream = await tracker.previewDeviceStream()
+        let stream = await manager.previewDeviceStream()
         for await devices in stream {
           guard !Task.isCancelled else { return nil }
           if let preferredID, devices.contains(where: { $0.id == preferredID }) { return preferredID }
@@ -78,13 +78,11 @@ final class AppRuntime {
     captureHistory.start()
     observeStartupSettings()
 
-    let deviceTracker = deviceTracker
     startupTask = Task { [weak self] in
       #if PERF_TRACING
       Perf.startupEvent("runtime startup task entered")
       #endif
-      await discovery.value
-      let stream = await deviceTracker.deviceStream()
+      let stream = manager.deviceStream()
       for await devices in stream {
         guard !Task.isCancelled, let self, captureServices.startup.isAvailable else { return }
         startupDevices = devices

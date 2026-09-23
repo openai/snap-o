@@ -26,7 +26,7 @@ struct SnapOApp: App {
       content: { configuration in
         CaptureWindow(
           captureServices: runtime.captureServices,
-          deviceTracker: runtime.deviceTracker,
+          deviceManager: runtime.deviceManager,
           fileStore: runtime.fileStore,
           adbService: runtime.adbService,
           initialWorkspace: configuration.wrappedValue.workspace

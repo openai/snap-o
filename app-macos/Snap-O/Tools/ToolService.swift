@@ -2,16 +2,16 @@ import Foundation
 
 actor ToolService {
   private let adbService: ADBService
-  private let deviceTracker: DeviceTracker
+  private let deviceManager: DeviceManager
   private let httpService: ToolHTTPService
   private var toolAppOrder: [String: Int] = [:]
   private var refreshTask: Task<Void, Error>?
   private var isStopped = false
   private var frontends: [(key: [String], bundle: ToolFrontendBundle)] = []
 
-  init(adbService: ADBService, deviceTracker: DeviceTracker) {
+  init(adbService: ADBService, deviceManager: DeviceManager) {
     self.adbService = adbService
-    self.deviceTracker = deviceTracker
+    self.deviceManager = deviceManager
     httpService = ToolHTTPService(adbService: adbService)
   }
 
@@ -140,7 +140,7 @@ actor ToolService {
   }
 
   private func refreshNow() async throws {
-    let deviceUpdates = await deviceTracker.deviceStream()
+    let deviceUpdates = await deviceManager.deviceStream()
     guard let devices = await deviceUpdates.first(where: { _ in true }),
           !Task.isCancelled, !isStopped else { return }
     let adb = await adbService.exec()

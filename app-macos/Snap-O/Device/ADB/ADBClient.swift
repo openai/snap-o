@@ -330,8 +330,9 @@ public struct ADBClient: Sendable {
     }
   }
 
-  func emulatorConnections() async throws -> [EmulatorConnection] {
+  func emulatorConnections(checkBoot: Bool = true) async throws -> [EmulatorConnection] {
     let connections = try await EmulatorConnection.parse(devicesList())
+    guard checkBoot else { return connections }
     let checked = await withTaskGroup(of: EmulatorConnection.self) { group in
       for connection in connections {
         group.addTask {

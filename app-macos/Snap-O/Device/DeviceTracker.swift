@@ -139,7 +139,8 @@ actor DeviceTracker {
               androidVersion: "",
               vendorModel: nil,
               manufacturer: nil,
-              avdName: nil
+              avdName: nil,
+              transportID: row.fields["transport_id"]
             )
           }
           broadcastPreview(devices)
@@ -214,7 +215,8 @@ actor DeviceTracker {
               androidVersion: info.version,
               vendorModel: info.vendorModel,
               manufacturer: info.manufacturer,
-              avdName: info.avdName
+              avdName: info.avdName,
+              transportID: fields["transport_id"]
             )
           )
         }

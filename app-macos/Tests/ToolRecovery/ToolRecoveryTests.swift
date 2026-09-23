@@ -89,7 +89,7 @@ struct ToolRecoveryTests {
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1\nother device transport_id:2")
     try await eventually { await tracker.latestDevices.count == 2 }
-    let service = ToolService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
     adb.setDiscoveryFailures(["healthy", "other"])
     do {
       _ = try await service.discoverPlugins()
@@ -118,7 +118,7 @@ struct ToolRecoveryTests {
     let adbService = ADBService()
     let adb = await adbService.exec()
     let tracker = DeviceTracker(adbService: adbService)
-    let service = ToolService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
     var completed = false
     let scan = Task {
       let snapshot = try await service.discoverPlugins()
@@ -135,7 +135,7 @@ struct ToolRecoveryTests {
     await tracker.stopTracking()
 
     let idleTracker = DeviceTracker(adbService: adbService)
-    let idleService = ToolService(adbService: adbService, deviceTracker: idleTracker)
+    let idleService = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await idleTracker.deviceStream() }))
     let pending = Task { try await idleService.discoverPlugins() }
     try await Task.sleep(for: .milliseconds(50))
     await idleService.stop()
@@ -152,7 +152,7 @@ struct ToolRecoveryTests {
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1\nother device transport_id:2")
     try await eventually { await tracker.latestDevices.count == 2 }
-    let service = ToolService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
     _ = try await service.discoverPlugins()
     try await eventually { await service.currentPlugins().apps.allSatisfy { $0.appIconBase64 != nil } }
     let original = await service.currentPlugins().apps
@@ -175,7 +175,7 @@ struct ToolRecoveryTests {
     precondition(stopped.isEmpty)
 
     adb.setSocketNames(["snapo_network_42"], deviceID: "healthy")
-    let restarted = ToolService(adbService: adbService, deviceTracker: tracker)
+    let restarted = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
     let fresh = try await restarted.discoverPlugins().apps
     precondition(fresh.allSatisfy { $0.appIconBase64 == nil }, "Metadata is not shared across service instances")
     adb.setMetadataAvailable(true)
@@ -214,7 +214,7 @@ struct ToolRecoveryTests {
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
     try await eventually { await tracker.latestDevices.count == 1 }
-    let service = ToolService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
     _ = try await service.discoverPlugins()
     try await eventually {
       await service.currentPlugins().apps.first?.metadata?.tools.map(\.id) == [.network, .tweaks, .sample]
@@ -295,7 +295,7 @@ struct ToolRecoveryTests {
     await tracker.startTracking()
     adb.emitDevices("healthy device transport_id:1")
     try await eventually { await tracker.latestDevices.count == 1 }
-    let service = ToolService(adbService: adbService, deviceTracker: tracker)
+    let service = ToolService(adbService: adbService, deviceManager: DeviceManager(deviceStream: { await tracker.deviceStream() }))
     try await eventually {
       let options = try await service.discoverPlugins().apps.first?.tools
       return options?.first { $0.kind == .network }?.compatibility == .legacy(protocolVersion: 1)
