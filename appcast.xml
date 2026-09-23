@@ -8,6 +8,15 @@
     <description>Software updates for Snap‑O</description>
 
     <item>
+        <title>Snap‑O 11.1.0</title>
+        <pubDate>Wed, 23 Sep 2026 02:31:17 +0000</pubDate>
+        <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+        <sparkle:version>20260922.01</sparkle:version>
+        <sparkle:shortVersionString>11.1.0</sparkle:shortVersionString>
+        <enclosure url="https://github.com/openai/snap-o/releases/download/11.1.0/Snap-O.dmg" length="7738852" type="application/octet-stream" sparkle:edSignature="allcx75nHyd3ieP8QkObbw6wfomt3oig5wB9jGIeImEsVgHbtId0CGKZxre5YONcezZmsKU6p2yDdR78dPRlCA==" />
+    </item>
+
+    <item>
         <title>Snap‑O 11.0.0</title>
         <description sparkle:format="markdown"><![CDATA[- New: Device Manager -- Manage existing Android emulators and connected devices. Start, stop, or cold boot emulators, then open them directly in Live Preview.
 - Command-drag instead of Option-drag from Live Preview to export a screenshot while ordinary dragging controls the device.
