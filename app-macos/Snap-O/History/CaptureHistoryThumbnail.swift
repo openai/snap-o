@@ -108,6 +108,11 @@ struct CaptureHistoryStack: View {
   let entry: CaptureHistoryEntry
   let root: URL
   let refreshedAt: Date
+  @Binding var draggedMedia: CaptureHistoryDraggedMedia?
+  let exportFile: (CaptureHistoryEntry.Item) -> URL?
+  let isSelected: Bool
+  let canDelete: Bool
+  let select: () -> Void
   let open: () -> Void
   let rename: (String) -> Void
   let delete: () -> Void
@@ -117,24 +122,33 @@ struct CaptureHistoryStack: View {
     Array(entry.availableItems.prefix(3))
   }
 
+  private var stackCenterX: CGFloat {
+    let edges = items.enumerated().map { index, item in
+      let halfWidth = min(154, 144 * item.aspectRatio) / 2
+      let center = Double(index) * 9
+      return (left: center - halfWidth, right: center + halfWidth)
+    }
+    guard let left = edges.map(\.left).min(), let right = edges.map(\.right).max() else { return 0 }
+    return CGFloat((left + right) / 2)
+  }
+
   var body: some View {
     VStack(spacing: 6) {
-      Button(action: open) {
-        ZStack(alignment: .bottom) {
-          if items.isEmpty {
-            Image(systemName: entry.completedAt == nil ? entry.kind.symbol : "exclamationmark.triangle")
-              .foregroundStyle(.secondary)
-          }
-          ForEach(Array(items.enumerated().reversed()), id: \.element.id) { index, item in
-            CaptureHistoryThumbnail(entry: entry, item: item, root: root, showsPlaybackIndicator: index == 0)
-              .frame(width: min(154, 144 * item.aspectRatio), height: min(144, 154 / item.aspectRatio))
-              .offset(x: CGFloat(index) * 9, y: CGFloat(index) * -6)
-          }
+      ZStack(alignment: .bottom) {
+        if items.isEmpty {
+          Image(systemName: entry.completedAt == nil ? entry.kind.symbol : "exclamationmark.triangle")
+            .foregroundStyle(.secondary)
+            .anchorPreference(key: CaptureHistoryGridBounds.self, value: .bounds) { .init(content: [$0]) }
         }
-        .frame(width: 190, height: 156, alignment: .bottom)
+        ForEach(Array(items.enumerated().reversed()), id: \.element.id) { index, item in
+          thumbnail(item, showsPlaybackIndicator: index == 0)
+            .anchorPreference(key: CaptureHistoryGridBounds.self, value: .bounds) { .init(content: [$0]) }
+            .offset(x: CGFloat(index) * 9, y: CGFloat(index) * -6)
+        }
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("Open \(entry.displayName), \(entry.kind.title)")
+      // Offsets do not affect layout, so center the visible bounds of the whole stack.
+      .offset(x: -stackCenterX)
+      .frame(width: 190, height: 156, alignment: .bottom)
 
       VStack(spacing: 0) {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -145,23 +159,58 @@ struct CaptureHistoryStack: View {
           }
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
+          .anchorPreference(key: CaptureHistoryGridBounds.self, value: .bounds) { .init(content: [$0]) }
         }
 
         CaptureHistoryName(entry: entry, isEditing: $isRenaming, rename: rename)
+          .anchorPreference(key: CaptureHistoryGridBounds.self, value: .bounds) { .init(content: [$0]) }
       }
     }
     .frame(maxWidth: .infinity)
+    .background {
+      if isSelected {
+        RoundedRectangle(cornerRadius: 8)
+          .fill(Color.accentColor.opacity(0.15))
+          .padding(-6)
+      }
+    }
     .contentShape(Rectangle())
+    .onTapGesture(count: 2) {
+      if !isRenaming { open() }
+    }
+    .simultaneousGesture(TapGesture().onEnded {
+      if !isRenaming, !NSEvent.modifierFlags.contains(.control) { select() }
+    })
+    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    .accessibilityAction(named: "Select", select)
+    .accessibilityAction(named: "Open", open)
     .help([entry.frontItem?.deviceName, entry.capturedAt.formatted(date: .abbreviated, time: .shortened)]
       .compactMap(\.self).joined(separator: " · "))
     .contextMenu {
       Button("Rename") { isRenaming = true }
       Divider()
       Button("Delete…", role: .destructive, action: delete)
-        .disabled(entry.completedAt == nil)
+        .disabled(!canDelete)
     }
     .accessibilityElement(children: .contain)
     .accessibilityValue(entry.hasFailures ? "Some devices failed to capture" : "")
+  }
+
+  @ViewBuilder
+  private func thumbnail(_ item: CaptureHistoryEntry.Item, showsPlaybackIndicator: Bool) -> some View {
+    let thumbnail = CaptureHistoryThumbnail(
+      entry: entry, item: item, root: root, showsPlaybackIndicator: showsPlaybackIndicator
+    )
+    .frame(width: min(154, 144 * item.aspectRatio), height: min(144, 154 / item.aspectRatio))
+    if entry.availableItems.count == 1 {
+      thumbnail.modifier(CaptureHistoryItemDrag(
+        entry: entry, item: item, draggedMedia: $draggedMedia, dropPadding: 0, insertion: nil
+      ) {
+        exportFile(item)
+      })
+    } else {
+      thumbnail
+    }
   }
 
   static func relativeTime(_ date: Date, now: Date) -> String {

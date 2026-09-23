@@ -89,7 +89,7 @@ struct CaptureHistoryTests {
         precondition(snapshot.entries[0].availableItems.count == 1)
         precondition(snapshot.entries[0].completedAt != nil)
         precondition(FileManager.default.fileExists(atPath: result.media[0].media.url!.path))
-        precondition(snapshot.entries[0].items[1].failure == "Capture did not complete.")
+        precondition(snapshot.entries[0].items.count == 1, "Canceled devices leave no history placeholder")
       } else {
         precondition(result.media.isEmpty && snapshot.entries.isEmpty, "Canceled empty captures leave no history entry")
       }
@@ -111,8 +111,9 @@ struct CaptureHistoryTests {
     )
     let result = await service.capture(for: [device])
     let snapshot = await repository.currentSnapshot()
-    precondition(result.failures.count == 1 && snapshot.entries.count == 1, "Genuine failures remain in history")
-    precondition(snapshot.entries[0].items[0].failure == ADBError.protocolFailure("Screenshot failed").localizedDescription)
+    precondition(result.failures.count == 1 && snapshot.entries.isEmpty, "Failures reach the caller without entering history")
+    let reopened = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
+    precondition(reopened.entries.isEmpty, "Failed captures are not saved")
   }
 
   static func persistenceAndSelection() async throws {
@@ -220,6 +221,9 @@ struct CaptureHistoryTests {
     await repository.recordFailure(deviceID: secondDevice.id, message: "Capture failed.", in: id)
     await repository.finish(id)
     let entry = await repository.currentSnapshot().entries[0]
+    precondition(entry.items.count == 1 && entry.items[0].deviceID == firstDevice.id)
+    let reopened = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
+    precondition(reopened.entries[0].items == entry.items, "Only successful devices are persisted")
     await repository.deleteItem(entry.availableItems[0].id, in: id)
     let snapshot = await repository.currentSnapshot()
     precondition(snapshot.entries.isEmpty, "Failed device placeholders do not keep an empty capture open")
@@ -610,11 +614,30 @@ struct CaptureHistoryTests {
     let snapshot = await reopened.currentSnapshot()
     precondition(snapshot.entries[0].completedAt != nil)
     precondition(snapshot.entries[0].availableItems.count == 1)
-    precondition(snapshot.entries[0].items[1].failure == "Capture was interrupted.")
+    precondition(snapshot.entries[0].items.count == 1, "Interrupted devices leave no history placeholder")
+    var legacy = snapshot.entries[0]
+    let failedItem = CaptureHistoryEntry.Item(
+      id: UUID(), deviceID: secondDevice.id, deviceName: secondDevice.displayTitle, failure: "Capture failed."
+    )
+    legacy.items.append(failedItem)
+    legacy.capturePaneSelectionID = failedItem.id
+    let metadata = first.media.url!.deletingLastPathComponent().appendingPathComponent("capture.json")
+    try JSONEncoder().encode(legacy).write(to: metadata)
+    let cleaned = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
+    precondition(cleaned.entries[0].items.count == 1, "Old failed placeholders are removed on load")
+    precondition(cleaned.entries[0].capturePaneSelectionID == nil)
+    let persisted = try JSONDecoder().decode(CaptureHistoryEntry.self, from: Data(contentsOf: metadata))
+    precondition(persisted == cleaned.entries[0])
+
+    let failedOnly = await reopened.begin(kind: .video, devices: [secondDevice])!
+    await reopened.recordFailure(deviceID: secondDevice.id, message: "Recording failed.", in: failedOnly)
+    let recovered = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
+    precondition(!recovered.entries.contains { $0.id == failedOnly }, "Old failed groups are removed on load")
+
     try FileManager.default.removeItem(at: first.media.url!)
     let missing = await CaptureHistoryRepository(root: repository.root).currentSnapshot()
-    precondition(missing.entries[0].availableItems.isEmpty)
-    precondition(missing.entries[0].items[0].failure == "The original file is unavailable.")
+    precondition(missing.entries.isEmpty, "Groups with no available media are removed on load")
+    precondition(!FileManager.default.fileExists(atPath: first.media.url!.deletingLastPathComponent().path))
 
     let invalidSource = try capture(device: firstDevice, in: root)
     try FileManager.default.removeItem(at: invalidSource.media.url!)
