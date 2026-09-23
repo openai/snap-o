@@ -113,10 +113,19 @@ struct CaptureHistoryName: View {
   let rename: (String) -> Void
 
   var body: some View {
-    CaptureHistoryNameField(entry: entry, isEditing: $isEditing, rename: rename)
-      .frame(height: 18)
-      .help("Double-click to rename")
-      .accessibilityAction(named: "Rename") { isEditing = true }
+    Group {
+      if isEditing {
+        CaptureHistoryNameField(entry: entry, isEditing: $isEditing, rename: rename)
+      } else {
+        Text(entry.displayName)
+          .font(.system(size: NSFont.smallSystemFontSize))
+          .foregroundStyle(entry.name == nil ? .tertiary : .primary)
+          .lineLimit(1)
+      }
+    }
+    .frame(height: 18)
+    .help("Rename using the context menu")
+    .accessibilityAction(named: "Rename") { isEditing = true }
   }
 }
 
@@ -129,8 +138,8 @@ private struct CaptureHistoryNameField: NSViewRepresentable {
     Coordinator(self)
   }
 
-  func makeNSView(context: Context) -> CaptureNameTextField {
-    let field = CaptureNameTextField()
+  func makeNSView(context: Context) -> NSTextField {
+    let field = CaptureHistoryRenameField()
     field.controlSize = .small
     field.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
     field.alignment = .center
@@ -143,25 +152,12 @@ private struct CaptureHistoryNameField: NSViewRepresentable {
     field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     field.setAccessibilityLabel("Capture name")
     field.delegate = context.coordinator
-    field.beginEditing = { [weak field, weak coordinator = context.coordinator] in
-      guard let field else { return }
-      coordinator?.beginEditing(field)
-    }
     return field
   }
 
-  func updateNSView(_ field: CaptureNameTextField, context: Context) {
+  func updateNSView(_ field: NSTextField, context: Context) {
     context.coordinator.parent = self
-    if isEditing {
-      context.coordinator.beginEditing(field)
-    } else if !context.coordinator.isEditing {
-      field.stringValue = entry.displayName
-      field.textColor = entry.name == nil ? .tertiaryLabelColor : .labelColor
-      field.isEditable = false
-      field.isSelectable = false
-      field.isBezeled = false
-      field.drawsBackground = false
-    }
+    if isEditing { context.coordinator.beginEditing(field) }
   }
 
   @MainActor
@@ -176,14 +172,12 @@ private struct CaptureHistoryNameField: NSViewRepresentable {
     func beginEditing(_ field: NSTextField) {
       guard !isEditing else { return }
       isEditing = true
-      if !parent.isEditing { parent.isEditing = true }
       field.stringValue = parent.entry.name ?? ""
       field.textColor = .labelColor
       field.isEditable = true
       field.isSelectable = true
       field.isBezeled = true
       field.drawsBackground = true
-      field.selectText(nil)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -204,27 +198,19 @@ private struct CaptureHistoryNameField: NSViewRepresentable {
       isEditing = false
       parent.isEditing = false
       field.abortEditing()
-      field.isEditable = false
-      field.isSelectable = false
-      field.isBezeled = false
-      field.drawsBackground = false
-      let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-      field.stringValue = save ? (trimmed.isEmpty ? "Untitled" : trimmed) : parent.entry.displayName
-      let isUnnamed = save ? trimmed.isEmpty : parent.entry.name == nil
-      field.textColor = isUnnamed ? .tertiaryLabelColor : .labelColor
       if save { parent.rename(name) }
     }
   }
 }
 
-private final class CaptureNameTextField: NSTextField {
-  var beginEditing: (() -> Void)?
-
-  override func mouseDown(with event: NSEvent) {
-    if !isEditable, event.clickCount == 2 {
-      beginEditing?()
-    } else {
-      super.mouseDown(with: event)
+private final class CaptureHistoryRenameField: NSTextField {
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    guard window != nil else { return }
+    // The field is created during Rename; wait for attachment and menu dismissal before focusing it.
+    DispatchQueue.main.async { [weak self] in
+      guard let self, window != nil else { return }
+      selectText(nil)
     }
   }
 }

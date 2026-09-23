@@ -90,9 +90,11 @@ Capture History automatically keeps your recent screenshots and recordings on yo
 
 Open **Window → Capture History** (`⇧⌘H`) to browse captures by day, newest first.
 
-Each capture action groups its devices into one entry. Open a capture to preview it immediately. Use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch devices. Press `Esc` to return to history.
+Each capture action groups its devices into one entry. Double-click an entry to preview it. Use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch devices. Press `Esc` to return to history.
 
-Captures start as **Untitled**. Click the name in the Capture pane or history preview to rename it. In the history grid, double-click the name or choose **Rename…** from the context menu. The name applies to all devices in that capture.
+Captures start as **Untitled**. Click the name in the Capture pane or history preview to rename it. In the history grid, choose **Rename** from the context menu. The name applies to all devices in that capture.
+
+Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Right-click a selected entry and choose **Delete…** to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.
 
 <details markdown="1" id="manage-history-storage">
 <summary>Manage history storage</summary>

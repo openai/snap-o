@@ -101,10 +101,13 @@ actor CaptureHistoryRepository {
     guard let entryID, let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
     var entry = entries[index]
     entry.completedAt = date
-    for itemIndex in entry.items.indices where entry.items[itemIndex].captureID == nil {
-      if entry.items[itemIndex].failure == nil {
-        entry.items[itemIndex].failure = "Capture did not complete."
-      }
+    entry.items.removeAll { !$0.isAvailable }
+    guard !entry.items.isEmpty else {
+      remove([entryID])
+      return
+    }
+    if !entry.items.contains(where: { $0.id == entry.capturePaneSelectionID }) {
+      entry.capturePaneSelectionID = nil
     }
     persist(entry, at: index)
     prune(now: date)
@@ -282,6 +285,14 @@ actor CaptureHistoryRepository {
             } else if item.captureID == nil, item.failure == nil {
               entry.items[index].failure = "Capture was interrupted."
             }
+          }
+          entry.items.removeAll { !$0.isAvailable }
+          guard !entry.items.isEmpty else {
+            try manager.removeItem(at: directory)
+            continue
+          }
+          if !entry.items.contains(where: { $0.id == entry.capturePaneSelectionID }) {
+            entry.capturePaneSelectionID = nil
           }
           if entry.completedAt == nil { entry.completedAt = entry.capturedAt }
           if entry != saved { try save(entry) }

@@ -27,11 +27,12 @@ struct CaptureHistoryWindow: View {
   @Environment(\.calendar)
   private var calendar
   @State private var entriesByDay: [Date: [CaptureHistoryEntry]] = [:]
+  @State private var gridSelection = CaptureHistoryGridSelection()
   @State private var selectedEntryID: UUID?
   @State private var selectedItemID: UUID?
   @State private var showsSettings = false
   @State private var confirmsDeletion = false
-  @State private var deletion: Deletion?
+  @State private var deletion: CaptureHistoryDeletion?
   @State private var errorMessage: String?
   @State private var protectionID = UUID()
   @State private var timestampsUpdatedAt = Date()
@@ -39,26 +40,6 @@ struct CaptureHistoryWindow: View {
   @State private var insertion: CaptureHistoryInsertion?
   @State private var isVideoFocused = false
   @FocusState private var hasKeyboardFocus: Bool
-
-  private struct Deletion {
-    let entryID: UUID
-    let itemID: UUID?
-    let kind: CaptureHistoryEntry.Kind
-    let itemCount: Int
-
-    private var name: String {
-      itemCount == 0 ? "capture" : kind.title.lowercased()
-    }
-
-    var title: String {
-      itemCount > 1 ? "Delete \(itemCount) \(name)s?" : "Delete \(name)?"
-    }
-
-    var message: String {
-      let subject = itemCount > 1 ? "This group" : "This \(name)"
-      return "\(subject) will be permanently deleted. This cannot be undone."
-    }
-  }
 
   private var entry: CaptureHistoryEntry? {
     history.entries.first { $0.id == selectedEntryID }
@@ -171,60 +152,80 @@ struct CaptureHistoryWindow: View {
   }
 
   private var grid: some View {
-    ScrollView {
-      if history.entries.isEmpty {
-        if history.isLoaded {
-          ContentUnavailableView(
-            "No captures yet",
-            systemImage: "photo.on.rectangle",
-            description: Text("Your screenshots and recordings will appear here.")
-          )
-          .padding(.top, 80)
-        } else { ProgressView().padding(80) }
-      } else {
-        LazyVStack(alignment: .leading, spacing: 24) {
-          ForEach(entriesByDay.keys.sorted(by: >), id: \.self) { day in
-            Section {
-              LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 28) {
-                ForEach(entriesByDay[day] ?? []) { entry in
-                  historyStack(entry)
+    GeometryReader { viewport in
+      ScrollView {
+        Group {
+          if history.entries.isEmpty {
+            if history.isLoaded {
+              ContentUnavailableView(
+                "No captures yet",
+                systemImage: "photo.on.rectangle",
+                description: Text("Your screenshots and recordings will appear here.")
+              )
+              .padding(.top, 80)
+            } else { ProgressView().padding(80) }
+          } else {
+            LazyVStack(alignment: .leading, spacing: 24) {
+              ForEach(entriesByDay.keys.sorted(by: >), id: \.self) { day in
+                Section {
+                  LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 28) {
+                    ForEach(entriesByDay[day] ?? []) { entry in
+                      historyStack(entry)
+                        .transformAnchorPreference(key: CaptureHistoryGridBounds.self, value: .bounds) { bounds, anchor in
+                          bounds.items[entry.id] = anchor
+                        }
+                    }
+                  }
+                } header: {
+                  Text(dayTitle(day)).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
                 }
               }
-            } header: {
-              Text(dayTitle(day)).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+            }
+            .padding(24)
+          }
+        }
+        .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .top)
+        .overlayPreferenceValue(CaptureHistoryGridBounds.self) { anchors in
+          GeometryReader { geometry in
+            CaptureHistoryRectangleSelection(
+              isEnabled: entry == nil && !confirmsDeletion && !showsSettings,
+              targets: anchors.items.mapValues { geometry[$0] },
+              contentRects: anchors.content.map { geometry[$0] },
+              selectedIDs: gridSelection.ids
+            ) { ids in
+              gridSelection.select(ids)
+              hasKeyboardFocus = true
             }
           }
         }
-        .padding(24)
       }
     }
   }
 
-  @ViewBuilder
   private func historyStack(_ entry: CaptureHistoryEntry) -> some View {
-    let stack = CaptureHistoryStack(
+    CaptureHistoryStack(
       entry: entry,
       root: history.repository.root,
       refreshedAt: timestampsUpdatedAt,
+      draggedMedia: $draggedMedia,
+      exportFile: { dragFile(entry, item: $0) },
+      isSelected: gridSelection.ids.contains(entry.id),
+      canDelete: deletionEntries(for: entry).allSatisfy { $0.completedAt != nil },
+      select: {
+        gridSelection.select(entry.id, modifiers: NSEvent.modifierFlags, orderedIDs: history.entries.map(\.id))
+        hasKeyboardFocus = true
+      },
       open: { open(entry) },
       rename: { name in
         Task { await history.repository.rename(entry.id, to: name) }
       },
-      delete: { requestDeletion(entry) }
+      delete: { requestGridDeletion(entry) }
     )
-    if entry.availableItems.count == 1, let item = entry.frontItem {
-      stack.modifier(CaptureHistoryItemDrag(
-        entry: entry, item: item, draggedMedia: $draggedMedia, dropPadding: 0, insertion: nil
-      ) {
-        dragFile(entry, item: item)
-      })
-    } else {
-      stack
-    }
   }
 
   private func groupEntries() {
     entriesByDay = Dictionary(grouping: history.entries) { calendar.startOfDay(for: $0.capturedAt) }
+    gridSelection.retain(Set(history.entries.map(\.id)))
   }
 
   private func dayTitle(_ date: Date) -> String {
@@ -473,19 +474,31 @@ struct CaptureHistoryWindow: View {
   }
 
   private func requestDeletion(_ entry: CaptureHistoryEntry, item: CaptureHistoryEntry.Item? = nil) {
-    deletion = Deletion(
-      entryID: entry.id, itemID: item?.id, kind: entry.kind,
-      itemCount: item == nil ? entry.availableItems.count : 1
-    )
+    deletion = CaptureHistoryDeletion(entries: [entry], item: item)
     confirmsDeletion = true
   }
 
-  private func delete(_ deletion: Deletion) {
+  private func deletionEntries(for entry: CaptureHistoryEntry) -> [CaptureHistoryEntry] {
+    let ids = gridSelection.ids.contains(entry.id) ? gridSelection.ids : [entry.id]
+    return history.entries.filter { ids.contains($0.id) }
+  }
+
+  private func requestGridDeletion(_ entry: CaptureHistoryEntry) {
+    let entries = deletionEntries(for: entry)
+    guard !entries.isEmpty, entries.allSatisfy({ $0.completedAt != nil }) else { return }
+    if !gridSelection.ids.contains(entry.id) {
+      gridSelection.select(entry.id, modifiers: [], orderedIDs: history.entries.map(\.id))
+    }
+    deletion = CaptureHistoryDeletion(entries: entries)
+    confirmsDeletion = true
+  }
+
+  private func delete(_ deletion: CaptureHistoryDeletion) {
     Task {
-      if let itemID = deletion.itemID {
-        await history.repository.deleteItem(itemID, in: deletion.entryID)
+      if let itemID = deletion.itemID, let entryID = deletion.entryIDs.first {
+        await history.repository.deleteItem(itemID, in: entryID)
       } else {
-        await history.repository.delete([deletion.entryID])
+        await history.repository.delete(deletion.entryIDs)
       }
     }
   }
