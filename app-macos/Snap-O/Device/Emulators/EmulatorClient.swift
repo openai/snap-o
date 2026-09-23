@@ -99,9 +99,8 @@ final class EmulatorClient {
           do { try await Task.sleep(for: .seconds(45)) } catch { return }
           self?.complete(id, with: .failure(EmulatorClientError(message: "The emulator service did not respond. Try refreshing.")))
         }
-        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ [weak self] error in
-          let message = error.localizedDescription
-          Task { @MainActor in self?.complete(id, with: .failure(EmulatorClientError(message: message))) }
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler(Self.proxyErrorHandler { [weak self] message in
+          self?.complete(id, with: .failure(EmulatorClientError(message: message)))
         }) as? EmulatorServiceProtocol else {
           complete(id, with: .failure(EmulatorClientError(message: "Could not connect to the emulator service.")))
           return
@@ -121,6 +120,16 @@ final class EmulatorClient {
       }
     } onCancel: {
       Task { @MainActor [weak self] in self?.complete(id, with: .failure(CancellationError())) }
+    }
+  }
+
+  /// Handles XPC errors from any queue and delivers their messages on the main actor.
+  static func proxyErrorHandler(
+    completion: @escaping @MainActor @Sendable (String) -> Void
+  ) -> @Sendable (Error) -> Void {
+    { error in
+      let message = error.localizedDescription
+      Task { @MainActor in completion(message) }
     }
   }
 
