@@ -23,6 +23,10 @@ final class AppSettings {
   static let shared = AppSettings()
   @ObservationIgnored private let defaults: UserDefaults
 
+  var lastViewedDeviceID: String? {
+    didSet { defaults.set(lastViewedDeviceID, forKey: "capture.lastViewedDeviceID") }
+  }
+
   var startupCaptureMode: StartupCaptureMode {
     didSet { defaults.set(startupCaptureMode.rawValue, forKey: "startupCaptureMode") }
   }
@@ -47,6 +51,7 @@ final class AppSettings {
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
+    lastViewedDeviceID = defaults.string(forKey: "capture.lastViewedDeviceID")
     startupCaptureMode = defaults.string(forKey: "startupCaptureMode")
       .flatMap(StartupCaptureMode.init(rawValue:)) ?? .livePreview
     showTouchesDuringCapture = defaults.bool(forKey: "showTouchesDuringCapture")

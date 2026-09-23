@@ -14,6 +14,8 @@ final class PreparedLivePreview {
 
   private let operationTask: Task<LivePreviewOperationHandle?, Never>
   private let service: LivePreviewService
+  private let lifetime: Duration
+  private let sleep: @Sendable (Duration) async throws -> Void
   private var expirationTask: Task<Void, Never>?
   private var state: State = .available
 
@@ -39,13 +41,38 @@ final class PreparedLivePreview {
     self.options = options
     self.operationTask = operationTask
     self.service = service
-    expirationTask = Task { [weak self] in
+    self.lifetime = lifetime
+    self.sleep = sleep
+    scheduleExpiration(afterReadiness: false)
+  }
+
+  /// Allow the source's startup timeout before counting down an unused warmup's lifetime.
+  func expireAfterReadiness() {
+    scheduleExpiration(afterReadiness: true)
+  }
+
+  private func scheduleExpiration(afterReadiness: Bool) {
+    expirationTask?.cancel()
+    expirationTask = Task { [weak self, sleep, lifetime] in
+      if afterReadiness { _ = await self?.waitUntilReady() }
+      guard !Task.isCancelled else { return }
       do {
         try await sleep(lifetime)
       } catch {
         return
       }
       await self?.discard()
+    }
+  }
+
+  nonisolated static func startOperation(
+    for deviceID: String,
+    options: LivePreviewOptions,
+    service: LivePreviewService
+  ) -> Task<LivePreviewOperationHandle?, Never> {
+    Task.detached(priority: .userInitiated) {
+      guard !Task.isCancelled else { return nil }
+      return try? await service.start(for: deviceID, options: options)
     }
   }
 

@@ -38,6 +38,9 @@ final class LivePreviewSession {
   private var pendingSampleByteCount = 0
   private var needsKeyFrame = true
   private var hasStopped = false
+  #if PERF_TRACING
+  private var loggedFirstSample = false
+  #endif
 
   private var readyContinuations: [CheckedContinuation<Media, Error>] = []
   private var stopContinuation: CheckedContinuation<Error?, Never>?
@@ -47,6 +50,9 @@ final class LivePreviewSession {
     self.deviceID = deviceID
     self.densityScale = densityScale
     self.source = source
+    #if PERF_TRACING
+    Perf.startupEvent("session source start", deviceID: deviceID)
+    #endif
     source.start { [weak self] event in self?.receive(event) }
   }
 
@@ -85,6 +91,10 @@ final class LivePreviewSession {
     guard !hasStopped else { return }
     switch event {
     case .format(let format):
+      #if PERF_TRACING
+      Perf.startupEvent("session format received", deviceID: deviceID)
+      #endif
+
       let dims = CMVideoFormatDescriptionGetDimensions(format)
       let size = CGSize(width: CGFloat(dims.width), height: CGFloat(dims.height))
       let display = DisplayInfo(size: size, densityScale: densityScale)
@@ -108,6 +118,12 @@ final class LivePreviewSession {
   private func receiveSample(_ sample: CMSampleBuffer, isKeyFrame: Bool) {
     guard !hasStopped else { return }
 
+    #if PERF_TRACING
+    if !loggedFirstSample {
+      loggedFirstSample = true
+      Perf.startupEvent("session first sample", deviceID: deviceID)
+    }
+    #endif
     if isKeyFrame {
       needsKeyFrame = false
       if sampleBufferHandler == nil {

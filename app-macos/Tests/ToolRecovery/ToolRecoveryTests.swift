@@ -193,7 +193,11 @@ struct ToolRecoveryTests {
     let adb = await adbService.exec()
     let tracker = DeviceTracker(adbService: adbService)
     await tracker.startTracking()
-    adb.emitDevices("healthy device transport_id:1\nstalled device transport_id:2")
+    let previewStream = await tracker.previewDeviceStream()
+    var previews = previewStream.makeAsyncIterator()
+    adb.emitDevices("healthy device transport_id:1\nstalled device transport_id:2\nignored detached transport_id:3")
+    let earlyDevices = await previews.next()
+    precondition(earlyDevices?.map(\.id) == ["healthy", "stalled"], "Preview discovery must not wait for properties")
     try await eventually { await tracker.latestDevices.map(\.id) == ["healthy"] }
     adb.recoverProperties()
     try await eventually { await tracker.latestDevices.map(\.id) == ["healthy", "stalled"] }

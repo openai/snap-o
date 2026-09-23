@@ -77,7 +77,8 @@ final class CaptureSnapshotController {
   func updateMediaList(
     _ newMedia: [CaptureMedia],
     preserveDeviceID: String?,
-    shouldSort: Bool
+    shouldSort: Bool,
+    waitForPreferredDevice: Bool = false
   ) {
     if shouldShowPreviewHint {
       dismissPreviewHintImmediately()
@@ -92,6 +93,8 @@ final class CaptureSnapshotController {
     } else if let preserve = preserveDeviceID,
               let preserved = ordered.first(where: { $0.device.id == preserve }) {
       selectedMediaID = preserved.id
+    } else if waitForPreferredDevice {
+      selectedMediaID = nil
     } else if let currentID = selectedMediaID,
               ordered.contains(where: { $0.id == currentID }) {
       // Keep current selection
@@ -102,7 +105,7 @@ final class CaptureSnapshotController {
     let baseCapture: CaptureMedia? = if let currentID = selectedMediaID {
       ordered.first { $0.id == currentID }
     } else {
-      ordered.first
+      waitForPreferredDevice ? nil : ordered.first
     }
 
     updateCurrentCaptureSnapshotIfNeeded(with: baseCapture)
@@ -156,6 +159,7 @@ final class CaptureSnapshotController {
 
   func updateLastViewedDeviceID(_ id: String?) {
     lastViewedDeviceID = id
+    if let id { AppSettings.shared.lastViewedDeviceID = id }
   }
 
   func clearSelection() {
@@ -187,7 +191,7 @@ final class CaptureSnapshotController {
       currentCaptureViewID = UUID()
     }
 
-    lastViewedDeviceID = baseCapture.device.id
+    updateLastViewedDeviceID(baseCapture.device.id)
   }
 
   private func showPreviewHintIfNeeded(transient: Bool) async {

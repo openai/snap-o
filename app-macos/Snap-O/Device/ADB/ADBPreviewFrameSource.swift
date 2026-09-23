@@ -21,10 +21,20 @@ final class ADBPreviewFrameSource: LivePreviewFrameSource {
     }
     let stream = stream
     task = Task.detached(priority: .userInitiated) {
+      #if PERF_TRACING
+      Perf.startupEvent("stream reader started", deviceID: stream.deviceID)
+      var loggedFirstBytes = false
+      #endif
       let error: Error?
       do {
         while !Task.isCancelled {
           guard let chunk = try stream.read(maxLength: 64 * 1024), !chunk.isEmpty else { break }
+          #if PERF_TRACING
+          if !loggedFirstBytes {
+            loggedFirstBytes = true
+            Perf.startupEvent("stream first bytes", deviceID: stream.deviceID)
+          }
+          #endif
           decoder.append(chunk)
         }
         error = nil

@@ -11,6 +11,13 @@ public enum PerfKey: String, Hashable {
 
 #if PERF_TRACING
 
+struct StartupInterval {
+  let id: UUID
+  let label: String
+  let origin: TimeInterval
+  let startedAt: TimeInterval
+}
+
 private struct PerfStep {
   let label: String
   let at: Date
@@ -30,6 +37,27 @@ final class PerfStore: @unchecked Sendable {
   @usableFromInline static let shared = PerfStore()
   private var lock = NSLock()
   private var traces: [PerfKey: PerfTraceRecord] = [:]
+  private var startupOrigin: TimeInterval?
+  private var startupDevices: [String: Int] = [:]
+
+  func startupBegin(_ label: String, deviceID: String?) -> StartupInterval? {
+    lock.lock()
+    defer { lock.unlock() }
+    let now = ProcessInfo.processInfo.systemUptime
+    // Include work after the first enqueue, but avoid tracing normal app use.
+    guard let origin = startupOrigin, now - origin < 15 else { return nil }
+    var label = label
+    if let deviceID {
+      let index = startupDevices[deviceID] ?? startupDevices.count + 1
+      startupDevices[deviceID] = index
+      let kind = deviceID.hasPrefix("emulator-") ? "emulator" : "physical"
+      label += " device=\(index)-\(kind)"
+    }
+    let interval = StartupInterval(id: UUID(), label: label, origin: origin, startedAt: now)
+    let offset = Int((now - origin) * 1_000_000)
+    SnapOLog.perf.log("[startup begin] \(interval.id, privacy: .public) \(label, privacy: .public) at=\(offset)us")
+    return interval
+  }
 
   @usableFromInline
   func start(_ key: PerfKey, name: String) {
@@ -38,6 +66,7 @@ final class PerfStore: @unchecked Sendable {
     if traces[key] == nil {
       let now = Date()
       traces[key] = PerfTraceRecord(name: name, startedAt: now, lastAt: now, steps: [])
+      if key == .appFirstSnapshot { startupOrigin = ProcessInfo.processInfo.systemUptime }
       SnapOLog.perf.log("[start] \(name)")
     }
   }
@@ -105,6 +134,24 @@ final class PerfStore: @unchecked Sendable {
 }
 
 public enum Perf {
+  static func startupBegin(_ label: String, deviceID: String? = nil) -> StartupInterval? {
+    PerfStore.shared.startupBegin(label, deviceID: deviceID)
+  }
+
+  static func startupEnd(_ interval: StartupInterval?) {
+    guard let interval else { return }
+    let now = ProcessInfo.processInfo.systemUptime
+    let elapsed = Int((now - interval.startedAt) * 1_000_000)
+    let offset = Int((now - interval.origin) * 1_000_000)
+    SnapOLog.perf.log(
+      "[startup end] \(interval.id, privacy: .public) \(interval.label, privacy: .public) elapsed=\(elapsed)us at=\(offset)us"
+    )
+  }
+
+  static func startupEvent(_ label: String, deviceID: String? = nil) {
+    startupEnd(startupBegin(label, deviceID: deviceID))
+  }
+
   @inlinable
   public static func start(_ key: PerfKey, name: String) {
     PerfStore.shared.start(key, name: name)

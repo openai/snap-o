@@ -65,12 +65,14 @@ final class MediaDisplayMode {
   func updateMediaList(
     _ newMedia: [CaptureMedia],
     preserveDeviceID: String?,
-    shouldSort: Bool
+    shouldSort: Bool,
+    waitForPreferredDevice: Bool = false
   ) {
     snapshotController.updateMediaList(
       newMedia,
       preserveDeviceID: preserveDeviceID,
-      shouldSort: shouldSort
+      shouldSort: shouldSort,
+      waitForPreferredDevice: waitForPreferredDevice
     )
   }
 

@@ -304,6 +304,7 @@ final class LivePreviewRenderer {
 @MainActor
 final class AppSettings {
   static let shared = AppSettings()
+  var lastViewedDeviceID: String?
   var startupCaptureMode = StartupCaptureMode.livePreview
   var recordAsBugReport = false
   var showTouchesDuringCapture = false
@@ -319,6 +320,10 @@ protocol LivePreviewHosting: AnyObject {
 }
 
 actor DeviceTracker {
+  func previewDeviceStream() -> AsyncStream<[Device]> {
+    deviceStream()
+  }
+
   private(set) var latestDevices: [Device]
   private var continuation: AsyncStream<[Device]>.Continuation?
 

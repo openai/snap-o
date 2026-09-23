@@ -11,6 +11,34 @@ actor DeviceTracker {
   private var continuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
   private(set) var latestDevices: [Device] = []
 
+  private var previewContinuations: [UUID: AsyncStream<[Device]>.Continuation] = [:]
+  private var previewDevices: [Device] = []
+  private var hasSeenDeviceIDs = false
+
+  /// Preview transport needs a connected serial, not descriptive Android properties.
+  func previewDeviceStream() -> AsyncStream<[Device]> {
+    let id = UUID()
+    return AsyncStream { continuation in
+      previewContinuations[id] = continuation
+      if hasSeenDeviceIDs { continuation.yield(previewDevices) }
+      continuation.onTermination = { [weak self] _ in
+        Task { await self?.removePreviewContinuation(id) }
+      }
+    }
+  }
+
+  private func removePreviewContinuation(_ id: UUID) {
+    previewContinuations.removeValue(forKey: id)
+  }
+
+  private func broadcastPreview(_ devices: [Device]) {
+    previewDevices = devices
+    hasSeenDeviceIDs = true
+    for continuation in previewContinuations.values {
+      continuation.yield(devices)
+    }
+  }
+
   private var hasSeenFirstMessage: Bool = false
 
   init(adbService: ADBService) {
@@ -36,6 +64,9 @@ actor DeviceTracker {
   // MARK: - Tracking
 
   func startTracking() {
+    #if PERF_TRACING
+    Perf.startupEvent("tracker start entered")
+    #endif
     guard trackTask == nil else { return }
     trackTask = Task { [weak self] in
       await self?.trackLoop()
@@ -53,6 +84,10 @@ actor DeviceTracker {
     for continuation in activeContinuations {
       continuation.finish()
     }
+    for continuation in previewContinuations.values {
+      continuation.finish()
+    }
+    previewContinuations.removeAll()
     await task?.value
   }
 
@@ -61,6 +96,11 @@ actor DeviceTracker {
   }
 
   private func broadcast(_ devices: [Device]) {
+    #if PERF_TRACING
+    Perf.startupEvent("device properties published")
+    #endif
+    let enriched = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
+    broadcastPreview(previewDevices.map { enriched[$0.id] ?? $0 })
     latestDevices = devices
     hasSeenFirstMessage = true
     let snapshot = Array(continuations.values)
@@ -70,6 +110,9 @@ actor DeviceTracker {
   }
 
   private func trackLoop() async {
+    #if PERF_TRACING
+    Perf.startupEvent("tracker loop entered")
+    #endif
     @inline(__always)
     func pause() async {
       try? await Task.sleep(for: .milliseconds(300))
@@ -89,6 +132,17 @@ actor DeviceTracker {
       do {
         for try await payload in stream {
           if Task.isCancelled { break }
+          let devices = payload.split(separator: "\n").compactMap(parseDeviceRow).map { row in
+            Device(
+              id: row.id,
+              model: row.fields["model"] ?? row.id,
+              androidVersion: "",
+              vendorModel: nil,
+              manufacturer: nil,
+              avdName: nil
+            )
+          }
+          broadcastPreview(devices)
           propertyTask?.cancel()
           propertyTask = Task { await self.refreshProperties(from: payload, exec: exec) }
         }
@@ -108,10 +162,15 @@ actor DeviceTracker {
     propertyTask?.cancel()
     propertyTask = nil
     await infoCache.removeAll()
+    broadcastPreview([])
     if hasSeenFirstMessage { broadcast([]) }
   }
 
   private func refreshProperties(from payload: String, exec: ADBClient) async {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("discovery properties batch")
+    defer { Perf.startupEnd(timing) }
+    #endif
     let deviceCount = payload.split(separator: "\n").compactMap(parseDeviceRow).count
     while !Task.isCancelled {
       let devices = await parseDevices(from: payload, exec: exec)
@@ -181,7 +240,8 @@ actor DeviceTracker {
 
     if parts.count >= 2 {
       let state = parts[1].lowercased()
-      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") || state.contains("authorizing") {
+      if state.contains("offline") || state.contains("unauthorized") || state.contains("recovery") || state.contains("authorizing") || state
+        .contains("detached") {
         return nil
       }
     }
