@@ -13,6 +13,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Device/Emulators/EmulatorPreviewFrameBuilder.swift \
   Snap-O/CaptureWindow/CaptureCopyConfirmation.swift \
   Snap-O/LivePreview/LivePreviewView.swift Snap-O/Utilities/Perf.swift \
+  Snap-O/LivePreview/LivePreviewKeyboardInput.swift Snap-O/LivePreview/LivePreviewKeyboardEvent.swift \
   Tests/LivePreviewFrameExport/LivePreviewFrameExportTests.swift \
   -o "$TEST_DIR/frame-export-tests"
 # Export assertions run in Snap-OTests; this checks rendering in a test window.

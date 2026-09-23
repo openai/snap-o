@@ -405,6 +405,14 @@ class ProtocolReportTests(unittest.TestCase):
         self.assertIn("tool-reader/src/Changed.java", report)
         self.assertIn("device-helper/src/Changed.java", report)
 
+    def test_reports_device_keyboard_versions(self):
+        self.write("device-helper/src/com/openai/snapo/clipboard/Keyboard.java", "private static final int VERSION = 1;\n")
+        self.write("app-macos/Snap-O/Device/ADB/DeviceKeyboardTransport.swift", "static let version: UInt32 = 1\n")
+        self.commit()
+        report = self.report()
+        self.assertIn("Device keyboard helper version", report)
+        self.assertIn("Device keyboard client version", report)
+
     def test_reports_bundled_frontends_without_version_negotiation(self):
         for _, path, _ in DECLARATIONS:
             (self.repo / path).unlink(missing_ok=True)

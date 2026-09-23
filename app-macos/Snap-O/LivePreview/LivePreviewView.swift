@@ -22,6 +22,7 @@ struct LivePreviewRendererView: NSViewRepresentable {
   let fileStore: FileStore
   let isVisible: Bool
   var thumbnail: LivePreviewThumbnail?
+  var keyboard: (any LivePreviewKeyboardHandling)?
 
   @Environment(\.captureImageCopied)
   private var imageCopied
@@ -35,17 +36,27 @@ struct LivePreviewRendererView: NSViewRepresentable {
 
   func updateNSView(_ nsView: LivePreviewDisplayView, context: Context) {
     nsView.imageCopied = imageCopied
+    nsView.configureKeyboard(keyboard)
     nsView.update(with: renderer, isVisible: isVisible, thumbnail: thumbnail)
   }
 
   static func dismantleNSView(_ nsView: LivePreviewDisplayView, coordinator: Void) {
     nsView.imageCopied = {}
+    nsView.configureKeyboard(nil)
     nsView.update(with: nil)
   }
 }
 
 final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidation {
   var imageCopied: () -> Void = {}
+  var keyboard: (any LivePreviewKeyboardHandling)?
+  var keyboardArmed = false
+  var markedText = NSAttributedString()
+  var markedSelection = NSRange(location: 0, length: 0)
+
+  var hasVisiblePreview: Bool {
+    !displayLayer.isHidden && renderer != nil
+  }
 
   private let fileStore: FileStore
   private let frameExporter = LivePreviewFrameExporter()
@@ -58,7 +69,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private var pointerState = PointerState()
   private var multitouch: LivePreviewMultitouch?
   private var gestureDisplaySize: CGSize?
-  private var modifierMonitor: Any?
+  private var inputMonitor: Any?
   private let touchOverlay = CAShapeLayer()
   private let hoverThrottleInterval: TimeInterval = 1.0 / 45.0
   private var frameDragOrigin: CGPoint?
@@ -85,6 +96,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   override func menu(for event: NSEvent) -> NSMenu? {
+    releaseKeyboardFocus()
     window?.makeFirstResponder(self)
     let menu = NSMenu()
     // A separate menu action avoids AppKit's automatic icon for the standard Copy action.
@@ -94,17 +106,25 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-    renderer != nil && displayLayer.sampleBufferRenderer.displayedPixelBuffer() != nil
+    if menuItem.action == #selector(paste(_:)) {
+      return canSendKeyboardInput && NSPasteboard.general.string(forType: .string) != nil
+    }
+    if menuItem.action == #selector(copy(_:)), keyboard != nil { return canSendKeyboardInput }
+    return renderer != nil && displayLayer.sampleBufferRenderer.displayedPixelBuffer() != nil
   }
 
   @objc
   func copy(_ sender: Any?) {
-    copyFrame(to: .general)
+    if keyboard != nil {
+      sendKeyboard(.copy)
+    } else {
+      copyFrame(to: .general)
+    }
   }
 
   @objc
   private func copyPreviewFrame(_ sender: Any?) {
-    copy(sender)
+    copyFrame(to: .general)
   }
 
   func copyFrame(to pasteboard: NSPasteboard) {
@@ -140,7 +160,9 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   func update(with renderer: LivePreviewRenderer?, isVisible: Bool = false, thumbnail: LivePreviewThumbnail? = nil) {
-    if !isVisible { cancelPointerGesture() }
+    if !isVisible {
+      releaseInputFocus()
+    }
     // Keep decoding and retaining the latest frame without compositing hidden previews.
     CATransaction.begin()
     CATransaction.setDisableActions(true)
@@ -231,12 +253,12 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   private func detachSession() {
+    releaseInputFocus()
     #if PERF_TRACING
     NotificationCenter.default.removeObserver(
       self, name: NSNotification.Name.AVSampleBufferDisplayLayerReadyForDisplayDidChange, object: displayLayer
     )
     #endif
-    cancelPointerGesture()
     detachThumbnail()
     frameDragOrigin = nil
     isDraggingFrame = false
@@ -274,10 +296,11 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   override func viewWillMove(toWindow newWindow: NSWindow?) {
-    cancelPointerGesture()
-    if let modifierMonitor { NSEvent.removeMonitor(modifierMonitor) }
-    modifierMonitor = nil
+    releaseInputFocus()
+    if let inputMonitor { NSEvent.removeMonitor(inputMonitor) }
+    inputMonitor = nil
     NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: window)
+    NotificationCenter.default.removeObserver(self, name: NSApplication.didResignActiveNotification, object: nil)
     super.viewWillMove(toWindow: newWindow)
   }
 
@@ -285,23 +308,47 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     super.viewDidMoveToWindow()
     guard let window else { return }
     NotificationCenter.default.addObserver(
-      self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window
+      self, selector: #selector(releaseInputFocus), name: NSWindow.didResignKeyNotification, object: window
     )
-    modifierMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(releaseInputFocus), name: NSApplication.didResignActiveNotification, object: nil
+    )
+    inputMonitor = NSEvent.addLocalMonitorForEvents(
+      matching: [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+    ) { [weak self] event in
       guard let self, event.window === self.window, !displayLayer.isHidden else { return event }
-      if event.type == .flagsChanged {
+      switch event.type {
+      case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+        updateKeyboardFocus(for: event)
+      case .flagsChanged:
         flagsChanged(with: event)
-      } else if event.keyCode == 53, multitouch != nil {
-        cancelPointerGesture()
-        return nil
+      case .keyDown:
+        if event.keyCode == 53, cancelGestureForEscape() { return nil }
+      default:
+        break
       }
       return event
     }
   }
 
   @objc
-  private func windowResignedKey() {
+  private func releaseInputFocus() {
+    releaseKeyboardFocus()
     cancelPointerGesture()
+  }
+
+  private func updateKeyboardFocus(for event: NSEvent) {
+    // Decide before mouse handlers branch into device input, menus, or image dragging.
+    guard let contentView = window?.contentView else { return }
+    let location = contentView.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+    if keyboard != nil, event.type == .leftMouseDown,
+       event.modifierFlags.isDisjoint(with: [.command, .control]),
+       contentView.hitTest(location) === self,
+       convertToDevicePoint(event: event) != nil {
+      keyboardArmed = true
+    } else {
+      releaseKeyboardFocus()
+    }
   }
 
   override func layout() {
@@ -322,6 +369,12 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
       multitouch = LivePreviewMultitouch(pointer: normalized)
     }
     updateTouchOverlay()
+  }
+
+  func cancelGestureForEscape() -> Bool {
+    guard multitouch != nil || pointerState.isPointerDown else { return false }
+    cancelPointerGesture()
+    return true
   }
 
   private func cancelPointerGesture() {

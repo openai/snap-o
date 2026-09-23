@@ -70,7 +70,7 @@ struct DeviceClipboardTransport: ClipboardTransport {
 }
 
 enum DeviceClipboardProtocol {
-  static func launchCommand(helper: Data) throws -> String {
+  static func launchCommand(helper: Data, keyboard: Bool = false) throws -> String {
     guard !helper.isEmpty, helper.count <= 32768 else {
       throw ADBError.protocolFailure("Invalid clipboard helper")
     }
@@ -80,7 +80,7 @@ enum DeviceClipboardProtocol {
     trap 'rm -f "$directory/helper.jar"; rmdir "$directory" 2>/dev/null' EXIT
     (umask 077; printf '%s' '\(helper.base64EncodedString())' | base64 -d > "$directory/helper.jar") &&
       chmod 444 "$directory/helper.jar" || exit 1
-    CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.clipboard.Main "$directory" 2>/dev/null
+    CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.clipboard.Main "$directory"\(keyboard ? " keyboard" : "") 2>/dev/null
     """
   }
 

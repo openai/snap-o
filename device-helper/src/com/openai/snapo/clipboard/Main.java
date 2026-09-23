@@ -33,13 +33,17 @@ public final class Main {
 
     public static void main(String[] args) {
         try {
-            if (args.length != 1) throw new IllegalArgumentException("Expected temporary directory");
+            if (args.length != 1 && (args.length != 2 || !args[1].equals("keyboard"))) {
+                throw new IllegalArgumentException("Expected temporary directory and optional keyboard mode");
+            }
             // ART has loaded the DEX. ADB disconnect can kill the launch shell before its EXIT trap.
             File directory = new File(args[0]);
             if (!new File(directory, "helper.jar").delete() || !directory.delete()) {
                 throw new IOException("Cannot remove temporary helper");
             }
-            new Main(createClipboard()).run();
+            ClipboardManager clipboard = createClipboard();
+            if (args.length == 2) new Keyboard(clipboard).run();
+            else new Main(clipboard).run();
         } catch (Exception error) {
             // Framework errors can contain clipboard contents. Keep diagnostics generic.
             System.err.println("Snap-O clipboard helper stopped.");

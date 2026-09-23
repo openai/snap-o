@@ -23,11 +23,13 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
   @State private var lifecycle: LivePreviewLifecycle<LivePreviewRenderer>
   @State private var fileDrop: DeviceFileDrop
   @State private var clipboardFocus = ClipboardSyncFocus()
+  @State private var keyboard: LivePreviewKeyboard
 
   init(host: Host, capture: CaptureMedia, fileStore: FileStore) {
     self.fileStore = fileStore
     _fileDrop = State(initialValue: DeviceFileDrop(device: capture.device))
     deviceID = capture.device.id
+    _keyboard = State(initialValue: LivePreviewKeyboard(deviceID: capture.device.id))
     _lifecycle = State(initialValue: LivePreviewLifecycle(
       connection: host.livePreviewConnection(for: capture.device.id),
       start: { await host.startLivePreviewStream(for: capture.device.id) },
@@ -51,7 +53,8 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
           renderer: renderer,
           fileStore: fileStore,
           isVisible: lifecycle.isWindowVisible,
-          thumbnail: lifecycle.connection?.thumbnail
+          thumbnail: lifecycle.connection?.thumbnail,
+          keyboard: settings.keyboardInput ? keyboard : nil
         )
       } else if lifecycle.connection?.hasFailed == true {
         VStack(spacing: 8) {
@@ -72,8 +75,24 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     }
     .dropConfiguration { _ in DropConfiguration(operation: .copy) }
     .overlay(alignment: .bottom) {
-      if fileDrop.isBusy || fileDrop.status != nil || !fileDrop.failures.isEmpty {
-        DeviceFileDropStatus(model: fileDrop)
+      VStack(spacing: 0) {
+        if fileDrop.isBusy || fileDrop.status != nil || !fileDrop.failures.isEmpty {
+          DeviceFileDropStatus(model: fileDrop)
+        }
+        if let message = keyboard.errorMessage {
+          HStack(spacing: 8) {
+            Text(message)
+              .frame(maxWidth: .infinity, alignment: .leading)
+            Button { keyboard.errorMessage = nil } label: {
+              Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss keyboard status")
+          }
+          .font(.callout)
+          .padding(10)
+          .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+        }
       }
     }
     .alert(fileDrop.installPrompt, isPresented: $fileDrop.asksToInstall) {
@@ -104,6 +123,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
     .onAppear { lifecycle.appear() }
     .onChange(of: lifecycle.connection?.restartID) { lifecycle.restart() }
     .onDisappear {
+      keyboard.stop()
       clipboardFocus.sync?.stop()
       lifecycle.disappear()
       fileDrop.cancel()
