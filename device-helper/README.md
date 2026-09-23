@@ -1,15 +1,16 @@
-# Device clipboard helper
+# Device helper
 
-Snap-O bundles `snapo-device-helper.jar` for physical-device clipboard sync during Live Preview.
+Snap-O bundles `snapo-device-helper.jar` for clipboard sync and keyboard input during Live Preview.
 It runs through `app_process` as the ADB shell. No APK, root access, or app dependency is required.
 Emulators continue using their existing gRPC clipboard service.
+Keyboard input uses the helper on both emulators and physical devices.
 
 Each session creates a private temporary directory under `/data/local/tmp`, writes a read-only JAR,
 and starts it over a bidirectional ADB `exec` connection. The helper removes its JAR and directory
 after Android loads it; the launch script also cleans up failed starts. Closing the connection
 ends the helper. There is no network listener or persistent service.
 
-The helper only reads and writes plain text. It registers an Android clipboard listener and sends
+In clipboard mode, the helper only reads and writes plain text. It registers an Android clipboard listener and sends
 changes to the Mac. Host writes suppress their corresponding notification. The desktop shares
 initial clipboard handling, limits, and feedback-loop prevention with emulator sync.
 It starts the helper only while Live Preview is visible and the saved Sync clipboard setting is on.
@@ -40,3 +41,24 @@ direction, then turn sync off and check that further copies stay local. On Andro
 should not show the bottom clipboard preview. Android may still show a clipboard read-access toast.
 
 See the [internal clipboard contract](../contracts/device-clipboard/README.md).
+
+## Keyboard input
+
+Keyboard input is on by default. Click the preview to type. Clicking elsewhere, leaving the app,
+hiding the preview, or turning keyboard input off releases focus and closes the input connection.
+Each preview owns a keyboard controller bound to its device. Only the focused preview in the
+active window sends input. The input helper starts on the first keystroke and processes requests in order.
+
+Typing uses Android's virtual keyboard character map. Return, Tab, Delete, and arrow keys work
+as device input; Shift extends selections. Escape is forwarded unchanged unless it cancels an active
+pointer gesture or unfinished text composition. Characters absent from Android's map are rejected
+without inserting part of the text. Use Paste for these characters, including emoji.
+
+With keyboard input on and the preview focused, Command-C copies Android's selected text to the Mac.
+Command-V pastes Mac text into Android. These actions work with clipboard sync off. Pasting explicitly
+replaces the device clipboard. With keyboard input off, Command-C copies the preview image.
+The preview's Copy Image menu item always copies the image.
+
+Validate typing, deletion, selection, Unicode paste, and copy with clipboard sync both on and off.
+Verify that changing focus or devices discards queued input. Use synthetic text only.
+See the [internal keyboard contract](../contracts/device-keyboard/README.md).

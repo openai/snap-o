@@ -43,6 +43,10 @@ final class AppSettings {
     didSet { defaults.set(syncClipboard, forKey: "syncClipboard") }
   }
 
+  var keyboardInput: Bool {
+    didSet { defaults.set(keyboardInput, forKey: "keyboardInput") }
+  }
+
   var deviceControlsPlacement: DeviceControlsPlacement {
     didSet { defaults.set(deviceControlsPlacement.rawValue, forKey: "deviceControlsPlacement") }
   }
@@ -57,6 +61,7 @@ final class AppSettings {
     showTouchesDuringCapture = defaults.bool(forKey: "showTouchesDuringCapture")
     recordAsBugReport = defaults.bool(forKey: "recordAsBugReport")
     syncClipboard = defaults.object(forKey: "syncClipboard") as? Bool ?? true
+    keyboardInput = defaults.object(forKey: "keyboardInput") as? Bool ?? true
     deviceControlsPlacement = defaults.string(forKey: "deviceControlsPlacement")
       .flatMap(DeviceControlsPlacement.init(rawValue:)) ?? .left
   }

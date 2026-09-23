@@ -35,8 +35,10 @@ struct DeviceControlsView: View {
       }
       divider
       clipboardButton
+      keyboardButton
     }
-    .padding(8)
+    .padding(placement == .left ? .vertical : .horizontal, 8)
+    .padding(placement == .left ? .horizontal : .vertical, 6.5)
     .fixedSize()
     .buttonStyle(.plain)
     .controlSize(.regular)
@@ -100,6 +102,18 @@ struct DeviceControlsView: View {
     .disabled(pendingKey != nil)
   }
 
+  private var keyboardButton: some View {
+    @Bindable var settings = settings
+    return Toggle(isOn: $settings.keyboardInput) {
+      icon("keyboard")
+        .foregroundStyle(settings.keyboardInput ? Color.accentColor : Color.secondary)
+    }
+    .toggleStyle(.button)
+    .help(settings.keyboardInput ? "Keyboard input: On. Click the preview to type." : "Keyboard input: Off")
+    .accessibilityLabel("Keyboard input")
+    .accessibilityValue(settings.keyboardInput ? "On" : "Off")
+  }
+
   private var clipboardButton: some View {
     @Bindable var settings = settings
     return Toggle(isOn: $settings.syncClipboard) {
@@ -115,9 +129,7 @@ struct DeviceControlsView: View {
 
   private func icon(_ symbol: String) -> some View {
     Image(systemName: symbol)
-      .resizable()
-      .scaledToFit()
-      .frame(width: 15, height: 15)
+      .font(.system(size: 15, weight: .regular))
       .frame(width: 32, height: 36)
       .contentShape(Rectangle())
   }

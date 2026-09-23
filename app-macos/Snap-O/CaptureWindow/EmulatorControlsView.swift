@@ -120,9 +120,7 @@ struct EmulatorControlsView: View {
 
   private func icon(_ symbol: String, verticalOffset: CGFloat = 0) -> some View {
     Image(systemName: symbol)
-      .resizable()
-      .scaledToFit()
-      .frame(width: 15, height: 15)
+      .font(.system(size: 15, weight: .regular))
       .foregroundStyle(.primary)
       .offset(y: verticalOffset)
       .frame(width: 32, height: 36)

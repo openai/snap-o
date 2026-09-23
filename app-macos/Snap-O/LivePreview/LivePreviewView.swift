@@ -22,6 +22,8 @@ struct LivePreviewRendererView: NSViewRepresentable {
   let fileStore: FileStore
   let isVisible: Bool
   var thumbnail: LivePreviewThumbnail?
+  var keyboard: (any LivePreviewKeyboardHandling)?
+  var keyboardEnabled = false
 
   @Environment(\.captureImageCopied)
   private var imageCopied
@@ -35,17 +37,28 @@ struct LivePreviewRendererView: NSViewRepresentable {
 
   func updateNSView(_ nsView: LivePreviewDisplayView, context: Context) {
     nsView.imageCopied = imageCopied
+    nsView.configureKeyboard(keyboard, enabled: keyboardEnabled)
     nsView.update(with: renderer, isVisible: isVisible, thumbnail: thumbnail)
   }
 
   static func dismantleNSView(_ nsView: LivePreviewDisplayView, coordinator: Void) {
     nsView.imageCopied = {}
+    nsView.configureKeyboard(nil, enabled: false)
     nsView.update(with: nil)
   }
 }
 
 final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidation {
   var imageCopied: () -> Void = {}
+  var keyboard: (any LivePreviewKeyboardHandling)?
+  var keyboardEnabled = false
+  var keyboardArmed = false
+  var markedText = NSAttributedString()
+  var markedSelection = NSRange(location: 0, length: 0)
+
+  var hasVisiblePreview: Bool {
+    !displayLayer.isHidden && renderer != nil
+  }
 
   private let fileStore: FileStore
   private let frameExporter = LivePreviewFrameExporter()
@@ -94,17 +107,25 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-    renderer != nil && displayLayer.sampleBufferRenderer.displayedPixelBuffer() != nil
+    if menuItem.action == #selector(paste(_:)) {
+      return canSendKeyboardInput && NSPasteboard.general.string(forType: .string) != nil
+    }
+    if menuItem.action == #selector(copy(_:)), keyboardEnabled { return canSendKeyboardInput }
+    return renderer != nil && displayLayer.sampleBufferRenderer.displayedPixelBuffer() != nil
   }
 
   @objc
   func copy(_ sender: Any?) {
-    copyFrame(to: .general)
+    if keyboardEnabled {
+      sendKeyboard(.copy)
+    } else {
+      copyFrame(to: .general)
+    }
   }
 
   @objc
   private func copyPreviewFrame(_ sender: Any?) {
-    copy(sender)
+    copyFrame(to: .general)
   }
 
   func copyFrame(to pasteboard: NSPasteboard) {
@@ -140,7 +161,10 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   func update(with renderer: LivePreviewRenderer?, isVisible: Bool = false, thumbnail: LivePreviewThumbnail? = nil) {
-    if !isVisible { cancelPointerGesture() }
+    if !isVisible {
+      cancelPointerGesture()
+      releaseKeyboardFocus()
+    }
     // Keep decoding and retaining the latest frame without compositing hidden previews.
     CATransaction.begin()
     CATransaction.setDisableActions(true)
@@ -231,6 +255,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   private func detachSession() {
+    releaseKeyboardFocus()
     #if PERF_TRACING
     NotificationCenter.default.removeObserver(
       self, name: NSNotification.Name.AVSampleBufferDisplayLayerReadyForDisplayDidChange, object: displayLayer
@@ -274,10 +299,12 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   override func viewWillMove(toWindow newWindow: NSWindow?) {
+    releaseKeyboardFocus()
     cancelPointerGesture()
     if let modifierMonitor { NSEvent.removeMonitor(modifierMonitor) }
     modifierMonitor = nil
     NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: window)
+    NotificationCenter.default.removeObserver(self, name: NSApplication.didResignActiveNotification, object: nil)
     super.viewWillMove(toWindow: newWindow)
   }
 
@@ -287,12 +314,20 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     NotificationCenter.default.addObserver(
       self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window
     )
-    modifierMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(windowResignedKey), name: NSApplication.didResignActiveNotification, object: nil
+    )
+    modifierMonitor = NSEvent.addLocalMonitorForEvents(
+      matching: [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+    ) { [weak self] event in
       guard let self, event.window === self.window, !displayLayer.isHidden else { return event }
+      if [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type),
+         !visibleRect.contains(convert(event.locationInWindow, from: nil)) {
+        releaseKeyboardFocus()
+      }
       if event.type == .flagsChanged {
         flagsChanged(with: event)
-      } else if event.keyCode == 53, multitouch != nil {
-        cancelPointerGesture()
+      } else if event.type == .keyDown, event.keyCode == 53, cancelGestureForEscape() {
         return nil
       }
       return event
@@ -301,6 +336,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
 
   @objc
   private func windowResignedKey() {
+    releaseKeyboardFocus()
     cancelPointerGesture()
   }
 
@@ -322,6 +358,12 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
       multitouch = LivePreviewMultitouch(pointer: normalized)
     }
     updateTouchOverlay()
+  }
+
+  func cancelGestureForEscape() -> Bool {
+    guard multitouch != nil || pointerState.isPointerDown else { return false }
+    cancelPointerGesture()
+    return true
   }
 
   private func cancelPointerGesture() {
@@ -430,6 +472,7 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
       }
       return
     }
+    keyboardArmed = keyboardEnabled && convertToDevicePoint(event: event) != nil
     handlePointer(.down, event: event)
   }
 
