@@ -4,6 +4,7 @@ import Observation
 import Synchronization
 import Testing
 
+@Suite(.timeLimit(.minutes(1)))
 @MainActor
 struct ToolHostObservationTests {
   @Test
@@ -99,12 +100,12 @@ struct ToolHostObservationTests {
     var apps = [first]
     let appTool = AppToolModel(preferences: defaults, discover: {
       ToolDiscoverySnapshot(apps: apps)
-    }, openApp: { _ in })
+    }, openApp: { _ in }, sleep: suspendUntilCancelled)
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
-    try await eventually { host.webContainer != nil }
+    try await waitForState { host.webContainer != nil }
     let previous = try #require(host.webContainer)
     let lateReadiness = previous.pageReadinessChangedHandler
     previous.pageReadinessChangedHandler?(true)
@@ -112,7 +113,7 @@ struct ToolHostObservationTests {
 
     apps = []
     appTool.refresh()
-    try await eventually { host.presentation != .tool }
+    try await waitForState { host.presentation != .tool }
     #expect(host.webContainer === previous, "Keep cached content when the same app disconnects")
 
     host.selectTool(next, option: next.tools[0])
@@ -127,7 +128,7 @@ struct ToolHostObservationTests {
 
     apps = [next]
     appTool.refresh()
-    try await eventually { host.webContainer != nil }
+    try await waitForState { host.webContainer != nil }
     #expect(host.webContainer !== previous)
     #expect(host.selectedTool?.appId == next.id)
     #expect(!host.isPageReady)
@@ -148,71 +149,96 @@ struct ToolHostObservationTests {
       scans += 1
       if shouldFail { throw NSError(domain: "ToolHostDiscoveryTests", code: 1) }
       return ToolDiscoverySnapshot(apps: apps)
-    }, openApp: { _ in })
+    }, openApp: { _ in }, sleep: suspendUntilCancelled)
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
 
     #expect(host.presentation == .findingApps)
-    try await eventually { scans == 1 }
+    try await waitForState { host.presentation == .discoveryFailed }
+    #expect(scans == 1)
     #expect(host.presentation == .discoveryFailed, "A failed scan does not establish that no apps exist")
     #expect(host.webContainer == nil)
 
     shouldFail = false
     appTool.refresh()
-    try await eventually { host.presentation == .noApps }
+    try await waitForState { host.presentation == .noApps }
     #expect(host.toolApps.isEmpty)
     #expect(host.selectedToolApp == nil)
 
     apps = [selectionApp(20, process: "com.example.other")]
     appTool.refresh()
-    try await eventually { !host.toolApps.isEmpty }
+    try await waitForState { !host.toolApps.isEmpty }
     #expect(host.presentation == .needsSelection)
     #expect(host.selectedToolApp == nil, "An unmatched saved preference still needs an explicit selection")
     #expect(host.webContainer == nil)
   }
 
-  @Test
+  @Test(.timeLimit(.minutes(1)))
   func cachedUpdatesDoNotCompleteDiscoveryOrClearFailure() async throws {
     let suite = "ToolHostCachedDiscoveryTests." + UUID().uuidString
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     let (updates, continuation) = AsyncStream<Void>.makeStream()
-    defer { continuation.finish() }
-    var reply: CheckedContinuation<ToolDiscoverySnapshot, Error>?
+    let (scans, scanContinuation) = AsyncStream<CheckedContinuation<ToolDiscoverySnapshot, Error>>.makeStream()
+    let (snapshots, snapshotContinuation) = AsyncStream<AppToolSnapshot>.makeStream()
+    let (polls, pollContinuation) = AsyncStream<Void>.makeStream()
+    defer {
+      continuation.finish()
+      scanContinuation.finish()
+      snapshotContinuation.finish()
+      pollContinuation.finish()
+    }
+    var scanRequests = scans.makeAsyncIterator()
+    var publications = snapshots.makeAsyncIterator()
     var reads = 0
     let appTool = AppToolModel(preferences: defaults, discover: {
-      try await withCheckedThrowingContinuation { reply = $0 }
+      try await withCheckedThrowingContinuation { scanContinuation.yield($0) }
     }, changes: {
       continuation.yield(())
       return updates
     }, currentDiscovery: {
       reads += 1
       return ToolDiscoverySnapshot(apps: [], revision: UInt64(reads + 10))
-    }, openApp: { _ in })
+    }, openApp: { _ in }, sleep: { _ in
+      // This test drives scans explicitly; elapsed time must not trigger a retry.
+      for await _ in polls {}
+      try Task.checkCancellation()
+    })
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
+    let applySnapshot = appTool.stateChanged
+    appTool.stateChanged = { snapshot in
+      applySnapshot?(snapshot)
+      snapshotContinuation.yield(snapshot)
+    }
 
-    try await eventually { reads == 1 && reply != nil }
+    let firstScan = try #require(await scanRequests.next())
+    let initialUpdate = try #require(await publications.next())
+    #expect(initialUpdate.presentation == .findingApps)
     #expect(host.presentation == .findingApps)
     #expect(host.webContainer == nil)
-    reply?.resume(throwing: NSError(domain: "DiscoveryTests", code: 1))
-    reply = nil
-    try await eventually { host.presentation == .discoveryFailed }
+    firstScan.resume(throwing: NSError(domain: "DiscoveryTests", code: 1))
+    let failure = try #require(await publications.next())
+    #expect(failure.presentation == .discoveryFailed)
     continuation.yield(())
-    try await eventually { reads == 2 }
+    let cachedUpdate = try #require(await publications.next())
+    #expect(reads == 2)
+    #expect(cachedUpdate.presentation == .discoveryFailed)
     #expect(host.presentation == .discoveryFailed)
 
     host.retryDiscovery()
-    #expect(host.presentation == .findingApps)
-    try await eventually { reply != nil }
+    let retry = try #require(await publications.next())
+    #expect(retry.presentation == .findingApps)
+    let secondScan = try #require(await scanRequests.next())
     // Finishing a scan establishes the empty state even when its data revision is older.
-    reply?.resume(returning: ToolDiscoverySnapshot(apps: [], revision: 1))
-    reply = nil
-    try await eventually { host.presentation == .noApps }
+    secondScan.resume(returning: ToolDiscoverySnapshot(apps: [], revision: 1))
+    let completed = try #require(await publications.next())
+    #expect(completed.presentation == .noApps)
+    #expect(host.presentation == .noApps)
     #expect(host.webContainer == nil)
   }
 
@@ -232,12 +258,12 @@ struct ToolHostObservationTests {
     let apps = [first, next]
     let appTool = AppToolModel(preferences: defaults, discover: {
       ToolDiscoverySnapshot(apps: apps)
-    }, openApp: { _ in })
+    }, openApp: { _ in }, sleep: suspendUntilCancelled)
     let adb = ADBService()
     let service = ToolService(adbService: adb, deviceTracker: DeviceTracker(adbService: adb))
     let host = ToolHostModel(service: service, preferences: defaults, appTool: appTool)
     defer { host.stop() }
-    try await eventually { host.webContainer != nil }
+    try await waitForState { host.webContainer != nil }
     let network = try #require(host.webContainer)
     let lateReadiness = network.pageReadinessChangedHandler
     host.selectTool(first, option: first.tools[1])
@@ -252,14 +278,6 @@ struct ToolHostObservationTests {
     host.selectTool(first, option: first.tools[0])
     #expect(host.webContainer !== network, "A hidden page cannot outlive its selected app")
     #expect(!host.isPageReady)
-  }
-
-  private func eventually(_ condition: () -> Bool) async throws {
-    for _ in 0 ..< 100 {
-      if condition() { return }
-      try await Task.sleep(for: .milliseconds(10))
-    }
-    #expect(condition())
   }
 
   private func makePage() -> ToolHostModel.Page {

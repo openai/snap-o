@@ -4,7 +4,7 @@ import AppKit
 import SwiftUI
 import Testing
 
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 @MainActor
 struct LivePreviewThumbnailTests {
   @Test(arguments: [CGSize(width: 320, height: 640), CGSize(width: 640, height: 320)])
@@ -30,28 +30,28 @@ struct LivePreviewThumbnailTests {
   func cancelledAndSupersededRefreshesCannotReplaceTheImage() async throws {
     let thumbnail = LivePreviewThumbnail()
     let png = try makePNG()
-    var pending: CheckedContinuation<Data, Never>?
+    let pending = TestValue<CheckedContinuation<Data, Never>?>(nil)
     let stale = Task {
       await thumbnail.refresh(pixelSize: CGSize(width: 192, height: 320)) {
-        await withCheckedContinuation { pending = $0 }
+        await withCheckedContinuation { pending.value = $0 }
       }
     }
-    try await eventually { pending != nil }
+    try await waitForState { pending.value != nil }
     await thumbnail.refresh(pixelSize: CGSize(width: 96, height: 160)) { png }
     let fresh = try #require(thumbnail.image)
-    pending?.resume(returning: png)
+    pending.value?.resume(returning: png)
     await stale.value
     #expect(thumbnail.image === fresh)
 
-    pending = nil
+    pending.value = nil
     let cancelled = Task {
       await thumbnail.refresh(pixelSize: CGSize(width: 192, height: 320)) {
-        await withCheckedContinuation { pending = $0 }
+        await withCheckedContinuation { pending.value = $0 }
       }
     }
-    try await eventually { pending != nil }
+    try await waitForState { pending.value != nil }
     cancelled.cancel()
-    pending?.resume(returning: png)
+    pending.value?.resume(returning: png)
     await cancelled.value
     #expect(thumbnail.image === fresh)
     #expect(!thumbnail.hasFailed)
@@ -124,13 +124,13 @@ struct LivePreviewThumbnailTests {
       window.contentView = nil
     }
     let output = try #require(view.layer?.sublayers?.compactMap { $0 as? AVSampleBufferDisplayLayer }.first)
-    var pendingScreenshot: CheckedContinuation<Data, Never>?
+    let pendingScreenshot = TestValue<CheckedContinuation<Data, Never>?>(nil)
     let refresh = Task {
       await thumbnail.refresh(pixelSize: CGSize(width: 80, height: 80)) {
-        await withCheckedContinuation { pendingScreenshot = $0 }
+        await withCheckedContinuation { pendingScreenshot.value = $0 }
       }
     }
-    try await eventually { pendingScreenshot != nil }
+    try await waitForState { pendingScreenshot.value != nil }
     for (width, height) in [(32, 64), (64, 32)] {
       var pixelBuffer: CVPixelBuffer?
       let status = CVPixelBufferCreate(
@@ -159,7 +159,7 @@ struct LivePreviewThumbnailTests {
     #expect(!thumbnail.isLoading)
     source.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
     thumbnail.videoRenderer = nil
-    try pendingScreenshot?.resume(returning: makePNG())
+    try pendingScreenshot.value?.resume(returning: makePNG())
     await refresh.value
     #expect(thumbnail.image === cached)
   }

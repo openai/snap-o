@@ -91,10 +91,11 @@ final class AppToolModel {
     )
   }
 
-  func start() {
-    guard !running else { return }
+  @discardableResult
+  func start() -> Task<Void, Never>? {
+    guard !running else { return nil }
     running = true
-    refresh()
+    let initialScan = refresh()
     if let changes, let currentDiscovery {
       updatesTask = Task { [weak self] in
         for await _ in await changes() {
@@ -113,9 +114,12 @@ final class AppToolModel {
         if !launchWaiting { refresh() }
       }
     }
+    return initialScan
   }
 
-  func stop() {
+  @discardableResult
+  func stop() -> Task<Void, Never> {
+    let pending = [pollingTask, refreshTask, updatesTask, launchTask, launchPollingTask].compactMap(\.self)
     running = false
     pollingTask?.cancel()
     pollingTask = nil
@@ -124,10 +128,16 @@ final class AppToolModel {
     updatesTask?.cancel()
     updatesTask = nil
     cancelLaunch()
+    return Task {
+      for task in pending {
+        await task.value
+      }
+    }
   }
 
-  func refresh() {
-    guard running, refreshTask == nil else { return }
+  @discardableResult
+  func refresh() -> Task<Void, Never>? {
+    guard running, refreshTask == nil else { return nil }
     if discovery == .failed {
       discovery = .searching
       publish()
@@ -149,6 +159,7 @@ final class AppToolModel {
         }
       }
     }
+    return refreshTask
   }
 
   private func applyDiscovery(_ discovery: ToolDiscoverySnapshot) {
@@ -183,8 +194,9 @@ final class AppToolModel {
     selectApp(app)
   }
 
-  func openSelectedApp(appId: String) {
-    guard running, selection.state.selectedApp?.id == appId, let input = launchInput, launchID == nil else { return }
+  @discardableResult
+  func openSelectedApp(appId: String) -> Task<Void, Never>? {
+    guard running, selection.state.selectedApp?.id == appId, let input = launchInput, launchID == nil else { return nil }
     let id = UUID()
     launchID = id
     launchOpening = true
@@ -219,6 +231,7 @@ final class AppToolModel {
         publish()
       }
     }
+    return launchTask
   }
 
   private var launchInput: OpenAppInput? {

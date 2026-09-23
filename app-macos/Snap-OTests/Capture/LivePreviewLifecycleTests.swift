@@ -1,7 +1,9 @@
 import Foundation
+import Observation
 @testable import Snap_O
 import Testing
 
+@Suite(.timeLimit(.minutes(1)))
 @MainActor
 struct LivePreviewLifecycleTests {
   @Test
@@ -11,7 +13,7 @@ struct LivePreviewLifecycleTests {
     lifecycle.appear()
     #expect(host.starts == 0)
     lifecycle.updateWindowVisibility(true)
-    try await eventually { lifecycle.renderer == 1 }
+    try await waitForState { lifecycle.renderer == 1 }
     lifecycle.updateWindowVisibility(false)
     #expect(lifecycle.renderer == 1 && host.stops.isEmpty)
     lifecycle.updateWindowVisibility(true)
@@ -28,10 +30,10 @@ struct LivePreviewLifecycleTests {
     let lifecycle = host.makeLifecycle()
     lifecycle.appear()
     lifecycle.updateWindowVisibility(true)
-    try await eventually { host.startGate?.entered == true }
+    try await waitForState { host.startGate?.entered == true }
     lifecycle.disappear()
     host.startGate?.open()
-    try await eventually { host.stops == [1] }
+    try await waitForState { host.stops == [1] }
     await host.connection.cleanupTask?.value
     #expect(lifecycle.renderer == nil)
     #expect(host.stops == [1])
@@ -44,10 +46,10 @@ struct LivePreviewLifecycleTests {
     let lifecycle = host.makeLifecycle()
     lifecycle.appear()
     lifecycle.updateWindowVisibility(true)
-    try await eventually { host.startGate?.entered == true }
+    try await waitForState { host.startGate?.entered == true }
     lifecycle.updateWindowVisibility(false)
     host.startGate?.open()
-    try await eventually { lifecycle.renderer == 1 }
+    try await waitForState { lifecycle.renderer == 1 }
     #expect(!lifecycle.isWindowVisible && host.stops.isEmpty)
     lifecycle.disappear()
     await host.connection.cleanupTask?.value
@@ -60,7 +62,7 @@ struct LivePreviewLifecycleTests {
     let first = host.makeLifecycle()
     first.appear()
     first.updateWindowVisibility(true)
-    try await eventually { host.connection.hasFailed && !first.isConnecting }
+    try await waitForState { host.connection.hasFailed && !first.isConnecting }
     first.disappear()
     let replacement = host.makeLifecycle()
     replacement.appear()
@@ -68,7 +70,7 @@ struct LivePreviewLifecycleTests {
     #expect(!replacement.isConnecting && host.starts == 1)
     host.failsToStart = false
     replacement.connect()
-    try await eventually { replacement.renderer == 2 }
+    try await waitForState { replacement.renderer == 2 }
     #expect(!host.connection.hasFailed)
     replacement.disappear()
     await host.connection.cleanupTask?.value
@@ -80,10 +82,10 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.stopGate = LifecycleGate()
     host.streamEnded.open()
-    try await eventually { host.stopGate?.entered == true }
+    try await waitForState { host.stopGate?.entered == true }
     #expect(host.starts == 1)
     host.stopGate?.open()
-    try await eventually { lifecycle.renderer == 2 }
+    try await waitForState { lifecycle.renderer == 2 }
     #expect(!host.connection.hasFailed)
     lifecycle.disappear()
     await host.connection.cleanupTask?.value
@@ -97,11 +99,11 @@ struct LivePreviewLifecycleTests {
     if afterFailure {
       host.isConnected = false
       host.streamEnded.open()
-      try await eventually { host.stopGate?.entered == true }
+      try await waitForState { host.stopGate?.entered == true }
       #expect(host.connection.hasFailed)
     }
     first.disappear()
-    try await eventually { host.stopGate?.entered == true }
+    try await waitForState { host.stopGate?.entered == true }
     let second = host.makeLifecycle()
     second.appear()
     second.updateWindowVisibility(true)
@@ -109,10 +111,10 @@ struct LivePreviewLifecycleTests {
       host.isConnected = true
       second.connect()
     }
-    try await eventually { second.phase == .waitingForCleanup }
+    try await waitForState { second.phase == .waitingForCleanup }
     #expect(host.starts == 1)
     host.stopGate?.open()
-    try await eventually { second.renderer == 2 }
+    try await waitForState { second.renderer == 2 }
     second.disappear()
     await host.connection.cleanupTask?.value
     #expect(host.stops == [1, 2])
@@ -124,10 +126,10 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.stopGate = LifecycleGate()
     lifecycle.restart()
-    try await eventually { lifecycle.phase == .waitingForCleanup }
+    try await waitForState { lifecycle.phase == .waitingForCleanup }
     #expect(host.starts == 1)
     host.stopGate?.open()
-    try await eventually { lifecycle.renderer == 2 }
+    try await waitForState { lifecycle.renderer == 2 }
     lifecycle.disappear()
     await host.connection.cleanupTask?.value
   }
@@ -138,7 +140,7 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.startFailuresRemaining = 2
     lifecycle.restart()
-    try await eventually { lifecycle.renderer == 4 }
+    try await waitForState { lifecycle.renderer == 4 }
     #expect(!host.connection.hasFailed)
     lifecycle.disappear()
     await host.connection.cleanupTask?.value
@@ -150,7 +152,7 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.failsToStart = true
     lifecycle.restart()
-    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    try await waitForState { host.connection.hasFailed && !lifecycle.isConnecting }
     #expect(host.starts == 5)
   }
 
@@ -160,7 +162,7 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.earlyDisconnectsRemaining = 10
     host.streamEnded.open()
-    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    try await waitForState { host.connection.hasFailed && !lifecycle.isConnecting }
     #expect(host.starts == 5)
     #expect(host.stops == [1, 2, 3, 4, 5])
   }
@@ -171,10 +173,10 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.reconnectGate = LifecycleGate()
     host.streamEnded.open()
-    try await eventually { host.reconnectGate?.entered == true }
+    try await waitForState { host.reconnectGate?.entered == true }
     host.isConnected = false
     host.reconnectGate?.open()
-    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    try await waitForState { host.connection.hasFailed && !lifecycle.isConnecting }
     #expect(host.starts == 1 && host.stops == [1])
   }
 
@@ -183,12 +185,12 @@ struct LivePreviewLifecycleTests {
     let host = LifecycleHost()
     let lifecycle = try await host.startPreview()
     for attempt in 1 ... 5 {
-      try await eventually { lifecycle.renderer == attempt }
+      try await waitForState { lifecycle.renderer == attempt }
       host.clock = host.clock.advanced(by: .seconds(60))
       host.readyAt = becomesReadyBeforeDisconnect ? host.clock : nil
       host.streamEnded.open()
     }
-    try await eventually { host.connection.hasFailed && !lifecycle.isConnecting }
+    try await waitForState { host.connection.hasFailed && !lifecycle.isConnecting }
     #expect(host.starts == 5)
   }
 
@@ -198,10 +200,10 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.earlyDisconnectsRemaining = 3
     host.streamEnded.open()
-    try await eventually { lifecycle.renderer == 5 }
+    try await waitForState { lifecycle.renderer == 5 }
     host.clock = host.clock.advanced(by: .seconds(60))
     host.streamEnded.open()
-    try await eventually { lifecycle.renderer == 6 }
+    try await waitForState { lifecycle.renderer == 6 }
     #expect(!host.connection.hasFailed)
     lifecycle.disappear()
     await host.connection.cleanupTask?.value
@@ -213,7 +215,7 @@ struct LivePreviewLifecycleTests {
     let lifecycle = try await host.startPreview()
     host.reconnectGate = LifecycleGate()
     host.streamEnded.open()
-    try await eventually { host.reconnectGate?.entered == true }
+    try await waitForState { host.reconnectGate?.entered == true }
     lifecycle.disappear()
     host.reconnectGate?.open()
     await host.connection.cleanupTask?.value
@@ -222,15 +224,7 @@ struct LivePreviewLifecycleTests {
   }
 }
 
-@MainActor
-private func eventually(_ condition: () -> Bool) async throws {
-  let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-  while !condition(), ContinuousClock.now < deadline {
-    await Task.yield()
-  }
-  try #require(condition(), "Lifecycle did not reach the expected state")
-}
-
+@Observable
 @MainActor
 private final class LifecycleGate {
   private var isOpen = false
@@ -253,6 +247,7 @@ private final class LifecycleGate {
   }
 }
 
+@Observable
 @MainActor
 private final class LifecycleHost {
   let connection = LivePreviewConnection()
@@ -273,7 +268,7 @@ private final class LifecycleHost {
     let lifecycle = makeLifecycle()
     lifecycle.appear()
     lifecycle.updateWindowVisibility(true)
-    try await eventually { lifecycle.renderer == 1 }
+    try await waitForState { lifecycle.renderer == 1 }
     return lifecycle
   }
 
