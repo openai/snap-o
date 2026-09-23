@@ -24,8 +24,13 @@ struct DeviceControlsView: View {
       }
       divider
       stack(spacing: 4) {
-        key("Volume Down", symbol: "speaker.minus", code: "KEYCODE_VOLUME_DOWN")
-        key("Volume Up", symbol: "speaker.plus", code: "KEYCODE_VOLUME_UP")
+        if placement == .left {
+          key("Volume Up", symbol: "speaker.plus", code: "KEYCODE_VOLUME_UP")
+          key("Volume Down", symbol: "speaker.minus", code: "KEYCODE_VOLUME_DOWN")
+        } else {
+          key("Volume Down", symbol: "speaker.minus", code: "KEYCODE_VOLUME_DOWN")
+          key("Volume Up", symbol: "speaker.plus", code: "KEYCODE_VOLUME_UP")
+        }
         key("Power/Wake", symbol: "power", code: "KEYCODE_POWER")
       }
       divider
