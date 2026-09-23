@@ -109,11 +109,22 @@ Publish the GitHub Release with the version alone as its title and the final DMG
 
 Use the generated Sparkle item without changing or regenerating its signature. Check its app version, build number, minimum macOS version, byte length, URL, and signature. Add it to the latest `gh-pages` appcast after the channel description. Preserve prior entries.
 
+Embed the approved GitHub Release notes in each new macOS item's `<description sparkle:format="markdown">`. Sparkle does not fetch the GitHub Release body automatically. Wrap the same Markdown in CDATA:
+
+```xml
+<description sparkle:format="markdown"><![CDATA[
+- Describe the first user-visible change.
+- Describe the next user-visible change.
+]]></description>
+```
+
+If the notes contain `]]>`, split the CDATA section or XML-escape the text instead. Adding the description must preserve the generated version fields, enclosure, and signature.
+
 Update the Markdown sources in `docs/` for the released functionality. Use the exact release tag for macOS and the latest public Maven version of each Android library. Do not publish dependencies or features that users cannot download. Keep unrelated page design and assets unchanged.
 
 Build and preview the docs using [Documentation sources](../docs/README.md#build-and-preview). Check examples against the released APIs, CLI, definitions in `contracts/`, and [Tweaks protocol reference](../docs/tweaks-protocol.md).
 
-Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle finds and installs the new version.
+Check appcast XML, HTML with a browser or HTML5 parser, links, assets, dependency versions, and API/CLI examples. Confirm the updated pages and appcast are public. Check that the new item has a nonempty description matching the approved release notes. Check the downloaded DMG against its checksum. Use a prior published Snap-O app to confirm Sparkle displays those notes, then installs the new version.
 
 Android-only releases also need affected dependency examples and guides updated after Maven publication. If no page needs a change, record why.
 
