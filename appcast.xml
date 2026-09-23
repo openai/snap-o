@@ -9,6 +9,12 @@
 
     <item>
         <title>Snap‑O 11.2.0</title>
+        <description sparkle:format="markdown"><![CDATA[- Select multiple captures in Capture History and delete them together.
+- Start Live Preview faster.
+- Recognize running emulators sooner and keep device names consistent across windows.
+- Fix a crash when an emulator connection fails or is cancelled.
+- Place Volume Up above Volume Down in the left control bar.
+]]></description>
         <pubDate>Wed, 23 Sep 2026 16:20:36 +0000</pubDate>
         <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
         <sparkle:version>20260923.01</sparkle:version>
