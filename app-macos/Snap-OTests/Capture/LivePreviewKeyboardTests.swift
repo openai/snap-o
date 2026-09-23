@@ -37,6 +37,42 @@ struct LivePreviewKeyboardTests {
     #expect(transport.events.count == 2)
   }
 
+  @Test
+  func unsupportedTextDoesNotDiscardLaterTyping() async {
+    let transport = KeyboardTestTransport()
+    let keyboard = LivePreviewKeyboard(deviceID: "test-device") { _ in transport }
+    defer { keyboard.stop() }
+    keyboard.send(.text("😀"))
+    keyboard.send(.text("a"))
+    keyboard.send(.key(code: 67))
+    await transport.waitForCount(1)
+    transport.finish(.unsupportedText)
+    await transport.waitForCount(2)
+    #expect(keyboard.errorMessage != nil)
+    #expect(!transport.isClosed)
+    transport.finish()
+    await transport.waitForCount(3)
+    #expect(keyboard.errorMessage == nil)
+    #expect(transport.events == [.text("😀"), .text("a"), .key(code: 67)])
+    transport.finish()
+  }
+
+  @Test
+  func connectionFailureStopsQueuedInput() async {
+    let transport = KeyboardTestTransport()
+    let keyboard = LivePreviewKeyboard(deviceID: "test-device") { _ in transport }
+    defer { keyboard.stop() }
+    keyboard.send(.text("a"))
+    keyboard.send(.text("b"))
+    await transport.waitForCount(1)
+    transport.fail()
+    while keyboard.errorMessage == nil {
+      await Task.yield()
+    }
+    #expect(transport.isClosed)
+    #expect(transport.events == [.text("a")])
+  }
+
   @Test(arguments: [false, true])
   func copyPreservesNewerLocalClipboard(newerCopy: Bool) async {
     let pasteboard = NSPasteboard.withUniqueName()
@@ -51,7 +87,7 @@ struct LivePreviewKeyboardTests {
       pasteboard.clearContents()
       pasteboard.setString("newer Mac copy", forType: .string)
     }
-    transport.finish(text: "Android selection")
+    transport.finish(.copied("Android selection"))
     // A second command starts only after the copy result has been handled.
     keyboard.send(.key(code: 21))
     await transport.waitForCount(2)
@@ -78,7 +114,7 @@ struct LivePreviewKeyboardTests {
     keyboard.stop()
     keyboard.send(.text("new focus"))
     await second.waitForCount(1)
-    first.finish(text: "stale device copy")
+    first.finish(.copied("stale device copy"))
     await Task.yield()
     keyboard.send(.key(code: 67))
     second.finish()
@@ -145,7 +181,7 @@ private final class KeyboardTestTransport: LivePreviewKeyboardTransport, @unchec
   private let lock = NSLock()
   private var recorded: [LivePreviewKeyboardEvent] = []
   private var closed = false
-  private var continuation: CheckedContinuation<String?, Never>?
+  private var continuation: CheckedContinuation<LivePreviewKeyboardResponse, any Error>?
 
   var events: [LivePreviewKeyboardEvent] {
     lock.withLock { recorded }
@@ -155,8 +191,8 @@ private final class KeyboardTestTransport: LivePreviewKeyboardTransport, @unchec
     lock.withLock { closed }
   }
 
-  func send(_ event: LivePreviewKeyboardEvent) async throws -> String? {
-    await withCheckedContinuation { continuation in
+  func send(_ event: LivePreviewKeyboardEvent) async throws -> LivePreviewKeyboardResponse {
+    try await withCheckedThrowingContinuation { continuation in
       lock.withLock {
         self.continuation = continuation
         recorded.append(event)
@@ -168,13 +204,21 @@ private final class KeyboardTestTransport: LivePreviewKeyboardTransport, @unchec
     lock.withLock { closed = true }
   }
 
-  func finish(text: String? = nil) {
+  func finish(_ response: LivePreviewKeyboardResponse = .sent) {
+    complete(.success(response))
+  }
+
+  func fail() {
+    complete(.failure(ADBError.protocolFailure("Test connection closed")))
+  }
+
+  private func complete(_ result: Result<LivePreviewKeyboardResponse, any Error>) {
     let saved = lock.withLock {
       let saved = continuation
       continuation = nil
       return saved
     }
-    saved?.resume(returning: text)
+    saved?.resume(with: result)
   }
 
   func waitForCount(_ count: Int) async {

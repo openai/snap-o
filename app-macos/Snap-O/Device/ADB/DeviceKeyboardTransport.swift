@@ -1,13 +1,5 @@
 import Foundation
 
-enum DeviceKeyboardError: Error {
-  case unsupportedText
-
-  var message: String {
-    "Use Paste for characters Android can’t type."
-  }
-}
-
 struct DeviceKeyboardTransport: LivePreviewKeyboardTransport {
   static let version: UInt32 = 1
   let connection: ADBSocketConnection
@@ -41,15 +33,15 @@ struct DeviceKeyboardTransport: LivePreviewKeyboardTransport {
     connection.close()
   }
 
-  func send(_ event: LivePreviewKeyboardEvent) async throws -> String? {
+  func send(_ event: LivePreviewKeyboardEvent) async throws -> LivePreviewKeyboardResponse {
     let frame = try Self.frame(event)
     return try await perform {
       try connection.withRequestTimeout(.seconds(3)) {
         try connection.writeFully(frame)
         switch try DeviceClipboardProtocol.readNumber(connection) {
-        case 0: return nil
-        case 1: return try DeviceClipboardProtocol.readText(connection)
-        case 2: throw DeviceKeyboardError.unsupportedText
+        case 0: return .sent
+        case 1: return try .copied(DeviceClipboardProtocol.readText(connection))
+        case 2: return .unsupportedText
         default: throw ADBError.protocolFailure("Device input failed")
         }
       }

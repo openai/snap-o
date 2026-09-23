@@ -70,13 +70,16 @@ struct DeviceKeyboardTransportTests {
     let transport = try await task.value
     defer { transport.close() }
     try peer.writeFully(Data([0, 0, 0, 1]) + DeviceClipboardProtocol.frame("selection 😀"))
-    #expect(try await transport.send(.copy) == "selection 😀")
+    #expect(try await transport.send(.copy) == .copied("selection 😀"))
     #expect(try DeviceClipboardProtocol.readNumber(peer) == 4)
     try peer.writeFully(Data([0, 0, 0, 2]))
-    do {
-      _ = try await transport.send(.text("😀"))
-      Issue.record("Expected unsupported text")
-    } catch is DeviceKeyboardError {}
+    #expect(try await transport.send(.text("😀")) == .unsupportedText)
+    #expect(try DeviceClipboardProtocol.readNumber(peer) == 1)
+    #expect(try DeviceClipboardProtocol.readText(peer) == "😀")
+    try peer.writeFully(Data([0, 0, 0, 0]))
+    #expect(try await transport.send(.text("a")) == .sent)
+    #expect(try DeviceClipboardProtocol.readNumber(peer) == 1)
+    #expect(try DeviceClipboardProtocol.readText(peer) == "a")
   }
 
   private func perform(_ body: @escaping @Sendable () throws -> Void) async throws {

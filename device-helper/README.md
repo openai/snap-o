@@ -44,15 +44,17 @@ See the [internal clipboard contract](../contracts/device-clipboard/README.md).
 
 ## Keyboard input
 
-Keyboard input is on by default. Click the preview to type. Clicking elsewhere, leaving the app,
-hiding the preview, or turning keyboard input off releases focus and closes the input connection.
+Keyboard input is on by default. Click the device image to type. Clicking outside the image,
+opening a context menu, or Command-dragging an image releases keyboard focus and closes the input connection.
+Leaving the app, hiding the preview, or turning keyboard input off also releases focus.
 Each preview owns a keyboard controller bound to its device. Only the focused preview in the
 active window sends input. The input helper starts on the first keystroke and processes requests in order.
 
 Typing uses Android's virtual keyboard character map. Return, Tab, Delete, and arrow keys work
 as device input; Shift extends selections. Escape is forwarded unchanged unless it cancels an active
 pointer gesture or unfinished text composition. Characters absent from Android's map are rejected
-without inserting part of the text. Use Paste for these characters, including emoji.
+without inserting part of the text. Later input continues on the same connection.
+Use Paste for these characters, including emoji.
 
 With keyboard input on and the preview focused, Command-C copies Android's selected text to the Mac.
 Command-V pastes Mac text into Android. These actions work with clipboard sync off. Pasting explicitly

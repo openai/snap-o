@@ -2,7 +2,7 @@ import AppKit
 import Observation
 
 protocol LivePreviewKeyboardTransport: Sendable {
-  func send(_ event: LivePreviewKeyboardEvent) async throws -> String?
+  func send(_ event: LivePreviewKeyboardEvent) async throws -> LivePreviewKeyboardResponse
   func close()
 }
 
@@ -55,20 +55,26 @@ final class LivePreviewKeyboard: LivePreviewKeyboardHandling {
       }
       while !Task.isCancelled, !pending.isEmpty, let transport {
         let (event, changeCount) = pending.removeFirst()
-        let copied = try await transport.send(event)
+        let response = try await transport.send(event)
         guard !Task.isCancelled else { return }
-        errorMessage = nil
-        // A delayed device copy must not replace a newer copy in another Mac view.
-        if let copied, pasteboard.changeCount == changeCount {
-          pasteboard.clearContents()
-          pasteboard.setString(copied, forType: .string)
+        switch response {
+        case .sent:
+          errorMessage = nil
+        case .copied(let text):
+          errorMessage = nil
+          // A delayed device copy must not replace a newer copy in another Mac view.
+          if pasteboard.changeCount == changeCount {
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+          }
+        case .unsupportedText:
+          errorMessage = "Use Paste for characters Android can’t type."
         }
       }
     } catch {
       guard !Task.isCancelled else { return }
       stop()
-      errorMessage = (error as? DeviceKeyboardError)?.message
-        ?? "Couldn’t send keyboard input. Check the device connection."
+      errorMessage = "Couldn’t send keyboard input. Check the device connection."
     }
   }
 }

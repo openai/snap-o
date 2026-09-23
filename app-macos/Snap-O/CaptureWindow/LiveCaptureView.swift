@@ -54,8 +54,7 @@ struct LiveCaptureView<Host: LivePreviewHosting>: View {
           fileStore: fileStore,
           isVisible: lifecycle.isWindowVisible,
           thumbnail: lifecycle.connection?.thumbnail,
-          keyboard: keyboard,
-          keyboardEnabled: settings.keyboardInput
+          keyboard: settings.keyboardInput ? keyboard : nil
         )
       } else if lifecycle.connection?.hasFailed == true {
         VStack(spacing: 8) {

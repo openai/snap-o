@@ -7,6 +7,12 @@ enum LivePreviewKeyboardEvent: Equatable {
   case copy
 }
 
+enum LivePreviewKeyboardResponse: Equatable {
+  case sent
+  case copied(String)
+  case unsupportedText
+}
+
 @MainActor
 protocol LivePreviewKeyboardHandling: AnyObject {
   func send(_ event: LivePreviewKeyboardEvent)

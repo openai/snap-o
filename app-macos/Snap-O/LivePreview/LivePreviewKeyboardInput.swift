@@ -2,14 +2,14 @@ import AppKit
 
 extension LivePreviewDisplayView: @preconcurrency NSTextInputClient {
   var canSendKeyboardInput: Bool {
-    keyboardEnabled && keyboardArmed && keyboard != nil && hasVisiblePreview
+    keyboardArmed && keyboard != nil && hasVisiblePreview
       && window?.firstResponder === self && window?.isKeyWindow == true && NSApp.isActive
   }
 
-  func configureKeyboard(_ handler: (any LivePreviewKeyboardHandling)?, enabled: Bool) {
-    if keyboard !== handler || !enabled { releaseKeyboardFocus() }
+  func configureKeyboard(_ handler: (any LivePreviewKeyboardHandling)?) {
+    guard keyboard !== handler else { return }
+    releaseKeyboardFocus()
     keyboard = handler
-    keyboardEnabled = enabled
   }
 
   func releaseKeyboardFocus() {

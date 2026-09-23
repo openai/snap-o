@@ -21,6 +21,7 @@ UTF-8 byte count followed by valid UTF-8, limited to 1,048,576 bytes.
 Every request receives a four-byte status: `0` means complete without text, `1` means a text field
 follows, and `2` means the requested typing contains unsupported characters. The client sends one
 request at a time. Input injection waits for dispatch to finish before acknowledging the request.
+Unsupported text rejects only that request; the client continues sending queued input on the same connection.
 
 The Mac client maps supported keyboard input to Android key codes. The helper validates the range
 without maintaining a second list of supported keys.

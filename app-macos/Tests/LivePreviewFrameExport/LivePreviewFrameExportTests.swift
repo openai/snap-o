@@ -57,8 +57,15 @@ private final class KeyboardTestApplication: NSApplication {
 
 private final class KeyboardTestWindow: NSWindow {
   var testKey = true
+  var suppressMouseEvents = false
   override var isKeyWindow: Bool {
     testKey
+  }
+
+  override func sendEvent(_ event: NSEvent) {
+    // Exercise the app's mouse monitors without opening native menus in standalone tests.
+    if suppressMouseEvents, [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) { return }
+    super.sendEvent(event)
   }
 }
 
@@ -85,9 +92,10 @@ struct LivePreviewFrameExportTests {
     let store = FileStore(baseDir: directory)
     defer { store.purgeExistingFiles() }
     keyboardRequiresClickAndReleasesFocus(store: store)
+    keyboardClicksReleaseFocus(store: store)
     keyboardOnlySendsFromFocusedWindow(store: store)
     focusLossReleasesBothContacts(store: store)
-    print("Live preview keyboard focus tests passed (two windows, focus loss and Escape)")
+    print("Live preview keyboard focus tests passed (click routing, two windows, focus loss and Escape)")
     if CommandLine.arguments.contains("--keyboard-only") { return }
     hiddenPreviewRetainsLatestFrame(store: store, raw: false)
     hiddenPreviewRetainsLatestFrame(store: store, raw: true)
@@ -109,17 +117,17 @@ struct LivePreviewFrameExportTests {
     let renderer = LivePreviewRenderer(operation: LivePreviewOperationHandle(session: LivePreviewSession())) { _, _, _, _ in }
     view.update(with: renderer, isVisible: true)
     let recorder = KeyboardRecorder()
-    view.configureKeyboard(recorder, enabled: true)
+    view.configureKeyboard(recorder)
     window.makeFirstResponder(view)
     view.sendKeyboard(.text("must not send"))
     precondition(recorder.events.isEmpty, "Opening a preview must not capture typing")
 
     func click() {
-      view.mouseDown(with: NSEvent.mouseEvent(
+      app.sendEvent(NSEvent.mouseEvent(
         with: .leftMouseDown, location: NSPoint(x: 128, y: 128), modifierFlags: [], timestamp: 0,
         windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
       )!)
-      view.mouseUp(with: NSEvent.mouseEvent(
+      app.sendEvent(NSEvent.mouseEvent(
         with: .leftMouseUp, location: NSPoint(x: 128, y: 128), modifierFlags: [], timestamp: 0,
         windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0
       )!)
@@ -133,6 +141,9 @@ struct LivePreviewFrameExportTests {
     }
     click()
     precondition(view.canSendKeyboardInput)
+    let stopsBeforeUpdate = recorder.stops
+    view.configureKeyboard(recorder)
+    precondition(view.canSendKeyboardInput && recorder.stops == stopsBeforeUpdate, "View updates must preserve typing focus")
     app.testActive = false
     precondition(!view.canSendKeyboardInput)
     app.testActive = true
@@ -180,11 +191,11 @@ struct LivePreviewFrameExportTests {
     view.update(with: renderer, isVisible: true)
     precondition(!view.canSendKeyboardInput, "Unhiding must not rearm typing")
     click()
-    view.configureKeyboard(recorder, enabled: false)
+    view.configureKeyboard(nil)
     precondition(!view.performKeyEquivalent(with: key(53, characters: "\u{1B}")))
     view.sendKeyboard(.text("disabled"))
     precondition(!view.canSendKeyboardInput && recorder.events.count == 5)
-    view.configureKeyboard(recorder, enabled: true)
+    view.configureKeyboard(recorder)
     precondition(!view.canSendKeyboardInput, "Enabling must require another click")
     precondition(recorder.stops > 0)
   }
@@ -213,8 +224,12 @@ struct LivePreviewFrameExportTests {
       }
     }
     for index in windows.indices {
-      views[index].configureKeyboard(recorders[index], enabled: true)
-      views[index].keyboardArmed = true
+      views[index].configureKeyboard(recorders[index])
+      windows[index].suppressMouseEvents = true
+      NSApplication.shared.sendEvent(NSEvent.mouseEvent(
+        with: .leftMouseDown, location: NSPoint(x: 128, y: 128), modifierFlags: [], timestamp: 0,
+        windowNumber: windows[index].windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+      )!)
     }
     windows[0].testKey = true
     windows[1].testKey = false
@@ -233,6 +248,72 @@ struct LivePreviewFrameExportTests {
       view.sendKeyboard(.key(code: 111))
     }
     precondition(recorders[0].events == [.text("first")] && recorders[1].events == [.key(code: 111)])
+  }
+
+  private static func keyboardClicksReleaseFocus(store: FileStore) {
+    let window = KeyboardTestWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
+      styleMask: [.titled], backing: .buffered, defer: false
+    )
+    let view = LivePreviewDisplayView(fileStore: store)
+    window.contentView = view
+    window.suppressMouseEvents = true
+    defer {
+      window.makeFirstResponder(nil)
+      window.orderOut(nil)
+      window.contentView = nil
+    }
+    let renderer = LivePreviewRenderer(operation: LivePreviewOperationHandle(session: LivePreviewSession())) { _, _, _, _ in }
+    view.update(with: renderer, isVisible: true)
+    let recorder = KeyboardRecorder()
+    view.configureKeyboard(recorder)
+    window.makeFirstResponder(view)
+
+    func mouse(_ type: NSEvent.EventType, x: CGFloat, modifiers: NSEvent.ModifierFlags = []) -> NSEvent {
+      NSEvent.mouseEvent(
+        with: type, location: view.convert(NSPoint(x: x, y: 100), to: nil), modifierFlags: modifiers,
+        timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+      )!
+    }
+    let imageClick = mouse(.leftMouseDown, x: 160)
+    let releases = [
+      mouse(.leftMouseDown, x: 20),
+      mouse(.rightMouseDown, x: 20),
+      mouse(.leftMouseDown, x: 20, modifiers: .control),
+      mouse(.rightMouseDown, x: 160),
+      mouse(.leftMouseDown, x: 160, modifiers: .control),
+      mouse(.leftMouseDown, x: 160, modifiers: .command),
+      mouse(.otherMouseDown, x: 160),
+      mouse(.leftMouseDown, x: -10)
+    ]
+    for event in releases {
+      NSApplication.shared.sendEvent(imageClick)
+      precondition(view.canSendKeyboardInput)
+      view.setMarkedText(
+        "pending",
+        selectedRange: NSRange(location: 7, length: 0),
+        replacementRange: NSRange(location: NSNotFound, length: 0)
+      )
+      let stops = recorder.stops
+      NSApplication.shared.sendEvent(event)
+      precondition(!view.canSendKeyboardInput && !view.hasMarkedText())
+      precondition(recorder.stops == stops + 1, "Every click that ends typing must stop queued input")
+      view.insertText("must not send", replacementRange: NSRange(location: NSNotFound, length: 0))
+      precondition(recorder.events.isEmpty)
+    }
+    let container = NSView(frame: view.frame)
+    window.contentView = container
+    container.addSubview(view)
+    let overlay = NSView(frame: NSRect(x: 120, y: 80, width: 80, height: 40))
+    container.addSubview(overlay)
+    window.makeFirstResponder(view)
+    NSApplication.shared.sendEvent(imageClick)
+    precondition(!view.canSendKeyboardInput, "Controls covering the device image must not activate typing")
+    overlay.removeFromSuperview()
+    NSApplication.shared.sendEvent(imageClick)
+    precondition(view.canSendKeyboardInput)
+    _ = view.menu(for: mouse(.rightMouseDown, x: 160))
+    precondition(!view.canSendKeyboardInput, "Opening a context menu directly must also release focus")
   }
 
   private static func focusLossReleasesBothContacts(store: FileStore) {
