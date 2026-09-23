@@ -48,9 +48,47 @@
         <div class="section-body">
 <p class="prose">Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use <code>⌘[</code> and <code>⌘]</code> to switch between connected devices.</p>
 <p class="prose">The device picker shows a live thumbnail for the selected device and cached screenshots for the others. Devices stay in the same order when you switch between them.</p>
-<p class="prose">When Android is still booting, Snap-O waits for it to be ready and retries display discovery automatically.</p>
+<p class="prose">You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.</p>
+<p class="prose">Hold Option and drag to use two touch points for pinch or rotation gestures. Hold Option-Shift while dragging to move both points together. The touch markers show where the gesture will act.</p>
 <p class="prose">Command-drag the preview to share the current frame as a screenshot, or right-click for <strong>Copy Image</strong> and <strong>Save Image As…</strong>. Each action adds that frame to Capture History. Watching the preview alone does not.</p>
 <p class="prose">Press <code>Esc</code> to stop the preview, or <code>⇧⌘L</code> to start it again. Choose <strong>Device → Start With</strong> to change how new windows open.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="device-and-emulator-controls">
+        <div class="section-heading">
+
+          <h2>Device and emulator controls</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Live Preview shows floating controls beside the Capture window. Use <strong>Back</strong>, <strong>Home</strong>, <strong>Recents</strong>, <strong>Volume Down</strong>, <strong>Volume Up</strong>, and <strong>Power/Wake</strong> to control the selected device.</p>
+<p class="prose">Emulators also offer <strong>Rotate Left</strong> and <strong>Rotate Right</strong>. Supported emulators show <strong>Display Mode</strong> and <strong>Posture</strong> menus. Available choices depend on the emulator. These controls can remain unavailable during boot; Snap-O retries automatically.</p>
+<p class="prose">Right-click the controls and choose <strong>Position → Left of Window</strong> or <strong>Position → Below Capture Pane</strong>. Snap-O remembers this position and keeps the controls within the screen. They hide when Snap-O becomes inactive.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="clipboard-sync">
+        <div class="section-heading">
+
+          <h2>Clipboard sync</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">The <strong>Sync clipboard</strong> button in the floating controls toggles text sync between Mac and Android. This is a global setting, shared by every Capture window. It is on by default, and Snap-O remembers your choice after restarting.</p>
+<p class="prose">Only the focused Capture window in Live Preview can sync its selected device. Visible background windows do not sync. Sync stops when the window loses focus, Snap-O becomes inactive, the preview closes, or the toggle is turned off. Focusing another Live Preview window switches sync to that window's device.</p>
+<p class="prose">When sync starts, supported text already on the Mac takes priority. Android text fills an empty Mac clipboard. Images, files, empty text, and text larger than 1 MiB are not synced. Existing Mac clipboard items are preserved when sync starts, even if they cannot be synced. A newer Mac copy takes priority over an incoming Android update.</p>
+<p class="prose">If the clipboard connection is unavailable, Snap-O retries. Hover over the clipboard button to check its status.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="send-files-and-install-apks">
+        <div class="section-heading">
+
+          <h2>Send files and install APKs</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Drop regular files from Finder onto Live Preview to copy them into the selected device's <strong>Downloads</strong> folder. Folders and symbolic links are not supported. If a filename already exists, choose <strong>Keep Both</strong>, <strong>Replace</strong>, or <strong>Skip</strong>.</p>
+<p class="prose">Dropping APK files opens a prompt. Choose <strong>Install</strong> to install them, <strong>Copy to Downloads</strong> to copy them without installing, or <strong>Cancel</strong>. When a drop contains APKs and other files, <strong>Install</strong> installs the APKs and copies the remaining files to Downloads.</p>
+<p class="prose">Progress and transfer errors appear at the bottom of the preview. Device policy can block transfers. Closing the preview cancels the remaining work.</p>
 </div>
       </section>
 
@@ -61,7 +99,7 @@
         </div>
         <div class="section-body">
 <p class="prose"><a href="https://github.com/openai/snap-o/releases/tag/11.0.0">Snap-O 11.0.0</a> adds Device Manager for existing Android emulators and connected devices. Open <strong>Device → Device Manager</strong>, or use the Capture title's ellipsis menu.</p>
-<p class="prose">Click <strong>Start</strong> beside a stopped emulator. Snap-O opens it in Live Preview after Android finishes booting. Click <strong>Open</strong> for a running emulator or connected phone. Double-clicking a thumbnail also opens a running device or starts a stopped emulator.</p>
+<p class="prose">Click <strong>Start</strong> beside a stopped emulator. The row shows startup progress until Android finishes booting. Click <strong>Open</strong> to select a running emulator or connected phone in Live Preview and focus Capture. Start and Cold Boot do not select a device or focus Capture. Double-clicking a thumbnail also opens a running device or starts a stopped emulator.</p>
 <p class="prose">Use <strong>Stop</strong> to shut down an emulator, or <strong>Cold Boot</strong> in its actions menu to start without loading a saved snapshot. <strong>Reveal in Finder</strong> opens its files. <strong>Delete</strong> asks for confirmation before moving a stopped emulator and its data to Trash. Connected phones have no emulator lifecycle controls.</p>
 <p class="prose">Device Manager uses your installed Android SDK and existing AVDs. The default SDK location is <code>~/Library/Android/sdk</code>. It also checks <code>ANDROID_HOME</code> and <code>ANDROID_SDK_ROOT</code> when available to the app; apps opened from Finder do not inherit shell startup variables. This version does not install SDK packages, create or edit AVDs, or offer a custom SDK location picker.</p>
 <p class="prose">Quitting Snap-O leaves running emulators available to other tools.</p>
@@ -182,6 +220,12 @@
         <ol class="quick-jump-list">
 
           <li><a class="quick-jump-link" href="#live-preview">Live Preview</a></li>
+
+          <li><a class="quick-jump-link" href="#device-and-emulator-controls">Device and emulator controls</a></li>
+
+          <li><a class="quick-jump-link" href="#clipboard-sync">Clipboard sync</a></li>
+
+          <li><a class="quick-jump-link" href="#send-files-and-install-apks">Send files and install APKs</a></li>
 
           <li><a class="quick-jump-link" href="#device-manager">Device Manager</a></li>
 
