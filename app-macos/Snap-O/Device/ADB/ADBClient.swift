@@ -118,6 +118,11 @@ public struct ADBClient: Sendable {
   }
 
   public func startScreenStream(deviceID: String, bitRateMbps: Int = 8) async throws -> ScreenStreamSession {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("adb screen stream setup", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
+
     let sizeHint = try? await displaySize(deviceID: deviceID)
     let command = makeScreenRecordCommand(
       bitRateMbps: bitRateMbps,
@@ -136,7 +141,16 @@ public struct ADBClient: Sendable {
       throw error
     }
 
+    #if PERF_TRACING
+    Perf.startupEvent("adb screen socket open", deviceID: deviceID)
+    #endif
+    #if PERF_TRACING
+    let wakeTiming = Perf.startupBegin("adb wake", deviceID: deviceID)
+    #endif
     _ = try? await keyEvent(deviceID: deviceID, keyCode: "KEYCODE_WAKEUP")
+    #if PERF_TRACING
+    Perf.startupEnd(wakeTiming)
+    #endif
     return ScreenStreamSession(
       deviceID: deviceID,
       connection: connection,
@@ -145,11 +159,19 @@ public struct ADBClient: Sendable {
   }
 
   func isBootComplete(deviceID: String) async throws -> Bool {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("adb boot check", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
     let value = try await runDiscoveryShellString(deviceID: deviceID, command: "getprop sys.boot_completed")
     return value.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
   }
 
   public func displaySize(deviceID: String) async throws -> String {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("adb display size", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
     let result = try await runShellString(deviceID: deviceID, command: "dumpsys window displays")
     guard let match = result.firstMatch(of: /cur=(?<size>\d+x\d+)/) else {
       throw ADBError.parseFailure("Unable to find window size")
@@ -158,6 +180,11 @@ public struct ADBClient: Sendable {
   }
 
   public func displayDensity(deviceID: String) async throws -> Double {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("adb density", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
+
     if let wmOutput = try? await runShellString(deviceID: deviceID, command: "wm density"),
        let density = parseDensity(from: wmOutput) {
       return density
@@ -223,6 +250,10 @@ public struct ADBClient: Sendable {
   }
 
   public func getProperties(deviceID: String, prefix: String? = nil) async throws -> [String: String] {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("adb properties", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
     let output = try await runDiscoveryShellString(deviceID: deviceID, command: "getprop")
     var result: [String: String] = [:]
     for line in output.split(separator: "\n") {
@@ -240,6 +271,10 @@ public struct ADBClient: Sendable {
     handle: TrackDevicesHandle,
     stream: AsyncThrowingStream<String, Error>
   ) {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("adb track setup")
+    defer { Perf.startupEnd(timing) }
+    #endif
     let connection = try await runWithRetry(maxAttempts: 3) { connection in
       // Keep setup inside the cancellation handler so a stalled reply releases the socket.
       try await withCheckedThrowingContinuation { continuation in
@@ -260,6 +295,9 @@ public struct ADBClient: Sendable {
           while !Task.isCancelled {
             guard let payload = try connection.readLengthPrefixedPayload() else { break }
             guard let payloadString = String(bytes: payload, encoding: .utf8) else { break }
+            #if PERF_TRACING
+            Perf.startupEvent("adb device list received")
+            #endif
             continuation.yield(payloadString)
           }
           continuation.finish()

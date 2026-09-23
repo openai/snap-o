@@ -44,6 +44,10 @@ actor LivePreviewService {
     for deviceID: String,
     options: LivePreviewOptions
   ) async throws -> LivePreviewOperationHandle {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("preview service start", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
     guard !isShuttingDown else { throw CaptureCoordinationError.closed }
 
     let operationID = UUID()
@@ -62,6 +66,9 @@ actor LivePreviewService {
       throw CancellationError()
     }
 
+    #if PERF_TRACING
+    Perf.startupEvent("preview lease acquired", deviceID: deviceID)
+    #endif
     if isEmulator {
       return try await startEmulator(deviceID: deviceID, operationID: operationID, lease: lease, options: options)
     }
@@ -94,7 +101,13 @@ actor LivePreviewService {
       deviceID: deviceID,
       session: session,
       showTouchesOverride: showTouchesOverride,
-      setupTask: nil,
+      setupTask: Task {
+        let exec = await adb.exec()
+        if let density = try? await exec.displayDensity(deviceID: deviceID), !Task.isCancelled {
+          await session.updateDensityScale(CGFloat(density))
+        }
+        return showTouchesOverride
+      },
       lease: lease
     )
     return LivePreviewOperationHandle(
@@ -104,19 +117,18 @@ actor LivePreviewService {
     )
   }
 
-  @MainActor
   private func makeSession(for deviceID: String) async throws -> LivePreviewSession {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("physical session setup", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
     let exec = await adb.exec()
-    async let densityValue = exec.displayDensity(deviceID: deviceID)
-    let source = try await ADBPreviewFrameSource(stream: exec.startScreenStream(deviceID: deviceID))
-    do {
-      let densityScale = try await CGFloat(densityValue)
-      try Task.checkCancellation()
-      return LivePreviewSession(deviceID: deviceID, densityScale: densityScale, source: source)
-    } catch {
-      source.stop()
-      throw error
+    let stream = try await exec.startScreenStream(deviceID: deviceID)
+    guard !Task.isCancelled else {
+      stream.close()
+      throw CancellationError()
     }
+    return await LivePreviewSession(deviceID: deviceID, densityScale: nil, source: ADBPreviewFrameSource(stream: stream))
   }
 
   private func startEmulator(

@@ -5,7 +5,7 @@ import Foundation
 final class StartupCapturePreparation {
   private enum Preparation {
     case screenshots(deviceIDs: [String], task: Task<ScreenshotCaptureResult, Never>)
-    case livePreview(PreparedLivePreview)
+    case livePreview(deviceID: String?, options: LivePreviewOptions, task: Task<PreparedLivePreview?, Never>)
   }
 
   private let screenshots: ScreenshotService
@@ -19,58 +19,46 @@ final class StartupCapturePreparation {
     self.livePreview = livePreview
   }
 
+  func prepareEarlyPreview(
+    options: LivePreviewOptions,
+    deviceIDs: @escaping @Sendable () async -> String?
+  ) {
+    guard isAvailable, preparation == nil else { return }
+    preparation = .livePreview(deviceID: nil, options: options, task: previewTask(options: options, resolveDeviceID: deviceIDs))
+  }
+
   func prepare(mode: StartupCaptureMode, devices: [Device], liveOptions: LivePreviewOptions) {
     guard isAvailable else { return }
-    guard let firstDevice = devices.first else {
-      discardCurrentPreparation()
-      return
-    }
-
     switch (mode, preparation) {
     case (.screenshot, .screenshots(let deviceIDs, _)) where deviceIDs == devices.map(\.id):
       return
-    case (.livePreview, .livePreview(let prepared))
-      where prepared.deviceID == firstDevice.id && prepared.options == liveOptions && prepared.isAvailable:
+    case (.livePreview, .livePreview(let deviceID, let options, _))
+      where options == liveOptions && (deviceID == nil || deviceID == devices.first?.id):
       return
     default:
       break
     }
 
     discardCurrentPreparation()
-    let cleanup = cleanupTask
+    guard let firstDevice = devices.first else { return }
     switch mode {
     case .screenshot:
       Perf.step(.appFirstSnapshot, "preload screenshot")
       let screenshots = screenshots
+      let cleanup = cleanupTask
       let task = Task {
         await cleanup?.value
         guard !Task.isCancelled else { return ScreenshotCaptureResult(media: [], failures: []) }
         return await screenshots.capture(for: devices)
       }
       preparation = .screenshots(deviceIDs: devices.map(\.id), task: task)
-
     case .livePreview:
       Perf.step(.appFirstSnapshot, "preload live preview")
-      let livePreview = livePreview
-      let deviceID = firstDevice.id
-      let task = Task<LivePreviewOperationHandle?, Never> {
-        await cleanup?.value
-        guard !Task.isCancelled else { return nil }
-        do {
-          return try await livePreview.start(for: deviceID, options: liveOptions)
-        } catch {
-          if !(error is CancellationError) {
-            SnapOLog.ui.error("Live preview warmup failed: \(error.localizedDescription, privacy: .public)")
-          }
-          return nil
-        }
-      }
-      preparation = .livePreview(PreparedLivePreview(
-        deviceID: deviceID,
+      preparation = .livePreview(
+        deviceID: firstDevice.id,
         options: liveOptions,
-        operationTask: task,
-        service: livePreview
-      ))
+        task: previewTask(options: liveOptions) { firstDevice.id }
+      )
     }
   }
 
@@ -84,14 +72,42 @@ final class StartupCapturePreparation {
     return task
   }
 
-  func claimLivePreview(for device: Device, options: LivePreviewOptions) -> PreparedLivePreview? {
+  func claimLivePreview(for device: Device, options: LivePreviewOptions) async -> PreparedLivePreview? {
     guard isAvailable else { return nil }
     prepare(mode: .livePreview, devices: [device], liveOptions: options)
     isAvailable = false
-    guard case .livePreview(let prepared) = preparation else { return nil }
+    guard case .livePreview(_, _, let task) = preparation else { return nil }
     preparation = nil
-    Perf.step(.appFirstSnapshot, "claim preloaded live preview")
-    return prepared
+    let prepared = await withTaskCancellationHandler {
+      await task.value
+    } onCancel: { task.cancel() }
+    if let prepared, prepared.deviceID == device.id, prepared.isAvailable, !Task.isCancelled {
+      Perf.step(.appFirstSnapshot, "claim preloaded live preview")
+      return prepared
+    }
+    await prepared?.discard()
+    guard !Task.isCancelled else { return nil }
+    let replacement = previewTask(options: options) { device.id }
+    return await withTaskCancellationHandler {
+      let prepared = await replacement.value
+      guard !Task.isCancelled else {
+        await prepared?.discard()
+        return nil
+      }
+      return prepared
+    } onCancel: { replacement.cancel() }
+  }
+
+  private func previewTask(
+    options: LivePreviewOptions,
+    resolveDeviceID: @escaping @Sendable () async -> String?
+  ) -> Task<PreparedLivePreview?, Never> {
+    Task.detached(priority: .userInitiated) { [service = livePreview, cleanup = cleanupTask] in
+      await cleanup?.value
+      guard !Task.isCancelled, let deviceID = await resolveDeviceID(), !Task.isCancelled else { return nil }
+      let operation = PreparedLivePreview.startOperation(for: deviceID, options: options, service: service)
+      return await PreparedLivePreview(deviceID: deviceID, options: options, operationTask: operation, service: service)
+    }
   }
 
   func discard() async {
@@ -111,10 +127,11 @@ final class StartupCapturePreparation {
         await previousCleanup?.value
         _ = await task.value
       }
-    case .livePreview(let prepared):
+    case .livePreview(_, _, let task):
+      task.cancel()
       cleanupTask = Task {
         await previousCleanup?.value
-        await prepared.discard()
+        await task.value?.discard()
       }
     }
   }

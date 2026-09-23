@@ -56,6 +56,7 @@ actor RetryDelays {
 }
 
 actor ADBService {
+  private let densityGate: TestGate?
   private let settingsGate: TestGate?
   private let failsToStart: Bool
   private let failsSettingRead: Bool
@@ -77,6 +78,7 @@ actor ADBService {
     bootFailures: Int = 0,
     densityFailures: Int = 0,
     blocksBootQuery: Bool = false,
+    densityGate: TestGate? = nil,
     settingsGate: TestGate? = nil,
     failsToStart: Bool = false,
     failsSettingRead: Bool = false,
@@ -87,6 +89,7 @@ actor ADBService {
     self.bootFailures = bootFailures
     self.densityFailures = densityFailures
     self.blocksBootQuery = blocksBootQuery
+    self.densityGate = densityGate
     self.settingsGate = settingsGate
     self.failsToStart = failsToStart
     self.failsSettingRead = failsSettingRead
@@ -113,7 +116,8 @@ actor ADBService {
 
   func keyEvent(deviceID _: String, keyCode _: String) throws {}
 
-  func displayDensity(deviceID _: String) throws -> Int {
+  func displayDensity(deviceID _: String) async throws -> Int {
+    await densityGate?.wait()
     if densityFailures > 0 {
       densityFailures -= 1
       throw TestError.expected
@@ -200,6 +204,7 @@ struct LivePreviewSessionTests {
     try await startupRestoresSettings()
     try await startupWaitsForBoot()
     try await readyDeviceDoesNotWait()
+    try await physicalDensityDoesNotDelaySession()
     try await bootQueriesRetryWithBackoff()
     for shutdown in [false, true] {
       try await bootWaitCancels(shutdown: shutdown, blocksQuery: false)
@@ -368,6 +373,18 @@ struct LivePreviewSessionTests {
     let handle = try await service.start(for: "ready", options: LivePreviewOptions(showsTouches: false))
     let queries = await adb.bootQueries
     precondition(queries == 1)
+    _ = await service.stop(handle)
+  }
+
+  static func physicalDensityDoesNotDelaySession() async throws {
+    let gate = TestGate()
+    let adb = ADBService(densityGate: gate)
+    let service = LivePreviewService(adb: adb, coordinator: CaptureCoordinator())
+    let handle = try await service.start(for: "ready", options: LivePreviewOptions(showsTouches: false))
+    precondition(handle.session.media == nil, "Session must exist while density is unavailable")
+    await gate.open()
+    let interactive = await service.waitUntilInteractive(handle)
+    precondition(interactive)
     _ = await service.stop(handle)
   }
 

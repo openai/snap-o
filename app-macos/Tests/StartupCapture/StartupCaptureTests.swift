@@ -12,6 +12,9 @@ struct StartupCaptureTests {
     await screenshotReuse()
     await screenshotFreshness()
     await livePreviewClaim()
+    await earlyPreviewClaim()
+    await earlyPreviewDiscard()
+    await earlyPreviewReplacement()
     await changedPreviewOptions()
     await modeSwitchWaitsForCleanup()
     await unusedPreviewExpires()
@@ -19,7 +22,9 @@ struct StartupCaptureTests {
     await discardSharesCleanup()
     try await managerReusesWarmup()
     try await emulatorFramesCreatePreviewBeforeBoot()
-    await unusedEmulatorWarmupReleasesStream()
+    try await unusedEmulatorWarmupReleasesStream()
+    try await claimEmulatorBeforeFirstFrame()
+    await overlappingDisplayDiscovery()
     await stoppingEmulatorBeforeFirstFrame()
     await emulatorReconnectDiscardsOldWarmup()
     try await emulatorInputWaitsForAndroid()
@@ -34,6 +39,7 @@ struct StartupCaptureTests {
     await discoveryBacksOffStalledDevice()
     await stopDuringRendererClaim()
     await disconnectWaitsForCleanup()
+    await reconnectDuringPreparedReadiness()
     await commandDuringAutomaticPreview(recordsVideo: true)
     await commandDuringAutomaticPreview(recordsVideo: false)
     await tearDownDuringQueuedCommand(recordsVideo: true)
@@ -49,6 +55,8 @@ struct StartupCaptureTests {
     await captureHistoryDeletion(deletesCurrent: true, disconnects: true)
     await captureHistoryDeletion(deletesCurrent: true, managed: false)
     await deviceManagerOpenPreservesLaterSelection()
+    await restoresPreferredDevice()
+    await waitsForPreferredDeviceMedia()
     print("Startup capture tests passed")
   }
 
@@ -125,9 +133,10 @@ struct StartupCaptureTests {
     let startup = StartupCapturePreparation(screenshots: ScreenshotService(), livePreview: service)
     startup.prepare(mode: .livePreview, devices: [first, second], liveOptions: options)
     await eventually { await service.starts.count == 1 }
-    guard let prepared = startup.claimLivePreview(for: first, options: options),
+    guard let prepared = await startup.claimLivePreview(for: first, options: options),
           let handle = await prepared.take() else { fatalError("Missing live preload") }
-    precondition(startup.claimLivePreview(for: first, options: options) == nil)
+    let duplicateClaim = await startup.claimLivePreview(for: first, options: options)
+    precondition(duplicateClaim == nil)
     let duplicate = await prepared.take()
     precondition(duplicate == nil)
     await startup.discard()
@@ -159,13 +168,59 @@ struct StartupCaptureTests {
     precondition(active.isEmpty)
   }
 
+  static func earlyPreviewClaim() async {
+    let service = LivePreviewService()
+    let startup = StartupCapturePreparation(screenshots: ScreenshotService(), livePreview: service)
+    startup.prepareEarlyPreview(options: options) { [id = second.id] in id }
+    await eventually { await service.starts == [second.id] }
+    startup.prepare(mode: .livePreview, devices: [first, second], liveOptions: options)
+    guard let prepared = await startup.claimLivePreview(for: second, options: options),
+          let operation = await prepared.take() else { fatalError("Missing early preview") }
+    let starts = await service.starts
+    precondition(starts == [second.id], "Properties arriving must not replace the preferred-device session")
+    _ = await service.stop(operation)
+    await startup.discard()
+  }
+
+  static func earlyPreviewDiscard() async {
+    let gate = TestGate()
+    let service = LivePreviewService(startGate: gate)
+    let startup = StartupCapturePreparation(screenshots: ScreenshotService(), livePreview: service)
+    startup.prepareEarlyPreview(options: options) { [id = first.id] in id }
+    await eventually { await service.starts == [first.id] }
+    let discard = Task { await startup.discard() }
+    await gate.open()
+    await discard.value
+    let active = await service.active
+    precondition(active.isEmpty, "Discard must clean up an early session still starting")
+  }
+
+  static func earlyPreviewReplacement() async {
+    for changesDevice in [false, true] {
+      let service = LivePreviewService()
+      let startup = StartupCapturePreparation(screenshots: ScreenshotService(), livePreview: service)
+      startup.prepareEarlyPreview(options: options) { [id = first.id] in id }
+      await eventually { await service.active.count == 1 }
+      let device = changesDevice ? second : first
+      let desiredOptions = LivePreviewOptions(showsTouches: !changesDevice)
+      guard let prepared = await startup.claimLivePreview(for: device, options: desiredOptions),
+            let handle = await prepared.take() else { fatalError("Missing replacement") }
+      precondition(handle.deviceID == device.id && prepared.options == desiredOptions)
+      let stops = await service.stops
+      let active = await service.active
+      precondition(stops.count == 1 && active.count == 1, "Replacement must release the previous warmup")
+      _ = await service.stop(handle)
+      await startup.discard()
+    }
+  }
+
   static func changedPreviewOptions() async {
     let service = LivePreviewService()
     let startup = StartupCapturePreparation(screenshots: ScreenshotService(), livePreview: service)
     startup.prepare(mode: .livePreview, devices: [first], liveOptions: options)
     await eventually { await service.active.count == 1 }
     let changed = LivePreviewOptions(showsTouches: true)
-    guard let prepared = startup.claimLivePreview(for: first, options: changed),
+    guard let prepared = await startup.claimLivePreview(for: first, options: changed),
           let handle = await prepared.take() else { fatalError("Missing replacement preview") }
     precondition(prepared.options == changed)
     let starts = await service.starts
@@ -278,6 +333,10 @@ struct StartupCaptureTests {
     await eventually { visible == 2 }
     let starts = await service.starts
     precondition(starts.count(where: { $0 == devices[1].id }) == 1, "The matching warmup must reuse the prepared stream")
+    let renderer = try! await manager.makeRenderer(for: devices[1].id)
+    let afterClaim = await service.starts
+    precondition(afterClaim == starts, "Renderer must retain the warmed stream without reopening it")
+    await manager.stopRenderer(renderer)
     await manager.stop()
   }
 
@@ -298,7 +357,7 @@ struct StartupCaptureTests {
       displayRetrySleep: { _ in await retryGate.wait() }
     ) { displayed = $0.map(\.device.id) }
     await manager.start(with: [first, second])
-    precondition(displayed == [second.id], "A booting device must not block a ready device")
+    await eventually("A booting device must not block a ready device") { displayed == [second.id] }
     await retryGate.open()
     await eventually("Retry must create media without another device update") { displayed == [first.id, second.id] }
     let requests = await adb.displayRequests
@@ -426,15 +485,73 @@ struct StartupCaptureTests {
     await manager.stop()
   }
 
-  static func unusedEmulatorWarmupReleasesStream() async {
+  static func unusedEmulatorWarmupReleasesStream() async throws {
     let emulator = testDevice("emulator-5554")
     let service = LivePreviewService()
     var visible = false
-    let manager = LivePreviewManager(livePreviewService: service, adbService: ADBService(), options: options) { visible = !$0.isEmpty }
+    let expiration = TestGate()
+    let manager = LivePreviewManager(
+      livePreviewService: service,
+      adbService: ADBService(),
+      options: options,
+      warmupSleep: { _ in await expiration.wait() }
+    ) { visible = !$0.isEmpty }
     await manager.start(with: [emulator])
     await eventually { visible }
+    let retained = await service.active
+    precondition(retained.count == 1, "Warmup must remain available for renderer handoff")
+    await expiration.open()
+    await eventually { await service.active.isEmpty }
     let active = await service.active
-    precondition(active.isEmpty, "Discovering dimensions must release the unselected emulator")
+    precondition(active.isEmpty, "Unused warmups must expire")
+    let renderer = try await manager.makeRenderer(for: emulator.id)
+    let starts = await service.starts
+    precondition(starts == [emulator.id, emulator.id], "An expired warmup must allow a fresh renderer")
+    await manager.stopRenderer(renderer)
+    await manager.stop()
+  }
+
+  static func claimEmulatorBeforeFirstFrame() async throws {
+    let emulator = testDevice("emulator-5554")
+    let gate = TestGate()
+    let expiration = TestGate()
+    let service = LivePreviewService(readyGate: gate)
+    let manager = LivePreviewManager(
+      livePreviewService: service, adbService: ADBService(), options: options,
+      warmupSleep: { _ in await expiration.wait() }
+    ) { _ in }
+    await manager.start(with: [emulator])
+    await eventually { await gate.waitCount > 0 }
+    let expirationWaits = await expiration.waitCount
+    precondition(expirationWaits == 0, "Unused-warmup expiry must start after the first frame")
+    let renderer = try await manager.makeRenderer(for: emulator.id)
+    precondition(!renderer.operation.session.isReady)
+    await gate.open()
+    await eventually { renderer.operation.session.isReady }
+    let starts = await service.starts
+    precondition(starts == [emulator.id], "Claiming an unfinished warmup must retain its operation")
+    await manager.stopRenderer(renderer)
+    await manager.stop()
+  }
+
+  static func overlappingDisplayDiscovery() async {
+    let gate = TestGate()
+    let adb = ADBService(displayGates: [first.id: gate])
+    let manager = LivePreviewManager(livePreviewService: LivePreviewService(), adbService: adb, options: options) { _ in }
+    let start = Task { await manager.start(with: [first]) }
+    await eventually { await gate.waitCount == 1 }
+    let update = Task { await manager.updateDevices([first]) }
+    for _ in 0 ..< 100 {
+      await Task.yield()
+    }
+    let requests = await adb.displayRequests
+    precondition(requests == [first.id], "Concurrent updates must share the pending query")
+    await gate.open()
+    await start.value
+    await update.value
+    await manager.updateDevices([first])
+    let completedRequests = await adb.displayRequests
+    precondition(completedRequests == [first.id], "Completed metadata must come from the value cache")
     await manager.stop()
   }
 
@@ -465,6 +582,7 @@ struct StartupCaptureTests {
     await eventually { await service.starts.count == 2 }
     await gate.open()
     await disconnect.value
+    await manager.stop()
     await eventually { await service.stops.count == 2 }
     let active = await service.active
     precondition(active.isEmpty, "Both the stale and unclaimed replacement warmups must release their streams")
@@ -537,6 +655,21 @@ struct StartupCaptureTests {
     precondition(stopped && active.isEmpty)
   }
 
+  static func reconnectDuringPreparedReadiness() async {
+    let service = LivePreviewService(readyGate: TestGate())
+    var displayed: [String] = []
+    let manager = LivePreviewManager(
+      livePreviewService: service, adbService: ADBService(), options: options,
+      preparedLivePreview: prepare(service)
+    ) { displayed = $0.map(\.device.id) }
+    await manager.start(with: [first])
+    await eventually { await service.active.count == 1 }
+    await manager.updateDevices([])
+    await manager.updateDevices([first])
+    await eventually { displayed == [first.id] }
+    await manager.stop()
+  }
+
   static func stopDuringRendererClaim() async {
     let gate = TestGate()
     let service = LivePreviewService(startGate: gate)
@@ -575,6 +708,7 @@ struct StartupCaptureTests {
     let controller: CaptureWindowController
 
     init(devices: [Device] = [first], blockedDisplayDevice: Device = first) {
+      AppSettings.shared.lastViewedDeviceID = nil
       AppSettings.shared.startupCaptureMode = .livePreview
       tracker = DeviceTracker(devices: devices)
       live = LivePreviewService(stopGate: stopGate, readyGate: readyGate)
@@ -593,9 +727,8 @@ struct StartupCaptureTests {
 
     func start() async {
       await controller.start()
-      await eventually { await displayGate.waitCount > 0 }
       await eventually { await readyGate.waitCount > 0 }
-      precondition(controller.isLivePreviewActive && controller.isProcessing)
+      await eventually { controller.isLivePreviewActive }
     }
 
     func request(recordsVideo: Bool) async -> Task<Void, Never> {
@@ -640,6 +773,40 @@ struct StartupCaptureTests {
     await eventually { controller.mediaList.count == 3 }
     precondition(controller.selectedDeviceID == first.id, "Device Manager must not override a later selection")
     await controller.tearDown()
+  }
+
+  static func restoresPreferredDevice() async {
+    let fixture = ControllerFixture(devices: [first, second])
+    AppSettings.shared.lastViewedDeviceID = second.id
+    await fixture.displayGate.open()
+    await fixture.readyGate.open()
+    await fixture.stopGate.open()
+    await fixture.controller.start()
+    await eventually { fixture.controller.selectedDeviceID == second.id }
+    let starts = await fixture.live.starts
+    precondition(starts.first == second.id, "Startup must prewarm the previous device even when it is second in the list")
+    await fixture.controller.tearDown()
+    AppSettings.shared.lastViewedDeviceID = nil
+  }
+
+  static func waitsForPreferredDeviceMedia() async {
+    let gate = TestGate()
+    let service = LivePreviewService(readyGate: gate)
+    let snapshots = CaptureSnapshotController()
+    let mode = LivePreviewMode(
+      livePreviewService: service, adbService: ADBService(), options: options,
+      preparedLivePreview: prepare(service),
+      mediaDisplayMode: MediaDisplayMode(snapshotController: snapshots),
+      preferredDeviceIDProvider: { first.id }, onMediaApplied: {}
+    )
+    await mode.start(with: [first, second])
+    precondition(snapshots.mediaList.map(\.device.id) == [second.id])
+    precondition(snapshots.currentCapture == nil, "A faster sibling must not replace the selected device during startup")
+    await gate.open()
+    await eventually { snapshots.currentCapture?.device.id == first.id }
+    await mode.updateDevices([second])
+    precondition(snapshots.currentCapture?.device.id == second.id, "Disconnecting the preferred device must allow fallback")
+    await mode.stop()
   }
 
   static func captureHistoryDeletion(
@@ -776,6 +943,7 @@ struct StartupCaptureTests {
     await fixture.start()
     let command = await fixture.request(recordsVideo: false)
     command.cancel()
+    await fixture.stopGate.open()
     await waitForCommand(command)
     await fixture.displayGate.open()
     await fixture.assertNoCaptureRequests()

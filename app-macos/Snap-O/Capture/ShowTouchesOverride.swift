@@ -9,6 +9,10 @@ struct ShowTouchesOverride {
     enabled: Bool,
     using adb: ADBService
   ) async -> ShowTouchesOverride {
+    #if PERF_TRACING
+    let timing = Perf.startupBegin("touch settings setup", deviceID: deviceID)
+    defer { Perf.startupEnd(timing) }
+    #endif
     let exec = await adb.exec()
     let originalValue: Bool
     do {

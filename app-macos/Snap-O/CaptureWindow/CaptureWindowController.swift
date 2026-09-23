@@ -51,6 +51,9 @@ final class CaptureWindowController {
   }
 
   func start() async {
+    #if PERF_TRACING
+    Perf.startupEvent("window controller start")
+    #endif
     isTornDown = false
     deviceStreamTask?.cancel()
     let tracker = deviceTracker
@@ -59,7 +62,11 @@ final class CaptureWindowController {
 
     deviceStreamTask = Task { [weak self] in
       guard let self else { return }
-      let stream = await tracker.deviceStream()
+      let stream = if AppSettings.shared.startupCaptureMode == .livePreview {
+        await tracker.previewDeviceStream()
+      } else {
+        await tracker.deviceStream()
+      }
       for await devices in stream {
         await MainActor.run {
           self.handleDeviceUpdate(devices)
@@ -340,18 +347,27 @@ final class CaptureWindowController {
     if !isTornDown { lastError = "The emulator is not available for Live Preview yet. Try again shortly." }
   }
 
+  private var restoredDeviceID: String? {
+    let id = AppSettings.shared.lastViewedDeviceID
+    return knownDevices.first { $0.id == id }?.id
+  }
+
   func startLivePreview(useStartupPreparation: Bool = false, preferredDeviceID: String? = nil) async {
     guard canStartLivePreviewNow else { return }
     hasStartedInitialCapture = true
     isProcessing = true
     lastError = nil
     screenshotFailures = []
-    let preferredDeviceID = preferredDeviceID ?? pendingPreferredDeviceID ?? currentCapture?.device.id ?? lastViewedDeviceID ?? knownDevices
+    let preferredDeviceID = preferredDeviceID ?? pendingPreferredDeviceID ?? currentCapture?.device
+      .id ?? lastViewedDeviceID ?? restoredDeviceID ?? knownDevices
       .first?.id
+    #if PERF_TRACING
+    Perf.startupEvent("startup selected device", deviceID: preferredDeviceID)
+    #endif
     pendingPreferredDeviceID = preferredDeviceID
     let options = LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
     let prepared: PreparedLivePreview? = if useStartupPreparation, let device = knownDevices.first(where: { $0.id == preferredDeviceID }) {
-      startupPreparation.claimLivePreview(for: device, options: options)
+      await startupPreparation.claimLivePreview(for: device, options: options)
     } else {
       nil
     }
@@ -395,7 +411,7 @@ final class CaptureWindowController {
   }
 
   private func stopLivePreviewForCapture() async -> Bool {
-    guard case .livePreview(let livePreviewMode) = mode else { return !isTornDown }
+    guard case .livePreview(let livePreviewMode) = mode else { return !isTornDown && !Task.isCancelled }
     let preferredDeviceID = currentCapture?.device.id ?? lastViewedDeviceID
     await livePreviewMode.stop()
     guard !isTornDown,
@@ -403,7 +419,7 @@ final class CaptureWindowController {
     pendingPreferredDeviceID = preferredDeviceID
     if let preferredDeviceID { mediaDisplayMode.updateLastViewedDeviceID(preferredDeviceID) }
     mode = .idle
-    guard hasDevices else {
+    guard hasDevices, !Task.isCancelled else {
       isProcessing = false
       pendingPreferredDeviceID = nil
       return false

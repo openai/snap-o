@@ -43,7 +43,14 @@ final class EmulatorPreviewFrameSource: LivePreviewFrameSource {
     }
     task = Task.detached(priority: .userInitiated) {
       do {
+        #if PERF_TRACING
+        Perf.startupEvent("emulator endpoint lookup begin", deviceID: deviceID)
+        #endif
         let endpoint = try await Self.endpoint(for: deviceID)
+        #if PERF_TRACING
+        Perf.startupEvent("emulator endpoint lookup end", deviceID: deviceID)
+        #endif
+
         try await Self.stream(endpoint: endpoint, deliver: receive)
         if !Task.isCancelled {
           await receive(.stopped(EmulatorPreviewError(message: "The emulator preview stream ended.")))

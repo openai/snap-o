@@ -58,12 +58,32 @@ final class AppRuntime {
     guard startupTask == nil, shutdownTask == nil else { return }
 
     Perf.step(.appFirstSnapshot, "services start")
+    let tracker = deviceTracker
+    let discovery = Task.detached(priority: .userInitiated) { await tracker.startTracking() }
+    if AppSettings.shared.startupCaptureMode == .livePreview {
+      let preferredID = AppSettings.shared.lastViewedDeviceID
+      captureServices.startup.prepareEarlyPreview(
+        options: LivePreviewOptions(showsTouches: AppSettings.shared.showTouchesDuringCapture)
+      ) {
+        await discovery.value
+        let stream = await tracker.previewDeviceStream()
+        for await devices in stream {
+          guard !Task.isCancelled else { return nil }
+          if let preferredID, devices.contains(where: { $0.id == preferredID }) { return preferredID }
+          if let first = devices.first { return first.id }
+        }
+        return nil
+      }
+    }
     captureHistory.start()
     observeStartupSettings()
 
     let deviceTracker = deviceTracker
     startupTask = Task { [weak self] in
-      await deviceTracker.startTracking()
+      #if PERF_TRACING
+      Perf.startupEvent("runtime startup task entered")
+      #endif
+      await discovery.value
       let stream = await deviceTracker.deviceStream()
       for await devices in stream {
         guard !Task.isCancelled, let self, captureServices.startup.isAvailable else { return }

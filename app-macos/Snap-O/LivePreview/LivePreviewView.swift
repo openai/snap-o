@@ -199,11 +199,30 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   private func attachSession() {
     guard let renderer else { return }
     let session = renderer.session
+    #if PERF_TRACING
+    Perf.startupEvent("renderer attach", deviceID: renderer.deviceID)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(logDisplayReadiness),
+      name: NSNotification.Name.AVSampleBufferDisplayLayerReadyForDisplayDidChange,
+      object: displayLayer
+    )
+    #endif
     endedLivePreviewTrace = false
     session.sampleBufferHandler = { [weak self] sample in
       self?.enqueue(sample)
     }
   }
+
+  #if PERF_TRACING
+  @objc
+  private nonisolated func logDisplayReadiness() {
+    Task { @MainActor [weak self] in
+      guard let self, displayLayer.isReadyForDisplay, let renderer else { return }
+      Perf.startupEvent("layer ready for display", deviceID: renderer.deviceID)
+    }
+  }
+  #endif
 
   private func detachThumbnail() {
     guard thumbnail?.videoRenderer === displayLayer.sampleBufferRenderer else { return }
@@ -212,6 +231,11 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
   }
 
   private func detachSession() {
+    #if PERF_TRACING
+    NotificationCenter.default.removeObserver(
+      self, name: NSNotification.Name.AVSampleBufferDisplayLayerReadyForDisplayDidChange, object: displayLayer
+    )
+    #endif
     cancelPointerGesture()
     detachThumbnail()
     frameDragOrigin = nil
@@ -226,6 +250,10 @@ final class LivePreviewDisplayView: NSView, NSDraggingSource, NSMenuItemValidati
     displayLayer.sampleBufferRenderer.enqueue(sample)
     if !endedLivePreviewTrace {
       endedLivePreviewTrace = true
+      #if PERF_TRACING
+      Perf.startupEvent("renderer first enqueue", deviceID: renderer?.deviceID)
+      #endif
+
       Perf.step(.appFirstSnapshot, "after: Start Live Preview")
       Perf.end(.livePreviewStart, finalLabel: "first frame enqueued")
       Perf.end(.appFirstSnapshot, finalLabel: "first media appeared (live)")
