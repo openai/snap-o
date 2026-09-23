@@ -8,7 +8,7 @@ styles:
 subtitle: Android Inspection System
 actions:
 - label: Download for macOS
-  href: https://github.com/openai/snap-o/releases/latest
+  href: https://github.com/openai/snap-o/releases/tag/11.1.0
   class: btn primary
 - label: View on GitHub
   href: https://github.com/openai/snap-o

@@ -18,6 +18,8 @@ breadcrumbs:
 Snap-O makes it easier to capture and share Android screens, with instant previews and screenshots or recordings from all connected devices at once. Drag and drop captures into your work, and revisit them later in Capture History.
 {.lead}
 
+[Snap-O 11.1.0](https://github.com/openai/snap-o/releases/tag/11.1.0) adds early emulator previews, device controls, clipboard sync, and file drops.
+
 ## Live Preview
 
 Snap-O opens in Live Preview by default. Click and drag within the preview to interact with the device. Use `⌘[` and `⌘]` to switch between connected devices.
@@ -76,7 +78,7 @@ Press `⌘R` to capture a screenshot from all connected Android devices. Use `�
 
 ## Record the screen
 
-Press `⇧⌘R` to record the screens of all connected Android devices, and `Esc` to stop. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
+Press `⇧⌘R` to record the screens of all connected Android devices, and `Esc` to stop. If one device disconnects or fails, recordings on other devices continue. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
 
 ## Drag & drop, and sharing {#drag-and-drop}
 
