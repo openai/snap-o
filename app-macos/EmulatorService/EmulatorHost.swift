@@ -81,15 +81,7 @@ final class EmulatorHost {
     }
     try EmulatorConsole(home: home).control(
       serial: serial, expectedPath: avdPath, action: action,
-      displaySize: { try self.displaySize(serial: serial) },
-      rotateDisplay: { quarterTurns in
-        let adb = try self.sdk(requiring: "platform-tools/adb").appendingPathComponent("platform-tools/adb")
-        try EmulatorDisplayRotation { arguments in
-          try EmulatorCommand(executable: adb, arguments: ["-s", serial, "shell"] + arguments).run(
-            timeoutMessage: "The emulator did not respond to the rotation request. Check that it is running, then try again."
-          )
-        }.rotate(quarterTurns: quarterTurns)
-      }
+      displaySize: { try self.displaySize(serial: serial) }
     )
   }
 

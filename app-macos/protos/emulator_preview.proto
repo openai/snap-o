@@ -12,6 +12,7 @@ message ImageFormat {
     RGB888 = 2;
   }
   ImgFormat format = 1;
+  Rotation rotation = 2;
   uint32 width = 3;
   uint32 height = 4;
   uint32 display = 5;
@@ -21,4 +22,21 @@ message Image {
   bytes image = 4;
   uint32 seq = 5;
   uint64 timestampUs = 6;
+}
+
+// Wire-compatible subset used for Android Studio-style emulator rotation.
+message ParameterValue {
+  repeated float data = 1 [packed = true];
+}
+message PhysicalModelValue {
+  enum PhysicalType { POSITION = 0; ROTATION = 1; }
+  enum State { OK = 0; NO_SERVICE = -3; DISABLED = -2; UNKNOWN = -1; }
+  PhysicalType target = 1;
+  State status = 2;
+  ParameterValue value = 3;
+}
+
+message Rotation {
+  enum SkinRotation { PORTRAIT = 0; LANDSCAPE = 1; REVERSE_PORTRAIT = 2; REVERSE_LANDSCAPE = 3; }
+  SkinRotation rotation = 1;
 }

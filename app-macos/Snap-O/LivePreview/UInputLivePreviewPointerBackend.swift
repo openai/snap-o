@@ -39,6 +39,9 @@ actor UInputLivePreviewPointerBackend: LivePreviewPointerBackend {
       deviceID: deviceID,
       touchscreen: touchscreen
     ) {
+      if EmulatorGRPCEndpoint.isEmulator(deviceID) {
+        return try await EmulatorRotationClient.rotation(deviceID: deviceID)
+      }
       let exec = await adb.exec()
       return try await exec.displayRotation(deviceID: deviceID)
     }

@@ -19,7 +19,10 @@ struct CaptureModeTests {
     await overlappingDeviceUpdates()
     await modePropagatesCancellation()
     await modeRetainsFailuresUntilDisconnect()
-    print("Capture mode tests passed (14 cases)")
+    await disconnectStopsOnlyRemovedRotation()
+    await modeStopsAllRotations()
+    await stoppedModeRejectsRotation()
+    print("Capture mode tests passed (17 cases)")
   }
 
   static func eventually(_ condition: () async -> Bool) async {
@@ -338,5 +341,50 @@ struct CaptureModeTests {
     firstConnection.hasFailed = true
     precondition(!nextMode.connection(for: first.id).hasFailed, "Old views must not change a new mode's failure state")
     await nextMode.stop()
+  }
+
+  static func disconnectStopsOnlyRemovedRotation() async {
+    let mode = await makeRotationMode()
+    let removed = mode.connection(for: first.id).rotation!
+    let remaining = mode.connection(for: second.id).rotation!
+    await mode.updateDevices([second])
+    precondition(
+      removed.stopCount == 1 && remaining.stopCount == 0,
+      "Disconnect must stop only the removed device's rotation"
+    )
+    await mode.stop()
+  }
+
+  static func modeStopsAllRotations() async {
+    let mode = await makeRotationMode()
+    let rotations = [first, second].map { mode.connection(for: $0.id).rotation! }
+    await mode.stop()
+    precondition(rotations.allSatisfy { $0.stopCount == 1 }, "Ending preview must stop every rotation session")
+  }
+
+  static func stoppedModeRejectsRotation() async {
+    let mode = await makeRotationMode()
+    await mode.stop()
+    do {
+      try await mode.connection(for: first.id).rotateDevice(deviceID: first.id, left: true)
+      fatalError("Late input must not recreate a rotation override after shutdown")
+    } catch is CancellationError {
+      // Expected after the mode has stopped.
+    } catch {
+      fatalError("Unexpected late-input error: \(error)")
+    }
+  }
+
+  private static func makeRotationMode() async -> LivePreviewMode {
+    let mode = LivePreviewMode(
+      livePreviewService: LivePreviewService(), adbService: ADBService(), options: options,
+      mediaDisplayMode: MediaDisplayMode(snapshotController: CaptureSnapshotController()), preferredDeviceIDProvider: { first.id },
+      onMediaApplied: {}
+    )
+    await mode.start(with: [first, second])
+    for device in [first, second] {
+      mode.connection(for: device.id).rotation = LivePreviewRotation(deviceID: device.id)
+    }
+    return mode
   }
 }

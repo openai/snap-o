@@ -16,7 +16,7 @@ If you don't already have `adb`, install Android Platform Tools through Android 
 
 1. [Download Snap-O](https://github.com/openai/snap-o/releases/latest/download/Snap-O.dmg) and move it to Applications.
 2. Connect a device with USB debugging enabled, or start an emulator.
-3. Open Snap-O. Live Preview starts automatically. Command-drag the preview to share a screenshot, or press `⇧⌘R` to record.
+3. Open Snap-O. Live Preview starts automatically. Command-drag the preview to share a screenshot, or press `⇧⌘V` to record.
 
 Screen capture needs no library in your Android app. Network and Tweaks each require an Android integration; follow the guides below.
 
@@ -24,7 +24,7 @@ For capture controls and keyboard shortcuts, see the [Screen capture guide](docs
 
 ## Screen capture
 
-Snap-O automatically keeps screenshots and recordings in Capture History, including across app restarts. Open **Window → Capture History** (`⇧⌘H`) to browse captures by day and reopen them. Captures from multiple devices stay grouped together.
+Snap-O automatically keeps screenshots and recordings in Capture History, including across app restarts. Open **Window → Capture History** (`⌘Y`) to browse captures by day and reopen them. Captures from multiple devices stay grouped together.
 
 Drag screenshots and recordings straight into a pull request, chat, or document. Play recordings immediately and step through them frame by frame to check an animation. Work with multiple devices and keep captures open in separate windows.
 

@@ -62,8 +62,15 @@ final class LivePreviewMode {
   func updateDevices(_ devices: [Device]) async {
     let connectedIDs = Set(devices.map(\.id))
     connectedDeviceIDs = connectedIDs
+    let removed = connections.filter { !connectedIDs.contains($0.key) }.map(\.value)
     connections = connections.filter { connectedIDs.contains($0.key) }
+    let cleanup = Task {
+      for connection in removed {
+        await connection.stopRotation()
+      }
+    }
     await manager?.updateDevices(devices)
+    await cleanup.value
   }
 
   func connection(for deviceID: String) -> LivePreviewConnection {
@@ -95,7 +102,11 @@ final class LivePreviewMode {
     let prepared = preparedLivePreview
     preparedLivePreview = nil
     manager = nil
+    let activeConnections = Array(connections.values)
     let task = Task {
+      for connection in activeConnections {
+        await connection.stopRotation()
+      }
       await prepared?.discard()
       if let activeManager {
         await activeManager.stop()

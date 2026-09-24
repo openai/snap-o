@@ -36,7 +36,7 @@ Press `Esc` to stop the preview, or `⇧⌘L` to start it again. Choose **Device
 
 Live Preview shows floating controls beside the Capture window. Use **Back**, **Home**, **Recents**, **Volume Down**, **Volume Up**, and **Power/Wake** to control the selected device.
 
-Emulators also offer **Rotate Left** and **Rotate Right**. Supported emulators show **Display Mode** and **Posture** menus. Available choices depend on the emulator. These controls can remain unavailable during boot; Snap-O retries automatically.
+Physical devices and emulators offer **Rotate Left** and **Rotate Right**. Emulator rotation changes the virtual device’s orientation through its sensors. Physical-device rotation temporarily locks the orientation; Snap-O restores the original rotation mode when live preview ends. Apps that require a fixed orientation may stay in that orientation. Supported emulators show **Display Mode** and **Posture** menus. Available choices depend on the emulator. Display and posture controls can remain unavailable during boot; Snap-O retries automatically.
 
 Right-click the controls and choose **Position → Left of Window** or **Position → Below Capture Pane**. Snap-O remembers this position and keeps the controls within the screen. They hide when Snap-O becomes inactive.
 
@@ -72,11 +72,11 @@ Quitting Snap-O leaves running emulators available to other tools.
 
 ## Take a screenshot
 
-Press `⌘R` to capture a screenshot from all connected Android devices. Use `⌘[` and `⌘]` to browse their captures. Press `⇧⌘L` to return to Live Preview.
+Press `⇧⌘S` to capture a screenshot from all connected Android devices. Use `⌘[` and `⌘]` to browse their captures. Press `⇧⌘L` to return to Live Preview.
 
 ## Record the screen
 
-Press `⇧⌘R` to record the screens of all connected Android devices, and `Esc` to stop. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
+Press `⇧⌘V` to record the screens of all connected Android devices, and `Esc` to stop. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.
 
 ## Drag & drop, and sharing {#drag-and-drop}
 
@@ -88,7 +88,7 @@ Choose **Save As…** (`⌘S`) to keep a permanent copy of the selected capture.
 
 Capture History automatically keeps your recent screenshots and recordings on your Mac. They remain after you close their windows or restart Snap-O, so you can revisit them without the original device connected.
 
-Open **Window → Capture History** (`⇧⌘H`) to browse captures by day, newest first.
+Open **Window → Capture History** (`⌘Y`) to browse captures by day, newest first.
 
 Each capture action groups its devices into one entry. Double-click an entry to preview it. Use the toolbar thumbnails, Left and Right Arrow keys, or `⌘[` and `⌘]` to switch devices. Press `Esc` to return to history.
 
@@ -111,13 +111,28 @@ To remove a group, open it and choose **Delete Capture**. **Clear History…** r
 
 | Action                    | Shortcut |
 |---------------------------|----------|
-| New screenshot            | `⌘R`     |
-| Start recording           | `⇧⌘R`    |
+| New screenshot            | `⇧⌘S`    |
+| Start recording           | `⇧⌘V`    |
 | Start live preview        | `⇧⌘L`    |
 | Stop recording / preview  | `⎋`      |
-| Open Capture History      | `⇧⌘H`    |
+| Open Capture History      | `⌘Y`     |
+| Open Device Manager       | `⇧⌘M`    |
 | Save as                   | `⌘S`     |
 | Copy image to clipboard   | `⌘C`     |
 | Previous device           | `⌘[`     |
 | Next device               | `⌘]`     |
 | Show / hide Capture       | `⌥⌘C`    |
+
+These device shortcuts act on the selected device while Live Preview is visible.
+They also work when the control bar is hidden.
+
+| Device action             | Shortcut |
+|---------------------------|----------|
+| Back                      | `⇧⌘B`    |
+| Home                      | `⇧⌘H`    |
+| Recent apps               | `⇧⌘W`    |
+| Power / wake              | `⇧⌘P`    |
+| Volume up                 | `⇧⌘U`    |
+| Volume down               | `⇧⌘D`    |
+| Rotate device left        | `⌘L`     |
+| Rotate device right       | `⌘R`     |

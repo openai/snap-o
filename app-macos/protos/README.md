@@ -1,6 +1,6 @@
 # Emulator preview messages
 
-This schema contains the fields Snap-O uses from the Android Emulator screenshot API.
+This schema contains the fields Snap-O uses from the Android Emulator screenshot and physical-model APIs.
 Keep field numbers and enum values compatible with the upstream schema linked in the file.
 It does not change the Network or Tweaks protocols.
 

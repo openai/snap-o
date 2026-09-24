@@ -131,5 +131,4 @@ for test in [
 }
 
 try runConsoleTests()
-try runDisplayRotationTests()
-print("Emulator helper tests passed (console, rotation, and device lifecycle)")
+print("Emulator helper tests passed (console and device lifecycle)")

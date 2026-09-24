@@ -278,7 +278,7 @@ struct CaptureToolbar: View {
         .font(SnapOToolbarStyle.iconFont)
         .frame(width: SnapOToolbarStyle.singleControlSize, height: SnapOToolbarStyle.singleControlSize)
     }
-    .help("Capture History (⇧⌘H)")
+    .help("Capture History (⌘Y)")
     .controlSize(.extraLarge)
     .snapOToolbarSingleControlStyle()
   }
@@ -366,7 +366,7 @@ struct CaptureActionToolbarControls: View {
           .frame(width: 34, height: 32)
           .modifier(CaptureSelectionHighlight(isSelected: isShowingScreenshot))
       }
-      .help("New Screenshot (⌘R)")
+      .help("New Screenshot (⇧⌘S)")
       .disabled(!canCaptureNow)
 
       if settings.recordAsBugReport {
@@ -389,7 +389,7 @@ struct CaptureActionToolbarControls: View {
         }
         .menuIndicator(.hidden)
         .menuStyle(.button)
-        .help("Start Recording Bug Report (⌘⇧R)")
+        .help("Start Recording Bug Report (⇧⌘V)")
         .disabled(!canStartRecordingNow)
       } else {
         Button {
@@ -400,7 +400,7 @@ struct CaptureActionToolbarControls: View {
             .frame(width: 34, height: 32)
             .modifier(CaptureSelectionHighlight(isSelected: isShowingRecording))
         }
-        .help("Start Recording (⌘⇧R)")
+        .help("Start Recording (⇧⌘V)")
         .disabled(!canStartRecordingNow)
       }
 

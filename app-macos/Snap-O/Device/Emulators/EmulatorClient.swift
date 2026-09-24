@@ -29,6 +29,12 @@ final class EmulatorClient {
     }
   }
 
+  func rotationEndpoint(serial: String) async throws -> EmulatorGRPCEndpoint {
+    try await JSONDecoder().decode(EmulatorGRPCEndpoint.self, from: request { proxy, reply in
+      proxy.rotationEndpoint(serial, reply: reply)
+    })
+  }
+
   func clipboardEndpoint(serial: String) async throws -> EmulatorGRPCEndpoint {
     try await JSONDecoder().decode(EmulatorGRPCEndpoint.self, from: request { proxy, reply in
       proxy.clipboardEndpoint(serial, reply: reply)

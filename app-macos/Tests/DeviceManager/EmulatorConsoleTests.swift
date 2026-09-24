@@ -59,7 +59,6 @@ func runConsoleTests() throws {
   try dispatchesEmulatorControls()
   try refusesUnsupportedControls()
   try refusesControlsForAnotherAVD()
-  try reportsControlFailure()
   try detectsLiveDisplayModes()
   try filtersDisplayModesByRuntimeSupport()
   try detectsFoldableModeWhileClosed()
@@ -154,7 +153,7 @@ private func dispatchesDisplayMode() throws {
       displaySize: {
         queries += 1
         return queries < 3 ? "Physical size: 1080x2400" : "Physical size: 2208x1840"
-      }, rotateDisplay: { _ in fatalError("Mode selection must not rotate") }
+      }
     )
     try expect(server.recorded() == ["avd path", "help", "resize-display 1"], "Validate identity and capabilities before resizing")
     try expect(queries == 3, "Wait for the display to change before reconnecting the stream")
@@ -172,7 +171,7 @@ private func sendsModeAfterSlowDisplayRead() throws {
         queries += 1
         if queries == 1 { Thread.sleep(forTimeInterval: 0.15) }
         return queries == 1 ? "Physical size: 1080x2400" : "Physical size: 2208x1840"
-      }, rotateDisplay: { _ in }
+      }
     )
     try expect(server.recorded().last == "resize-display 1", "Display queries must not consume the next console command's timeout")
   }
@@ -188,7 +187,7 @@ private func recoversUnappliedDisplayMode() throws {
       displaySize: {
         queries += 1
         return queries < 4 ? "Physical size: 1080x2400" : "Physical size: 2208x1840"
-      }, rotateDisplay: { _ in }
+      }
     )
     try expect(
       server.recorded().suffix(3) == ["resize-display 1", "resize-display 0", "resize-display 1"],
@@ -204,7 +203,7 @@ private func boundsDisplayModeRecovery() throws {
     try expectFailure("Android did not apply") {
       try console.control(
         serial: "emulator-5554", expectedPath: path, action: .foldable,
-        displaySize: { "Physical size: 1080x2400" }, rotateDisplay: { _ in }
+        displaySize: { "Physical size: 1080x2400" }
       )
     }
     try expect(
@@ -234,16 +233,16 @@ private func withResizableConsole(_ body: (EmulatorConsole, String, ConsoleFixtu
 private func detectsSupportedControls() throws {
   let commands = "Android console commands:\n    rotate\n    posture\n    fold\n    unfold\n"
   let phone = EmulatorControls(avdPath: "/Phone.avd", commands: commands, properties: [:])
-  try expect(phone.actions == [.rotateLeft, .rotateRight], "A phone must not expose fold controls just because its console has them")
+  try expect(phone.actions == [], "A phone must not expose fold controls just because its console has them")
   let properties = ["hw.sensor.hinge": "true", "hw.sensor.posture_list": "1, 3, 5"]
   let foldable = EmulatorControls(avdPath: "/Fold.avd", commands: commands, properties: properties)
   try expect(foldable.postures == [.closed, .open], "Only configured postures should be offered")
   let older = EmulatorControls(avdPath: "/Fold.avd", commands: "rotate\nfold\nunfold", properties: properties)
-  try expect(older.actions == [.rotateLeft, .rotateRight], "Postures require console support")
+  try expect(older.actions == [], "Postures require console support")
   let malformed = EmulatorControls(avdPath: "/Fold.avd", commands: commands, properties: [
     "hw.sensor.hinge": "yes", "hw.sensor.posture_list": "unknown, 2, 99"
   ])
-  try expect(malformed.actions == [.rotateLeft, .rotateRight, .halfOpen], "Unknown posture identifiers must be ignored")
+  try expect(malformed.actions == [.halfOpen], "Unknown posture identifiers must be ignored")
   let unsupported = EmulatorControls(avdPath: "/Resizable.avd", commands: commands, properties: resizableProperties)
   try expect(unsupported.displayModes.isEmpty, "Require console resize support")
 }
@@ -254,8 +253,7 @@ private func dispatchesEmulatorControls() throws {
   try fixture.write("avds/Test.avd/config.ini", "hw.sensor.hinge=no\n")
   try fixture.write("avds/Test.avd/hardware-qemu.ini", "hw.sensor.hinge=true\nhw.sensor.posture_list=1, 2, 3\n")
   for (action, command) in [
-    (EmulatorControlAction.rotateLeft, ""), (.rotateRight, ""),
-    (.closed, "posture 1"), (.halfOpen, "posture 2"), (.open, "posture 3")
+    (EmulatorControlAction.closed, "posture 1"), (.halfOpen, "posture 2"), (.open, "posture 3")
   ] {
     let path = fixture.avd.path
     let server = try ConsoleFixture(greeting: "OK\r\n") { command in
@@ -265,12 +263,10 @@ private func dispatchesEmulatorControls() throws {
       default: "OK\r\n"
       }
     }
-    var rotation: Int?
     try EmulatorConsole(home: fixture.root) { _ in server.client }
-      .control(serial: "emulator-5554", expectedPath: path, action: action) { rotation = $0 }
-    let expected = ["avd path", "help"] + (action.isRotation ? [] : [command])
+      .control(serial: "emulator-5554", expectedPath: path, action: action)
+    let expected = ["avd path", "help", command]
     try expect(server.recorded() == expected, "Verify identity and capabilities before changing the emulator")
-    try expect(rotation == (action.isRotation ? action.quarterTurns : nil), "Dispatch the requested rotation direction")
   }
 }
 
@@ -284,9 +280,7 @@ private func refusesUnsupportedControls() throws {
     }
     try expectFailure("does not support") {
       try EmulatorConsole(home: fixture.root) { _ in server.client }
-        .control(serial: "emulator-5554", expectedPath: path, action: action) { _ in
-          fatalError("An unsupported action must not rotate")
-        }
+        .control(serial: "emulator-5554", expectedPath: path, action: action)
     }
     try expect(server.recorded() == ["avd path", "help"], "Never send an unsupported control")
   }
@@ -296,28 +290,9 @@ private func refusesControlsForAnotherAVD() throws {
   let server = try ConsoleFixture(greeting: "OK\r\n") { _ in "/Other.avd\r\nOK\r\n" }
   try expectFailure("connection changed") {
     try EmulatorConsole(home: FileManager.default.temporaryDirectory) { _ in server.client }
-      .control(serial: "emulator-5554", expectedPath: "/Test.avd", action: .rotateRight) { _ in
-        fatalError("A replaced emulator must not rotate")
-      }
+      .control(serial: "emulator-5554", expectedPath: "/Test.avd", action: .open)
   }
   try expect(server.recorded() == ["avd path"], "A reused serial must not control a different AVD")
-}
-
-private func reportsControlFailure() throws {
-  let server = try ConsoleFixture(greeting: "OK\r\n") { command in
-    switch command {
-    case "avd path": "/Test.avd\r\nOK\r\n"
-    case "help": "rotate\r\nOK\r\n"
-    default: "KO: cannot rotate\r\n"
-    }
-  }
-  try expectFailure("Android refused rotation") {
-    try EmulatorConsole(home: FileManager.default.temporaryDirectory) { _ in server.client }
-      .control(serial: "emulator-5554", expectedPath: "/Test.avd", action: .rotateRight) { _ in
-        throw EmulatorServiceError(message: "Android refused rotation")
-      }
-  }
-  try expect(server.recorded() == ["avd path", "help"], "A rejected action must report failure")
 }
 
 private func authenticatesBeforeShutdown() throws {

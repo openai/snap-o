@@ -12,8 +12,6 @@ struct EmulatorControlsView: View {
   var body: some View {
     let stack = isVertical ? AnyLayout(VStackLayout(spacing: 4)) : AnyLayout(HStackLayout(spacing: 4))
     stack {
-      button(.rotateLeft)
-      button(.rotateRight)
       if let controls {
         menu("Display Mode", actions: controls.displayModes.map(\.action), selected: controls.currentDisplayMode, fallbackSymbol: "display")
         menu("Posture", actions: controls.postures, selected: controls.currentPosture, fallbackSymbol: "questionmark.square")
@@ -106,18 +104,6 @@ struct EmulatorControlsView: View {
     }
   }
 
-  private func button(_ action: EmulatorControlAction) -> some View {
-    Button {
-      pendingAction = action
-    } label: {
-      // Align the device outline, allowing for the arrow above it.
-      icon(action.symbol, verticalOffset: -2)
-    }
-    .help(action.title)
-    .accessibilityLabel(action.title)
-    .disabled(pendingAction != nil || controls?.actions.contains(action) != true)
-  }
-
   private func icon(_ symbol: String, verticalOffset: CGFloat = 0) -> some View {
     Image(systemName: symbol)
       .font(.system(size: 15, weight: .regular))
@@ -131,8 +117,6 @@ struct EmulatorControlsView: View {
 private extension EmulatorControlAction {
   var failureTitle: String {
     switch self {
-    case .rotateLeft: "Couldn’t Rotate Emulator Left"
-    case .rotateRight: "Couldn’t Rotate Emulator Right"
     case .phone, .foldable, .tablet, .desktop: "Couldn’t Switch to \(title) Mode"
     case .closed, .halfOpen, .open: "Couldn’t Change Posture to \(title)"
     }
@@ -140,8 +124,6 @@ private extension EmulatorControlAction {
 
   var symbol: String {
     switch self {
-    case .rotateLeft: "rotate.left"
-    case .rotateRight: "rotate.right"
     case .phone: "iphone"
     case .foldable, .open: "rectangle.split.2x1"
     case .tablet: "ipad.landscape"
@@ -153,8 +135,6 @@ private extension EmulatorControlAction {
 
   var title: String {
     switch self {
-    case .rotateLeft: "Rotate Left"
-    case .rotateRight: "Rotate Right"
     case .phone: "Phone"
     case .foldable: "Foldable"
     case .tablet: "Tablet"

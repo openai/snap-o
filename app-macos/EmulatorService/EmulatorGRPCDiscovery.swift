@@ -4,12 +4,13 @@ import Foundation
 /// Reads host registration files without granting the sandboxed app filesystem access.
 final class EmulatorGRPCDiscovery {
   enum Access {
-    case screenshot, clipboard
+    case screenshot, clipboard, rotation
 
     var methods: [String] {
       switch self {
       case .screenshot: ["streamScreenshot"]
       case .clipboard: ["getClipboard", "setClipboard", "streamClipboard"]
+      case .rotation: ["getScreenshot", "setPhysicalModel"]
       }
     }
   }

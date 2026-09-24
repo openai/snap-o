@@ -3,6 +3,7 @@ import Foundation
 @objc(EmulatorServiceProtocol)
 protocol EmulatorServiceProtocol {
   func previewEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
+  func rotationEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void)
   func startADBServer(reply: @escaping @Sendable (Data?, String?) -> Void)
   func snapshot(_ serials: [String], reply: @escaping @Sendable (Data?, String?) -> Void)
@@ -14,7 +15,7 @@ protocol EmulatorServiceProtocol {
 }
 
 enum EmulatorControlAction: String, Codable, CaseIterable {
-  case rotateLeft, rotateRight, closed, halfOpen, open
+  case closed, halfOpen, open
   case phone, foldable, tablet, desktop
 
   var displayModeID: Int? {
@@ -27,17 +28,8 @@ enum EmulatorControlAction: String, Codable, CaseIterable {
     }
   }
 
-  var isRotation: Bool {
-    self == .rotateLeft || self == .rotateRight
-  }
-
-  var quarterTurns: Int {
-    self == .rotateLeft ? 3 : 1
-  }
-
   var consoleCommand: String {
     switch self {
-    case .rotateLeft, .rotateRight: "rotate"
     case .closed: "posture 1"
     case .halfOpen: "posture 2"
     case .open: "posture 3"
@@ -65,7 +57,7 @@ struct EmulatorControls: Codable {
     let commands = Set(commands.split(whereSeparator: \.isNewline).map {
       $0.trimmingCharacters(in: .whitespaces)
     })
-    var actions: [EmulatorControlAction] = commands.contains("rotate") ? [.rotateLeft, .rotateRight] : []
+    var actions: [EmulatorControlAction] = []
     let presets = EmulatorDisplayMode.parse(properties["hw.resizable.configs"] ?? "").filter {
       $0.isSupported(by: displaySize)
     }
