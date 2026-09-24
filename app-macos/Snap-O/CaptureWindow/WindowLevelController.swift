@@ -1,10 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Adjusts the window's level so Snap-O stays above other windows while a
-/// recording or live preview session is active. When activity stops, the
-/// window returns to the default level so it behaves like a normal document
-/// window.
+/// Floats the recording window only until Stop is requested.
 struct WindowLevelController: NSViewRepresentable {
   let shouldFloat: Bool
 

@@ -7,13 +7,14 @@ struct ShowTouchesOverride {
   static func apply(
     deviceID: String,
     enabled: Bool,
-    using adb: ADBService
+    using adb: ADBService,
+    timeout: Duration? = nil
   ) async -> ShowTouchesOverride {
     #if PERF_TRACING
     let timing = Perf.startupBegin("touch settings setup", deviceID: deviceID)
     defer { Perf.startupEnd(timing) }
     #endif
-    let exec = await adb.exec()
+    let exec = await adb.exec().withTimeout(timeout)
     let originalValue: Bool
     do {
       originalValue = try await exec.getShowTouches(deviceID: deviceID)
@@ -33,9 +34,9 @@ struct ShowTouchesOverride {
     return ShowTouchesOverride(deviceID: deviceID, originalValue: originalValue)
   }
 
-  func restore(using adb: ADBService) async {
+  func restore(using adb: ADBService, timeout: Duration? = nil) async {
     guard let originalValue else { return }
-    let exec = await adb.exec()
+    let exec = await adb.exec().withTimeout(timeout)
     do {
       try await exec.setShowTouches(deviceID: deviceID, enabled: originalValue)
     } catch {

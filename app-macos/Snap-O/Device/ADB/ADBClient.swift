@@ -3,6 +3,15 @@ import Foundation
 public struct ADBClient: Sendable {
   private let connectionFactory: @Sendable () throws -> ADBSocketConnection
   private let discoveryTimeout: Duration
+  private var requestTimeout: Duration?
+  private static let recordingCommandTimeout: Duration = .seconds(3)
+  private static let recordingDownloadIdleTimeout: Duration = .seconds(5)
+
+  func withTimeout(_ timeout: Duration?) -> ADBClient {
+    var client = self
+    client.requestTimeout = timeout
+    return client
+  }
 
   // MARK: - Public entry points
 
@@ -29,7 +38,7 @@ public struct ADBClient: Sendable {
     timeLimitSeconds: Int = 60 * 60 * 3,
     bugReport: Bool = false
   ) async throws -> RecordingSession {
-    let sizeHint = try? await displaySize(deviceID: deviceID)
+    let sizeHint = try? await withTimeout(Self.recordingCommandTimeout).displaySize(deviceID: deviceID)
     let remote = "/data/local/tmp/snapo_recording_\(UUID().uuidString).mp4"
     let command = makeScreenRecordCommand(
       bitRateMbps: bitRateMbps,
@@ -39,20 +48,20 @@ public struct ADBClient: Sendable {
       bugReport: bugReport
     )
 
-    let connection = try await makeConnection()
-    let pidValue: Int32
-    do {
-      try connection.sendTransport(to: deviceID)
-      try connection.sendShell("sh -c 'echo $$; exec \(command)'")
-      guard let pidLine = try connection.readLine(),
-            let parsedPID = Int32(pidLine.trimmingCharacters(in: .whitespacesAndNewlines))
-      else {
-        throw ADBError.parseFailure("Unable to determine screenrecord pid")
+    let (connection, pidValue) = try await withTimeout(Self.recordingCommandTimeout).runWithRetry(maxAttempts: 1) { connection in
+      try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+          continuation.resume(with: Result {
+            try connection.sendTransport(to: deviceID)
+            try connection.sendShell("sh -c 'echo $$; exec \(command)'")
+            guard let pidLine = try connection.readLine(),
+                  let pid = Int32(pidLine.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+              throw ADBError.parseFailure("Unable to determine screenrecord pid")
+            }
+            return (connection, pid)
+          })
+        }
       }
-      pidValue = parsedPID
-    } catch {
-      connection.close()
-      throw error
     }
 
     return RecordingSession(
@@ -64,54 +73,24 @@ public struct ADBClient: Sendable {
     )
   }
 
-  public func stopScreenrecord(session: RecordingSession, savingTo localURL: URL) async throws {
-    await sendSigInt(deviceID: session.deviceID, pid: session.pid)
-    try await collectScreenrecord(
-      session: session,
-      savingTo: localURL,
-      waitsForStop: true
-    )
+  public func signalScreenrecordStop(session: RecordingSession) async throws {
+    let command = "kill -INT \(session.pid) >/dev/null 2>&1 || true"
+    _ = try await withTimeout(Self.recordingCommandTimeout).runShellString(deviceID: session.deviceID, command: command)
   }
 
-  public func collectScreenrecord(session: RecordingSession, savingTo localURL: URL) async throws {
-    try await collectScreenrecord(
-      session: session,
-      savingTo: localURL,
-      waitsForStop: false
-    )
-  }
-
-  private func collectScreenrecord(
-    session: RecordingSession,
-    savingTo localURL: URL,
-    waitsForStop: Bool
-  ) async throws {
-    defer { session.close() }
+  public func downloadScreenrecord(session: RecordingSession, savingTo localURL: URL) async throws {
     do {
-      if waitsForStop {
-        try await session.waitUntilStopped()
-      }
-      try await pull(deviceID: session.deviceID, remote: session.remotePath, to: localURL)
-    } catch {
-      await removeRemoteRecording(session)
-      throw error
+      try await pull(
+        deviceID: session.deviceID, remote: session.remotePath, to: localURL,
+        idleTimeout: Self.recordingDownloadIdleTimeout
+      )
+    } catch ADBError.requestTimedOut {
+      throw ADBError.requestTimedOut("Recording download timed out.")
     }
-    await removeRemoteRecording(session)
   }
 
-  public func cancelScreenrecord(session: RecordingSession) async {
-    await sendSigInt(deviceID: session.deviceID, pid: session.pid)
-    _ = try? await session.waitUntilStopped()
-    await discardScreenrecord(session: session)
-  }
-
-  func discardScreenrecord(session: RecordingSession) async {
-    await removeRemoteRecording(session)
-    session.close()
-  }
-
-  private func removeRemoteRecording(_ session: RecordingSession) async {
-    _ = try? await runShellString(
+  func removeScreenrecord(session: RecordingSession) async throws {
+    _ = try await withTimeout(Self.recordingCommandTimeout).runShellString(
       deviceID: session.deviceID,
       command: "rm -f \(session.remotePath)"
     )
@@ -223,12 +202,17 @@ public struct ADBClient: Sendable {
   }
 
   public func pull(deviceID: String, remote: String, to localURL: URL) async throws {
+    try await pull(deviceID: deviceID, remote: remote, to: localURL, idleTimeout: nil)
+  }
+
+  private func pull(deviceID: String, remote: String, to localURL: URL, idleTimeout: Duration?) async throws {
     try FileManager.default.createDirectory(
       at: localURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
 
     try await withConnection { connection in
+      try connection.setIOTimeout(idleTimeout)
       try connection.sendTransport(to: deviceID)
       try connection.sendSync()
       try connection.sendSyncRequest(id: "RECV", path: remote)
@@ -542,7 +526,7 @@ public struct ADBClient: Sendable {
         let connection = try connectionFactory()
         do {
           let value = try await withTaskCancellationHandler {
-            try await operation(connection)
+            try await perform(operation, on: connection)
           } onCancel: {
             connection.close()
           }
@@ -567,9 +551,28 @@ public struct ADBClient: Sendable {
     throw lastError ?? ADBError.serverUnavailable("Failed to communicate with adb server")
   }
 
-  private func sendSigInt(deviceID: String, pid: Int32) async {
-    let command = "kill -INT \(pid) >/dev/null 2>&1 || true"
-    _ = try? await runShellString(deviceID: deviceID, command: command)
+  private func perform<T: Sendable>(
+    _ operation: @escaping @Sendable (ADBSocketConnection) async throws -> T,
+    on connection: ADBSocketConnection
+  ) async throws -> T {
+    guard let requestTimeout else { return try await operation(connection) }
+    return try await withThrowingTaskGroup(of: T.self) { group in
+      group.addTask {
+        try await withTaskCancellationHandler {
+          try await operation(connection)
+        } onCancel: {
+          // Cancelling a task alone does not interrupt a blocking socket read.
+          connection.close()
+        }
+      }
+      group.addTask {
+        try await Task.sleep(for: requestTimeout)
+        throw ADBError.requestTimedOut("Recording request timed out.")
+      }
+      defer { group.cancelAll() }
+      guard let value = try await group.next() else { throw CancellationError() }
+      return value
+    }
   }
 
   private func makeScreenRecordCommand(

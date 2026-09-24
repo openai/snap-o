@@ -117,6 +117,10 @@ actor ADBService {
     return stream
   }
 
+  func withTimeout(_: Duration?) -> ADBService {
+    self
+  }
+
   func getShowTouches(deviceID _: String) async throws -> Bool {
     settingsReadStarted = true
     await settingsGate?.wait()

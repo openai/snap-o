@@ -314,6 +314,11 @@ struct RecordingOperationResult {
 
 actor RecordingService {
   private(set) var requests: [[String]] = []
+  private var finishGate: TestGate?
+
+  func blockFinish(on gate: TestGate) {
+    finishGate = gate
+  }
 
   func start(for devices: [Device], options _: RecordingOptions) throws -> RecordingOperationHandle {
     requests.append(devices.map(\.id))
@@ -328,6 +333,7 @@ actor RecordingService {
   func updateConnectedDeviceIDs(_: Set<String>, for _: RecordingOperationHandle) {}
 
   func finish(_ handle: RecordingOperationHandle) async {
+    await finishGate?.wait()
     await handle.completion.open()
   }
 

@@ -141,6 +141,10 @@ final class CaptureWindowController {
     return false
   }
 
+  var shouldFloatRecordingWindow: Bool {
+    isRecording && !isProcessing
+  }
+
   var isLivePreviewActive: Bool {
     if case .livePreview = mode { return true }
     return false

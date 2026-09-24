@@ -19,6 +19,10 @@ final class RecordingSession: @unchecked Sendable {
     }
   }
 
+  func waitUntilStopped(timeout _: Duration) async throws {
+    try await waitUntilStopped()
+  }
+
   func end(error: Error? = nil) {
     lock.withLock {
       guard result == nil else { return }
@@ -40,8 +44,9 @@ actor ADBService {
   private let video: URL
   private var sessions: [String: RecordingSession] = [:]
   private var unavailable: Set<String> = []
+  private var failedStops: Set<String> = []
   private(set) var stops: [String] = []
-  private(set) var cancellations: [String] = []
+  private(set) var removedRecordings: [String] = []
   private(set) var touchSettings: [String: Bool] = [:]
 
   init(video: URL) {
@@ -54,6 +59,10 @@ actor ADBService {
 
   func displayDensity(deviceID _: String) throws -> Int {
     160
+  }
+
+  func withTimeout(_: Duration?) -> ADBService {
+    self
   }
 
   func getShowTouches(deviceID: String) throws -> Bool {
@@ -78,26 +87,26 @@ actor ADBService {
     unavailable.insert(deviceID)
   }
 
-  func stopScreenrecord(session: RecordingSession, savingTo url: URL) async throws {
-    stops.append(session.deviceID)
-    session.end()
-    try await session.waitUntilStopped()
-    try collectScreenrecord(session: session, savingTo: url)
+  func failStop(_ deviceID: String) {
+    failedStops.insert(deviceID)
   }
 
-  func collectScreenrecord(session: RecordingSession, savingTo url: URL) throws {
+  func signalScreenrecordStop(session: RecordingSession) throws {
+    stops.append(session.deviceID)
+    if failedStops.contains(session.deviceID) {
+      throw ADBError.requestTimedOut("Recording stop timed out")
+    }
+    session.end()
+  }
+
+  func downloadScreenrecord(session: RecordingSession, savingTo url: URL) throws {
     guard !unavailable.contains(session.deviceID) else {
       throw ADBError.protocolFailure("Recording file unavailable")
     }
     try FileManager.default.copyItem(at: video, to: url)
   }
 
-  func cancelScreenrecord(session: RecordingSession) {
-    cancellations.append(session.deviceID)
-    discardScreenrecord(session: session)
-  }
-
-  func discardScreenrecord(session: RecordingSession) {
-    session.close()
+  func removeScreenrecord(session: RecordingSession) throws {
+    removedRecordings.append(session.deviceID)
   }
 }
