@@ -98,7 +98,8 @@ struct EmulatorPreviewTests {
       return Data(base64Encoded: padded + String(repeating: "=", count: (4 - padded.count % 4) % 4))!
     }
     for (access, methods): (EmulatorGRPCDiscovery.Access, [String]) in [
-      (.screenshot, ["streamScreenshot"]), (.clipboard, ["getClipboard", "setClipboard", "streamClipboard"])
+      (.screenshot, ["streamScreenshot"]), (.clipboard, ["getClipboard", "setClipboard", "streamClipboard"]),
+      (.rotation, ["getScreenshot", "setPhysicalModel"])
     ] {
       let endpoint = try discovery.endpoint(for: "emulator-5554", access: access)!
       let parts = endpoint.token!.split(separator: ".").map(String.init)

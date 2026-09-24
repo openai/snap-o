@@ -468,6 +468,8 @@ struct CaptureWindow: View {
     }
     .background {
       if let serial = livePreviewSerial, workspace.showsCapture {
+        LivePreviewCommandHandler(controller: controller, deviceID: serial)
+          .id(serial)
         DeviceControlsPanel(placement: settings.deviceControlsPlacement) {
           DeviceControlsView(
             serial: serial, placement: settings.deviceControlsPlacement,

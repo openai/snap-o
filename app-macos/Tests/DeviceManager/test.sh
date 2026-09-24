@@ -7,9 +7,7 @@ xcrun swiftc -swift-version 6 -target arm64-apple-macosx26.0 \
   "$APP_ROOT/Snap-O/Device/Emulators/EmulatorServiceProtocol.swift" \
   "$APP_ROOT/EmulatorService/EmulatorCommand.swift" \
   "$APP_ROOT/EmulatorService/EmulatorConsole.swift" \
-  "$APP_ROOT/EmulatorService/EmulatorDisplayRotation.swift" \
   "$APP_ROOT/Tests/DeviceManager/EmulatorConsoleTests.swift" \
-  "$APP_ROOT/Tests/DeviceManager/EmulatorDisplayRotationTests.swift" \
   "$APP_ROOT/EmulatorService/EmulatorHost.swift" \
   "$APP_ROOT/Tests/DeviceManager/main.swift" -o "$OUTPUT/tests"
 "$OUTPUT/tests"

@@ -341,3 +341,13 @@ actor RecordingService {
     await handle.completion.open()
   }
 }
+
+@MainActor
+final class LivePreviewRotation {
+  private(set) var stopCount = 0
+  init(deviceID: String) {}
+  func rotate(left: Bool) async throws {}
+  func stop() async {
+    stopCount += 1
+  }
+}

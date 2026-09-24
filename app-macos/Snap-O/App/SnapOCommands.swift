@@ -16,6 +16,9 @@ struct SnapOCommands: Commands {
   @FocusedValue(\.captureHistoryActions)
   var historyActions: CaptureHistoryActions?
 
+  @FocusedValue(\.livePreviewCommands)
+  private var livePreviewCommands: LivePreviewCommandActions?
+
   let history: CaptureHistory
   let settings: AppSettings
   let updaterController: SPUStandardUpdaterController
@@ -26,8 +29,9 @@ struct SnapOCommands: Commands {
     let _ = CommandDiagnostics.shared.focusedWorkspaceEvaluated(workspaceController)
     CommandGroup(before: .windowSize) {
       Button("Device Manager") { openWindow(id: "device-manager") }
+        .keyboardShortcut("m", modifiers: [.command, .shift])
       Button("Capture History") { openWindow(id: "capture-history") }
-        .keyboardShortcut("h", modifiers: [.command, .shift])
+        .keyboardShortcut("y")
       Divider()
     }
 
@@ -52,7 +56,7 @@ struct SnapOCommands: Commands {
         workspaceController?.revealCapture()
         Task { await captureController?.captureScreenshots() }
       }
-      .keyboardShortcut("r")
+      .keyboardShortcut("s", modifiers: [.command, .shift])
       .disabled(captureController?.canCaptureNow != true)
 
       if captureController?.isRecording == true {
@@ -65,7 +69,7 @@ struct SnapOCommands: Commands {
           workspaceController?.revealCapture()
           Task { await captureController?.startRecording() }
         }
-        .keyboardShortcut("r", modifiers: [.command, .shift])
+        .keyboardShortcut("v", modifiers: [.command, .shift])
         .disabled(captureController?.canStartRecordingNow != true)
       }
 
@@ -160,6 +164,14 @@ struct SnapOCommands: Commands {
     }
     CommandMenu("Device") {
       Button("Device Manager…") { openWindow(id: "device-manager") }
+      Divider()
+      ForEach(LivePreviewDeviceCommand.allCases, id: \.self) { command in
+        Button(command.title) {
+          livePreviewCommands?.perform(command)
+        }
+        .keyboardShortcut(command.shortcut, modifiers: command.modifiers)
+        .disabled(livePreviewCommands?.supports(command) != true)
+      }
       Divider()
       let hasAlternativeMedia = historyActions?.canNavigate ?? captureController?.hasAlternativeMedia() ?? false
 

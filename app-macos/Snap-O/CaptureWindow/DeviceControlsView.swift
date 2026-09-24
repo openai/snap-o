@@ -9,29 +9,34 @@ struct DeviceControlsView: View {
   let sendKey: (String) async throws -> Void
   let didChangeDisplay: () -> Void
   @State private var pendingKey: String?
+  @State private var pendingRotation: LivePreviewDeviceCommand?
   @State private var inputFailed = false
 
   var body: some View {
     stack(spacing: 6) {
       stack(spacing: 4) {
-        key("Back", symbol: "chevron.left", code: "KEYCODE_BACK")
-        key("Home", symbol: "circle", code: "KEYCODE_HOME")
-        key("Recents", symbol: "square", code: "KEYCODE_APP_SWITCH")
+        key(.back, symbol: "chevron.left")
+        key(.home, symbol: "circle")
+        key(.recents, symbol: "square")
+      }
+      divider
+      stack(spacing: 4) {
+        rotationButton(.rotateLeft, symbol: "rotate.left")
+        rotationButton(.rotateRight, symbol: "rotate.right")
       }
       if serial.hasPrefix("emulator-") {
-        divider
         EmulatorControlsView(serial: serial, isVertical: placement == .left, didChangeDisplay: didChangeDisplay)
       }
       divider
       stack(spacing: 4) {
         if placement == .left {
-          key("Volume Up", symbol: "speaker.plus", code: "KEYCODE_VOLUME_UP")
-          key("Volume Down", symbol: "speaker.minus", code: "KEYCODE_VOLUME_DOWN")
+          key(.volumeUp, symbol: "speaker.plus")
+          key(.volumeDown, symbol: "speaker.minus")
         } else {
-          key("Volume Down", symbol: "speaker.minus", code: "KEYCODE_VOLUME_DOWN")
-          key("Volume Up", symbol: "speaker.plus", code: "KEYCODE_VOLUME_UP")
+          key(.volumeDown, symbol: "speaker.minus")
+          key(.volumeUp, symbol: "speaker.plus")
         }
-        key("Power/Wake", symbol: "power", code: "KEYCODE_POWER")
+        key(.power, symbol: "power")
       }
       divider
       clipboardButton
@@ -71,6 +76,15 @@ struct DeviceControlsView: View {
       }
       if !Task.isCancelled, self.pendingKey == pendingKey { self.pendingKey = nil }
     }
+    .task(id: pendingRotation) {
+      guard let pendingRotation else { return }
+      do {
+        try await connection?.rotateDevice(deviceID: serial, left: pendingRotation == .rotateLeft)
+      } catch {
+        if !Task.isCancelled { inputFailed = true }
+      }
+      if !Task.isCancelled { self.pendingRotation = nil }
+    }
     .alert("Couldn’t Send Device Input", isPresented: $inputFailed) {
       Button("OK", role: .cancel) {}
     } message: {
@@ -93,13 +107,22 @@ struct DeviceControlsView: View {
       .frame(width: placement == .left ? 24 : 1, height: placement == .left ? 1 : 24)
   }
 
-  private func key(_ title: String, symbol: String, code: String) -> some View {
-    Button { pendingKey = code } label: {
+  private func key(_ command: LivePreviewDeviceCommand, symbol: String) -> some View {
+    Button { pendingKey = command.keyCode } label: {
       icon(symbol).foregroundStyle(.primary)
     }
-    .help(title)
-    .accessibilityLabel(title)
+    .help(command.help)
+    .accessibilityLabel(command.title)
     .disabled(pendingKey != nil)
+  }
+
+  private func rotationButton(_ command: LivePreviewDeviceCommand, symbol: String) -> some View {
+    Button { pendingRotation = command } label: {
+      icon(symbol).foregroundStyle(.primary).offset(y: -2)
+    }
+    .help(command.help)
+    .accessibilityLabel(command.title)
+    .disabled(connection == nil || pendingRotation != nil)
   }
 
   private var keyboardButton: some View {

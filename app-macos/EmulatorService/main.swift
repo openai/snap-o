@@ -38,6 +38,14 @@ final class EmulatorService: NSObject, EmulatorServiceProtocol, NSXPCListenerDel
     perform(reply: reply) { try $0.snapshot(serials: serials) }
   }
 
+  func rotationEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+    worker.async { [self] in
+      do {
+        try reply(JSONEncoder().encode(discovery.endpoint(for: serial, access: .rotation)), nil)
+      } catch { reply(nil, "The emulator's rotation connection is unavailable.") }
+    }
+  }
+
   func clipboardEndpoint(_ serial: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
     worker.async { [self] in
       do {

@@ -24,8 +24,7 @@ struct EmulatorConsole {
     serial: String,
     expectedPath: String,
     action: EmulatorControlAction,
-    displaySize: (() throws -> String)? = nil,
-    rotateDisplay: (Int) throws -> Void
+    displaySize: (() throws -> String)? = nil
   ) throws {
     let deadline = Date().addingTimeInterval(30)
     try withSession(serial: serial) { session in
@@ -37,10 +36,7 @@ struct EmulatorConsole {
       guard controls.actions.contains(action) else {
         throw EmulatorServiceError(message: "This emulator does not support that control.")
       }
-      if action.isRotation {
-        // Android's launcher can ignore the sensor changes made by console rotation.
-        try rotateDisplay(action.quarterTurns)
-      } else if let mode = controls.displayModes.first(where: { $0.action == action }) {
+      if let mode = controls.displayModes.first(where: { $0.action == action }) {
         if try changeDisplayMode(mode, session: session, displaySize: displaySize, deadline: deadline) { return }
         // The emulator can remember a mode Android never applied and ignore the same request.
         if let previous = controls.displayModes.first(where: { $0.action == controls.currentDisplayMode && $0.action != action }),
