@@ -67,7 +67,7 @@ actor RecordingService {
       if let touchRestoration {
         await touchRestoration.value
       } else {
-        await showTouchesOverride.restore(using: adb)
+        await showTouchesOverride.restore(using: adb, timeout: .seconds(3))
       }
     }
   }
@@ -238,7 +238,8 @@ actor RecordingService {
           let showTouchesOverride = await ShowTouchesOverride.apply(
             deviceID: device.id,
             enabled: options.showsTouches,
-            using: adb
+            using: adb,
+            timeout: .seconds(3)
           )
           let exec = await adb.exec()
           do {
@@ -248,7 +249,7 @@ actor RecordingService {
             )
             return (device, showTouchesOverride, .success(session))
           } catch {
-            await showTouchesOverride.restore(using: adb)
+            await showTouchesOverride.restore(using: adb, timeout: .seconds(3))
             return (device, showTouchesOverride, .failure(error))
           }
         }
@@ -280,7 +281,7 @@ actor RecordingService {
     var media: [CaptureMedia] = []
     var errors = endedDeviceErrors
 
-    await withTaskGroup(of: (Device, Result<CaptureMedia?, Error>).self) { group in
+    await withTaskGroup(of: (Device, Result<(CaptureMedia?, Error?), Error>).self) { group in
       for entry in entries {
         group.addTask {
           do {
@@ -297,13 +298,20 @@ actor RecordingService {
 
       for await (device, result) in group {
         switch result {
-        case .success(let capture?):
-          let stored = await history?.record(capture, in: historyID) ?? capture
-          media.append(stored)
-        case .success(nil):
-          let message = errors[device.id] ?? "\(device.displayTitle): No playable recording was received."
-          errors[device.id] = message
-          await history?.recordFailure(deviceID: device.id, message: message, in: historyID)
+        case .success(let (capture, warning)):
+          if let capture {
+            let stored = await history?.record(capture, in: historyID) ?? capture
+            media.append(stored)
+          }
+          let failure = warning?.localizedDescription ?? (capture == nil ? "No playable recording was received." : nil)
+          if let failure {
+            let detail = "\(device.displayTitle): \(failure)"
+            let message = errors[device.id].map { "\($0)\n\(detail)" } ?? detail
+            errors[device.id] = message
+            if capture == nil {
+              await history?.recordFailure(deviceID: device.id, message: message, in: historyID)
+            }
+          }
         case .failure(let error):
           let detail = "\(device.displayTitle): \(error.localizedDescription)"
           let message = errors[device.id].map { "\($0)\n\(detail)" } ?? detail
@@ -360,7 +368,7 @@ actor RecordingService {
     guard var operation = operations[operationID],
           operation.endedDeviceErrors[entry.device.id] == nil else { return }
     guard let index = operation.entries.firstIndex(where: { $0.device.id == entry.device.id }) else { return }
-    let restoration = Task { await entry.showTouchesOverride.restore(using: adb) }
+    let restoration = Task { await entry.showTouchesOverride.restore(using: adb, timeout: .seconds(3)) }
     operation.entries[index].touchRestoration = restoration
     operation.endedDeviceErrors[entry.device.id] = message
     operations[operationID] = operation
@@ -416,7 +424,7 @@ actor RecordingService {
   private func stop(
     _ entry: Entry,
     sessionHasEnded: Bool
-  ) async throws -> CaptureMedia? {
+  ) async throws -> (CaptureMedia?, Error?) {
     let exec = await adb.exec()
     let capturedAt = await timestampSource.next()
     let destination = fileStore.makePreviewDestination(
@@ -425,11 +433,12 @@ actor RecordingService {
       kind: .video
     )
 
+    var warning: Error?
     do {
       if sessionHasEnded {
         try await exec.collectScreenrecord(session: entry.session, savingTo: destination)
       } else {
-        try await exec.stopScreenrecord(session: entry.session, savingTo: destination)
+        warning = try await exec.stopScreenrecord(session: entry.session, savingTo: destination)
       }
     } catch {
       await entry.restoreTouches(using: adb)
@@ -439,12 +448,12 @@ actor RecordingService {
 
     let asset = AVURLAsset(url: destination)
     let duration = try await asset.load(.duration)
-    guard duration.seconds > 0 else { return nil }
+    guard duration.seconds > 0 else { return (nil, warning) }
 
     let adb = adb
     let device = entry.device
     let densityTask = Task<CGFloat?, Never> {
-      let density = try? await adb.exec().displayDensity(deviceID: device.id)
+      let density = try? await adb.exec().withTimeout(.seconds(3)).displayDensity(deviceID: device.id)
       return density.map { CGFloat($0) }
     }
     guard let media = try await Media.video(
@@ -453,9 +462,9 @@ actor RecordingService {
       capturedAt: capturedAt,
       densityProvider: { await densityTask.value }
     ) else {
-      return nil
+      return (nil, warning)
     }
-    return CaptureMedia(device: device, media: media)
+    return (CaptureMedia(device: device, media: media), warning)
   }
 
   private func discard(_ entries: [Entry], endedDeviceIDs: Set<String> = []) async {

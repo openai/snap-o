@@ -56,6 +56,10 @@ actor ADBService {
     160
   }
 
+  func withTimeout(_: Duration?) -> ADBService {
+    self
+  }
+
   func getShowTouches(deviceID: String) throws -> Bool {
     touchSettings[deviceID] ?? false
   }
@@ -78,11 +82,12 @@ actor ADBService {
     unavailable.insert(deviceID)
   }
 
-  func stopScreenrecord(session: RecordingSession, savingTo url: URL) async throws {
+  func stopScreenrecord(session: RecordingSession, savingTo url: URL) async throws -> Error? {
     stops.append(session.deviceID)
     session.end()
     try await session.waitUntilStopped()
     try collectScreenrecord(session: session, savingTo: url)
+    return nil
   }
 
   func collectScreenrecord(session: RecordingSession, savingTo url: URL) throws {

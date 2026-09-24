@@ -58,6 +58,7 @@ struct StartupCaptureTests {
     await deviceManagerOpenPreservesLaterSelection()
     await restoresPreferredDevice()
     await waitsForPreferredDeviceMedia()
+    await stopReleasesWindowLevel()
     print("Startup capture tests passed")
   }
 
@@ -972,6 +973,25 @@ struct StartupCaptureTests {
     await command.value
     precondition(fixture.controller.isRecording)
     await fixture.displayGate.open()
+    await fixture.controller.tearDown()
+  }
+
+  static func stopReleasesWindowLevel() async {
+    let fixture = ControllerFixture()
+    AppSettings.shared.startupCaptureMode = .screenshot
+    await fixture.controller.start()
+    await eventually { !fixture.controller.isProcessing && fixture.controller.canStartRecordingNow }
+    await fixture.controller.startRecording()
+    await eventually { fixture.controller.isRecording }
+    precondition(fixture.controller.shouldFloatRecordingWindow)
+    let finishGate = TestGate()
+    await fixture.recording.blockFinish(on: finishGate)
+    let stop = Task { await fixture.controller.stopRecording() }
+    await eventually { await finishGate.waitCount > 0 }
+    precondition(fixture.controller.isProcessing && fixture.controller.isRecording)
+    precondition(!fixture.controller.shouldFloatRecordingWindow, "Stop must release the window before device work finishes")
+    await finishGate.open()
+    await stop.value
     await fixture.controller.tearDown()
   }
 
