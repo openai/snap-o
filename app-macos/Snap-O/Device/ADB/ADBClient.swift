@@ -4,7 +4,7 @@ public struct ADBClient: Sendable {
   private let connectionFactory: @Sendable () throws -> ADBSocketConnection
   private let discoveryTimeout: Duration
   private var requestTimeout: Duration?
-  let recordingTimeouts: RecordingTimeouts
+  private let recordingTimeouts = RecordingTimeouts()
 
   struct RecordingTimeouts {
     var command: Duration = .seconds(3)
@@ -24,16 +24,13 @@ public struct ADBClient: Sendable {
   public init() {
     connectionFactory = { try ADBSocketConnection() }
     discoveryTimeout = .seconds(2)
-    recordingTimeouts = RecordingTimeouts()
   }
 
   init(
     discoveryTimeout: Duration,
-    recordingTimeouts: RecordingTimeouts = RecordingTimeouts(),
     connectionFactory: @escaping @Sendable () throws -> ADBSocketConnection
   ) {
     self.discoveryTimeout = discoveryTimeout
-    self.recordingTimeouts = recordingTimeouts
     self.connectionFactory = connectionFactory
   }
 
