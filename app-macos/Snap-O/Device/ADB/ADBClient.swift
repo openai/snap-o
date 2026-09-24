@@ -9,7 +9,6 @@ public struct ADBClient: Sendable {
   struct RecordingTimeouts {
     var command: Duration = .seconds(3)
     var finalization: Duration = .seconds(5)
-    var download: Duration = .seconds(120)
     var downloadIdle: Duration = .seconds(5)
   }
 
@@ -99,7 +98,7 @@ public struct ADBClient: Sendable {
   public func collectScreenrecord(session: RecordingSession, savingTo localURL: URL) async throws {
     defer { session.close() }
     do {
-      try await withTimeout(recordingTimeouts.download).pull(
+      try await pull(
         deviceID: session.deviceID, remote: session.remotePath, to: localURL,
         idleTimeout: recordingTimeouts.downloadIdle
       )
