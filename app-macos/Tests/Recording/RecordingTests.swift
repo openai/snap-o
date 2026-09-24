@@ -26,7 +26,10 @@ struct RecordingTests {
     try await disconnectedDeviceLeavesHealthyRecordingActive(root: root, video: video)
     try await cancellationDoesNotSignalEndedSession(root: root, video: video)
     try await endedSessionRestoresTouchIndicators(root: root, video: video)
-    print("Recording tests passed (5 cases)")
+    try await unconfirmedStopPreservesRemoteRecording(root: root, video: video)
+    try await invalidDownloadPreservesRemoteRecording(root: root)
+    try await confirmedRecordingRemovesRemoteCopy(root: root, video: video)
+    print("Recording tests passed (8 cases)")
   }
 
   struct Fixture {
@@ -92,8 +95,8 @@ struct RecordingTests {
     await fixture.waitForFailure()
 
     await fixture.service.cancel(handle)
-    let cancellations = await fixture.adb.cancellations
-    precondition(cancellations == [devices[1].id], "Only the active recording may receive a stop signal")
+    let stops = await fixture.adb.stops
+    precondition(stops == [devices[1].id], "Only the active recording may receive a stop signal")
   }
 
   static func endedSessionRestoresTouchIndicators(root: URL, video: URL) async throws {
@@ -107,6 +110,36 @@ struct RecordingTests {
     let settings = await fixture.adb.touchSettings
     precondition(settings == [devices[0].id: false, devices[1].id: true], "Restore only the ended device's setting")
     await fixture.service.cancel(handle)
+  }
+
+  static func unconfirmedStopPreservesRemoteRecording(root: URL, video: URL) async throws {
+    let fixture = Fixture(root: root, video: video)
+    let handle = try await fixture.service.start(for: [devices[0]], options: options)
+    await fixture.adb.failStop(devices[0].id)
+    await fixture.service.finish(handle)
+
+    let removed = await fixture.adb.removedRecordings
+    precondition(removed.isEmpty, "An unconfirmed stop must preserve the device copy")
+  }
+
+  static func invalidDownloadPreservesRemoteRecording(root: URL) async throws {
+    let invalidVideo = root.appendingPathComponent("incomplete.mp4")
+    try Data("incomplete recording".utf8).write(to: invalidVideo)
+    let fixture = Fixture(root: root, video: invalidVideo)
+    let handle = try await fixture.service.start(for: [devices[0]], options: options)
+    await fixture.service.finish(handle)
+
+    let removed = await fixture.adb.removedRecordings
+    precondition(removed.isEmpty, "An unusable download must preserve the device copy")
+  }
+
+  static func confirmedRecordingRemovesRemoteCopy(root: URL, video: URL) async throws {
+    let fixture = Fixture(root: root, video: video)
+    let handle = try await fixture.service.start(for: [devices[0]], options: options)
+    await fixture.service.finish(handle)
+
+    let removed = await fixture.adb.removedRecordings
+    precondition(removed == [devices[0].id], "A confirmed stop and usable local copy allow remote cleanup")
   }
 
   static func eventually(_ condition: () async -> Bool) async {

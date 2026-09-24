@@ -57,11 +57,25 @@ private struct RecordingLifecycleError: LocalizedError {
 }
 
 actor RecordingService {
+  private enum StopStatus {
+    case recording
+    case confirmed
+    case unconfirmed
+  }
+
+  private struct CollectedRecording {
+    let device: Device
+    let media: CaptureMedia?
+    let failure: String?
+  }
+
   private struct Entry {
     let device: Device
     let session: RecordingSession
     let showTouchesOverride: ShowTouchesOverride
     var touchRestoration: Task<Void, Never>?
+    var stopStatus: StopStatus = .recording
+    var failure: String?
 
     func restoreTouches(using adb: ADBService) async {
       if let touchRestoration {
@@ -83,7 +97,6 @@ actor RecordingService {
     let completion: RecordingOperationCompletion
     var sessionMonitors: [SessionMonitor]
     let historyID: UUID?
-    var endedDeviceErrors: [String: String] = [:]
   }
 
   private let adb: ADBService
@@ -184,11 +197,11 @@ actor RecordingService {
   ) async {
     guard let operation = operations[handle.id] else { return }
     for entry in operation.entries where !connectedDeviceIDs.contains(entry.device.id) {
-      entry.session.close()
       await sessionEnded(
         operationID: handle.id,
         entry: entry,
-        message: "Recording ended because \(entry.device.displayTitle) disconnected."
+        stopStatus: .unconfirmed,
+        message: "Recording ended because the device disconnected."
       )
     }
   }
@@ -206,7 +219,7 @@ actor RecordingService {
     cleanupOperationIDs.insert(handle.id)
     defer { cleanupOperationIDs.remove(handle.id) }
 
-    await discard(operation.entries, endedDeviceIDs: Set(operation.endedDeviceErrors.keys))
+    await discard(operation.entries)
     await history?.discardEmpty(operation.historyID)
     await coordinator.release(operation.lease)
     await operation.completion.resolve(.cancelled)
@@ -275,54 +288,27 @@ actor RecordingService {
 
   private func collectMedia(
     from entries: [Entry],
-    historyID: UUID?,
-    endedDeviceErrors: [String: String]
+    historyID: UUID?
   ) async -> ([CaptureMedia], Error?) {
     var media: [CaptureMedia] = []
-    var errors = endedDeviceErrors
+    var failures: [String] = []
 
-    await withTaskGroup(of: (Device, Result<(CaptureMedia?, Error?), Error>).self) { group in
+    await withTaskGroup(of: CollectedRecording.self) { group in
       for entry in entries {
-        group.addTask {
-          do {
-            let capture = try await self.stop(
-              entry,
-              sessionHasEnded: endedDeviceErrors[entry.device.id] != nil
-            )
-            return (entry.device, .success(capture))
-          } catch {
-            return (entry.device, .failure(error))
-          }
-        }
+        group.addTask { await self.collect(entry, historyID: historyID) }
       }
-
-      for await (device, result) in group {
-        switch result {
-        case .success(let (capture, warning)):
-          if let capture {
-            let stored = await history?.record(capture, in: historyID) ?? capture
-            media.append(stored)
+      for await result in group {
+        if let capture = result.media { media.append(capture) }
+        if let failure = result.failure {
+          let message = "\(result.device.displayTitle): \(failure)"
+          failures.append(message)
+          if result.media == nil {
+            await history?.recordFailure(deviceID: result.device.id, message: message, in: historyID)
           }
-          let failure = warning?.localizedDescription ?? (capture == nil ? "No playable recording was received." : nil)
-          if let failure {
-            let detail = "\(device.displayTitle): \(failure)"
-            let message = errors[device.id].map { "\($0)\n\(detail)" } ?? detail
-            errors[device.id] = message
-            if capture == nil {
-              await history?.recordFailure(deviceID: device.id, message: message, in: historyID)
-            }
-          }
-        case .failure(let error):
-          let detail = "\(device.displayTitle): \(error.localizedDescription)"
-          let message = errors[device.id].map { "\($0)\n\(detail)" } ?? detail
-          errors[device.id] = message
-          await history?.recordFailure(deviceID: device.id, message: message, in: historyID)
         }
       }
     }
-    let error = errors.isEmpty ? nil : RecordingLifecycleError(
-      errorDescription: errors.sorted { $0.key < $1.key }.map(\.value).joined(separator: "\n")
-    )
+    let error = failures.isEmpty ? nil : RecordingLifecycleError(errorDescription: failures.sorted().joined(separator: "\n"))
     return (media, error)
   }
 
@@ -331,53 +317,45 @@ actor RecordingService {
     operationID: UUID
   ) -> Task<Void, Never> {
     Task { [weak self] in
-      let failureDescription: String?
+      let stopStatus: StopStatus
+      let message: String
       do {
         try await entry.session.waitUntilStopped()
-        failureDescription = nil
+        stopStatus = .confirmed
+        message = "Recording ended unexpectedly."
       } catch {
-        failureDescription = error.localizedDescription
+        stopStatus = .unconfirmed
+        message = "Recording ended unexpectedly (\(error.localizedDescription))."
       }
       guard !Task.isCancelled else { return }
-      await self?.sessionEnded(
-        operationID: operationID,
-        entry: entry,
-        failureDescription: failureDescription
-      )
+      await self?.sessionEnded(operationID: operationID, entry: entry, stopStatus: stopStatus, message: message)
     }
   }
 
   private func sessionEnded(
     operationID: UUID,
     entry: Entry,
-    failureDescription: String?
-  ) async {
-    let detail = failureDescription.map { " (\($0))" } ?? ""
-    await sessionEnded(
-      operationID: operationID,
-      entry: entry,
-      message: "Recording on \(entry.device.displayTitle) ended unexpectedly\(detail)."
-    )
-  }
-
-  private func sessionEnded(
-    operationID: UUID,
-    entry: Entry,
+    stopStatus: StopStatus,
     message: String
   ) async {
     guard var operation = operations[operationID],
-          operation.endedDeviceErrors[entry.device.id] == nil else { return }
-    guard let index = operation.entries.firstIndex(where: { $0.device.id == entry.device.id }) else { return }
+          let index = operation.entries.firstIndex(where: { $0.device.id == entry.device.id }),
+          operation.entries[index].stopStatus == .recording else { return }
     let restoration = Task { await entry.showTouchesOverride.restore(using: adb, timeout: .seconds(3)) }
     operation.entries[index].touchRestoration = restoration
-    operation.endedDeviceErrors[entry.device.id] = message
+    operation.entries[index].stopStatus = stopStatus
+    operation.entries[index].failure = message
     operations[operationID] = operation
+    // Record an unconfirmed stop before closing the stream can wake its monitor.
+    entry.session.close()
     await restoration.value
-    guard operations[operationID] != nil else { return }
-    await history?.recordFailure(deviceID: entry.device.id, message: message, in: operation.historyID)
+    guard let current = operations[operationID] else { return }
+    await history?.recordFailure(
+      deviceID: entry.device.id, message: "\(entry.device.displayTitle): \(message)", in: current.historyID
+    )
 
     // Keep Stop available until every device has ended or the user finishes the group.
-    if operation.endedDeviceErrors.count == operation.entries.count {
+    if current.entries.allSatisfy({ $0.stopStatus != .recording }) {
       await complete(operationID, endedSession: entry.session)
     }
   }
@@ -395,8 +373,7 @@ actor RecordingService {
 
     let (media, captureError) = await collectMedia(
       from: operation.entries,
-      historyID: operation.historyID,
-      endedDeviceErrors: operation.endedDeviceErrors
+      historyID: operation.historyID
     )
     await history?.finish(operation.historyID)
     await coordinator.release(operation.lease)
@@ -421,65 +398,73 @@ actor RecordingService {
     return operation
   }
 
-  private func stop(
-    _ entry: Entry,
-    sessionHasEnded: Bool
-  ) async throws -> (CaptureMedia?, Error?) {
-    let exec = await adb.exec()
-    let capturedAt = await timestampSource.next()
-    let destination = fileStore.makePreviewDestination(
-      deviceID: entry.device.id,
-      capturedAt: capturedAt,
-      kind: .video
-    )
-
-    var warning: Error?
+  private func stopIfRecording(_ entry: Entry) async -> Entry {
+    guard entry.stopStatus == .recording else { return entry }
+    var stopped = entry
     do {
-      if sessionHasEnded {
-        try await exec.collectScreenrecord(session: entry.session, savingTo: destination)
-      } else {
-        warning = try await exec.stopScreenrecord(session: entry.session, savingTo: destination)
-      }
+      try await adb.exec().signalScreenrecordStop(session: entry.session)
+      try await entry.session.waitUntilStopped(timeout: .seconds(5))
+      stopped.stopStatus = .confirmed
     } catch {
-      await entry.restoreTouches(using: adb)
-      throw error
+      stopped.stopStatus = .unconfirmed
+      stopped.failure = error.localizedDescription
     }
-    await entry.restoreTouches(using: adb)
-
-    let asset = AVURLAsset(url: destination)
-    let duration = try await asset.load(.duration)
-    guard duration.seconds > 0 else { return (nil, warning) }
-
-    let adb = adb
-    let device = entry.device
-    let densityTask = Task<CGFloat?, Never> {
-      let density = try? await adb.exec().withTimeout(.seconds(3)).displayDensity(deviceID: device.id)
-      return density.map { CGFloat($0) }
-    }
-    guard let media = try await Media.video(
-      from: asset,
-      url: destination,
-      capturedAt: capturedAt,
-      densityProvider: { await densityTask.value }
-    ) else {
-      return (nil, warning)
-    }
-    return (CaptureMedia(device: device, media: media), warning)
+    return stopped
   }
 
-  private func discard(_ entries: [Entry], endedDeviceIDs: Set<String> = []) async {
+  private func collect(_ entry: Entry, historyID: UUID?) async -> CollectedRecording {
+    let stopped = await stopIfRecording(entry)
+    defer { entry.session.close() }
+    await stopped.restoreTouches(using: adb)
+    let capturedAt = await timestampSource.next()
+    let destination = fileStore.makePreviewDestination(deviceID: entry.device.id, capturedAt: capturedAt, kind: .video)
+    let exec = await adb.exec()
+
+    do {
+      try Task.checkCancellation()
+      try await exec.downloadScreenrecord(session: entry.session, savingTo: destination)
+      let capture = try await loadRecording(at: destination, device: entry.device, capturedAt: capturedAt)
+      let retained = await history?.record(capture, in: historyID) ?? capture
+      // Delete only after a confirmed stop and a usable local copy. Recovery keeps the device copy.
+      if stopped.stopStatus == .confirmed {
+        try? await exec.removeScreenrecord(session: entry.session)
+      }
+      return CollectedRecording(device: entry.device, media: retained, failure: stopped.failure)
+    } catch {
+      try? FileManager.default.removeItem(at: destination)
+      let message = [stopped.failure, error.localizedDescription].compactMap(\.self).joined(separator: "\n")
+      return CollectedRecording(device: entry.device, media: nil, failure: message)
+    }
+  }
+
+  private func loadRecording(at url: URL, device: Device, capturedAt: Date) async throws -> CaptureMedia {
+    let invalidRecording = RecordingLifecycleError(errorDescription: "No playable recording was received.")
+    let asset = AVURLAsset(url: url)
+    let (duration, isPlayable) = try await asset.load(.duration, .isPlayable)
+    guard isPlayable, duration.seconds > 0 else { throw invalidRecording }
     let adb = adb
+    guard let media = try await Media.video(
+      from: asset,
+      url: url,
+      capturedAt: capturedAt,
+      densityProvider: {
+        let density = try? await adb.exec().withTimeout(.seconds(3)).displayDensity(deviceID: device.id)
+        return density.map { CGFloat($0) }
+      }
+    ) else { throw invalidRecording }
+    return CaptureMedia(device: device, media: media)
+  }
+
+  private func discard(_ entries: [Entry]) async {
     let cleanupTask = Task.detached(priority: .utility) {
       await withTaskGroup(of: Void.self) { group in
         for entry in entries {
           group.addTask {
-            let exec = await adb.exec()
-            if endedDeviceIDs.contains(entry.device.id) {
-              await exec.discardScreenrecord(session: entry.session)
-            } else {
-              await exec.cancelScreenrecord(session: entry.session)
-            }
-            await entry.restoreTouches(using: adb)
+            let stopped = await self.stopIfRecording(entry)
+            // Explicit discard removes the device copy even when stopping could not be confirmed.
+            try? await self.adb.exec().removeScreenrecord(session: entry.session)
+            entry.session.close()
+            await stopped.restoreTouches(using: self.adb)
           }
         }
       }
@@ -495,7 +480,7 @@ actor RecordingService {
       for monitor in operation.sessionMonitors {
         monitor.task.cancel()
       }
-      await discard(operation.entries, endedDeviceIDs: Set(operation.endedDeviceErrors.keys))
+      await discard(operation.entries)
       await history?.discardEmpty(operation.historyID)
       await coordinator.release(operation.lease)
       await operation.completion.resolve(.cancelled)
