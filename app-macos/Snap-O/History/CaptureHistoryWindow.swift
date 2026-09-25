@@ -108,11 +108,9 @@ struct CaptureHistoryWindow: View {
       .onChange(of: calendar) { groupEntries() }
       .onKeyPress(.leftArrow) { isVideoFocused ? .ignored : navigate(-1) }
       .onKeyPress(.rightArrow) { isVideoFocused ? .ignored : navigate(1) }
-      .onKeyPress(.escape) {
-        guard entry != nil else { return .ignored }
-        goBack()
-        return .handled
-      }
+      .onDeleteCommand(perform: requestSelectionDeletion)
+      .onCommand(#selector(NSResponder.deleteToBeginningOfLine(_:)), perform: requestSelectionDeletion)
+      .onExitCommand { if entry != nil { goBack() } }
       .task(id: protectedIDs) {
         await history.repository.protect(protectedIDs, owner: protectionID)
       }
@@ -470,6 +468,20 @@ struct CaptureHistoryWindow: View {
       return destination
     } catch { errorMessage = error.localizedDescription
       return nil
+    }
+  }
+
+  private func requestSelectionDeletion() {
+    guard !showsSettings, !confirmsDeletion, errorMessage == nil, history.errorMessage == nil else {
+      return
+    }
+    if let entry {
+      guard entry.completedAt != nil else { return }
+      requestDeletion(entry, item: item)
+    } else {
+      guard let selectedEntry = history.entries.first(where: { gridSelection.ids.contains($0.id) }),
+            deletionEntries(for: selectedEntry).allSatisfy({ $0.completedAt != nil }) else { return }
+      requestGridDeletion(selectedEntry)
     }
   }
 
