@@ -51,7 +51,7 @@
 <p class="prose">You can open an emulator preview while Android is still booting. The emulator screen can appear before Android is ready for input. Snap-O retries display discovery and emulator control discovery automatically. Rotation and supported display or posture controls become available without reopening the preview.</p>
 <p class="prose">Hold Option and drag to use two touch points for pinch or rotation gestures. Hold Option-Shift while dragging to move both points together. The touch markers show where the gesture will act.</p>
 <p class="prose">Command-drag the preview to share the current frame as a screenshot, or right-click for <strong>Copy Image</strong> and <strong>Save Image As…</strong>. Each action adds that frame to Capture History. Watching the preview alone does not.</p>
-<p class="prose">Press <code>Esc</code> to stop the preview, or <code>⇧⌘L</code> to start it again. Choose <strong>Device → Start With</strong> to change how new windows open.</p>
+<p class="prose">With keyboard focus outside the device image, press <code>Esc</code> to stop the preview, or <code>⇧⌘L</code> to start it again. Choose <strong>Device → Start With</strong> to change how new windows open.</p>
 </div>
       </section>
 
@@ -62,8 +62,20 @@
         </div>
         <div class="section-body">
 <p class="prose">Live Preview shows floating controls beside the Capture window. Use <strong>Back</strong>, <strong>Home</strong>, <strong>Recents</strong>, <strong>Volume Down</strong>, <strong>Volume Up</strong>, and <strong>Power/Wake</strong> to control the selected device.</p>
-<p class="prose">Emulators also offer <strong>Rotate Left</strong> and <strong>Rotate Right</strong>. Supported emulators show <strong>Display Mode</strong> and <strong>Posture</strong> menus. Available choices depend on the emulator. These controls can remain unavailable during boot; Snap-O retries automatically.</p>
+<p class="prose">Physical devices and emulators offer <strong>Rotate Left</strong> and <strong>Rotate Right</strong>. Emulator rotation changes the virtual device’s orientation through its sensors. Physical-device rotation temporarily locks the orientation; Snap-O restores the original rotation mode when live preview ends. Apps that require a fixed orientation may stay in that orientation. Supported emulators show <strong>Display Mode</strong> and <strong>Posture</strong> menus. Available choices depend on the emulator. Display and posture controls can remain unavailable during boot; Snap-O retries automatically.</p>
 <p class="prose">Right-click the controls and choose <strong>Position → Left of Window</strong> or <strong>Position → Below Capture Pane</strong>. Snap-O remembers this position and keeps the controls within the screen. They hide when Snap-O becomes inactive.</p>
+</div>
+      </section>
+
+      <section class="guide-section" id="keyboard-input">
+        <div class="section-heading">
+
+          <h2>Keyboard input</h2>
+        </div>
+        <div class="section-body">
+<p class="prose">Click the device image to type, delete text, or use arrow keys. <strong>Keyboard input</strong> is on by default; toggle it in the floating controls. Click outside the image to release keyboard focus.</p>
+<p class="prose">While the device image has keyboard focus, <code>⌘C</code> copies selected Android text and <code>⌘V</code> pastes Mac text into Android. These actions also work with clipboard sync off. Use Paste for characters the Android keyboard cannot type, including emoji. To copy the preview image, use its <strong>Copy Image</strong> context menu.</p>
+<p class="prose"><code>Esc</code> goes to Android while the image has keyboard focus, unless it cancels an active gesture or text composition.</p>
 </div>
       </section>
 
@@ -112,7 +124,7 @@
           <h2>Take a screenshot</h2>
         </div>
         <div class="section-body">
-<p class="prose">Press <code>⌘R</code> to capture a screenshot from all connected Android devices. Use <code>⌘[</code> and <code>⌘]</code> to browse their captures. Press <code>⇧⌘L</code> to return to Live Preview.</p>
+<p class="prose">Press <code>⇧⌘S</code> to capture a screenshot from all connected Android devices. Use <code>⌘[</code> and <code>⌘]</code> to browse their captures. Press <code>⇧⌘L</code> to return to Live Preview.</p>
 </div>
       </section>
 
@@ -122,7 +134,7 @@
           <h2>Record the screen</h2>
         </div>
         <div class="section-body">
-<p class="prose">Press <code>⇧⌘R</code> to record the screens of all connected Android devices, and <code>Esc</code> to stop. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.</p>
+<p class="prose">Press <code>⇧⌘V</code> to record the screens of all connected Android devices, and <code>Esc</code> to stop. Live Preview stays interactive during regular recordings, so you can continue using the device. Enabling <strong>Record Screen as Bug Report</strong> stops Live Preview during recording. The finished recordings open for playback. Step through a recording frame by frame to inspect an animation or transition.</p>
 </div>
       </section>
 
@@ -144,10 +156,10 @@
         </div>
         <div class="section-body">
 <p class="prose">Capture History automatically keeps your recent screenshots and recordings on your Mac. They remain after you close their windows or restart Snap-O, so you can revisit them without the original device connected.</p>
-<p class="prose">Open <strong>Window → Capture History</strong> (<code>⇧⌘H</code>) to browse captures by day, newest first.</p>
+<p class="prose">Open <strong>Window → Capture History</strong> (<code>⌘Y</code>) to browse captures by day, newest first.</p>
 <p class="prose">Each capture action groups its devices into one entry. Double-click an entry to preview it. Use the toolbar thumbnails, Left and Right Arrow keys, or <code>⌘[</code> and <code>⌘]</code> to switch devices. Press <code>Esc</code> to return to history.</p>
 <p class="prose">Captures start as <strong>Untitled</strong>. Click the name in the Capture pane or history preview to rename it. In the history grid, choose <strong>Rename</strong> from the context menu. The name applies to all devices in that capture.</p>
-<p class="prose">Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Right-click a selected entry and choose <strong>Delete…</strong> to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.</p>
+<p class="prose">Click an entry to select it. Command-click toggles individual entries; Shift-click selects a range. Drag from empty grid space, including padding inside an entry, to select entries with a rectangle. Hold Command or Shift while dragging to add to the selection. Drag a media thumbnail to export it; text and padding do not start exports. Press Delete or <code>⌘Delete</code>, or right-click a selected entry and choose <strong>Delete…</strong>, to delete the selection. The confirmation counts the screenshots and recordings inside the selected entries.</p>
 <details id="manage-history-storage"><summary>Manage history storage</summary><div class="details-body">
 
 <p class="prose">History keeps captures for 30 days by default, with a 5 GB storage limit. Open <strong>History Storage</strong> in the history window's toolbar to see disk usage and change these limits. If you have not chosen a retention period, it follows the current app default.</p>
@@ -173,11 +185,11 @@
 <tbody>
 <tr>
 <td>New screenshot</td>
-<td><code>⌘R</code></td>
+<td><code>⇧⌘S</code></td>
 </tr>
 <tr>
 <td>Start recording</td>
-<td><code>⇧⌘R</code></td>
+<td><code>⇧⌘V</code></td>
 </tr>
 <tr>
 <td>Start live preview</td>
@@ -189,7 +201,11 @@
 </tr>
 <tr>
 <td>Open Capture History</td>
-<td><code>⇧⌘H</code></td>
+<td><code>⌘Y</code></td>
+</tr>
+<tr>
+<td>Open Device Manager</td>
+<td><code>⇧⌘M</code></td>
 </tr>
 <tr>
 <td>Save as</td>
@@ -212,6 +228,50 @@
 <td><code>⌥⌘C</code></td>
 </tr>
 </tbody>
+</table></div>
+<p class="prose">These device shortcuts act on the selected device while Live Preview is visible.
+They also work when the control bar is hidden.</p>
+<div class="table-scroll"><table class="config-table">
+<thead>
+<tr>
+<th>Device action</th>
+<th>Shortcut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Back</td>
+<td><code>⇧⌘B</code></td>
+</tr>
+<tr>
+<td>Home</td>
+<td><code>⇧⌘H</code></td>
+</tr>
+<tr>
+<td>Recent apps</td>
+<td><code>⇧⌘W</code></td>
+</tr>
+<tr>
+<td>Power / wake</td>
+<td><code>⇧⌘P</code></td>
+</tr>
+<tr>
+<td>Volume up</td>
+<td><code>⇧⌘U</code></td>
+</tr>
+<tr>
+<td>Volume down</td>
+<td><code>⇧⌘D</code></td>
+</tr>
+<tr>
+<td>Rotate device left</td>
+<td><code>⌘L</code></td>
+</tr>
+<tr>
+<td>Rotate device right</td>
+<td><code>⌘R</code></td>
+</tr>
+</tbody>
 </table></div></div>
       </section>
 
@@ -223,6 +283,8 @@
           <li><a class="quick-jump-link" href="#live-preview">Live Preview</a></li>
 
           <li><a class="quick-jump-link" href="#device-and-emulator-controls">Device and emulator controls</a></li>
+
+          <li><a class="quick-jump-link" href="#keyboard-input">Keyboard input</a></li>
 
           <li><a class="quick-jump-link" href="#clipboard-sync">Clipboard sync</a></li>
 
