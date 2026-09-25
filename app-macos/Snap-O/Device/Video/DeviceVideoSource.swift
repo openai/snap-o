@@ -51,7 +51,7 @@ final class DeviceVideoSource: LivePreviewFrameSource {
 }
 
 @MainActor
-private final class DeviceVideoStream {
+final class DeviceVideoStream {
   private struct Subscriber {
     let receive: @MainActor @Sendable (LivePreviewFrameEvent) -> Void
     var needsKeyFrame = true
@@ -60,7 +60,9 @@ private final class DeviceVideoStream {
   let deviceID: String
   private(set) var hasStopped = false
   private var subscribers: [UUID: Subscriber] = [:]
+  private let client: ADBClient
   private var connection: ADBSocketConnection?
+  private var isReady = false
   private var task: Task<Void, Never>?
   private var timeout: Task<Void, Never>?
   private var format: CMVideoFormatDescription?
@@ -70,8 +72,9 @@ private final class DeviceVideoStream {
     subscribers.isEmpty
   }
 
-  init(deviceID: String) {
+  init(deviceID: String, client: ADBClient = ADBClient()) {
     self.deviceID = deviceID
+    self.client = client
   }
 
   func subscribe(_ receive: @escaping @MainActor @Sendable (LivePreviewFrameEvent) -> Void) -> UUID {
@@ -97,12 +100,13 @@ private final class DeviceVideoStream {
   }
 
   private func requestKeyFrame() {
-    guard let connection else { return }
+    guard isReady, !hasStopped, let connection else { return }
     commands.async { try? connection.writeFully(Data([1])) }
   }
 
   private func start() {
     let deviceID = deviceID
+    let client = client
     timeout = Task { [weak self] in
       do { try await Task.sleep(for: .seconds(8)) } catch { return }
       self?.receive(.stopped(ADBError.requestTimedOut("Device video did not start")))
@@ -123,7 +127,7 @@ private final class DeviceVideoStream {
           chmod 444 "$directory/helper.jar" || exit 1
         CLASSPATH="$directory/helper.jar" app_process / com.openai.snapo.video.Main "$directory" 2>/dev/null
         """
-        let connection = try await ADBClient().makeConnection()
+        let connection = try await client.makeConnection()
         socket = connection
         guard await self?.install(connection) == true else { connection.close()
           return
@@ -134,6 +138,7 @@ private final class DeviceVideoStream {
           _ = try connection.sendHostCommand("exec:" + command, expectsResponse: false)
           try DeviceVideoPacket.validateHeader(Self.readExactly(4, from: connection))
         }
+        await self?.markReady()
         var builder = DeviceVideoSampleBuilder()
         while !Task.isCancelled {
           let packet = try DeviceVideoPacket.read { try Self.readExactly($0, from: connection) }
@@ -153,6 +158,12 @@ private final class DeviceVideoStream {
       }
       socket?.close()
     }
+  }
+
+  private func markReady() {
+    guard !hasStopped else { return }
+    isReady = true
+    requestKeyFrame()
   }
 
   private func install(_ connection: ADBSocketConnection) -> Bool {
