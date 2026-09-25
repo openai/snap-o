@@ -11,6 +11,7 @@ xcrun swiftc -swift-version 6 -parse-as-library \
   Snap-O/Capture/CaptureMedia.swift Snap-O/History/CaptureHistoryEntry.swift \
   Snap-O/History/CaptureHistoryRepository.swift Snap-O/History/CaptureHistoryItemDrag.swift \
   Snap-O/History/CaptureHistoryDropTarget.swift \
+  Snap-O/Device/ScreenshotDeadline.swift \
   Snap-O/Capture/ScreenshotService.swift Snap-O/Capture/CaptureTimestampSource.swift \
   Snap-O/Storage/FileStore.swift Snap-O/Utilities/Logging.swift \
   Tests/CaptureHistory/ScreenshotTestADB.swift \

@@ -5,6 +5,21 @@ import Testing
 
 @Suite("ADB discovery timeouts")
 struct ADBDiscoveryTimeoutTests {
+  @Test("screenshots enforce one deadline even while bytes arrive", arguments: [FakeDiscoveryADB.Stall.output, .trickle])
+  private func boundsScreenshotAttempt(stall: FakeDiscoveryADB.Stall) async throws {
+    let server = FakeDiscoveryADB(stall: stall)
+    defer { server.close() }
+    let start = ContinuousClock.now
+    do {
+      _ = try await server.client(timeout: .seconds(10)).screencapPNG(deviceID: "stalled")
+      Issue.record("Expected screenshot timeout")
+    } catch ADBError.requestTimedOut(let message) {
+      #expect(message == "Screenshot capture timed out after 1 second")
+    }
+    #expect(start.duration(to: .now) < .seconds(2))
+    #expect(server.connectionCount == 1)
+  }
+
   /// Continuous output is tested separately because it has no total response deadline.
   @Test(
     "a stalled device cannot hide healthy tools",

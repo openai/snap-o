@@ -44,12 +44,14 @@ struct EmulatorRotationClient {
     query.format = .rgba8888
     query.width = 16
     query.height = 16
+    var screenshotOptions = options
+    screenshotOptions.timeout = ScreenshotDeadline.duration
     return try await client.unary(
       request: ClientRequest(message: query, metadata: metadata),
       descriptor: method("getScreenshot"),
       serializer: RotationProtobufCodec<EmulatorPreview_ImageFormat>(),
       deserializer: RotationProtobufCodec<EmulatorPreview_Image>(),
-      options: options
+      options: screenshotOptions
     ) { response in
       let value = try response.message.format.rotation.rotation.rawValue
       guard (0 ... 3).contains(value) else {

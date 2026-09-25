@@ -13,8 +13,6 @@ actor ScreenshotService {
     let result: Result<CaptureMedia, Error>
   }
 
-  private static let timeoutSeconds = 1
-
   private let adb: ADBService
   private let fileStore: FileStore
   private let history: CaptureHistoryRepository?
@@ -155,25 +153,13 @@ actor ScreenshotService {
     fileStore: FileStore,
     timestampSource: CaptureTimestampSource
   ) async throws -> CaptureMedia {
-    try await withThrowingTaskGroup(of: CaptureMedia.self) { group in
-      group.addTask {
-        try await capture(
-          request: request,
-          adb: adb,
-          fileStore: fileStore,
-          timestampSource: timestampSource
-        )
-      }
-      group.addTask {
-        try await Task.sleep(for: .seconds(timeoutSeconds))
-        throw ADBError.requestTimedOut(
-          "Screenshot capture timed out after \(timeoutSeconds) second"
-        )
-      }
-
-      defer { group.cancelAll() }
-      guard let capture = try await group.next() else { throw CancellationError() }
-      return capture
+    try await ScreenshotDeadline.run {
+      try await capture(
+        request: request,
+        adb: adb,
+        fileStore: fileStore,
+        timestampSource: timestampSource
+      )
     }
   }
 
